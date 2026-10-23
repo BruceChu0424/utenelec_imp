@@ -11,6 +11,7 @@
 // "这批料是上一期漏录的", 选补到哪一期并写原因。
 // 库存不足、版本冲突整笔不成功, 页面保留输入; 原样再点确认是同一个请求号, 不会重复发。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,6 +19,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/feedback/uten_context_menu.dart';
 import '../../../../components/feedback/uten_empty.dart';
@@ -28,19 +30,24 @@ import '../../../../components/inputs/uten_employee_picker.dart';
 import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_content_container.dart';
 import '../../../../components/layout/uten_editable_grid.dart';
+import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
+import '../../../../core/network/authenticated_request_scope.dart';
 import '../../../../core/router/nav_helpers.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../core/utils/china_datetime.dart';
 import '../../../../shared/auth/permissions.dart';
+import '../../../../shared/drafts/form_draft_catalog.dart';
+import '../../../../shared/drafts/form_draft_mixin.dart';
 import '../../../../shared/providers/master_name_provider.dart';
 import '../../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../../shared/widgets/warehouse_selection.dart';
 import '../../../employee/repositories/employee_repository.dart';
 import '../../providers/warehouse_count_refresh.dart';
+import '../../widgets/warehouse_task_session_guard.dart';
 import '../models/workshop_material_models.dart';
 import '../repositories/workshop_material_repository.dart';
 import '../widgets/workshop_material_labels.dart';
@@ -48,20 +55,28 @@ import '../widgets/workshop_material_line_grid.dart';
 import '../widgets/workshop_material_first_use_card.dart';
 import '../../../employee/repositories/employee_picker_candidates.dart';
 
-/// 仓库任务中心「车间内料仓」大类 (发料完成后返回这里)。
-final String wmWarehouseTaskCenterPath = Uri(
-  path: RouteName.warehouseTasks,
-  queryParameters: const {'group': 'workshopMaterial'},
-).toString();
-
 class WorkshopMaterialIssuePage extends ConsumerStatefulWidget {
-  const WorkshopMaterialIssuePage({super.key, this.requisitionId, this.mode});
+  const WorkshopMaterialIssuePage({
+    super.key,
+    this.requisitionId,
+    this.mode,
+    this.selectedLineIds,
+    this.onCompleted,
+    this.onClose,
+    this.batchProgress,
+    this.resumeDraftId,
+  });
 
   /// 按申请发料 / 收退回的申请单; 为空 = 直接发料。
   final String? requisitionId;
 
   /// `direct` = 直接发料 (与不带 requisitionId 等价)。
   final String? mode;
+  final Set<String>? selectedLineIds;
+  final VoidCallback? onCompleted;
+  final VoidCallback? onClose;
+  final String? batchProgress;
+  final String? resumeDraftId;
 
   @override
   ConsumerState<WorkshopMaterialIssuePage> createState() =>
@@ -69,10 +84,14 @@ class WorkshopMaterialIssuePage extends ConsumerStatefulWidget {
 }
 
 class _WorkshopMaterialIssuePageState
-    extends ConsumerState<WorkshopMaterialIssuePage> {
+    extends ConsumerState<WorkshopMaterialIssuePage>
+    with
+        FormDraftMixin<WorkshopMaterialIssuePage>,
+        WarehouseTaskSessionGuard<WorkshopMaterialIssuePage> {
   final _grid = UtenEditableGridController<WmIssueLineRow>();
   final _supplementReason = TextEditingController();
-  final _nonce = const Uuid().v4();
+  String _nonce = const Uuid().v4();
+  Map<String, dynamic>? _command;
   int _nextRow = 0;
 
   bool _loading = true;
@@ -91,10 +110,42 @@ class _WorkshopMaterialIssuePageState
   bool _saving = false;
   String? _submitError;
   bool _showValidation = false;
+  bool _selectionHandled = false;
   final Map<String, Map<String, dynamic>> _materialSetups = {};
+  final Map<String, Map<String, dynamic>> _setupInitials = {};
   int _materialSetupRevision = 0;
 
   bool get _direct => widget.requisitionId == null || widget.mode == 'direct';
+  bool get _editable => _command == null && _canSubmit;
+  bool get _canSubmit =>
+      warehouseTaskCanWrite &&
+      formDraftIdentityIsCurrent &&
+      !formDraftRestorationBlocked &&
+      (ref.read(isSuperAdminProvider) ||
+          ref
+              .read(currentPermissionsProvider)
+              .contains(Perm.workshopMaterialIssue)) &&
+      (_command != null ||
+          _direct ||
+          (!_selectionHandled &&
+              _requisition?.isPending == true &&
+              _requisition!.can(WmAction.fulfil)));
+  String get _taskCenterPath => Uri(
+    path: RouteName.warehouseTasks,
+    queryParameters: {
+      'group': _isReturn ? 'inbound' : 'outbound',
+      'section': _isReturn ? 'RETURN' : 'DRAW',
+    },
+  ).toString();
+
+  Future<void> _close() async {
+    if (_saving || !await confirmFormDraftExit() || !mounted) return;
+    if (widget.onClose case final callback?) {
+      callback();
+    } else {
+      backTo(context, defaultPath: _taskCenterPath);
+    }
+  }
 
   bool get _canConfigureFirstUse =>
       ref.read(isSuperAdminProvider) ||
@@ -149,7 +200,249 @@ class _WorkshopMaterialIssuePageState
   @override
   void initState() {
     super.initState();
+    startWarehouseTaskGuard();
+    startFormDraftIdentityGuard();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void didUpdateWidget(covariant WorkshopMaterialIssuePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    String source(WorkshopMaterialIssuePage page) => jsonEncode([
+      page.requisitionId,
+      page.mode,
+      page.selectedLineIds == null
+          ? null
+          : (page.selectedLineIds!.toList()..sort()),
+      page.resumeDraftId,
+    ]);
+    if (source(oldWidget) != source(widget)) invalidateWarehouseTask();
+  }
+
+  @override
+  void onWarehouseTaskInvalidated() {
+    invalidateFormDraftIdentity();
+    setState(() {
+      _loading = false;
+      _saving = false;
+      _loadError = '登录身份、权限或服务器已变化，请重新进入页面';
+      _materials = const [];
+      _requisition = null;
+      _settings = const [];
+      _leafHierarchy = const [];
+      _periods = const [];
+      _grid.replaceAll([]);
+      _receiver = null;
+    });
+  }
+
+  @override
+  bool get formDraftBusy => _saving || _loading;
+  @override
+  bool get formDraftUseCurrentRoute => false;
+  @override
+  bool get formDraftUsesRouterGuard => widget.onClose == null;
+  @override
+  String? get formDraftResumeId => widget.resumeDraftId;
+  @override
+  bool get formDraftCanReplaySubmission => _command != null;
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _grid,
+    _supplementReason,
+    for (final row in _grid.rows) ...[
+      row.qty,
+      row.bags,
+      row.material,
+      row.leafWarehouseId,
+    ],
+  ];
+  @override
+  Object? captureFormDraftPlatformFields() => null;
+  @override
+  Future<void> restoreFormDraftPlatformFields(Object? snapshot) async {}
+  @override
+  FormDraftSpec get formDraftSpec =>
+      FormDraftCatalog.workshopMaterialIssue.spec(
+        routeParameters: {
+          if (_direct) 'mode': 'direct',
+          if (!_direct) 'requisitionId': widget.requisitionId!,
+          if (widget.selectedLineIds case final ids?)
+            'lineIds': (ids.toList()..sort()).join(','),
+        },
+      );
+
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'requisitionId': widget.requisitionId,
+    'selectedLineIds': widget.selectedLineIds == null
+        ? null
+        : (widget.selectedLineIds!.toList()..sort()),
+    'version': _requisition?.rowVersion,
+    'workshopId': _workshopId,
+    'receiver': _receiver == null
+        ? null
+        : {
+            'id': _receiver!.id,
+            'name': _receiver!.name,
+            'code': _receiver!.employeeCode,
+          },
+    'nonce': _nonce,
+    'rows': [
+      for (final row in _grid.rows)
+        {
+          'lineId': row.requisitionLine?.id,
+          'goodsId': row.goodsId,
+          'colorId': row.colorId,
+          'qty': row.qty.text,
+          'bags': row.bags.text,
+          'leafWarehouseId': row.leafWarehouseId.value,
+          'platformFields': row.platformFields.exportDraft(),
+        },
+    ],
+    'supplement': _supplement,
+    'supplementPeriodId': _supplementPeriodId,
+    'supplementReason': _supplementReason.text,
+    'materialSetups': {..._setupInitials, ..._materialSetups},
+    'command': _command,
+    formDraftUnknownSubmissionKey: _command != null,
+  };
+
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    final savedIds = data['selectedLineIds'];
+    final selected = widget.selectedLineIds;
+    if (data['requisitionId'] != widget.requisitionId ||
+        (selected == null
+            ? savedIds != null
+            : savedIds is! List ||
+                  savedIds.length != selected.length ||
+                  !selected.containsAll(savedIds.cast<String>()))) {
+      throw const FormatException('草稿与当前所选明细不一致');
+    }
+    final command = data['command'];
+    if (command != null) {
+      if (command is! Map ||
+          command['idempotencyKey'] is! String ||
+          (command['idempotencyKey'] as String).isEmpty ||
+          !const ['direct', 'fulfil', 'cancel'].contains(command['kind']) ||
+          (_direct
+              ? command['kind'] != 'direct'
+              : command['id'] != widget.requisitionId)) {
+        throw const FormatException('原提交身份不完整，请保留草稿核对');
+      }
+      _command = Map<String, dynamic>.from(command);
+    }
+    if (!_direct &&
+        _command == null &&
+        (data['version'] != _requisition?.rowVersion || _selectionHandled)) {
+      throw const FormatException('原申请已变化，请保留原草稿并重新核对');
+    }
+    if (_direct &&
+        data['workshopId'] is String &&
+        data['workshopId'] != _workshopId) {
+      _workshopId = data['workshopId'] as String;
+      await _loadWorkshop(_workshopId!, resetRows: true);
+    }
+    if (!warehouseTaskIsCurrent) throw AuthenticatedRequestScope.changed();
+    if (data['nonce'] is! String) throw const FormatException('草稿缺少请求身份');
+    _nonce = data['nonce'] as String;
+    if (_command case final frozen?) {
+      final body = Map<String, dynamic>.of(frozen)..remove('idempotencyKey');
+      final kind = frozen['kind'];
+      final action = kind == 'direct' ? 'direct-issue' : kind as String;
+      if (wmIdempotencyKey(action, _nonce, body) != frozen['idempotencyKey'] ||
+          (!_direct && frozen['v'] != data['version']) ||
+          (_direct && frozen['workshop'] != data['workshopId'])) {
+        throw const FormatException('原提交内容与请求身份不一致，请保留草稿核对');
+      }
+      if (kind == 'fulfil') {
+        final commandLines = frozen['lines'];
+        final rowLines = data['rows'];
+        if (commandLines is! List || rowLines is! List) {
+          throw const FormatException('原提交缺少明细范围');
+        }
+        final commandIds = commandLines
+            .map((r) => (r as Map)['lineId'])
+            .toSet();
+        final rowIds = rowLines.map((r) => (r as Map)['lineId']).toSet();
+        if (commandIds.isEmpty ||
+            commandIds.length != rowIds.length ||
+            !commandIds.containsAll(rowIds) ||
+            (selected != null &&
+                (selected.length != commandIds.length ||
+                    !selected.containsAll(commandIds)))) {
+          throw const FormatException('原提交范围与草稿明细不一致');
+        }
+      }
+    }
+    final rows = data['rows'];
+    if (rows is! List) throw const FormatException('草稿明细不完整');
+    final restored = <WmIssueLineRow>[];
+    for (final raw in rows) {
+      if (raw is! Map) throw const FormatException('草稿明细不完整');
+      final line = _requisition?.lines
+          .where((l) => l.id == raw['lineId'])
+          .firstOrNull;
+      if (!_direct &&
+          (line == null ||
+              (selected != null && !selected.contains(line.id)) ||
+              line.goodsId != raw['goodsId'] ||
+              line.colorId != raw['colorId'])) {
+        throw const FormatException('草稿包含不属于本次选择的明细');
+      }
+      final material = _materials
+          .where(
+            (m) => m.goodsId == raw['goodsId'] && m.colorId == raw['colorId'],
+          )
+          .firstOrNull;
+      if (_direct &&
+          material == null &&
+          raw['goodsId'] != null &&
+          _command == null) {
+        throw const FormatException('原材料选项已变化，请重新核对');
+      }
+      final row =
+          _newRow(
+              material: material,
+              line: line,
+              leafWarehouseId: raw['leafWarehouseId'] as String?,
+            )
+            ..qty.text = raw['qty'] as String? ?? ''
+            ..bags.text = raw['bags'] as String? ?? '';
+      row.platformFields.restoreDraft(raw['platformFields']);
+      restored.add(row);
+    }
+    if (selected != null &&
+        !selected.every(
+          (id) => restored.any((row) => row.requisitionLine?.id == id),
+        )) {
+      throw const FormatException('草稿缺少原选明细');
+    }
+    _grid.replaceAll(restored);
+    final receiver = data['receiver'];
+    _receiver = receiver is Map
+        ? UtenEmployeePickerItem(
+            id: receiver['id'] as String,
+            name: receiver['name'] as String,
+            employeeCode: receiver['code'] as String?,
+          )
+        : null;
+    _supplement = data['supplement'] == true;
+    _supplementPeriodId = data['supplementPeriodId'] as String?;
+    _supplementReason.text = data['supplementReason'] as String? ?? '';
+    _materialSetups.clear();
+    if (data['materialSetups'] case final Map<Object?, Object?> setups) {
+      for (final entry in setups.entries) {
+        _setupInitials[entry.key as String] = Map<String, dynamic>.from(
+          entry.value as Map,
+        );
+      }
+    }
+    _materialSetupRevision++;
+    if (_command != null) {
+      _submitError = '原提交结果待确认，填写已锁定；请原样重试核对，不会重新制单。';
+    }
   }
 
   @override
@@ -178,6 +471,32 @@ class _WorkshopMaterialIssuePageState
   }
 
   Future<void> _load() async {
+    if (!warehouseTaskIsCurrent) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _loadError = '当前登录身份不可用，请重新进入页面';
+        });
+      }
+      return;
+    }
+    if (_command != null) return;
+    try {
+      final scope = await captureWarehouseTaskScope();
+      await scope.run(_loadSource);
+      scope.checkCurrent();
+      if (_loadError == null) await initializeFormDraft();
+    } catch (error) {
+      if (warehouseTaskIsCurrent) {
+        setState(() {
+          _loading = false;
+          _loadError = error is ApiException ? error.message : '加载失败，请重试';
+        });
+      }
+    }
+  }
+
+  Future<void> _loadSource() async {
     setState(() {
       _loading = true;
       _loadError = null;
@@ -186,11 +505,11 @@ class _WorkshopMaterialIssuePageState
     });
     try {
       final sources = await _repo.sourceWarehouses();
-      if (!mounted) return;
+      if (!warehouseTaskIsCurrent) return;
       _leafHierarchy = [for (final w in sources) w.toDictEntry()];
       if (_direct) {
         final settings = await _repo.settings();
-        if (!mounted) return;
+        if (!warehouseTaskIsCurrent) return;
         _settings = settings;
         final enabled = _enabledSettings;
         if (enabled.length == 1) {
@@ -203,8 +522,31 @@ class _WorkshopMaterialIssuePageState
         }
       } else {
         final requisition = await _repo.requisition(widget.requisitionId!);
-        if (!mounted) return;
+        if (!warehouseTaskIsCurrent) return;
         _requisition = requisition;
+        final selectedIds = widget.selectedLineIds;
+        if (selectedIds != null &&
+            (selectedIds.isEmpty ||
+                !selectedIds.every(
+                  (id) => requisition.lines.any((line) => line.id == id),
+                ))) {
+          throw ApiException('SELECTION_CHANGED', '所选明细已变化，请返回任务列表重新选择');
+        }
+        final selectedLines = [
+          for (final line in requisition.lines)
+            if (selectedIds == null
+                ? !requisition.isPending || line.fulfilledQty == 0
+                : selectedIds.contains(line.id))
+              line,
+        ];
+        _selectionHandled =
+            selectedLines.isNotEmpty &&
+            selectedLines.every((line) => line.fulfilledQty > 0);
+        if (requisition.isPending &&
+            !_selectionHandled &&
+            selectedLines.any((line) => line.fulfilledQty > 0)) {
+          throw ApiException('SELECTION_CHANGED', '所选明细已经办理，请返回任务列表刷新');
+        }
         _workshopId = requisition.workshopDepartmentId;
         final workshopId = requisition.workshopDepartmentId;
         final binId = requisition.binWarehouseId;
@@ -212,17 +554,17 @@ class _WorkshopMaterialIssuePageState
           if (workshopId != null)
             requisition.isReturn
                 ? _repo.materials(workshopId)
-                : _loadRequestMaterials(workshopId, requisition.lines),
+                : _loadRequestMaterials(workshopId, selectedLines),
           if (binId != null) _repo.periods(binId),
         ]);
-        if (!mounted) return;
+        if (!warehouseTaskIsCurrent) return;
         var index = 0;
         if (workshopId != null) {
           _materials = results[index++] as List<WmMaterialOption>;
         }
         if (binId != null) _periods = results[index] as List<WmPeriod>;
         _grid.replaceAll([
-          for (final line in requisition.lines)
+          for (final line in selectedLines)
             _newRow(
                 line: line,
                 material: _materialFor(line.key),
@@ -231,10 +573,7 @@ class _WorkshopMaterialIssuePageState
                     _materialFor(line.key)?.defaultLeafWarehouseId,
               )
               ..qty.text = wmQty(
-                (line.requestedQty - line.fulfilledQty).clamp(
-                  0,
-                  double.infinity,
-                ),
+                line.fulfilledQty > 0 ? line.fulfilledQty : line.requestedQty,
                 maxDecimals: 4,
               )
               ..bags.text = line.requestedBags == null
@@ -244,14 +583,14 @@ class _WorkshopMaterialIssuePageState
         setState(() => _loading = false);
       }
     } on ApiException catch (e) {
-      if (mounted) {
+      if (warehouseTaskIsCurrent) {
         setState(() {
           _loading = false;
           _loadError = e.message;
         });
       }
     } catch (_) {
-      if (mounted) {
+      if (warehouseTaskIsCurrent) {
         setState(() {
           _loading = false;
           _loadError = '加载失败, 请重试';
@@ -287,6 +626,15 @@ class _WorkshopMaterialIssuePageState
     String workshopId, {
     bool resetRows = false,
   }) async {
+    final scope = await captureWarehouseTaskScope();
+    await scope.run(() => _readWorkshop(workshopId, resetRows: resetRows));
+    scope.checkCurrent();
+  }
+
+  Future<void> _readWorkshop(
+    String workshopId, {
+    bool resetRows = false,
+  }) async {
     final setting = _settings
         .where((s) => s.workshopDepartmentId == workshopId)
         .firstOrNull;
@@ -296,7 +644,7 @@ class _WorkshopMaterialIssuePageState
       _repo.directIssueDefaults(workshopId),
       if (binId != null) _repo.periods(binId),
     ]);
-    if (!mounted || _workshopId != workshopId) return;
+    if (!warehouseTaskIsCurrent || _workshopId != workshopId) return;
     final defaults = results[1] as WmDirectIssueDefaults;
     setState(() {
       _materials = results[0] as List<WmMaterialOption>;
@@ -327,7 +675,7 @@ class _WorkshopMaterialIssuePageState
   }
 
   Future<void> _changeWorkshop(String? workshopId) async {
-    if (workshopId == null || workshopId == _workshopId) return;
+    if (!_editable || workshopId == null || workshopId == _workshopId) return;
     setState(() {
       _workshopId = workshopId;
       _loading = true;
@@ -336,14 +684,14 @@ class _WorkshopMaterialIssuePageState
     try {
       await _loadWorkshop(workshopId);
     } on ApiException catch (e) {
-      if (mounted) {
+      if (warehouseTaskIsCurrent) {
         setState(() {
           _loading = false;
           _loadError = e.message;
         });
       }
     } catch (_) {
-      if (mounted) {
+      if (warehouseTaskIsCurrent) {
         setState(() {
           _loading = false;
           _loadError = '加载失败, 请重试';
@@ -353,16 +701,20 @@ class _WorkshopMaterialIssuePageState
   }
 
   Future<List<UtenEmployeePickerItem>> _loadEmployees(String? keyword) async {
+    final scope = await captureWarehouseTaskScope();
     final kw = keyword?.trim() ?? '';
-    final result = await ref
-        .read(employeeRepositoryProvider)
-        .listPickerCandidates(
-          size: 30,
-          search: kw.isEmpty ? null : kw,
-          // 没输入搜索词时只列本车间 (含下级) 的人; 输入后全公司搜。
-          departmentId: kw.isEmpty ? _workshopId : null,
-          includeSubtree: kw.isEmpty,
-        );
+    final result = await scope.run(
+      () => ref
+          .read(employeeRepositoryProvider)
+          .listPickerCandidates(
+            size: 30,
+            search: kw.isEmpty ? null : kw,
+            // 没输入搜索词时只列本车间 (含下级) 的人; 输入后全公司搜。
+            departmentId: kw.isEmpty ? _workshopId : null,
+            includeSubtree: kw.isEmpty,
+          ),
+    );
+    scope.checkCurrent();
     return [
       for (final e in result)
         UtenEmployeePickerItem(
@@ -427,103 +779,184 @@ class _WorkshopMaterialIssuePageState
         )
       : null;
 
-  Future<void> _submit() async {
-    if (_saving || _loading) return;
-    final problem = _validate();
-    if (problem != null) {
-      setState(() {
-        _submitError = problem;
-        _showValidation = true;
-      });
-      return;
+  Map<String, dynamic> _freezeIssueCommand() {
+    final supplement = _supplementPayload?.toJson();
+    final lines = [
+      for (final row in _filledRows)
+        {
+          if (!_direct) 'lineId': row.requisitionLine!.id,
+          if (_direct) 'goodsId': row.goodsId,
+          if (_direct) 'colorId': row.colorId,
+          if (_direct) 'bags': row.bagsValue,
+          'qty': row.qtyValue,
+          'leafWarehouseId': row.leafWarehouseId.value,
+        },
+    ];
+    final payload = <String, dynamic>{
+      'kind': _direct ? 'direct' : 'fulfil',
+      if (_direct) 'workshop': _workshopId,
+      if (_direct) 'receiver': _receiver!.id,
+      if (!_direct) 'id': _requisition!.id,
+      if (!_direct) 'v': _requisition!.rowVersion,
+      'lines': lines,
+      if (!_direct) 'materialSetup': _materialSetupPayload,
+      'supplement': supplement,
+    };
+    payload['idempotencyKey'] = wmIdempotencyKey(
+      _direct ? 'direct-issue' : 'fulfil',
+      _nonce,
+      payload,
+    );
+    // Detach nested first-use maps and line values from mutable form controls.
+    return jsonDecode(jsonEncode(payload)) as Map<String, dynamic>;
+  }
+
+  WmSupplement? _commandSupplement(Map<String, dynamic> command) {
+    final raw = command['supplement'];
+    return raw is Map
+        ? WmSupplement(
+            periodId: raw['periodId'] as String,
+            reason: raw['reason'] as String,
+          )
+        : null;
+  }
+
+  Future<WmIssueResult> _sendCommand(Map<String, dynamic> command) async {
+    final key = command['idempotencyKey'] as String;
+    if (command['kind'] == 'cancel') {
+      await _repo.cancelRequisition(
+        command['id'] as String,
+        expectedVersion: command['v'] as int,
+        reason: command['reason'] as String,
+        idempotencyKey: key,
+      );
+      return WmIssueResult(requestNo: _requisition?.requestNo);
     }
+    final lines = [
+      for (final row in command['lines'] as List)
+        Map<String, dynamic>.from(row as Map),
+    ];
+    if (command['kind'] == 'direct') {
+      return _repo.directIssue(
+        workshopDepartmentId: command['workshop'] as String,
+        receiverEmployeeId: command['receiver'] as String,
+        lines: lines,
+        supplement: _commandSupplement(command),
+        idempotencyKey: key,
+      );
+    }
+    return _repo.fulfil(
+      command['id'] as String,
+      expectedVersion: command['v'] as int,
+      lines: lines,
+      materialSetup: [
+        for (final row in command['materialSetup'] as List)
+          Map<String, dynamic>.from(row as Map),
+      ],
+      supplement: _commandSupplement(command),
+      idempotencyKey: key,
+    );
+  }
+
+  bool _definiteRejection(ApiException error) =>
+      !isSessionBoundaryError(error) &&
+      ((error.hasResponseCode &&
+              const [400, 403, 404, 409, 422].contains(error.httpStatus) &&
+              !const [
+                'IDEMPOTENCY_IN_PROGRESS',
+                'IDEMPOTENCY_CONFLICT',
+              ].contains(error.code)) ||
+          const ['STOCK_SHORT', 'CONFLICT'].contains(error.code));
+
+  Future<void> _submitPreparedCancellation() =>
+      _submit(freshCancellation: true);
+
+  Future<void> _submit({bool freshCancellation = false}) async {
+    if (_saving || _loading || !_canSubmit) return;
+    if (_command == null) {
+      final problem = _validate();
+      if (problem != null) {
+        setState(() {
+          _submitError = problem;
+          _showValidation = true;
+        });
+        return;
+      }
+    }
+    final wasPending = _command != null && !freshCancellation;
+    final command = _command ?? _freezeIssueCommand();
+    var dispatched = false;
     setState(() {
       _saving = true;
       _submitError = null;
+      _command = command;
     });
     try {
-      final WmIssueResult result;
-      if (_direct) {
-        final lines = [
-          for (final row in _filledRows)
-            {
-              'goodsId': row.goodsId,
-              'colorId': row.colorId,
-              'bags': row.bagsValue,
-              'qty': row.qtyValue,
-              'leafWarehouseId': row.leafWarehouseId.value,
-            },
-        ];
-        final payload = {
-          'workshop': _workshopId,
-          'receiver': _receiver!.id,
-          'lines': lines,
-          'supplement': _supplementPayload?.toJson(),
-        };
-        result = await _repo.directIssue(
-          workshopDepartmentId: _workshopId!,
-          receiverEmployeeId: _receiver!.id,
-          lines: lines,
-          supplement: _supplementPayload,
-          idempotencyKey: wmIdempotencyKey('direct-issue', _nonce, payload),
-        );
-      } else {
-        final requisition = _requisition!;
-        final materialSetup = _materialSetupPayload;
-        final lines = [
-          for (final row in _filledRows)
-            {
-              'lineId': row.requisitionLine!.id,
-              'leafWarehouseId': row.leafWarehouseId.value,
-              'qty': row.qtyValue,
-            },
-        ];
-        result = await _repo.fulfil(
-          requisition.id,
-          expectedVersion: requisition.rowVersion,
-          lines: lines,
-          materialSetup: materialSetup,
-          supplement: _supplementPayload,
-          idempotencyKey: wmIdempotencyKey('fulfil', _nonce, {
-            'id': requisition.id,
-            'v': requisition.rowVersion,
-            'lines': lines,
-            'materialSetup': materialSetup,
-            'supplement': _supplementPayload?.toJson(),
-          }),
-        );
-      }
-      if (!mounted) return;
-      // 提示与跳转之前先撤遮罩并等这一帧画完。
-      setState(() => _saving = false);
+      final scope = await captureWarehouseTaskScope();
+      final result = await runFormDraftSubmission(
+        () => scope.run(() {
+          scope.checkCurrent();
+          dispatched = true;
+          return _sendCommand(command);
+        }),
+        isDefiniteRejection: (error) =>
+            !wasPending && _definiteRejection(error),
+      );
+      scope.checkCurrent();
+      await completeFormDraft();
+      if (!warehouseTaskIsCurrent) return;
+      setState(() {
+        _saving = false;
+        _command = null;
+      });
       await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
+      if (!mounted || !warehouseTaskIsCurrent) return;
       invalidateWarehouseTaskCounts(ref);
-      context.appSuccess(_successMessage(result));
+      context.appSuccess(
+        command['kind'] == 'cancel'
+            ? '已取消 ${_requisition?.requestNo ?? ''}'
+            : _successMessage(result),
+      );
       if (_direct) {
-        setState(() {
-          _grid.replaceAll([_newRow()]);
-          _supplement = false;
-          _supplementPeriodId = null;
-          _supplementReason.clear();
-          _showValidation = false;
-        });
+        await resetFormDraftAfterSubmission(
+          prepare: () async {
+            _nonce = const Uuid().v4();
+            _grid.replaceAll([_newRow()]);
+            _supplement = false;
+            _supplementPeriodId = null;
+            _supplementReason.clear();
+            _showValidation = false;
+          },
+        );
+      } else if (widget.onCompleted case final callback?) {
+        callback();
       } else {
-        backTo(context, defaultPath: wmWarehouseTaskCenterPath);
+        await _close();
       }
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-          _submitError = e.fieldErrors?.firstOrNull?.message ?? e.message;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-          _submitError = '网络不稳定, 暂时没确认结果。填写的内容已保留, 请再点一次确认 (不会重复发料)。';
-        });
+    } catch (error) {
+      if (!warehouseTaskIsCurrent) return;
+      final rejected =
+          !wasPending &&
+          (!dispatched || error is ApiException && _definiteRejection(error));
+      setState(() {
+        _saving = false;
+        if (rejected) _command = null;
+        _submitError = rejected
+            ? describeSubmitError(error, fallback: '本次未提交，填写已保留，请重试')
+            : '原提交结果待确认，填写已锁定；请原样重试核对，不会重新制单。';
+      });
+      try {
+        if (rejected) await releaseFormDraftBeforeDispatch();
+        await saveFormDraftNow();
+      } catch (checkpointError) {
+        if (warehouseTaskIsCurrent) {
+          setState(() {
+            _submitError = describeSubmitError(
+              checkpointError,
+              fallback: '本机草稿暂未保存成功，请保留页面重试',
+            );
+          });
+        }
       }
     }
   }
@@ -544,8 +977,10 @@ class _WorkshopMaterialIssuePageState
   }
 
   Future<void> _cancel() async {
+    if (_saving || !_editable) return;
+    final scope = await captureWarehouseTaskScope();
     final requisition = _requisition;
-    if (requisition == null) return;
+    if (requisition == null || !mounted) return;
     final controller = TextEditingController();
     late final String? reason;
     try {
@@ -583,41 +1018,19 @@ class _WorkshopMaterialIssuePageState
     } finally {
       controller.dispose();
     }
-    if (reason == null || !mounted) return;
-    setState(() => _saving = true);
-    try {
-      await _repo.cancelRequisition(
-        requisition.id,
-        expectedVersion: requisition.rowVersion,
-        reason: reason,
-        idempotencyKey: wmIdempotencyKey('cancel', _nonce, {
-          'id': requisition.id,
-          'v': requisition.rowVersion,
-          'reason': reason,
-        }),
-      );
-      if (!mounted) return;
-      setState(() => _saving = false);
-      await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
-      invalidateWarehouseTaskCounts(ref);
-      context.appSuccess('已取消 ${requisition.requestNo}');
-      backTo(context, defaultPath: wmWarehouseTaskCenterPath);
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-          _submitError = e.message;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-          _submitError = '网络不稳定, 请刷新后看看是否已取消';
-        });
-      }
-    }
+    if (reason == null || !warehouseTaskCanWrite || !scope.isCurrent) return;
+    scope.checkCurrent();
+    final payload = {
+      'kind': 'cancel',
+      'id': requisition.id,
+      'v': requisition.rowVersion,
+      'reason': reason,
+    };
+    _command = {
+      ...payload,
+      'idempotencyKey': wmIdempotencyKey('cancel', _nonce, payload),
+    };
+    await _submitPreparedCancellation();
   }
 
   String _title(AppLocalizations l10n) {
@@ -632,46 +1045,55 @@ class _WorkshopMaterialIssuePageState
     ref.watch(isSuperAdminProvider);
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    return PopScope(
-      canPop: !_saving,
-      child: Scaffold(
-        appBar: UtenAppBar(
-          title: _title(l10n),
-          leading: UtenBackButton(
-            onPressed: () =>
-                backTo(context, defaultPath: wmWarehouseTaskCenterPath),
+    return withFormDraft(
+      PopScope(
+        canPop: !_saving,
+        child: Scaffold(
+          floatingActionButtonAnimator:
+              FloatingActionButtonAnimator.noAnimation,
+          floatingActionButton: _loading || _loadError != null
+              ? null
+              : UtenFloatingActionGroup(children: _actions()),
+          appBar: UtenAppBar(
+            title: widget.batchProgress == null
+                ? _title(l10n)
+                : '${_title(l10n)} · ${widget.batchProgress}',
+            leading: UtenBackButton(onPressed: _close),
           ),
-        ),
-        body: SafeArea(
-          child: Stack(
-            children: [
-              UtenContentContainer.wide(
-                child: _loading && _materials.isEmpty && _requisition == null
-                    ? const Center(child: CircularProgressIndicator())
-                    : _loadError != null
-                    ? UtenEmpty.error(
-                        message: _loadError,
-                        actionLabel: '重试',
-                        onAction: _load,
-                      )
-                    : SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: UtenSpacing.s16,
-                          horizontal: UtenSpacing.s4,
+          body: SafeArea(
+            child: Stack(
+              children: [
+                UtenContentContainer.wide(
+                  child: _loading && _materials.isEmpty && _requisition == null
+                      ? const Center(child: CircularProgressIndicator())
+                      : _loadError != null
+                      ? UtenEmpty.error(
+                          message: _loadError,
+                          actionLabel: '重试',
+                          onAction: _load,
+                        )
+                      : SingleChildScrollView(
+                          padding:
+                              const EdgeInsets.symmetric(
+                                horizontal: UtenSpacing.s4,
+                              ).copyWith(
+                                top: UtenSpacing.s16,
+                                bottom: UtenFloatingActionGroup.scrollClearance,
+                              ),
+                          child: _form(l10n, theme),
                         ),
-                        child: _form(l10n, theme),
-                      ),
-              ),
-              if (_saving)
-                UtenBusyOverlay(
-                  title: _direct
-                      ? '正在发料'
-                      : _isReturn
-                      ? '正在收退回'
-                      : '正在按申请发料',
-                  description: '正在建调拨单并记进车间内料仓',
                 ),
-            ],
+                if (_saving)
+                  UtenBusyOverlay(
+                    title: _direct
+                        ? '正在发料'
+                        : _isReturn
+                        ? '正在收退回'
+                        : '正在按申请发料',
+                    description: '正在建调拨单并记进车间内料仓',
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -680,11 +1102,7 @@ class _WorkshopMaterialIssuePageState
 
   Widget _form(AppLocalizations l10n, ThemeData theme) {
     final requisition = _requisition;
-    final editable =
-        _direct ||
-        (requisition != null &&
-            requisition.isPending &&
-            requisition.can(WmAction.fulfil));
+    final editable = _editable;
     final children = <Widget>[];
     if (_direct) {
       final enabled = _enabledSettings;
@@ -707,7 +1125,7 @@ class _WorkshopMaterialIssuePageState
                 label: '发到哪个车间',
                 required: true,
                 allowClear: false,
-                enabled: !_saving,
+                enabled: _editable && !_saving,
                 value: _workshopId,
                 items: [
                   for (final s in enabled)
@@ -730,7 +1148,7 @@ class _WorkshopMaterialIssuePageState
                 ),
                 label: l10n.wmReceiver,
                 required: true,
-                enabled: !_saving && _workshopId != null,
+                enabled: _editable && !_saving && _workshopId != null,
                 initial: _receiver,
                 sheetTitle: '选择${l10n.wmReceiver}',
                 departmentName: _setting?.workshopName,
@@ -754,7 +1172,8 @@ class _WorkshopMaterialIssuePageState
             goodsId: entry.key,
             goodsName: entry.value.goodsName ?? entry.value.displayName,
             canConfigure: _canConfigureFirstUse,
-            enabled: !_saving,
+            initialSetup: _setupInitials[entry.key],
+            enabled: _editable && !_saving,
             onChanged: (setup) {
               if (setup == null && !_materialSetups.containsKey(entry.key)) {
                 return;
@@ -885,43 +1304,52 @@ class _WorkshopMaterialIssuePageState
       );
     }
 
-    children.add(const SizedBox(height: UtenSpacing.s16));
-    children.add(
-      Wrap(
-        alignment: WrapAlignment.center,
-        spacing: UtenSpacing.s12,
-        runSpacing: UtenSpacing.s8,
-        children: [
-          if (!_direct &&
-              requisition != null &&
-              requisition.isPending &&
-              requisition.can(WmAction.cancel))
-            UtenButton(
-              key: const Key('wm-issue-cancel'),
-              type: UtenButtonType.secondary,
-              onPressed: _saving ? null : _cancel,
-              child: const Text('取消这张申请'),
-            ),
-          if (editable)
-            UtenButton(
-              key: const Key('wm-issue-submit'),
-              size: UtenButtonSize.large,
-              icon: _isReturn
-                  ? Icons.move_to_inbox_outlined
-                  : Icons.local_shipping_outlined,
-              isLoading: _saving,
-              onPressed: _saving || _loading || !_firstUseReady
-                  ? null
-                  : _submit,
-              child: Text(_isReturn ? '确认收退回' : '确认发料'),
-            ),
-        ],
-      ),
-    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: children,
     );
+  }
+
+  List<Widget> _actions() {
+    final requisition = _requisition;
+    return [
+      if (!_direct)
+        UtenSelectionSummaryPill(
+          count: widget.selectedLineIds?.length ?? _filledRows.length,
+        ),
+      if (!_direct &&
+          requisition != null &&
+          requisition.isPending &&
+          requisition.can(WmAction.cancel) &&
+          widget.selectedLineIds == null)
+        UtenButton(
+          key: const Key('wm-issue-cancel'),
+          type: UtenButtonType.secondary,
+          onPressed: _saving ? null : _cancel,
+          child: const Text('取消这张申请'),
+        ),
+      if (_canSubmit)
+        UtenButton(
+          key: const Key('wm-issue-submit'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          icon: _isReturn
+              ? Icons.move_to_inbox_outlined
+              : Icons.local_shipping_outlined,
+          isLoading: _saving,
+          onPressed:
+              _saving || _loading || (_command == null && !_firstUseReady)
+              ? null
+              : _submit,
+          child: Text(
+            _command != null
+                ? '原样重试核对结果'
+                : _isReturn
+                ? '确认收退回'
+                : '确认发料',
+          ),
+        ),
+    ];
   }
 
   /// 出库仓库 (收退回时是退到哪个仓库): 全站仓库滑窗, 先主仓再子仓, 只能选启用中的良品子仓;
@@ -949,7 +1377,12 @@ class _WorkshopMaterialIssuePageState
                   : l10n.wmLeafAvailable(wmQty(qty), unit);
             },
     );
-    if (picked == null || picked.isAll) return null;
+    if (!warehouseTaskCanWrite ||
+        !_editable ||
+        picked == null ||
+        picked.isAll) {
+      return null;
+    }
     return picked.id;
   }
 
@@ -1022,7 +1455,7 @@ class _WorkshopMaterialIssuePageState
           contentPadding: EdgeInsets.zero,
           controlAffinity: ListTileControlAffinity.leading,
           value: _supplement,
-          onChanged: _saving || periods.isEmpty
+          onChanged: !_editable || _saving || periods.isEmpty
               ? null
               : (v) => setState(() {
                   _supplement = v ?? false;
@@ -1051,7 +1484,7 @@ class _WorkshopMaterialIssuePageState
                   label: l10n.wmSupplementPeriod,
                   required: true,
                   allowClear: false,
-                  enabled: !_saving,
+                  enabled: _editable && !_saving,
                   value: _supplementPeriodId,
                   items: [
                     for (final p in periods)
@@ -1071,7 +1504,7 @@ class _WorkshopMaterialIssuePageState
                   builder: (context, value, _) => TextField(
                     key: const Key('wm-issue-supplement-reason'),
                     controller: _supplementReason,
-                    enabled: !_saving,
+                    enabled: _editable && !_saving,
                     maxLength: 500,
                     decoration: applyRequiredEmpty(
                       InputDecoration(

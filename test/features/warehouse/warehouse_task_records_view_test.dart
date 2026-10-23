@@ -426,6 +426,350 @@ Future<void> _doubleTap(WidgetTester tester, String text) async {
 }
 
 void main() {
+  testWidgets('DRAW退料委外与成品任务仅原明细成员附着草稿', (tester) async {
+    for (final entry in [
+      (
+        'DRAW',
+        'PRODUCTION_DRAW',
+        FormDraftCatalog.warehouseDraw,
+        '/warehouse/DRAW/batch-issue?documentIds=doc',
+      ),
+      (
+        'RETURN',
+        'RETURN_RECEIVE',
+        FormDraftCatalog.materialReturnBatchReceive,
+        '/warehouse/material-returns/batch-receive?documentIds=doc',
+      ),
+      (
+        'SUBCONTRACT',
+        'SUBCONTRACT_OUTBOUND',
+        FormDraftCatalog.subcontractOutboundBatch,
+        '/warehouse/subcontract-outbound/batch?issueIds=doc',
+      ),
+      (
+        'FINISHED',
+        'FINISHED_COUNT',
+        FormDraftCatalog.productionFinishedBatchStockIn,
+        '/warehouse/production-finished-in/batch-stock-in?documentIds=doc',
+      ),
+    ]) {
+      final route = '${entry.$4}&itemIds=a';
+      final spec = entry.$3.spec(route: route);
+      final draft = FormDraft(
+        id: 'only-a',
+        title: '仅A',
+        module: spec.module,
+        route: route,
+        permission: spec.permission,
+        draftKind: spec.draftKind,
+        updatedAt: DateTime.utc(2026, 10, 22),
+        data: const {
+          'selectedItemIds': ['a'],
+        },
+      );
+      final rows = [
+        for (final id in ['a', 'b'])
+          warehouseTestRecord(
+            source: entry.$1,
+            record: 'STOCK_DOCUMENT',
+            id: 'doc',
+            billNo: 'ROW-$id',
+            action: entry.$2,
+            canHandle: true,
+            data: const {'documentId': 'doc', 'pendingQty': 1},
+            line: WarehouseTaskLine(key: id, itemId: id, quantity: 1),
+          ),
+      ];
+      await _pump(
+        tester,
+        WarehouseTaskRecordsFakeGateway(rows),
+        drafts: [draft],
+        spec: _ViewSpec(
+          direction: {'RETURN', 'FINISHED'}.contains(entry.$1)
+              ? WarehouseTaskDirection.inbound
+              : WarehouseTaskDirection.outbound,
+          source: entry.$1,
+          sources: {entry.$1: entry.$1},
+        ),
+      );
+      final table = _table(tester);
+      final status = table.columns.singleWhere(
+        (column) => column.key == 'status',
+      );
+      expect(status.value(rows.first), endsWith('草稿'));
+      expect(status.value(rows.last), rows.last.statusLabel);
+      expect(table.idOf!(rows.first), isNull);
+      expect(table.idOf!(rows.last), rows.last.rowKey);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets('材料建议草稿绑定原建议序号及版本，不拦同申请其它建议', (tester) async {
+    const selection =
+        '{"request":{"expectedVersion":2,"keys":["suggestion-1"]}}';
+    final route = Uri(
+      path: RouteName.warehouseProductionDrawBatchIssue,
+      queryParameters: {
+        'discoveryRequestIds': 'request',
+        'discoverySelection': selection,
+      },
+    ).toString();
+    final spec = FormDraftCatalog.warehouseDraw.spec(route: route);
+    final draft = FormDraft(
+      id: 'suggestion-a',
+      title: '原建议A',
+      module: spec.module,
+      route: route,
+      permission: spec.permission,
+      updatedAt: DateTime.utc(2026, 10, 22),
+      data: const {'discoverySelection': selection},
+    );
+    final rows = [
+      for (final number in [1, 2])
+        warehouseTestRecord(
+          source: 'DRAW',
+          record: 'MATERIAL_DISCOVERY',
+          id: 'request',
+          billNo: 'SUGGESTION-$number',
+          action: 'MATERIAL_DISCOVERY',
+          canHandle: true,
+          data: const {
+            'requestId': 'request',
+            'expectedVersion': 2,
+            'materialsDefined': true,
+          },
+          line: WarehouseTaskLine(key: 'suggestion-$number', quantity: 1),
+        ),
+    ];
+    await _pump(
+      tester,
+      WarehouseTaskRecordsFakeGateway(rows),
+      drafts: [draft],
+      spec: const _ViewSpec(source: 'DRAW'),
+    );
+    final table = _table(tester);
+    final status = table.columns.singleWhere(
+      (column) => column.key == 'status',
+    );
+    expect(status.value(rows.first), endsWith('草稿'));
+    expect(status.value(rows.last), rows.last.statusLabel);
+    expect(table.idOf!(rows.last), rows.last.rowKey);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('同单未选明细不能冒用其它明细的填写草稿或恢复旧选择', (tester) async {
+    for (final quality in [false, true]) {
+      final descriptor = quality
+          ? FormDraftCatalog.warehouseQualityStockIn
+          : FormDraftCatalog.warehouseSalesOutboundBatch;
+      final route = quality
+          ? '/warehouse/quality-results/PURCHASE/shared?inspectionItemIds=inspection-a'
+          : '/warehouse/sales-outbound/batch?shipmentIds=shared&itemIds=item-a';
+      final spec = descriptor.spec(route: route);
+      final draft = FormDraft(
+        id: 'only-a',
+        title: '只选A的填写',
+        module: spec.module,
+        route: route,
+        permission: spec.permission,
+        draftKind: spec.draftKind,
+        updatedAt: DateTime.utc(2026, 10, 22),
+        data: quality
+            ? const {
+                'inspectionItemIds': ['inspection-a'],
+              }
+            : const {
+                'selectedItemIds': ['item-a'],
+                'shipmentIds': ['shared'],
+              },
+      );
+      final rows = [
+        for (final id in ['a', 'b'])
+          warehouseTestRecord(
+            source: quality ? 'PURCHASE' : 'SALES',
+            record: quality ? 'PURCHASE_RECEIPT' : 'SALES_SHIPMENT',
+            id: 'shared',
+            billNo: 'ROW-$id',
+            action: quality ? 'QUALITY_RESULT' : 'SALES_OUTBOUND',
+            canHandle: true,
+            data: quality
+                ? {
+                    'receiptType': 'PURCHASE',
+                    'receiptId': 'shared',
+                    'inspectionItemIds': ['inspection-$id'],
+                  }
+                : const {},
+            line: WarehouseTaskLine(
+              key: 'item-$id',
+              itemId: 'item-$id',
+              goodsName: '物料$id',
+              quantity: 1,
+            ),
+          ),
+      ];
+      final harness = await _pump(
+        tester,
+        WarehouseTaskRecordsFakeGateway(rows),
+        drafts: [draft],
+        spec: quality
+            ? const _ViewSpec(
+                direction: WarehouseTaskDirection.inbound,
+                source: 'PURCHASE',
+                sources: warehouseTestInboundSources,
+              )
+            : const _ViewSpec(source: 'SALES'),
+      );
+      final table = _table(tester);
+      final status = table.columns.singleWhere(
+        (column) => column.key == 'status',
+      );
+      expect(status.value(rows.first), endsWith('草稿'));
+      expect(status.value(rows.last), rows.last.statusLabel);
+      expect(table.idOf!(rows.last), rows.last.rowKey);
+      table.onRowTap!(rows.last);
+      await tester.pumpAndSettle();
+      expect(harness.opened.single.queryParameters['draftId'], isNull);
+      expect(
+        harness.opened.single.queryParameters[quality
+            ? 'inspectionItemIds'
+            : 'itemIds'],
+        quality ? 'inspection-b' : 'item-b',
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    }
+  });
+
+  test(
+    'shared batch labels name the actual action without a second selection count',
+    () {
+      for (final entry in <String?, String>{
+        null: '批量办理',
+        'DRAW': '批量出库',
+        'SALES_OUTBOUND': '批量出库',
+        'SUBCONTRACT_OUTBOUND': '批量出库',
+        'STOCK:OTHER_OUT': '批量出库',
+        'STOCK:FINISHED_OUT': '批量出库',
+        'RETURN_RECEIVE': '批量收料',
+        'QUALITY_RESULT': '批量入库',
+        'STOCK:OTHER_IN': '批量入库',
+        'FINISHED_COUNT': '批量点收',
+        'ARRIVAL_REGISTER': '批量登记',
+        'FINISHED_REGISTER': '批量登记',
+      }.entries) {
+        expect(warehouseTaskRecordBatchLabel(entry.key), entry.value);
+      }
+    },
+  );
+
+  for (final task
+      in <
+        ({
+          String action,
+          String source,
+          Map<String, dynamic> data,
+          String label,
+        })
+      >[
+        (
+          action: 'PRODUCTION_DRAW',
+          source: 'DRAW',
+          data: const {},
+          label: '批量出库',
+        ),
+        (
+          action: 'WORKSHOP_REQUISITION',
+          source: 'DRAW',
+          data: const {'kind': 'ISSUE'},
+          label: '批量出库',
+        ),
+        (
+          action: 'WORKSHOP_REQUISITION',
+          source: 'RETURN',
+          data: const {'kind': 'RETURN'},
+          label: '批量入库',
+        ),
+        (
+          action: 'SALES_OUTBOUND',
+          source: 'SALES',
+          data: const {},
+          label: '批量出库',
+        ),
+        (
+          action: 'SUBCONTRACT_OUTBOUND',
+          source: 'SUBCONTRACT',
+          data: const {},
+          label: '批量出库',
+        ),
+        (
+          action: 'RETURN_RECEIVE',
+          source: 'RETURN',
+          data: const {},
+          label: '批量收料',
+        ),
+        (
+          action: 'QUALITY_RESULT',
+          source: 'PURCHASE',
+          data: const {
+            'inspectionItemIds': ['inspection-a'],
+          },
+          label: '批量入库',
+        ),
+        (
+          action: 'STOCK_REVIEW',
+          source: 'OTHER',
+          data: const {'docType': 'OTHER_OUT'},
+          label: '批量出库',
+        ),
+        (
+          action: 'STOCK_REVIEW',
+          source: 'OTHER',
+          data: const {'docType': 'OTHER_IN'},
+          label: '批量入库',
+        ),
+        (
+          action: 'FINISHED_COUNT',
+          source: 'FINISHED',
+          data: const {'pendingQty': 10},
+          label: '批量点收',
+        ),
+      ]) {
+    testWidgets(
+      '${task.action} ${task.data['kind'] ?? task.data['docType'] ?? ''} keeps count only in the selected pill',
+      (tester) async {
+        final rows = [
+          for (final id in ['a', 'b'])
+            warehouseTestRecord(
+              source: task.source,
+              record: 'TASK',
+              id: id,
+              billNo: 'BILL-$id',
+              action: task.action,
+              canHandle: true,
+              data: task.data,
+            ),
+        ];
+        await _pump(tester, WarehouseTaskRecordsFakeGateway(rows));
+        expect(find.text('批量办理'), findsOneWidget);
+        _table(tester).onSelectedIdsChanged!({rows.first.rowKey});
+        await tester.pumpAndSettle();
+        expect(find.text(task.label), findsOneWidget);
+        expect(find.text('已选 1 项'), findsOneWidget);
+        expect(find.text('${task.label}(1)'), findsNothing);
+        _table(tester).onSelectedIdsChanged!(
+          rows.map((row) => row.rowKey).toSet(),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text(task.label), findsOneWidget);
+        expect(find.text('已选 2 项'), findsOneWidget);
+        expect(find.text('${task.label}(2)'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'finished registered A opens its exact detail beside pending B on the same report',
     (tester) async {
@@ -645,7 +989,7 @@ void main() {
           warehouseTaskCommandTargets(selected),
           hasLength(selectedLots.length),
         );
-        await tester.tap(find.text('先质检后入库(${selectedLots.length})'));
+        await tester.tap(find.text('批量登记（先质检后入库）'));
         await tester.pumpAndSettle();
         expect(harness.opened.single.queryParameters['reportIds'], 'report-a');
         expect(
@@ -763,9 +1107,9 @@ void main() {
       );
       _table(tester).onSelectedIdsChanged!({row.rowKey});
       await tester.pumpAndSettle();
-      expect(find.text('先入库后质检(1)'), findsNothing);
-      expect(find.text('先质检后入库(1)'), findsOneWidget);
-      await tester.tap(find.text('先质检后入库(1)'));
+      expect(find.text('批量登记（先入库后质检）'), findsNothing);
+      expect(find.text('批量登记（先质检后入库）'), findsOneWidget);
+      await tester.tap(find.text('批量登记（先质检后入库）'));
       await tester.pumpAndSettle();
       expect(harness.opened.single.queryParameters['preStock'], '0');
       expect(tester.takeException(), isNull);
@@ -813,7 +1157,9 @@ void main() {
             selected.map((row) => row.rowKey).toSet(),
           );
           await tester.pumpAndSettle();
-          await tester.tap(find.text('${preStock ? '先入库后质检' : '先质检后入库'}(2)'));
+          await tester.tap(
+            find.text('批量登记（${preStock ? '先入库后质检' : '先质检后入库'}）'),
+          );
           await tester.pumpAndSettle();
           expect(
             harness.opened.single.queryParameters['expectationIds'],
@@ -869,9 +1215,9 @@ void main() {
           rows.map((row) => row.rowKey).toSet(),
         );
         await tester.pumpAndSettle();
-        expect(find.text('先入库后质检(2)'), findsOneWidget);
-        expect(find.text('先质检后入库(2)'), findsOneWidget);
-        await tester.tap(find.text('先入库后质检(2)'));
+        expect(find.text('批量登记（先入库后质检）'), findsOneWidget);
+        expect(find.text('批量登记（先质检后入库）'), findsOneWidget);
+        await tester.tap(find.text('批量登记（先入库后质检）'));
         await tester.pumpAndSettle();
         expect(harness.opened.last.queryParameters['preStock'], '1');
         if (action == 'FINISHED_REGISTER') {
@@ -924,7 +1270,7 @@ void main() {
         final oldButton = tester
             .widget<UtenButton>(
               find.ancestor(
-                of: find.text('先入库后质检(1)'),
+                of: find.text('批量登记（先入库后质检）'),
                 matching: find.byType(UtenButton),
               ),
             )
@@ -933,8 +1279,8 @@ void main() {
           rows.map((row) => row.rowKey).toSet(),
         );
         await tester.pumpAndSettle();
-        expect(find.text('先入库后质检(2)'), findsNothing);
-        expect(find.text('先质检后入库(2)'), findsOneWidget);
+        expect(find.text('批量登记（先入库后质检）'), findsNothing);
+        expect(find.text('批量登记（先质检后入库）'), findsOneWidget);
         oldButton(); // A stale callback must recheck the entire new selection.
         await tester.pumpAndSettle();
         expect(harness.opened, isEmpty);
@@ -960,7 +1306,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('先入库后质检'), findsNothing);
     expect(find.textContaining('先质检后入库'), findsNothing);
-    expect(find.text('核对出库(1)'), findsOneWidget);
+    expect(find.text('批量出库'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -994,7 +1340,7 @@ void main() {
         final oldButton = tester
             .widget<UtenButton>(
               find.ancestor(
-                of: find.text('先入库后质检(1)'),
+                of: find.text('批量登记（先入库后质检）'),
                 matching: find.byType(UtenButton),
               ),
             )
@@ -1432,7 +1778,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('旧布局不能隐藏或后置状态，旧状态查询不能替换来源入口', (tester) async {
+  testWidgets('旧布局保留其它偏好，状态与单号保持最前且查询不能替换来源入口', (tester) async {
     final gateway = WarehouseTaskRecordsFakeGateway([
       warehouseTestRecord(
         source: 'SALES',
@@ -1448,7 +1794,7 @@ void main() {
       gateway,
       layout: const PlatformTableLayout(
         order: ['partyName', 'billNo', 'status', 'sourceDocNo'],
-        hidden: {'status', 'goodsName', 'sourceDocNo'},
+        hidden: {'status', 'billNo', 'goodsName', 'sourceDocNo'},
         pinned: {'partyName'},
         widths: {'billNo': 225},
         filters: {'status': 'source:OTHER'},
@@ -1456,11 +1802,18 @@ void main() {
       ),
     );
     expect(gateway.calls.every((call) => call.source == 'ALL'), isTrue);
-    expect(_table(tester).requiredLeadingColumnKeys, ['status', 'goodsName']);
+    expect(_table(tester).requiredLeadingColumnKeys, ['status', 'billNo']);
+    expect(_table(tester).columns.take(2).map((column) => column.key), [
+      'status',
+      'billNo',
+    ]);
     expect(find.text('来源单据'), findsNothing);
+    expect(find.text('货品名称'), findsNothing);
     final status = find.text('状态').hitTestable().first;
+    final bill = find.text('单据 / 任务单号').hitTestable().first;
     final party = find.text('客户 / 供应商 / 委外商').hitTestable().first;
-    expect(tester.getTopLeft(status).dx, lessThan(tester.getTopLeft(party).dx));
+    expect(tester.getTopLeft(status).dx, lessThan(tester.getTopLeft(bill).dx));
+    expect(tester.getTopLeft(bill).dx, lessThan(tester.getTopLeft(party).dx));
     expect(tester.takeException(), isNull);
   });
 

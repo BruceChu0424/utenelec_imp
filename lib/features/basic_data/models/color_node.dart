@@ -1,6 +1,6 @@
 // 颜色主档模型（对应后端 ColorListItem / ColorDetail / ColorFacets）。
 //
-// 扁平主档（无分类树），3 个业务字段：编号/名称/状态 + nullable legacy_id（仅老库溯源；在线身份为 UUID）。
+// 扁平主档（无分类树）：编号/名称/状态/备注 + nullable legacy_id（仅老库溯源；在线身份为 UUID）。
 // 数值字段走 (json['x'] as num?)?.toInt()，避免后端 int 序列化成 String 时 cast 崩溃。
 
 import 'master_facet.dart';
@@ -13,6 +13,7 @@ class ColorListItem {
     this.name,
     this.status,
     this.legacyId,
+    this.remark,
   });
 
   final String id;
@@ -20,6 +21,7 @@ class ColorListItem {
   final String? name;
   final String? status;
   final int? legacyId;
+  final String? remark;
 
   factory ColorListItem.fromJson(Map<String, dynamic> json) => ColorListItem(
     id: json['id'] as String,
@@ -27,6 +29,7 @@ class ColorListItem {
     name: json['name'] as String?,
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
+    remark: json['remark'] as String?,
   );
 }
 
@@ -38,6 +41,7 @@ class ColorDetail {
     this.name,
     this.status,
     this.legacyId,
+    this.remark,
   });
 
   final String id;
@@ -45,6 +49,7 @@ class ColorDetail {
   final String? name;
   final String? status;
   final int? legacyId;
+  final String? remark;
 
   factory ColorDetail.fromJson(Map<String, dynamic> json) => ColorDetail(
     id: json['id'] as String,
@@ -52,6 +57,7 @@ class ColorDetail {
     name: json['name'] as String?,
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
+    remark: json['remark'] as String?,
   );
 }
 
@@ -62,7 +68,7 @@ class ColorFacets {
   final Map<String, List<MasterFacetBucket>> fields;
   final Map<String, int> nullCounts;
 
-  static const _keys = ['code', 'name', 'status'];
+  static const _keys = ['code', 'name', 'status', 'remark'];
 
   factory ColorFacets.fromJson(Map<String, dynamic> json) {
     final fields = <String, List<MasterFacetBucket>>{};

@@ -206,6 +206,7 @@ class GoodsBomItem {
     this.componentModel,
     this.componentSpec,
     this.componentMaterial,
+    this.componentStockQty,
     this.componentUnitName,
     this.componentColorName,
     this.colorId,
@@ -239,6 +240,7 @@ class GoodsBomItem {
   final String? componentModel;
   final String? componentSpec;
   final String? componentMaterial; // 材质
+  final double? componentStockQty; // 良品库存；无库存查看权限时服务端不下发
   final String? componentUnitName;
   final String? componentColorName; // 行级颜色优先，空回落组件主颜色（后端已解析）
   final String? colorId; // 行级颜色 UUID 真源
@@ -321,6 +323,7 @@ class GoodsBomItem {
       componentModel: json['componentModel'] as String?,
       componentSpec: json['componentSpec'] as String?,
       componentMaterial: json['componentMaterial'] as String?,
+      componentStockQty: (json['componentStockQty'] as num?)?.toDouble(),
       componentUnitName: json['componentUnitName'] as String?,
       componentColorName: json['componentColorName'] as String?,
       colorId: json['colorId'] as String?,

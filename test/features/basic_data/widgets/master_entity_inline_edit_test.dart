@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
+import 'package:dio/dio.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -10,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -18,6 +20,9 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/basic_data/widgets/master_entity_detail_pane.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_inline_edit.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 typedef _Row = ({
@@ -30,6 +35,11 @@ typedef _Row = ({
 
 final _previewKey = GlobalKey();
 final _appPreviewKey = GlobalKey();
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
 
 Future<void> _pump(
   WidgetTester tester, {
@@ -62,7 +72,18 @@ Future<void> _pump(
     RepaintBoundary(
       key: _appPreviewKey,
       child: ProviderScope(
-        overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          sessionProvider.overrideWith(_Session.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'master-test-user'),
+          ),
+          apiClientProvider.overrideWithValue(ApiClient(Dio())),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.goodsView,
+            Perm.goodsEdit,
+          }),
+        ],
         child: MaterialApp(
           theme: buildLightTheme(),
           locale: const Locale('zh'),

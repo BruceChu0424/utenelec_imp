@@ -28,9 +28,16 @@ import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import '../../helpers/document_scope_fixture.dart';
 import 'outbound_weight_fakes.dart';
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
 
 const _warehouses = [
   WarehouseDictEntry(id: 'main', name: '主仓', isAccountable: false),
@@ -134,6 +141,11 @@ Future<_Api> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'warehouse-tester'),
+        ),
+        apiClientProvider.overrideWithValue(api),
+        sessionProvider.overrideWith(_Session.new),
         sharedPreferencesProvider.overrideWithValue(prefs),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
@@ -163,7 +175,11 @@ Future<_Api> _pump(
             ),
           ],
         ),
-        home: StockDocDetailPage(docType: type, id: document['id'] as String),
+        home: StockDocDetailPage(
+          key: UniqueKey(),
+          docType: type,
+          id: document['id'] as String,
+        ),
       ),
     ),
   );

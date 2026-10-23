@@ -21,6 +21,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../helpers/warehouse_request_scope_fixture.dart';
 
 // 先入库后质检(V596 / ADR-090)前端契约：
 // - 模型：任务行/详情/明细行/退回案件/入库历史带上架位置与来源；
@@ -609,6 +610,7 @@ Future<Widget> _app(
   final preferences = await SharedPreferences.getInstance();
   return ProviderScope(
     overrides: [
+      ...warehouseRequestScopeFixture(includeIdentity: !liveScope),
       warehouseQualityResultRepositoryProvider.overrideWithValue(quality),
       warehouseIqcStockInRepositoryProvider.overrideWithValue(stockIn),
       warehouseIqcReturnRepositoryProvider.overrideWithValue(
@@ -642,7 +644,9 @@ final _livePermissions = StateProvider<Set<String>>(
     Perm.warehouseIqcStockInBeforeInspection,
   },
 );
-final _liveScope = StateProvider<AuthenticatedScope?>((ref) => null);
+final _liveScope = StateProvider<AuthenticatedScope?>(
+  (ref) => const AuthenticatedScope(userId: 'warehouse-user'),
+);
 
 class _QualityGateway implements WarehouseQualityResultGateway {
   _QualityGateway(this.detailJson);

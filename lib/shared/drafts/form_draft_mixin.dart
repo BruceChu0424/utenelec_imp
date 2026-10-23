@@ -16,6 +16,7 @@ import '../../core/router/nav_helpers.dart';
 
 import '../providers/authenticated_scope_provider.dart';
 import '../providers/session_provider.dart';
+import '../providers/sensitive_read_boundary_provider.dart';
 import 'form_draft.dart';
 import 'form_draft_lifecycle.dart';
 import 'form_draft_navigation.dart';
@@ -101,7 +102,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// Capture synchronously before secure-storage awaits. An old page cannot
   /// acquire the new login's identity even when it returns to the same user ID.
   Future<AuthenticatedRequestScope> captureFormDraftRequestScope() {
-    startFormDraftIdentityGuard();
+    startFormDraftIdentityGuard(includePermissions: true);
     final session = ref.read(sessionProvider.notifier);
     final epoch = session.requestIntentEpoch;
     final client = ref.read(apiClientProvider);
@@ -128,7 +129,18 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
 
   /// Pages with an initial asynchronous GET start this before loading. Other
   /// editors start it when initializing the draft, before any storage await.
-  void startFormDraftIdentityGuard() {
+  /// Permission-bound editors opt in before reading their source. Explicit
+  /// request scopes always enable the same sticky permission boundary.
+  void startFormDraftIdentityGuard({bool includePermissions = false}) {
+    if (includePermissions && _draftReadBoundarySubscription == null) {
+      final original = ref.read(sensitiveReadBoundaryProvider);
+      _draftReadBoundarySubscription = ref.listenManual(
+        sensitiveReadBoundaryProvider,
+        (_, next) {
+          if (next != original) invalidateFormDraftIdentity();
+        },
+      );
+    }
     if (_draftScopeSubscription != null || _draftServerSubscription != null) {
       return;
     }
@@ -223,6 +235,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   String? _draftServer;
   ProviderSubscription<AuthenticatedScope?>? _draftScopeSubscription;
   ProviderSubscription<String>? _draftServerSubscription;
+  ProviderSubscription<SensitiveReadBoundary>? _draftReadBoundarySubscription;
   void Function()? _removeDraftLifecycle;
   late final _draftLifecycleObserver = _FormDraftLifecycleObserver(
     _flushDraftQuietly,
@@ -1028,6 +1041,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     WidgetsBinding.instance.removeObserver(_draftLifecycleObserver);
     FormDraftNavigation.unregister(this);
     _draftScopeSubscription?.close();
+    _draftReadBoundarySubscription?.close();
     for (final item in _draftListeners) {
       // Listener removal is safe even when the owning page disposed its controls.
       item.removeListener(markFormDraftChanged);

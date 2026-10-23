@@ -9,6 +9,147 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get clientUpdateDetails => '자세히 보기';
+
+  @override
+  String get clientUpdateNewTitle => '새 버전이 있습니다';
+
+  @override
+  String get clientUpdateSubtitle => '새 버전을 자동으로 확인하고 이 기기의 앱을 업데이트합니다';
+
+  @override
+  String get clientUpdateCurrent => '설치된 버전';
+
+  @override
+  String get clientUpdateLatest => '최신 버전';
+
+  @override
+  String get clientUpdateNow => '지금 업데이트';
+
+  @override
+  String get clientUpdateLater => '나중에';
+
+  @override
+  String get clientUpdateCheck => '업데이트 확인';
+
+  @override
+  String get clientUpdateChecking => '업데이트 확인 중';
+
+  @override
+  String get clientUpdateUpToDate => '최신 버전을 사용 중입니다';
+
+  @override
+  String get clientUpdateDownloading => '업데이트 다운로드 중';
+
+  @override
+  String get clientUpdateInstalling => '업데이트 설치 중';
+
+  @override
+  String get clientUpdateWindowsHint =>
+      '업데이트를 자동으로 다운로드한 후 앱을 종료하고 다시 시작합니다. 기기 설정과 저장된 초안은 유지됩니다. 먼저 작업을 저장해 주세요.';
+
+  @override
+  String get clientUpdateAndroidHint =>
+      '다운로드 후 시스템 설치 확인 화면이 열립니다. 설치 권한이 필요한 경우 허용한 뒤 돌아와 다시 시도해 주세요.';
+
+  @override
+  String get clientUpdateStoreHint => '공식 앱 스토어가 열립니다. 스토어에서 업데이트를 완료해 주세요.';
+
+  @override
+  String get clientUpdateUnsupported => '현재 운영 체제에서는 앱 내 업데이트를 지원하지 않습니다.';
+
+  @override
+  String get clientUpdateFailed =>
+      '업데이트를 완료하지 못했습니다. 네트워크와 설치 권한을 확인한 뒤 다시 시도해 주세요.';
+
+  @override
+  String get clientUpdateInstallerOpened =>
+      '시스템 설치 확인 화면이 열렸습니다. 안내에 따라 업데이트를 완료해 주세요.';
+
+  @override
+  String get clientUpdateNotes => '업데이트 내용';
+
+  @override
+  String get clientUpdateNoNotes => '이 버전의 업데이트 안내가 없습니다.';
+
+  @override
+  String get clientUpdatePublishTitle => '클라이언트 버전 배포';
+
+  @override
+  String get clientUpdatePublishHint =>
+      '플랫폼별 새 버전을 업로드하고 배포합니다. 직원의 클라이언트가 자동으로 확인하고 업데이트를 안내합니다.';
+
+  @override
+  String get clientUpdatePlatform => '플랫폼';
+
+  @override
+  String get clientUpdateArchitecture => '기기 아키텍처';
+
+  @override
+  String get clientUpdateVersion => '버전';
+
+  @override
+  String get clientUpdateBuild => '빌드 번호';
+
+  @override
+  String get clientUpdateStoreUrl => '공식 스토어 주소';
+
+  @override
+  String get clientUpdateChooseFile => '업데이트 패키지 선택';
+
+  @override
+  String get clientUpdatePublish => '업로드 및 배포';
+
+  @override
+  String get clientUpdatePublishing => '업로드 및 배포 중';
+
+  @override
+  String get clientUpdatePublished => '새 클라이언트 버전을 배포했습니다';
+
+  @override
+  String get clientUpdatePublishInvalid =>
+      '버전 정보를 모두 입력하고 기존 배포보다 높은 빌드 번호를 사용하세요. 해당 업데이트 패키지를 선택하거나 공식 스토어 주소를 입력하세요.';
+
+  @override
+  String get clientUpdatePackageHint =>
+      'Windows는 전용 업데이트 ZIP, Android는 정식 서명된 APK를 선택하세요. 배포할 때마다 빌드 번호를 높여야 합니다.';
+
+  @override
+  String get clientUpdateWithdraw => '배포 철회';
+
+  @override
+  String get clientUpdateWithdrawConfirm =>
+      '다른 기기는 이 버전을 더 이상 받지 않습니다. 이미 업데이트한 기기는 이전 버전으로 되돌아가지 않습니다. 배포를 철회하시겠습니까?';
+
+  @override
+  String get clientUpdateReleaseList => '클라이언트 배포 기록';
+
+  @override
+  String get clientUpdateClose => '닫기';
+
+  @override
+  String get clientUpdateRetry => '다시 시도';
+
+  @override
+  String get clientUpdateTitle => '소프트웨어 업데이트';
+
+  @override
+  String get masterStatusDisableTitle => '비활성화 확인';
+
+  @override
+  String get masterStatusEnableTitle => '활성화 확인';
+
+  @override
+  String masterStatusDisableBody(String label, int count) {
+    return '$label의 항목 $count개를 비활성화하시겠습니까? 새 업무에 사용할 수 없으며 기존 문서와 변경 기록은 유지됩니다.';
+  }
+
+  @override
+  String masterStatusEnableBody(String label, int count) {
+    return '$label의 항목 $count개를 활성화하시겠습니까? 새 업무에 다시 사용할 수 있습니다.';
+  }
+
+  @override
   String get websiteInquirySeries => 'Product series';
 
   @override

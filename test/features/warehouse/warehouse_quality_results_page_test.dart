@@ -28,6 +28,7 @@ import 'package:uten_imp/features/warehouse/models/warehouse_quality_selection.d
 import 'package:uten_imp/core/network/api_exception.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/warehouse_request_scope_fixture.dart';
 import '../../support/filter_segment_tap.dart';
 
 Future<void> _showStatusChoices(WidgetTester tester) async {
@@ -668,8 +669,19 @@ void main() {
     await tester.pumpAndSettle();
     MasterDataTableView<WarehouseQualityResultTask> table() =>
         tester.widget(find.byKey(const Key('warehouse-quality-result-table')));
-    expect(table().requiredLeadingColumnKeys, ['workStatus', 'goodsName']);
+    expect(table().requiredLeadingColumnKeys, ['workStatus', 'billNo']);
     expect(table().columns.first.label, '状态');
+    final statusHeader = find.text('状态').hitTestable().first;
+    final billHeader = find.text('收货单号').hitTestable().first;
+    final goodsHeader = find.text('货品名称').hitTestable().first;
+    expect(
+      tester.getTopLeft(statusHeader).dx,
+      lessThan(tester.getTopLeft(billHeader).dx),
+    );
+    expect(
+      tester.getTopLeft(billHeader).dx,
+      lessThan(tester.getTopLeft(goodsHeader).dx),
+    );
     table().onSelectedIdsChanged!({'PURCHASE:receipt-1'});
     await tester.pumpAndSettle();
     table().onFilterChanged('workStatus', 'WAITING_INSPECTION');
@@ -1110,6 +1122,10 @@ Widget _app(
 }) {
   return ProviderScope(
     overrides: [
+      ...warehouseRequestScopeFixture(
+        includeIdentity: !readOnly,
+        includeBadges: false,
+      ),
       warehouseQualityResultRepositoryProvider.overrideWithValue(gateway),
       warehouseIqcStockInRepositoryProvider.overrideWithValue(
         _FailingGateway(),

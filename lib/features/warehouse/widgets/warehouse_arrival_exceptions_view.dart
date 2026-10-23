@@ -729,12 +729,6 @@ class _WarehouseArrivalExceptionsViewState
           }),
     ),
     MasterColumnDef(
-      key: 'orderType',
-      label: '来源',
-      width: 90,
-      value: (task) => task.orderType.label,
-    ),
-    MasterColumnDef(
       key: 'receiptBillNo',
       label: '收货单号',
       width: 170,
@@ -747,6 +741,12 @@ class _WarehouseArrivalExceptionsViewState
       width: 170,
       sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
       value: (task) => task.orderBillNo,
+    ),
+    MasterColumnDef(
+      key: 'orderType',
+      label: '来源',
+      width: 90,
+      value: (task) => task.orderType.label,
     ),
     MasterColumnDef(
       key: 'supplierName',

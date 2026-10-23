@@ -263,10 +263,15 @@ class _WarehouseTaskPhysicalDetailDialogState
       _error = null;
     });
     try {
+      final detailRowKey =
+          widget.allowFinishedRegistrationReversal &&
+              widget.row.action == 'FINISHED_ARRIVAL_DETAIL'
+          ? widget.row.documentRowKey
+          : widget.row.rowKey;
       final detail = await ref
           .read(apiClientProvider)
           .get(
-            '/warehouse/task-center/$_direction/${Uri.encodeComponent(widget.row.documentRowKey)}/detail',
+            '/warehouse/task-center/$_direction/${Uri.encodeComponent(detailRowKey)}/detail',
             query: {
               ...widget.warehouseScope.queryParameters,
               'linePage': page,

@@ -38,6 +38,7 @@ import '../repositories/master_inline_edit_repository.dart';
 import '../widgets/master_entity_detail_pane.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/master_status_confirmation.dart';
 import '../widgets/mould_manufacturer_field.dart';
 import '../widgets/category_tree_search.dart';
 import '../widgets/system_master_category_guard.dart';
@@ -489,11 +490,13 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
         required: true,
         group: '基础',
       ),
-      const MasterFieldDef(
+      MasterFieldDef(
         key: 'code',
         label: '编号',
         group: '基础',
         hint: '留空自动生成',
+        identifierDomain: 'MOULD',
+        identifierId: iv['_entityId'],
       ),
       // 分类：只读显示外面选中分类名（添加模具即在当前分类下）；categoryId 走 fixedValues。
       const MasterFieldDef(
@@ -576,13 +579,13 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
           );
         },
       ),
-      if ((iv['departmentId'] ?? '').isEmpty)
-        const MasterFieldDef(
-          key: 'place',
-          label: '存放位置',
-          group: '制造',
-          info: '可填写历史位置；选择车间后，存放位置跟随车间名称。',
-        ),
+      MasterFieldDef(
+        key: 'place',
+        label: '存放位置',
+        group: '制造',
+        readOnly: (iv['departmentId'] ?? '').isNotEmpty,
+        info: '可填写历史位置；选择车间后，存放位置跟随车间名称。',
+      ),
       // 保管人：先选部门（未展开的分类树）再挑人，也可跨部门搜姓名/工号（问题 #6）；
       // 落 keeperId，后端按 id 解析 keeper 文本。
       MasterFieldDef(
@@ -671,6 +674,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     final workshop = await _loadWorkshopTree();
     if (!mounted) return;
     final iv = {
+      '_entityId': d.id,
       'name': d.name ?? '',
       'code': d.code ?? '',
       'categoryName': d.categoryName ?? '',
@@ -761,11 +765,22 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
           ? detail.name!
           : (detail.code ?? '模具详情'),
       rows: _mouldDetailRows(detail),
+      historyEntityType: 'moulds',
+      historyRecordId: detail.id,
+      onHistoryChanged: pane.reload,
       canEdit: perms.contains(Perm.mouldEdit),
       canDelete: perms.contains(Perm.mouldDelete),
       onToggleStatus: _canStatusMaster
           ? () async {
               final next = detail.status == '使用' ? '禁用' : '使用';
+              if (!await confirmMasterStatusChange(
+                    context,
+                    disabling: next == '禁用',
+                    label: detail.name ?? detail.code ?? '该模具',
+                  ) ||
+                  !mounted) {
+                return;
+              }
               final ok = await context.guardRun(
                 () => ref
                     .read(masterStatusRepositoryProvider)
@@ -786,21 +801,23 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   }
 
   List<MasterDetailRow> _mouldDetailRows(MouldDetail d) => [
-    MasterDetailRow('编号', d.code), // TODO(l10n): 补 arb
     MasterDetailRow('名称', d.name), // TODO(l10n): 补 arb
+    MasterDetailRow('编号', d.code), // TODO(l10n): 补 arb
+    MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
     MasterDetailRow('备用编号', d.mnumber), // TODO(l10n): 补 arb
+    MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
     MasterDetailRow('模数', d.qty), // TODO(l10n): 补 arb
     MasterDetailRow('套数', goodsQtyText(d.tqty)), // TODO(l10n): 补 arb
-    MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
+    MasterDetailRow('模具制造商', d.manufacturer),
+    MasterDetailRow('制造年月', d.mstatus), // TODO(l10n): 补 arb
     MasterDetailRow(
       '车间',
       d.departmentId?.trim().isNotEmpty == true ? d.departmentName : null,
     ), // TODO(l10n): 补 arb
-    MasterDetailRow('存放位置', d.place), // TODO(l10n): 补 arb
-    MasterDetailRow('保管人', d.keeper), // TODO(l10n): 补 arb
-    MasterDetailRow('制造年月', d.mstatus), // TODO(l10n): 补 arb
-    MasterDetailRow('模具制造商', d.manufacturer),
-    MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
+    MasterDetailRow('存放位置', d.place),
+    MasterDetailRow('保管人', d.keeperId == null ? null : d.keeperName),
+    if (d.keeperId == null && d.keeper?.isNotEmpty == true)
+      MasterDetailRow('历史保管人', d.keeper),
     MasterDetailRow('备注', d.remark), // TODO(l10n): 补 arb
     MasterDetailRow('旧系统 ID', d.legacyId?.toString()), // TODO(l10n): 补 arb
   ];

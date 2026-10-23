@@ -1,17 +1,19 @@
 // 委外领料批量出库页(ADR-143 §4.3): 一次核对并审核多张委外领料单。
 //
-// 打开只读不写; 确认后逐张保存(只改数量/重量/备注与表头)再审核各自的出仓单草稿,
-// 保留已完成结果, 出错即暂停并允许 GET 核实后继续尚未执行的单据。
-// 每行数量只能改少(0 ≤ 数量 ≤ 委外提交的领料数量), 不能改多、不能加行; 填 0 = 这条物料
-// 本次不发, 保存时不回传这一行(服务端删行退库存)。一张单至少要发一行, 整单不发要在
-// 单张拣货页「退回委外(不发)」。
+// 打开只读不写; 明确所选明细的任务入口一次原子出仓，未选行与预留留在原草稿。
+// 原请求体和编号先持久化; 回执不明时先读原回执，再按原内容重试。
+// 未传明细身份的旧整单入口保留原保存/审核兼容路径。
+// 每行数量只能改少，不能改多、不能加行；原子出仓只发送所选正数行，0行继续留原单待发。
+// 一张单至少要发一行；整单不发仍可在单张拣货页「退回委外(不发)」。
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -49,6 +51,7 @@ import '../../subcontract/models/subcontract_doc.dart';
 import '../../subcontract/repositories/subcontract_repository.dart';
 import '../models/subcontract_outbound.dart';
 import '../models/subcontract_outbound_execution.dart';
+import '../models/warehouse_task_item_selection.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/warehouse_subcontract_outbound_repository.dart';
 import '../repositories/subcontract_outbound_detail_loader.dart';
@@ -62,11 +65,13 @@ class WarehouseSubcontractOutboundBatchPage extends ConsumerStatefulWidget {
     super.key,
     required this.issueIds,
     this.onCompleted,
+    this.selectedItemIds,
   });
 
   /// 勾选的委外领料单(出仓单草稿) id。
   final List<String> issueIds;
   final VoidCallback? onCompleted;
+  final List<String>? selectedItemIds;
 
   @override
   ConsumerState<WarehouseSubcontractOutboundBatchPage> createState() =>
@@ -79,6 +84,7 @@ class _BatchDraft {
     required this.document,
     required this.lines,
     this.workerId,
+    this.reviewFingerprint,
   }) : warehouseId = document.warehouseId ?? detail.warehouseId,
        date =
            DateTime.tryParse(document.billDate ?? '') ?? ChinaDateTime.today(),
@@ -97,6 +103,7 @@ class _BatchDraft {
   SubcontractOutboundExecutionState state =
       SubcontractOutboundExecutionState.pending;
   String? error;
+  final String? reviewFingerprint;
 
   bool get pending => subcontractOutboundMaySubmit(state);
   bool get selected => lines.any((line) => line.selected);
@@ -125,7 +132,22 @@ class _WarehouseSubcontractOutboundBatchPageState
   Set<String> _submittedDraftIds = {};
   final Set<String> _completedIssueIds = {};
   final Map<String, Map<String, dynamic>> _retainedUncertainInputs = {};
+  final Map<String, Map<String, dynamic>> _atomicCommands = {};
+  final Map<String, List<String>> _atomicSourceScopes = {};
+  final Set<String> _atomicUnknownIds = {};
+  final Set<String> _atomicReadableSources = {};
+  final Map<String, String> _atomicReadProblems = {};
+  final Map<String, Map<String, dynamic>> _opaqueSourceInputs = {};
+  bool _recoveryOnly = false;
   bool _savedExitReady = false;
+
+  bool get _atomicEntry => widget.selectedItemIds != null;
+  bool get _canRetryAtomic =>
+      !formDraftRestorationBlocked &&
+      _canExecute &&
+      _atomicUnknownIds.any(_atomicReadableSources.contains);
+  bool get _allOriginalSourcesCompleted =>
+      widget.issueIds.every(_completedIssueIds.contains);
 
   @override
   bool get formDraftBusy => _loading || _saving || _confirming;
@@ -136,25 +158,43 @@ class _WarehouseSubcontractOutboundBatchPageState
   @override
   bool get formDraftHasConfirmedExternalRecovery => _savedExitReady;
   @override
-  bool get formDraftHasUnknownSubmission => _drafts.any(
-    (draft) => const {
-      SubcontractOutboundExecutionState.saving,
-      SubcontractOutboundExecutionState.approving,
-      SubcontractOutboundExecutionState.needsVerification,
-    }.contains(draft.state),
-  );
+  bool get formDraftHasUnknownSubmission =>
+      _atomicUnknownIds.isNotEmpty ||
+      _drafts.any(
+        (draft) => const {
+          SubcontractOutboundExecutionState.saving,
+          SubcontractOutboundExecutionState.approving,
+          SubcontractOutboundExecutionState.needsVerification,
+        }.contains(draft.state),
+      );
   @override
-  Widget? get formDraftSubmissionRecoveryAction => UtenButton(
-    type: UtenButtonType.secondary,
-    onPressed: _saving || _loading ? null : _verify,
-    child: const Text('核对出仓结果'),
+  Widget? get formDraftSubmissionRecoveryAction => Wrap(
+    spacing: UtenSpacing.s8,
+    children: [
+      UtenButton(
+        type: UtenButtonType.secondary,
+        onPressed: _saving || _loading ? null : _verify,
+        child: const Text('核对出仓结果'),
+      ),
+      if (_canRetryAtomic)
+        UtenButton(
+          type: UtenButtonType.secondary,
+          onPressed: _saving || _loading ? null : _retryAtomic,
+          child: const Text('按原内容重试'),
+        ),
+    ],
   );
   @override
   FormDraftSpec get formDraftSpec =>
       FormDraftCatalog.subcontractOutboundBatch.spec(
         route: Uri(
           path: '/warehouse/subcontract-outbound/batch',
-          queryParameters: {'issueIds': widget.issueIds.join(',')},
+          queryParameters: {
+            'issueIds': widget.issueIds.join(','),
+            ...WarehouseTaskItemSelection(
+              widget.selectedItemIds,
+            ).queryParameters,
+          },
         ).toString(),
       );
   @override
@@ -193,6 +233,7 @@ class _WarehouseSubcontractOutboundBatchPageState
       for (final row in draft.lines)
         {
           'planItemId': row.line.planItemId,
+          'itemId': row.draftItemId,
           'sourceIdentity': _sourceIdentity(row),
           'qty': row.qty.text,
           'qtyAutofilled': row.qty.autofilled,
@@ -206,24 +247,150 @@ class _WarehouseSubcontractOutboundBatchPageState
   @override
   Map<String, dynamic> captureFormDraft() => {
     'issueIds': widget.issueIds,
+    'selectedItemIds': widget.selectedItemIds,
     'completed': _completedIssueIds.toList(),
     'submittedIssueIds': _submittedDraftIds.toList(),
     'changed': _changed,
+    'atomicCommands': _atomicCommands,
+    'atomicSourceScopes': _atomicSourceScopes,
+    'atomicUnknownIds': _atomicUnknownIds.toList(),
     'documents': [
       for (final draft in _drafts)
         _retainedUncertainInputs[draft.document.id] ?? _captureInput(draft),
+      for (final entry in _retainedUncertainInputs.entries)
+        if (!_drafts.any((draft) => draft.document.id == entry.key))
+          entry.value,
+      for (final entry in _opaqueSourceInputs.entries)
+        if (!_drafts.any((draft) => draft.document.id == entry.key) &&
+            !_retainedUncertainInputs.containsKey(entry.key))
+          entry.value,
     ],
   };
 
+  void _restoreAtomicCommands(Map<String, dynamic> data, Set<String> sources) {
+    final raw = data['atomicCommands'];
+    if (raw == null) return;
+    if (raw is! Map) throw const FormatException('原出仓命令不完整，请保留草稿');
+    final scope = WarehouseTaskItemSelection(widget.selectedItemIds);
+    for (final entry in raw.entries) {
+      if (entry.key is! String ||
+          !sources.contains(entry.key) ||
+          entry.value is! Map) {
+        throw const FormatException('原出仓命令与当前来源不一致，请保留草稿');
+      }
+      final command = Map<String, dynamic>.from(entry.value as Map);
+      final ids = draftStrings(command['itemIds']);
+      if (command['idempotencyKey'] is! String ||
+          !RegExp(
+            r'^[A-Za-z0-9._:-]{8,128}$',
+          ).hasMatch(command['idempotencyKey'] as String) ||
+          command['fingerprint'] is! String ||
+          !RegExp(
+            r'^[a-f0-9]{64}$',
+          ).hasMatch(command['fingerprint'] as String) ||
+          command['document'] is! Map ||
+          command['itemIds'] is! List ||
+          (command['itemIds'] as List).length != ids.length ||
+          ids.isEmpty ||
+          ids.length > 500 ||
+          ids.length != ids.toSet().length ||
+          !ids.every(scope.contains)) {
+        throw const FormatException('原出仓内容或所选明细不完整，请保留草稿');
+      }
+      final document = command['document'] as Map;
+      final rawItems = document['items'];
+      final postedIds = rawItems is List
+          ? [
+              for (final item in rawItems)
+                if (item is Map) item['id'],
+            ]
+          : const <Object?>[];
+      if (rawItems is! List ||
+          rawItems.length != ids.length ||
+          postedIds.length != ids.length ||
+          !setEquals(postedIds.toSet(), ids.toSet())) {
+        throw const FormatException('原出仓请求的明细身份不完整，请保留草稿');
+      }
+      _atomicCommands[entry.key as String] = command;
+      final scopes = data['atomicSourceScopes'];
+      final rawScope = scopes is Map ? scopes[entry.key] : null;
+      final sourceIds = rawScope == null ? ids : draftStrings(rawScope);
+      if ((rawScope != null &&
+              (rawScope is! List || rawScope.length != sourceIds.length)) ||
+          sourceIds.isEmpty ||
+          sourceIds.length != sourceIds.toSet().length ||
+          !sourceIds.every(scope.contains) ||
+          !ids.every(sourceIds.contains)) {
+        throw const FormatException('原出仓来源与所选范围映射不完整，请保留草稿');
+      }
+      _atomicSourceScopes[entry.key as String] = sourceIds;
+    }
+    for (final saved in draftMaps(data['documents'])) {
+      final id = saved['issueId'];
+      if (id is String && _atomicCommands.containsKey(id)) {
+        _retainedUncertainInputs[id] = {...saved};
+      }
+    }
+  }
+
+  void _requireAtomicResult(String sourceId, Map<String, dynamic> result) {
+    final command = _atomicCommands[sourceId];
+    final expected = draftStrings(command?['itemIds']).toSet();
+    final actual = draftStrings(result['itemIds']);
+    if (command == null ||
+        result['sourceIssueId'] != sourceId ||
+        result['status'] != 1 ||
+        result['executionIssueId'] is! String ||
+        (result['executionIssueId'] as String).isEmpty ||
+        actual.length != expected.length ||
+        result['itemIds'] is! List ||
+        (result['itemIds'] as List).length != actual.length ||
+        !setEquals(actual.toSet(), expected)) {
+      throw const FormatException('服务器回执未完整确认原出仓明细，请保留原操作并核对');
+    }
+  }
+
+  void _confirmAtomicResult(String sourceId, Map<String, dynamic> result) {
+    _requireAtomicResult(sourceId, result);
+    _completedIssueIds.add(sourceId);
+    _atomicUnknownIds.remove(sourceId);
+    _atomicReadableSources.remove(sourceId);
+    _atomicReadProblems.remove(sourceId);
+    _opaqueSourceInputs.remove(sourceId);
+    _retainedUncertainInputs.remove(sourceId);
+    for (final draft in _drafts.where(
+      (draft) => draft.document.id == sourceId,
+    )) {
+      draft.state = SubcontractOutboundExecutionState.completed;
+      draft.error = null;
+    }
+    _changed = true;
+  }
+
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    if ((draftStrings(data['selectedItemIds'])..sort()).join(',') !=
+        ((widget.selectedItemIds ?? []).toList()..sort()).join(',')) {
+      throw const FormatException('原出仓草稿的所选明细与当前不一致，请返回任务中心核对');
+    }
     _submittedDraftIds = draftStrings(data['submittedIssueIds']).toSet();
-    _changed = data['changed'] == true;
+    _changed = _changed || data['changed'] == true;
     final byId = {for (final draft in _drafts) draft.document.id: draft};
     for (final saved in draftMaps(data['documents'])) {
       final id = saved['issueId'];
       if (_completedIssueIds.contains(id)) continue;
       final draft = byId[id];
+      if (draft == null && _atomicUnknownIds.contains(id)) {
+        _retainedUncertainInputs[id as String] = {...saved};
+        continue;
+      }
+      if (draft == null &&
+          _recoveryOnly &&
+          _opaqueSourceInputs.containsKey(id)) {
+        // Unavailable neighbours retain their opaque input and original scope.
+        // They never become rows or new commands using a local snapshot.
+        continue;
+      }
       if (draft == null) throw const FormatException('领料单来源已变化，原填写草稿继续保留');
       final unknown = const [
         'saving',
@@ -311,6 +478,9 @@ class _WarehouseSubcontractOutboundBatchPageState
   void initState() {
     super.initState();
     startFormDraftIdentityGuard();
+    ref.listenManual(currentPermissionsProvider, (old, next) {
+      if (old != null && !setEquals(old, next)) invalidateFormDraftIdentity();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -332,6 +502,8 @@ class _WarehouseSubcontractOutboundBatchPageState
       _error = null;
     });
     final loaded = <_BatchDraft>[];
+    Map<String, dynamic>? atomicRecoveryData;
+    final atomicReadbacks = <String, Map<String, dynamic>?>{};
     try {
       final ids = widget.issueIds.where((id) => id.isNotEmpty).toSet().toList();
       if (ids.isEmpty) {
@@ -344,6 +516,7 @@ class _WarehouseSubcontractOutboundBatchPageState
       final docRepo = ref.read(
         subcontractRepositoryProvider(SubcontractDocType.materialIssue),
       );
+      final requestScope = await captureFormDraftRequestScope();
       await ref.read(formDraftsProvider.notifier).ready;
       if (!mounted || !formDraftIdentityIsCurrent) return;
       final resumeId = goRouterPageStateOrNull(
@@ -367,7 +540,56 @@ class _WarehouseSubcontractOutboundBatchPageState
               ))) {
         throw const FormatException('本机草稿不是这批领料单，不能跨任务恢复');
       }
-      final documents = await readOutboundInBatches(ids, docRepo.detail);
+      if (resume != null) _restoreAtomicCommands(resume.data, ids.toSet());
+      if (resume != null && _atomicEntry && _atomicCommands.isNotEmpty) {
+        atomicRecoveryData = resume.data;
+        _completedIssueIds
+          ..clear()
+          ..addAll(savedCompleted.where(_atomicCommands.containsKey));
+        _atomicUnknownIds
+          ..clear()
+          ..addAll(
+            _atomicCommands.keys.where((id) => !savedCompleted.contains(id)),
+          );
+      }
+      _atomicReadableSources.clear();
+      _atomicReadProblems.clear();
+      // A moved selected item no longer belongs to the source draft. Its own
+      // command receipt must be resolved before reading or validating source remainder.
+      for (final entry in _atomicCommands.entries) {
+        try {
+          atomicReadbacks[entry.key] = await requestScope.run(
+            () => _readAtomicReceipt(docRepo, entry.key),
+          );
+        } catch (_) {
+          if (atomicRecoveryData == null) rethrow;
+          atomicReadbacks[entry.key] = null;
+        }
+        if (!mounted ||
+            !formDraftIdentityIsCurrent ||
+            generation != _loadGeneration) {
+          return;
+        }
+      }
+      if (_atomicReadProblems.isNotEmpty) {
+        throw const FormatException('原提交当前无法读取，请保留原操作后重新核对');
+      }
+      final readableIds = ids
+          .where(
+            (id) =>
+                !_completedIssueIds.contains(id) &&
+                !_atomicCommands.containsKey(id),
+          )
+          .toList();
+      final fingerprints = <String, String>{};
+      final documents = await requestScope.run(
+        () => readOutboundInBatches(readableIds, (id) async {
+          if (!_atomicEntry) return docRepo.detail(id);
+          final review = await docRepo.selectedOutboundReview(id);
+          fingerprints[id] = review.fingerprint;
+          return review.document;
+        }),
+      );
       if (!mounted ||
           generation != _loadGeneration ||
           !formDraftIdentityIsCurrent) {
@@ -384,10 +606,12 @@ class _WarehouseSubcontractOutboundBatchPageState
           remainingIds.add(document.id);
         }
       }
-      final results = await Future.wait([
-        ref.read(masterNameServiceProvider).ensureWarehousesLoaded(),
-        readOutboundInBatches(remainingIds, taskRepo.taskDetail),
-      ]);
+      final results = await requestScope.run(
+        () => Future.wait([
+          ref.read(masterNameServiceProvider).ensureWarehousesLoaded(),
+          readOutboundInBatches(remainingIds, taskRepo.taskDetail),
+        ]),
+      );
       if (!mounted ||
           generation != _loadGeneration ||
           !formDraftIdentityIsCurrent) {
@@ -404,6 +628,20 @@ class _WarehouseSubcontractOutboundBatchPageState
           ),
       ];
       final weightUnit = ref.read(warehouseWeightUnitsPrefsProvider).entry;
+      final frozenIds = _atomicSourceScopes.values.expand((ids) => ids).toSet();
+      final remainingSelection = widget.selectedItemIds
+          ?.where((id) => !frozenIds.contains(id))
+          .toList();
+      final selection = WarehouseTaskItemSelection(remainingSelection);
+      if (remainingSelection?.isNotEmpty != false) {
+        selection.validate(
+          bundles
+              .expand((bundle) => bundle.document.items)
+              .map((item) => item.id),
+        );
+      } else if (bundles.isNotEmpty) {
+        throw const FormatException('原出仓范围与剩余单据不一致，请先核对原回执');
+      }
       final defaultWorker = ref.read(sessionProvider).user?.employeeId;
       for (final bundle in bundles) {
         final document = bundle.document;
@@ -419,12 +657,16 @@ class _WarehouseSubcontractOutboundBatchPageState
         if (lines == null) {
           throw FormatException(l10n.warehouseSubcontractOutboundChanged);
         }
+        for (final line in lines) {
+          line.selected = selection.contains(line.draftItemId);
+        }
         loaded.add(
           _BatchDraft(
             detail: bundle.task,
             document: document,
             lines: lines,
             workerId: document.workerId ?? defaultWorker,
+            reviewFingerprint: fingerprints[document.id],
           ),
         );
       }
@@ -448,17 +690,98 @@ class _WarehouseSubcontractOutboundBatchPageState
         _preloadEmployees(loaded.map((draft) => draft.workerId), generation),
       );
       await initializeFormDraft();
-      if (_drafts.isEmpty && _completedIssueIds.isNotEmpty && mounted) {
+      if (formDraftRestorationBlocked || !formDraftIdentityIsCurrent) return;
+      _applyAtomicReadbacks(atomicReadbacks);
+      if (atomicReadbacks.isNotEmpty) await checkpointFormDraftAfterCreation();
+      if (_allOriginalSourcesCompleted &&
+          _atomicUnknownIds.isEmpty &&
+          mounted) {
         await _finishCompletedSubmission();
       }
     } catch (error) {
       for (final draft in loaded) {
-        draft.dispose();
+        if (!_drafts.contains(draft)) draft.dispose();
       }
-      if (mounted) setState(() => _error = _message(error));
+      if (mounted &&
+          generation == _loadGeneration &&
+          formDraftIdentityIsCurrent) {
+        if (atomicRecoveryData != null) {
+          _activateAtomicRecovery(atomicRecoveryData);
+          await initializeFormDraft();
+          if (formDraftRestorationBlocked || !formDraftIdentityIsCurrent) {
+            return;
+          }
+          _applyAtomicReadbacks(atomicReadbacks);
+          await checkpointFormDraftAfterCreation();
+          if (mounted && formDraftIdentityIsCurrent) setState(() {});
+        } else {
+          setState(() => _error = _message(error));
+        }
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted &&
+          generation == _loadGeneration &&
+          formDraftIdentityIsCurrent) {
+        setState(() => _loading = false);
+      }
     }
+  }
+
+  Future<Map<String, dynamic>?> _readAtomicReceipt(
+    SubcontractRepository repo,
+    String sourceId,
+  ) async {
+    try {
+      final receipt = await repo.selectedOutboundReceipt(
+        sourceId,
+        _atomicCommands[sourceId]!['idempotencyKey'] as String,
+      );
+      if (receipt == null) {
+        // An absent receipt proves neither an unsent command nor current object
+        // visibility. Read the original object without requiring pending state.
+        final current = await repo.detail(sourceId);
+        if (current.id != sourceId) throw const FormatException('原来源身份不一致');
+      } else {
+        _requireAtomicResult(sourceId, receipt);
+      }
+      if (!formDraftIdentityIsCurrent) throw StateError('登录身份已变化');
+      _atomicReadableSources.add(sourceId);
+      _atomicReadProblems.remove(sourceId);
+      return receipt;
+    } catch (_) {
+      _atomicReadableSources.remove(sourceId);
+      _atomicReadProblems[sourceId] = '当前无法读取此来源，原内容仍保留，暂停重试';
+      rethrow;
+    }
+  }
+
+  void _applyAtomicReadbacks(Map<String, Map<String, dynamic>?> readbacks) {
+    for (final entry in readbacks.entries) {
+      if (entry.value case final result?) {
+        _confirmAtomicResult(entry.key, result);
+      } else {
+        _completedIssueIds.remove(entry.key);
+        _atomicUnknownIds.add(entry.key);
+      }
+    }
+  }
+
+  void _activateAtomicRecovery(Map<String, dynamic> original) {
+    _recoveryOnly = true;
+    _error = null;
+    for (final saved in draftMaps(original['documents'])) {
+      final id = saved['issueId'];
+      if (id is String &&
+          widget.issueIds.contains(id) &&
+          !_atomicCommands.containsKey(id) &&
+          !_completedIssueIds.contains(id)) {
+        _opaqueSourceInputs[id] = {...saved};
+      }
+    }
+    for (final draft in _drafts) {
+      draft.dispose();
+    }
+    _drafts.clear();
   }
 
   Future<void> _preloadEmployees(
@@ -499,9 +822,12 @@ class _WarehouseSubcontractOutboundBatchPageState
   }
 
   Future<void> _finishCompletedSubmission() async {
-    if (_drafts.every(
-      (draft) => draft.state == SubcontractOutboundExecutionState.completed,
-    )) {
+    if (_atomicUnknownIds.isNotEmpty ||
+        (_recoveryOnly && !_allOriginalSourcesCompleted)) {
+      await saveFormDraftNow();
+      return;
+    }
+    if (_allOriginalSourcesCompleted) {
       await completeFormDraft();
     } else {
       await saveFormDraftNow();
@@ -534,7 +860,7 @@ class _WarehouseSubcontractOutboundBatchPageState
   String _date(DateTime date) =>
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
-  String? _validate(_BatchDraft draft) {
+  String? _validate(_BatchDraft draft, {bool selectedOnly = false}) {
     if (draft.warehouseId == null ||
         (draft.warehouseId != draft.document.warehouseId &&
             !WarehouseSelection(
@@ -543,19 +869,259 @@ class _WarehouseSubcontractOutboundBatchPageState
             ).selectableIds.contains(draft.warehouseId))) {
       return l10n.warehouseSubcontractOutboundWarehouseRequired;
     }
-    for (final line in draft.lines) {
+    final lines = draft.lines
+        .where((line) => !selectedOnly || line.selected)
+        .toList();
+    for (final line in lines) {
       final error = line.validate();
       if (error != null) {
         return '${line.line.goodsName ?? line.line.goodsCode ?? ''}: $error';
       }
     }
-    if (draft.lines.every((line) => line.skipped)) {
+    if (lines.every((line) => line.skipped)) {
+      if (selectedOnly) return '所选明细数量均为0，本次没有可出库明细；这些行继续保留在原单待发';
       return '每行都填了 0。$subcontractOutboundNothingToIssue(先取消勾选这张单，再打开它的拣货页办理)';
     }
     return null;
   }
 
   Future<void> _submit() async {
+    if (_atomicEntry) return _submitSelected();
+    try {
+      final scope = await captureFormDraftRequestScope();
+      await scope.run(_submitLegacy);
+    } catch (error) {
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appError(_message(error));
+      }
+    }
+  }
+
+  Map<String, dynamic> _selectedDocument(_BatchDraft draft) => {
+    'billDate': _date(draft.date),
+    'supplierId': draft.document.supplierId,
+    'warehouseId': draft.warehouseId,
+    'workerId': draft.workerId,
+    'deliverDate': draft.deliveryDate == null
+        ? null
+        : _date(draft.deliveryDate!),
+    'remark': draft.remark.text.trim().isEmpty
+        ? null
+        : draft.remark.text.trim(),
+    'items': subcontractOutboundPayloadItems(
+      draft.lines.where((line) => line.selected).toList(),
+    ),
+  };
+
+  Future<void> _submitSelected() async {
+    if (_saving ||
+        _confirming ||
+        _recoveryOnly ||
+        formDraftRestorationBlocked ||
+        !_canExecute ||
+        !formDraftIdentityIsCurrent) {
+      return;
+    }
+    final targets = _drafts
+        .where((draft) => draft.pending && draft.selected)
+        .toList();
+    if (targets.isEmpty) return;
+    for (final draft in targets) {
+      if (draft.lines.where((line) => line.selected && !line.skipped).length >
+          500) {
+        context.appError('每张领料单一次最多出库500条明细');
+        return;
+      }
+      final error = _validate(draft, selectedOnly: true);
+      if (error != null) {
+        context.appError(error);
+        return;
+      }
+    }
+    setState(() => _confirming = true);
+    try {
+      final scope = await captureFormDraftRequestScope();
+      await scope.run(() async {
+        final positiveCount = targets.fold<int>(
+          0,
+          (count, draft) =>
+              count +
+              draft.lines
+                  .where((line) => line.selected && !line.skipped)
+                  .length,
+        );
+        final confirmed = await showUtenReviewerConfirmDialog(
+          context,
+          title: l10n.warehouseSubcontractOutboundBatchConfirm,
+          confirmLabel: l10n.warehouseSubcontractOutboundBatchConfirm,
+          actionLabel: l10n.warehouseSubcontractOutboundBatchAction,
+          responsibilityDescription:
+              l10n.warehouseSubcontractOutboundConfirmResponsibility,
+          message:
+              '本次出库$positiveCount项正数明细，交委外商加工。填0和未选行及其预留继续保留在原领料单待发。\n\n委外商加工完成后交回委外件，仍需登记和品质检查，合格后正式入仓。',
+        );
+        if (!confirmed || !mounted || !_canExecute) return;
+        await scope.verify();
+        setState(() {
+          _confirming = false;
+          _saving = true;
+        });
+        final repo = ref.read(
+          subcontractRepositoryProvider(SubcontractDocType.materialIssue),
+        );
+        _submittedDraftIds = targets.map((draft) => draft.document.id).toSet();
+        for (final draft in targets) {
+          if (!mounted || !formDraftIdentityIsCurrent || !_canExecute) break;
+          final id = draft.document.id;
+          var dispatched = false;
+          try {
+            final fresh = await repo.selectedOutboundReview(id);
+            if (!mounted || !formDraftIdentityIsCurrent) break;
+            if (fresh.fingerprint != draft.reviewFingerprint) {
+              throw FormatException(l10n.warehouseSubcontractOutboundChanged);
+            }
+            _atomicReadableSources.add(id);
+            final command =
+                jsonDecode(
+                      jsonEncode({
+                        'idempotencyKey': const Uuid().v4(),
+                        'fingerprint': fresh.fingerprint,
+                        'itemIds': draft.lines
+                            .where((line) => line.selected && !line.skipped)
+                            .map((line) => line.draftItemId)
+                            .toList(),
+                        'document': _selectedDocument(draft),
+                      }),
+                    )
+                    as Map<String, dynamic>;
+            _atomicCommands[id] = command;
+            final routeScope = WarehouseTaskItemSelection(
+              widget.selectedItemIds,
+            );
+            _atomicSourceScopes[id] = draft.lines
+                .where((line) => routeScope.contains(line.draftItemId))
+                .map((line) => line.draftItemId)
+                .toList();
+            _atomicUnknownIds.add(id);
+            draft.state = SubcontractOutboundExecutionState.saving;
+            _retainedUncertainInputs[id] = _captureInput(draft);
+            await saveFormDraftNow();
+            if (formDraftRecoveryRevision == null) {
+              throw const FormatException('原出仓内容尚未持久保存，本次未发送，请稍后重试');
+            }
+            await scope.verify();
+            if (!mounted || !_canExecute) break;
+            dispatched = true;
+            final result = await repo.submitSelectedOutbound(id, command);
+            if (!mounted || !formDraftIdentityIsCurrent) break;
+            _confirmAtomicResult(id, result);
+            await checkpointFormDraftAfterCreation();
+          } catch (error) {
+            if (!mounted || !formDraftIdentityIsCurrent) break;
+            _changed = _changed || dispatched;
+            final rejected =
+                error is ApiException &&
+                error.httpStatus != null &&
+                error.httpStatus! >= 400 &&
+                error.httpStatus! < 500 &&
+                error.httpStatus != 408;
+            if (!dispatched || rejected) {
+              _atomicCommands.remove(id);
+              _atomicSourceScopes.remove(id);
+              _atomicUnknownIds.remove(id);
+              _atomicReadableSources.remove(id);
+              _retainedUncertainInputs.remove(id);
+              draft.state = SubcontractOutboundExecutionState.blocked;
+            } else {
+              draft.state = SubcontractOutboundExecutionState.needsVerification;
+              _retainedUncertainInputs[id] = {
+                ..._retainedUncertainInputs[id]!,
+                'state': draft.state.name,
+              };
+            }
+            draft.error = _atomicUnknownIds.contains(id)
+                ? '原出仓结果待核对；原请求内容和编号已保留，不会办理未选明细'
+                : _message(error);
+            await checkpointFormDraftAfterCreation();
+            break;
+          }
+        }
+        if (!mounted || !formDraftIdentityIsCurrent) return;
+        setState(() {});
+        invalidateWarehouseTaskCounts(ref);
+        if (_atomicUnknownIds.isEmpty &&
+            targets.every(
+              (draft) => _completedIssueIds.contains(draft.document.id),
+            )) {
+          await _finishCompletedSubmission();
+        }
+      });
+    } catch (error) {
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appError(_message(error));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _confirming = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _retryAtomic() async {
+    if (_saving ||
+        _confirming ||
+        formDraftRestorationBlocked ||
+        !_canExecute ||
+        !formDraftIdentityIsCurrent) {
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final scope = await captureFormDraftRequestScope();
+      await scope.run(() async {
+        final repo = ref.read(
+          subcontractRepositoryProvider(SubcontractDocType.materialIssue),
+        );
+        for (final id in _atomicUnknownIds.toList()) {
+          var readable = false;
+          try {
+            final receipt = await _readAtomicReceipt(repo, id);
+            await scope.verify();
+            readable = true;
+            _changed = true;
+            final result =
+                receipt ??
+                await repo.submitSelectedOutbound(id, _atomicCommands[id]!);
+            if (!mounted || !formDraftIdentityIsCurrent) return;
+            _confirmAtomicResult(id, result);
+          } catch (error) {
+            if (!mounted || !formDraftIdentityIsCurrent) return;
+            if (!readable) _activateAtomicRecovery(captureFormDraft());
+            context.appError(
+              readable ? _message(error) : '原来源当前不可读取，原操作和范围继续保留',
+            );
+          }
+          await checkpointFormDraftAfterCreation();
+        }
+        invalidateWarehouseTaskCounts(ref);
+        if (_atomicUnknownIds.isEmpty &&
+            widget.issueIds.every(_completedIssueIds.contains)) {
+          await _finishCompletedSubmission();
+        }
+      });
+    } catch (error) {
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appError(_message(error));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _submitLegacy() async {
     if (_saving || _confirming || !_canExecute) return;
     final targets = _drafts
         .where((draft) => draft.pending && draft.selected)
@@ -565,6 +1131,10 @@ class _WarehouseSubcontractOutboundBatchPageState
       return;
     }
     for (final target in targets) {
+      if (target.lines.any((line) => !line.selected)) {
+        context.appWarning('该领料单需整单确认，请返回任务中心选齐同单明细；本次未保存或出库');
+        return;
+      }
       final error = _validate(target);
       if (error != null) {
         context.appError('${target.detail.orderBillNo ?? ''}: $error');
@@ -625,6 +1195,8 @@ class _WarehouseSubcontractOutboundBatchPageState
                 : draft.remark.text.trim(),
             // 填 0 的行不回传: 服务端删行并退回它占用的库存。
             'items': subcontractOutboundPayloadItems(draft.lines),
+            if (widget.selectedItemIds != null)
+              'itemIds': draft.lines.map((line) => line.draftItemId).toList(),
           });
           _changed = true;
           if (!mounted || !formDraftIdentityIsCurrent) break;
@@ -639,7 +1211,15 @@ class _WarehouseSubcontractOutboundBatchPageState
           );
           await saveFormDraftNow();
           if (!mounted || !formDraftIdentityIsCurrent) break;
-          final approved = await repo.approve(draft.document.id);
+          final approved = widget.selectedItemIds == null
+              ? await repo.approve(draft.document.id)
+              : await repo.approveSelected(
+                  draft.document.id,
+                  draft.document.items
+                      .map((item) => item.id)
+                      .whereType<String>()
+                      .toList(),
+                );
           if (!mounted || !formDraftIdentityIsCurrent) break;
           if (approved.status != 1) {
             throw StateError(l10n.warehouseSubcontractOutboundUncertain);
@@ -702,14 +1282,40 @@ class _WarehouseSubcontractOutboundBatchPageState
 
   Future<void> _verify() async {
     if (_saving) return;
+    try {
+      final scope = await captureFormDraftRequestScope();
+      await scope.run(_verifyScoped);
+    } catch (error) {
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appError(_message(error));
+      }
+    }
+  }
+
+  Future<void> _verifyScoped() async {
+    if (_saving) return;
     setState(() => _saving = true);
     try {
       final repo = ref.read(
         subcontractRepositoryProvider(SubcontractDocType.materialIssue),
       );
+      for (final id in _atomicUnknownIds.toList()) {
+        try {
+          final receipt = await _readAtomicReceipt(repo, id);
+          if (!mounted || !formDraftIdentityIsCurrent) return;
+          if (receipt != null) _confirmAtomicResult(id, receipt);
+        } catch (error) {
+          if (mounted && formDraftIdentityIsCurrent) {
+            _activateAtomicRecovery(captureFormDraft());
+            context.appError('原来源当前不可读取，原操作和范围继续保留');
+          }
+        }
+      }
       for (final draft in _drafts.where(
         (draft) =>
-            draft.state == SubcontractOutboundExecutionState.needsVerification,
+            draft.state ==
+                SubcontractOutboundExecutionState.needsVerification &&
+            !_atomicCommands.containsKey(draft.document.id),
       )) {
         try {
           final fresh = await repo.detail(draft.document.id);
@@ -730,7 +1336,7 @@ class _WarehouseSubcontractOutboundBatchPageState
         }
       }
       invalidateWarehouseTaskCounts(ref);
-      await saveFormDraftNow();
+      await checkpointFormDraftAfterCreation();
       if (mounted &&
           _submittedDraftIds.isNotEmpty &&
           _submittedDraftIds.every(
@@ -762,15 +1368,35 @@ class _WarehouseSubcontractOutboundBatchPageState
     SubcontractOutboundExecutionState.saving ||
     SubcontractOutboundExecutionState.approving => l10n.commonLoading,
     SubcontractOutboundExecutionState.completed =>
-      l10n.warehouseSubcontractOutboundDone,
+      _atomicEntry
+          ? '本次已出库${draftStrings(_atomicCommands[draft.document.id]?['itemIds']).length}项'
+          : l10n.warehouseSubcontractOutboundDone,
     _ => l10n.warehouseSubcontractOutboundPaused,
   };
+
+  String _rowStatus(_BatchDraft draft, SubcontractOutboundLineDraft line) {
+    if (_atomicEntry) {
+      final command = _atomicCommands[draft.document.id];
+      if ((command != null &&
+              !draftStrings(command['itemIds']).contains(line.draftItemId)) ||
+          (command == null && (!line.selected || line.skipped))) {
+        return '继续待发';
+      }
+      if (draft.state == SubcontractOutboundExecutionState.completed) {
+        return l10n.warehouseSubcontractOutboundDone;
+      }
+    }
+    return _status(draft);
+  }
 
   @override
   Widget build(BuildContext context) {
     ref.watch(currentPermissionsProvider);
     final names = ref.watch(masterNameServiceProvider);
-    final pending = _drafts.any((draft) => draft.pending && draft.selected);
+    final pending =
+        !_recoveryOnly &&
+        !formDraftRestorationBlocked &&
+        _drafts.any((draft) => draft.pending && draft.selected);
     return withFormDraft(
       PopScope(
         canPop: !_saving && !_confirming,
@@ -810,7 +1436,30 @@ class _WarehouseSubcontractOutboundBatchPageState
                                   UtenFloatingActionGroup.scrollClearance,
                                 ),
                                 children: [
-                                  _headers(),
+                                  if (_recoveryOnly)
+                                    _atomicRecoverySummary()
+                                  else
+                                    _headers(),
+                                  if (_atomicUnknownIds.isNotEmpty)
+                                    const Text(
+                                      '原出仓结果待核对，原内容和操作编号继续保留；未查到回执不能视为未提交',
+                                    ),
+                                  if (!_atomicEntry &&
+                                      _drafts.any(
+                                        (draft) => draft.lines.any(
+                                          (line) => !WarehouseTaskItemSelection(
+                                            widget.selectedItemIds,
+                                          ).contains(line.draftItemId),
+                                        ),
+                                      ))
+                                    Text(
+                                      '该领料单需整单确认，请返回任务中心选齐同单明细',
+                                      style: TextStyle(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.error,
+                                      ),
+                                    ),
                                   for (final draft in _drafts)
                                     if (draft.error != null)
                                       Padding(
@@ -828,55 +1477,56 @@ class _WarehouseSubcontractOutboundBatchPageState
                                       ),
                                   // 明细表紧接单据卡，不再写「出库明细」标题:
                                   // 页面本身就叫批量出库详情，表头已说明每列是什么。
-                                  const SizedBox(height: UtenSpacing.s16),
-                                  SubcontractOutboundDetailTable(
-                                    stickyHeaderPinned: _gridPinned,
-                                    rows: [
-                                      for (final draft in _drafts)
-                                        for (final line in draft.lines)
-                                          SubcontractOutboundTableRow(
-                                            draft: line,
-                                            warehouse: names.warehouse(
-                                              draft.warehouseId,
-                                            ),
-                                            orderBillNo:
-                                                draft.detail.orderBillNo,
-                                            supplierName:
-                                                draft.detail.supplierName,
-                                            documentNo:
-                                                draft.detail.issueBillNo ??
-                                                draft.document.billNo,
-                                            documentRemark: draft.remark,
-                                            warehouseId: draft.warehouseId,
-                                            warehouseAutofilled:
-                                                draft.warehouseAutofilled,
-                                            warehouses:
-                                                names.warehouseHierarchy,
-                                            onWarehouseChanged: (value) =>
-                                                setState(() {
-                                                  draft.warehouseId = value;
-                                                  draft.warehouseAutofilled =
-                                                      false;
-                                                }),
-                                            status: _status(draft),
-                                            editable: draft.pending,
-                                          ),
-                                    ],
-                                    editable: _canExecute,
-                                    selectable: true,
-                                    onRowSelected: (row, selected) {
-                                      final document = _drafts.firstWhere(
-                                        (draft) =>
-                                            draft.lines.contains(row.draft),
-                                      );
-                                      // 按整张领料单勾选: 一张单要么整单出库, 要么整单不动。
-                                      for (final line in document.lines) {
-                                        line.selected = selected;
-                                      }
-                                    },
-                                    showOrder: true,
-                                    onChanged: () => setState(() {}),
-                                  ),
+                                  if (!_recoveryOnly) ...[
+                                    const SizedBox(height: UtenSpacing.s16),
+                                    SubcontractOutboundDetailTable(
+                                      quantityHint: _atomicEntry
+                                          ? '只能改少，不能超过原领料数量。填0和未选行继续保留在原单待发，本次只出库勾选的正数行。'
+                                          : subcontractOutboundQuantityHint,
+                                      stickyHeaderPinned: _gridPinned,
+                                      rows: [
+                                        for (final draft in _drafts)
+                                          for (final line in draft.lines)
+                                            if (WarehouseTaskItemSelection(
+                                              widget.selectedItemIds,
+                                            ).contains(line.draftItemId))
+                                              SubcontractOutboundTableRow(
+                                                draft: line,
+                                                warehouse: names.warehouse(
+                                                  draft.warehouseId,
+                                                ),
+                                                orderBillNo:
+                                                    draft.detail.orderBillNo,
+                                                supplierName:
+                                                    draft.detail.supplierName,
+                                                documentNo:
+                                                    draft.detail.issueBillNo ??
+                                                    draft.document.billNo,
+                                                documentRemark: draft.remark,
+                                                warehouseId: draft.warehouseId,
+                                                warehouseAutofilled:
+                                                    draft.warehouseAutofilled,
+                                                warehouses:
+                                                    names.warehouseHierarchy,
+                                                onWarehouseChanged: (value) =>
+                                                    setState(() {
+                                                      draft.warehouseId = value;
+                                                      draft.warehouseAutofilled =
+                                                          false;
+                                                    }),
+                                                status: _rowStatus(draft, line),
+                                                editable: draft.pending,
+                                              ),
+                                      ],
+                                      editable: _canExecute,
+                                      selectable: true,
+                                      onRowSelected: (row, selected) {
+                                        row.draft.selected = selected;
+                                      },
+                                      showOrder: true,
+                                      onChanged: () => setState(() {}),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -905,17 +1555,26 @@ class _WarehouseSubcontractOutboundBatchPageState
                           : () => Navigator.of(context).pop(_changed),
                       child: Text(l10n.commonBack),
                     ),
-                    if (_drafts.any(
-                      (draft) =>
-                          draft.state ==
-                          SubcontractOutboundExecutionState.needsVerification,
-                    ))
+                    if (_atomicUnknownIds.isNotEmpty ||
+                        _drafts.any(
+                          (draft) =>
+                              draft.state ==
+                              SubcontractOutboundExecutionState
+                                  .needsVerification,
+                        ))
                       UtenButton(
                         type: UtenButtonType.secondary,
                         size: UtenButtonSize.large,
                         isLoading: _saving,
                         onPressed: _saving ? null : _verify,
                         child: Text(l10n.warehouseSubcontractOutboundVerify),
+                      ),
+                    if (_canRetryAtomic)
+                      UtenButton(
+                        type: UtenButtonType.secondary,
+                        size: UtenButtonSize.large,
+                        onPressed: _saving ? null : _retryAtomic,
+                        child: const Text('按原内容重试'),
                       ),
                     if (_canExecute)
                       UtenButton(
@@ -936,6 +1595,38 @@ class _WarehouseSubcontractOutboundBatchPageState
                   ],
                 ),
         ),
+      ),
+    );
+  }
+
+  Widget _atomicRecoverySummary() {
+    final theme = Theme.of(context);
+    return UtenCard(
+      key: const Key('subcontract-outbound-atomic-recovery'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('继续核对原提交', style: theme.textTheme.titleMedium),
+          const SizedBox(height: UtenSpacing.s8),
+          Text(
+            '部分来源已变化或当前无法读取。本页保留原来${widget.issueIds.length}张来源及填写，只能核对已提交的原操作；其余来源不会发送，请返回任务中心处理。',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          for (final id in widget.issueIds)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+              child: Text(
+                '来源 $id：${_completedIssueIds.contains(id)
+                    ? '原提交已确认'
+                    : _atomicUnknownIds.contains(id)
+                    ? _atomicReadProblems[id] ?? '原提交待核对，可按原内容重试'
+                    : '未提交，暂停办理'}',
+                key: ValueKey('subcontract-outbound-recovery-source-$id'),
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+        ],
       ),
     );
   }

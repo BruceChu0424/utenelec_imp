@@ -38,8 +38,12 @@ import 'package:uten_imp/shared/models/procurement_inbound.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/warehouse_request_scope_fixture.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
 import 'arrival_weight_test_support.dart';
 import 'inbound_arrival_test_support.dart';
 
@@ -205,6 +209,10 @@ void main() {
           ),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
+          sessionSnapshotProvider.overrideWith(IdleWarehouseTestSnapshot.new),
+          apiClientProvider.overrideWithValue(api),
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
           employeeRepositoryProvider.overrideWithValue(
@@ -270,7 +278,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('正式采购委外登记页响应写权限动态授予与撤销', (tester) async {
+  testWidgets('正式采购委外登记页权限变化使旧页失效，重新进入才使用新权限', (tester) async {
     tester.view.physicalSize = const Size(1400, 1200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -301,6 +309,10 @@ void main() {
         ),
         sharedPreferencesProvider.overrideWithValue(_preferences),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
+        sessionSnapshotProvider.overrideWith(IdleWarehouseTestSnapshot.new),
+        apiClientProvider.overrideWithValue(api),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        fixedBadgeSummaryOverride(badgeSummaryFixture()),
         currentPermissionsProvider.overrideWith(
           (ref) => ref.watch(_testArrivalPermissionsProvider),
         ),
@@ -322,17 +334,22 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: const MaterialApp(
-          home: InboundArrivalRegistrationPage(
-            expectationIds: ['permission-expectation'],
+    Future<void> enter(String visit) async {
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            key: ValueKey(visit),
+            home: const InboundArrivalRegistrationPage(
+              expectationIds: ['permission-expectation'],
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await enter('view');
 
     Finder submit() => find.widgetWithText(UtenButton, '先质检后入库');
     // 2026-09-11 起表头上方的「移出本次登记/全选」按钮全撤（移出搬进行右键、
@@ -346,15 +363,29 @@ void main() {
       Perm.warehouseInboundStockIn,
     });
     await tester.pumpAndSettle();
+    expect(find.byType(Checkbox), findsNothing);
+    expect(find.textContaining('请重新进入页面'), findsWidgets);
+    await enter('authorized');
     expect(find.byType(Checkbox), findsWidgets);
     expect(tester.widget<UtenButton>(submit()).onPressed, isNotNull);
+    final oldSubmit = tester.widget<UtenButton>(submit()).onPressed!;
 
     container.read(_testArrivalPermissionsProvider.notifier).replace({
       Perm.warehouseInboundView,
     });
     await tester.pumpAndSettle();
     expect(find.byType(Checkbox), findsNothing);
-    expect(tester.widget<UtenButton>(submit()).onPressed, isNull);
+    oldSubmit();
+    await tester.pumpAndSettle();
+    expect(api.arrivalPostBodies, isEmpty);
+    container.read(_testArrivalPermissionsProvider.notifier).replace({
+      Perm.warehouseInboundView,
+      Perm.warehouseInboundStockIn,
+    });
+    await tester.pumpAndSettle();
+    expect(find.byType(Checkbox), findsNothing);
+    await enter('authorized-again');
+    expect(find.byType(Checkbox), findsWidgets);
   });
 
   testWidgets('采购委外登记可多选或右键移出，提交只含剩余行且不调用删除接口', (tester) async {
@@ -442,6 +473,10 @@ void main() {
           ),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
+          sessionSnapshotProvider.overrideWith(IdleWarehouseTestSnapshot.new),
+          apiClientProvider.overrideWithValue(api),
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
           employeeRepositoryProvider.overrideWithValue(
@@ -581,6 +616,10 @@ void main() {
           ),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
+          sessionSnapshotProvider.overrideWith(IdleWarehouseTestSnapshot.new),
+          apiClientProvider.overrideWithValue(api),
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
           employeeRepositoryProvider.overrideWithValue(
@@ -706,6 +745,10 @@ void main() {
         ),
         sharedPreferencesProvider.overrideWithValue(_preferences),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
+        sessionSnapshotProvider.overrideWith(IdleWarehouseTestSnapshot.new),
+        apiClientProvider.overrideWithValue(api),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        fixedBadgeSummaryOverride(badgeSummaryFixture()),
         currentPermissionsProvider.overrideWith(
           (ref) => ref.watch(_testArrivalPermissionsProvider),
         ),
@@ -753,6 +796,11 @@ void main() {
       Perm.warehouseInboundStockIn,
       Perm.warehouseIqcStockInBeforeInspection,
     });
+    await tester.pumpAndSettle();
+    expect(preStockButton, findsNothing);
+    router.go('/');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('打开采购登记'));
     await tester.pumpAndSettle();
     expect(preStockButton, findsOneWidget);
     expect(find.widgetWithText(UtenButton, '先入库后质检'), findsOneWidget);
@@ -833,12 +881,15 @@ void main() {
           ),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
+          sessionSnapshotProvider.overrideWith(IdleWarehouseTestSnapshot.new),
+          apiClientProvider.overrideWithValue(api),
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
           employeeRepositoryProvider.overrideWithValue(
             DioEmployeeRepository(api),
           ),
-          apiClientProvider.overrideWithValue(api),
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),
@@ -850,9 +901,9 @@ void main() {
           ),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.warehouseInboundView,
+            Perm.warehouseInboundStockIn,
           }),
           isSuperAdminProvider.overrideWithValue(false),
-          fixedBadgeSummaryOverride(badgeSummaryFixture()),
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -1092,9 +1143,12 @@ void main() {
           ),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
+          sessionSnapshotProvider.overrideWith(IdleWarehouseTestSnapshot.new),
+          apiClientProvider.overrideWithValue(api),
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
-          apiClientProvider.overrideWithValue(api),
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),
@@ -1109,7 +1163,6 @@ void main() {
             Perm.warehouseInboundView,
           }),
           isSuperAdminProvider.overrideWithValue(false),
-          fixedBadgeSummaryOverride(badgeSummaryFixture()),
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -1186,9 +1239,12 @@ void main() {
           ),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
+          sessionSnapshotProvider.overrideWith(IdleWarehouseTestSnapshot.new),
+          apiClientProvider.overrideWithValue(api),
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
-          apiClientProvider.overrideWithValue(api),
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),
@@ -1199,7 +1255,6 @@ void main() {
             Perm.warehouseInboundView,
           }),
           isSuperAdminProvider.overrideWithValue(false),
-          fixedBadgeSummaryOverride(badgeSummaryFixture()),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -1230,9 +1285,12 @@ void main() {
           ),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
+          sessionSnapshotProvider.overrideWith(IdleWarehouseTestSnapshot.new),
+          apiClientProvider.overrideWithValue(api),
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
-          apiClientProvider.overrideWithValue(api),
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),
@@ -1243,7 +1301,6 @@ void main() {
             Perm.warehouseInboundView,
           }),
           isSuperAdminProvider.overrideWithValue(false),
-          fixedBadgeSummaryOverride(badgeSummaryFixture()),
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -1313,11 +1370,13 @@ class _UnlockedSecureStorage extends SecureStorage {
 class _TestSessionNotifier extends SessionNotifier {
   @override
   SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
     user: AppUser(
       id: 'user-me',
       code: 'USR-ME',
       name: '仓管员',
       employeeId: 'emp-me',
+      permissions: [Perm.warehouseInboundView, Perm.warehouseInboundStockIn],
     ),
   );
 }

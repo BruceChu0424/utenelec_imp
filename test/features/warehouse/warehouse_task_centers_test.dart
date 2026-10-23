@@ -15,10 +15,8 @@ import 'package:uten_imp/features/warehouse/pages/warehouse_task_center_page.dar
 import 'package:uten_imp/features/warehouse/pages/warehouse_draw_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_inbound_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_outbound_task_center_page.dart';
-import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_records_view.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_center_scaffold.dart';
-import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category.dart';
@@ -178,6 +176,7 @@ void main() {
   group('route permission contract', () {
     test('task centers accept any of their business view permissions', () {
       expect(requiredAnyPermFor(RouteName.warehouseOutboundTasks), const [
+        Perm.workshopMaterialView,
         Perm.warehouseSalesOutboundView,
         Perm.subcontractOutboundView,
         Perm.warehouseSubcontractOutboundHistoryView,
@@ -186,6 +185,7 @@ void main() {
       expect(
         requiredAnyPermFor('${RouteName.warehouseOutboundTasks}/x'),
         const [
+          Perm.workshopMaterialView,
           Perm.warehouseSalesOutboundView,
           Perm.subcontractOutboundView,
           Perm.warehouseSubcontractOutboundHistoryView,
@@ -193,6 +193,7 @@ void main() {
         ],
       );
       expect(requiredAnyPermFor(RouteName.warehouseInboundTasks), const [
+        Perm.workshopMaterialView,
         Perm.warehouseInboundView,
         Perm.stockDocView,
         Perm.warehousePurchaseReceiptHistoryView,
@@ -202,6 +203,7 @@ void main() {
       ]);
       expect(requiredAnyPermFor(RouteName.warehouseDrawTasks), const [
         Perm.stockDocView,
+        Perm.workshopMaterialView,
       ]);
       // 库存详情与库存查询同权（/stock/ 前缀 → stock:view）。
       expect(requiredAnyPermFor(RouteName.stockItemDetail('goods-1')), const [
@@ -212,6 +214,8 @@ void main() {
       expect(requiredAnyPermFor('/warehouse/tasks/unknown'), isEmpty);
       // 2026-09-24 合并页：六大类业务域任一可看即可进入（页内再按大类显隐）。
       expect(requiredAnyPermFor(RouteName.warehouseTasks), const [
+        Perm.workshopMaterialView,
+        Perm.workshopMaterialSetup,
         Perm.stockCountWarehouseReview,
         Perm.warehouseSalesOutboundView,
         Perm.subcontractOutboundView,
@@ -228,6 +232,67 @@ void main() {
   });
 
   group('merged warehouse task center (2026-09-24)', () {
+    testWidgets('旧内料仓待发料与退回深链定位到相应出入库来源', (tester) async {
+      for (final section in ['pendingIssue', 'pendingReturn']) {
+        final api = _FakeApi();
+        await tester.pumpWidget(
+          app(
+            WarehouseTaskCenterPage(
+              key: ValueKey(section),
+              initialGroup: 'workshopMaterial',
+              initialSection: section,
+            ),
+            const {Perm.workshopMaterialView, Perm.workshopMaterialIssue},
+            api: api,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          api.lastTaskDirection,
+          section == 'pendingIssue' ? 'outbound' : 'inbound',
+        );
+        expect(
+          api.lastTaskListQuery?['source'],
+          section == 'pendingIssue' ? 'DRAW' : 'RETURN',
+        );
+        expect(find.text('车间内料仓'), findsNothing);
+        expect(find.byType(WarehouseTaskRecordsView), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
+    });
+
+    testWidgets('仅内料仓查看权限可进入对应生产来源，不能读取普通库存来源', (tester) async {
+      await tester.pumpWidget(
+        app(const WarehouseOutboundTaskCenterPage(), const {
+          Perm.workshopMaterialView,
+        }),
+      );
+      await tester.pumpAndSettle();
+      var scaffold = tester.widget<WarehouseTaskCenterScaffold>(
+        find.byType(WarehouseTaskCenterScaffold),
+      );
+      expect(scaffold.segments.map((segment) => segment.value), [
+        'DRAW',
+        'ALL',
+        'HISTORY',
+      ]);
+      expect(find.text('直接发料'), findsNothing);
+      await tester.pumpWidget(
+        app(const WarehouseInboundTaskCenterPage(), const {
+          Perm.workshopMaterialView,
+        }),
+      );
+      await tester.pumpAndSettle();
+      scaffold = tester.widget<WarehouseTaskCenterScaffold>(
+        find.byType(WarehouseTaskCenterScaffold),
+      );
+      expect(scaffold.segments.map((segment) => segment.value), [
+        'RETURN',
+        'ALL',
+        'HISTORY',
+      ]);
+      expect(tester.takeException(), isNull);
+    });
     testWidgets('旧scWaste预设不恢复仓库损耗主分类，旧只读权限不扩到任务中心', (tester) async {
       await tester.pumpWidget(
         app(const WarehouseTaskCenterPage(initialGroup: 'scWaste'), {
@@ -655,31 +720,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('draw task center gates on stock doc view', (tester) async {
-    await tester.pumpWidget(
-      app(const WarehouseDrawTaskCenterPage(), const {Perm.stockDocView}),
-    );
-    await tester.pump();
-
-    expect(find.text('待领任务'), findsOneWidget);
-    expect(find.text('领料单'), findsOneWidget);
-    expect(find.text('生产退料'), findsOneWidget);
-    // 2026-10-04 起红数「待领任务」大类自动选中：直接渲染对应内容，不再有
-    // 引导空态（无红黄的权限组合才保持空态）。
-    expect(find.text('在上方选择分类后开始办理'), findsNothing);
-
-    await tester.pumpWidget(
-      app(const WarehouseDrawTaskCenterPage(), const <String>{}),
-    );
-    await tester.pump();
-    expect(find.text('暂无库存单据查看权限，请联系仓库主管开通。'), findsOneWidget);
-  });
-
-  testWidgets('draw document progress filters through its table header', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1500, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets('旧领料页复用出库统一来源与明细协议', (tester) async {
     final api = _FakeApi();
     await tester.pumpWidget(
       app(const WarehouseDrawTaskCenterPage(), const {
@@ -687,33 +728,18 @@ void main() {
       }, api: api),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('领料单'));
+    expect(find.text('待领任务'), findsNothing);
+    expect(find.text('领料单'), findsNothing);
+    expect(find.text('生产退料'), findsNothing);
+    expect(find.text('生产领料'), findsOneWidget);
+    expect(find.byType(WarehouseTaskRecordsView), findsOneWidget);
+    expect(api.lastTaskDirection, 'outbound');
+    expect(api.lastTaskListQuery?['source'], 'DRAW');
+    await tester.pumpWidget(
+      app(const WarehouseDrawTaskCenterPage(), const <String>{}),
+    );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('进行中'));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('stock-doc-segment-issue-DRAW')), findsNothing);
-    MasterDataTableView<StockDocListItem> table() =>
-        tester.widget(find.byKey(const Key('stock-doc-segment-table-DRAW')));
-    expect(table().facets['issueStatus']?.map((bucket) => bucket.value), [
-      '0',
-      '1',
-    ]);
-    expect(api.lastStockListQuery?['view'], 'ACTIVE');
-    table().onFilterChanged('issueStatus', '1');
-    await tester.pumpAndSettle();
-    expect(api.lastStockListQuery?['status'], 1);
-    expect(api.lastStockListQuery?['issueStatus'], 1);
-    expect(api.lastStockListQuery?['page'], 1);
-    expect(table().filters['issueStatus'], '1');
-    table().onFilterChanged('issueStatus', null);
-    await tester.pumpAndSettle();
-    expect(api.lastStockListQuery?.containsKey('issueStatus'), isFalse);
-    await tester.tap(find.text('历史单据'));
-    await tester.pumpAndSettle();
-    expect(api.lastStockListQuery?['view'], 'HISTORY');
-    expect(api.lastStockListQuery?.containsKey('status'), isFalse);
-    expect(api.lastStockListQuery?.containsKey('issueStatus'), isFalse);
-    expect(table().facets.containsKey('issueStatus'), isFalse);
+    expect(find.text('暂无已授权的出库单据'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

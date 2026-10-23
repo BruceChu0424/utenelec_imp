@@ -1,7 +1,5 @@
-// 即时库存与货品资料共用左右分类导航；小屏在抽屉内使用同一棵树。
-// 搜索默认跨分类平铺，明确点类收窄范围；清空搜索恢复原浏览分类。
-import 'dart:async';
-
+// 即时库存使用全宽表格；分类筛选在按需打开的确认面板中进行。
+// 搜索默认跨分类平铺，清空后恢复原浏览分类。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,7 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/product_category_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -92,62 +89,46 @@ void main() {
     },
   );
 
-  testWidgets('opens unfiltered and loads the first page immediately', (
-    tester,
-  ) async {
-    final stock = _RecordingStockRepository();
-    await pumpPage(tester, stock: stock);
-
-    // 进入时全部分类直接显示第一页，左树无需先打开面板。
-    expect(stock.calls, 1);
-    expect(stock.lastCategoryId, isNull);
-    expect(stock.lastKeyword, isNull);
-    expect(
-      find.byKey(const Key('instant-inventory-category-tree')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('instant-inventory-category-all')),
-      findsOneWidget,
-    );
-  });
-
   testWidgets(
-    'wide screen keeps a category tree beside the inventory and all clears selection',
+    'full width inventory loads immediately without a category sidebar',
     (tester) async {
       final stock = _RecordingStockRepository();
       await pumpPage(tester, stock: stock);
-
-      final tree = find.byKey(const Key('instant-inventory-category-tree'));
-      final table = find.byType(MasterDataTableView<InstantInventoryRow>);
-      expect(find.byType(UtenSplitView), findsOneWidget);
-      expect(
-        find.byType(UtenCategoryTreeView<ProductCategoryNode>),
-        findsOneWidget,
-      );
-      expect(tester.getRect(tree).right, lessThan(tester.getRect(table).left));
-      expect(tester.getRect(tree).overlaps(tester.getRect(table)), isFalse);
-      expect(_categoryText('成品'), findsOneWidget);
-      expect(find.textContaining('未分类（历史孤儿）'), findsNothing);
-      expect(
-        find.byKey(const Key('instant-inventory-open-categories')),
-        findsNothing,
-      );
-
-      // 每次直接点左树切换，分类导航始终留在页面。
-      await tester.tap(_categoryText('成品'));
-      await tester.pumpAndSettle();
-      expect(stock.lastCategoryId, 'finished');
-      expect(tree, findsOneWidget);
-
-      await tester.tap(_categoryText('原材料'));
-      await tester.pumpAndSettle();
-      expect(stock.lastCategoryId, 'raw');
-
-      await tester.tap(find.byKey(const Key('instant-inventory-category-all')));
-      await tester.pumpAndSettle();
+      expect(stock.calls, 1);
       expect(stock.lastCategoryId, isNull);
       expect(stock.lastKeyword, isNull);
+      expect(find.byType(UtenSplitView), findsNothing);
+      expect(
+        find.byKey(const Key('instant-inventory-category-tree')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('instant-inventory-category')),
+        findsOneWidget,
+      );
+      expect(_categoryText('原材料'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'category panel stages the selection until confirmation and cancel is a no-op',
+    (tester) async {
+      final stock = _RecordingStockRepository();
+      await pumpPage(tester, stock: stock);
+      await tapInventoryHeader(tester, const Key('instant-inventory-category'));
+      expect(_categoryText('原材料'), findsOneWidget);
+      await tester.tap(_categoryText('原材料'));
+      await tester.pumpAndSettle();
+      expect(stock.lastCategoryId, isNull);
+      await tester.tap(find.text('确定').last);
+      await tester.pumpAndSettle();
+      expect(stock.lastCategoryId, 'raw');
+      await tapInventoryHeader(tester, const Key('instant-inventory-category'));
+      await tester.tap(_categoryText('成品'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('取消').last);
+      await tester.pumpAndSettle();
+      expect(stock.lastCategoryId, 'raw');
     },
   );
 
@@ -229,312 +210,58 @@ void main() {
   );
 
   testWidgets(
-    'category name or code searches are global and keep the keyword',
+    'search remains global and clearing restores the browsing category',
     (tester) async {
       final stock = _RecordingStockRepository();
       await pumpPage(tester, stock: stock);
-      for (final query in ['插套分类', 'SOCKET']) {
-        await tester.enterText(_searchEditable(), query);
-        await tester.pump(const Duration(milliseconds: 301));
-        await tester.pumpAndSettle();
-        expect(_categoryText('插套分类'), findsOneWidget);
-        expect(_categoryText('原材料'), findsNothing);
-        expect(stock.lastCategoryId, isNull);
-        expect(stock.lastKeyword, query);
-        final export = tester.widget<UtenExportButton>(
-          find.byType(UtenExportButton),
-        );
-        expect(export.queryParams, isNot(contains('categoryId')));
-        expect(export.queryParams['keyword'], query);
-      }
-      await tester.tap(_clearSearch());
-      await tester.pumpAndSettle();
-      expect(_categoryText('原材料'), findsOneWidget);
-      expect(stock.lastCategoryId, isNull);
-      expect(stock.lastKeyword, isNull);
-    },
-  );
-
-  testWidgets(
-    'global flat results survive category taps and clearing restores the original category',
-    (tester) async {
-      final rows = [
-        InstantInventoryRow.fromJson({
-          'goodsId': 'name-match',
-          'name': 'HV-001',
-          'code': 'OTHER',
-          'categoryId': 'socket',
-        }),
-        InstantInventoryRow.fromJson({
-          'goodsId': 'code-match',
-          'name': '螺丝',
-          'code': 'HV-001',
-          'categoryId': 'raw',
-        }),
-      ];
-      final stock = _RecordingStockRepository(rows: rows);
-      await pumpPage(tester, stock: stock);
+      await tapInventoryHeader(tester, const Key('instant-inventory-category'));
       await tester.tap(_categoryText('原材料'));
       await tester.pumpAndSettle();
-      expect(stock.lastCategoryId, 'raw');
+      await tester.tap(find.text('确定').last);
+      await tester.pumpAndSettle();
       await tester.enterText(_searchEditable(), 'HV-001');
       await tester.pump(const Duration(milliseconds: 301));
       await tester.pumpAndSettle();
-      expect(stock.searchRootScopes.single, isNot(contains('orphan')));
       expect(stock.lastCategoryId, isNull);
       expect(stock.lastKeyword, 'HV-001');
-      final table = tester.widget<MasterDataTableView<InstantInventoryRow>>(
-        find.byType(MasterDataTableView<InstantInventoryRow>),
+      final export = tester.widget<UtenExportButton>(
+        find.byType(UtenExportButton),
       );
-      expect(table.items.map((row) => row.goodsId), [
-        'name-match',
-        'code-match',
-      ]);
-      final callsBeforeTap = stock.calls;
-      await tester.tap(_categoryText('成品'));
-      await tester.pumpAndSettle();
-      expect(stock.lastCategoryId, 'finished');
-      expect(stock.lastKeyword, 'HV-001');
-      await tester.tap(find.byKey(const Key('instant-inventory-category-all')));
-      await tester.pumpAndSettle();
-      expect(stock.calls, callsBeforeTap + 2);
-      expect(stock.lastCategoryId, isNull);
-      expect(_searchText(tester), 'HV-001');
+      expect(export.queryParams['keyword'], 'HV-001');
+      expect(export.queryParams, isNot(contains('categoryId')));
       await tester.tap(_clearSearch());
       await tester.pumpAndSettle();
       expect(stock.lastCategoryId, 'raw');
       expect(stock.lastKeyword, isNull);
-      expect(_categoryText('原材料'), findsOneWidget);
     },
   );
 
   testWidgets(
-    'no matches keeps an empty global search and clear restores all categories',
-    (tester) async {
-      final stock = _RecordingStockRepository();
-      await pumpPage(tester, stock: stock);
-      await tester.enterText(_searchEditable(), '不存在的货品');
-      await tester.pump(const Duration(milliseconds: 301));
-      await tester.pumpAndSettle();
-      expect(stock.lastCategoryId, isNull);
-      expect(stock.lastKeyword, '不存在的货品');
-      expect(_categoryText('成品'), findsNothing);
-      expect(find.textContaining('未找到'), findsWidgets);
-      await tester.tap(_clearSearch());
-      await tester.pumpAndSettle();
-      expect(_categoryText('成品'), findsOneWidget);
-      expect(_categoryText('原材料'), findsOneWidget);
-      expect(stock.lastKeyword, isNull);
-    },
-  );
-
-  testWidgets(
-    'late category hints cannot publish over new input during debounce',
-    (tester) async {
-      final slow = Completer<Set<String>>();
-      final stock = _RecordingStockRepository(delayedSearches: {'旧货品': slow});
-      await pumpPage(tester, stock: stock);
-      await tester.enterText(_searchEditable(), '旧货品');
-      await tester.pump(const Duration(milliseconds: 301));
-      final calls = stock.calls;
-      await tester.enterText(_searchEditable(), '插套分类');
-      slow.complete({'raw'});
-      await tester.pump();
-      expect(stock.calls, calls);
-      expect(_searchText(tester), '插套分类');
-      await tester.pump(const Duration(milliseconds: 301));
-      await tester.pumpAndSettle();
-      expect(stock.lastCategoryId, isNull);
-      expect(stock.lastKeyword, '插套分类');
-      expect(_categoryText('原材料'), findsNothing);
-    },
-  );
-
-  testWidgets('explicit category scope supersedes in-flight global hints', (
-    tester,
-  ) async {
-    final slow = Completer<Set<String>>();
-    final stock = _RecordingStockRepository(delayedSearches: {'成品': slow});
-    await pumpPage(tester, stock: stock);
-    await tester.enterText(_searchEditable(), '成品');
-    await tester.pump(const Duration(milliseconds: 301));
-    final calls = stock.calls;
-    await tester.tap(_categoryText('成品'));
-    await tester.pump();
-    expect(stock.calls, calls + 1);
-    slow.complete({'raw'});
-    await tester.pumpAndSettle();
-    expect(stock.lastCategoryId, 'finished');
-    expect(stock.lastKeyword, '成品');
-  });
-
-  testWidgets(
-    'compact drawer selection closes the drawer and applies explicit query scope',
+    'compact and large text layouts retain the full width table and category picker',
     (tester) async {
       final stock = _RecordingStockRepository();
       await pumpPage(tester, stock: stock, size: const Size(375, 812));
-      await tester.tap(
-        find.byKey(const Key('instant-inventory-open-categories')),
-      );
-      await tester.pumpAndSettle();
-      await tester.enterText(_searchEditable(), 'HV-001');
-      await tester.pump(const Duration(milliseconds: 301));
-      await tester.pumpAndSettle();
-      await tester.tap(_categoryText('插套分类'));
-      await tester.pumpAndSettle();
+      expect(find.byType(UtenSplitView), findsNothing);
       expect(
-        find.byKey(const Key('instant-inventory-category-tree')),
-        findsNothing,
+        find.byType(MasterDataTableView<InstantInventoryRow>),
+        findsOneWidget,
       );
-      expect(stock.lastCategoryId, 'socket');
-      expect(stock.lastKeyword, 'HV-001');
-      await tester.tap(
-        find.byKey(const Key('instant-inventory-open-categories')),
-      );
-      await tester.pumpAndSettle();
-      expect(_searchText(tester), 'HV-001');
-      await tester.tap(_clearSearch());
-      await tester.pumpAndSettle();
-      expect(stock.lastCategoryId, isNull);
-      expect(stock.lastKeyword, isNull);
       expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'refresh preserves global search and clearing restores the browsing category',
-    (tester) async {
-      final stock = _RecordingStockRepository();
-      await pumpPage(tester, stock: stock);
-      await tester.tap(_categoryText('成品'));
+      await tapInventoryHeader(tester, const Key('instant-inventory-category'));
+      await tester.tap(_categoryText('原材料'));
       await tester.pumpAndSettle();
-      await tester.enterText(_searchEditable(), 'HV-001');
-      await tester.pump(const Duration(milliseconds: 301));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('刷新'));
-      await tester.pumpAndSettle();
-      expect(stock.searchQueries, ['HV-001', 'HV-001']);
-      expect(stock.lastCategoryId, isNull);
-      expect(stock.lastKeyword, 'HV-001');
-      await tester.tap(_clearSearch());
-      await tester.pumpAndSettle();
-      expect(stock.lastCategoryId, 'finished');
-    },
-  );
-
-  testWidgets('a delayed refresh cannot resume search after it was cleared', (
-    tester,
-  ) async {
-    final refreshedTree = Completer<List<ProductCategoryNode>>();
-    final categories = _ProductCategoryRepo(delayedRefresh: refreshedTree);
-    final stock = _RecordingStockRepository();
-    await pumpPage(tester, stock: stock, categories: categories);
-    await tester.enterText(_searchEditable(), 'HV-001');
-    await tester.pump(const Duration(milliseconds: 301));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('刷新'));
-    await tester.pump();
-    await tester.tap(_clearSearch());
-    // 刷新请求尚未完成，刷新按钮持续转圈；先推进清空搜索，不能等待动画 settle。
-    await tester.pump(const Duration(milliseconds: 100));
-    final calls = stock.calls;
-    refreshedTree.complete(await _ProductCategoryRepo().treeWithGoodsCounts());
-    await tester.pumpAndSettle();
-    expect(stock.searchQueries, ['HV-001']);
-    expect(stock.calls, calls);
-    expect(stock.lastCategoryId, isNull);
-    expect(stock.lastKeyword, isNull);
-  });
-
-  testWidgets(
-    'failed tree hints do not prevent the global result query and can retry',
-    (tester) async {
-      final stock = _RecordingStockRepository(searchFailuresRemaining: 1);
-      await pumpPage(tester, stock: stock);
-      final calls = stock.calls;
-      await tester.enterText(_searchEditable(), 'HV-001');
-      await tester.pump(const Duration(milliseconds: 301));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('货品定位失败：定位服务暂不可用'), findsOneWidget);
-      expect(stock.calls, calls + 1);
-      expect(stock.lastCategoryId, isNull);
-      expect(stock.lastKeyword, 'HV-001');
-      await tester.tap(find.text('重试搜索'));
-      await tester.pumpAndSettle();
-      expect(stock.searchQueries, ['HV-001', 'HV-001']);
-      expect(stock.lastCategoryId, isNull);
-      expect(stock.lastKeyword, 'HV-001');
-      expect(find.text('重试搜索'), findsNothing);
-    },
-  );
-
-  testWidgets(
-    'closing compact drawer before debounce still searches globally',
-    (tester) async {
-      final stock = _RecordingStockRepository();
-      await pumpPage(tester, stock: stock, size: const Size(375, 812));
-      await tester.tap(
-        find.byKey(const Key('instant-inventory-open-categories')),
-      );
-      await tester.pumpAndSettle();
-      await tester.enterText(_searchEditable(), 'HV-001');
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      expect(stock.searchQueries, ['HV-001']);
-      expect(stock.lastCategoryId, isNull);
-      expect(stock.lastKeyword, 'HV-001');
-      expect(_searchText(tester), 'HV-001');
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('resizing during debounce retains the complete global query', (
-    tester,
-  ) async {
-    final stock = _RecordingStockRepository();
-    await pumpPage(tester, stock: stock);
-    await tester.enterText(_searchEditable(), 'HV-001');
-    tester.view.physicalSize = const Size(375, 812);
-    await tester.pump(const Duration(milliseconds: 301));
-    await tester.pumpAndSettle();
-    expect(stock.lastCategoryId, isNull);
-    expect(stock.lastKeyword, 'HV-001');
-    await tester.enterText(_searchEditable(), '原材料');
-    tester.view.physicalSize = const Size(1600, 1000);
-    await tester.pump(const Duration(milliseconds: 301));
-    await tester.pumpAndSettle();
-    expect(stock.lastCategoryId, isNull);
-    expect(stock.lastKeyword, '原材料');
-    expect(_categoryText('原材料'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets(
-    'landscape screen keeps category navigation and the table usable',
-    (tester) async {
-      final stock = _RecordingStockRepository();
-      await pumpPage(tester, stock: stock, size: const Size(812, 375));
-      expect(tester.takeException(), isNull);
-      final tree = find.byKey(const Key('instant-inventory-category-tree'));
-      final table = find.byType(MasterDataTableView<InstantInventoryRow>);
-      expect(tree, findsNothing);
-      expect(table, findsOneWidget);
-      expect(tester.getSize(table).height, greaterThan(0));
-      await tester.tap(
-        find.byKey(const Key('instant-inventory-open-categories')),
-      );
-      await tester.pumpAndSettle();
-      expect(tree, findsOneWidget);
-      // Landscape leaves only a short scroll viewport below the drawer header.
-      // Reach the row through the real tree scroll before selecting it.
-      final rawCategory = _categoryText('原材料');
-      await tester.ensureVisible(rawCategory);
-      await tester.pumpAndSettle();
-      expect(rawCategory.hitTestable(), findsOneWidget);
-      await tester.tap(rawCategory);
+      await tester.tap(find.text('确定').last);
       await tester.pumpAndSettle();
       expect(stock.lastCategoryId, 'raw');
+      tester.view.physicalSize = const Size(812, 375);
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      expect(
+        tester
+            .getSize(find.byType(MasterDataTableView<InstantInventoryRow>))
+            .height,
+        greaterThan(0),
+      );
     },
   );
 
@@ -565,10 +292,7 @@ void main() {
     await pumpPage(tester, stock: stock);
 
     expect(find.text('仓库'), findsOneWidget);
-    expect(
-      find.byKey(const Key('instant-inventory-category-all')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('instant-inventory-category')), findsOneWidget);
     expect(find.widgetWithText(FilterChip, '含不良品仓'), findsOneWidget);
     expect(find.textContaining(RegExp(r'^共 \d+ 项$')), findsOneWidget);
   });
@@ -597,13 +321,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(stock.lastUnitId, 'unit-1');
 
-    // 左侧换分类只改变分类范围，不丢掉既有仓库和表头筛选。
+    // 分类面板确认后改变范围，保留既有仓库和表头筛选。
     await tapInventoryHeader(tester, const Key('instant-inventory-warehouse'));
     await tester.tap(find.byKey(const Key('warehouse-picker-entry-w1')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
     await tester.pumpAndSettle();
+    await tapInventoryHeader(tester, const Key('instant-inventory-category'));
     await tester.tap(_categoryText('成品'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确定').last);
     await tester.pumpAndSettle();
     expect(stock.lastCategoryId, 'finished');
     expect(stock.lastWarehouseId, 'w1');
@@ -689,9 +416,6 @@ Finder _clearSearch() => find.descendant(
   matching: find.byIcon(Icons.close_rounded),
 );
 
-String _searchText(WidgetTester tester) =>
-    tester.widget<EditableText>(_searchEditable()).controller.text;
-
 class _InventoryApi extends ApiClient {
   _InventoryApi() : super(Dio());
 
@@ -715,17 +439,10 @@ class _InventoryApi extends ApiClient {
 }
 
 class _RecordingStockRepository extends StockQueryRepository {
-  _RecordingStockRepository({
-    this.delayedSearches = const {},
-    this.searchFailuresRemaining = 0,
-    this.rows = const <InstantInventoryRow>[],
-  }) : super(_InventoryApi());
+  _RecordingStockRepository({this.rows = const <InstantInventoryRow>[]})
+    : super(_InventoryApi());
 
   final List<InstantInventoryRow> rows;
-  final Map<String, Completer<Set<String>>> delayedSearches;
-  int searchFailuresRemaining;
-  final searchQueries = <String>[];
-  final searchRootScopes = <Set<String>>[];
 
   int calls = 0;
   String? lastCategoryId;
@@ -737,34 +454,6 @@ class _RecordingStockRepository extends StockQueryRepository {
   String? lastUnitId;
   bool? lastIncludeDefective;
   bool? lastIncludeLineSide;
-
-  @override
-  Future<Set<String>> instantInventorySearchCategoryIds(
-    String keyword, {
-    required Set<String> categoryRootIds,
-    String? categoryId,
-    bool includeRelated = false,
-    String? warehouseId,
-    bool includeDefective = false,
-    bool includeLineSide = false,
-    String? owningWarehouse,
-    bool owningWarehouseNull = false,
-    String? colorId,
-    String? series,
-    String? unitId,
-    String? attention,
-  }) async {
-    searchQueries.add(keyword);
-    searchRootScopes.add(Set<String>.from(categoryRootIds));
-    if (searchFailuresRemaining > 0) {
-      searchFailuresRemaining--;
-      throw ApiException('SEARCH_UNAVAILABLE', '定位服务暂不可用');
-    }
-    final pending = delayedSearches[keyword];
-    if (categoryId != null) return {categoryId};
-    if (pending != null) return pending.future;
-    return keyword == 'HV-001' ? {'socket'} : <String>{};
-  }
 
   @override
   Future<PagedResult<InstantInventoryRow>> instantInventory({
@@ -809,26 +498,18 @@ class _RecordingStockRepository extends StockQueryRepository {
 }
 
 class _ProductCategoryRepo implements ProductCategoryRepository {
-  _ProductCategoryRepo({this.delayedRefresh});
-
   @override
   Future<CategoryPrefixAvailability> prefixAvailability(
     String prefix, {
     String? categoryId,
   }) => throw UnsupportedError('not used');
 
-  final Completer<List<ProductCategoryNode>>? delayedRefresh;
-  int treeCalls = 0;
-
   @override
   Future<List<ProductCategoryNode>> tree() => treeWithGoodsCounts();
 
-  /// A three-level branch verifies locating a leaf without opening each parent.
-  /// Empty legacy roots remain hidden, as before the split-view change.
+  /// The picker retains the existing category hierarchy and hides empty roots.
   @override
   Future<List<ProductCategoryNode>> treeWithGoodsCounts() async {
-    treeCalls++;
-    if (treeCalls > 1 && delayedRefresh != null) return delayedRefresh!.future;
     return <ProductCategoryNode>[
       ProductCategoryNode(
         id: 'goods-root',

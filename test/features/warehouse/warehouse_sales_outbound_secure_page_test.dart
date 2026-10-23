@@ -27,6 +27,7 @@ import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import 'outbound_weight_fakes.dart';
+import '../../helpers/warehouse_request_scope_fixture.dart';
 
 late SharedPreferences _preferences;
 
@@ -266,6 +267,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...warehouseRequestScopeFixture(includeBadges: false),
           localServerReachableProvider.overrideWith(
             (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
           ),
@@ -300,6 +302,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...warehouseRequestScopeFixture(includeBadges: false),
           localServerReachableProvider.overrideWith(
             (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
           ),
@@ -383,6 +386,11 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...warehouseRequestScopeFixture(),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.warehouseSalesOutboundView,
+              Perm.warehouseSalesOutboundExecute,
+            }),
             localServerReachableProvider.overrideWith(
               (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
             ),
@@ -454,6 +462,11 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...warehouseRequestScopeFixture(),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.warehouseSalesOutboundView,
+              Perm.warehouseSalesOutboundExecute,
+            }),
             localServerReachableProvider.overrideWith(
               (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
             ),
@@ -538,6 +551,10 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...warehouseRequestScopeFixture(),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.warehouseSalesOutboundView,
+            }),
             localServerReachableProvider.overrideWith(
               (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
             ),
@@ -693,6 +710,7 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     Map<String, String>? stockPlaces,
     Map<String, String?>? lineWarehouses,
     Map<String, double>? lineWeights,
+    List<String>? itemIds,
   }) async {
     selectedLineWarehouses = lineWarehouses;
     selectedPlaces = stockPlaces;

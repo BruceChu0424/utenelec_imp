@@ -9,6 +9,7 @@
 #include <memory>
 
 #include "win32_window.h"
+#include "client_update_channel.h"
 
 // A window that does nothing but host a Flutter view.
 class FlutterWindow : public Win32Window {
@@ -35,6 +36,7 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       window_title_channel_;
   std::wstring last_window_title_;
+  std::unique_ptr<ClientUpdateChannel> client_update_channel_;
   void ResetWindowTitleChannel();
 };
 

@@ -22,6 +22,7 @@ class WorkshopMaterialFirstUseCard extends ConsumerStatefulWidget {
     this.fixedBasis,
     this.expectedVersion,
     this.approvalContext = false,
+    this.initialSetup,
   });
 
   final String goodsId;
@@ -32,6 +33,7 @@ class WorkshopMaterialFirstUseCard extends ConsumerStatefulWidget {
   final String? fixedBasis;
   final int? expectedVersion;
   final bool approvalContext;
+  final Map<String, dynamic>? initialSetup;
 
   @override
   ConsumerState<WorkshopMaterialFirstUseCard> createState() =>
@@ -45,29 +47,92 @@ class _WorkshopMaterialFirstUseCardState
   bool _loading = true;
   bool _confirmed = false;
   String? _error;
+  String? _restoreError;
+  int? _restoredVersion;
+  late (bool, Object?, Object?, Object?, Object?, Object?) _initialIdentity;
   int _sequence = 0;
 
   @override
   void initState() {
     super.initState();
-    _basis = widget.fixedBasis ?? 'OWN';
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPreview());
+    _restoreInitialSetup();
+    _schedulePreview();
   }
 
-  bool get _canConfirm => canConfirmWorkshopMaterialFirstUse(
-    preview: _preview,
-    goodsId: widget.goodsId,
-    basis: _basis,
-    expectedVersion: widget.expectedVersion,
-    enabled: widget.enabled,
-    canConfigure: widget.canConfigure,
-    loading: _loading,
+  (bool, Object?, Object?, Object?, Object?, Object?) _setupIdentity() => (
+    widget.initialSetup != null,
+    widget.initialSetup?['goodsId'],
+    widget.initialSetup?['periodicCostBasis'],
+    widget.initialSetup?['expectedVersion'],
+    widget.initialSetup?['target'],
+    widget.initialSetup?['targetIssueMethod'],
   );
+
+  void _restoreInitialSetup() {
+    _initialIdentity = _setupIdentity();
+    _basis = widget.fixedBasis ?? 'OWN';
+    _restoreError = null;
+    _restoredVersion = null;
+    final saved = widget.initialSetup;
+    if (saved == null) return;
+    final basis = saved['periodicCostBasis'];
+    final version = saved['expectedVersion'];
+    if (saved['goodsId'] != widget.goodsId ||
+        !const ['OWN', 'SHARED', 'EXPENSE'].contains(basis) ||
+        version is! int ||
+        version < 0 ||
+        (saved.containsKey('target') && saved['target'] != 'PERIODIC') ||
+        (saved.containsKey('targetIssueMethod') &&
+            saved['targetIssueMethod'] != 'PERIODIC') ||
+        (widget.fixedBasis != null && widget.fixedBasis != basis)) {
+      _restoreError = '原用途草稿与当前材料不一致，请重新选择用途并核对影响';
+      return;
+    }
+    _basis = basis as String;
+    _restoredVersion = version;
+  }
+
+  void _schedulePreview() {
+    final sequence = ++_sequence;
+    _preview = null;
+    _confirmed = false;
+    _loading = true;
+    _error = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && sequence == _sequence) _loadPreview();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant WorkshopMaterialFirstUseCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.goodsId != widget.goodsId ||
+        oldWidget.fixedBasis != widget.fixedBasis ||
+        oldWidget.expectedVersion != widget.expectedVersion ||
+        oldWidget.approvalContext != widget.approvalContext ||
+        _initialIdentity != _setupIdentity()) {
+      _restoreInitialSetup();
+      _schedulePreview();
+    }
+  }
+
+  bool get _canConfirm =>
+      _restoreError == null &&
+      canConfirmWorkshopMaterialFirstUse(
+        preview: _preview,
+        goodsId: widget.goodsId,
+        basis: _basis,
+        expectedVersion: widget.expectedVersion,
+        enabled: widget.enabled,
+        canConfigure: widget.canConfigure,
+        loading: _loading,
+      );
 
   Future<void> _loadPreview() async {
     if (!mounted) return;
     final sequence = ++_sequence;
     final basis = _basis;
+    final goodsId = widget.goodsId;
     setState(() {
       _loading = true;
       _preview = null;
@@ -78,11 +143,10 @@ class _WorkshopMaterialFirstUseCardState
     try {
       final preview = await ref
           .read(goodsIssueMethodRepositoryProvider)
-          .preview(widget.goodsId, target: 'PERIODIC', costBasis: basis);
+          .preview(goodsId, target: 'PERIODIC', costBasis: basis);
       if (!mounted || sequence != _sequence) return;
       setState(() {
-        if (preview.goodsId != widget.goodsId ||
-            !preview.matches('PERIODIC', basis)) {
+        if (preview.goodsId != goodsId || !preview.matches('PERIODIC', basis)) {
           _error = '用途预览与当前材料不一致，请重新核对';
         } else {
           _preview = preview;
@@ -96,6 +160,31 @@ class _WorkshopMaterialFirstUseCardState
     } finally {
       if (mounted && sequence == _sequence) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _refreshPreview() async {
+    _restoreError = null;
+    await _loadPreview();
+  }
+
+  Widget? _restorationNotice(GoodsIssueMethodPreview? preview) {
+    if (_restoreError != null) {
+      return UtenInlineNotice(
+        key: ValueKey('wm-first-use-restore-invalid-${widget.goodsId}'),
+        level: UtenInlineNoticeLevel.error,
+        message: _restoreError!,
+      );
+    }
+    if (_restoredVersion != null &&
+        preview != null &&
+        preview.version != _restoredVersion) {
+      return UtenInlineNotice(
+        key: ValueKey('wm-first-use-restored-version-${widget.goodsId}'),
+        level: UtenInlineNoticeLevel.warning,
+        message: '货品版本已变化，已重新读取最新影响，请重新核对后再勾选确认。',
+      );
+    }
+    return null;
   }
 
   void _confirm(bool? value) {
@@ -152,6 +241,8 @@ class _WorkshopMaterialFirstUseCardState
             onChanged: (value) {
               if (value == null || value == _basis) return;
               _basis = value;
+              _restoreError = null;
+              _restoredVersion = null;
               _loadPreview();
             },
           ),
@@ -166,6 +257,7 @@ class _WorkshopMaterialFirstUseCardState
               level: UtenInlineNoticeLevel.warning,
               message: '首次用途确认需要货品编辑和 BOM 编辑权限，请有权限的同事在本页办理。申请会继续保留。',
             ),
+          ?_restorationNotice(preview),
           if (_loading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: UtenSpacing.s8),
@@ -182,7 +274,7 @@ class _WorkshopMaterialFirstUseCardState
             alignment: Alignment.centerLeft,
             child: TextButton(
               key: ValueKey('wm-first-use-refresh-${widget.goodsId}'),
-              onPressed: widget.enabled && !_loading ? _loadPreview : null,
+              onPressed: widget.enabled && !_loading ? _refreshPreview : null,
               child: const Text('重新核对影响'),
             ),
           ),
@@ -220,7 +312,7 @@ class _WorkshopMaterialFirstUseCardState
               IconButton(
                 key: ValueKey('wm-first-use-refresh-${widget.goodsId}'),
                 tooltip: '重新核对用途影响',
-                onPressed: widget.enabled && !_loading ? _loadPreview : null,
+                onPressed: widget.enabled && !_loading ? _refreshPreview : null,
                 icon: const Icon(Icons.refresh, size: 20),
               ),
             ],
@@ -249,6 +341,7 @@ class _WorkshopMaterialFirstUseCardState
               level: UtenInlineNoticeLevel.warning,
               message: '首次用途确认需货品及 BOM 编辑权限。',
             ),
+          ?_restorationNotice(preview),
           if (_loading)
             const LinearProgressIndicator()
           else if (_error != null)

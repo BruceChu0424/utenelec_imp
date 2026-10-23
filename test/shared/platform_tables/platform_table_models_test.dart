@@ -218,6 +218,97 @@ void main() {
     },
   );
   test(
+    'saved layouts absorb later-added columns at their declared position',
+    () {
+      // 老账号在「模具名称」列加入前保存过列序：升级后新列应贴着列定义里
+      // 它的前邻「模具编号」落位，而不是被追到表尾。
+      final controller = PlatformTableController<Object>()
+        ..binding = PlatformTableBinding<Object>(
+          tableKey: 'master.goods',
+          scope: 'master_goods',
+          recordIdOf: (_) => null,
+        )
+        ..layout = const PlatformTableLayout(
+          order: ['code', 'mouldCode', 'unit'],
+        );
+      addTearDown(controller.dispose);
+      expect(
+        controller
+            .localLayout(
+              ['code', 'mouldCode', 'mouldName', 'unit'],
+              defaultHidden: {},
+              insertNewColumnsAtDeclaredPosition: true,
+            )
+            .order,
+        ['code', 'mouldCode', 'mouldName', 'unit'],
+      );
+    },
+  );
+  test(
+    'browse layouts place a missing declared prefix before saved columns',
+    () {
+      // 连续新增的声明前缀没有保存过的位置，须保持声明顺序接在保存列之前。
+      final controller = PlatformTableController<Object>()
+        ..binding = PlatformTableBinding<Object>(
+          tableKey: 'master.goods',
+          scope: 'master_goods',
+          recordIdOf: (_) => null,
+        )
+        ..layout = const PlatformTableLayout(order: ['unit']);
+      addTearDown(controller.dispose);
+      expect(
+        controller
+            .localLayout(
+              ['code', 'mouldCode', 'mouldName', 'unit'],
+              defaultHidden: {},
+              insertNewColumnsAtDeclaredPosition: true,
+            )
+            .order,
+        ['code', 'mouldCode', 'mouldName', 'unit'],
+      );
+    },
+  );
+  for (final optedIn in [false, true]) {
+    test(
+      'missing first browse column respects opt-in and saved custom positions $optedIn',
+      () {
+        final controller = PlatformTableController<Object>()
+          ..layout = const PlatformTableLayout(
+            order: ['goods', 'taskNo'],
+            hidden: {'goods'},
+            widths: {'taskNo': 287},
+          );
+        addTearDown(controller.dispose);
+        final layout = controller.localLayout(
+          ['status', 'taskNo', 'goods'],
+          defaultHidden: {},
+          insertNewColumnsAtDeclaredPosition: optedIn,
+        );
+        expect(
+          layout.order,
+          optedIn
+              ? ['status', 'goods', 'taskNo']
+              : ['goods', 'taskNo', 'status'],
+        );
+        expect(layout.hidden, {'goods'});
+        expect(layout.widths, {'taskNo': 287});
+        controller.layout = const PlatformTableLayout(
+          order: ['goods', 'taskNo', 'status'],
+        );
+        expect(
+          controller
+              .localLayout(
+                ['status', 'taskNo', 'goods'],
+                defaultHidden: {},
+                insertNewColumnsAtDeclaredPosition: optedIn,
+              )
+              .order,
+          ['goods', 'taskNo', 'status'],
+        );
+      },
+    );
+  }
+  test(
     'projection resolves the page route before same-key background pages',
     () {
       final controller = TableColumnProjectionController();

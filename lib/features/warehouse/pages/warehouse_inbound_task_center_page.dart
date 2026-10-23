@@ -39,6 +39,7 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
       RouteName.warehouseQualityResults,
     );
     final canStock = can(Perm.stockDocView);
+    final canWorkshop = can(Perm.workshopMaterialView);
     int? fact(String key) => ref.watch(warehouseTaskFactOrNullProvider(key));
     int? sum(int? a, int? b) => a == null || b == null ? null : a + b;
     final sources = <String, String>{
@@ -52,7 +53,7 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
         'SUBCONTRACT': '委外入库',
       if (canStock) 'FINISHED': '产成品入库',
       if (canStock) 'OTHER': '其它入库',
-      if (canStock) 'RETURN': '生产退料',
+      if (canStock || canWorkshop) 'RETURN': '生产退料',
     };
     if (sources.isEmpty) return const Center(child: Text('暂无已授权的入库单据'));
     final segments = <WarehouseTaskSegmentSpec>[
@@ -70,7 +71,10 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
               fact(BadgeFact.warehouseArrivalExceptionSubcontract),
             ),
             'FINISHED' => fact(BadgeFact.finishedInbound),
-            'RETURN' => fact(BadgeFact.productionReturn),
+            'RETURN' => sum(
+              canStock ? fact(BadgeFact.productionReturn) : 0,
+              canWorkshop ? fact(BadgeFact.workshopMaterialPendingReturn) : 0,
+            ),
             _ => null,
           },
         ),

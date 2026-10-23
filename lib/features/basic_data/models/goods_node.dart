@@ -25,6 +25,7 @@ class GoodsListItem {
     this.name,
     this.nameEn,
     this.nameEnSource,
+    this.hasBom = false,
     this.spec,
     this.model,
     this.price,
@@ -115,6 +116,7 @@ class GoodsListItem {
   bool get isRelatedSearchMatch => searchMatchKind == 'RELATED';
 
   final bool autoCreated; // 迁移兜底占位货品标记（auto_created 列）
+  final bool hasBom;
 
   final double? stockQty; // 即时库存合计（聚合 stock_balances，仅参与核算仓库；列表展示用）
 
@@ -181,6 +183,7 @@ class GoodsListItem {
     searchRank: (json['searchRank'] as num?)?.toInt(),
     searchMatchKind: json['searchMatchKind'] as String?,
     autoCreated: json['autoCreated'] as bool? ?? false,
+    hasBom: json['hasBom'] == true,
     stockQty: (json['stockQty'] as num?)?.toDouble(),
     stockPlace: json['stockPlace'] as String?,
     // 后端 NUMERIC(18,4)，Jackson 可能发 int 或 double；统一走 num? 再 toDouble。

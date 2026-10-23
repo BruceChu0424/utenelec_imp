@@ -43,7 +43,9 @@ import '../widgets/account_balance_reconciliation_dialog.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/master_status_confirmation.dart';
 import '../widgets/master_operation_history_panel.dart';
+import '../widgets/master_read_only_fields.dart';
 
 class AccountDetailPage extends ConsumerStatefulWidget {
   const AccountDetailPage({
@@ -308,11 +310,13 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
       required: true,
       group: '基础',
     ),
-    const MasterFieldDef(
+    MasterFieldDef(
       key: 'code',
       label: '账户编号',
       group: '基础',
       hint: '留空自动生成；已有编号可修改，旧编号不会被复用',
+      identifierDomain: 'ACCOUNT',
+      identifierId: _detail?.id,
     ),
     const MasterFieldDef(key: 'bankAccountNo', label: '银行账号', group: '基础'),
     MasterFieldDef(
@@ -533,6 +537,14 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
     final detail = _detail;
     if (detail == null || !_canStatus) return;
     final next = detail.status == '使用' ? '禁用' : '使用';
+    if (!await confirmMasterStatusChange(
+          context,
+          disabling: next == '禁用',
+          label: detail.name ?? detail.code ?? '该账户',
+        ) ||
+        !mounted) {
+      return;
+    }
     final ok = await context.guardRun(
       () => ref
           .read(masterStatusRepositoryProvider)
@@ -607,10 +619,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
   }
 
   List<MasterDetailStat> _cardStats(AccountDetail detail) {
-    final stats = <MasterDetailStat>[
-      MasterDetailStat('银行账号', detail.bankAccountNo),
-      MasterDetailStat('状态', detail.status),
-    ];
+    final stats = <MasterDetailStat>[];
     if (_canViewBalance) {
       stats.addAll([
         MasterDetailStat('期初余额', _money(detail.initBalanceText)),
@@ -633,6 +642,33 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
     }
     return stats;
   }
+
+  String _styleLabel(AccountDetail detail) {
+    if (detail.styleId == null) return '未设置';
+    final label = [detail.styleCode, detail.styleName]
+        .whereType<String>()
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .join(' · ');
+    if (label.isEmpty) return '关联科目不可用';
+    return detail.styleDeleted == true ? '$label（已删除）' : label;
+  }
+
+  String? _basicValue(AccountDetail detail, MasterFieldDef field) =>
+      switch (field.key) {
+        'name' => detail.name,
+        'code' => detail.code,
+        'bankAccountNo' => detail.bankAccountNo,
+        'accountType' => AccountType.labelOf(detail.accountType),
+        'currencyId' => _currencyLabel(
+          detail.currencyId,
+          name: detail.currencyName,
+          code: detail.currencyCode,
+        ),
+        'styleId' => _styleLabel(detail),
+        'status' => detail.status,
+        _ => null,
+      };
 
   List<MasterColumnDef<AccountStatementRow>> get _flowColumns => [
     MasterColumnDef(
@@ -763,6 +799,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
         actions: [
           MasterOperationHistoryActions(
             entityType: 'accounts',
+            recordId: widget.accountId,
             enabled: !_loading && !_detailBusy && !_editing,
             onChanged: _reloadAfterHistory,
           ),
@@ -807,44 +844,65 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
             UtenSpacing.s4,
             UtenSpacing.s12,
           ),
-          child: MasterDetailCard(
-            title: detail.name?.isNotEmpty == true
-                ? detail.name!
-                : (detail.code ?? '账户详情'),
-            subtitle: subtitle,
-            stats: _cardStats(detail),
-            icon: Icons.account_balance_outlined,
-            canEdit: _canEdit,
-            canAddChild: false,
-            canDelete: _canDelete,
-            onAddChild: () {},
-            onEdit: _showEdit,
-            onDelete: _delete,
-            deleteLabel: '删除账户',
-            extraActions: [
-              if (_canStatus)
-                MasterDetailCardAction(
-                  icon: detail.status == '使用'
-                      ? Icons.pause_circle_outline_rounded
-                      : Icons.play_circle_outline_rounded,
-                  label: detail.status == '使用' ? '停用账户' : '启用账户',
-                  type: detail.status == '使用'
-                      ? UtenButtonType.danger
-                      : UtenButtonType.tonal,
-                  onPressed: _toggleStatus,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              MasterDetailCard(
+                title: detail.name?.isNotEmpty == true
+                    ? detail.name!
+                    : (detail.code ?? '账户详情'),
+                subtitle: subtitle,
+                stats: const [],
+                icon: Icons.account_balance_outlined,
+                canEdit: _canEdit,
+                canAddChild: false,
+                canDelete: _canDelete,
+                onAddChild: () {},
+                onEdit: _showEdit,
+                onDelete: _delete,
+                deleteLabel: '删除账户',
+                extraActions: [
+                  if (_canStatus)
+                    MasterDetailCardAction(
+                      icon: detail.status == '使用'
+                          ? Icons.pause_circle_outline_rounded
+                          : Icons.play_circle_outline_rounded,
+                      label: detail.status == '使用' ? '停用账户' : '启用账户',
+                      type: detail.status == '使用'
+                          ? UtenButtonType.danger
+                          : UtenButtonType.tonal,
+                      onPressed: _toggleStatus,
+                    ),
+                  if (_canAdjustBalance)
+                    MasterDetailCardAction(
+                      icon: Icons.fact_check_outlined,
+                      label: '余额校准',
+                      onPressed: _adjustBalance,
+                    ),
+                  if (_canManageWarning)
+                    MasterDetailCardAction(
+                      icon: Icons.warning_amber_rounded,
+                      label: '设置警戒线',
+                      onPressed: _showWarningEditor,
+                    ),
+                ],
+              ),
+              const SizedBox(height: UtenSpacing.s16),
+              MasterReadOnlyFields(
+                key: const Key('account-basic-fields'),
+                fields: _editFields,
+                valueOf: (field) => _basicValue(detail, field),
+              ),
+              if (_canViewBalance) ...[
+                const SizedBox(height: UtenSpacing.s16),
+                MasterDetailCard(
+                  title: '余额与流水',
+                  subtitle: '',
+                  stats: _cardStats(detail),
+                  canEdit: false,
+                  icon: Icons.account_balance_wallet_outlined,
                 ),
-              if (_canAdjustBalance)
-                MasterDetailCardAction(
-                  icon: Icons.fact_check_outlined,
-                  label: '余额校准',
-                  onPressed: _adjustBalance,
-                ),
-              if (_canManageWarning)
-                MasterDetailCardAction(
-                  icon: Icons.warning_amber_rounded,
-                  label: '设置警戒线',
-                  onPressed: _showWarningEditor,
-                ),
+              ],
             ],
           ),
         ),

@@ -7,10 +7,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/app_router.dart';
 import 'package:uten_imp/core/router/route_access_policy.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
+import 'package:uten_imp/features/auth/repositories/auth_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/visitor/providers/visitor_session_provider.dart';
 import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
@@ -19,6 +21,7 @@ import 'package:uten_imp/features/warehouse/pages/stock_doc_edit_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/stock_doc_repository.dart';
 import 'package:uten_imp/shared/auth/document_permission_set.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -41,6 +44,24 @@ const _allActions = {
 class _Session extends SessionNotifier {
   @override
   SessionState build() => const SessionState();
+}
+
+class _PageSession extends SessionNotifier {
+  _PageSession(this.permissions);
+
+  final Set<String> permissions;
+
+  @override
+  SessionState build() => SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: 'maker',
+      employeeId: 'maker',
+      code: 'MAKER',
+      name: '仓库测试员',
+      permissions: permissions.toList(),
+    ),
+  );
 }
 
 class _VisitorSession extends VisitorSessionNotifier {
@@ -73,8 +94,10 @@ class _Names extends MasterNameService {
 }
 
 class _Api extends ApiClient {
-  _Api(this.document) : super(Dio());
+  _Api(this.document, this.permissions)
+    : super(Dio(BaseOptions(baseUrl: 'https://legacy-tests.invalid')));
   final Map<String, dynamic> document;
+  final Set<String> permissions;
   final reads = <String>[];
   final writes = <String>[];
   @override
@@ -82,6 +105,23 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    // Session metadata must describe the same actor and permissions as the page.
+    // Keep document-read assertions separate from this authorization snapshot.
+    if (path == ApiEndpoints.authMe) {
+      return {
+        'id': 'maker',
+        'employeeId': 'maker',
+        'loginAccount': 'legacy-tester',
+        'code': 'MAKER',
+        'name': '仓库测试员',
+        'permissions': permissions.toList(),
+        'session': <String, dynamic>{
+          'delegableSurfaceKeys': <String>[],
+          'documentScopes': <String, dynamic>{},
+          'preferences': <String, dynamic>{},
+        },
+      };
+    }
     reads.add(path);
     return document;
   }
@@ -170,7 +210,7 @@ Future<_Api> _pump(
   addTearDown(tester.view.resetDevicePixelRatio);
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
-  final api = _Api(_waste(status: status, canDelete: canDelete));
+  final api = _Api(_waste(status: status, canDelete: canDelete), permissions);
   Widget page() => edit
       ? StockDocEditPage(docType: type, id: fresh ? null : 'legacy-waste')
       : StockDocDetailPage(docType: type, id: 'legacy-waste');
@@ -209,6 +249,7 @@ Future<_Api> _pump(
     ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(api),
+        sessionProvider.overrideWith(() => _PageSession(permissions)),
         apiBaseUrlProvider.overrideWithValue('https://legacy-tests.invalid'),
         sharedPreferencesProvider.overrideWithValue(prefs),
         currentPermissionsProvider.overrideWithValue(permissions),
@@ -231,6 +272,8 @@ Future<_Api> _pump(
 }
 
 void main() {
+  setUp(RecentMeSnapshot.clear);
+
   test(
     'legacy type appends without changing eight live document identities',
     () {

@@ -787,7 +787,6 @@ const _pagesWithoutDocs = <String>{
   '/subcontract/wastes', // 损耗与责任列表
   '/subcontract/wastes/new', // 新建损耗与责任
   '/warehouse/CHECK', // 盘点单列表
-  '/warehouse/FINISHED_IN', // 产成品进仓列表
   '/warehouse/FINISHED_OUT', // 产成品出库列表
   '/warehouse/OTHER_IN', // 其它入库列表
   '/warehouse/OTHER_OUT', // 其它出库列表

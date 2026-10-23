@@ -86,6 +86,162 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.subcontractOrderReverse': 1,
     },
   ),
+  // ADR-189/190: native read and write owners fence retained callbacks,
+  // while each master controller still enforces its original action grant.
+  // BOM inventory reads require stock:view; inline inventory location writes
+  // require goods:view + goods:edit, matching the goods inline service.
+  // Workshop first-use setup retains goods/BOM edit checks from its native
+  // setup service; direction-source visibility mirrors the task query guards.
+  // Exact source identities are reviewed below; the global cap stays 677.
+  'lib/features/basic_data/pages/color_page.dart': (
+    legacyCount: 6,
+    tokens: {
+      'Perm.colorCreate': 2,
+      'Perm.colorDelete': 2,
+      'Perm.colorEdit': 3,
+      'Perm.colorExport': 2,
+      'Perm.colorStatus': 2,
+      'Perm.colorView': 1,
+    },
+  ),
+  'lib/features/basic_data/pages/currency_page.dart': (
+    legacyCount: 6,
+    tokens: {
+      'Perm.currencyCreate': 2,
+      'Perm.currencyDelete': 2,
+      'Perm.currencyEdit': 3,
+      'Perm.currencyExport': 2,
+      'Perm.currencyStatus': 2,
+      'Perm.currencyView': 1,
+    },
+  ),
+  'lib/features/basic_data/pages/goods_detail_page.dart': (
+    legacyCount: 7,
+    tokens: {
+      'Perm.goodsBomCreate': 1,
+      'Perm.goodsBomDelete': 1,
+      'Perm.goodsBomEdit': 1,
+      'Perm.goodsCreate': 1,
+      'Perm.goodsDelete': 4,
+      'Perm.goodsEdit': 1,
+      'Perm.goodsStatus': 4,
+      'Perm.goodsView': 4,
+    },
+  ),
+  'lib/features/basic_data/pages/party_detail_page.dart': (
+    legacyCount: 9,
+    tokens: {
+      'Perm.clientAssign': 1,
+      'Perm.clientDelete': 2,
+      'Perm.clientEdit': 2,
+      'Perm.clientStatus': 3,
+      'Perm.clientView': 5,
+      'Perm.subcontractOrderView': 4,
+      'Perm.supplierDelete': 2,
+      'Perm.supplierEdit': 1,
+      'Perm.supplierStatus': 2,
+      'Perm.supplierView': 5,
+    },
+  ),
+  'lib/features/basic_data/pages/payment_style_page.dart': (
+    legacyCount: 5,
+    tokens: {
+      'Perm.paymentStyleCreate': 1,
+      'Perm.paymentStyleEdit': 1,
+      'Perm.paymentStyleMove': 1,
+      'Perm.paymentStyleReorder': 1,
+      'Perm.paymentStyleStatus': 1,
+      'Perm.paymentStyleView': 1,
+    },
+  ),
+  'lib/features/basic_data/pages/settlement_method_page.dart': (
+    legacyCount: 4,
+    tokens: {
+      'Perm.settlementMethodCreate': 1,
+      'Perm.settlementMethodEdit': 2,
+      'Perm.settlementMethodExport': 2,
+    },
+  ),
+  'lib/features/basic_data/pages/unit_page.dart': (
+    legacyCount: 6,
+    tokens: {
+      'Perm.unitCreate': 2,
+      'Perm.unitDelete': 2,
+      'Perm.unitEdit': 3,
+      'Perm.unitExport': 2,
+      'Perm.unitStatus': 2,
+      'Perm.unitView': 1,
+    },
+  ),
+  'lib/features/basic_data/widgets/client_master_edit.dart': (
+    legacyCount: 2,
+    tokens: {
+      'Perm.clientAssign': 1,
+      'Perm.clientEdit': 1,
+      'Perm.clientStatus': 1,
+      'Perm.clientView': 1,
+    },
+  ),
+  'lib/features/basic_data/widgets/goods_bom_preview.dart': (
+    legacyCount: 1,
+    tokens: {'Perm.goodsExport': 1, 'Perm.stockView': 1},
+  ),
+  'lib/features/basic_data/widgets/supplier_master_edit.dart': (
+    legacyCount: 1,
+    tokens: {
+      'Perm.supplierEdit': 1,
+      'Perm.supplierStatus': 1,
+      'Perm.supplierView': 1,
+    },
+  ),
+  'lib/features/stock/pages/instant_inventory_page.dart': (
+    legacyCount: 2,
+    tokens: {
+      'Perm.goodsEdit': 1,
+      'Perm.goodsView': 1,
+      'Perm.stockReportExport': 2,
+      'Perm.stockView': 1,
+    },
+  ),
+  'lib/features/warehouse/materialbin/pages/workshop_material_issue_batch_page.dart':
+      (
+        legacyCount: 0,
+        tokens: {
+          'Perm.goodsBomEdit': 1,
+          'Perm.goodsEdit': 1,
+          'Perm.workshopMaterialIssue': 1,
+        },
+      ),
+  'lib/features/warehouse/materialbin/pages/workshop_material_issue_page.dart':
+      (
+        legacyCount: 2,
+        tokens: {
+          'Perm.goodsBomEdit': 1,
+          'Perm.goodsEdit': 1,
+          'Perm.workshopMaterialIssue': 1,
+        },
+      ),
+  'lib/features/warehouse/pages/warehouse_inbound_task_center_page.dart': (
+    legacyCount: 4,
+    tokens: {
+      'Perm.stockDocView': 1,
+      'Perm.warehouseInboundView': 1,
+      'Perm.warehousePurchaseReceiptHistoryView': 1,
+      'Perm.warehouseSubcontractReceiptHistoryView': 1,
+      'Perm.workshopMaterialView': 1,
+    },
+  ),
+  'lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart': (
+    legacyCount: 4,
+    tokens: {
+      'Perm.stockDocView': 1,
+      'Perm.subcontractOutboundView': 1,
+      'Perm.warehouseSalesOutboundView': 1,
+      'Perm.warehouseSubcontractOutboundHistoryView': 1,
+      'Perm.workshopMaterialIssue': 1,
+      'Perm.workshopMaterialView': 1,
+    },
+  ),
   // ADR-186: synchronous read invalidation matches GoodsMarketReferenceService's
   // purchase/finance alternatives. Editing is exclusively server canManage plus
   // native ownership; these six references never grant a mutation capability.
@@ -229,6 +385,9 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.goodsPriceEdit': 2,
       'Perm.goodsDiscountView': 1,
       'Perm.goodsPriceView': 1,
+      // Material cost values are filtered separately from sales price facts,
+      // matching GoodsSubcontractLossWriteAuthorizationTest and ADR-189.
+      'Perm.goodsCostView': 1,
       'Perm.goodsEdit': 1,
       'Perm.goodsExport': 1,
       'Perm.goodsImport': 1,
@@ -445,6 +604,9 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.goodsBomEdit': 1,
       'Perm.goodsExport': 1,
       'Perm.goodsView': 1,
+      // BOM stock quantities have the same explicit stock-view read boundary
+      // as the backing GoodsBomStockVisibilityTest projection.
+      'Perm.stockView': 1,
     },
   ),
   'lib/features/production/pages/where_used_report_page.dart': (
@@ -568,7 +730,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      140, // Previous 133 + eight guards - duplicate quote draft gate; baseline stays 677.
+      205, // Exact owner, cost and stock guards; the global cap stays 677.
     );
   });
 

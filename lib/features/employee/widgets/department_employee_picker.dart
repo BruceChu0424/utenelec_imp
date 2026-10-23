@@ -38,6 +38,8 @@ Future<UtenEmployeePickerItem?> showUtenDepartmentEmployeePicker(
   String title = '选择员工',
   Set<String> statuses = const {'active', 'probation', 'onLeave'},
   Set<String> excludeEmployeeIds = const {},
+  Widget Function(BuildContext, Widget)? dialogScopeBuilder,
+  bool Function()? isCurrent,
 }) async {
   final access = EmployeePickerAccess(
     EmployeePickerAccess.containerOf(context),
@@ -45,6 +47,7 @@ Future<UtenEmployeePickerItem?> showUtenDepartmentEmployeePicker(
   final ticket = access.capture();
   bool current() =>
       context.mounted &&
+      (isCurrent?.call() ?? true) &&
       ticket.isCurrent &&
       identical(access.container, EmployeePickerAccess.containerOf(context));
   try {
@@ -59,13 +62,16 @@ Future<UtenEmployeePickerItem?> showUtenDepartmentEmployeePicker(
     final result = await showUtenAdaptivePanel<UtenEmployeePickerItem>(
       context: context,
       drawerWidth: 720,
-      builder: (_) => _DeptEmployeePickerSheet(
-        openingTicket: ticket,
-        tree: tree,
-        title: title,
-        statuses: statuses,
-        excludeEmployeeIds: excludeEmployeeIds,
-      ),
+      builder: (ctx) {
+        final sheet = _DeptEmployeePickerSheet(
+          openingTicket: ticket,
+          tree: tree,
+          title: title,
+          statuses: statuses,
+          excludeEmployeeIds: excludeEmployeeIds,
+        );
+        return dialogScopeBuilder?.call(ctx, sheet) ?? sheet;
+      },
     );
     return current() ? result : null;
   } finally {

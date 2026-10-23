@@ -32,11 +32,14 @@ import 'package:uten_imp/shared/drafts/form_draft_storage_api.dart';
 import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/models/production_material_discovery.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import 'outbound_weight_fakes.dart';
+import '../../helpers/badge_summary_fixture.dart';
 import '../../support/audit_screenshot_support.dart';
 
 const _plastic = <String, dynamic>{
@@ -94,6 +97,7 @@ class _Names extends MasterNameService {
 class _StockRepository extends StockDocRepository {
   _StockRepository() : super(ApiClient(Dio()), StockDocType.draw);
   bool allIssued = false;
+  bool withSecondItem = false;
   Future<void>? gate;
   @override
   Future<StockDocDetail> detail(String id) async {
@@ -108,6 +112,18 @@ class _StockRepository extends StockDocRepository {
       departmentId: 'workshop',
       planNo: 'SJ-normal',
       items: [
+        if (withSecondItem)
+          StockDocItem(
+            id: 'unselected-$id',
+            goodsId: 'unselected',
+            unitId: 'kg',
+            qty: 10,
+            qtyText: '10',
+            requestedQty: 8,
+            requestedQtyText: '8',
+            issuedQty: 0,
+            issuedQtyText: '0',
+          ),
         StockDocItem(
           id: 'item-$id',
           goodsId: 'normal',
@@ -122,6 +138,16 @@ class _StockRepository extends StockDocRepository {
       ],
     );
   }
+}
+
+class _Snapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => null;
+}
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
 }
 
 final _scope = StateProvider<AuthenticatedScope?>((ref) => null);
@@ -195,6 +221,7 @@ class _Tasks extends ProductionDrawTaskRepository {
     required List<String> docIds,
     required List<Map<String, dynamic>> discoveries,
     List<Map<String, dynamic>> weights = const [],
+    List<String>? itemIds,
     String? reason,
   }) async {
     submissions.add(
@@ -206,6 +233,7 @@ class _Tasks extends ProductionDrawTaskRepository {
                 'discoveries': discoveries,
                 'weights': weights,
                 'reason': reason,
+                'itemIds': ?itemIds,
               }),
             )
             as Map,
@@ -232,6 +260,7 @@ class _Tasks extends ProductionDrawTaskRepository {
     required String idempotencyKey,
     required List<String> docIds,
     List<Map<String, dynamic>> weights = const [],
+    List<String>? itemIds,
     String? reason,
   }) async {
     ordinaryCalls++;
@@ -244,6 +273,7 @@ class _Tasks extends ProductionDrawTaskRepository {
                 'docIds': docIds,
                 'weights': weights,
                 'reason': reason,
+                'itemIds': ?itemIds,
               }),
             )
             as Map,
@@ -268,6 +298,8 @@ Future<({GoRouter router, ProviderContainer container})> _pump(
   _Tasks tasks, {
   List<String> docs = const ['normal'],
   List<String> requests = const ['request'],
+  List<String>? selectedItemIds,
+  String? discoverySelection,
   _DiscoveryRepository? discoveryRepository,
   _StockRepository? stockRepository,
   _Storage? storage,
@@ -307,6 +339,9 @@ Future<({GoRouter router, ProviderContainer container})> _pump(
                   'documentIds': docs.join(','),
                   'discoveryRequestIds': requests.join(','),
                   'draftId': ?draftId,
+                  if (selectedItemIds != null)
+                    'itemIds': selectedItemIds.join(','),
+                  'discoverySelection': ?discoverySelection,
                 },
               ).toString(),
             ),
@@ -330,6 +365,8 @@ Future<({GoRouter router, ProviderContainer container})> _pump(
                       .split(',')
                       .where((id) => id.isNotEmpty)
                       .toList(),
+                  selectedItemIds: selectedItemIds,
+                  discoverySelection: discoverySelection,
                   discoveryRequestIds:
                       (state.uri.queryParameters['discoveryRequestIds'] ?? '')
                           .split(',')
@@ -347,6 +384,10 @@ Future<({GoRouter router, ProviderContainer container})> _pump(
   final container = ProviderContainer(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(prefs),
+      apiClientProvider.overrideWithValue(tasks.api),
+      sessionSnapshotProvider.overrideWith(_Snapshot.new),
+      sessionProvider.overrideWith(_Session.new),
+      fixedBadgeSummaryOverride(),
       _scope.overrideWith((ref) => scope),
       authenticatedScopeProvider.overrideWith((ref) => ref.watch(_scope)),
       apiBaseUrlProvider.overrideWith((ref) => ref.watch(_server)),
@@ -442,6 +483,106 @@ Future<void> _submit(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'one suggestion previews only one material and cannot configure its unselected sibling',
+    (tester) async {
+      final tasks = _Tasks();
+      final discovery = _DiscoveryRepository()
+        ..values['request'] = _request(
+          'request',
+          items: [
+            _plastic,
+            {..._plastic, 'goodsId': 'second', 'goodsName': '未选材料'},
+          ],
+        );
+      await _pump(
+        tester,
+        tasks,
+        docs: [],
+        requests: ['request'],
+        discoveryRepository: discovery,
+        realRoute: true,
+        discoverySelection: jsonEncode({
+          'request': {
+            'expectedVersion': 7,
+            'keys': ['suggestion-1'],
+          },
+        }),
+      );
+      expect(_table(tester).discoveryRows, hasLength(1));
+      expect(_table(tester).discoveryRows.single.values['goodsId'], 'plastic');
+      final button = tester.widget<UtenButton>(
+        find.byKey(const Key('warehouse-draw-batch-confirm')),
+      );
+      expect(button.onPressed, isNull);
+      expect(tasks.submissions, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'a changed suggestion request version cannot reuse positional selection',
+    (tester) async {
+      final tasks = _Tasks();
+      await _pump(
+        tester,
+        tasks,
+        docs: [],
+        requests: ['request'],
+        realRoute: true,
+        discoverySelection: jsonEncode({
+          'request': {
+            'expectedVersion': 6,
+            'keys': ['suggestion-1'],
+          },
+        }),
+      );
+      expect(find.textContaining('所选材料建议或版本已变化'), findsWidgets);
+      expect(tasks.submissions, isEmpty);
+      expect(find.byType(ProductionDrawDetailTable), findsNothing);
+    },
+  );
+  testWidgets('one physical DRAW line stays one reviewed and submitted line', (
+    tester,
+  ) async {
+    final tasks = _Tasks();
+    final stock = _StockRepository()..withSecondItem = true;
+    await _pump(
+      tester,
+      tasks,
+      docs: ['normal'],
+      requests: [],
+      selectedItemIds: ['item-normal'],
+      stockRepository: stock,
+      realRoute: true,
+    );
+    expect(_table(tester).documents.single.items.map((item) => item.id), [
+      'item-normal',
+    ]);
+    await _submit(tester);
+    expect(tasks.ordinaryCalls, 1);
+    expect(tasks.ordinarySubmissions.single['itemIds'], ['item-normal']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'missing selected DRAW identity fails without expanding to whole document',
+    (tester) async {
+      final tasks = _Tasks();
+      await _pump(
+        tester,
+        tasks,
+        docs: ['normal'],
+        requests: [],
+        selectedItemIds: ['gone'],
+        realRoute: true,
+      );
+      expect(find.textContaining('所选明细已变化'), findsWidgets);
+      expect(find.byType(ProductionDrawDetailTable), findsNothing);
+      expect(tasks.ordinaryCalls, 0);
+      expect(tasks.submissions, isEmpty);
+    },
+  );
+
   for (final change in ['account', 'server']) {
     Future<void> aba(WidgetTester tester, ProviderContainer container) async {
       final owner = container.read(_scope);
@@ -658,9 +799,13 @@ void main() {
           env.router.go('/');
           await tester.pumpAndSettle();
           expect(find.text('不保存'), findsNothing);
-          expect(find.text('继续核对'), findsOneWidget);
-          await tester.tap(find.text('保存原提交后离开'));
-          await tester.pumpAndSettle();
+          if (revoked) {
+            expect(find.byType(AlertDialog), findsNothing);
+          } else {
+            expect(find.text('继续核对'), findsOneWidget);
+            await tester.tap(find.text('保存原提交后离开'));
+            await tester.pumpAndSettle();
+          }
           expect(find.text('打开批量'), findsOneWidget);
           expect(storage.draft['id'], id);
           await tester.pumpWidget(const SizedBox.shrink());
@@ -1111,12 +1256,21 @@ void main() {
   }
 
   testWidgets(
-    'submission boundary permission restoration permits issuer-only replay of the original approved batch',
+    'permission restoration cannot revive the old editor; issuer-only reopening replays the original approved batch',
     (tester) async {
+      final storage = _Storage();
       final tasks = _Tasks()..failure = NetworkTimeoutException();
-      final harness = await _pump(tester, tasks, requests: [], approve: false);
+      final harness = await _pump(
+        tester,
+        tasks,
+        requests: [],
+        approve: false,
+        storage: storage,
+        scope: const AuthenticatedScope(userId: 'one'),
+      );
       await _submit(tester);
       final original = jsonEncode(tasks.ordinarySubmissions.single);
+      final draftId = storage.draft['id'] as String;
       harness.container.read(_permissions.notifier).state = {Perm.stockDocView};
       await tester.pumpAndSettle();
       expect(
@@ -1128,6 +1282,22 @@ void main() {
         Perm.stockDocIssue,
       };
       await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('warehouse-draw-batch-confirm')),
+        findsNothing,
+      );
+      expect(tasks.ordinarySubmissions, hasLength(1));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await _pump(
+        tester,
+        tasks,
+        requests: [],
+        approve: false,
+        storage: storage,
+        scope: const AuthenticatedScope(userId: 'one', epoch: 2),
+        draftId: draftId,
+      );
       tasks.failure = null;
       await _submit(tester);
       expect(tasks.ordinarySubmissions, hasLength(2));

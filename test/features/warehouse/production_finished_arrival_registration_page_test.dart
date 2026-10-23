@@ -26,6 +26,7 @@ import 'package:uten_imp/shared/measurement/weight_unit.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/warehouse_request_scope_fixture.dart';
 import 'arrival_weight_test_support.dart';
 import 'package:uten_imp/shared/providers/uten_page_prefs_notifier.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -48,7 +49,9 @@ final _liveFinishedPermissions = StateProvider<Set<String>>(
     Perm.productionFinishedInBeforeInspection,
   },
 );
-final _liveFinishedScope = StateProvider<AuthenticatedScope?>((ref) => null);
+final _liveFinishedScope = StateProvider<AuthenticatedScope?>(
+  (ref) => const AuthenticatedScope(userId: 'warehouse-user'),
+);
 
 void main() {
   for (final withExtra in [false, true]) {
@@ -704,12 +707,20 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     // 账号记忆 (偏好键 production.finishedArrivalFill 不变) 记着上次选的备用成品仓。
     // 记忆缓存键按 账号/服务器 作用域哈希（v2）：先用空 mock 算出同款键
-    // （服务器解析走 apiBaseUrlProvider 真实链、本地模式；无登录会话 scope=null），
+    // （服务器解析走 apiBaseUrlProvider 真实链、本地模式；与页面使用同一登录身份），
     // 再带着种好的键重新取 prefs 给页面。
     SharedPreferences.setMockInitialValues({});
     final probePrefs = await SharedPreferences.getInstance();
     final probe = ProviderContainer(
-      overrides: [sharedPreferencesProvider.overrideWithValue(probePrefs)],
+      overrides: [
+        ...warehouseRequestScopeFixture(
+          includeClient: false,
+          includeIdentity: false,
+          includeBadges: false,
+          authenticatedSession: true,
+        ),
+        sharedPreferencesProvider.overrideWithValue(probePrefs),
+      ],
     );
     late final String scopedKey;
     try {
@@ -1420,7 +1431,7 @@ Future<void> _submit(
 
 /// 打开登记页 (宿主页 push 进去，登记成功后 pop 回宿主)。[clearSelection] 为真时
 /// 清空进页默认全选，本文件多数用例按「逐行操作」编写；提交前由 [_pressRoute]
-/// 统一回选全部行。已打开时再调用只刷新 ProviderScope 覆盖 (如换权限快照)。
+/// 统一回选全部行。再次打开创建新页面，权限边界变化后的旧采集页不能复活。
 Future<void> _openPage(
   WidgetTester tester, {
   required _ArrivalRegistrationApi api,
@@ -1429,12 +1440,22 @@ Future<void> _openPage(
   bool resetPrefs = true,
   List<Override> overrides = const [],
 }) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pumpAndSettle();
   // 选仓记忆 (inboundWarehouseFillMemoryProvider) 本地走 shared_preferences 缓存，
   // 测试宿主必须给 mock 初值。
   if (resetPrefs) SharedPreferences.setMockInitialValues({});
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [apiClientProvider.overrideWithValue(api), ...overrides],
+      overrides: [
+        ...warehouseRequestScopeFixture(
+          api: api,
+          includeIdentity: false,
+          includeBadges: false,
+          authenticatedSession: true,
+        ),
+        ...overrides,
+      ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,

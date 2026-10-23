@@ -33,6 +33,9 @@ class _FakeBomRepo implements GoodsBomRepository {
         componentGoodsId: 'goods-x',
         componentCode: 'K01',
         componentName: '外壳',
+        componentMaterial: 'PVC',
+        componentStockQty: 12.3456,
+        componentUnitName: '个',
         qty: 1,
         price: 12.5,
         total: 12.5,
@@ -240,6 +243,19 @@ Future<void> _pumpTab(
 }
 
 void main() {
+  testWidgets('材质常驻展示，库存数量只向有库存查看权限的人展示', (tester) async {
+    await _pumpTab(tester, _FakeBomRepo());
+    expect(find.text('材质'), findsOneWidget);
+    expect(find.text('PVC'), findsOneWidget);
+    expect(find.text('库存数量'), findsNothing);
+    expect(find.text('12.3456 个'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _pumpTab(tester, _FakeBomRepo(), permissions: {Perm.stockView});
+    expect(find.text('库存数量'), findsOneWidget);
+    expect(find.text('12.3456 个'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('需求阶段/缺料处理/单价/金额四列不再展示', (tester) async {
     await _pumpTab(tester, _FakeBomRepo());
 

@@ -100,6 +100,264 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// No description provided for @clientUpdateDetails.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看详情'**
+  String get clientUpdateDetails;
+
+  /// No description provided for @clientUpdateNewTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'发现新版本'**
+  String get clientUpdateNewTitle;
+
+  /// No description provided for @clientUpdateSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动检查新版本，更新此设备上的软件'**
+  String get clientUpdateSubtitle;
+
+  /// No description provided for @clientUpdateCurrent.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前版本'**
+  String get clientUpdateCurrent;
+
+  /// No description provided for @clientUpdateLatest.
+  ///
+  /// In zh, this message translates to:
+  /// **'最新版本'**
+  String get clientUpdateLatest;
+
+  /// No description provided for @clientUpdateNow.
+  ///
+  /// In zh, this message translates to:
+  /// **'立即更新'**
+  String get clientUpdateNow;
+
+  /// No description provided for @clientUpdateLater.
+  ///
+  /// In zh, this message translates to:
+  /// **'稍后'**
+  String get clientUpdateLater;
+
+  /// No description provided for @clientUpdateCheck.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查更新'**
+  String get clientUpdateCheck;
+
+  /// No description provided for @clientUpdateChecking.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在检查更新'**
+  String get clientUpdateChecking;
+
+  /// No description provided for @clientUpdateUpToDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前已是最新版本'**
+  String get clientUpdateUpToDate;
+
+  /// No description provided for @clientUpdateDownloading.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在下载更新'**
+  String get clientUpdateDownloading;
+
+  /// No description provided for @clientUpdateInstalling.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在安装更新'**
+  String get clientUpdateInstalling;
+
+  /// No description provided for @clientUpdateWindowsHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新将自动下载，关闭并重新启动软件，保留本机设置和已保存的草稿。请先保存当前工作。'**
+  String get clientUpdateWindowsHint;
+
+  /// No description provided for @clientUpdateAndroidHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新下载后会打开系统安装确认。如需允许安装来源，请授权后返回重试。'**
+  String get clientUpdateAndroidHint;
+
+  /// No description provided for @clientUpdateStoreHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'将打开官方应用商店，请在商店中完成更新。'**
+  String get clientUpdateStoreHint;
+
+  /// No description provided for @clientUpdateUnsupported.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前系统暂不支持应用内更新。'**
+  String get clientUpdateUnsupported;
+
+  /// No description provided for @clientUpdateFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新未完成，请检查网络和安装权限后重试。'**
+  String get clientUpdateFailed;
+
+  /// No description provided for @clientUpdateInstallerOpened.
+  ///
+  /// In zh, this message translates to:
+  /// **'已打开系统安装确认，请按系统提示完成更新。'**
+  String get clientUpdateInstallerOpened;
+
+  /// No description provided for @clientUpdateNotes.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新内容'**
+  String get clientUpdateNotes;
+
+  /// No description provided for @clientUpdateNoNotes.
+  ///
+  /// In zh, this message translates to:
+  /// **'此版本暂无更新说明。'**
+  String get clientUpdateNoNotes;
+
+  /// No description provided for @clientUpdatePublishTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'发布客户端版本'**
+  String get clientUpdatePublishTitle;
+
+  /// No description provided for @clientUpdatePublishHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传并发布各平台的新版本，员工的客户端会自动检查并提示更新。'**
+  String get clientUpdatePublishHint;
+
+  /// No description provided for @clientUpdatePlatform.
+  ///
+  /// In zh, this message translates to:
+  /// **'平台'**
+  String get clientUpdatePlatform;
+
+  /// No description provided for @clientUpdateArchitecture.
+  ///
+  /// In zh, this message translates to:
+  /// **'设备架构'**
+  String get clientUpdateArchitecture;
+
+  /// No description provided for @clientUpdateVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'版本号'**
+  String get clientUpdateVersion;
+
+  /// No description provided for @clientUpdateBuild.
+  ///
+  /// In zh, this message translates to:
+  /// **'构建号'**
+  String get clientUpdateBuild;
+
+  /// No description provided for @clientUpdateStoreUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'官方商店地址'**
+  String get clientUpdateStoreUrl;
+
+  /// No description provided for @clientUpdateChooseFile.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择更新包'**
+  String get clientUpdateChooseFile;
+
+  /// No description provided for @clientUpdatePublish.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传并发布'**
+  String get clientUpdatePublish;
+
+  /// No description provided for @clientUpdatePublishing.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在上传并发布'**
+  String get clientUpdatePublishing;
+
+  /// No description provided for @clientUpdatePublished.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户端新版本已发布'**
+  String get clientUpdatePublished;
+
+  /// No description provided for @clientUpdatePublishInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'请完整填写版本信息，构建号需高于已发布版本，并选择对应更新包或填写官方商店地址。'**
+  String get clientUpdatePublishInvalid;
+
+  /// No description provided for @clientUpdatePackageHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'Windows 选择专用更新 ZIP，Android 选择正式签名 APK。每次发布需增加构建号。'**
+  String get clientUpdatePackageHint;
+
+  /// No description provided for @clientUpdateWithdraw.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回发布'**
+  String get clientUpdateWithdraw;
+
+  /// No description provided for @clientUpdateWithdrawConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回后，其他设备将不再收到此版本。已经更新的设备不会降级。确定撤回吗？'**
+  String get clientUpdateWithdrawConfirm;
+
+  /// No description provided for @clientUpdateReleaseList.
+  ///
+  /// In zh, this message translates to:
+  /// **'版本发布记录'**
+  String get clientUpdateReleaseList;
+
+  /// No description provided for @clientUpdateClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get clientUpdateClose;
+
+  /// No description provided for @clientUpdateRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get clientUpdateRetry;
+
+  /// No description provided for @clientUpdateTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'软件更新'**
+  String get clientUpdateTitle;
+
+  /// No description provided for @masterStatusDisableTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认停用'**
+  String get masterStatusDisableTitle;
+
+  /// No description provided for @masterStatusEnableTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认启用'**
+  String get masterStatusEnableTitle;
+
+  /// No description provided for @masterStatusDisableBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定停用「{label}」共 {count} 项吗？停用后不能再用于新增业务，已有单据与修改历史保留。'**
+  String masterStatusDisableBody(String label, int count);
+
+  /// No description provided for @masterStatusEnableBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定启用「{label}」共 {count} 项吗？启用后可再次用于新增业务。'**
+  String masterStatusEnableBody(String label, int count);
+
   /// No description provided for @websiteInquirySeries.
   ///
   /// In zh, this message translates to:

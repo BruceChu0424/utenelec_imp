@@ -5,47 +5,6 @@
 
 import 'master_facet.dart';
 
-/// 计量维度的中文标签（COUNT 数量 / MASS 重量 / LENGTH 长度 / AREA 面积 /
-/// VOLUME 体积 / OTHER 其他）；null/未知 → 未设置。
-String unitDimensionLabel(String? dimension) => switch (dimension) {
-  'COUNT' => '数量',
-  'MASS' => '重量',
-  'LENGTH' => '长度',
-  'AREA' => '面积',
-  'VOLUME' => '体积',
-  'OTHER' => '其他',
-  _ => '未设置',
-};
-
-/// 全部可选计量维度（编辑弹窗下拉用）。
-const Map<String, String> kUnitMeasurementDimensions = {
-  'COUNT': '数量',
-  'MASS': '重量',
-  'LENGTH': '长度',
-  'AREA': '面积',
-  'VOLUME': '体积',
-  'OTHER': '其他',
-};
-
-/// 重量维度的单位「等于哪种重量单位」(V743/ADR-135，与服务端 mass_unit_code 同一封闭目录)：
-/// 以设了代码的单位为基本单位的货品，重量按数量精确折算，仓库不再另录实称重量。
-const Map<String, String> kUnitMassUnitCodes = {
-  'G': '克',
-  'KG': '千克',
-  'T': '吨',
-  'JIN': '斤',
-  'LB': '磅',
-  'OZ': '盎司',
-};
-
-/// 「重量单位」展示文字：非重量维度 → 空串；重量维度没选 → 未指定；其余按代码取中文名
-/// (与服务端导出「重量单位」列同口径)。
-String unitMassUnitLabel(String? dimension, String? massUnitCode) {
-  if (dimension != 'MASS') return '';
-  if (massUnitCode == null || massUnitCode.isEmpty) return '未指定';
-  return kUnitMassUnitCodes[massUnitCode] ?? massUnitCode;
-}
-
 /// 单位列表项。
 class UnitListItem {
   const UnitListItem({

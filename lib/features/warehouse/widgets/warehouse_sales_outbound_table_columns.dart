@@ -201,21 +201,16 @@ warehouseSalesOutboundTableColumns({
   );
 
   return [
-    // 2026-10-08 用户口径「状态或进度列默认放最前」：处理结果列（已出库 /
-    // 待出库 / 不可出库）是批量出库表的行级结果列，推翻 2026-10-06 批次
-    // 「无状态字样不动」的豁免，前置（出货形态里紧跟出货状态列）。
     if (!includeShipment && resultOf != null)
       column('result', l10n.warehouseOutboundBatchResult, 210, resultOf),
     if (includeShipment)
       column(
         'warehouseWorkStatus',
         l10n.warehouseOutboundStatus,
-        72,
-        (r) => r.detail.header.statusLabel,
+        resultOf == null ? 72 : 170,
+        (r) => resultOf?.call(r) ?? r.detail.header.statusLabel,
       ),
     if (includeShipment) ...[
-      if (resultOf != null)
-        column('result', l10n.warehouseOutboundBatchResult, 210, resultOf),
       column(
         'billNo',
         l10n.warehouseOutboundBillNo,
@@ -230,13 +225,6 @@ warehouseSalesOutboundTableColumns({
         (r) => r.detail.header.clientName,
       ),
     ],
-    column(
-      'lineNumber',
-      l10n.warehouseOutboundLineNo,
-      64,
-      (r) => r.line.lineNumber?.toString(),
-      type: 'number',
-    ),
     // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
     column(
       'goodsName',
@@ -399,5 +387,12 @@ warehouseSalesOutboundTableColumns({
         170,
         (r) => r.line.sourceDocumentNo,
       ),
+    column(
+      'lineNumber',
+      l10n.warehouseOutboundLineNo,
+      64,
+      (r) => r.line.lineNumber?.toString(),
+      type: 'number',
+    ),
   ];
 }

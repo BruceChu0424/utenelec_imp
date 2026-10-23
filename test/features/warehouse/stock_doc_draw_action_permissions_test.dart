@@ -11,8 +11,21 @@ import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
 import 'package:uten_imp/features/warehouse/pages/stock_doc_detail_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/stock_doc_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import '../../helpers/document_scope_fixture.dart';
+import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/warehouse_request_scope_fixture.dart';
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'draw-warehouse-user', code: 'WH02', name: '发料测试员'),
+  );
+}
 
 final _drawPermissionsProvider =
     NotifierProvider<_DrawPermissions, Set<String>>(_DrawPermissions.new);
@@ -118,6 +131,10 @@ Future<ProviderContainer> _pumpDrawDetail(
       apiOverride ?? _DrawDetailApi(status: status, issuedQty: issuedQty);
   final container = ProviderContainer(
     overrides: [
+      sessionProvider.overrideWith(_Session.new),
+      apiClientProvider.overrideWithValue(api),
+      fixedBadgeSummaryOverride(),
+      sessionSnapshotProvider.overrideWith(IdleWarehouseTestSnapshot.new),
       // Riverpod 3 同步挂链（页面 → session → connectionRecovery → apiBaseUrl）
       // 会拉起真实可达性探针的 60s 周期 Timer，假时钟下挂死；web 探针零 Timer。
       localServerReachableProvider.overrideWith(
@@ -208,12 +225,14 @@ void main() {
   );
 
   testWidgets(
-    'draft production DRAW exposes only atomic issue and reacts to permission revoke',
+    'draft DRAW invalidates on permission revoke and requires a fresh load after regrant',
     (tester) async {
+      final api = _DrawDetailApi(status: 0, issuedQty: 0);
       final container = await _pumpDrawDetail(
         tester,
         status: 0,
         issuedQty: 0,
+        apiOverride: api,
         permissions: const <String>{
           Perm.stockDocView,
           Perm.stockDocApprove,
@@ -222,7 +241,7 @@ void main() {
       );
 
       expect(_action('出库'), findsOneWidget);
-      expect(tester.widget<UtenButton>(_action('出库')).onPressed, isNotNull);
+      final initialIssue = tester.widget<UtenButton>(_action('出库')).onPressed!;
       expect(_action('审核'), findsNothing);
 
       container.read(_drawPermissionsProvider.notifier).replace(const <String>{
@@ -231,11 +250,11 @@ void main() {
       });
       await tester.pumpAndSettle();
 
-      expect(_action('出库'), findsOneWidget);
-      expect(tester.widget<UtenButton>(_action('出库')).onPressed, isNull);
-      await tester.tap(_action('出库'));
+      expect(_action('出库'), findsNothing);
+      expect(find.text('登录身份、权限或服务器已变化，请重新进入并核对单据'), findsOneWidget);
+      initialIssue();
       await tester.pumpAndSettle();
-      expect(find.textContaining('需要同时具备审核和出库权限'), findsOneWidget);
+      expect(api.posted, isNull);
 
       container.read(_drawPermissionsProvider.notifier).replace(const <String>{
         Perm.stockDocView,
@@ -243,6 +262,38 @@ void main() {
         Perm.stockDocIssue,
       });
       await tester.pumpAndSettle();
+      expect(_action('出库'), findsNothing);
+      initialIssue();
+      await tester.pumpAndSettle();
+      expect(api.posted, isNull);
+
+      // A newly read document still checks both native action permissions.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pumpDrawDetail(
+        tester,
+        status: 0,
+        issuedQty: 0,
+        apiOverride: api,
+        permissions: const {Perm.stockDocView, Perm.stockDocApprove},
+      );
+      expect(tester.widget<UtenButton>(_action('出库')).onPressed, isNull);
+      await tester.tap(_action('出库'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('需要同时具备审核和出库权限'), findsOneWidget);
+      expect(api.posted, isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pumpDrawDetail(
+        tester,
+        status: 0,
+        issuedQty: 0,
+        apiOverride: api,
+        permissions: const {
+          Perm.stockDocView,
+          Perm.stockDocApprove,
+          Perm.stockDocIssue,
+        },
+      );
       expect(tester.widget<UtenButton>(_action('出库')).onPressed, isNotNull);
       expect(_action('审核'), findsNothing);
     },

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,8 @@ import 'package:uten_imp/components/cards/uten_card.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_sales_outbound.dart';
@@ -21,11 +24,15 @@ import 'package:uten_imp/features/warehouse/widgets/warehouse_sales_outbound_tab
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import 'outbound_weight_fakes.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
 
 late SharedPreferences _preferences;
 
@@ -34,6 +41,154 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+  for (final boundary in ['confirmation', 'source-read']) {
+    testWidgets('sales binds the original intent before $boundary awaits', (
+      tester,
+    ) async {
+      final gateway = _Gateway([_detail('1'), _detail('2')]);
+      final container = await _pumpSalesRecovery(
+        tester,
+        gateway,
+        MemoryFormDraftStorage(),
+      );
+      final session =
+          container.read(sessionProvider.notifier) as _RecoverySession;
+      await tester.tap(
+        find.byKey(const Key('warehouse-sales-outbound-batch-submit')),
+      );
+      await tester.pumpAndSettle();
+      if (boundary == 'confirmation') {
+        session.intent++;
+      } else {
+        gateway.onDetail = () => session.intent++;
+      }
+      await tester.tap(
+        find.byKey(const Key('warehouse-sales-outbound-batch-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(gateway.commands, isEmpty);
+      expect(
+        container.read(authenticatedScopeProvider)?.userId,
+        'warehouse-user',
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+  for (final state in [
+    'cancelled-B',
+    'deleted-B',
+    'unreadable-B',
+    'unreadable-A',
+    'unreadable-A-late',
+  ]) {
+    testWidgets(
+      'sales draft recovery checks original A independently of $state',
+      (tester) async {
+        final gateway = _Gateway([_detail('1'), _detail('2')])..failId = '1';
+        final storage = MemoryFormDraftStorage();
+        var container = await _pumpSalesRecovery(tester, gateway, storage);
+        await _confirm(tester);
+        expect(gateway.commands, ['1:SHIPPED']);
+        final original = container.read(formDraftsProvider).single;
+        expect(original.hasUnknownSubmission, isTrue);
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+        if (state != 'unreadable-A-late') {
+          gateway.values['1'] = _detail('1', status: 'SHIPPED');
+        }
+        if (state == 'cancelled-B' || state == 'unreadable-A-late') {
+          gateway.values['2'] = _detail('2', status: 'CANCELLED');
+        } else if (state == 'deleted-B') {
+          gateway.missing.add('2');
+        } else {
+          gateway.unreadable.add(state == 'unreadable-A' ? '1' : '2');
+        }
+        container = await _pumpSalesRecovery(
+          tester,
+          gateway,
+          storage,
+          draftId: original.id,
+        );
+        expect(gateway.commands, ['1:SHIPPED']);
+        expect(
+          find.textContaining('来源 ${state == 'unreadable-A' ? '1' : '2'}'),
+          findsWidgets,
+        );
+        if (state == 'unreadable-A' || state == 'unreadable-A-late') {
+          if (state == 'unreadable-A-late') gateway.unreadable.add('1');
+          final recovery = find
+              .ancestor(
+                of: find.text('核对出库结果'),
+                matching: find.byType(UtenButton),
+              )
+              .last;
+          expect(tester.widget<UtenButton>(recovery).onPressed, isNotNull);
+          await tester.tap(recovery.hitTestable());
+          await tester.pumpAndSettle();
+          expect(gateway.commands, ['1:SHIPPED']);
+          expect(
+            container.read(formDraftsProvider).single.hasUnknownSubmission,
+            isTrue,
+          );
+          expect(find.text('货品1'), findsNothing);
+        } else {
+          final saved = container.read(formDraftsProvider).single;
+          expect(saved.data['completed'], ['1']);
+          expect(saved.data['shipmentIds'], ['1', '2']);
+          expect(saved.hasUnknownSubmission, isFalse);
+          expect(find.text('货品2'), findsNothing);
+          expect(find.text('客户2'), findsNothing);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  testWidgets('fresh sales batch remains strict when a source is unreadable', (
+    tester,
+  ) async {
+    final gateway = _Gateway([_detail('1'), _detail('2')])..unreadable.add('2');
+    await _pumpSalesRecovery(tester, gateway, MemoryFormDraftStorage());
+    expect(gateway.commands, isEmpty);
+    expect(find.text('货品1'), findsNothing);
+    expect(find.text('来源不可读取'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets(
+    'partial sales selection cannot confirm an unselected sibling line',
+    (tester) async {
+      final original = _detail('one');
+      final sibling = _detail('sibling');
+      final detail = WarehouseSalesOutboundDetail(
+        header: original.header,
+        lines: [...original.lines, ...sibling.lines],
+      );
+      final gateway = _Gateway([detail]);
+      await _pump(
+        tester,
+        gateway,
+        const WarehouseSalesOutboundBatchPage(
+          shipmentIds: ['one'],
+          selectedItemIds: ['line-one'],
+          action: WarehouseSalesOutboundAction.confirmShipment,
+        ),
+      );
+      final table = tester
+          .widget<MasterDataTableView<WarehouseSalesOutboundTableRow>>(
+            find.byKey(const Key('warehouse-sales-outbound-batch-table')),
+          );
+      expect(table.items.map((row) => row.line.id), ['line-one']);
+      expect(find.textContaining('该出货单需整单确认'), findsWidgets);
+      await tester.tap(
+        find.byKey(const Key('warehouse-sales-outbound-batch-submit')),
+      );
+      await tester.pumpAndSettle();
+      expect(gateway.commands, isEmpty);
+      expect(
+        find.byKey(const Key('warehouse-sales-outbound-batch-confirm')),
+        findsNothing,
+      );
+    },
+  );
   test('only the explicitly allowed current stage can enter a batch', () {
     expect(
       warehouseSalesOutboundPrimaryAction(_detail('1').header),
@@ -306,9 +461,13 @@ void main() {
             find.byKey(const Key('warehouse-sales-outbound-batch-table')),
           );
       final resultColumn = table.columns.singleWhere(
-        (column) => column.key == 'result',
+        (column) => column.key == 'warehouseWorkStatus',
       );
-      expect(table.items.map(resultColumn.value), ['已完成', '失败，请核对', '未处理']);
+      expect(table.items.map(resultColumn.value), [
+        gateway.values['1']!.header.statusLabel,
+        '结果待核对',
+        gateway.values['3']!.header.statusLabel,
+      ]);
       expect(gateway.values['3']!.header.warehouseWorkStatus, 'PENDING_PICK');
       expect(tester.takeException(), isNull);
     },
@@ -399,6 +558,7 @@ void main() {
     (tester) async {
       final gateway = _Gateway([_detail('1', quantity: '12.5000')]);
       for (final size in [const Size(420, 900), const Size(1440, 900)]) {
+        await tester.pumpWidget(const SizedBox.shrink());
         await tester.binding.setSurfaceSize(size);
         await _pump(
           tester,
@@ -519,11 +679,29 @@ Future<void> _pump(
         sharedPreferencesProvider.overrideWithValue(_preferences),
         warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
         fakeWeightRepositoryOverride(weights),
+        sessionProvider.overrideWith(_RecoverySession.new),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'warehouse-user'),
+        ),
+        apiBaseUrlProvider.overrideWithValue(
+          'https://warehouse-recovery.test/api',
+        ),
+        apiClientProvider.overrideWithValue(ApiClient(Dio())),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        if (!needsTaskCenter) ...[
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseSalesOutboundView,
+            Perm.warehouseSalesOutboundExecute,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          fixedBadgeSummaryOverride(),
+        ],
         if (needsTaskCenter) ...[
           // 2026-10-17 起深链页正文是任务中心统一表；分段红数固定为徽章事实。
           warehouseTaskCenterRepositoryProvider.overrideWithValue(tasks),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.warehouseSalesOutboundView,
+            Perm.warehouseSalesOutboundExecute,
           }),
           isSuperAdminProvider.overrideWithValue(false),
           fixedBadgeSummaryOverride(
@@ -549,6 +727,79 @@ Future<void> _pump(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+class _RecoverySession extends SessionNotifier {
+  int intent = 0;
+  @override
+  int get requestIntentEpoch => intent;
+  @override
+  SessionState build() => const SessionState();
+}
+
+Future<ProviderContainer> _pumpSalesRecovery(
+  WidgetTester tester,
+  _Gateway gateway,
+  MemoryFormDraftStorage storage, {
+  String? draftId,
+}) async {
+  const path = '/warehouse/sales-outbound/batch';
+  final router = GoRouter(
+    initialLocation: Uri(
+      path: path,
+      queryParameters: {
+        'shipmentIds': '1,2',
+        'action': 'confirmShipment',
+        'itemIds': 'line-1,line-2',
+        'draftId': ?draftId,
+      },
+    ).toString(),
+    routes: [
+      GoRoute(
+        path: path,
+        builder: (_, state) => const WarehouseSalesOutboundBatchPage(
+          shipmentIds: ['1', '2'],
+          selectedItemIds: ['line-1', 'line-2'],
+          action: WarehouseSalesOutboundAction.confirmShipment,
+        ),
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(_preferences),
+        warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
+        fakeWeightRepositoryOverride(),
+        fixedBadgeSummaryOverride(),
+        sessionProvider.overrideWith(_RecoverySession.new),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'warehouse-user'),
+        ),
+        apiBaseUrlProvider.overrideWithValue(
+          'https://warehouse-recovery.test/api',
+        ),
+        apiClientProvider.overrideWithValue(ApiClient(Dio())),
+        currentPermissionsProvider.overrideWithValue(const {
+          Perm.warehouseSalesOutboundView,
+          Perm.warehouseSalesOutboundExecute,
+        }),
+        isSuperAdminProvider.overrideWithValue(false),
+        formDraftStorageProvider.overrideWithValue(storage),
+      ],
+      child: MaterialApp.router(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        routerConfig: router,
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return ProviderScope.containerOf(
+    tester.element(find.byType(WarehouseSalesOutboundBatchPage)),
+  );
 }
 
 /// 任务中心统一表网关：把销售出库夹具折成 SALES 行与状态枚举桶(ADR-184：
@@ -688,12 +939,26 @@ class _Gateway implements WarehouseSalesOutboundGateway {
   final Map<String, Map<String, String>?> places = {};
   final Map<String, Map<String, double>?> weights = {};
   String? failId;
+  final unreadable = <String>{};
+  final missing = <String>{};
+  VoidCallback? onDetail;
   int listReads = 0;
   final List<String?> workStatuses = [];
   final List<int> listPages = [];
 
   @override
-  Future<WarehouseSalesOutboundDetail> detail(String id) async => values[id]!;
+  Future<WarehouseSalesOutboundDetail> detail(String id) async {
+    final onRead = onDetail;
+    onDetail = null;
+    onRead?.call();
+    if (missing.contains(id)) {
+      throw ApiException('NOT_FOUND', '来源已删除', httpStatus: 404);
+    }
+    if (unreadable.contains(id)) {
+      throw ApiException('FORBIDDEN', '来源不可读取', httpStatus: 403);
+    }
+    return values[id]!;
+  }
 
   @override
   Future<PagedResult<WarehouseSalesOutboundSummary>> list({
@@ -745,6 +1010,7 @@ class _Gateway implements WarehouseSalesOutboundGateway {
     Map<String, String>? stockPlaces,
     Map<String, String?>? lineWarehouses,
     Map<String, double>? lineWeights,
+    List<String>? itemIds,
   }) async {
     commands.add('$id:$targetStatus');
     reasons.add(reason);

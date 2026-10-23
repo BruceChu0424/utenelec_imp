@@ -577,14 +577,12 @@ const _allGroups = <_ModuleGroup>[
         location: RouteName.adminServerStatus,
         // 2026-09-11：告警此前只活在状态页内部，不点开就无人知晓。
         // 角标 = 当前 warning/critical 的指标条数（磁盘/内存/数据库/备份/定时任务）。
+        // 2026-10-22：「服务器更新」卡退役，更新入口并入本页；角标同时计入
+        // 待更新版本数（serverUpdateAvailable），工作台这一眼仍能看见该更新了。
         badge: WorkbenchBadgeKind.serverStatus,
       ),
-      _ModuleItem(
-        icon: Icons.system_update_alt_rounded,
-        label: '服务器更新',
-        location: RouteName.adminServerOperations,
-        badge: WorkbenchBadgeKind.serverUpdate,
-      ),
+      // 「服务器更新」卡 2026-10-22 退役：入口在服务器状态页内（按钮带待更新数
+      // 徽章），勿再往本组加回——与 AI 服务卡同口径。
       _ModuleItem(
         icon: Icons.admin_panel_settings_outlined,
         label: '权限管理',

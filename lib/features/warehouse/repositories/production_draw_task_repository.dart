@@ -36,6 +36,7 @@ class ProductionDrawTaskRepository {
     required List<String> docIds,
     required List<Map<String, dynamic>> discoveries,
     List<Map<String, dynamic>> weights = const [],
+    List<String>? itemIds,
     String? reason,
   }) async {
     final result = await api.post(
@@ -44,6 +45,7 @@ class ProductionDrawTaskRepository {
         'idempotencyKey': idempotencyKey,
         'docIds': docIds,
         'discoveries': discoveries,
+        'itemIds': ?itemIds,
         if (weights.isNotEmpty) 'weights': weights,
         if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
       },
@@ -61,6 +63,7 @@ class ProductionDrawTaskRepository {
     required String idempotencyKey,
     required List<String> docIds,
     List<Map<String, dynamic>> weights = const [],
+    List<String>? itemIds,
     String? reason,
   }) async {
     final result = await api.post(
@@ -68,6 +71,7 @@ class ProductionDrawTaskRepository {
       body: {
         'idempotencyKey': idempotencyKey,
         'docIds': docIds,
+        'itemIds': ?itemIds,
         if (weights.isNotEmpty) 'weights': weights,
         if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
       },

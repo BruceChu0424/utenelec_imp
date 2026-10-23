@@ -9,6 +9,151 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get clientUpdateDetails => 'View details';
+
+  @override
+  String get clientUpdateNewTitle => 'New version available';
+
+  @override
+  String get clientUpdateSubtitle =>
+      'Check automatically and update this device';
+
+  @override
+  String get clientUpdateCurrent => 'Installed version';
+
+  @override
+  String get clientUpdateLatest => 'Latest version';
+
+  @override
+  String get clientUpdateNow => 'Update now';
+
+  @override
+  String get clientUpdateLater => 'Later';
+
+  @override
+  String get clientUpdateCheck => 'Check for updates';
+
+  @override
+  String get clientUpdateChecking => 'Checking for updates';
+
+  @override
+  String get clientUpdateUpToDate => 'Your software is up to date';
+
+  @override
+  String get clientUpdateDownloading => 'Downloading update';
+
+  @override
+  String get clientUpdateInstalling => 'Installing update';
+
+  @override
+  String get clientUpdateWindowsHint =>
+      'The update downloads automatically, then closes and restarts the app. Device settings and saved drafts are retained. Save your work first.';
+
+  @override
+  String get clientUpdateAndroidHint =>
+      'After downloading, the app opens the system installation prompt. If installation permission is required, grant it and return to retry.';
+
+  @override
+  String get clientUpdateStoreHint =>
+      'The official app store will open. Complete the update there.';
+
+  @override
+  String get clientUpdateUnsupported =>
+      'In-app updates are not yet available on this operating system.';
+
+  @override
+  String get clientUpdateFailed =>
+      'The update did not complete. Check your connection and installation permissions, then retry.';
+
+  @override
+  String get clientUpdateInstallerOpened =>
+      'The system installation prompt is open. Follow its instructions to complete the update.';
+
+  @override
+  String get clientUpdateNotes => 'What\'s new';
+
+  @override
+  String get clientUpdateNoNotes =>
+      'No release notes are available for this version.';
+
+  @override
+  String get clientUpdatePublishTitle => 'Publish client version';
+
+  @override
+  String get clientUpdatePublishHint =>
+      'Upload and publish new versions for each platform. Employees\' clients will check automatically and show an update prompt.';
+
+  @override
+  String get clientUpdatePlatform => 'Platform';
+
+  @override
+  String get clientUpdateArchitecture => 'Device architecture';
+
+  @override
+  String get clientUpdateVersion => 'Version';
+
+  @override
+  String get clientUpdateBuild => 'Build number';
+
+  @override
+  String get clientUpdateStoreUrl => 'Official store URL';
+
+  @override
+  String get clientUpdateChooseFile => 'Choose update package';
+
+  @override
+  String get clientUpdatePublish => 'Upload and publish';
+
+  @override
+  String get clientUpdatePublishing => 'Uploading and publishing';
+
+  @override
+  String get clientUpdatePublished => 'New client version published';
+
+  @override
+  String get clientUpdatePublishInvalid =>
+      'Complete the version details, use a build number above published versions, and choose the matching package or enter an official store URL.';
+
+  @override
+  String get clientUpdatePackageHint =>
+      'Choose a dedicated update ZIP for Windows or a release-signed APK for Android. Increase the build number for each release.';
+
+  @override
+  String get clientUpdateWithdraw => 'Withdraw release';
+
+  @override
+  String get clientUpdateWithdrawConfirm =>
+      'Other devices will no longer receive this version. Devices already updated will not be downgraded. Withdraw this release?';
+
+  @override
+  String get clientUpdateReleaseList => 'Client release history';
+
+  @override
+  String get clientUpdateClose => 'Close';
+
+  @override
+  String get clientUpdateRetry => 'Retry';
+
+  @override
+  String get clientUpdateTitle => 'Software updates';
+
+  @override
+  String get masterStatusDisableTitle => 'Confirm deactivation';
+
+  @override
+  String get masterStatusEnableTitle => 'Confirm activation';
+
+  @override
+  String masterStatusDisableBody(String label, int count) {
+    return 'Deactivate $count item(s) in $label? They will no longer be available for new business. Existing documents and change history are retained.';
+  }
+
+  @override
+  String masterStatusEnableBody(String label, int count) {
+    return 'Activate $count item(s) in $label? They will be available for new business again.';
+  }
+
+  @override
   String get websiteInquirySeries => 'Product series';
 
   @override

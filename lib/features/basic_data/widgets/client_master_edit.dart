@@ -18,38 +18,61 @@ import '../models/currency_node.dart';
 import '../repositories/currency_repository.dart';
 import '../widgets/master_edit_dialog.dart';
 import 'basic_data_l10n.dart';
+import 'master_edit_owner.dart';
 
 /// 加载启用中的结账方式（客户编辑表单「默认结账方式」下拉用）。
 /// 模块级互斥防重复弹加载框；调用方负责 mounted 检查。
-bool _settlementOptionsLoading = false;
+Object? _settlementOptionsLoading;
+MasterEditOwner? _settlementOptionsOwner;
 Future<List<ReferenceMethodOption>?> loadClientSettlementMethods(
   BuildContext context,
-  WidgetRef ref,
-) async {
-  if (_settlementOptionsLoading) return null;
-  _settlementOptionsLoading = true;
+  WidgetRef ref, {
+  MasterEditOwner? owner,
+}) async {
+  if (owner?.isCurrent == false) return null;
+  if (_settlementOptionsLoading != null &&
+      (_settlementOptionsOwner?.isCurrent ?? true)) {
+    return null;
+  }
+  final ticket = Object();
+  _settlementOptionsLoading = ticket;
+  _settlementOptionsOwner = owner;
   final nav = Navigator.of(context, rootNavigator: true);
-  showDialog<void>(
+  final route = DialogRoute<void>(
     context: context,
     barrierDismissible: false,
     builder: (_) => const Center(child: CircularProgressIndicator()),
   );
+  owner?.trackRoute(route);
+  nav.push(route);
   try {
-    final methods = await ref
-        .read(referenceMethodRepositoryProvider)
-        .settlementMethods();
+    Future<List<ReferenceMethodOption>> read() =>
+        ref.read(referenceMethodRepositoryProvider).settlementMethods();
+    final methods = owner == null ? await read() : await owner.run(read);
+    if (!context.mounted || owner?.isCurrent == false) return null;
     if (methods.isEmpty) {
       if (context.mounted) context.appError('暂无可用结账方式，请先维护结账方式字典');
       return null;
     }
     return methods;
   } on ApiException catch (e) {
-    if (context.mounted) context.appError(e.message);
+    if (context.mounted && owner?.isCurrent != false) {
+      context.appError(e.message);
+    }
   } catch (_) {
-    if (context.mounted) context.appError('加载结账方式失败，请重试');
+    if (context.mounted && owner?.isCurrent != false) {
+      context.appError('加载结账方式失败，请重试');
+    }
   } finally {
-    if (nav.canPop()) nav.pop();
-    _settlementOptionsLoading = false;
+    if (owner != null) {
+      owner.closeRoute(route);
+    } else if (route.isActive) {
+      route.navigator?.removeRoute(route);
+    }
+    if (identical(_settlementOptionsLoading, ticket)) {
+      _settlementOptionsLoading = null;
+      _settlementOptionsOwner = null;
+    }
   }
   return null;
 }
@@ -57,14 +80,23 @@ Future<List<ReferenceMethodOption>?> loadClientSettlementMethods(
 /// 加载币种字典（客户编辑表单「默认币种」下拉用；V592 默认销售条款）。
 Future<List<CurrencyListItem>?> loadClientCurrencies(
   BuildContext context,
-  WidgetRef ref,
-) async {
+  WidgetRef ref, {
+  MasterEditOwner? owner,
+}) async {
   try {
-    return await ref.read(currencyRepositoryProvider).dict();
+    if (owner?.isCurrent == false) return null;
+    Future<List<CurrencyListItem>> read() =>
+        ref.read(currencyRepositoryProvider).dict();
+    final result = owner == null ? await read() : await owner.run(read);
+    return !context.mounted || owner?.isCurrent == false ? null : result;
   } on ApiException catch (e) {
-    if (context.mounted) context.appError(e.message);
+    if (context.mounted && owner?.isCurrent != false) {
+      context.appError(e.message);
+    }
   } catch (_) {
-    if (context.mounted) context.appError('加载币种失败，请重试');
+    if (context.mounted && owner?.isCurrent != false) {
+      context.appError('加载币种失败，请重试');
+    }
   }
   return null;
 }
@@ -101,18 +133,17 @@ List<MasterFieldDef> buildClientFields(
       info: '可见人只能查看该客户及其单据，不能修改。修改请用列表行右键「负责人和可见人」。',
     ),
   ],
-  ...const <MasterFieldDef>[
-    MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
-    // 2026-09-19 口径：编号全自动——readOnly 字段不上送，新建由服务端按分类
-    // 前缀发号、编辑保留原号；「留空自动生成/手工编号」双轨入口退役。
+  ...<MasterFieldDef>[
+    const MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
     MasterFieldDef(
       key: 'code',
       label: '编号',
       group: '基础',
-      readOnly: true,
-      hint: '保存后按分类前缀自动生成',
+      hint: '留空按分类前缀自动生成；手工编号必须唯一',
+      identifierDomain: 'CLIENT',
+      identifierId: iv['_entityId'],
     ),
-    MasterFieldDef(key: 'fullName', label: '全称', group: '基础'),
+    const MasterFieldDef(key: 'fullName', label: '全称', group: '基础'),
   ],
   // ADR-134: foreign (usually English) company name, matched against customer
   // files; also filled in by learning when sales save a document.
@@ -251,12 +282,47 @@ Future<void> showClientMasterEdit(
   String? fallbackCategoryId,
   VoidCallback? onSaved,
 }) async {
-  final settlementMethods = await loadClientSettlementMethods(context, ref);
-  if (!context.mounted || settlementMethods == null) return;
+  if (!d.writable) return;
+  final owner = MasterEditOwner(
+    context,
+    ref,
+    permissions: {Perm.clientView, Perm.clientEdit},
+  );
+  try {
+    if (!await owner.bindRequests()) return;
+    if (!context.mounted) return;
+    await _showClientMasterEditOwned(
+      context,
+      ref,
+      d,
+      owner,
+      fallbackCategoryId: fallbackCategoryId,
+      onSaved: onSaved,
+    );
+  } finally {
+    owner.dispose();
+  }
+}
+
+Future<void> _showClientMasterEditOwned(
+  BuildContext context,
+  WidgetRef ref,
+  ClientDetail d,
+  MasterEditOwner owner, {
+  String? fallbackCategoryId,
+  VoidCallback? onSaved,
+}) async {
+  final settlementMethods = await loadClientSettlementMethods(
+    context,
+    ref,
+    owner: owner,
+  );
+  if (!context.mounted || !owner.isCurrent || settlementMethods == null) return;
   // V592 默认币种下拉；加载失败不阻断编辑（只是该项没有选项）。
   final currencies =
-      await loadClientCurrencies(context, ref) ?? const <CurrencyListItem>[];
-  if (!context.mounted) return;
+      await loadClientCurrencies(context, ref, owner: owner) ??
+      const <CurrencyListItem>[];
+  if (!context.mounted || !owner.isCurrent) return;
   final permissions = ref.read(currentPermissionsProvider);
   final canAssign =
       permissions.contains(Perm.clientAssign) && d.accessManageable;
@@ -265,11 +331,13 @@ Future<void> showClientMasterEdit(
   ClientAccessSettings? access;
   if (canAssign) {
     try {
-      access = await ref.read(clientRepositoryProvider).access(d.id);
+      access = await owner.run(
+        () => ref.read(clientRepositoryProvider).access(d.id),
+      );
     } catch (_) {
       access = null;
     }
-    if (!context.mounted) return;
+    if (!context.mounted || !owner.isCurrent) return;
   }
   // 当前默认结账方式已停用时不再拦死编辑（2026-09-15 用户口径「点击编辑报错」）：
   // 追加一个带「已停用」标注的选项保住原值，用户可顺手改掉。
@@ -285,6 +353,7 @@ Future<void> showClientMasterEdit(
     );
   }
   final iv = <String, String>{
+    '_entityId': d.id,
     'name': d.name ?? '',
     'code': d.code ?? '',
     'fullName': d.fullName ?? '',
@@ -343,17 +412,15 @@ Future<void> showClientMasterEdit(
       if (d.version != null) 'version': d.version,
     },
     readOnlyKeys: readOnlyKeys.isEmpty ? null : readOnlyKeys,
+    submissionOwner: owner,
     onSubmit: (body) async {
-      final ok = await context.guardRun(
-        () async {
-          await ref.read(clientRepositoryProvider).update(d.id, body);
-        },
-        success: '客户已更新', // TODO(l10n): 补 arb
-        errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
-      );
-      if (!ok) return false;
-      onSaved?.call();
+      await ref.read(clientRepositoryProvider).update(d.id, body);
       return true;
+    },
+    onAccepted: () {
+      if (!owner.isCurrent) return;
+      context.appSuccess('客户已更新');
+      onSaved?.call();
     },
   );
 }

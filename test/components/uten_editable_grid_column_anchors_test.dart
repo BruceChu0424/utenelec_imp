@@ -48,7 +48,7 @@ Future<void> _pumpAnchoredGrid(
   WidgetTester tester, {
   required UtenEditableGridController<_Row> controller,
   required bool destination,
-  Map<String, String> anchors = const {'destination': 'qty'},
+  Map<String, String?> anchors = const {'destination': 'qty'},
   List<String>? initialOrder,
   ProviderContainer? container,
 }) async {
@@ -111,6 +111,55 @@ void main() {
   }
 
   const labels = ['Goods', 'Quantity', 'Destination', 'Remark'];
+  for (final scenario in [
+    (
+      anchors: <String, String?>{'destination': null, 'qty': 'destination'},
+      expected: ['Destination', 'Quantity', 'Goods', 'Remark'],
+    ),
+    (
+      anchors: <String, String?>{'destination': null, 'qty': null},
+      expected: ['Quantity', 'Destination', 'Goods', 'Remark'],
+    ),
+    (
+      anchors: <String, String?>{'destination': 'missing', 'qty': 'qty'},
+      expected: ['Goods', 'Remark', 'Quantity', 'Destination'],
+    ),
+    (
+      anchors: <String, String?>{'destination': 'qty', 'qty': 'destination'},
+      expected: ['Goods', 'Remark', 'Quantity', 'Destination'],
+    ),
+  ]) {
+    testWidgets(
+      'missing default prefix and safe invalid anchors ${scenario.anchors}',
+      (tester) async {
+        largeViewport(tester);
+        final rows = UtenEditableGridController<_Row>(initial: [_Row('keep')]);
+        addTearDown(rows.dispose);
+        await _pumpAnchoredGrid(
+          tester,
+          controller: rows,
+          destination: true,
+          anchors: scenario.anchors,
+          initialOrder: const ['goods', 'remark'],
+        );
+        expect(_renderedOrder(tester, labels), scenario.expected);
+        await _pumpAnchoredGrid(
+          tester,
+          controller: rows,
+          destination: true,
+          anchors: scenario.anchors,
+          initialOrder: const ['remark', 'qty', 'goods', 'destination'],
+        );
+        expect(_renderedOrder(tester, labels), [
+          'Remark',
+          'Quantity',
+          'Goods',
+          'Destination',
+        ]);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   for (final anchored in [true, false]) {
     testWidgets(
       'new column ${anchored ? 'follows its anchor' : 'still appends without anchors'} without rebuilding the grid',

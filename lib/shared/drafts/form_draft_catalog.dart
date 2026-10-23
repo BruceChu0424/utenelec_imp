@@ -382,6 +382,20 @@ abstract final class FormDraftCatalog {
     permission: Perm.stockDocIssue,
   );
 
+  static const workshopMaterialIssue = FormDraftDescriptor(
+    title: '生产领退料办理',
+    module: BadgeModule.warehouse,
+    route: RouteName.workshopMaterialIssue,
+    permission: Perm.workshopMaterialIssue,
+    draftKind: 'workshop_material_issue',
+  );
+  static const workshopMaterialBatchIssue = FormDraftDescriptor(
+    title: '生产领退料批量办理',
+    module: BadgeModule.warehouse,
+    route: '${RouteName.workshopMaterialIssue}/batch',
+    permission: Perm.workshopMaterialIssue,
+    draftKind: 'workshop_material_batch_issue',
+  );
   static const warehouseDiscovery = FormDraftDescriptor(
     title: '填写领料材料',
     module: BadgeModule.warehouse,
@@ -547,6 +561,8 @@ abstract final class FormDraftCatalog {
     'fqcInspection': fqcInspection,
     'finishedArrival': finishedArrival,
     'warehouseDraw': warehouseDraw,
+    'workshopMaterialIssue': workshopMaterialIssue,
+    'workshopMaterialBatchIssue': workshopMaterialBatchIssue,
     'warehouseDiscovery': warehouseDiscovery,
     'stockDocument': stockDocument,
     'stockCount': stockCount,

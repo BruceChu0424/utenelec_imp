@@ -284,7 +284,7 @@ class _WarehouseDocumentHistoryViewState
         ],
       ),
       body: MasterDataTableView<WarehouseDocumentHistorySummary>(
-        requiredLeadingColumnKeys: const ['status', 'goodsName'],
+        requiredLeadingColumnKeys: const ['status', 'billNo'],
         tableKey:
             'features.warehouse.widgets.warehouse_document_history_view.WarehouseDocumentHistoryViewState.build.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
@@ -404,6 +404,13 @@ class _WarehouseDocumentHistoryViewState
           warehouseHistoryStatusCellColor(item.status, closed: item.closed),
     ),
     MasterColumnDef(
+      key: 'billNo',
+      label: '单据号',
+      width: 170,
+      sortable: true,
+      value: (item) => item.displayBillNo,
+    ),
+    MasterColumnDef(
       key: 'goodsName',
       label: '货品名称',
       width: 200,
@@ -416,16 +423,16 @@ class _WarehouseDocumentHistoryViewState
       value: (item) => item.line?.goodsCode ?? '—',
     ),
     MasterColumnDef(
-      key: 'specification',
-      label: '规格',
-      width: 140,
-      value: (item) => item.line?.specification ?? '—',
-    ),
-    MasterColumnDef(
       key: 'colorName',
       label: '颜色',
       width: 100,
       value: (item) => item.line?.colorName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'specification',
+      label: '规格',
+      width: 140,
+      value: (item) => item.line?.specification ?? '—',
     ),
     MasterColumnDef(
       key: 'quantity',
@@ -433,13 +440,6 @@ class _WarehouseDocumentHistoryViewState
       width: 130,
       type: 'number',
       value: (item) => item.line?.quantityLabel ?? '—',
-    ),
-    MasterColumnDef(
-      key: 'billNo',
-      label: '单据号',
-      width: 170,
-      sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
-      value: (item) => item.displayBillNo,
     ),
     MasterColumnDef(
       key: 'billDate',

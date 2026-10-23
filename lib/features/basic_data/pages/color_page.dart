@@ -1,11 +1,13 @@
 // 颜色资料管理页（基础资料 · 扁平主档，无分类树）。
 //
-// 与货品/模具/客户/供应商同级，但颜色是扁平字典（编号/名称/状态 3 字段），
+// 与货品/模具/客户/供应商同级，但颜色是扁平字典（编号/名称/状态/备注），
 // 故无左树 + 右详情布局，直接：AppBar + 搜索栏 + 全屏主档表格；添加并入右下角悬浮组。
 // 复用 MasterDataTableView（搜索/autofilter/分页）+ showMasterEditDialog +
 // showMasterDetailSheet，CRUD/详情/并发防护流程与货品 _DetailPane 一致。
 // 查看全员可见（路由不设守卫），编辑按 color:edit 权限显隐。
 // 文档：见 docs/03-页面/基础资料页.md。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,6 +18,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -37,7 +40,6 @@ import '../models/master_facet.dart';
 import '../models/master_batch.dart';
 import '../repositories/color_repository.dart';
 import '../repositories/master_batch_repository.dart';
-import '../repositories/master_status_repository.dart';
 import '../widgets/master_batch_feedback.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_inline_edit.dart';
@@ -45,6 +47,8 @@ import '../widgets/master_inline_page_mixin.dart';
 import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/master_edit_owner.dart';
+import '../widgets/master_status_confirmation.dart';
 
 class ColorPage extends ConsumerStatefulWidget {
   const ColorPage({super.key});
@@ -73,6 +77,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
     _facets = null;
     _error = null;
     _selectedColorIds = {};
+    _invalidateOperations();
   }
 
   @override
@@ -82,6 +87,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
       read: (row) => row.name,
       required: true,
     ),
+    'remark': MasterInlineField(key: 'remark', read: (row) => row.remark),
     if (_canStatus)
       'status': MasterInlineField(
         key: 'status',
@@ -109,6 +115,69 @@ class _ColorPageState extends ConsumerState<ColorPage>
 
   /// 行操作进行中（启停/删除等）防并发。
   bool _rowOpBusy = false;
+  int _queryEpoch = 0;
+  final _operationOwners = <MasterEditOwner>{};
+  MasterEditOwner? _busyOwner;
+  MasterEditOwner? _detailOwner;
+
+  MasterEditOwner _operationOwner(String permission, {bool write = true}) {
+    final epoch = _queryEpoch;
+    final owner = MasterEditOwner(
+      context,
+      ref,
+      permissions: {permission},
+      requireWrite: write,
+      isCurrent: () => mounted && epoch == _queryEpoch && !inlineEdit.active,
+    );
+    _operationOwners.add(owner);
+    owner.addListener(() {
+      if (mounted && !owner.isCurrent) {
+        _setOperationBusy(owner, false);
+        if (identical(_detailOwner, owner)) {
+          _detailOwner = null;
+          _detailLoading = false;
+        }
+      }
+    });
+    return owner;
+  }
+
+  void _setOperationBusy(MasterEditOwner owner, bool busy) {
+    if (!mounted || (!busy && !identical(_busyOwner, owner))) return;
+    setState(() {
+      _busyOwner = busy ? owner : null;
+      _rowOpBusy = busy;
+    });
+  }
+
+  void _invalidateOperations() {
+    _queryEpoch++;
+    for (final owner in _operationOwners.toList()) {
+      owner.invalidate();
+    }
+    _busyOwner = null;
+    _detailOwner = null;
+    _rowOpBusy = false;
+    _detailLoading = false;
+  }
+
+  void _releaseOwner(MasterEditOwner owner) {
+    _setOperationBusy(owner, false);
+    if (identical(_detailOwner, owner)) {
+      _detailOwner = null;
+      _detailLoading = false;
+    }
+    _operationOwners.remove(owner);
+    owner.dispose();
+  }
+
+  @override
+  void dispose() {
+    for (final owner in _operationOwners) {
+      owner.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -134,6 +203,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
   // ---- 分页 -------------------------------------------------------------
 
   Future<void> _loadColors(int page) async {
+    if (page != _pageNum) _invalidateOperations();
     final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
     final generation = _loadRequests.begin();
     setState(() {
@@ -195,6 +265,8 @@ class _ColorPageState extends ConsumerState<ColorPage>
 
   void _onFilterChanged(String key, String? value) {
     setState(() {
+      _invalidateOperations();
+      _selectedColorIds = {};
       final next = Map<String, String?>.from(_filters);
       if (value == null) {
         next.remove(key);
@@ -207,16 +279,32 @@ class _ColorPageState extends ConsumerState<ColorPage>
   }
 
   void _onKeywordChanged(String kw) {
-    setState(() => _keyword = kw);
+    setState(() {
+      _invalidateOperations();
+      _selectedColorIds = {};
+      _keyword = kw;
+    });
     _loadColors(1);
   }
 
   // ---- 新建/编辑/删除 ---------------------------------------------------
 
-  static const _colorFields = [
-    MasterFieldDef(key: 'name', label: '颜色名称', required: true, group: '基础'),
-    MasterFieldDef(key: 'code', label: '颜色编号', group: '基础', hint: '留空自动生成'),
+  List<MasterFieldDef> _colorFields([String? entityId]) => [
     MasterFieldDef(
+      key: 'code',
+      label: '颜色编号',
+      group: '基础',
+      hint: '留空自动生成',
+      identifierDomain: 'COLOR',
+      identifierId: entityId,
+    ),
+    const MasterFieldDef(
+      key: 'name',
+      label: '颜色名称',
+      required: true,
+      group: '基础',
+    ),
+    const MasterFieldDef(
       key: 'status',
       label: '状态',
       type: MasterFieldType.select,
@@ -224,190 +312,200 @@ class _ColorPageState extends ConsumerState<ColorPage>
       required: true,
       group: '基础',
     ),
+    const MasterFieldDef(key: 'remark', label: '备注', group: '基础'),
   ];
 
   Future<void> _showCreate() async {
-    await showMasterEditDialog(
-      context: context,
-      draftSpec: FormDraftCatalog.color.spec(title: '新增颜色'),
-      title: '新增颜色', // TODO(l10n): 补 arb
-      fields: _colorFields,
-      initialValues: const {'status': '使用'},
-      readOnlyKeys: _canStatus ? null : const {'status'},
-      onSubmit: _doCreate,
-    );
-  }
-
-  Future<bool> _doCreate(Map<String, dynamic> body) async {
-    // Preserve the actual API failure for the shared draft submission fence.
-    await ref.read(colorRepositoryProvider).create(body);
-    if (mounted) {
-      context.appSuccess('颜色已创建');
-      await _loadColors(_pageNum);
-    }
-    return true;
-  }
-
-  void _showEdit(ColorDetail d) {
-    showMasterEditDialog(
-      context: context,
-      title: '编辑颜色', // TODO(l10n): 补 arb
-      fields: _colorFields,
-      initialValues: {
-        'name': d.name ?? '',
-        'code': d.code ?? '',
-        'status': d.status ?? '',
-      },
-      readOnlyKeys: _canStatus ? null : const {'status'},
-      onSubmit: (body) => _doUpdate(d.id, body),
-    );
-  }
-
-  Future<bool> _doUpdate(String id, Map<String, dynamic> body) async {
-    final ok = await context.guardRun(
-      () => ref.read(colorRepositoryProvider).update(id, body),
-      success: '颜色已更新', // TODO(l10n): 补 arb
-      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _loadColors(_pageNum);
-    return true;
-  }
-
-  Future<void> _toggleDetailStatus(ColorDetail d) async {
-    final next = d.status == '使用' ? '禁用' : '使用';
-    final ok = await context.guardRun(
-      () => ref
-          .read(masterStatusRepositoryProvider)
-          .change(resourcePath: ApiEndpoints.color(d.id), status: next),
-      success: next == '禁用' ? '已停用' : '已启用',
-      errorFallback: '状态变更失败，请稍后重试',
-    );
-    if (ok && mounted) await _loadColors(_pageNum);
-  }
-
-  Future<void> _delete(ColorDetail d) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => UtenAlertDialog(
-        title: const Text('删除颜色'), // TODO(l10n): 补 arb
-        content: Text(
-          '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该颜色')}」吗？', // TODO(l10n): 补 arb
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'), // TODO(l10n): 补 arb
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'), // TODO(l10n): 补 arb
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    if (!mounted) return;
-    final deleted = await context.guardRun(
-      () => ref.read(colorRepositoryProvider).delete(d.id),
-      success: '颜色已删除', // TODO(l10n): 补 arb
-      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!deleted || !mounted) return;
-    await _loadColors(_pageNum);
-    // 删空当前页时回退上一页，避免列表空白
-    if (mounted && _page != null && _page!.items.isEmpty && _page!.page > 1) {
-      await _loadColors(_page!.page - 1);
+    if (!_canCreate || _rowOpBusy) return;
+    final owner = _operationOwner(Perm.colorCreate);
+    try {
+      if (!await owner.bindRequests() || !mounted) return;
+      await showMasterEditDialog(
+        context: context,
+        draftSpec: FormDraftCatalog.color.spec(title: '新增颜色'),
+        title: '新增颜色', // TODO(l10n): 补 arb
+        fields: _colorFields(),
+        initialValues: const {'status': '使用'},
+        readOnlyKeys: _canStatus ? null : const {'status'},
+        submissionOwner: owner,
+        onSubmit: (body) async {
+          await ref.read(colorRepositoryProvider).create(body);
+          return true;
+        },
+        onAccepted: () {
+          if (!owner.isCurrent) return;
+          context.appSuccess('颜色已创建');
+          unawaited(_loadColors(_pageNum));
+        },
+      );
+    } finally {
+      _releaseOwner(owner);
     }
   }
 
-  /// 点行：拉详情弹框。独立 [_detailLoading] 防并发 + rootNavigator 防 go_router 误 pop。
+  Future<void> _showEdit(ColorDetail d, {MasterEditOwner? openingOwner}) async {
+    if (!_canEdit || _rowOpBusy || inlineEdit.active) return;
+    final owner = openingOwner ?? _operationOwner(Perm.colorEdit);
+    try {
+      if (openingOwner == null && !await owner.bindRequests()) return;
+      if (!mounted || !owner.isCurrent) return;
+      await showMasterEditDialog(
+        context: context,
+        title: '编辑颜色', // TODO(l10n): 补 arb
+        fields: _colorFields(d.id),
+        initialValues: {
+          'name': d.name ?? '',
+          'code': d.code ?? '',
+          'status': d.status ?? '',
+          'remark': d.remark ?? '',
+        },
+        readOnlyKeys: _canStatus ? null : const {'status'},
+        submissionOwner: owner,
+        onSubmit: (body) async {
+          await ref.read(colorRepositoryProvider).update(d.id, body);
+          return true;
+        },
+        onAccepted: () {
+          if (!owner.isCurrent) return;
+          context.appSuccess('颜色已更新');
+          unawaited(_loadColors(_pageNum));
+        },
+      );
+    } finally {
+      if (openingOwner == null) _releaseOwner(owner);
+    }
+  }
+
+  Future<void> _toggleDetailStatus(ColorDetail d) =>
+      _batchSetColorStatus({d.id}, d.status == '使用' ? '禁用' : '使用');
+
+  Future<void> _delete(ColorDetail d) => _batchDeleteColors({d.id});
+
+  /// 读取、加载框与详情操作始终属于打开时的身份和查询范围。
   Future<void> _showDetail(String id) async {
     if (_detailLoading) return;
+    final owner = _operationOwner(Perm.colorView, write: false);
+    _detailOwner = owner;
     _detailLoading = true;
-    final nav = Navigator.of(context, rootNavigator: true);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
-    ColorDetail? d;
+    ModalRoute<dynamic>? loadingRoute;
     try {
-      d = await ref.read(colorRepositoryProvider).detail(id);
+      if (!await owner.bindRequests() || !mounted) return;
+      final route = DialogRoute<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          return owner.ownDialog(
+            ctx,
+            const Center(child: CircularProgressIndicator()),
+          );
+        },
+      );
+      loadingRoute = route;
+      owner.trackRoute(route);
+      unawaited(Navigator.of(context, rootNavigator: true).push(route));
+      final detail = await owner.run(
+        () => ref.read(colorRepositoryProvider).detail(id),
+      );
+      final wasLoadingCurrent = loadingRoute.isCurrent;
+      owner.closeRoute(loadingRoute);
+      if (!wasLoadingCurrent ||
+          !mounted ||
+          !owner.isCurrent ||
+          ModalRoute.of(context)?.isCurrent != true) {
+        return;
+      }
+      await showMasterDetailSheet(
+        context: context,
+        title: detail.name?.isNotEmpty == true
+            ? detail.name!
+            : (detail.code ?? '颜色详情'),
+        rows: _detailRows(detail),
+        historyEntityType: 'colors',
+        historyRecordId: detail.id,
+        onHistoryChanged: () => _loadColors(_pageNum),
+        dialogScopeBuilder: owner.ownDialog,
+        isCurrent: () => owner.isCurrent,
+        canEdit: _canEdit,
+        canDelete: _canDelete,
+        onToggleStatus: _canStatus
+            ? () {
+                if (owner.isCurrent) _toggleDetailStatus(detail);
+              }
+            : null,
+        statusActionLabel: detail.status == '使用' ? '停用' : '启用',
+        onEdit: () {
+          if (owner.isCurrent) _showEdit(detail);
+        },
+        onDelete: () {
+          if (owner.isCurrent) _delete(detail);
+        },
+      );
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      final wasLoadingCurrent = loadingRoute?.isCurrent == true;
+      owner.closeRoute(loadingRoute);
+      if (wasLoadingCurrent &&
+          mounted &&
+          owner.isCurrent &&
+          ModalRoute.of(context)?.isCurrent == true) {
+        context.appError(e.message);
+      }
     } catch (_) {
-      if (mounted) context.appError('加载颜色详情失败'); // TODO(l10n): 补 arb
+      final wasLoadingCurrent = loadingRoute?.isCurrent == true;
+      owner.closeRoute(loadingRoute);
+      if (wasLoadingCurrent &&
+          mounted &&
+          owner.isCurrent &&
+          ModalRoute.of(context)?.isCurrent == true) {
+        context.appError('加载颜色详情失败');
+      }
+    } finally {
+      owner.closeRoute(loadingRoute);
+      _releaseOwner(owner);
     }
-    if (!mounted) {
-      nav.pop();
-      return;
-    }
-    nav.pop(); // 关 loading
-    if (d == null) {
-      _detailLoading = false;
-      return;
-    }
-    final detail = d;
-    await showMasterDetailSheet(
-      context: context,
-      title: detail.name?.isNotEmpty == true
-          ? detail.name!
-          : (detail.code ?? '颜色详情'),
-      rows: _detailRows(detail),
-      canEdit: _canEdit,
-      canDelete: _canDelete,
-      onToggleStatus: _canStatus ? () => _toggleDetailStatus(detail) : null,
-      statusActionLabel: detail.status == '使用' ? '停用' : '启用',
-      onEdit: () => _showEdit(detail),
-      onDelete: () => _delete(detail),
-    );
-    if (mounted) _detailLoading = false;
   }
 
   List<MasterDetailRow> _detailRows(ColorDetail c) => [
     MasterDetailRow('编号', c.code), // TODO(l10n): 补 arb
     MasterDetailRow('颜色名称', c.name), // TODO(l10n): 补 arb
     MasterDetailRow('状态', c.status), // TODO(l10n): 补 arb
+    MasterDetailRow('备注', c.remark),
     MasterDetailRow('旧系统 ID', c.legacyId?.toString()), // TODO(l10n): 补 arb
   ];
 
   // ---- 行菜单（右击/长按）+ 多选批量 --------------------------------------
 
-  /// 启用/禁用颜色：直接以列表行字段全量回传、仅改状态（颜色只有 编号/名称/状态 3 字段）。
-  Future<void> _toggleColorStatus(ColorListItem c) async {
-    if (_rowOpBusy) return;
-    final next = c.status == '使用' ? '禁用' : '使用';
-    _rowOpBusy = true;
-    final ok = await context.guardRun(
-      () => ref
-          .read(masterStatusRepositoryProvider)
-          .change(resourcePath: ApiEndpoints.color(c.id), status: next),
-      success: next == '禁用' ? '颜色已禁用' : '颜色已启用', // TODO(l10n): 补 arb
-    );
-    if (ok && mounted) await _loadColors(_pageNum);
-    _rowOpBusy = false;
-  }
+  Future<void> _toggleColorStatus(ColorListItem c) =>
+      _batchSetColorStatus({c.id}, c.status == '使用' ? '禁用' : '使用');
 
-  /// 菜单「编辑/删除」：先拉详情再走既有流程。
-  Future<void> _withColorDetail(
-    String id,
-    Future<void> Function(ColorDetail d) action,
-  ) async {
-    if (_rowOpBusy) return;
-    _rowOpBusy = true;
-    ColorDetail? d;
-    try {
-      d = await ref.read(colorRepositoryProvider).detail(id);
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('加载颜色详情失败'); // TODO(l10n): 补 arb
+  Future<void> _editColorRow(ColorListItem row) async {
+    if (_rowOpBusy || inlineEdit.active || !inlineReadReady || !_canEdit) {
+      return;
     }
-    _rowOpBusy = false;
-    if (d != null && mounted) await action(d);
+    final owner = _operationOwner(Perm.colorEdit);
+    _setOperationBusy(owner, true);
+    var editorOpened = false;
+    try {
+      if (!await owner.bindRequests()) return;
+      final detail = await owner.run(
+        () => ref.read(colorRepositoryProvider).detail(row.id),
+      );
+      _setOperationBusy(owner, false);
+      if (owner.isCurrent) {
+        editorOpened = true;
+        unawaited(
+          _showEdit(
+            detail,
+            openingOwner: owner,
+          ).whenComplete(() => _releaseOwner(owner)),
+        );
+      }
+    } on ApiException catch (e) {
+      if (mounted && owner.isCurrent) context.appError(e.message);
+    } catch (_) {
+      if (mounted && owner.isCurrent) context.appError('加载颜色详情失败');
+    } finally {
+      if (!editorOpened) _releaseOwner(owner);
+    }
   }
 
   /// 行菜单条目（右击/长按弹出）。可用性按权限 + 行状态实时决定。
@@ -422,6 +520,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
         UtenMenuItem(
           label: '批量禁用($n)', // TODO(l10n): 补 arb
           icon: Icons.pause_circle_outline_rounded,
+          destructive: true,
           enabled: _canStatus && !idle,
           onTap: () => _batchSetColorStatus(selected, '禁用'),
         ),
@@ -461,7 +560,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
         label: '编辑颜色',
         icon: Icons.edit_outlined,
         enabled: _canEdit,
-        onTap: () => _withColorDetail(c.id, (d) async => _showEdit(d)),
+        onTap: () => _editColorRow(c),
       ),
       UtenMenuItem(
         label: '删除颜色',
@@ -475,81 +574,133 @@ class _ColorPageState extends ConsumerState<ColorPage>
 
   /// 批量启停(ADR-111)：一次请求、一个事务，服务端逐条回原因(原本就是目标状态的不动)。
   Future<void> _batchSetColorStatus(Set<String> ids, String status) async {
-    if (_rowOpBusy || ids.isEmpty) return;
-    _rowOpBusy = true;
-    MasterBatchResult? result;
+    if (_rowOpBusy ||
+        inlineEdit.active ||
+        !inlineReadReady ||
+        !_canStatus ||
+        ids.isEmpty) {
+      return;
+    }
+    final targets = Set<String>.unmodifiable(ids);
+    final labels = {for (final id in targets) id: _labelOf(id)};
+    final owner = _operationOwner(Perm.colorStatus);
     try {
-      result = await context.guardAction(
+      if (!await owner.bindRequests() || !mounted) return;
+      final confirmed = await confirmMasterStatusChange(
+        context,
+        disabling: status == '禁用',
+        label: targets.length == 1 ? (labels[targets.first] ?? '该颜色') : '选中的颜色',
+        count: targets.length,
+        dialogScopeBuilder: owner.ownDialog,
+      );
+      if (!confirmed || !owner.isCurrent || _rowOpBusy || !inlineReadReady) {
+        return;
+      }
+      await _runColorBatch(
+        owner,
         () => ref
             .read(masterBatchRepositoryProvider)
             .changeStatus(
               entityPath: ApiEndpoints.colors,
               status: status,
-              items: [for (final id in ids) MasterBatchItem(id)],
+              items: [for (final id in targets) MasterBatchItem(id)],
             ),
-        errorFallback: '批量操作失败，请稍后重试', // TODO(l10n): 补 arb
+        action: status == '禁用' ? '禁用' : '启用',
+        labels: labels,
       );
     } finally {
-      _rowOpBusy = false;
+      _releaseOwner(owner);
     }
-    if (result == null || !mounted) return;
-    await _afterBatch(result, status == '禁用' ? '禁用' : '启用');
   }
 
   /// 批量删除(ADR-111)：一次请求；还被货品、组装清单、单据、库存用着的颜色逐条说明原因并保留。
   Future<void> _batchDeleteColors(Set<String> ids) async {
-    if (_rowOpBusy || ids.isEmpty) return;
-    final ok = await UtenDialog.show(
-      context,
-      title: ids.length == 1 ? '删除颜色' : '批量删除颜色', // TODO(l10n): 补 arb
-      content: Text(
-        ids.length == 1
-            ? '确定删除「${_labelOf(ids.first) ?? '该颜色'}」吗？'
-            : '确定删除选中的 ${ids.length} 个颜色吗？还在被货品或单据使用的会逐条说明原因并保留。', // TODO(l10n): 补 arb
-      ),
-      confirmLabel: '删除', // TODO(l10n): 补 arb
-      danger: true,
-    );
-    if (ok != true || !mounted) return;
-    _rowOpBusy = true;
-    MasterBatchResult? result;
+    if (_rowOpBusy ||
+        inlineEdit.active ||
+        !inlineReadReady ||
+        !_canDelete ||
+        ids.isEmpty) {
+      return;
+    }
+    final targets = Set<String>.unmodifiable(ids);
+    final labels = {for (final id in targets) id: _labelOf(id)};
+    final owner = _operationOwner(Perm.colorDelete);
     try {
-      result = await context.guardAction(
+      if (!await owner.bindRequests() || !mounted) return;
+      final ok = await UtenDialog.show(
+        context,
+        title: ids.length == 1 ? '删除颜色' : '批量删除颜色', // TODO(l10n): 补 arb
+        content: Builder(
+          builder: (ctx) => owner.ownDialog(
+            ctx,
+            Text(
+              ids.length == 1
+                  ? '确定删除「${labels[targets.first] ?? '该颜色'}」吗？'
+                  : '确定删除选中的 ${ids.length} 个颜色吗？还在被货品或单据使用的会逐条说明原因并保留。', // TODO(l10n): 补 arb
+            ),
+          ),
+        ),
+        confirmLabel: '删除', // TODO(l10n): 补 arb
+        danger: true,
+      );
+      if (ok != true || !owner.isCurrent || _rowOpBusy || !inlineReadReady) {
+        return;
+      }
+      await _runColorBatch(
+        owner,
         () => ref
             .read(masterBatchRepositoryProvider)
             .delete(
               entityPath: ApiEndpoints.colors,
-              items: [for (final id in ids) MasterBatchItem(id)],
+              items: [for (final id in targets) MasterBatchItem(id)],
             ),
-        errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+        action: '删除',
+        labels: labels,
       );
     } finally {
-      _rowOpBusy = false;
+      _releaseOwner(owner);
     }
-    if (result == null || !mounted) return;
-    await _afterBatch(result, '删除');
   }
 
-  Future<void> _afterBatch(MasterBatchResult result, String action) async {
-    // 成功的从勾选里剪掉，失败的留着方便处理后重试。
-    setState(() {
-      _selectedColorIds = {
-        for (final r in result.results)
-          if (!r.ok && _selectedColorIds.contains(r.id)) r.id,
-      };
-    });
-    await showMasterBatchOutcome(
-      context,
-      result,
-      action: action,
-      noun: '颜色',
-      labelOf: _labelOf,
-    );
-    if (!mounted) return;
-    await _loadColors(_pageNum);
-    // 删空当前页时回退上一页，避免列表空白
-    if (mounted && _page != null && _page!.items.isEmpty && _page!.page > 1) {
-      await _loadColors(_page!.page - 1);
+  Future<void> _runColorBatch(
+    MasterEditOwner owner,
+    Future<MasterBatchResult> Function() command, {
+    required String action,
+    required Map<String, String?> labels,
+  }) async {
+    _setOperationBusy(owner, true);
+    try {
+      final result = await owner.run(command);
+      _setOperationBusy(owner, false);
+      if (!mounted || !owner.isCurrent) return;
+      setState(() {
+        _selectedColorIds = {
+          for (final r in result.results)
+            if (!r.ok && _selectedColorIds.contains(r.id)) r.id,
+        };
+      });
+      await showMasterBatchOutcome(
+        context,
+        result,
+        action: action,
+        noun: '颜色',
+        labelOf: (id) => labels[id],
+        dialogScopeBuilder: owner.ownDialog,
+      );
+      if (!owner.isCurrent) return;
+      await _loadColors(_pageNum);
+      if (owner.isCurrent &&
+          _page != null &&
+          _page!.items.isEmpty &&
+          _page!.page > 1) {
+        await _loadColors(_page!.page - 1);
+      }
+    } on ApiException catch (e) {
+      if (mounted && owner.isCurrent) context.appError(e.message);
+    } catch (_) {
+      if (mounted && owner.isCurrent) context.appError('$action失败，请稍后重试');
+    } finally {
+      _setOperationBusy(owner, false);
     }
   }
 
@@ -563,12 +714,6 @@ class _ColorPageState extends ConsumerState<ColorPage>
   // ---- 列定义 -----------------------------------------------------------
 
   static final _columns = <MasterColumnDef<ColorListItem>>[
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 72,
-      value: (c) => c.status,
-    ),
     MasterColumnDef(key: 'code', label: '编号', width: 120, value: (c) => c.code),
     MasterColumnDef(
       key: 'name',
@@ -576,11 +721,69 @@ class _ColorPageState extends ConsumerState<ColorPage>
       width: 220,
       value: (c) => c.name,
     ),
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (c) => c.status,
+    ),
+    MasterColumnDef(
+      key: 'remark',
+      label: '备注',
+      width: 260,
+      value: (c) => c.remark,
+    ),
   ];
 
   Future<void> _refresh() async {
+    _invalidateOperations();
     await Future.wait([_loadColors(1), _loadFacets()]);
   }
+
+  List<Widget> _colorFloatingActions(BuildContext context, Set<String> ids) => [
+    MasterInlineEditActions<ColorListItem>(
+      controller: inlineEdit,
+      canEdit: _canEdit && inlineReadReady && !_rowOpBusy,
+      onSave: saveInline,
+      embedded: true,
+      additionalActions: [
+        if (ids.isNotEmpty && _canStatus) ...[
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            onPressed: !inlineEdit.active && !_rowOpBusy
+                ? () => _batchSetColorStatus(ids, '禁用')
+                : null,
+            child: const Text('停用选中'),
+          ),
+          UtenButton(
+            type: UtenButtonType.tonal,
+            size: UtenButtonSize.large,
+            onPressed: !inlineEdit.active && !_rowOpBusy
+                ? () => _batchSetColorStatus(ids, '使用')
+                : null,
+            child: const Text('启用选中'),
+          ),
+        ],
+        if (ids.isNotEmpty && _canDelete)
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            onPressed: !inlineEdit.active && !_rowOpBusy
+                ? () => _batchDeleteColors(ids)
+                : null,
+            child: const Text('删除选中'),
+          ),
+        if (_canCreate)
+          UtenButton(
+            size: UtenButtonSize.large,
+            icon: Icons.add_rounded,
+            onPressed: _rowOpBusy ? null : () => inlineNavigate(_showCreate),
+            child: const Text('添加颜色'),
+          ),
+      ],
+    ),
+  ];
 
   /// 导出查询参数（与 _loadColors 一致，不含 page/size；V717）。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
@@ -637,120 +840,120 @@ class _ColorPageState extends ConsumerState<ColorPage>
             ),
           ],
         ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-        floatingActionButton: inlineFloatingActions(
-          additionalActions: [
-            if (_canCreate)
-              UtenButton(
-                size: UtenButtonSize.large,
-                icon: Icons.add_rounded,
-                onPressed: _showCreate,
-                child: const Text('添加颜色'),
-              ),
-          ],
-        ),
-        body: SafeArea(
-          child: UtenContentContainer(
-            child: Padding(
-              padding: const EdgeInsets.only(top: UtenSpacing.s8),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4,
-                    ),
-                    child: UtenSearchBar(
-                      hint: '搜索颜色(名称/编号)', // TODO(l10n): 补 arb
-                      initialValue: _keyword,
-                      onChanged: (value) =>
-                          inlineNavigate(() => _onKeywordChanged(value)),
-                    ),
+        body: Stack(
+          children: [
+            SafeArea(
+              child: UtenContentContainer(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          bottom: UtenSpacing.s8,
+                          left: UtenSpacing.s4,
+                          right: UtenSpacing.s4,
+                        ),
+                        child: UtenSearchBar(
+                          hint: '搜索颜色(名称/编号)', // TODO(l10n): 补 arb
+                          initialValue: _keyword,
+                          onChanged: (value) =>
+                              inlineNavigate(() => _onKeywordChanged(value)),
+                        ),
+                      ),
+                      Expanded(
+                        child: MasterDataTableView<ColorListItem>(
+                          bottomContentPadding: (_canCreate || _canEdit)
+                              ? UtenFloatingActionGroup.scrollClearance
+                              : 0,
+                          columnEditingEnabled: _canEdit,
+                          tableKey:
+                              'features.basic_data.pages.color_page.ColorPageState._buildDraftHost.1',
+                          columns: inlineColumns(_columns),
+                          requiredLeadingColumnKeys: const [
+                            'code',
+                            'name',
+                            'status',
+                          ],
+                          items: _page?.items ?? const [],
+                          // 导出/打印（V717 color:export）：打印预览用本页列渲染，
+                          // 导出列集服务端与表格对齐——「表格显示啥导出啥」。
+                          // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
+                          // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
+                          toolbarLeadingActions: [
+                            UtenPrintPreviewButton(
+                              title: '颜色资料', // TODO(l10n): 补 arb
+                              subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
+                              loader: _printLoader,
+                              exportEndpoint: '/master/colors/export',
+                              exportPermission: Perm.colorExport,
+                              exportReport: '',
+                              exportQuery: _exportQuery,
+                              exportFilename: '颜色资料', // TODO(l10n): 补 arb
+                              type: UtenButtonType.primary,
+                              size: UtenButtonSize.large,
+                              icon: null,
+                            ),
+                            UtenExportButton(
+                              endpoint: '/master/colors/export',
+                              requiredPermission: Perm.colorExport,
+                              report: '',
+                              queryParams: _exportQuery,
+                              filename: '颜色资料', // TODO(l10n): 补 arb
+                              label: '导出颜色', // TODO(l10n): 补 arb
+                              type: UtenButtonType.primary,
+                              size: UtenButtonSize.large,
+                              icon: null,
+                            ),
+                          ],
+                          // 多选保留勾选状态；批量启停和删除由右键菜单提供。
+                          selectable: true,
+                          idOf: (c) => c.id,
+                          selectedIds: _selectedColorIds,
+                          onSelectedIdsChanged: (s) =>
+                              setState(() => _selectedColorIds = s),
+                          batchActionsBuilder: _colorFloatingActions,
+                          // 行菜单（右击/长按）：查看/启用/禁用/编辑/删除。
+                          rowMenuBuilder: inlineEdit.active
+                              ? null
+                              : _colorMenuItems,
+                          facets: _facets?.fields ?? const {},
+                          nullCounts: _facets?.nullCounts ?? const {},
+                          filters: _filters,
+                          onFilterChanged: (key, value) => inlineNavigate(
+                            () => _onFilterChanged(key, value),
+                          ),
+                          // 行底色按状态（ADR-169 收编）：使用=蓝档淡底（裸色收编）/
+                          // 禁用=灰档淡底（停用归中性终态，原浅红把「停用」当异常）。
+                          rowColor: (c) => switch (c.status) {
+                            '使用' => UtenColors.info.withValues(alpha: 0.13),
+                            '禁用' => UtenColors.statusNeutral.withValues(
+                              alpha: 0.10,
+                            ),
+                            _ => null,
+                          },
+                          onRowTap: inlineEdit.active
+                              ? null
+                              : (c) => _showDetail(c.id),
+                          isLoading: _loading && _page == null,
+                          loadingMore: _loading && _page != null,
+                          error: _error,
+                          onRetry: () => _loadColors(_pageNum),
+                          emptyMessage: '暂无颜色', // TODO(l10n): 补 arb
+                          currentPage: _page?.page ?? 1,
+                          totalPages: _page?.totalPages ?? 1,
+                          paginationScope: _keyword,
+                          onPageChange: (p) =>
+                              inlineNavigate(() => _loadColors(p)),
+                        ),
+                      ),
+                    ],
                   ),
-                  Expanded(
-                    child: MasterDataTableView<ColorListItem>(
-                      bottomContentPadding: (_canCreate || _canEdit)
-                          ? UtenFloatingActionGroup.scrollClearance
-                          : 0,
-                      columnEditingEnabled: _canEdit,
-                      tableKey:
-                          'features.basic_data.pages.color_page.ColorPageState._buildDraftHost.1',
-                      columns: inlineColumns(_columns),
-                      items: _page?.items ?? const [],
-                      // 导出/打印（V717 color:export）：打印预览用本页列渲染，
-                      // 导出列集服务端与表格对齐——「表格显示啥导出啥」。
-                      // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
-                      // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
-                      toolbarLeadingActions: [
-                        UtenPrintPreviewButton(
-                          title: '颜色资料', // TODO(l10n): 补 arb
-                          subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
-                          loader: _printLoader,
-                          exportEndpoint: '/master/colors/export',
-                          exportPermission: Perm.colorExport,
-                          exportReport: '',
-                          exportQuery: _exportQuery,
-                          exportFilename: '颜色资料', // TODO(l10n): 补 arb
-                          type: UtenButtonType.primary,
-                          size: UtenButtonSize.large,
-                          icon: null,
-                        ),
-                        UtenExportButton(
-                          endpoint: '/master/colors/export',
-                          requiredPermission: Perm.colorExport,
-                          report: '',
-                          queryParams: _exportQuery,
-                          filename: '颜色资料', // TODO(l10n): 补 arb
-                          label: '导出颜色', // TODO(l10n): 补 arb
-                          type: UtenButtonType.primary,
-                          size: UtenButtonSize.large,
-                          icon: null,
-                        ),
-                      ],
-                      // 多选保留勾选状态；批量启停和删除由右键菜单提供。
-                      selectable: true,
-                      idOf: (c) => c.id,
-                      selectedIds: _selectedColorIds,
-                      onSelectedIdsChanged: (s) =>
-                          setState(() => _selectedColorIds = s),
-                      // 行菜单（右击/长按）：查看/启用/禁用/编辑/删除。
-                      rowMenuBuilder: inlineEdit.active
-                          ? null
-                          : _colorMenuItems,
-                      facets: _facets?.fields ?? const {},
-                      nullCounts: _facets?.nullCounts ?? const {},
-                      filters: _filters,
-                      onFilterChanged: (key, value) =>
-                          inlineNavigate(() => _onFilterChanged(key, value)),
-                      // 行底色按状态（ADR-169 收编）：使用=蓝档淡底（裸色收编）/
-                      // 禁用=灰档淡底（停用归中性终态，原浅红把「停用」当异常）。
-                      rowColor: (c) => switch (c.status) {
-                        '使用' => UtenColors.info.withValues(alpha: 0.13),
-                        '禁用' => UtenColors.statusNeutral.withValues(
-                          alpha: 0.10,
-                        ),
-                        _ => null,
-                      },
-                      onRowTap: inlineEdit.active
-                          ? null
-                          : (c) => _showDetail(c.id),
-                      isLoading: _loading && _page == null,
-                      loadingMore: _loading && _page != null,
-                      error: _error,
-                      onRetry: () => _loadColors(_pageNum),
-                      emptyMessage: '暂无颜色', // TODO(l10n): 补 arb
-                      currentPage: _page?.page ?? 1,
-                      totalPages: _page?.totalPages ?? 1,
-                      paginationScope: _keyword,
-                      onPageChange: (p) => inlineNavigate(() => _loadColors(p)),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
+            if (_rowOpBusy) const UtenBusyOverlay(title: '正在处理颜色'),
+          ],
         ),
       ),
     );

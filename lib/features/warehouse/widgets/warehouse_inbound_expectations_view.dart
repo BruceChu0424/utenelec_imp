@@ -876,39 +876,6 @@ class _WarehouseInboundExpectationsViewState
 
   List<MasterColumnDef<InboundExpectation>> get _columns => [
     MasterColumnDef(
-      key: 'orderType',
-      label: '订货类型',
-      width: 110,
-      value: (expectation) => expectation.orderType.label,
-    ),
-    MasterColumnDef(
-      key: 'billNo',
-      label: '订货单号',
-      width: 170,
-      sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
-      value: (expectation) => expectation.billNo,
-    ),
-    MasterColumnDef(
-      key: 'supplierName',
-      label: '供应商 / 委外商',
-      width: 210,
-      value: (expectation) => expectation.supplierName ?? '—',
-    ),
-    MasterColumnDef(
-      key: 'expectedDate',
-      label: '预计到货日',
-      width: 120,
-      type: 'date',
-      value: (expectation) => expectation.expectedDate ?? '—',
-    ),
-    MasterColumnDef(
-      key: 'itemCount',
-      label: '明细行数',
-      width: 100,
-      type: 'number',
-      value: (expectation) => expectation.items.length.toString(),
-    ),
-    MasterColumnDef(
       key: 'status',
       label: '状态',
       width: 225,
@@ -947,6 +914,39 @@ class _WarehouseInboundExpectationsViewState
                 UtenStatusBadgeType.danger,
               ),
             },
+    ),
+    MasterColumnDef(
+      key: 'billNo',
+      label: '订货单号',
+      width: 170,
+      sortable: true,
+      value: (expectation) => expectation.billNo,
+    ),
+    MasterColumnDef(
+      key: 'orderType',
+      label: '订货类型',
+      width: 110,
+      value: (expectation) => expectation.orderType.label,
+    ),
+    MasterColumnDef(
+      key: 'supplierName',
+      label: '供应商 / 委外商',
+      width: 210,
+      value: (expectation) => expectation.supplierName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'expectedDate',
+      label: '预计到货日',
+      width: 120,
+      type: 'date',
+      value: (expectation) => expectation.expectedDate ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'itemCount',
+      label: '明细行数',
+      width: 100,
+      type: 'number',
+      value: (expectation) => expectation.items.length.toString(),
     ),
     MasterColumnDef(
       key: 'ownerEmployeeName',

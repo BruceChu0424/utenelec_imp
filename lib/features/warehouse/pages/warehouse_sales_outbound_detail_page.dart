@@ -91,13 +91,18 @@ class _WarehouseSalesOutboundDetailPageState
 
   Future<void> _verifySubmission() async {
     try {
-      final latest = await ref
-          .read(warehouseSalesOutboundRepositoryProvider)
-          .detail(widget.id);
+      final requestScope = await captureFormDraftRequestScope();
+      final latest = await requestScope.run(
+        () => ref
+            .read(warehouseSalesOutboundRepositoryProvider)
+            .detail(widget.id),
+      );
+      requestScope.checkCurrent();
       if (!formDraftIdentityIsCurrent) return;
       if (latest.header.warehouseWorkStatus ==
           WarehouseSalesOutboundStatus.shipped) {
         await completeFormDraft();
+        requestScope.checkCurrent();
         if (mounted) setState(() => _replaceDetail(latest));
         invalidateWarehouseTaskCounts(ref);
         if (mounted) context.appSuccess('已核对：这张任务已出库');
@@ -171,7 +176,7 @@ class _WarehouseSalesOutboundDetailPageState
   @override
   void initState() {
     super.initState();
-    startFormDraftIdentityGuard();
+    startFormDraftIdentityGuard(includePermissions: true);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -234,8 +239,10 @@ class _WarehouseSalesOutboundDetailPageState
       context.appWarning(_picking!.error!);
       return;
     }
+    final requestScopeFuture = captureFormDraftRequestScope();
     setState(() => _confirming = true);
     try {
+      final requestScope = await requestScopeFuture;
       final reason = await _confirmAction(
         action,
         weightAlerts: [
@@ -247,13 +254,15 @@ class _WarehouseSalesOutboundDetailPageState
             warehouseSalesWeightAlertText(alert.line, alert.check),
         ],
       );
+      requestScope.checkCurrent();
       if (reason == null || !mounted) return;
       setState(() {
         _confirming = false;
         _acting = true;
       });
       final repository = ref.read(warehouseSalesOutboundRepositoryProvider);
-      final latest = await repository.detail(widget.id);
+      final latest = await requestScope.run(() => repository.detail(widget.id));
+      requestScope.checkCurrent();
       if (!mounted || !formDraftIdentityIsCurrent) return;
       if (warehouseSalesOutboundReviewSnapshot(latest) !=
               warehouseSalesOutboundReviewSnapshot(reviewed) ||
@@ -274,23 +283,27 @@ class _WarehouseSalesOutboundDetailPageState
         return;
       }
       final updated = await runFormDraftSubmission(
-        () => ref
-            .read(warehouseSalesOutboundRepositoryProvider)
-            .transition(
-              widget.id,
-              targetStatus: action.targetStatus,
-              reason: reason,
-              stockPlaces: _picking?.stockPlaces,
-              lineWarehouses: _picking?.lineWarehouses,
-              lineWeights: _picking?.lineWeights,
-            ),
+        () => requestScope.run(
+          () => ref
+              .read(warehouseSalesOutboundRepositoryProvider)
+              .transition(
+                widget.id,
+                targetStatus: action.targetStatus,
+                reason: reason,
+                stockPlaces: _picking?.stockPlaces,
+                lineWarehouses: _picking?.lineWarehouses,
+                lineWeights: _picking?.lineWeights,
+              ),
+        ),
       );
+      requestScope.checkCurrent();
       if (!mounted || !formDraftIdentityIsCurrent) return;
       if (updated.header.id != widget.id ||
           updated.header.warehouseWorkStatus != action.targetStatus) {
         throw const FormatException();
       }
       await completeFormDraft();
+      requestScope.checkCurrent();
       if (!mounted) return;
       setState(() => _replaceDetail(updated));
       // 确认出库会减少待出库角标；流转成功立即失效全部仓库任务计数。

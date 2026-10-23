@@ -15,7 +15,6 @@ class InstantInventoryApiFixture extends ApiClient {
   Future<Map<String, dynamic>> Function(Map<String, dynamic> query)?
   onInventory;
   Future<Map<String, dynamic>>? nextInventoryResponse;
-  Future<List<String>>? nextSearchResponse;
 
   @override
   Future<List<Map<String, dynamic>>> getList(
@@ -31,17 +30,6 @@ class InstantInventoryApiFixture extends ApiClient {
           },
         ]
       : <Map<String, dynamic>>[];
-
-  @override
-  Future<List<String>> getStringList(
-    String path, {
-    Map<String, dynamic>? query,
-  }) async {
-    final deferred = nextSearchResponse;
-    if (deferred == null) return <String>[];
-    nextSearchResponse = null;
-    return deferred;
-  }
 
   @override
   Future<Map<String, dynamic>> get(

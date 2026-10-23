@@ -90,6 +90,19 @@ bool hasUnknownFormDraftSubmission(
 }) {
   final marker = honorMarker ? data[formDraftUnknownSubmissionKey] : null;
   if (marker == true) return true;
+  if (Uri.tryParse(route)?.path == '${RouteName.workshopMaterialIssue}/batch') {
+    final commands = data['commands'];
+    if (commands is Map &&
+        commands.values.any(
+          (entry) => entry is Map && entry['state'] == 'unknown',
+        )) {
+      return true;
+    }
+  }
+  if (Uri.tryParse(route)?.path == RouteName.workshopMaterialIssue &&
+      data['command'] != null) {
+    return true;
+  }
   if (Uri.tryParse(route)?.path ==
       RouteName.warehouseProductionDrawBatchIssue) {
     if (data['uncertain'] == true) return true;
@@ -145,6 +158,22 @@ Set<String> unknownFormDraftCommandIdentities(
   Map<String, dynamic> data, {
   required String route,
 }) {
+  if (Uri.tryParse(route)?.path == '${RouteName.workshopMaterialIssue}/batch') {
+    final commands = data['commands'];
+    return {
+      if (commands is Map)
+        for (final entry in commands.entries)
+          if (entry.value is Map && (entry.value as Map)['state'] == 'unknown')
+            'workshop-material:${entry.key}:${(entry.value as Map)['key']}',
+    };
+  }
+  if (Uri.tryParse(route)?.path == RouteName.workshopMaterialIssue &&
+      hasUnknownFormDraftSubmission(data, route: route)) {
+    final command = data['command'];
+    return {
+      'workshop-material:${command is Map ? command['idempotencyKey'] : null}',
+    };
+  }
   if (Uri.tryParse(route)?.path == '/production/daily-reports/new' &&
       hasUnknownFormDraftSubmission(data, route: route)) {
     final command = data[dailyReportCreateCommandKey];

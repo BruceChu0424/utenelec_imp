@@ -5,6 +5,20 @@ import 'package:uten_imp/features/basic_data/models/account_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/account_repository.dart';
 
 void main() {
+  test('account detail retains the authorized related subject label', () {
+    final detail = AccountDetail.fromJson({
+      'id': 'account-1',
+      'styleId': 'style-1',
+      'styleCode': '10201',
+      'styleName': '基本户',
+      'styleDeleted': true,
+    });
+    expect(detail.styleId, 'style-1');
+    expect(detail.styleCode, '10201');
+    expect(detail.styleName, '基本户');
+    expect(detail.styleDeleted, isTrue);
+  });
+
   test('account model prioritizes exact decimal text for NUMERIC(18,4)', () {
     final account = AccountListItem.fromJson({
       'id': 'account-1',

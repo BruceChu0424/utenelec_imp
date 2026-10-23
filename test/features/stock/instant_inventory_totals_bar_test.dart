@@ -95,8 +95,7 @@ void main() {
       withCategories: true,
     );
     final router = await _pumpPage(tester, const Size(1500, 1000), api: api);
-    await tester.tap(_categoryText('原材料'));
-    await tester.pumpAndSettle();
+    await _chooseCategory(tester, '原材料');
     final search = find.descendant(
       of: find.byKey(const Key('instant-inventory-search')),
       matching: find.byType(EditableText),
@@ -129,7 +128,7 @@ void main() {
       tester.state(find.byType(InstantInventoryPage)),
       same(originalState),
     );
-    expect(_categoryText('原材料'), findsOneWidget);
+    expect(find.text('原材料'), findsOneWidget);
     expect(tester.widget<EditableText>(search).controller.text, isEmpty);
     expect(
       tester
@@ -177,8 +176,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('goods-search-related')));
       await tester.pumpAndSettle();
       if (selectedSearch != null) {
-        await tester.tap(_categoryText('成品'));
-        await tester.pumpAndSettle();
+        await _chooseCategory(tester, '成品');
       }
       _expectNavigationScope(
         api.inventoryRequests.last,
@@ -363,7 +361,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('防抖和结果更新期间禁旧合计，分类提示延迟或失败不挡当前全局汇总', (tester) async {
+  testWidgets('防抖和结果更新期间禁旧合计，新结果完成后开放同范围汇总', (tester) async {
     final api = InstantInventoryApiFixture(
       withTotals: true,
       withAnalysis: true,
@@ -372,8 +370,6 @@ void main() {
     final router = await _pumpPage(tester, const Size(1500, 1000), api: api);
     final inventory = Completer<Map<String, dynamic>>();
     api.nextInventoryResponse = inventory.future;
-    final request = Completer<List<String>>();
-    api.nextSearchResponse = request.future;
     final search = find.descendant(
       of: find.byKey(const Key('instant-inventory-search')),
       matching: find.byType(EditableText),
@@ -406,14 +402,11 @@ void main() {
     expect(
       tester.widget<TextButton>(details).onPressed,
       isNotNull,
-      reason: '真实全局结果已更新，树提示仍在请求中也可查看同口径汇总',
+      reason: '真实全局结果已更新，可以查看同口径汇总',
     );
     expect(find.textContaining('3.52 t', findRichText: true), findsOneWidget);
     expect(api.inventoryRequests.last['categoryId'], isNull);
     expect(api.inventoryRequests.last['keyword'], '新货品');
-    request.completeError(StateError('分类定位失败'));
-    await tester.pumpAndSettle();
-    expect(find.text('重试搜索'), findsOneWidget);
     expect(tester.widget<TextButton>(details).onPressed, isNotNull);
     expect(find.textContaining('统计暂不可用', findRichText: true), findsNothing);
     await tester.tap(details);
@@ -424,7 +417,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('快速改词禁用旧导出打印，新结果已更新即使分类提示未完成仍能导出新词', (tester) async {
+  testWidgets('快速改词禁用旧导出打印，新结果完成后只导出当前关键词', (tester) async {
     final api = InstantInventoryApiFixture(
       withTotals: true,
       withAnalysis: true,
@@ -436,9 +429,7 @@ void main() {
       api: api,
       permissions: const {Perm.stockReportExport},
     );
-    final locator = Completer<List<String>>();
     final inventory = Completer<Map<String, dynamic>>();
-    api.nextSearchResponse = locator.future;
     api.nextInventoryResponse = inventory.future;
     final search = find.descendant(
       of: find.byKey(const Key('instant-inventory-search')),
@@ -488,9 +479,6 @@ void main() {
     await preview().loader();
     expect(api.inventoryRequests.last['keyword'], '螺丝 M3');
     expect(api.inventoryRequests.last['categoryId'], isNull);
-    locator.completeError(StateError('分类提示失败'));
-    await tester.pumpAndSettle();
-    expect(find.text('重试搜索'), findsOneWidget);
     expect(export().enabled, isTrue);
     expect(preview().enabled, isTrue);
     expect(tester.takeException(), isNull);
@@ -596,10 +584,22 @@ Future<GoRouter> _pumpPage(
   return router;
 }
 
-Finder _categoryText(String label) => find.descendant(
-  of: find.byType(UtenCategoryTreeView<ProductCategoryNode>),
-  matching: find.text(label),
-);
+Future<void> _chooseCategory(WidgetTester tester, String label) async {
+  final field = find.byKey(const Key('instant-inventory-category'));
+  await tester.ensureVisible(field);
+  await tester.pumpAndSettle();
+  await tester.tap(field);
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.descendant(
+      of: find.byType(UtenCategoryTreeView<ProductCategoryNode>),
+      matching: find.text(label),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('确定').last);
+  await tester.pumpAndSettle();
+}
 
 const _upstreamReturnTo = '/inventory-origin?department=production&label=stock';
 

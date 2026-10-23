@@ -28,7 +28,7 @@ class ProductionFqcRepository {
         if (sheet != null && sheet.isNotEmpty) 'sheet': sheet,
       },
     );
-    return PagedResult.fromJson(json, ProductionFqcInspection.fromJson);
+    return PagedResult.fromJsonResponsive(json, ProductionFqcInspection.fromJson);
   }
 
   /// V547 品质检查单队列（ACTIVE = 仍有待检行；CLOSED = 全部决定/取消）。
@@ -47,7 +47,7 @@ class ProductionFqcRepository {
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
       },
     );
-    return PagedResult.fromJson(json, ProductionFqcInspectionSheet.fromJson);
+    return PagedResult.fromJsonResponsive(json, ProductionFqcInspectionSheet.fromJson);
   }
 
   Future<ProductionFqcInspectionSheetDetail> sheetDetail(String sheetId) async {

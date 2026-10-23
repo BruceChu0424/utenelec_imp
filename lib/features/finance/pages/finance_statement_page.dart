@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -62,6 +63,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   String? _partyId;
   List<_Party> _partyList = const [];
   bool _partyLoading = false;
+  int _partyGeneration = 0;
   int _year = ChinaDateTime.today().year;
   DateTime _from = defaultReportFrom();
   DateTime _to = ChinaDateTime.today();
@@ -83,6 +85,21 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   @override
   void initState() {
     super.initState();
+    // Keep the monotonic reader epoch observed for this page's whole lifetime.
+    ref.listenManual(exportContextEpochProvider, (previous, next) {
+      if (!mounted || previous == next) return;
+      setState(() {
+        ++_loadGeneration;
+        _data = null;
+        _loading = false;
+        _page = 1;
+        _keyword = '';
+        _partyId = null;
+        _partyList = const [];
+        _partyLoading = false;
+        ++_partyGeneration;
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _applyPrefs(ref.read(financeStatementReportPrefsProvider));
       _loadParties();
@@ -141,6 +158,12 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   }
 
   Future<void> _loadParties() async {
+    final generation = ++_partyGeneration;
+    final readEpoch = ref.read(exportContextEpochProvider);
+    bool current() =>
+        mounted &&
+        generation == _partyGeneration &&
+        readEpoch == ref.read(exportContextEpochProvider);
     setState(() => _partyLoading = true);
     final api = ref.read(apiClientProvider);
     try {
@@ -157,7 +180,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
           })
           .where((p) => p.id.isNotEmpty)
           .toList();
-      if (!mounted) return;
+      if (!mounted || !current()) return;
       setState(() {
         _partyList = parties;
         // 保留仍然有效的 partyId（偏好恢复的选中不被覆盖）；已失效（被删/换方向）才清空。
@@ -167,7 +190,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
         _partyLoading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !current()) return;
       setState(() => _partyLoading = false);
     }
   }
@@ -181,6 +204,11 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   Future<void> _load() async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
+    final readEpoch = ref.read(exportContextEpochProvider);
+    bool current() =>
+        mounted &&
+        generation == _loadGeneration &&
+        readEpoch == ref.read(exportContextEpochProvider);
     final requestedPage = _page;
     setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
@@ -198,13 +226,19 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
         ...sortQueryParams(_sortKey, _sortAsc),
       };
       final json = await api.get(_endpoint, query: query);
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || !current()) return;
+      final decodedReport = await parseReportResponseResponsive(
+        json,
+        requestedPage,
+        isCurrent: current,
+      );
+      if (!mounted || !current()) return;
       setState(() {
-        _data = parseReportResponse(json, requestedPage);
+        _data = decodedReport;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || !current()) return;
       context.appError(humanErrorMessage(e) ?? '对账单没有加载出来，请稍后重试');
       setState(() => _loading = false);
     }
@@ -250,7 +284,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
       _endpoint,
       query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
     );
-    final data = parseReportResponse(json, 1);
+    final data = await parseReportResponseResponsive(json, 1);
     return UtenPrintTable(
       columnKeys: [for (final c in data.columns) c.key],
       rowIds: [for (final r in data.rows) r['id']?.toString()],

@@ -7,6 +7,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -166,6 +167,13 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   @override
   void initState() {
     super.initState();
+    ref.listenManual(exportContextEpochProvider, (previous, next) {
+      if (!mounted || previous == next) return;
+      setState(() {
+        ++_readEpoch;
+        _invalidateLoadedResults();
+      });
+    });
     ref.listenManual(sensitiveReadBoundaryProvider, (previous, next) {
       if (previous == next || !mounted) return;
       _closeReadRoute(_filterRoute);
@@ -400,6 +408,11 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       sortAscending: _sortAscending,
     );
     final generation = ++_loadGeneration;
+    final readEpoch = ref.read(exportContextEpochProvider);
+    bool current() =>
+        mounted &&
+        generation == _loadGeneration &&
+        readEpoch == ref.read(exportContextEpochProvider);
     setState(() {
       _loading = true;
       _loadError = null;
@@ -418,15 +431,21 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       final json = await ref
           .read(apiClientProvider)
           .get('/production/reports/where-used', query: query);
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || !current()) return;
+      final decodedReport = await parseReportResponseResponsive(
+        json,
+        snapshot.page,
+        isCurrent: current,
+      );
+      if (!mounted || !current()) return;
       setState(() {
-        _data = parseReportResponse(json, snapshot.page);
+        _data = decodedReport;
         _loadedQuery = snapshot;
         _page = snapshot.page;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || !current()) return;
       final revoked =
           error is ApiException &&
           ({401, 403, 404}.contains(error.httpStatus) ||

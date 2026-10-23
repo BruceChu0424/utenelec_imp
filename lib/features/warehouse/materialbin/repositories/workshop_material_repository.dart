@@ -223,7 +223,7 @@ class WorkshopMaterialRepository {
         if (goodsIds.isNotEmpty) 'goodsIds': goodsIds.join(','),
       },
     );
-    return PagedResult.fromJson(json, WmMaterialOption.fromJson);
+    return PagedResult.fromJsonResponsive(json, WmMaterialOption.fromJson);
   }
 
   Future<List<ProductCategoryNode>> requestMaterialCategories(
@@ -281,7 +281,7 @@ class WorkshopMaterialRepository {
         ...scope,
       },
     );
-    return PagedResult.fromJson(json, WmRequisition.fromJson);
+    return PagedResult.fromJsonResponsive(json, WmRequisition.fromJson);
   }
 
   /// 领料单详情 (按申请发料 / 收退回页)。

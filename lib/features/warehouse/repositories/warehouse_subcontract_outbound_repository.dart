@@ -34,7 +34,7 @@ class WarehouseSubcontractOutboundRepository {
         ...scope.queryParameters,
       },
     );
-    return PagedResult.fromJson(json, OutboundTask.fromJson);
+    return PagedResult.fromJsonResponsive(json, OutboundTask.fromJson);
   }
 
   Future<OutboundTaskDetail> taskDetail(String issueId) async {

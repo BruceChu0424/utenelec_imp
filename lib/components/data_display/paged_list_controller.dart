@@ -49,14 +49,21 @@ class PagedListController<T> extends ChangeNotifier {
   /// A different document or reader cannot inherit either accepted data or an
   /// in-flight response. Unlike load, reset also works in an unselected view.
   void reset({bool notify = true}) {
+    invalidateReadOwner(notify: false);
+    keyword = '';
+    sortKey = null;
+    sortAsc = true;
+    if (notify) _notify();
+  }
+
+  /// Retire private data and pending callbacks without changing the query that
+  /// the user is typing or the page's existing search-reset lifecycle.
+  void invalidateReadOwner({bool notify = true}) {
     _requests.begin();
     page = null;
     pageNum = 1;
     loading = false;
     error = null;
-    keyword = '';
-    sortKey = null;
-    sortAsc = true;
     if (notify) _notify();
   }
 
@@ -73,9 +80,14 @@ class PagedListController<T> extends ChangeNotifier {
     int page, {
     bool silent = false,
     required Future<PagedResult<T>> Function() fetch,
+    bool Function()? isCurrent,
   }) async {
-    if (_disposed) return;
+    if (_disposed || isCurrent?.call() == false) return;
     final generation = _requests.begin();
+    bool current() =>
+        !_disposed &&
+        _requests.isCurrent(generation) &&
+        (isCurrent?.call() ?? true);
     pageNum = page;
     if (!silent) {
       loading = true;
@@ -84,19 +96,19 @@ class PagedListController<T> extends ChangeNotifier {
     }
     try {
       final r = await fetch();
-      if (!_requests.isCurrent(generation)) return;
+      if (!current()) return;
       this.page = r;
       loading = false;
       error = null;
       _notify();
     } on ApiException catch (e) {
-      if (!_requests.isCurrent(generation)) return;
+      if (!current()) return;
       if (silent) return;
       error = e.message;
       loading = false;
       _notify();
     } catch (_) {
-      if (!_requests.isCurrent(generation)) return;
+      if (!current()) return;
       if (silent) return;
       error = '加载列表失败'; // TODO(l10n): 补 arb
       loading = false;

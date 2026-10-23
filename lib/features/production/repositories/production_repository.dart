@@ -31,6 +31,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/progress_ratio.dart';
@@ -174,7 +175,10 @@ class ProductionPlanRepository {
       if (order != null && order.isNotEmpty) 'order': order,
     };
     final json = await api.get('/production/plans', query: query); // ENDPOINT
-    return PagedResult.fromJson(json, ProductionPlanListItem.fromJson);
+    return PagedResult.fromJsonResponsive(
+      json,
+      ProductionPlanListItem.fromJson,
+    );
   }
 
   Future<ProductionPlanDetail> detail(String id) async {
@@ -440,7 +444,7 @@ class ProductionPlanRepository {
         'dateTo': ?dateTo,
       },
     ); // ENDPOINT
-    return PagedResult.fromJson(json, PlanProgressRow.fromJson);
+    return PagedResult.fromJsonResponsive(json, PlanProgressRow.fromJson);
   }
 
   /// 进度看板汇总（同过滤、跨全部页）：{count, sumQty, sumInbound}。
@@ -740,7 +744,10 @@ class ProductionPlanRepository {
           'sourceType': sourceType!.trim(),
       },
     ); // ENDPOINT
-    return PagedResult.fromJson(json, MaterialAnalysisListItem.fromJson);
+    return PagedResult.fromJsonResponsive(
+      json,
+      MaterialAnalysisListItem.fromJson,
+    );
   }
 
   /// Production-scoped approved sales-order candidates. This endpoint omits
@@ -800,7 +807,7 @@ class ProductionPlanRepository {
       '$_materialAnalysesBase/$analysisId',
       query: _materialAnalysisProjection,
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   /// 关联销售订货单的货品清单(ADR-088，只读)。
@@ -863,7 +870,7 @@ class ProductionPlanRepository {
         'sources': [for (final source in sources) source.toJson()],
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   Future<ProductionMaterialAnalysisView> updateMaterialAnalysisRoutes({
@@ -881,7 +888,7 @@ class ProductionPlanRepository {
         'decisions': [for (final decision in decisions) decision.toJson()],
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   /// 回写货品主档的「所属仓库」(V587)。
@@ -923,7 +930,7 @@ class ProductionPlanRepository {
         'reason': reason,
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   Future<ProductionMaterialAnalysisView> cancelMaterialSupplyAction({
@@ -942,7 +949,7 @@ class ProductionPlanRepository {
         'reason': reason,
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   Future<ProductionMaterialAnalysisView> cancelAggregateMaterialOrder({
@@ -960,7 +967,7 @@ class ProductionPlanRepository {
         'reason': reason,
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   /// 撤回准确来源计划及其执行安排；服务端同事务恢复分析责任，保留业务历史。
@@ -980,7 +987,7 @@ class ProductionPlanRepository {
         'reason': reason,
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   Future<ProductionMaterialAnalysisView> revokeMaterialRootStockOutput({
@@ -999,7 +1006,7 @@ class ProductionPlanRepository {
         'reason': reason,
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   Future<ProductionMaterialAnalysisView> claimSharedFutureSupply({
@@ -1022,7 +1029,7 @@ class ProductionPlanRepository {
         if (allowLateSupply) 'allowLateSupply': true,
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   /// Changes only the pre-plan simulation order for shared free stock. The
@@ -1042,7 +1049,7 @@ class ProductionPlanRepository {
         'items': [for (final item in items) item.toJson()],
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   /// 现货层借用（调货）：把 from 路径的已分配覆盖量调给 to 路径。
@@ -1068,7 +1075,7 @@ class ProductionPlanRepository {
         'reason': reason,
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   /// 撤销一笔 ACTIVE 借用，恢复基线分配投影。
@@ -1088,7 +1095,7 @@ class ProductionPlanRepository {
         'reason': reason,
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   /// 跨计划让料候选由服务端按仓库、物料维度、缺口、状态与对象级写范围
@@ -1110,7 +1117,7 @@ class ProductionPlanRepository {
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
       },
     ); // ENDPOINT
-    return PagedResult.fromJson(
+    return PagedResult.fromJsonResponsive(
       json,
       MaterialCrossReallocationCandidate.fromJson,
     );
@@ -1135,7 +1142,7 @@ class ProductionPlanRepository {
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
       },
     ); // ENDPOINT
-    return PagedResult.fromJson(
+    return PagedResult.fromJsonResponsive(
       json,
       MaterialCrossReallocationSourceCandidate.fromJson,
     );
@@ -1166,7 +1173,7 @@ class ProductionPlanRepository {
         'idempotencyKey': idempotencyKey,
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   Future<ProductionMaterialAnalysisView> createMaterialCrossReallocation({
@@ -1193,7 +1200,7 @@ class ProductionPlanRepository {
         'idempotencyKey': idempotencyKey,
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   Future<MaterialPriorityReplenishmentPreview>
@@ -1202,7 +1209,7 @@ class ProductionPlanRepository {
     String? reallocationId,
     String? idempotencyKey,
     bool futureTransfer = false,
-  }) async => MaterialPriorityReplenishmentPreview.fromJson(
+  }) async => MaterialPriorityReplenishmentPreview.fromJsonResponsive(
     await api.get(
       futureTransfer
           ? (idempotencyKey != null
@@ -1254,7 +1261,7 @@ class ProductionPlanRepository {
     required bool allowLateSupply,
     required String reason,
     required String idempotencyKey,
-  }) async => ProductionMaterialAnalysisView.fromJson(
+  }) async => ProductionMaterialAnalysisView.fromJsonResponsive(
     await api.post(
       '$_materialAnalysesBase/${targetAnalysis.analysisId}/future-transfers',
       body: {
@@ -1288,7 +1295,7 @@ class ProductionPlanRepository {
     required String reason,
     required String idempotencyKey,
     bool acceptPublicRelease = false,
-  }) async => ProductionMaterialAnalysisView.fromJson(
+  }) async => ProductionMaterialAnalysisView.fromJsonResponsive(
     await api.post(
       '$_materialAnalysesBase/$analysisId/future-transfers/${transfer.id}/cancel',
       body: {
@@ -1331,7 +1338,7 @@ class ProductionPlanRepository {
         'idempotencyKey': idempotencyKey,
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   Future<ProductionMaterialAnalysisView> notifyMaterialAnalysis({
@@ -1360,7 +1367,7 @@ class ProductionPlanRepository {
         if (skipAutoClaim) 'skipAutoClaim': true,
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   /// 下达车间（ADR-071）：所有自制行一视同仁，单次原子调用——候选行先建
@@ -1393,7 +1400,7 @@ class ProductionPlanRepository {
         if (skipAutoClaim) 'skipAutoClaim': true,
       },
     ); // ENDPOINT
-    return ProductionMaterialGenerateResult.fromJson(json);
+    return ProductionMaterialGenerateResult.fromJsonResponsive(json);
   }
 
   /// 下达预览(ADR-099；ADR-116 起只读)：服务端给出「按这批数量真实下达之后」的
@@ -1436,25 +1443,31 @@ class ProductionPlanRepository {
         ],
       },
     ); // ENDPOINT
-    return ProductionMaterialAnalysisView.fromJson(json);
+    return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
   Future<MaterialAggregateOrderPreview> previewAggregateOrders(
     MaterialAggregateOrderRequest request, {
     CancelToken? cancelToken,
-  }) async => MaterialAggregateOrderPreview.fromJson(
+  }) async => MaterialAggregateOrderPreview.fromJsonResponsive(
     await api.postCancellable(
       '$_materialAnalysesBase/${request.analysisId}/aggregate-orders/preview',
       query: _materialAnalysisProjection,
       cancelToken: cancelToken,
       body: request.toJson(),
     ),
+    budget: UiWorkBudget(
+      isCurrent: () {
+        if (cancelToken?.isCancelled == true) throw cancelToken!.cancelError!;
+        return true;
+      },
+    ),
   );
 
   Future<MaterialAggregateOrderResult> submitAggregateOrders(
     MaterialAggregateOrderRequest request, {
     required String previewFingerprint,
-  }) async => MaterialAggregateOrderResult.fromJson(
+  }) async => MaterialAggregateOrderResult.fromJsonResponsive(
     await api.post(
       '$_materialAnalysesBase/${request.analysisId}/aggregate-orders/submit',
       query: _materialAnalysisProjection,
@@ -1488,7 +1501,7 @@ class ProductionPlanRepository {
         'billNo': ?billNo,
       },
     ); // ENDPOINT
-    return PagedResult.fromJson(json, SchedulePendingRow.fromJson);
+    return PagedResult.fromJsonResponsive(json, SchedulePendingRow.fromJson);
   }
 
   /// 待排产状态 facets（表头值筛选用）：{status:[MasterFacetBucket]}（紧急/正常）。
@@ -2232,7 +2245,10 @@ class ProductionDailyReportRepository {
       '/production/daily-reports',
       query: query,
     ); // ENDPOINT
-    return PagedResult.fromJson(json, ProductionDailyReportListItem.fromJson);
+    return PagedResult.fromJsonResponsive(
+      json,
+      ProductionDailyReportListItem.fromJson,
+    );
   }
 
   Future<ProductionDailyReportDetail> detail(String id) async {
@@ -2263,7 +2279,7 @@ class ProductionDailyReportRepository {
           'executionSegmentIds': executionSegmentIds.join(','),
       },
     );
-    return PagedResult.fromJson(json, ReportablePlanLine.fromJson);
+    return PagedResult.fromJsonResponsive(json, ReportablePlanLine.fromJson);
   }
 
   Future<ProductionDailyReportDetail> create(

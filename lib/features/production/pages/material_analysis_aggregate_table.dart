@@ -1956,10 +1956,11 @@ final class _MaterialAggregateTableController {
   MaterialIssuedQuantitySummary? issuedSummary(_MaterialAggregate aggregate) {
     final analysis = owner._analysis;
     if (analysis == null) return null;
-    final byLine = {
-      for (final material in analysis.materials)
-        material.materialLineId: material,
-    };
+    // Identity text, width measurement and quantity cells all ask for this
+    // projection. Rebuilding all materials for every aggregate made rendering
+    // cost aggregates × analysis size. The existing index has the same exact
+    // material-line identity and is shared by this immutable snapshot.
+    final byLine = owner._analysisIndexes(analysis).materialsById;
     final queue = aggregate.paths.toList();
     final visited = <String>{};
     final actions = <MaterialAnalysisSupplyAction>[];

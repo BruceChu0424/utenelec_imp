@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -86,6 +87,69 @@ Uint8List _zip(List<_Entry> entries, {int? comment}) {
 }
 
 void main() {
+  test(
+    'sliced ZIP parsing keeps exact count and paths while yielding past display limit',
+    () async {
+      final bytes = _zip([
+        for (var i = 0; i < 5000; i++) _Entry.named('目录/$i.txt', 0),
+      ]);
+      var turns = 0;
+      final timer = Timer.periodic(Duration.zero, (_) => turns++);
+      final actual = await readZipListingInUiSlices(bytes);
+      timer.cancel();
+      final expected = readZipListing(bytes);
+      expect(actual.totalEntries, 5000);
+      expect(actual.entries, hasLength(kArchiveEntryLimit));
+      expect(actual.truncated, isTrue);
+      expect(
+        actual.entries.map((entry) => entry.path),
+        expected.entries.map((entry) => entry.path),
+      );
+      expect(turns, greaterThan(2));
+    },
+  );
+
+  test(
+    'sliced ZIP64 accepts valid directory and preserves the directory count guard',
+    () async {
+      final zip = _zip([_Entry.named('原件.txt', 0)]);
+      final eocdOffset = zip.length - 22;
+      final old = ByteData.sublistView(zip);
+      final record = ByteData(56)
+        ..setUint32(0, 0x06064b50, Endian.little)
+        ..setUint64(4, 44, Endian.little)
+        ..setUint64(32, 1, Endian.little)
+        ..setUint64(
+          48,
+          old.getUint32(eocdOffset + 16, Endian.little),
+          Endian.little,
+        );
+      final locator = ByteData(20)
+        ..setUint32(0, 0x07064b50, Endian.little)
+        ..setUint64(8, eocdOffset, Endian.little);
+      final eocd =
+          ByteData.sublistView(Uint8List.fromList(zip.sublist(eocdOffset)))
+            ..setUint16(10, 0xFFFF, Endian.little)
+            ..setUint32(16, 0xFFFFFFFF, Endian.little);
+      Uint8List archive() =>
+          (BytesBuilder()
+                ..add(zip.sublist(0, eocdOffset))
+                ..add(record.buffer.asUint8List())
+                ..add(locator.buffer.asUint8List())
+                ..add(eocd.buffer.asUint8List()))
+              .takeBytes();
+      expect(
+        (await readZipListingInUiSlices(archive())).entries.single.name,
+        '原件.txt',
+      );
+      record.setUint64(32, kArchiveEntryLimit * 100 + 1, Endian.little);
+      await expectLater(
+        readZipListingInUiSlices(archive()),
+        throwsA(isA<ArchiveListingException>()),
+      );
+    },
+  );
+
   test('列出条目：名称、大小、目录标记与层级', () {
     final listing = readZipListing(
       _zip([

@@ -399,6 +399,8 @@ class UtenEditableGridController<T extends EditableGridRow>
   }
 
   final List<T> _rows;
+  List<T>? _rowsSnapshot;
+  Set<T>? _rowMembership;
   final Map<PlatformRowDraft, VoidCallback> _platformDraftListeners = {};
   void _bindPlatformDrafts() {
     final current = _rows.map((row) => row.platformFields).toSet();
@@ -430,6 +432,11 @@ class UtenEditableGridController<T extends EditableGridRow>
   int get rowsRevision => _rowsRevision;
 
   void _rowsChanged() {
+    // Publish a fresh immutable snapshot before synchronous total listeners can
+    // inspect the new rows. Selection-only notifications reuse the snapshot.
+    _rowsSnapshot = null;
+    _rowMembership = null;
+    _total.reattachTo(_rows);
     _bindPlatformDrafts();
     _rowsRevision++;
     _rowsSignal.fire();
@@ -441,48 +448,45 @@ class UtenEditableGridController<T extends EditableGridRow>
     notifyListeners();
   }
 
-  List<T> get rows => List.unmodifiable(_rows);
+  List<T> get rows => _rowsSnapshot ??= List<T>.unmodifiable(_rows);
+  Set<T> get _currentRows => _rowMembership ??= _rows.toSet();
   int get length => _rows.length;
   bool get isEmpty => _rows.isEmpty;
   T operator [](int i) => _rows[i];
 
   void addRow(T row) {
     _rows.add(row);
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
   void addRows(Iterable<T> rows) {
     _rows.addAll(rows);
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
   void insertAt(int i, T row) {
     _rows.insert(i, row);
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
   void removeAt(int i) {
     _rows[i].dispose();
     _rows.removeAt(i);
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
   /// 批量删除（按对象身份，删除前 dispose）。用于批量模式多选删除。
   void removeRows(List<T> victims) {
     if (victims.isEmpty) return;
+    final current = _currentRows;
     final kill = <T>{};
     for (final v in victims) {
-      if (_rows.contains(v) && kill.add(v)) {
+      if (current.contains(v) && kill.add(v)) {
         v.dispose();
       }
     }
     if (kill.isEmpty) return;
     _rows.removeWhere(kill.contains);
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
@@ -500,7 +504,6 @@ class UtenEditableGridController<T extends EditableGridRow>
     _rows
       ..clear()
       ..addAll(rows);
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
@@ -512,7 +515,6 @@ class UtenEditableGridController<T extends EditableGridRow>
     _rows
       ..clear()
       ..addAll(rows);
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
@@ -521,7 +523,6 @@ class UtenEditableGridController<T extends EditableGridRow>
       r.dispose();
     }
     _rows.clear();
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
@@ -537,7 +538,7 @@ class UtenEditableGridController<T extends EditableGridRow>
 
   /// 当前选中的行（快照；已删行自动排除）。批量操作（统一设供应商等）取此列表。
   List<T> get selectedRows =>
-      List.unmodifiable(_selected.where(_rows.contains));
+      List<T>.unmodifiable(_selected.where(_currentRows.contains));
 
   void toggleSelect(T row) {
     if (!_selected.add(row)) _selected.remove(row);

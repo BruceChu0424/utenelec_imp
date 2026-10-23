@@ -1,3 +1,4 @@
+import '../../../shared/auth/read_owner_fence.dart';
 // 钱流单据列表页（按 docType 参数化，5 单据通用）。
 //
 // UtenAppBar 保留标题/返回/刷新；正文从分类和搜索开始，新建统一放右下悬浮区。
@@ -90,6 +91,21 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      setState(() {
+        _reloadGeneration++;
+        _columnFilters.reset();
+        clearDraftSelection();
+        _list.invalidateReadOwner(notify: false);
+      });
+      final ownerCurrent = captureReadOwner(ref);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!ownerCurrent() || ref.read(authenticatedScopeProvider) == null) {
+          return;
+        }
+        _reload(1);
+      });
+    });
     // 深链 ?status=draft：预选「草稿」段（新建页「草稿(N)」按钮的落点）。
     if (isDraftStatusQuery(widget.initialStatus)) {
       _statusFilter = kFinanceStatusDraft;
@@ -247,6 +263,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
           .read(financeRepositoryProvider(widget.docType))
           .billNoFacets(filter: _docFilter(withBillNo: false)),
     },
+    isCurrent: captureReadOwner(ref),
     onLoaded: () {
       if (mounted) setState(() {});
     },
@@ -274,7 +291,12 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     }
     await Future.wait([
       _loadBillNoFacets(),
-      _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch),
+      _list.load(
+        page ?? _list.pageNum,
+        silent: silent,
+        fetch: _fetch,
+        isCurrent: captureReadOwner(ref),
+      ),
     ]);
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
       return;

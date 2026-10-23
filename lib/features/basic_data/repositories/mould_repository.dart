@@ -129,7 +129,7 @@ class DioMouldRepository implements MouldRepository {
     if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
 
     final json = await api.get(ApiEndpoints.moulds, query: query);
-    return PagedResult.fromJson(json, MouldListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, MouldListItem.fromJson);
   }
 
   @override
@@ -147,7 +147,7 @@ class DioMouldRepository implements MouldRepository {
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
       },
     );
-    return PagedResult.fromJson(json, MouldListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, MouldListItem.fromJson);
   }
 
   @override

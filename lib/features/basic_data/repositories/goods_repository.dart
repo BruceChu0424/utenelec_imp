@@ -230,7 +230,7 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
     query.addAll(goodsFilterQueryParams(filters));
 
     final json = await api.get(ApiEndpoints.goods, query: query);
-    return PagedResult.fromJson(json, GoodsListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, GoodsListItem.fromJson);
   }
 
   @override
@@ -394,7 +394,7 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
         if (order != null && order.isNotEmpty) 'order': order,
       },
     );
-    final result = PagedResult.fromJson(json, GoodsListItem.fromJson);
+    final result = await PagedResult.fromJsonResponsive(json, GoodsListItem.fromJson);
     if (categoryRootIds.isNotEmpty &&
         result.items.any(
           (item) => item.categoryId == null || item.categoryId!.trim().isEmpty,

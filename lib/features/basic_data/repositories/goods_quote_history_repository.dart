@@ -32,7 +32,7 @@ class ApiGoodsQuoteHistoryRepository implements GoodsQuoteHistoryRepository {
       '/sales/quotes/goods/${Uri.encodeComponent(goodsId)}/history',
       query: {'page': page, 'size': 20},
     );
-    return PagedResult.fromJson(json, GoodsQuoteHistoryRow.new);
+    return PagedResult.fromJsonResponsive(json, GoodsQuoteHistoryRow.new);
   }
 }
 

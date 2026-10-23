@@ -67,7 +67,7 @@ class DioUnitRepository implements UnitRepository {
     if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
 
     final json = await api.get(ApiEndpoints.units, query: query);
-    return PagedResult.fromJson(json, UnitListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, UnitListItem.fromJson);
   }
 
   @override

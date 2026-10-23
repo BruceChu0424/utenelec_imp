@@ -67,7 +67,7 @@ class DioPayrollRepository implements PayrollRepository {
         departmentId: departmentId,
       ),
     );
-    return PagedResult.fromJson(json, PayrollSlip.fromJson);
+    return PagedResult.fromJsonResponsive(json, PayrollSlip.fromJson);
   }
 
   @override
@@ -106,7 +106,7 @@ class DioPayrollRepository implements PayrollRepository {
         departmentId: departmentId,
       ),
     );
-    return PagedResult.fromJson(json, PayrollBatch.fromJson);
+    return PagedResult.fromJsonResponsive(json, PayrollBatch.fromJson);
   }
 
   @override

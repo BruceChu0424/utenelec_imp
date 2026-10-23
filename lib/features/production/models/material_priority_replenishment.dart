@@ -43,12 +43,29 @@ class MaterialPriorityReplenishmentPreview {
 
   factory MaterialPriorityReplenishmentPreview.fromJson(
     Map<String, dynamic> json,
+  ) => _fromAnalysis(
+    json,
+    ProductionMaterialAnalysisView.fromJson(
+      Map<String, dynamic>.from(json['sourceAnalysis'] as Map),
+    ),
+  );
+
+  static Future<MaterialPriorityReplenishmentPreview> fromJsonResponsive(
+    Map<String, dynamic> json,
+  ) async => _fromAnalysis(
+    json,
+    await ProductionMaterialAnalysisView.fromJsonResponsive(
+      Map<String, dynamic>.from(json['sourceAnalysis'] as Map),
+    ),
+  );
+
+  static MaterialPriorityReplenishmentPreview _fromAnalysis(
+    Map<String, dynamic> json,
+    ProductionMaterialAnalysisView analysis,
   ) {
     double qty(String key) => (json[key] as num?)?.toDouble() ?? 0;
     return MaterialPriorityReplenishmentPreview(
-      sourceAnalysis: ProductionMaterialAnalysisView.fromJson(
-        Map<String, dynamic>.from(json['sourceAnalysis'] as Map),
-      ),
+      sourceAnalysis: analysis,
       sourceMaterialLineId: json['sourceMaterialLineId'] as String,
       targetAnalysisId: json['targetAnalysisId'] as String,
       transferredQty: qty('transferredQty'),

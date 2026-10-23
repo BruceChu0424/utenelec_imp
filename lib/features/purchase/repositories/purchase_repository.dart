@@ -86,7 +86,7 @@ class PurchaseRepository {
         'billNo': filter.billNo!.trim(),
     };
     final json = await api.get(_base, query: query);
-    return PagedResult.fromJson(json, PurchaseDocListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, PurchaseDocListItem.fromJson);
   }
 
   /// 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径。

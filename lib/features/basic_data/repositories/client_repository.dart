@@ -170,7 +170,7 @@ class DioClientRepository implements ClientRepository {
             query: query,
             body: sensitive,
           );
-    return PagedResult.fromJson(json, ClientListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, ClientListItem.fromJson);
   }
 
   @override
@@ -195,7 +195,7 @@ class DioClientRepository implements ClientRepository {
             query: query,
             body: {'keyword': keyword.trim()},
           );
-    return PagedResult.fromJson(json, ClientListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, ClientListItem.fromJson);
   }
 
   @override
@@ -268,7 +268,7 @@ class DioClientRepository implements ClientRepository {
         if (search?.trim().isNotEmpty == true) 'search': search!.trim(),
       },
     );
-    return PagedResult.fromJson(json, ClientAccessCandidate.fromJson);
+    return PagedResult.fromJsonResponsive(json, ClientAccessCandidate.fromJson);
   }
 
   @override

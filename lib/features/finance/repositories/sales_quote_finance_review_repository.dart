@@ -75,7 +75,7 @@ class DioSalesQuoteFinanceReviewRepository
         if (normalized != null && normalized.isNotEmpty) 'keyword': normalized,
       },
     );
-    return PagedResult.fromJson(json, SalesQuoteFinanceListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, SalesQuoteFinanceListItem.fromJson);
   }
 
   @override

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../../core/performance/ui_work_budget.dart';
 
 import '../../core/theme/uten_tokens.dart';
 
@@ -73,6 +74,7 @@ class UtenTableCellInputTheme extends StatelessWidget {
   const UtenTableCellInputTheme({super.key, required this.child});
 
   final Widget child;
+  static final _themes = Expando<Map<Object, ThemeData>>();
 
   /// Input geometry belongs to the table host, independently of the cell's
   /// optional validation/help registration in UtenTableCellHints.
@@ -82,8 +84,28 @@ class UtenTableCellInputTheme extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final observer = debugUiWorkSliceObserver;
+    final clock = observer == null ? null : (Stopwatch()..start());
+    try {
+      return _UtenTableCellInputScope(
+        child: Theme(data: _themeFor(context), child: child),
+      );
+    } finally {
+      if (clock != null) observer!('table-cell-theme-build', clock.elapsed);
+    }
+  }
+
+  ThemeData _themeFor(BuildContext context) {
     final theme = Theme.of(context);
     final height = UtenEditableGridCellSpec.heightOf(context);
+    final padding = UtenEditableGridCellSpec.contentPaddingOf(context);
+    final touch = UtenControlMetrics.usesTouchTargets(context);
+    final variants = _themes[theme] ??= <Object, ThemeData>{};
+    final key = (height, padding, touch);
+    final cached = variants[key];
+    if (cached != null) return cached;
+    final observer = debugUiWorkSliceObserver;
+    final clock = observer == null ? null : (Stopwatch()..start());
     final decoration = theme.inputDecorationTheme;
     ButtonStyle commandStyle(ButtonStyle? style) =>
         (style ?? const ButtonStyle()).copyWith(
@@ -94,67 +116,65 @@ class UtenTableCellInputTheme extends StatelessWidget {
         border is OutlineInputBorder
         ? border.copyWith(borderRadius: UtenEditableGridCellSpec.borderRadius)
         : border;
-    return _UtenTableCellInputScope(
-      child: Theme(
-        data: theme.copyWith(
-          textTheme: theme.textTheme.copyWith(
-            bodyLarge: theme.textTheme.bodyMedium,
-          ),
-          textButtonTheme: TextButtonThemeData(
-            style: commandStyle(theme.textButtonTheme.style),
-          ),
-          filledButtonTheme: FilledButtonThemeData(
-            style: commandStyle(theme.filledButtonTheme.style),
-          ),
-          outlinedButtonTheme: OutlinedButtonThemeData(
-            style: commandStyle(theme.outlinedButtonTheme.style),
-          ),
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: commandStyle(theme.elevatedButtonTheme.style),
-          ),
-          iconButtonTheme: IconButtonThemeData(
-            style: (theme.iconButtonTheme.style ?? const ButtonStyle())
-                .copyWith(
-                  minimumSize: WidgetStatePropertyAll(Size.square(height)),
-                  padding: const WidgetStatePropertyAll(EdgeInsets.all(4)),
-                  iconSize: const WidgetStatePropertyAll(18),
-                  visualDensity: VisualDensity.standard,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-          ),
-          inputDecorationTheme: decoration.copyWith(
-            // 紧凑密度只改变字段轮廓，不能再把格内命令的32/48点击高度扣掉8。
-            visualDensity: UtenControlMetrics.usesTouchTargets(context)
-                ? VisualDensity.standard
-                : VisualDensity.compact,
-            isDense: true,
-            contentPadding: UtenEditableGridCellSpec.contentPaddingOf(context),
-            floatingLabelBehavior: FloatingLabelBehavior.never,
-            border: compactBorder(decoration.border),
-            enabledBorder: compactBorder(decoration.enabledBorder),
-            focusedBorder: compactBorder(decoration.focusedBorder),
-            disabledBorder: compactBorder(decoration.disabledBorder),
-            errorBorder: compactBorder(decoration.errorBorder),
-            focusedErrorBorder: compactBorder(decoration.focusedErrorBorder),
-            // A native prefix/suffix and its IconButton must share the cell's
-            // role. Material's default 48px icon slot otherwise inflates a row.
-            prefixIconConstraints: BoxConstraints(
-              minWidth: height,
-              minHeight: height,
-            ),
-            suffixIconConstraints: BoxConstraints(
-              minWidth: height,
-              minHeight: height,
-            ),
-            hintStyle: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            constraints: BoxConstraints(minHeight: height),
-          ),
+    final result = theme.copyWith(
+      textTheme: theme.textTheme.copyWith(
+        bodyLarge: theme.textTheme.bodyMedium,
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: commandStyle(theme.textButtonTheme.style),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: commandStyle(theme.filledButtonTheme.style),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: commandStyle(theme.outlinedButtonTheme.style),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: commandStyle(theme.elevatedButtonTheme.style),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: (theme.iconButtonTheme.style ?? const ButtonStyle()).copyWith(
+          minimumSize: WidgetStatePropertyAll(Size.square(height)),
+          padding: const WidgetStatePropertyAll(EdgeInsets.all(4)),
+          iconSize: const WidgetStatePropertyAll(18),
+          visualDensity: VisualDensity.standard,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
-        child: child,
+      ),
+      inputDecorationTheme: decoration.copyWith(
+        // 紧凑密度只改变字段轮廓，不能再把格内命令的32/48点击高度扣掉8。
+        visualDensity: touch ? VisualDensity.standard : VisualDensity.compact,
+        isDense: true,
+        contentPadding: padding,
+        floatingLabelBehavior: FloatingLabelBehavior.never,
+        border: compactBorder(decoration.border),
+        enabledBorder: compactBorder(decoration.enabledBorder),
+        focusedBorder: compactBorder(decoration.focusedBorder),
+        disabledBorder: compactBorder(decoration.disabledBorder),
+        errorBorder: compactBorder(decoration.errorBorder),
+        focusedErrorBorder: compactBorder(decoration.focusedErrorBorder),
+        // A native prefix/suffix and its IconButton must share the cell's
+        // role. Material's default 48px icon slot otherwise inflates a row.
+        prefixIconConstraints: BoxConstraints(
+          minWidth: height,
+          minHeight: height,
+        ),
+        suffixIconConstraints: BoxConstraints(
+          minWidth: height,
+          minHeight: height,
+        ),
+        hintStyle: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        constraints: BoxConstraints(minHeight: height),
       ),
     );
+    // ThemeData is immutable and weakly keyed. Bound zoom/touch variants per
+    // source theme; the field subtree, controllers and focus are untouched.
+    if (variants.length >= 8) variants.remove(variants.keys.first);
+    variants[key] = result;
+    if (clock != null) observer!('table-cell-theme-create', clock.elapsed);
+    return result;
   }
 }
 

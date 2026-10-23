@@ -67,7 +67,7 @@ class DioColorRepository implements ColorRepository {
     if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
 
     final json = await api.get(ApiEndpoints.colors, query: query);
-    return PagedResult.fromJson(json, ColorListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, ColorListItem.fromJson);
   }
 
   @override

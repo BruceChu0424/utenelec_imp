@@ -97,7 +97,7 @@ class StockDocRepository {
         ...filter.warehouseScope.queryParameters,
       },
     );
-    return PagedResult.fromJson(json, StockDocListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, StockDocListItem.fromJson);
   }
 
   /// 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径（docType 维度）。

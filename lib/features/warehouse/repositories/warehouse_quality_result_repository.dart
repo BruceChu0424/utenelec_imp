@@ -97,7 +97,7 @@ class WarehouseQualityResultRepository
         'scopeWarehouseId': ?scopeWarehouseId,
       },
     );
-    return PagedResult.fromJson(json, WarehouseQualityResultTask.fromJson);
+    return PagedResult.fromJsonResponsive(json, WarehouseQualityResultTask.fromJson);
   }
 
   @override

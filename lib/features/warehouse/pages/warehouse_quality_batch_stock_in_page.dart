@@ -25,6 +25,8 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/async/bounded_read_map.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -205,6 +207,8 @@ class _WarehouseQualityBatchStockInPageState
 
   Future<void> _load({bool preserveInputs = false}) async {
     final version = ++_requestVersion;
+    bool current() =>
+        mounted && formDraftIdentityIsCurrent && version == _requestVersion;
     final snapshots = preserveInputs
         ? {
             for (final draft in _drafts ?? <WarehouseQualitySliceDraft>[])
@@ -217,50 +221,49 @@ class _WarehouseQualityBatchStockInPageState
     });
     try {
       final repo = ref.read(warehouseQualityResultRepositoryProvider);
-      // 并行拉取所选任务的放行切片（串行 await 时 N 张单要排 N 个往返）。
-      final fetched = await Future.wait(
-        _receipts.map((task) => repo.detail(task.receiptType, task.receiptId)),
-        eagerError: true,
+      final details = await boundedReadMap(
+        _receipts,
+        (task) => repo.detail(task.receiptType, task.receiptId),
+        isCurrent: current,
       );
-      final details = fetched;
-      if (!mounted ||
-          !formDraftIdentityIsCurrent ||
-          version != _requestVersion) {
-        return;
-      }
+      if (!current()) return;
       final selectedItems = _inspectionItemIds?.toSet();
       validateWarehouseQualityInspectionSelection(details, _inspectionItemIds);
-      final drafts = [
-        for (final detail in details)
-          for (final slice in detail.items)
-            if (selectedItems == null ||
-                selectedItems.contains(slice.inspectionItemId))
-              WarehouseQualitySliceDraft(
-                slice,
-                receiptTypeValue: detail.receiptType.apiValue,
-                receiptId: detail.receiptId,
-                receiptNo: detail.billNo,
-                canConfirm: detail.canConfirm,
-                snapshot:
-                    snapshots['${detail.receiptType.apiValue}:${detail.receiptId}:${slice.passEventId}'],
-              ),
-      ];
-      final List<WarehouseQualityMergedRow> nextRows;
+      final drafts = <WarehouseQualitySliceDraft>[];
+      final nextRows = <WarehouseQualityMergedRow>[];
+      final work = UiWorkBudget(isCurrent: current);
       try {
-        nextRows = [
-          for (final detail in details)
-            ...warehouseQualityRowsForDetail(
+        // Preserve receipt/slice order and ownership without rescanning all
+        // previously built drafts for every receipt in a large selection.
+        for (final detail in details) {
+          final receiptDrafts = <WarehouseQualitySliceDraft>[];
+          for (final slice in detail.items) {
+            await work.checkpoint();
+            if (selectedItems != null &&
+                !selectedItems.contains(slice.inspectionItemId)) {
+              continue;
+            }
+            final draft = WarehouseQualitySliceDraft(
+              slice,
+              receiptTypeValue: detail.receiptType.apiValue,
+              receiptId: detail.receiptId,
+              receiptNo: detail.billNo,
+              canConfirm: detail.canConfirm,
+              snapshot:
+                  snapshots['${detail.receiptType.apiValue}:${detail.receiptId}:${slice.passEventId}'],
+            );
+            drafts.add(draft);
+            receiptDrafts.add(draft);
+          }
+          nextRows.addAll(
+            warehouseQualityRowsForDetail(
               detail,
-              drafts
-                  .where(
-                    (draft) =>
-                        draft.receiptTypeValue == detail.receiptType.apiValue &&
-                        draft.receiptId == detail.receiptId,
-                  )
-                  .toList(),
+              receiptDrafts,
               inspectionItemIds: selectedItems,
             ),
-        ];
+          );
+        }
+        work.ensureCurrent();
       } catch (_) {
         for (final draft in drafts) {
           draft.dispose();
@@ -278,13 +281,13 @@ class _WarehouseQualityBatchStockInPageState
       });
       await initializeFormDraft();
     } on ApiException catch (error) {
-      if (!mounted || version != _requestVersion) return;
+      if (!current()) return;
       setState(() {
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || version != _requestVersion) return;
+      if (!current()) return;
       setState(() {
         _error = '待入库明细加载失败，请稍后重试';
         _loading = false;

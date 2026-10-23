@@ -97,7 +97,7 @@ class SubcontractRepository {
         if (order != null && order.isNotEmpty) 'order': order,
       },
     );
-    return PagedResult.fromJson(json, SubcontractDocListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, SubcontractDocListItem.fromJson);
   }
 
   /// 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径；

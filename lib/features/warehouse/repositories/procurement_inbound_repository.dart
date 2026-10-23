@@ -158,7 +158,7 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
         if (billNo != null && billNo.trim().isNotEmpty) 'billNo': billNo.trim(),
       },
     );
-    return PagedResult.fromJson(json, InboundExpectation.fromJson);
+    return PagedResult.fromJsonResponsive(json, InboundExpectation.fromJson);
   }
 
   @override
@@ -220,7 +220,7 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
           'orderBillNo': orderBillNo.trim(),
       },
     );
-    return PagedResult.fromJson(json, ProcurementArrivalException.fromJson);
+    return PagedResult.fromJsonResponsive(json, ProcurementArrivalException.fromJson);
   }
 
   @override
@@ -374,7 +374,7 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
         if (kw != null && kw.isNotEmpty) 'keyword': kw,
       },
     );
-    return PagedResult.fromJson(json, ProcurementArrivalException.fromJson);
+    return PagedResult.fromJsonResponsive(json, ProcurementArrivalException.fromJson);
   }
 
   @override
@@ -393,7 +393,7 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
       ApiEndpoints.financeArrivalExceptionTasks,
       query: {'page': page, 'size': size, 'status': ?status},
     );
-    return PagedResult.fromJson(json, ProcurementArrivalException.fromJson);
+    return PagedResult.fromJsonResponsive(json, ProcurementArrivalException.fromJson);
   }
 
   @override

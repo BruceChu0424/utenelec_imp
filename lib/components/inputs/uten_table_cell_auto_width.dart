@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import '../../core/performance/ui_work_budget.dart';
 
 /// Reports the width actually needed by the inputs inside one table cell.
 ///
@@ -66,19 +67,28 @@ class _UtenTableCellAutoWidthState extends State<UtenTableCellAutoWidth> {
     _scheduleMeasurement();
   }
 
-  void _scheduleMeasurement() {
-    if (!mounted || _measurementScheduled) return;
+  void _scheduleMeasurement({bool urgent = false}) {
+    if (!mounted) return;
+    if (_measurementScheduled) {
+      if (urgent) _TableCellMeasurementQueue.enqueue(this, urgent: true);
+      return;
+    }
     _measurementScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _measurementScheduled = false;
-      if (mounted) _measure();
-    });
-    // Controller updates can happen outside a scheduled frame (draft restore,
-    // picker selection or AI fill), as well as during ordinary keyboard input.
-    WidgetsBinding.instance.ensureVisualUpdate();
+    _TableCellMeasurementQueue.enqueue(this, urgent: urgent);
   }
 
   void _measure() {
+    final observer = debugUiWorkSliceObserver;
+    if (observer == null) return _measureContents();
+    final clock = Stopwatch()..start();
+    try {
+      _measureContents();
+    } finally {
+      observer('table-cell-auto-width-scan', clock.elapsed);
+    }
+  }
+
+  void _measureContents() {
     final boundary = context.findRenderObject();
     if (boundary is! _RenderTableCellWidthObserver ||
         !boundary.attached ||
@@ -200,7 +210,7 @@ class _UtenTableCellAutoWidthState extends State<UtenTableCellAutoWidth> {
         // Caret movement/composing selection does not require text measurement.
         if (subscription.text == text) return;
         subscription.text = text;
-        _scheduleMeasurement();
+        _scheduleMeasurement(urgent: true);
       };
       _subscriptions[controller] = subscription;
       controller.addListener(subscription.listener);
@@ -209,6 +219,7 @@ class _UtenTableCellAutoWidthState extends State<UtenTableCellAutoWidth> {
 
   @override
   void dispose() {
+    _TableCellMeasurementQueue.remove(this);
     for (final entry in _subscriptions.entries) {
       entry.key.removeListener(entry.value.listener);
     }
@@ -221,6 +232,71 @@ class _UtenTableCellAutoWidthState extends State<UtenTableCellAutoWidth> {
     onLayoutOrPaint: _scheduleMeasurement,
     child: widget.child,
   );
+}
+
+/// All custom cells share one bounded post-frame scan queue. Their render and
+/// controller discovery semantics are unchanged; one large table no longer
+/// queues hundreds of independent whole-subtree scans in a single frame.
+class _TableCellMeasurementQueue {
+  static final _normal = <_UtenTableCellAutoWidthState>{};
+  static final _urgent = <_UtenTableCellAutoWidthState>{};
+  static bool _scheduled = false;
+  static bool _draining = false;
+
+  static void enqueue(
+    _UtenTableCellAutoWidthState cell, {
+    required bool urgent,
+  }) {
+    if (urgent) {
+      _normal.remove(cell);
+      _urgent.add(cell);
+    } else if (!_urgent.contains(cell)) {
+      _normal.add(cell);
+    }
+    _schedule();
+  }
+
+  static void remove(_UtenTableCellAutoWidthState cell) {
+    _normal.remove(cell);
+    _urgent.remove(cell);
+  }
+
+  static void _schedule() {
+    if (_scheduled || _draining || (_normal.isEmpty && _urgent.isEmpty)) return;
+    _scheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _drain());
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  static void _drain() {
+    _scheduled = false;
+    _draining = true;
+    final clock = Stopwatch()..start();
+    var measured = 0;
+    try {
+      while (_urgent.isNotEmpty || _normal.isNotEmpty) {
+        final pending = _urgent.isNotEmpty ? _urgent : _normal;
+        final cell = pending.first;
+        pending.remove(cell);
+        cell._measurementScheduled = false;
+        if (cell.mounted) cell._measure();
+        measured++;
+        if (measured >= 64 ||
+            clock.elapsed >= const Duration(milliseconds: 2)) {
+          break;
+        }
+      }
+    } finally {
+      _draining = false;
+      if (measured > 0) {
+        debugUiWorkSliceObserver?.call(
+          'table-cell-auto-width-batch',
+          clock.elapsed,
+        );
+      }
+      _schedule();
+    }
+  }
 }
 
 class _ControllerSubscription {

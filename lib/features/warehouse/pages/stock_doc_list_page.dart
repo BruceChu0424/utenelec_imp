@@ -1,3 +1,5 @@
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 // 仓库单据列表页（按 docType 参数化）：标题行 + 状态筛选 + 主档表格（tap→详情）。
 //
 // 2026-09-03 起统一「分类分段」范式（原 DocKpiBar 状态卡条退役）：
@@ -128,6 +130,22 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      setState(() {
+        _reloadGeneration++;
+        _columnFilters.reset();
+        clearDraftSelection();
+        _list.invalidateReadOwner(notify: false);
+      });
+      final ownerCurrent = captureReadOwner(ref);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!ownerCurrent() || ref.read(authenticatedScopeProvider) == null) {
+          return;
+        }
+        _loadBadge();
+        if (_shouldLoad) _reload(1);
+      });
+    });
     // 深链 ?status=draft：直接落在「草稿」段（新建页「草稿(N)」按钮的落点）。
     if (isDraftStatusQuery(widget.initialStatus)) {
       _seg = const _StockDocSeg.stage(0);
@@ -247,6 +265,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
               ),
             ),
       },
+      isCurrent: captureReadOwner(ref),
       onLoaded: () {
         if (mounted) setState(() {});
       },
@@ -269,7 +288,12 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
       return;
     }
     unawaited(_loadBillNoFacets());
-    await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+    await _list.load(
+      page ?? _list.pageNum,
+      silent: silent,
+      fetch: _fetch,
+      isCurrent: captureReadOwner(ref),
+    );
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
       return;
     }

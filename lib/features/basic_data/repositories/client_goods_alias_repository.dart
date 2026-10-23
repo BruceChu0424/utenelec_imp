@@ -53,7 +53,7 @@ class DioClientGoodsAliasRepository implements ClientGoodsAliasRepository {
         if (trimmed.isNotEmpty) 'keyword': trimmed,
       },
     );
-    return PagedResult.fromJson(json, ClientGoodsAlias.fromJson);
+    return PagedResult.fromJsonResponsive(json, ClientGoodsAlias.fromJson);
   }
 
   @override

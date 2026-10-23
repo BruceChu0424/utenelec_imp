@@ -75,7 +75,7 @@ class StockQueryRepository {
         if (order != null && order.isNotEmpty) 'order': order,
       },
     );
-    return PagedResult.fromJson(json, BalanceRow.fromJson);
+    return PagedResult.fromJsonResponsive(json, BalanceRow.fromJson);
   }
 
   /// stock:view projection; no goods:view lookup or local balance calculation.
@@ -87,7 +87,7 @@ class StockQueryRepository {
       '/stock/goods/${Uri.encodeComponent(goodsId)}/inventory-context',
       query: scope.toQueryParameters(),
     );
-    return PagedResult.fromJson(json, InstantInventoryRow.fromJson);
+    return PagedResult.fromJsonResponsive(json, InstantInventoryRow.fromJson);
   }
 
   /// 授权余额调整 (stock:balance:adjust, 自动生成已审核盘点单)。

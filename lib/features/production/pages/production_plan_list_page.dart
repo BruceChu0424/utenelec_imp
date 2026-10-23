@@ -1,3 +1,5 @@
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 // 生产计划单列表页（生产管理 / production_plan:view）。
 //
@@ -79,6 +81,19 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      setState(() {
+        _selectedIds.clear();
+        _list.invalidateReadOwner(notify: false);
+      });
+      final ownerCurrent = captureReadOwner(ref);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!ownerCurrent() || ref.read(authenticatedScopeProvider) == null) {
+          return;
+        }
+        _reload(1);
+      });
+    });
     // 深链 ?status=draft：预选「草稿」段（新建页「草稿(N)」按钮的落点）。
     if (isDraftStatusQuery(widget.initialStatus)) {
       _statusFilter = 0;
@@ -179,7 +194,12 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
       _list.onSortChange(sortKey, sortAsc);
       return;
     }
-    await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+    await _list.load(
+      page ?? _list.pageNum,
+      silent: silent,
+      fetch: _fetch,
+      isCurrent: captureReadOwner(ref),
+    );
     if (!mounted || _selectedIds.isEmpty) return;
     final draftIds = {
       for (final item in _list.page?.items ?? <ProductionPlanListItem>[])

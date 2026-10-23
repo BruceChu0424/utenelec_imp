@@ -42,7 +42,7 @@ class ProductionFinishedInboundTaskRepository {
         if (planNo != null && planNo.trim().isNotEmpty) 'planNo': planNo.trim(),
       },
     );
-    return PagedResult.fromJson(json, ProductionFinishedInboundTask.fromJson);
+    return PagedResult.fromJsonResponsive(json, ProductionFinishedInboundTask.fromJson);
   }
 
   /// 产成品入库任务单号列值筛选桶（2026-09-25 单号列统一）：

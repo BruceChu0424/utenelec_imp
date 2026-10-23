@@ -147,7 +147,7 @@ class DioSupplierRepository implements SupplierRepository {
             query: query,
             body: sensitive,
           );
-    return PagedResult.fromJson(json, SupplierListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, SupplierListItem.fromJson);
   }
 
   @override
@@ -170,7 +170,7 @@ class DioSupplierRepository implements SupplierRepository {
             query: query,
             body: {'keyword': keyword.trim()},
           );
-    return PagedResult.fromJson(json, SupplierListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, SupplierListItem.fromJson);
   }
 
   @override

@@ -46,6 +46,7 @@ final class _MaterialAnalysisIndexes {
   const _MaterialAnalysisIndexes({
     required this.sourceGraph,
     required this.productsById,
+    required this.materialsById,
     required this.materialsByProduct,
     required this.groups,
     required this.groupsByLine,
@@ -56,6 +57,9 @@ final class _MaterialAnalysisIndexes {
 
   final MaterialAnalysisSourceGraph sourceGraph;
   final Map<String, ProductionMaterialAnalysisProduct> productsById;
+
+  /// Exact physical material-line identity, independent of action grouping.
+  final Map<String, ProductionMaterialAnalysisMaterial> materialsById;
   final Map<String?, List<ProductionMaterialAnalysisMaterial>>
   materialsByProduct;
   final List<_MaterialGroup> groups;
@@ -94,6 +98,7 @@ final class _BomFilterProjection {
   const _BomFilterProjection({
     required this.nodesByProduct,
     required this.directMatchCount,
+    this.modeCounts = const {},
     required this.visibleNodeCount,
     required this.presentation,
     this.visibleProductIds = const {},
@@ -106,6 +111,7 @@ final class _BomFilterProjection {
   final _BomPresentation presentation;
   final Map<String?, List<ProductionMaterialAnalysisMaterial>> nodesByProduct;
   final int directMatchCount;
+  final Map<_BomViewMode, int> modeCounts;
   final int visibleNodeCount;
 
   /// 当前视图 + 关键词 + 表头筛选下要渲染的产品（含只作祖先上下文的产品）。
@@ -123,6 +129,27 @@ final class _BomFilterProjection {
   /// 进度/路线列头筛选桶：按当前视图（chip + 关键词）全量节点聚合，稳定键 +
   /// 中文标签；表头筛选本身不影响桶（否则选了一个值其余值就消失）。
   final Map<String, List<MasterFacetBucket>> facets;
+}
+
+/// Complete display-only result. Keep at most the two layout variants of the
+/// current analysis; no permissions or command eligibility are cached here.
+final class _MaterialReadPresentation {
+  const _MaterialReadPresentation({
+    required this.analysis,
+    required this.scope,
+    required this.key,
+    required this.projection,
+    required this.rows,
+    required this.facets,
+    required this.aggregates,
+  });
+  final ProductionMaterialAnalysisView analysis;
+  final Object? scope;
+  final String key;
+  final _BomFilterProjection projection;
+  final List<_MaterialTableRow> rows;
+  final Map<String, List<MasterFacetBucket>> facets;
+  final List<_MaterialAggregate>? aggregates;
 }
 
 /// 进度列头筛选的稳定桶键 → 中文标签（表头筛选按键比较，不按格内文案）。
@@ -188,8 +215,12 @@ class _MaterialAggregate {
   String? get unitName => representative.unitName;
 
   double get totalRequired => double.tryParse(totalRequiredText ?? '') ?? 0;
-  double get totalShortage =>
-      paths.fold(0.0, (sum, item) => sum + item.shortageQty);
+  // Paths belong to one immutable analysis snapshot. Sorting aggregates must
+  // not rescan every path for each comparison.
+  late final double totalShortage = paths.fold(
+    0.0,
+    (sum, item) => sum + item.shortageQty,
+  );
   double get totalDemandSupplyGap =>
       double.tryParse(coverage.gapText ?? '') ?? double.infinity;
   double get qualifiedCoveredQty =>

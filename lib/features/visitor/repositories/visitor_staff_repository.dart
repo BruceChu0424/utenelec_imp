@@ -112,7 +112,7 @@ class VisitorStaffRepository {
       query['hostDepartmentId'] = hostDepartmentId;
     }
     final response = await _api.get(ApiEndpoints.visitorApproval, query: query);
-    return PagedResult.fromJson(response, VisitorApplication.fromJson);
+    return PagedResult.fromJsonResponsive(response, VisitorApplication.fromJson);
   }
 
   /// HR 审批列表表头筛选桶（2026-09-10）：键与列 key 对齐——
@@ -188,7 +188,7 @@ class VisitorStaffRepository {
       ApiEndpoints.visitorApprovalAsHost,
       query: query,
     );
-    return PagedResult.fromJson(response, VisitorApplication.fromJson);
+    return PagedResult.fromJsonResponsive(response, VisitorApplication.fromJson);
   }
 
   // —— 保安核验 ——
@@ -231,7 +231,7 @@ class VisitorStaffRepository {
       ApiEndpoints.securityBlacklist,
       query: {'page': page, 'size': size},
     );
-    return PagedResult.fromJson(response, VisitorBlacklistItem.fromJson);
+    return PagedResult.fromJsonResponsive(response, VisitorBlacklistItem.fromJson);
   }
 }
 

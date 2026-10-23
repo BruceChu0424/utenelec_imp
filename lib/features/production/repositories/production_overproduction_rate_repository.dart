@@ -107,7 +107,7 @@ class ProductionOverproductionRateRepository {
     String? order,
     String? planNo,
     String? segmentCode,
-  }) async => PagedResult.fromJson(
+  }) async => PagedResult.fromJsonResponsive(
     await api.get(
       '$_base/requests',
       query: {

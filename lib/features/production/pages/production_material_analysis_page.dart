@@ -7,6 +7,9 @@ import '../widgets/production_sales_requirements.dart';
 import '../models/production_sales_requirement.dart';
 
 import 'package:dio/dio.dart' show CancelToken;
+import '../../../core/performance/ui_work_budget.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import 'package:flutter/foundation.dart' show listEquals, mapEquals, setEquals;
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
@@ -232,12 +235,29 @@ abstract class _MaterialAnalysisPageBase
     String id,
   ) async {
     final token = _ownerReadGuard.begin();
+    final scope = _sessionScopeKey();
+    final readOwnerCurrent = captureReadOwner(ref);
     final view = await ref
         .read(productionPlanRepositoryProvider)
         .materialAnalysisDetail(id);
+    if (!readOwnerCurrent()) throw const UiWorkCancelled();
     _ownerReadTokens[view] = token;
+    // Ownership freshness is not a proof that these quantity facts are stale.
+    // Keep same-session useful reads sliced until their indexes are ready;
+    // dropping only the warm work could move a later accepted view's cold work
+    // back into build. Existing callers and the owner overlay decide acceptance.
+    await _warmMaterialReadSnapshot(
+      view,
+      () => mounted && readOwnerCurrent() && _sessionScopeKey() == scope,
+    );
+    if (!readOwnerCurrent()) throw const UiWorkCancelled();
     return view;
   }
+
+  Future<void> _warmMaterialReadSnapshot(
+    ProductionMaterialAnalysisView view,
+    bool Function() isCurrent,
+  );
 
   void _acceptAnalysisOwnership(
     ProductionMaterialAnalysisView view, {
@@ -708,6 +728,8 @@ abstract class _MaterialAnalysisPageBase
   bool _bomAggregateByMaterial = false;
   final _bomLayoutPending = ValueNotifier<bool?>(null);
   int _bomLayoutTransitionEpoch = 0;
+  Object? _bomLayoutIntentScope;
+  final _materialProjectionPending = ValueNotifier<bool>(false);
   final Set<String> _expandedMaterialAggregates = {};
 
   /// 汇总视图 materialLineId → 所属聚合组（路径行取组内整分份额用）。
@@ -732,6 +754,7 @@ abstract class _MaterialAnalysisPageBase
   /// 路线筛选跟着下拉草稿变，缓存键漏掉它们会出现「改了不刷新」）。
   String? _bomProjectionKey;
   _BomFilterProjection? _bomProjectionCache;
+  Object? _bomProjectionScope;
   ProductionMaterialAnalysisView? _bucketRowsCacheAnalysis;
   Map<_AnalysisBucket, List<_BucketRow>>? _bucketRowsCache;
 
@@ -928,6 +951,7 @@ abstract class _MaterialAnalysisPageBase
     final session = ref.read(sessionProvider);
     final permissions = _permissions;
     final identity =
+        '${ref.read(exportContextEpochProvider)}|'
         '${session.status}|${session.user?.id}|${session.actor?.id}|'
         '${session.impersonationReadOnly}|'
         '${session.user?.businessResetGeneration ?? 0}';
@@ -1164,6 +1188,7 @@ abstract class _MaterialAnalysisPageBase
 
   Future<void> _loadCandidates({int? page}) async {
     final request = _candidateRequests.begin();
+    final readOwnerCurrent = captureReadOwner(ref);
     // 2026-09-25 单号列统一：销售单号排序/值筛选随列表下推（服务端白名单）。
     final requestedSort = _candidateSortColumn;
     final requestedOrder = _candidateSortColumn == null
@@ -1195,7 +1220,11 @@ abstract class _MaterialAnalysisPageBase
       } catch (_) {
         facets = const {};
       }
-      if (!mounted || !_candidateRequests.isCurrent(request)) return;
+      if (!mounted ||
+          !readOwnerCurrent() ||
+          !_candidateRequests.isCurrent(request)) {
+        return;
+      }
       setState(() {
         _candidateDocNoFacets = facets;
         _candidatePage = result;
@@ -1203,7 +1232,11 @@ abstract class _MaterialAnalysisPageBase
         _loadingCandidates = false;
       });
     } catch (error) {
-      if (!mounted || !_candidateRequests.isCurrent(request)) return;
+      if (!mounted ||
+          !readOwnerCurrent() ||
+          !_candidateRequests.isCurrent(request)) {
+        return;
+      }
       setState(() {
         _loadingCandidates = false;
         _error = productionErrorMessage(error, fallback: '加载待分析销售订单失败');
@@ -1214,6 +1247,16 @@ abstract class _MaterialAnalysisPageBase
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      _candidateRequests.begin();
+      setState(() {
+        _candidatePage = null;
+        _candidateDocNoFacets = const {};
+        _loadingCandidates = false;
+        _booting = false;
+        _error = null;
+      });
+    });
     _sources = List<MaterialAnalysisSourceInput>.from(widget.seed.sources);
     _warehouseId = widget.seed.warehouseId;
     _warehouseIds.addAll(widget.seed.warehouseIds);
@@ -1334,6 +1377,7 @@ abstract class _MaterialAnalysisPageBase
   void dispose() {
     _bomLayoutTransitionEpoch++;
     _bomLayoutPending.dispose();
+    _materialProjectionPending.dispose();
     for (final controller in _overproductionPercentInputs.values) {
       controller.dispose();
     }
@@ -1356,6 +1400,7 @@ abstract class _MaterialAnalysisPageBase
   }
 
   Future<void> _boot() async {
+    final readOwnerCurrent = captureReadOwner(ref);
     try {
       final existingAnalysisId = widget.seed.analysisId;
       if (existingAnalysisId != null) {
@@ -1367,7 +1412,7 @@ abstract class _MaterialAnalysisPageBase
           _readMaterialAnalysisDetail(existingAnalysisId),
         ]);
         final view = results[1] as ProductionMaterialAnalysisView;
-        if (!mounted) return;
+        if (!mounted || !readOwnerCurrent()) return;
         setState(() {
           _booting = false;
           _applyAnalysis(view);
@@ -1383,7 +1428,7 @@ abstract class _MaterialAnalysisPageBase
         ref.read(masterNameServiceProvider).ensureWarehousesLoaded(),
         ref.read(materialAnalysisWarehousePrefsProvider.notifier).syncNow(),
       ]);
-      if (!mounted) return;
+      if (!mounted || !readOwnerCurrent()) return;
       final preference = ref.read(materialAnalysisWarehousePrefsProvider);
       _warehouseId ??= preference.primaryWarehouseId;
       if (!_normalizeNewWarehouseScope()) {
@@ -1408,7 +1453,7 @@ abstract class _MaterialAnalysisPageBase
         await _loadCandidates();
       }
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !readOwnerCurrent()) return;
       setState(() {
         _booting = false;
         _error = productionErrorMessage(error, fallback: '初始化物料分析失败');
@@ -1441,6 +1486,12 @@ abstract class _MaterialAnalysisPageBase
       _resetMaterialTableInputsForNewAnalysis();
     }
     _analysis = view;
+    // Retire old active pointers before reseeding. Snapshot indexes warmed by
+    // the read path remain reusable; reseeding must not build them twice.
+    _indexCacheAnalysis = null;
+    _indexCache = null;
+    _bomProjectionAnalysis = null;
+    _bomProjectionCache = null;
     _materialAggregateAnalysisChanged();
     // 权威快照优先：先让父子联动的模拟快照作废，再按新快照刷系统预填值
     // (只覆盖用户没动过的格子)。顺序不能反——反了就是拿模拟值去回填。
@@ -1454,10 +1505,6 @@ abstract class _MaterialAnalysisPageBase
     ]);
     _serverRefreshNotice = null;
     _invalidateBucketRowsCache();
-    _indexCacheAnalysis = null;
-    _indexCache = null;
-    _bomProjectionAnalysis = null;
-    _bomProjectionCache = null;
     _warehouseId = view.warehouseId ?? _warehouseId;
     _warehouseIds
       ..clear()
@@ -1850,15 +1897,37 @@ abstract class _MaterialAnalysisPageBase
     }
   }
 
+  final _materialIndexSnapshots = Expando<_MaterialAnalysisIndexes>();
+
   _MaterialAnalysisIndexes _analysisIndexes(
     ProductionMaterialAnalysisView analysis,
   ) {
     if (identical(_indexCacheAnalysis, analysis) && _indexCache != null) {
       return _indexCache!;
     }
-    final productsById = {
-      for (final product in analysis.products) product.analysisLineId: product,
-    };
+    var indexes = _materialIndexSnapshots[analysis];
+    if (indexes == null) {
+      for (final _ in _analysisIndexWork(
+        analysis,
+        (value) => indexes = value,
+      )) {}
+      _materialIndexSnapshots[analysis] = indexes!;
+    }
+    _indexCacheAnalysis = analysis;
+    _indexCache = indexes;
+    return indexes!;
+  }
+
+  Iterable<void> _analysisIndexWork(
+    ProductionMaterialAnalysisView analysis,
+    void Function(_MaterialAnalysisIndexes) complete,
+  ) sync* {
+    final productsById = <String, ProductionMaterialAnalysisProduct>{};
+    for (final product in analysis.products) {
+      yield null;
+      productsById[product.analysisLineId] = product;
+    }
+    final materialsById = <String, ProductionMaterialAnalysisMaterial>{};
     final materialsByProduct =
         <String?, List<ProductionMaterialAnalysisMaterial>>{};
     final childrenByParentNodeKey =
@@ -1872,6 +1941,8 @@ abstract class _MaterialAnalysisPageBase
     final materialsByAnchorProduct =
         <String, ProductionMaterialAnalysisMaterial>{};
     for (final material in analysis.materials) {
+      yield null;
+      materialsById[material.materialLineId] = material;
       materialsByProduct
           .putIfAbsent(material.analysisLineId, () => [])
           .add(material);
@@ -1901,6 +1972,7 @@ abstract class _MaterialAnalysisPageBase
     final indexes = _MaterialAnalysisIndexes(
       sourceGraph: MaterialAnalysisSourceGraph(analysis.materials),
       productsById: productsById,
+      materialsById: materialsById,
       materialsByProduct: materialsByProduct,
       groups: groups,
       groupsByLine: groupsByLine,
@@ -1908,9 +1980,7 @@ abstract class _MaterialAnalysisPageBase
       materialsByAnchorProduct: materialsByAnchorProduct,
       childrenByParentNodeKey: childrenByParentNodeKey,
     );
-    _indexCacheAnalysis = analysis;
-    _indexCache = indexes;
-    return indexes;
+    complete(indexes);
   }
 
   List<_MaterialGroup> _materialGroups(

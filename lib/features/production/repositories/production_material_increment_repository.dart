@@ -91,7 +91,7 @@ class ProductionMaterialIncrementRepository {
   Future<PagedResult<ProductionMaterialIncrementRequest>> list({
     String status = 'PENDING',
     int page = 1,
-  }) async => PagedResult.fromJson(
+  }) async => PagedResult.fromJsonResponsive(
     await api.get(
       '$_base/requests',
       query: {'status': status, 'page': page, 'size': 20},

@@ -1,3 +1,4 @@
+import '../../../shared/auth/read_owner_fence.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 // 生产日报列表页（生产管理 / production_daily_report:view · 空结构保未来）。
 //
@@ -83,6 +84,20 @@ class _ProductionDailyReportListPageState
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      setState(() {
+        _reloadGeneration++;
+        clearDraftSelection();
+        _list.invalidateReadOwner(notify: false);
+      });
+      final ownerCurrent = captureReadOwner(ref);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!ownerCurrent() || ref.read(authenticatedScopeProvider) == null) {
+          return;
+        }
+        _reload(1);
+      });
+    });
     // 深链 ?status=draft：预选「草稿」段（新建页「草稿(N)」按钮的落点）。
     if (isDraftStatusQuery(widget.initialStatus)) {
       _statusFilter = 0;
@@ -188,7 +203,12 @@ class _ProductionDailyReportListPageState
       _list.onSortChange(sortKey, sortAsc);
       return;
     }
-    await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+    await _list.load(
+      page ?? _list.pageNum,
+      silent: silent,
+      fetch: _fetch,
+      isCurrent: captureReadOwner(ref),
+    );
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
       return;
     }

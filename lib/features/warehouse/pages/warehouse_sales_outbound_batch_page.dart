@@ -20,6 +20,7 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/async/bounded_read_map.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -233,6 +234,8 @@ class _WarehouseSalesOutboundBatchPageState
   Future<void> _load({bool preserveInputs = true}) async {
     if (!mounted || _saving || _attempted) return;
     final version = ++_loadVersion;
+    bool current() =>
+        mounted && formDraftIdentityIsCurrent && version == _loadVersion;
     final l10n = _l10n;
     setState(() {
       _loading = true;
@@ -244,7 +247,11 @@ class _WarehouseSalesOutboundBatchPageState
         throw FormatException(l10n.warehouseOutboundBatchEmpty);
       }
       final repository = ref.read(warehouseSalesOutboundRepositoryProvider);
-      final details = await Future.wait(_targetIds.map(repository.detail));
+      final details = await boundedReadMap(
+        _targetIds,
+        repository.detail,
+        isCurrent: current,
+      );
       if (!mounted || !formDraftIdentityIsCurrent || version != _loadVersion) {
         return;
       }
@@ -343,20 +350,20 @@ class _WarehouseSalesOutboundBatchPageState
         if (mounted) ensureOutboundWeightParams(_weightCache, _weightEntries);
       });
     } on ApiException catch (error) {
-      if (mounted && version == _loadVersion) {
+      if (current()) {
         setState(() => _error = error.message);
       }
     } on FormatException catch (error) {
-      if (mounted && version == _loadVersion) {
+      if (current()) {
         setState(() => _error = error.message);
         holdFormDraftForSourceReload(error);
       }
     } catch (_) {
-      if (mounted && version == _loadVersion) {
+      if (current()) {
         setState(() => _error = l10n.commonError);
       }
     } finally {
-      if (mounted && version == _loadVersion) setState(() => _loading = false);
+      if (current()) setState(() => _loading = false);
     }
   }
 

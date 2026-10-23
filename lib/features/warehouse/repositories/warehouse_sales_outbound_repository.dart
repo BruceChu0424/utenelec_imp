@@ -82,7 +82,7 @@ class WarehouseSalesOutboundRepository
     }
     if (_trimmed(billNo) case final value?) query['billNo'] = value;
     final json = await api.get(_base, query: query);
-    return PagedResult.fromJson(json, WarehouseSalesOutboundSummary.fromJson);
+    return PagedResult.fromJsonResponsive(json, WarehouseSalesOutboundSummary.fromJson);
   }
 
   @override

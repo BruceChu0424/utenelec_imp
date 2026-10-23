@@ -1,5 +1,8 @@
 part of 'production_material_analysis_page.dart';
 
+@visibleForTesting
+int debugMaterialSynchronousAggregateBuilds = 0;
+
 /// BOM 兄弟行排序:先层级、再货品编号(无编号退货品名、再退行 id)。
 ///
 /// **全站唯一口径**:物料分析准备页主表([_MaterialAnalysisBomTreeState._orderedBomNodes])
@@ -23,16 +26,66 @@ abstract class _MaterialAnalysisBomTreeState
   ProductionMaterialAnalysisView? _bomPresentationAnalysis;
   _BomPresentation? _bomPresentationCache;
 
+  final _bomPresentationSnapshots = Expando<_BomPresentation>();
+
+  @override
+  Future<void> _warmMaterialReadSnapshot(
+    ProductionMaterialAnalysisView view,
+    bool Function() isCurrent,
+  ) async {
+    final budget = UiWorkBudget(
+      isCurrent: isCurrent,
+      debugLabel: 'material-snapshot',
+    );
+    Future<void> consume(Iterable<void> steps) async {
+      final iterator = steps.iterator;
+      while (true) {
+        budget.ensureCurrent();
+        if (!iterator.moveNext()) break;
+        await budget.checkpoint();
+      }
+    }
+
+    if (_materialIndexSnapshots[view] == null) {
+      late _MaterialAnalysisIndexes indexes;
+      await consume(_analysisIndexWork(view, (value) => indexes = value));
+      budget.ensureCurrent();
+      _materialIndexSnapshots[view] = indexes;
+    }
+    if (_bomPresentationSnapshots[view] == null) {
+      late _BomPresentation presentation;
+      await consume(
+        _bomPresentationWork(view, (value) => presentation = value),
+      );
+      budget.ensureCurrent();
+      _bomPresentationSnapshots[view] = presentation;
+    }
+  }
+
   _BomPresentation _bomPresentation(ProductionMaterialAnalysisView analysis) {
     if (identical(_bomPresentationAnalysis, analysis) &&
         _bomPresentationCache != null) {
       return _bomPresentationCache!;
     }
+    var presentation = _bomPresentationSnapshots[analysis];
+    if (presentation == null) {
+      for (final _ in _bomPresentationWork(
+        analysis,
+        (value) => presentation = value,
+      )) {}
+      _bomPresentationSnapshots[analysis] = presentation!;
+    }
+    _bomPresentationAnalysis = analysis;
+    _bomPresentationCache = presentation;
+    return presentation!;
+  }
+
+  Iterable<void> _bomPresentationWork(
+    ProductionMaterialAnalysisView analysis,
+    void Function(_BomPresentation) complete,
+  ) sync* {
     final indexes = _analysisIndexes(analysis);
-    final byId = {
-      for (final material in analysis.materials)
-        material.materialLineId: material,
-    };
+    final byId = indexes.materialsById;
     final byNode = {
       for (final material in analysis.materials)
         if (material.nodeKey?.isNotEmpty == true)
@@ -76,6 +129,7 @@ abstract class _MaterialAnalysisBomTreeState
     // Use exact active task documents, never a goods/name match. Two equal
     // SKUs on different BOM paths must retain separate child ownership.
     for (final material in analysis.materials) {
+      yield null;
       if (material.planAnchorAnalysisLineId != null) {
         link(material.planAnchorAnalysisLineId!, material.materialLineId);
       }
@@ -90,6 +144,7 @@ abstract class _MaterialAnalysisBomTreeState
     // Their first non-delegated ancestor is the exact ownership boundary.
     final explicitChildren = sourceByChild.keys.toSet();
     for (final material in analysis.materials) {
+      yield null;
       final childId = material.delegatedToAnalysisLineId;
       if (childId == null || explicitChildren.contains(childId)) continue;
       var parentId = physicalParents[material.materialLineId];
@@ -127,6 +182,7 @@ abstract class _MaterialAnalysisBomTreeState
     };
     final parentIds = <String, String?>{};
     for (final material in analysis.materials) {
+      yield null;
       if (shadowIds.contains(material.materialLineId)) continue;
       var parentId = physicalParents[material.materialLineId];
       final visited = <String>{};
@@ -166,6 +222,7 @@ abstract class _MaterialAnalysisBomTreeState
     final nodesByProduct =
         <String?, List<ProductionMaterialAnalysisMaterial>>{};
     for (final material in analysis.materials) {
+      yield null;
       if (shadowIds.contains(material.materialLineId)) continue;
       resolve(material.materialLineId);
       nodesByProduct
@@ -178,9 +235,7 @@ abstract class _MaterialAnalysisBomTreeState
       rootIdsByMaterial: rootIds,
       depthByMaterial: depths,
     );
-    _bomPresentationAnalysis = analysis;
-    _bomPresentationCache = presentation;
-    return presentation;
+    complete(presentation);
   }
 
   @override
@@ -277,7 +332,11 @@ abstract class _MaterialAnalysisBomTreeState
                 ),
               ),
             ],
-            selected: {pending ?? _bomAggregateByMaterial},
+            selected: {
+              _bomLayoutIntentScope == _sessionScopeKey()
+                  ? pending ?? _bomAggregateByMaterial
+                  : _bomAggregateByMaterial,
+            },
             onSelectionChanged: (values) {
               final aggregate = values.isEmpty
                   ? _bomAggregateByMaterial
@@ -303,7 +362,11 @@ abstract class _MaterialAnalysisBomTreeState
     final epoch = ++_bomLayoutTransitionEpoch;
     final analysis = _analysis;
     final scope = _sessionScopeKey();
-    bool current() => mounted && epoch == _bomLayoutTransitionEpoch;
+    _bomLayoutIntentScope = scope;
+    bool current() =>
+        mounted &&
+        epoch == _bomLayoutTransitionEpoch &&
+        _sessionScopeKey() == scope;
     final fade = utenMotionDurationOf(
       context,
       const Duration(milliseconds: 120),
@@ -325,70 +388,82 @@ abstract class _MaterialAnalysisBomTreeState
       }
       if (_bomAggregateByMaterial != aggregate) {
         setState(() {
-          _bomAggregateByMaterial = aggregate;
-          // Preserve compatible filters while retiring this layout's buckets.
+          // Keep the currently rendered mode authoritative for row actions
+          // until the requested presentation is complete.
           _pruneMaterialTableFilters();
         });
       }
+      if (analysis != null) await _requestMaterialPresentation(analysis);
       // The replacement lays out under the painted local progress surface.
       WidgetsBinding.instance.scheduleFrame();
       await WidgetsBinding.instance.endOfFrame;
     } finally {
-      if (current()) _bomLayoutPending.value = null;
+      if (mounted && epoch == _bomLayoutTransitionEpoch) {
+        _bomLayoutIntentScope = null;
+        _bomLayoutPending.value = null;
+      }
     }
   }
 
-  Widget _materialViewTransitionBody(BuildContext context, Widget body) =>
-      ValueListenableBuilder<bool?>(
-        valueListenable: _bomLayoutPending,
-        child: body,
-        builder: (context, pending, child) => UtenMotion(
-          duration: Duration(milliseconds: pending == null ? 150 : 120),
-          builder: (context, duration) => Stack(
-            children: [
-              IgnorePointer(
-                ignoring: pending != null,
-                child: AnimatedOpacity(
-                  key: const Key('material-view-switch-opacity'),
-                  opacity: pending == null ? 1 : 0,
-                  duration: duration,
-                  curve: Curves.easeOut,
-                  child: child,
-                ),
-              ),
-              if (pending != null)
-                Positioned.fill(
-                  child: Center(
-                    child: Semantics(
-                      key: const Key('material-view-switch-progress'),
-                      liveRegion: true,
-                      child: Material(
-                        color: Theme.of(context).colorScheme.surfaceContainer,
-                        borderRadius: BorderRadius.circular(UtenRadius.control),
-                        child: Padding(
-                          padding: const EdgeInsets.all(UtenSpacing.s16),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                              const SizedBox(width: UtenSpacing.s12),
-                              Text(_l10n.commonLoading),
-                            ],
-                          ),
+  Future<void> _requestMaterialPresentation(
+    ProductionMaterialAnalysisView analysis,
+  );
+
+  Widget _materialViewTransitionBody(
+    BuildContext context,
+    Widget body,
+  ) => AnimatedBuilder(
+    animation: Listenable.merge([
+      _bomLayoutPending,
+      _materialProjectionPending,
+    ]),
+    child: body,
+    builder: (context, child) => UtenMotion(
+      duration: const Duration(milliseconds: 120),
+      builder: (context, duration) => Stack(
+        children: [
+          AnimatedOpacity(
+            key: const Key('material-view-switch-opacity'),
+            opacity: 1,
+            duration: duration,
+            curve: Curves.easeOut,
+            child: child,
+          ),
+          if (_bomLayoutPending.value != null ||
+              _materialProjectionPending.value)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Align(
+                  alignment: Alignment.topRight,
+                  child: Semantics(
+                    key: const Key('material-view-switch-progress'),
+                    liveRegion: true,
+                    child: Material(
+                      color: Theme.of(context).colorScheme.surfaceContainer,
+                      borderRadius: BorderRadius.circular(UtenRadius.control),
+                      child: Padding(
+                        padding: const EdgeInsets.all(UtenSpacing.s16),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            const SizedBox(width: UtenSpacing.s12),
+                            Text(_l10n.commonLoading),
+                          ],
                         ),
                       ),
                     ),
                   ),
                 ),
-            ],
-          ),
-        ),
-      );
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
 
   Widget _bomToolbarGroupDivider(ThemeData theme, {Key? key}) => Container(
     key: key,
@@ -403,22 +478,12 @@ abstract class _MaterialAnalysisBomTreeState
     ProductionMaterialAnalysisView analysis,
     _BomViewMode mode,
   ) {
-    final projection = _bomFilterProjection(analysis);
-    var count = 0;
-    for (final entry in projection.presentation.nodesByProduct.entries) {
-      count += entry.value.where((material) {
-        final passesFilters =
-            projection.nodeMatchesFilters[material.materialLineId] ?? true;
-        return passesFilters &&
-            switch (mode) {
-              _BomViewMode.shortage => material.shortageQty > 0,
-              _BomViewMode.unconfirmed =>
-                material.shortageQty > 0 && material.confirmedRoute == null,
-              _BomViewMode.all => true,
-            };
-      }).length;
-    }
-    return count;
+    final projection =
+        identical(_bomProjectionAnalysis, analysis) &&
+            _bomProjectionScope == _sessionScopeKey()
+        ? _bomProjectionCache
+        : null;
+    return projection?.modeCounts[mode] ?? 0;
   }
 
   /// MAKE_COMPONENT / AGGREGATE_MAKE remain real server-side ownership and
@@ -467,25 +532,39 @@ abstract class _MaterialAnalysisBomTreeState
 
   /// 只看缺料/待确认时仍把命中节点的祖先保留下来，员工能看懂它属于哪件产品、
   /// 哪条装配路径；祖先只是定位上下文，不会被误算为缺料或加入批量选择。
-  List<ProductionMaterialAnalysisMaterial> _visibleBomNodes(
-    List<ProductionMaterialAnalysisMaterial> nodes,
-    ProductionMaterialAnalysisProduct? product, {
+  Iterable<void> _visibleBomNodesWork(
+    List<ProductionMaterialAnalysisMaterial> nodes, {
     required Map<String, String?> parentIds,
-    required bool Function(ProductionMaterialAnalysisMaterial) textMatches,
-  }) {
-    if (_bomViewMode == _BomViewMode.all && _bomKeyword.isEmpty) return nodes;
-    final byId = {for (final node in nodes) node.materialLineId: node};
+    required Map<String, bool> textMatches,
+    required void Function(List<ProductionMaterialAnalysisMaterial>) complete,
+  }) sync* {
+    if (_bomViewMode == _BomViewMode.all && _bomKeyword.isEmpty) {
+      complete(nodes);
+      return;
+    }
+    final byId = <String, ProductionMaterialAnalysisMaterial>{};
+    for (final node in nodes) {
+      yield null;
+      byId[node.materialLineId] = node;
+    }
     final visibleIds = <String>{};
     for (final node in nodes) {
-      if (!_bomModeMatches(node) || !textMatches(node)) continue;
+      yield null;
+      if (!_bomModeMatches(node) || textMatches[node.materialLineId] != true) {
+        continue;
+      }
       ProductionMaterialAnalysisMaterial? current = node;
       while (current != null && visibleIds.add(current.materialLineId)) {
+        yield null;
         current = byId[parentIds[current.materialLineId]];
       }
     }
-    return nodes
-        .where((node) => visibleIds.contains(node.materialLineId))
-        .toList(growable: false);
+    final result = <ProductionMaterialAnalysisMaterial>[];
+    for (final node in nodes) {
+      yield null;
+      if (visibleIds.contains(node.materialLineId)) result.add(node);
+    }
+    complete(result);
   }
 
   // ===== 按物料汇总缺料视图 =====
@@ -508,6 +587,24 @@ abstract class _MaterialAnalysisBomTreeState
     ProductionMaterialAnalysisView analysis,
     _MaterialAnalysisIndexes indexes,
   ) {
+    assert(() {
+      debugMaterialSynchronousAggregateBuilds++;
+      return true;
+    }());
+    late List<_MaterialAggregate> result;
+    for (final _ in _materialAggregatesWork(
+      analysis,
+      indexes,
+      (value) => result = value,
+    )) {}
+    return result;
+  }
+
+  Iterable<void> _materialAggregatesWork(
+    ProductionMaterialAnalysisView analysis,
+    _MaterialAnalysisIndexes indexes,
+    void Function(List<_MaterialAggregate>) complete,
+  ) sync* {
     final byKey = <String, List<ProductionMaterialAnalysisMaterial>>{};
     final presentation = _bomPresentation(analysis);
     final representedTargets = {
@@ -516,6 +613,7 @@ abstract class _MaterialAnalysisBomTreeState
     };
     for (final nodes in presentation.nodesByProduct.values) {
       for (final material in nodes) {
+        yield null;
         if (material.isRootSupply || material.level <= 0) continue;
         if (representedTargets.contains(material.materialLineId) &&
             indexes.productsById[material.analysisLineId]?.sourceType ==
@@ -536,10 +634,7 @@ abstract class _MaterialAnalysisBomTreeState
     }
     // All aggregate rows refer to the same immutable analysis snapshot. A map
     // per group made switching views allocate groups x material-count entries.
-    final materialsById = <String, ProductionMaterialAnalysisMaterial>{
-      for (final material in analysis.materials)
-        material.materialLineId: material,
-    };
+    final materialsById = indexes.materialsById;
     final aggregates = [
       for (final entry in byKey.entries)
         _MaterialAggregate(
@@ -565,7 +660,7 @@ abstract class _MaterialAnalysisBomTreeState
         b.goodsCode ?? b.goodsName ?? b.key,
       );
     });
-    return aggregates;
+    complete(aggregates);
   }
 
   /// 兄弟行排序:先层级、再货品编号(无编号退货品名、再退行 id)。
@@ -651,9 +746,8 @@ abstract class _MaterialAnalysisBomTreeState
     setState(() {
       if (_bomAggregateByMaterial) {
         _expandedMaterialAggregates.addAll(
-          _materialAggregates(
+          _displayedMaterialAggregates(
             analysis,
-            _analysisIndexes(analysis),
           ).map((aggregate) => aggregate.key),
         );
       } else {
@@ -702,10 +796,7 @@ abstract class _MaterialAnalysisBomTreeState
     final analysis = _analysis;
     if (analysis == null || analysis.materials.isEmpty) return null;
     if (_bomAggregateByMaterial) {
-      final aggregates = _materialAggregates(
-        analysis,
-        _analysisIndexes(analysis),
-      );
+      final aggregates = _displayedMaterialAggregates(analysis);
       if (aggregates.isEmpty) return null;
       final expandedAll =
           _expandedMaterialAggregates.length >= aggregates.length;
@@ -721,6 +812,10 @@ abstract class _MaterialAnalysisBomTreeState
       anyCollapsed ? _expandAllBomNodes : _collapseAllBomNodes,
     );
   }
+
+  List<_MaterialAggregate> _displayedMaterialAggregates(
+    ProductionMaterialAnalysisView analysis,
+  );
 
   Widget _bomTreeExpansionToggleButton(String label, VoidCallback onTap) =>
       UtenButton(
@@ -753,10 +848,11 @@ abstract class _MaterialAnalysisBomTreeState
   bool get _hasActiveMaterialTableFilters;
 
   /// 表头筛选值 + 路线草稿/脏组签名（投影缓存键的一部分）。
-  String _materialTableProjectionSignature();
+  String _materialTableProjectionSignature(bool aggregate);
 
-  Map<String, List<MasterFacetBucket>> _materialTableFacetsOf(
+  Iterable<void> _materialTableFacetsWork(
     Iterable<_MaterialTableRow> rows,
+    void Function(Map<String, List<MasterFacetBucket>>) complete,
   );
 
   /// 视图 chip + 关键词 + 表头筛选的节点级投影（2026-09-10 F2a 起表头筛选
@@ -772,20 +868,40 @@ abstract class _MaterialAnalysisBomTreeState
   _BomFilterProjection _bomFilterProjection(
     ProductionMaterialAnalysisView analysis,
   ) {
-    final cacheKey = [
-      _bomViewMode.name,
-      _bomKeyword,
-      _materialTableProjectionSignature(),
-    ].join('\u0000');
+    final cacheKey = _bomProjectionCacheKey();
     if (identical(_bomProjectionAnalysis, analysis) &&
+        _bomProjectionScope == _sessionScopeKey() &&
         _bomProjectionKey == cacheKey &&
         _bomProjectionCache != null) {
       return _bomProjectionCache!;
     }
+    late _BomFilterProjection projection;
+    for (final _ in _bomFilterProjectionWork(
+      analysis,
+      _bomAggregateByMaterial,
+      (value) => projection = value,
+    )) {}
+    _bomProjectionAnalysis = analysis;
+    _bomProjectionScope = _sessionScopeKey();
+    _bomProjectionKey = cacheKey;
+    _bomProjectionCache = projection;
+    return projection;
+  }
+
+  String _bomProjectionCacheKey() => [
+    _bomViewMode.name,
+    _bomKeyword,
+    _materialTableProjectionSignature(_bomAggregateByMaterial),
+  ].join('\u0000');
+
+  Iterable<void> _bomFilterProjectionWork(
+    ProductionMaterialAnalysisView analysis,
+    bool aggregate,
+    void Function(_BomFilterProjection) complete,
+  ) sync* {
     final indexes = _analysisIndexes(analysis);
     final presentation = _bomPresentation(analysis);
-    final headerFilterActive =
-        _hasActiveMaterialTableFilters && !_bomAggregateByMaterial;
+    final headerFilterActive = _hasActiveMaterialTableFilters && !aggregate;
     final nodesByProduct =
         <String?, List<ProductionMaterialAnalysisMaterial>>{};
     final visibleProductIds = <String>{};
@@ -796,6 +912,7 @@ abstract class _MaterialAnalysisBomTreeState
     var directMatches = 0;
     var visibleNodes = 0;
     for (final entry in presentation.nodesByProduct.entries) {
+      yield null;
       final product = indexes.productsById[entry.key];
       final ownsProductRow =
           product != null &&
@@ -807,14 +924,19 @@ abstract class _MaterialAnalysisBomTreeState
             material,
             indexes.productsById[material.analysisLineId],
           );
-      directMatches += entry.value.where((material) {
-        return _bomModeMatches(material) && textMatches(material);
-      }).length;
-      final base = _visibleBomNodes(
+      final textMatchesById = <String, bool>{};
+      for (final material in entry.value) {
+        yield null;
+        final matched = textMatches(material);
+        textMatchesById[material.materialLineId] = matched;
+        if (_bomModeMatches(material) && matched) directMatches++;
+      }
+      late List<ProductionMaterialAnalysisMaterial> base;
+      yield* _visibleBomNodesWork(
         entry.value,
-        product,
         parentIds: presentation.parentIdsByMaterial,
-        textMatches: textMatches,
+        textMatches: textMatchesById,
+        complete: (value) => base = value,
       );
       // 探针行：产品行承载根供料节点；其余节点各自一行。全量节点都建探针，
       // chip 计数（其它视图）才能与表头筛选同口径。
@@ -822,11 +944,13 @@ abstract class _MaterialAnalysisBomTreeState
           ? _probeProductRow(product, indexes)
           : null;
       final rootId = productRow?.material?.materialLineId;
-      final probeByNode = <String, _MaterialTableRow>{
-        for (final node in entry.value)
-          if (node.materialLineId != rootId)
-            node.materialLineId: _probeMaterialRow(node, indexes),
-      };
+      final probeByNode = <String, _MaterialTableRow>{};
+      for (final node in entry.value) {
+        yield null;
+        if (node.materialLineId != rootId) {
+          probeByNode[node.materialLineId] = _probeMaterialRow(node, indexes);
+        }
+      }
       bool headerMatches(ProductionMaterialAnalysisMaterial node) {
         if (!headerFilterActive) return true;
         if (node.materialLineId == rootId) {
@@ -837,13 +961,15 @@ abstract class _MaterialAnalysisBomTreeState
       }
 
       for (final node in entry.value) {
+        yield null;
         nodeMatchesFilters[node.materialLineId] =
-            textMatches(node) && headerMatches(node);
+            textMatchesById[node.materialLineId] == true && headerMatches(node);
       }
       if (base.isEmpty) continue;
       // 桶：当前视图基础可见层（产品行 + 非根节点），不含表头筛选本身。
       if (productRow != null) facetRows.add(productRow);
       for (final node in base) {
+        yield null;
         final probe = probeByNode[node.materialLineId];
         if (probe != null) facetRows.add(probe);
       }
@@ -867,6 +993,7 @@ abstract class _MaterialAnalysisBomTreeState
       for (final id in matched) {
         ProductionMaterialAnalysisMaterial? current = byId[id];
         while (current != null && keep.add(current.materialLineId)) {
+          yield null;
           current =
               byId[presentation.parentIdsByMaterial[current.materialLineId]];
         }
@@ -894,8 +1021,27 @@ abstract class _MaterialAnalysisBomTreeState
         visibleNodes += visible.length;
       }
     }
+    final modeCounts = {for (final mode in _BomViewMode.values) mode: 0};
+    for (final nodes in presentation.nodesByProduct.values) {
+      for (final material in nodes) {
+        yield null;
+        if (!(nodeMatchesFilters[material.materialLineId] ?? true)) continue;
+        modeCounts[_BomViewMode.all] = modeCounts[_BomViewMode.all]! + 1;
+        if (material.shortageQty > 0) {
+          modeCounts[_BomViewMode.shortage] =
+              modeCounts[_BomViewMode.shortage]! + 1;
+          if (material.confirmedRoute == null) {
+            modeCounts[_BomViewMode.unconfirmed] =
+                modeCounts[_BomViewMode.unconfirmed]! + 1;
+          }
+        }
+      }
+    }
+    late Map<String, List<MasterFacetBucket>> facets;
+    yield* _materialTableFacetsWork(facetRows, (value) => facets = value);
     final projection = _BomFilterProjection(
       nodesByProduct: nodesByProduct,
+      modeCounts: modeCounts,
       directMatchCount: directMatches,
       visibleNodeCount: visibleNodes,
       presentation: presentation,
@@ -903,11 +1049,8 @@ abstract class _MaterialAnalysisBomTreeState
       contextOnlyProductIds: contextOnlyProductIds,
       contextOnlyMaterialIds: contextOnlyMaterialIds,
       nodeMatchesFilters: nodeMatchesFilters,
-      facets: _materialTableFacetsOf(facetRows),
+      facets: facets,
     );
-    _bomProjectionAnalysis = analysis;
-    _bomProjectionKey = cacheKey;
-    _bomProjectionCache = projection;
-    return projection;
+    complete(projection);
   }
 }

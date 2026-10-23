@@ -193,7 +193,7 @@ class DioWorkshopMaterialReportRepository
       ApiEndpoints.workshopMaterialReport('ledger'),
       query: {..._range(binId, from, to), 'page': page, 'size': size},
     );
-    return PagedResult.fromJson(json, WmLedgerRow.fromJson);
+    return PagedResult.fromJsonResponsive(json, WmLedgerRow.fromJson);
   }
 }
 

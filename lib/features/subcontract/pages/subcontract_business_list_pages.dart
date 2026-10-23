@@ -1,3 +1,4 @@
+import '../../../shared/auth/read_owner_fence.dart';
 // 委外业务列表页族（共用 _SubcontractBusinessListPage，按 _ListPresentation 参数化）。
 //
 // 2026-09-06 收口：
@@ -35,7 +36,6 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../core/network/api_exception.dart';
-import '../../../core/network/server_config.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -444,12 +444,7 @@ class _SubcontractBusinessListPageState
   @override
   void initState() {
     super.initState();
-    ref.listenManual(authenticatedScopeProvider, (previous, next) {
-      if (previous != next) _readerChanged();
-    });
-    ref.listenManual(apiBaseUrlProvider, (previous, next) {
-      if (previous != next) _readerChanged();
-    });
+    listenReadOwner(ref, _readerChanged);
     // 深链 ?status=draft：直接落在「草稿」段（新建页「草稿(N)」按钮的落点）。
     if (isDraftStatusQuery(widget.initialStatus)) {
       _seg = _draftSeg;
@@ -577,6 +572,7 @@ class _SubcontractBusinessListPageState
               ),
             ),
       },
+      isCurrent: captureReadOwner(ref),
       onLoaded: () {
         if (mounted) setState(() {});
       },
@@ -617,6 +613,7 @@ class _SubcontractBusinessListPageState
       page ?? _controller.pageNum,
       silent: silent,
       fetch: _fetch,
+      isCurrent: captureReadOwner(ref),
     );
     if (!mounted ||
         generation != _reloadGeneration ||

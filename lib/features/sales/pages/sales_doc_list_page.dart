@@ -1,3 +1,4 @@
+import '../../../shared/auth/read_owner_fence.dart';
 // 销售单据列表页（按 docType 参数化）。
 //
 // 2026-09-03 起统一「分类分段」范式（ADR-066）：
@@ -251,6 +252,24 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      setState(() {
+        _reloadGeneration++;
+        _statsGeneration++;
+        _stats = null;
+        _columnFilters.reset();
+        clearDraftSelection();
+        _list.invalidateReadOwner(notify: false);
+      });
+      final ownerCurrent = captureReadOwner(ref);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!ownerCurrent() || ref.read(authenticatedScopeProvider) == null) {
+          return;
+        }
+        if (_isOrder) _loadStats();
+        _reload(1);
+      });
+    });
     _initializeStatusSelection();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(salesMasterNameServiceProvider).ensureLoaded();
@@ -557,6 +576,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
             .read(salesRepositoryProvider(widget.docType))
             .billNoFacets(filter: _docFilter(withBillNo: false)),
       },
+      isCurrent: captureReadOwner(ref),
       onLoaded: () {
         if (mounted) setState(() {});
       },
@@ -585,7 +605,12 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       return;
     }
     unawaited(_loadBillNoFacets());
-    await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+    await _list.load(
+      page ?? _list.pageNum,
+      silent: silent,
+      fetch: _fetch,
+      isCurrent: captureReadOwner(ref),
+    );
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
       return;
     }

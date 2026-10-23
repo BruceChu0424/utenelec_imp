@@ -109,7 +109,7 @@ class DioAccountRepository implements AccountRepository {
     if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
 
     final json = await api.get(AccountEndpoints.base, query: query);
-    return PagedResult.fromJson(json, AccountListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, AccountListItem.fromJson);
   }
 
   @override

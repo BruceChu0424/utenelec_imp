@@ -57,7 +57,7 @@ class ProcurementIqcRejectionRepository
     ProcurementIqcRejectionFilter filter,
   ) async {
     final json = await api.get(_base, query: filter.toQuery());
-    return PagedResult.fromJson(json, ProcurementIqcRejectionCase.fromJson);
+    return PagedResult.fromJsonResponsive(json, ProcurementIqcRejectionCase.fromJson);
   }
 
   @override

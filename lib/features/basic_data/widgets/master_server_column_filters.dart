@@ -100,11 +100,12 @@ class MasterServerColumnFilters {
   Future<void> loadFacets(
     Future<Map<String, List<MasterFacetBucket>>> Function() fetch, {
     required VoidCallback onLoaded,
+    bool Function()? isCurrent,
   }) async {
     final gen = ++generation;
     try {
       final result = await fetch();
-      if (gen != generation) return;
+      if (gen != generation || isCurrent?.call() == false) return;
       buckets = result;
       onLoaded();
     } catch (_) {

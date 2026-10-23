@@ -65,7 +65,7 @@ class WarehouseInsightRepository {
       ApiEndpoints.stockInsightsCycleCount,
       query: {...scopeQuery(scope), 'page': page, 'size': size},
     );
-    return PagedResult.fromJson(json, InsightCycleCountRow.fromJson);
+    return PagedResult.fromJsonResponsive(json, InsightCycleCountRow.fromJson);
   }
 
   /// 称重异常 (近 [days] 天) + 供应商/车间汇总。
@@ -106,7 +106,7 @@ class WarehouseInsightRepository {
         'size': size,
       },
     );
-    return PagedResult.fromJson(json, InsightLearningRow.fromJson);
+    return PagedResult.fromJsonResponsive(json, InsightLearningRow.fromJson);
   }
 }
 

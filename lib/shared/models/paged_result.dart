@@ -5,6 +5,7 @@
 // 上算（见 shared/report/report_total.dart）——列表是服务端分页的，前端对当前页
 // 求和会得出一个看着像总计、其实只覆盖一页的数，比不显示更糟。
 import '../../features/basic_data/models/master_facet.dart';
+import '../../core/performance/ui_work_budget.dart';
 import '../report/report_total.dart';
 
 class PagedResult<T> {
@@ -34,6 +35,60 @@ class PagedResult<T> {
 
   /// 各 facet 字段的空值行数（"(空)(N)" 桶用）；与 [facets] 成对出现。
   final Map<String, int> facetNullCounts;
+
+  /// Network-facing variant: large rows and facet dictionaries are decoded in
+  /// bounded UI work slices. Totals remain the server's complete-result totals.
+  static Future<PagedResult<R>> fromJsonResponsive<R>(
+    Map<String, dynamic> json,
+    R Function(Map<String, dynamic>) fromJson, {
+    UiWorkBudget? budget,
+  }) async {
+    final work = budget ?? UiWorkBudget();
+    final list = json['items'] as List<dynamic>? ?? const [];
+    final items = await mapInUiSlices<dynamic, R>(
+      list,
+      (row) => fromJson(row as Map<String, dynamic>),
+      budget: work,
+    );
+    final facets = <String, List<MasterFacetBucket>>{};
+    if (json['facets'] case final Map<String, dynamic> rawFacets) {
+      for (final entry in rawFacets.entries) {
+        if (entry.value case final List<dynamic> values) {
+          facets[entry.key] = await mapInUiSlices<dynamic, MasterFacetBucket>(
+            values,
+            (row) => MasterFacetBucket.fromJson(row as Map<String, dynamic>),
+            budget: work,
+          );
+        }
+        await work.checkpoint();
+      }
+    }
+    final nullCounts = <String, int>{};
+    if (json['facetNullCounts'] case final Map<String, dynamic> rawNulls) {
+      for (final entry in rawNulls.entries) {
+        if (entry.value case final num value) {
+          nullCounts[entry.key] = value.toInt();
+        }
+        await work.checkpoint();
+      }
+    }
+    final totals = await mapInUiSlices<dynamic, ReportTotal>(
+      json['totals'] as List<dynamic>? ?? const [],
+      (row) => ReportTotal.fromJson(row as Map<String, dynamic>),
+      budget: work,
+    );
+    work.ensureCurrent();
+    return PagedResult<R>(
+      items: items,
+      page: json['page'] as int? ?? 1,
+      size: json['size'] as int? ?? list.length,
+      total: (json['total'] as num?)?.toInt() ?? list.length,
+      totalPages: json['totalPages'] as int? ?? 1,
+      totals: totals,
+      facets: facets,
+      facetNullCounts: nullCounts,
+    );
+  }
 
   factory PagedResult.fromJson(
     Map<String, dynamic> json,

@@ -126,7 +126,7 @@ class DioAdminRepository implements AdminRepository {
         if (status != null && status.isNotEmpty) 'status': status,
       },
     );
-    return PagedResult.fromJson(json, AdminUserSummary.fromJson);
+    return PagedResult.fromJsonResponsive(json, AdminUserSummary.fromJson);
   }
 
   @override

@@ -1,3 +1,4 @@
+import '../../../shared/auth/read_owner_fence.dart';
 // 采购单据列表页（按 docType 参数化）。
 //
 // 2026-09-03 起统一「分类分段」范式（原 DocKpiBar 状态卡条退役）：
@@ -35,7 +36,6 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../core/network/api_exception.dart';
-import '../../../core/network/server_config.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -152,12 +152,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
   @override
   void initState() {
     super.initState();
-    ref.listenManual(authenticatedScopeProvider, (previous, next) {
-      if (previous != next) _readerChanged();
-    });
-    ref.listenManual(apiBaseUrlProvider, (previous, next) {
-      if (previous != next) _readerChanged();
-    });
+    listenReadOwner(ref, _readerChanged);
     // 深链 ?status=draft：直接落在「草稿」段（新建页「草稿(N)」按钮的落点）。
     if (isDraftStatusQuery(widget.initialStatus)) {
       _seg = _draftSeg;
@@ -369,6 +364,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
               ),
             ),
       },
+      isCurrent: captureReadOwner(ref),
       onLoaded: () {
         if (mounted) setState(() {});
       },
@@ -405,7 +401,12 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
       return;
     }
     unawaited(_loadBillNoFacets());
-    await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+    await _list.load(
+      page ?? _list.pageNum,
+      silent: silent,
+      fetch: _fetch,
+      isCurrent: captureReadOwner(ref),
+    );
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
       return;
     }

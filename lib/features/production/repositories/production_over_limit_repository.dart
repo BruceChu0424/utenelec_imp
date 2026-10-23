@@ -76,7 +76,7 @@ class ProductionOverLimitRepository {
     String status = 'PENDING',
     int page = 1,
     int size = 20,
-  }) async => PagedResult.fromJson(
+  }) async => PagedResult.fromJsonResponsive(
     await api.get(_base, query: {'status': status, 'page': page, 'size': size}),
     ProductionOverLimitDisposition.new,
   );

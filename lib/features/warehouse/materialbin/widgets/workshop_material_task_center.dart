@@ -15,6 +15,7 @@ import '../../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../../components/layout/uten_filter_toolbar.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
+import '../../../../core/async/bounded_read_map.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/router/route_access_policy.dart';
 import '../../../../core/theme/uten_tokens.dart';
@@ -22,6 +23,7 @@ import '../../../../core/utils/china_datetime.dart';
 import '../../../../shared/badges/badge_registry.dart';
 import '../../../../shared/auth/permissions.dart';
 import '../../../../shared/models/paged_result.dart';
+import '../../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../../shared/warehouse/warehouse_task_badges.dart';
 import '../../../../shared/warehouse/warehouse_task_scope.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
@@ -612,12 +614,27 @@ class WmBinStatusSegment extends ConsumerStatefulWidget {
 class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment>
     with UtenRefreshParticipant<WmBinStatusSegment> {
   List<_BinStatusRow>? _rows;
+  int _loadVersion = 0;
   bool _loading = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    ref.listenManual(sensitiveReadBoundaryProvider, (previous, next) {
+      if (!mounted || previous == next) return;
+      _loadVersion++;
+      setState(() {
+        _rows = null;
+        _loading = false;
+        _error = null;
+      });
+      if (next.identity != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) trackRefresh(_load());
+        });
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => trackRefresh(_load()));
   }
 
@@ -628,6 +645,12 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment>
   }
 
   Future<void> _load() async {
+    final version = ++_loadVersion;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    bool current() =>
+        mounted &&
+        version == _loadVersion &&
+        boundary == ref.read(sensitiveReadBoundaryProvider);
     setState(() {
       _loading = true;
       _error = null;
@@ -638,10 +661,12 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment>
         for (final s in await repo.settings())
           if (s.periodicEnabled && s.binWarehouseId != null) s,
       ];
-      final periods = await Future.wait([
-        for (final s in settings) repo.periods(s.binWarehouseId!),
-      ]);
-      if (!mounted) return;
+      final periods = await boundedReadMap(
+        settings,
+        (setting) => repo.periods(setting.binWarehouseId!),
+        isCurrent: current,
+      );
+      if (!current()) return;
       final rows = <_BinStatusRow>[];
       for (var i = 0; i < settings.length; i++) {
         final sorted = [...periods[i]]
@@ -664,14 +689,14 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment>
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (mounted) {
+      if (current()) {
         setState(() {
           _loading = false;
           _error = e.message;
         });
       }
     } catch (_) {
-      if (mounted) {
+      if (current()) {
         setState(() {
           _loading = false;
           _error = '加载失败, 请重试';

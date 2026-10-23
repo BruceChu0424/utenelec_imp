@@ -14,6 +14,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/async/bounded_read_map.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -123,16 +124,19 @@ class _WarehouseMaterialReturnBatchReceivePageState
 
   Future<void> _load() async {
     if (_loading) return;
+    bool current() => mounted && formDraftIdentityIsCurrent;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final repo = ref.read(stockDocRepositoryProvider(StockDocType.wdraw));
-      final details = await Future.wait(
-        widget.documentIds.map((id) => repo.detail(id)),
+      final details = await boundedReadMap(
+        widget.documentIds,
+        repo.detail,
+        isCurrent: current,
       );
-      if (!formDraftIdentityIsCurrent) return;
+      if (!current()) return;
       final previous = {for (final row in _rows) row.detail.id: row};
       setState(() {
         _rows
@@ -148,13 +152,13 @@ class _WarehouseMaterialReturnBatchReceivePageState
       });
       await initializeFormDraft();
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!current()) return;
       setState(() => _error = '退料单没有加载出来：${e.message}');
     } catch (_) {
-      if (!mounted) return;
+      if (!current()) return;
       setState(() => _error = '退料单没有加载出来，请稍后重试');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (current()) setState(() => _loading = false);
     }
   }
 

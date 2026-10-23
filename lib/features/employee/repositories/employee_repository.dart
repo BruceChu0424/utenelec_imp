@@ -106,7 +106,7 @@ class DioEmployeeRepository
       'order': ?order,
     };
     final json = await api.get(ApiEndpoints.employees, query: query);
-    return PagedResult.fromJson(json, EmployeeSummary.fromJson);
+    return PagedResult.fromJsonResponsive(json, EmployeeSummary.fromJson);
   }
 
   @override

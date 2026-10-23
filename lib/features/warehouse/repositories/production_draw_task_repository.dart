@@ -111,7 +111,7 @@ class ProductionDrawTaskRepository {
         ...scope.queryParameters,
       },
     );
-    return PagedResult.fromJson(json, WarehouseDrawTask.fromJson);
+    return PagedResult.fromJsonResponsive(json, WarehouseDrawTask.fromJson);
   }
 }
 

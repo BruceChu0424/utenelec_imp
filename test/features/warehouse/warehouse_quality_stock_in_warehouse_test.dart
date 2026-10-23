@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +27,77 @@ import '../../support/audit_screenshot_support.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
   _registerVisualTests();
+
+  testWidgets(
+    'batch reads stay bounded and out-of-order responses keep receipt ownership',
+    (tester) async {
+      final gateway = _DeferredGateway();
+      final receipts = [
+        for (var i = 0; i < 7; i++)
+          (receiptType: 'SUBCONTRACT', receiptId: 'receipt-$i'),
+      ];
+      await _pump(
+        tester,
+        gateway,
+        _WarehouseApi(),
+        receipts: receipts,
+        settle: false,
+      );
+      expect(gateway.started, [
+        'receipt-0',
+        'receipt-1',
+        'receipt-2',
+        'receipt-3',
+      ]);
+      gateway.complete('receipt-2');
+      await tester.pump();
+      expect(gateway.started.last, 'receipt-4');
+      for (final receipt in receipts) {
+        gateway.complete(receipt.receiptId);
+      }
+      await tester.pumpAndSettle();
+      final table = tester.widget<WarehouseQualityMergedTable>(
+        find.byType(WarehouseQualityMergedTable),
+      );
+      expect(table.controller.rows.map((row) => row.draft!.receiptId), [
+        for (final receipt in receipts) ...[
+          receipt.receiptId,
+          receipt.receiptId,
+        ],
+      ]);
+      for (final row in table.controller.rows) {
+        expect(row.draft!.slice.inspectionItemId, row.line.inspectionItemId);
+        expect(row.rowKey, startsWith('pass-${row.draft!.receiptId}-'));
+      }
+      expect(gateway.commands, isEmpty);
+    },
+  );
+
+  testWidgets('leaving during a batch read stops pending receipt prefetch', (
+    tester,
+  ) async {
+    final gateway = _DeferredGateway();
+    final receipts = [
+      for (var i = 0; i < 8; i++)
+        (receiptType: 'SUBCONTRACT', receiptId: 'receipt-$i'),
+    ];
+    await _pump(
+      tester,
+      gateway,
+      _WarehouseApi(),
+      receipts: receipts,
+      settle: false,
+    );
+    expect(gateway.started, hasLength(4));
+    await tester.pumpWidget(const SizedBox.shrink());
+    for (final receipt in receipts) {
+      gateway.complete(receipt.receiptId);
+    }
+    await tester.pump();
+    expect(gateway.started, hasLength(4));
+    expect(gateway.commands, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
 
   test('draft blocks invalid quantities and missing actual warehouse', () {
     final draft = WarehouseQualitySliceDraft(
@@ -526,6 +599,8 @@ Future<void> _pump(
   _Gateway gateway,
   _WarehouseApi api, {
   bool canConfirm = true,
+  List<({String receiptType, String receiptId})>? receipts,
+  bool settle = true,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = const Size(2400, 1000);
@@ -546,12 +621,54 @@ Future<void> _pump(
       ],
       child: MaterialApp(
         home: WarehouseQualityBatchStockInPage(
-          targets: [WarehouseQualityResultTask.fromJson(_detail())],
+          targets: receipts == null
+              ? [WarehouseQualityResultTask.fromJson(_detail())]
+              : const [],
+          receipts: receipts ?? const [],
         ),
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+  }
+}
+
+class _DeferredGateway extends _Gateway {
+  final started = <String>[];
+  final pending = <String, Completer<WarehouseQualityResultDetail>>{};
+
+  @override
+  Future<WarehouseQualityResultDetail> detail(
+    String receiptType,
+    String receiptId,
+  ) {
+    started.add(receiptId);
+    return pending
+        .putIfAbsent(receiptId, () => Completer<WarehouseQualityResultDetail>())
+        .future;
+  }
+
+  void complete(String receiptId) {
+    final completion = pending.putIfAbsent(
+      receiptId,
+      () => Completer<WarehouseQualityResultDetail>(),
+    );
+    if (completion.isCompleted) return;
+    final json = _detail();
+    json['receiptId'] = receiptId;
+    json['billNo'] = receiptId;
+    for (final item in (json['items'] as List).cast<Map<String, dynamic>>()) {
+      item['passEventId'] = 'pass-$receiptId-${item['goodsId']}';
+      item['inspectionItemId'] = '$receiptId-${item['inspectionItemId']}';
+    }
+    for (final line in (json['lines'] as List).cast<Map<String, dynamic>>()) {
+      line['inspectionItemId'] = '$receiptId-${line['inspectionItemId']}';
+    }
+    completion.complete(WarehouseQualityResultDetail.fromJson(json));
+  }
 }
 
 class _WarehouseApi extends ApiClient {

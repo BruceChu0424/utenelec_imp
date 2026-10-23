@@ -67,6 +67,13 @@ component at `server/material_forecast`; helper source paths remain flat to matc
 the Java launcher. Its signature authenticates the helper/verifier/manifest;
 the inner inventory check supplements that signature and cannot replace it.
 
+Development-cache validation compares the actual runtime sources, dependency
+locks, builders and preparation helpers with that exact HEAD. Flutter-only edits
+to the working `pubspec.yaml` do not affect this Python runtime: application
+version and source identity still use the committed manifest, never its working
+copy. Release builds continue to require a wholly clean checkout and matching
+commit/version. Runtime source or helper edits still require a reviewed commit.
+
 The universal hashed `requirements.txt` is the only dependency authority.
 `requirements.runtime.txt` and runtime-locks/*.lock are compatibility exports:
 every package/version/hash must be a platform-appropriate subset of that authority.

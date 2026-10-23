@@ -457,7 +457,7 @@ class CheckoutIdentityTest(unittest.TestCase):
         (self.root / "unrelated-note.txt").write_text("developer draft\n")
         self.assertEqual(before, payload.source_identity(self.root, VERSION, self.commit, "linux-x86_64", True))
         for relative in (*payload.SOURCE_FILES, *payload.DERIVED_FILES, payload.SCRIPT_PATH,
-                         payload.FACADE_PATH, "pubspec.yaml"):
+                         payload.FACADE_PATH):
             path = self.root / relative
             original = path.read_bytes()
             path.write_bytes(original + b"\n# uncommitted runtime change\n")
@@ -470,6 +470,23 @@ class CheckoutIdentityTest(unittest.TestCase):
         extra.write_text("# cannot enter a development runtime\n")
         with self.assertRaisesRegex(payload.PayloadError, "source allowlist"):
             payload.source_identity(self.root, VERSION, self.commit, "linux-x86_64", True)
+
+    def test_development_ignores_flutter_manifest_edits_but_keeps_committed_version(self):
+        self.prepare_build_fixture()
+        before = payload.source_identity(self.root, VERSION, self.commit, "linux-x86_64", True)
+        committed_version = payload.require_checkout(self.root, VERSION, self.commit, True)
+        manifest = self.root / "pubspec.yaml"
+        original = manifest.read_bytes()
+        for working in (original + b"\ndependency_overrides:\n  flutter_only: any\n",
+                        b"version: 99.0.0+9900\n", b"incomplete Flutter edit\n"):
+            manifest.write_bytes(working)
+            with self.subTest(working=working):
+                self.assertEqual(before, payload.source_identity(self.root, VERSION, self.commit, "linux-x86_64", True))
+                self.assertEqual(committed_version, payload.require_checkout(self.root, VERSION, self.commit, True))
+                with self.assertRaisesRegex(payload.PayloadError, "dirty"):
+                    payload.require_checkout(self.root, VERSION, self.commit)
+        with self.assertRaisesRegex(payload.PayloadError, "application version mismatch"):
+            payload.require_checkout(self.root, "v99.0.0", self.commit, True)
 
     def test_compatibility_exports_cannot_create_a_second_dependency_authority(self):
         self.prepare_build_fixture()
@@ -526,6 +543,7 @@ class CheckoutIdentityTest(unittest.TestCase):
             if "pip" not in command:
                 return original_run(command, **kwargs)
             pip_calls.append(command)
+            (self.root / "pubspec.yaml").write_text("version: 97.0.0+9700\n")
             destination = Path(command[command.index("--dest") + 1])
             for wheel in (self.component / "wheelhouse").iterdir():
                 shutil.copyfile(wheel, destination / wheel.name)
@@ -535,6 +553,7 @@ class CheckoutIdentityTest(unittest.TestCase):
                 patch.object(payload.subprocess, "run", side_effect=run):
             cache = Path(cache_dir)
             (self.root / "tracked.txt").write_text("unrelated dirty draft\n")
+            (self.root / "pubspec.yaml").write_text("version: 98.0.0+9800\n")
             first = facade.development_payload(cache, "linux-x86_64", repo=self.root)
             self.assertEqual(1, len(pip_calls))
             # Development downloads stream into the backend console and stay quiet.
@@ -543,6 +562,12 @@ class CheckoutIdentityTest(unittest.TestCase):
             self.assertEqual(first, second)
             self.assertEqual(1, len(pip_calls))
             old_directory = Path(first["payload"])
+            # Flutter WIP cannot invalidate a verified Python payload or change
+            # its committed release/application version, even during a build.
+            (self.root / "pubspec.yaml").write_text("version: 99.0.0+9900\n")
+            self.assertEqual(first, facade.development_payload(cache, "linux-x86_64", repo=self.root))
+            self.assertEqual(VERSION, json.loads((old_directory / "release.json").read_text())["version"])
+            self.assertEqual(1, len(pip_calls))
             worker = old_directory / "worker.py"
             original = worker.read_bytes()
             worker.write_bytes(original + b"tamper")

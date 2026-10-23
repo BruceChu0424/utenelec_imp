@@ -4302,22 +4302,6 @@
       "doc": "docs/03-页面/仓库任务中心页.md"
     },
     {
-      "route": "/warehouse/tasks/draw",
-      "title": "生产领料任务中心页",
-      "aliases": [],
-      "module": "仓库管理",
-      "purpose": "",
-      "paths": [],
-      "parent": "/warehouse/tasks",
-      "record": false,
-      "anyOf": [
-        "stock_doc:view"
-      ],
-      "allOf": [],
-      "hubOf": [],
-      "doc": "docs/03-页面/生产领料任务中心页.md"
-    },
-    {
       "route": "/warehouse/tasks/inbound",
       "title": "入库任务中心页",
       "aliases": [],

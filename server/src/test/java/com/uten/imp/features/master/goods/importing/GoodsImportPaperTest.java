@@ -54,7 +54,7 @@ class GoodsImportPaperTest {
     @Test
     @SuppressWarnings("unchecked")
     void exportOnlyHeadersAreRecognizedAsIgnored() throws Exception {
-        // 模具编号 / 归属车间 / 客户型号 / 所属仓库：导出有但导入不落值——
+        // 模具编号 / 归属车间 / 所属仓库：导出有但导入不落值——
         // 必须显式登记为 ignored（明账），未登记会被当成待补的漏项。
         Map<String, String> aliases = headerAliases();
         assertEquals("paper", aliases.get(normKey("备注")));
@@ -62,7 +62,8 @@ class GoodsImportPaperTest {
         assertEquals("ignored", aliases.get(normKey("模具")));
         assertEquals("ignored", aliases.get(normKey("归属车间")));
         assertEquals("ignored", aliases.get(normKey("车间")));
-        assertEquals("ignored", aliases.get(normKey("客户型号")));
+        // Customer model is now an editable goods scalar, not a UUID relation.
+        assertEquals("cNumber", aliases.get(normKey("客户型号")));
         assertEquals("ignored", aliases.get(normKey("所属仓库")));
     }
 

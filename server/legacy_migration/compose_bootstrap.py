@@ -9,6 +9,7 @@ PostgreSQL still enforces the outer transaction when the module executes.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import pathlib
 import re
 import sys
@@ -20,6 +21,8 @@ PRESERVED_TEMP_TABLES = (
     "bootstrap_bom_exclusions",
     # ADR-145: documents/balances the reviewed warehouse crosswalk does not carry over.
     "bootstrap_warehouse_exclusions",
+    # Complete zero-event source facts are flushed only after all typed proofs.
+    "bootstrap_stock_movement_nonposting",
 )
 _IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_$]*"
 _COPY = re.compile(
@@ -211,6 +214,15 @@ def compose(content: bytes, name: str) -> bytes:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*[.]sql", name):
         raise ValueError("invalid reviewed loader filename")
     validate_sql(content.decode("utf-8"))
+    custody_modules = {"migrate_client_data.sql", "migrate_supplier_data.sql", "migrate_client_owner.sql",
+                       "migrate_goods_owner.sql", "migrate_sales_owner.sql"}
+    prefix, suffix = b"", b""
+    if name in custody_modules:
+        helper = pathlib.Path(__file__).with_name("migrate_owner_custody.sql").read_bytes()
+        validate_sql(helper.decode("utf-8"))
+        prefix = ("SELECT set_config('uten.legacy_custody_helper_sha','" + hashlib.sha256(helper).hexdigest()
+                  + "',true);\n").encode() + helper + b"\n"
+        suffix = ("\nSELECT pg_temp.flush_legacy_owner_custody('" + name + "');\n").encode()
     preserved = ", ".join("'" + table + "'" for table in PRESERVED_TEMP_TABLES)
     cleanup = f"""
 DO $$ DECLARE staging_table text; BEGIN
@@ -220,7 +232,7 @@ DO $$ DECLARE staging_table text; BEGIN
     LOOP EXECUTE format('DROP TABLE pg_temp.%I', staging_table); END LOOP;
 END; $$;
 """
-    return f"\\echo Bootstrap module: {name}\n".encode() + content + cleanup.encode()
+    return f"\\echo Bootstrap module: {name}\n".encode() + prefix + content + suffix + cleanup.encode()
 
 
 if __name__ == "__main__":

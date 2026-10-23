@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:collection';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import '../../components/layout/uten_editable_grid.dart';
 import '../../components/feedback/uten_dialog.dart';
 import '../../core/network/server_config.dart';
+import '../../core/performance/ui_work_budget.dart';
 import '../../core/ui/action_feedback.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
@@ -70,10 +73,60 @@ class PriceCheckBatchController extends ChangeNotifier {
     loading = true;
     final revision = _revision;
     // Freeze all values; the row controllers remain owned by the editor.
-    final snapshot = (jsonDecode(jsonEncode(items)) as List)
+    final snapshot = (jsonDecode(signature!) as List)
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
     _timer = Timer(delay, () => _load(snapshot, revision));
+  }
+
+  /// Editors defer both payload capture and deep copying until input settles.
+  /// Old evidence is hidden immediately; each row is then frozen in bounded
+  /// UI slices, and a change during capture discards the entire snapshot.
+  void updateFromRows<T>({
+    required Iterable<T> Function() rows,
+    required Map<String, dynamic>? Function(T row) payloadOf,
+    required bool enabled,
+  }) {
+    invalidate();
+    if (!enabled || _disposed) return;
+    loading = true;
+    final revision = _revision;
+    _timer = Timer(delay, () => _captureAndLoad(rows, payloadOf, revision));
+  }
+
+  Future<void> _captureAndLoad<T>(
+    Iterable<T> Function() rows,
+    Map<String, dynamic>? Function(T row) payloadOf,
+    int revision,
+  ) async {
+    bool current() => !_disposed && revision == _revision;
+    final work = UiWorkBudget(isCurrent: current, debugLabel: 'price-check');
+    try {
+      work.ensureCurrent();
+      final sources = List<T>.of(rows(), growable: false);
+      final snapshot = <Map<String, dynamic>>[];
+      for (final row in sources) {
+        work.ensureCurrent();
+        final payload = payloadOf(row);
+        if (payload != null) {
+          // Keep exact decimal strings and nested operands, without a large
+          // whole-table JSON string/copy on every keystroke.
+          snapshot.add(
+            Map<String, dynamic>.from(jsonDecode(jsonEncode(payload)) as Map),
+          );
+        }
+        await work.checkpoint();
+      }
+      work.ensureCurrent();
+      await _load(snapshot, revision);
+    } on UiWorkCancelled {
+      // The newer input/identity owns all result and loading state.
+    } catch (_) {
+      if (current()) {
+        loading = false;
+        notifyListeners();
+      }
+    }
   }
 
   Future<void> _load(List<Map<String, dynamic>> items, int revision) async {
@@ -160,7 +213,6 @@ class _PriceCheckScopeState<R extends EditableGridRow>
   final _keys = Map<Object, String>.identity();
   final _watched = <Listenable>[];
   int _sequence = 0;
-  int _changeRevision = 0;
   bool get _allowed =>
       widget.enabled &&
       ref.read(authenticatedScopeProvider) != null &&
@@ -212,7 +264,8 @@ class _PriceCheckScopeState<R extends EditableGridRow>
     }
     _watched.clear();
     final rows = widget.grid.rows;
-    _keys.removeWhere((row, _) => !rows.contains(row));
+    final retained = HashSet<Object>.identity()..addAll(rows);
+    _keys.removeWhere((row, _) => !retained.contains(row));
     for (final row in rows) {
       _keys.putIfAbsent(row, () => 'price-row-${++_sequence}');
       _watched.addAll(widget.bindingOf(row).listenables);
@@ -226,43 +279,39 @@ class _PriceCheckScopeState<R extends EditableGridRow>
 
   void _changed() {
     // Goods selection can set colour/unit after its notifier fires. Read the
-    // completed synchronous edit, while hiding old evidence immediately.
-    _batch.invalidate();
-    final revision = ++_changeRevision;
-    scheduleMicrotask(() {
-      if (mounted && revision == _changeRevision) _refreshInputs();
-    });
-  }
-
-  void _refreshInputs() {
-    final items = <Map<String, dynamic>>[];
-    if (_allowed) {
-      for (final row in widget.grid.rows) {
+    // complete edit after debounce, while hiding old evidence immediately.
+    _batch.updateFromRows<R>(
+      rows: () => widget.grid.rows,
+      payloadOf: (row) {
         final payload = widget.bindingOf(row).payload();
-        if (payload != null) items.add({'rowKey': _keys[row], ...payload});
-      }
-    }
-    _batch.update(items, enabled: _allowed);
+        return payload == null ? null : {'rowKey': _keys[row], ...payload};
+      },
+      enabled: _allowed,
+    );
   }
 
   @override
   void didUpdateWidget(covariant ProcurementPriceCheckScope<R> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final rebind =
+        oldWidget.grid != widget.grid ||
+        oldWidget.bindingOf != widget.bindingOf ||
+        !listEquals(oldWidget.headerChanges, widget.headerChanges);
     if (oldWidget.grid != widget.grid) {
       oldWidget.grid.rowsListenable.removeListener(_bind);
       widget.grid.rowsListenable.addListener(_bind);
     }
-    if (oldWidget.kind != widget.kind ||
-        oldWidget.excludeOrderId != widget.excludeOrderId ||
-        oldWidget.contextKey != widget.contextKey) {
-      _batch.invalidate();
+    if (rebind) {
+      _bind();
+    } else {
+      // Colour/unit/source metadata can change through a parent rebuild without
+      // owning a Listenable. Keep that invalidation, but not an O(rows) rebind.
+      _changed();
     }
-    _bind();
   }
 
   @override
   void dispose() {
-    _changeRevision++;
     widget.grid.rowsListenable.removeListener(_bind);
     for (final source in _watched.toSet()) {
       source.removeListener(_changed);

@@ -9,6 +9,151 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get clientUpdateDetails => 'View details';
+
+  @override
+  String get clientUpdateNewTitle => 'New version available';
+
+  @override
+  String get clientUpdateSubtitle =>
+      'Check automatically and update this device';
+
+  @override
+  String get clientUpdateCurrent => 'Installed version';
+
+  @override
+  String get clientUpdateLatest => 'Latest version';
+
+  @override
+  String get clientUpdateNow => 'Update now';
+
+  @override
+  String get clientUpdateLater => 'Later';
+
+  @override
+  String get clientUpdateCheck => 'Check for updates';
+
+  @override
+  String get clientUpdateChecking => 'Checking for updates';
+
+  @override
+  String get clientUpdateUpToDate => 'Your software is up to date';
+
+  @override
+  String get clientUpdateDownloading => 'Downloading update';
+
+  @override
+  String get clientUpdateInstalling => 'Installing update';
+
+  @override
+  String get clientUpdateWindowsHint =>
+      'The update downloads automatically, then closes and restarts the app. Device settings and saved drafts are retained. Save your work first.';
+
+  @override
+  String get clientUpdateAndroidHint =>
+      'After downloading, the app opens the system installation prompt. If installation permission is required, grant it and return to retry.';
+
+  @override
+  String get clientUpdateStoreHint =>
+      'The official app store will open. Complete the update there.';
+
+  @override
+  String get clientUpdateUnsupported =>
+      'In-app updates are not yet available on this operating system.';
+
+  @override
+  String get clientUpdateFailed =>
+      'The update did not complete. Check your connection and installation permissions, then retry.';
+
+  @override
+  String get clientUpdateInstallerOpened =>
+      'The system installation prompt is open. Follow its instructions to complete the update.';
+
+  @override
+  String get clientUpdateNotes => 'What\'s new';
+
+  @override
+  String get clientUpdateNoNotes =>
+      'No release notes are available for this version.';
+
+  @override
+  String get clientUpdatePublishTitle => 'Publish client version';
+
+  @override
+  String get clientUpdatePublishHint =>
+      'Upload and publish new versions for each platform. Employees\' clients will check automatically and show an update prompt.';
+
+  @override
+  String get clientUpdatePlatform => 'Platform';
+
+  @override
+  String get clientUpdateArchitecture => 'Device architecture';
+
+  @override
+  String get clientUpdateVersion => 'Version';
+
+  @override
+  String get clientUpdateBuild => 'Build number';
+
+  @override
+  String get clientUpdateStoreUrl => 'Official store URL';
+
+  @override
+  String get clientUpdateChooseFile => 'Choose update package';
+
+  @override
+  String get clientUpdatePublish => 'Upload and publish';
+
+  @override
+  String get clientUpdatePublishing => 'Uploading and publishing';
+
+  @override
+  String get clientUpdatePublished => 'New client version published';
+
+  @override
+  String get clientUpdatePublishInvalid =>
+      'Complete the version details, use a build number above published versions, and choose the matching package or enter an official store URL.';
+
+  @override
+  String get clientUpdatePackageHint =>
+      'Choose a dedicated update ZIP for Windows or a release-signed APK for Android. Increase the build number for each release.';
+
+  @override
+  String get clientUpdateWithdraw => 'Withdraw release';
+
+  @override
+  String get clientUpdateWithdrawConfirm =>
+      'Other devices will no longer receive this version. Devices already updated will not be downgraded. Withdraw this release?';
+
+  @override
+  String get clientUpdateReleaseList => 'Client release history';
+
+  @override
+  String get clientUpdateClose => 'Close';
+
+  @override
+  String get clientUpdateRetry => 'Retry';
+
+  @override
+  String get clientUpdateTitle => 'Software updates';
+
+  @override
+  String get masterStatusDisableTitle => 'Confirm deactivation';
+
+  @override
+  String get masterStatusEnableTitle => 'Confirm activation';
+
+  @override
+  String masterStatusDisableBody(String label, int count) {
+    return 'Deactivate $count item(s) in $label? They will no longer be available for new business. Existing documents and change history are retained.';
+  }
+
+  @override
+  String masterStatusEnableBody(String label, int count) {
+    return 'Activate $count item(s) in $label? They will be available for new business again.';
+  }
+
+  @override
   String get websiteInquirySeries => 'Product series';
 
   @override
@@ -12378,4 +12523,173 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get goodsBatchPasteAutoCode =>
       'New goods codes are generated automatically';
+
+  @override
+  String get importReviewSourceRow => 'File row';
+
+  @override
+  String get importReviewIdentity => 'Goods';
+
+  @override
+  String get importReviewMatchReason => 'Matched by';
+
+  @override
+  String get importReviewAction => 'Action';
+
+  @override
+  String get importReviewEmptyValue => 'Not filled';
+
+  @override
+  String get importReviewOldValue => 'Existing value';
+
+  @override
+  String get importReviewNewValue => 'Imported value';
+
+  @override
+  String get importReviewLegend =>
+      'Red strikethrough shows the existing value; green shows the imported value. Only selected conflicts will be replaced. Blank cells never clear existing values.';
+
+  @override
+  String get importReviewFillLegend =>
+      'Missing values will be filled while existing values stay unchanged. Confirm to create and complete records.';
+
+  @override
+  String importReviewReplaceSelected(int count) {
+    return 'Replace selected ($count)';
+  }
+
+  @override
+  String get importReviewIgnoreAll => 'Ignore all conflicts';
+
+  @override
+  String get importReviewIgnoreExplanation =>
+      'Ignoring skips conflicts only. New goods and missing values will still be imported.';
+
+  @override
+  String get importReviewIgnoreRow => 'Ignore this row';
+
+  @override
+  String get importReviewRestoreRow => 'Review again';
+
+  @override
+  String get importReviewAutomaticFill => 'Fill automatically';
+
+  @override
+  String get importReviewIgnored => 'Conflict ignored';
+
+  @override
+  String get importReviewPending => 'Needs review';
+
+  @override
+  String get importReviewSelected => 'Will replace';
+
+  @override
+  String get importReviewConfirmFill => 'Confirm and import';
+
+  @override
+  String get importReviewNoRows => 'No differences to review';
+
+  @override
+  String get importReviewSelectAll => 'Select all conflicts';
+
+  @override
+  String get goodsImportReviewTitle => 'Review goods import differences';
+
+  @override
+  String get bomImportReviewTitle => 'Review component import differences';
+
+  @override
+  String get importReviewOpen => 'Review differences and import';
+
+  @override
+  String get importMatchCode => 'Matching code';
+
+  @override
+  String get importMatchUuid => 'Matching system ID';
+
+  @override
+  String get importMatchPathName => 'Same category and name';
+
+  @override
+  String importReviewSummary(
+    int added,
+    int filled,
+    int conflicts,
+    int unchanged,
+  ) {
+    return 'New $added, fill $filled, conflicts $conflicts, unchanged $unchanged';
+  }
+
+  @override
+  String importResultSummary(
+    int created,
+    int filled,
+    int updated,
+    int ignored,
+    int unchanged,
+  ) {
+    return 'Created $created, filled $filled, replaced $updated, ignored $ignored, unchanged $unchanged';
+  }
+
+  @override
+  String get bomImportMergeLabel =>
+      'Merge and review (keep components outside this file)';
+
+  @override
+  String get importReviewUnchanged => 'No change';
+
+  @override
+  String get goodsImportTemplateHint =>
+      'Use an exported goods file to create or update records. Category (join its path with -) and goods name are required; code may be blank. Keep the system identifier when updating. Do not copy an existing goods identifier into a new row. Reused codes require the system identifier to confirm the current goods.';
+
+  @override
+  String get goodsImportMergeHint =>
+      'New goods are created. Existing goods match by code or by category and name. Missing values are filled automatically; review other differences on the full page and choose replace or ignore. Blank import cells keep existing values. Resolve ambiguous names before uploading again. Deleted goods with the same code are restored from the file.';
+
+  @override
+  String get importRedetectCurrent => 'Check this file again';
+
+  @override
+  String get importRedetectRequired =>
+      'Check this file again before submitting';
+
+  @override
+  String get importRetryPrevious => 'Retry previous submission';
+
+  @override
+  String get importFilesTransactionNote =>
+      'Select multiple files to check and import in order. Each file is saved independently; later failures or closing do not undo successful files.';
+
+  @override
+  String importFilesCompleted(int completed, int total) {
+    return 'Completed $completed/$total files';
+  }
+
+  @override
+  String importFilesCurrent(int position, int total, String filename) {
+    return 'File $position/$total: $filename';
+  }
+
+  @override
+  String get importFilesPaused =>
+      'This file is paused. Continue reviewing to resume; later files have not been processed.';
+
+  @override
+  String get importFilesFailed =>
+      'This file did not finish and the queue is paused. Check it again or select files again.';
+
+  @override
+  String get importFilesCloseNote =>
+      'Closing abandons unprocessed files and keeps successful imports. Selecting files again replaces only the unprocessed queue.';
+
+  @override
+  String importFilesOutcome(String filename, String summary) {
+    return 'Completed $filename: $summary';
+  }
+
+  @override
+  String get importFilesContinue => 'Continue current file';
+
+  @override
+  String get importFilesFinished => 'All selected files have been processed';
 }

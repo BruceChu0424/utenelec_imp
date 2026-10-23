@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.*;
 })
 class StockAiInventoryScopePostgresTest {
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("uten_ai_inventory_scope").withUsername("uten").withPassword("uten");
+            .withDatabaseName("uten_ai_inventory_scope").withUsername("fixture_admin").withPassword("uten");
 
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
         POSTGRES.start();

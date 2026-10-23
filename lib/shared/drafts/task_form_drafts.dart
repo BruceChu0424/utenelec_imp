@@ -84,6 +84,14 @@ bool isTaskFormDraft(FormDraft draft) {
   if (FormDraftCatalog.warehouseDraw.matchesDestination(draft)) {
     return hasQuery('documentIds') || hasQuery('discoveryRequestIds');
   }
+  if (FormDraftCatalog.workshopMaterialBatchIssue.matchesDestination(draft)) {
+    return true;
+  }
+  if (FormDraftCatalog.workshopMaterialIssue.matchesDestination(draft)) {
+    return hasQuery('requisitionId') ||
+        (draft.data['requisitionId'] is String &&
+            (draft.data['requisitionId'] as String).trim().isNotEmpty);
+  }
   final selection = draft.data['selection'];
   if ((FormDraftCatalog.iqcBatchReport.matchesDestination(draft) ||
           FormDraftCatalog.fqcBatchReport.matchesDestination(draft)) &&

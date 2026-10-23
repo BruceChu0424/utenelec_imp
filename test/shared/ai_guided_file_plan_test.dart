@@ -10,6 +10,8 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/performance/json_value_snapshot.dart';
+import 'package:uten_imp/core/performance/responsive_data_codec.dart';
 import 'package:uten_imp/shared/ai/ai_job_models.dart';
 import 'package:uten_imp/shared/ai/ai_job_repository.dart';
 import 'package:uten_imp/shared/ai/guided/ai_guided_file_plan.dart';
@@ -17,6 +19,59 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 void main() {
+  testWidgets(
+    'fresh validation shares the immutable deferred bytes handle before any serialization',
+    (tester) async {
+      final harness = await _pump(tester);
+      final plan = harness.plan();
+      final fresh = await validateAiGuidedFilePlan(harness.ref, plan);
+      final before = snapshotJsonValue(
+        captureDeferredJsonValues(plan.toLocalDraft),
+      );
+      final after = snapshotJsonValue(
+        captureDeferredJsonValues(fresh.toLocalDraft),
+      );
+      expect(jsonValuesEqual(before, after), isTrue);
+      final changed = Map<String, dynamic>.from(after as Map<String, dynamic>)
+        ..['fileName'] = 'changed.pdf';
+      expect(jsonValuesEqual(before, changed), isFalse);
+    },
+  );
+
+  test(
+    'responsive guided restore retains exact source and rejects tampering',
+    () async {
+      final file = _file(text: 'content,' * 10000);
+      final plan = await AiGuidedFilePlan.createResponsive(
+        jobId: 'job-1',
+        file: file,
+        result: AiGuidedFileResult.fromJson(_result(file)),
+        workflow: AiGuidedWorkflow.expenseClaim,
+        identity: _identity(),
+      );
+      final data =
+          await materializeJsonResponsive(
+                captureDeferredJsonValues(plan.toLocalDraft),
+              )
+              as Map<String, dynamic>;
+      final restoring = AiGuidedFilePlan.restoreLocalDraftResponsive(
+        data,
+        plan.identity,
+      );
+      data['fileName'] = 'changed-after-capture.csv';
+      final restored = await restoring;
+      expect(restored?.file.bytes, file.bytes);
+      expect(restored?.file.name, file.name);
+      expect(
+        await AiGuidedFilePlan.restoreLocalDraftResponsive({
+          ...data,
+          'bytes': base64Encode([1, 2, 3]),
+        }, plan.identity),
+        isNull,
+      );
+    },
+  );
+
   test(
     'document page hint strips values and rejects malformed or overlong paths',
     () {

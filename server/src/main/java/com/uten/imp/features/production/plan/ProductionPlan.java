@@ -74,7 +74,7 @@ public class ProductionPlan extends SoftDeletableEntity {
     @Column(name = "worker_id")
     private UUID workerId;
 
-    /** MakeID → employees（迁移留空，B_Worker 与 employees 无 legacy_id 对齐）。 */
+    /** 新单制单员工 UUID；老库 MakeID 属 Sys_Operator，迁移保留旧编号及名称，不按员工旧编号关联。 */
     @Column(name = "maker_id")
     private UUID makerId;
 
@@ -92,14 +92,14 @@ public class ProductionPlan extends SoftDeletableEntity {
     @Column(name = "reversed_by")
     private UUID reversedBy;
 
-    /** MakeID 老 ID 留底（后续 worker_legacy_map 回填）。 */
+    /** MakeID 老账号编号留底（Sys_Operator 命名空间，不用于 worker_legacy_map）。 */
     @Column(name = "maker_legacy_id")
     private Integer makerLegacyId;
 
     @Column(name = "approver_legacy_id")
     private Integer approverLegacyId;
 
-    /** 制单员名（迁移期冻结老库 Sys_Operator.fname / B_Worker.Emp_Name；未来 employees.legacy_id 对齐后报表 COALESCE 优先真名）。 */
+    /** 制单员名（迁移冻结旧账号名称；报表仅真实员工 UUID 可优先取当前员工名）。 */
     @Column(name = "maker_name")
     private String makerName;
 

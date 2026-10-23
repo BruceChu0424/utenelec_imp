@@ -245,7 +245,8 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   }
 
   Future<void> _init() async {
-    bool accepts() => mounted;
+    startFormDraftIdentityGuard();
+    bool accepts() => formDraftIdentityIsCurrent;
     setState(() {
       _loading = true;
     });
@@ -744,12 +745,14 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       final qty = double.tryParse(r.qty.text) ?? 0;
       if (qty <= 0) {
         context.appError('${r.goods!.name} 的数量必须大于 0');
+        await _grid.revealError(r, columnKey: 'qty');
         return;
       }
       if (widget.docType != SubcontractDocType.receipt &&
           r.maxQty != null &&
           qty > r.maxQty! + 0.0000001) {
         context.appError('${r.goods!.name} 的数量不能超过上游剩余量 ${r.maxQty}');
+        await _grid.revealError(r, columnKey: 'qty');
         return;
       }
       final price = double.tryParse(r.price.text);
@@ -759,6 +762,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         final pricingError = r.pricing.validate();
         if (pricingError != null) {
           context.appError('${r.goods?.name ?? "该货品"}：$pricingError');
+          await _grid.revealError(r, columnKey: 'price');
           return;
         }
       }
@@ -769,6 +773,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       );
       if (priceError != null) {
         context.appError(priceError);
+        await _grid.revealError(r, columnKey: 'price');
         return;
       }
       final weightText = r.weight.text.trim();
@@ -777,6 +782,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
           weightText.isNotEmpty &&
           (w == null || w <= 0)) {
         context.appError('${r.goods!.name} 的实际重量必须大于 0');
+        await _grid.revealError(r, columnKey: 'weight');
         return;
       }
       final ending = double.tryParse(r.endingQty.text);

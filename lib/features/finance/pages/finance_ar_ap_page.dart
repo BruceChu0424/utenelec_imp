@@ -18,6 +18,7 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -77,6 +78,18 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      _loadRequests.begin();
+      _columnFilters.reset();
+      setState(() {
+        _page = null;
+        _loading = false;
+        _error = null;
+        _partyId = null;
+        _currencyId = null;
+        _keyword = '';
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(financeNameServiceProvider).ensureLoaded();
       _load(1);

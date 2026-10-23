@@ -13,8 +13,15 @@ import 'package:uten_imp/features/basic_data/repositories/color_repository.dart'
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/models/color_node.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 
 final _colorPermissions = StateProvider<Set<String>>((_) => {Perm.colorEdit});
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
 
 void main() {
   testWidgets('a permission boundary change discards the old pending list', (
@@ -57,6 +64,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionProvider.overrideWith(_Session.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'color-test-user'),
+          ),
           apiClientProvider.overrideWithValue(api),
           colorRepositoryProvider.overrideWithValue(DioColorRepository(api)),
           currentPermissionsProvider.overrideWith(
@@ -160,6 +171,10 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sessionProvider.overrideWith(_Session.new),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'color-test-user'),
+            ),
             apiClientProvider.overrideWithValue(api),
             colorRepositoryProvider.overrideWithValue(DioColorRepository(api)),
             currentPermissionsProvider.overrideWithValue({Perm.colorEdit}),
@@ -255,6 +270,10 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sessionProvider.overrideWith(_Session.new),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'color-test-user'),
+            ),
             apiClientProvider.overrideWithValue(api),
             colorRepositoryProvider.overrideWithValue(DioColorRepository(api)),
             currentPermissionsProvider.overrideWithValue({Perm.colorEdit}),

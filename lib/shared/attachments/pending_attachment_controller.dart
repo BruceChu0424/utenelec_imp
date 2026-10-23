@@ -8,6 +8,9 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
+import '../../core/performance/json_value_snapshot.dart';
+import '../../core/performance/responsive_data_codec.dart';
+import '../../core/performance/ui_work_budget.dart';
 
 import 'attachment.dart';
 import 'attachment_file_rules.dart';
@@ -18,11 +21,15 @@ class PendingAttachment {
   PendingAttachment({
     required this.name,
     required this.contentType,
-    required this.bytes,
+    required Uint8List bytes,
     this.category,
     String? localUploadId,
     this.legacyUntracked = false,
-  }) : localUploadId = localUploadId ?? const Uuid().v4();
+    String? encodedDraftBytes,
+  }) : localUploadId = localUploadId ?? const Uuid().v4(),
+       _draftValue = encodedDraftBytes == null
+           ? DraftByteValue(bytes)
+           : DraftByteValue.decoded(bytes, encodedDraftBytes);
 
   final String localUploadId;
   final bool legacyUntracked;
@@ -32,7 +39,8 @@ class PendingAttachment {
 
   final String name;
   final String contentType;
-  final Uint8List bytes;
+  final DraftByteValue _draftValue;
+  Uint8List get bytes => _draftValue.bytes;
 
   /// 可选分类：加入时不问，加入之后在文件旁边随时可改（flush 时随上传带走）。
   String? category;
@@ -42,8 +50,7 @@ class PendingAttachment {
 
   /// 批量拆单时已成功挂上的单据（重试只补漏，不重复上传）。
   final Set<String> uploadedTo = {};
-  String? _draftBytes;
-  String get draftBytes => _draftBytes ??= base64Encode(bytes);
+  String get draftBytes => _draftValue.encodedSync;
 
   int get sizeBytes => bytes.length;
 }
@@ -72,6 +79,13 @@ class PendingAttachmentController extends ChangeNotifier {
   final List<PendingAttachment> _items = [];
   bool _flushing = false;
   bool _disposed = false;
+  int _mutationRevision = 0;
+
+  @override
+  void notifyListeners() {
+    _mutationRevision++;
+    super.notifyListeners();
+  }
 
   @override
   void dispose() {
@@ -143,7 +157,7 @@ class PendingAttachmentController extends ChangeNotifier {
           'confirmedDeletedOwners': item.confirmedDeletedOwners.toList(),
           'name': item.name,
           'contentType': item.contentType,
-          'bytes': item.draftBytes,
+          'bytes': item._draftValue.jsonValue,
           'category': item.category,
           'lastError': item.lastError,
           'uploadedTo': item.uploadedTo.toList(),
@@ -151,19 +165,58 @@ class PendingAttachmentController extends ChangeNotifier {
     ],
   };
 
-  void restoreDraft(Map<String, dynamic> draft) {
+  void restoreDraft(Map<String, dynamic> draft) => _restoreDraft(draft);
+
+  Future<void> restoreDraftResponsive(
+    Map<String, dynamic> draft, {
+    bool Function()? isCurrent,
+  }) async {
+    if (_flushing) throw StateError('附件上传过程中不能恢复草稿');
+    final revision = _mutationRevision;
+    bool current() =>
+        !_disposed &&
+        !_flushing &&
+        revision == _mutationRevision &&
+        isCurrent?.call() != false;
+    final frozen = snapshotJsonValue(draft) as Map<String, dynamic>;
+    final files = <Uint8List>[];
+    var total = 0;
+    for (final raw in frozen['items'] as List? ?? const []) {
+      if (!current()) {
+        throw const UiWorkCancelled();
+      }
+      final file = await decodeBase64Responsive(
+        (raw as Map)['bytes'] as String,
+        isCurrent: current,
+      );
+      total += file.length;
+      if (total > maxTotalBytes) throw const FormatException('草稿附件超出总大小限制');
+      files.add(file);
+    }
+    if (!current()) throw const UiWorkCancelled();
+    _restoreDraft(frozen, files: files);
+  }
+
+  void _restoreDraft(Map<String, dynamic> draft, {List<Uint8List>? files}) {
     if (_flushing) throw StateError('附件上传过程中不能恢复草稿');
     final restored = <PendingAttachment>[];
     var bytes = 0;
+    var fileIndex = 0;
     for (final raw in draft['items'] as List? ?? const []) {
       final data = Map<String, dynamic>.from(raw as Map);
-      final file = base64Decode(data['bytes'] as String);
+      final file = files == null
+          ? base64Decode(data['bytes'] as String)
+          : files[fileIndex++];
       bytes += file.length;
       if (bytes > maxTotalBytes) throw const FormatException('草稿附件超出总大小限制');
       final item = PendingAttachment(
         name: data['name'] as String,
         contentType: data['contentType'] as String,
         bytes: file,
+        // Both restore paths have already decoded and checked these bytes.
+        // Keep their immutable original string so receipt adoption does not
+        // synchronously re-encode a large restored attachment later.
+        encodedDraftBytes: data['bytes'] as String,
         category: data['category'] as String?,
         localUploadId: data['localUploadId'] as String?,
         legacyUntracked:
@@ -310,28 +363,32 @@ class PendingAttachmentController extends ChangeNotifier {
                     category: item.category,
                     canContinue: canContinue!,
                     onPresigned: (grant) async {
-                      final attempt = AttachmentUploadAttempt.capture(
-                        grant: grant,
-                        identity: uploadIdentity,
-                        ownerType: ownerType,
-                        ownerId: ownerId,
-                        name: item.name,
-                        contentType: item.contentType,
-                        bytes: bytes,
-                      );
-                      if (!attempt.matchesFile(
+                      final attempt =
+                          await AttachmentUploadAttempt.captureResponsive(
+                            grant: grant,
+                            identity: uploadIdentity,
+                            ownerType: ownerType,
+                            ownerId: ownerId,
+                            name: item.name,
+                            contentType: item.contentType,
+                            bytes: bytes,
+                            isCurrent: () => !_disposed && canContinue(),
+                          );
+                      if (!await attempt.matchesFileResponsive(
                         name: item.name,
                         contentType: item.contentType,
                         bytes: item.bytes,
+                        isCurrent: () => !_disposed && canContinue(),
                       )) {
                         throw StateError('原附件在上传准备期间变化，未发送字节');
                       }
                       item.uploadAttempts[ownerId] = attempt;
                       await persistCheckpoint!();
-                      if (!attempt.matchesFile(
+                      if (!await attempt.matchesFileResponsive(
                         name: item.name,
                         contentType: item.contentType,
                         bytes: item.bytes,
+                        isCurrent: () => !_disposed && canContinue(),
                       )) {
                         throw StateError('原附件在保存检查点期间变化，未发送字节');
                       }

@@ -526,6 +526,18 @@ class _StartConfirmationSheetState
     final missing = _missingOf(rows);
     if (missing != null) {
       setState(() => _submitError = missing);
+      for (final row in rows) {
+        final noMaterial =
+            row.pending.choiceRequired && row.selection.value.isEmpty;
+        final noRoute = row.routeNeeded && row.route.value == null;
+        if (noMaterial || noRoute) {
+          await _grid.revealError(
+            row,
+            columnKey: noMaterial ? 'material' : 'route',
+          );
+          break;
+        }
+      }
       return;
     }
     setState(() {

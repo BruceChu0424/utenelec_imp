@@ -157,10 +157,9 @@ function Assert-Regex {
 }
 
 function Assert-NginxSystemTestBoundary {
-    param([string] $Value, [string] $Label, [bool] $AllowReset = $false)
-    # Only the company LAN template has reviewed exact exceptions. Compare full
-    # blocks, including nested method guards, so a route count cannot bless a
-    # broader location, extra directive, or a changed proxy/authorization boundary.
+    param([string] $Value, [string] $Label)
+    # Every server entry must reject the entire test subtree. Compare complete
+    # blocks so an exact reset exception cannot take precedence over the denial.
     $Value = [regex]::Replace($Value, '(?m)^\s*#.*$', '')
     $locations = @{}
     $headers = [regex]::Matches($Value, '\blocation\s+([^{]*?/api/system-test[^{]*)\{')
@@ -185,13 +184,7 @@ function Assert-NginxSystemTestBoundary {
     $expected = @{
         '= /api/system-test' = 'return 404;'
         '^~ /api/system-test/' = 'return 404;'
-    }
-    if ($AllowReset) {
-        $proxy = 'limit_req zone=uten_api_ip burst=500 nodelay; proxy_pass http://uten_imp_backend; proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header Host $host; proxy_set_header X-Forwarded-For $remote_addr; proxy_set_header X-Forwarded-Proto $scheme; proxy_set_header X-Request-Id $request_id;'
-        foreach ($action in @('preview', 'last-result')) {
-            $expected["= /api/system-test/business-data/$action"] = 'if ($request_method !~ ^(GET|HEAD|OPTIONS)$) { return 405; } ' + $proxy
-        }
-        $expected['= /api/system-test/business-data/reset'] = 'if ($request_method !~ ^(POST|OPTIONS)$) { return 405; } ' + $proxy + ' proxy_read_timeout 600s; proxy_send_timeout 600s;'
+        '~ "^/api/system-test(?:[;/]|$)"' = 'return 404;'
     }
     if ($locations.Count -ne $expected.Count) {
         throw "Forbidden deployment contract: $Label test-surface location inventory differs from its exact allowlist"
@@ -201,6 +194,18 @@ function Assert-NginxSystemTestBoundary {
             throw "Forbidden deployment contract: $Label has an unreviewed test-surface block $name"
         }
     }
+}
+
+# The same closed surface applies to LAN, internal-test, cloud and remote entry templates.
+foreach ($entry in @(
+        @{ Name = 'Simple LAN'; Text = $text.SimpleNginx },
+        @{ Name = 'production'; Text = $text.Nginx },
+        @{ Name = 'internal-test'; Text = $text.InternalTestNginx },
+        @{ Name = 'cloud'; Text = $text.CloudNginx },
+        @{ Name = 'remote'; Text = (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'remote-access/templates/company-nginx.conf.tmpl') -Raw -Encoding UTF8) })) {
+    Assert-NginxSystemTestBoundary $entry.Text $entry.Name
+    Assert-Contains $entry.Text 'location ~* "^/(?:swagger-ui(?:[./;]|$)|swagger-resources(?:[;/]|$)|v[23]/api-docs(?:[.;/]|$))" { return 404; }' "$($entry.Name) API documentation denial"
+    Assert-Contains $entry.Text 'location ~ /\.(?!well-known(?:/|$)) { return 404; }' "$($entry.Name) hidden-file denial with well-known exception"
 }
 
 # Retired controlled internal-test chain: preserve its fixed closed-local storage
@@ -248,9 +253,9 @@ Assert-Contains $text.InternalTestUnit 'IPAddressAllow=localhost' 'internal-test
 Assert-Contains $text.InternalTestNginx 'server_name __INTERNAL_DOMAIN__;' 'internal-test internal DNS placeholder'
 Assert-Contains $text.InternalTestNginx 'ssl_reject_handshake on;' 'internal-test unknown SNI refusal'
 Assert-Contains $text.InternalTestNginx 'allow __EXACT_OFFICE_CIDR__;' 'internal-test exact office CIDR'
-Assert-Contains $text.InternalTestNginx 'location ~ ^/api/website-inquiries(?:;[^/]*)?/ingest(?:[;/]|$) {' 'external website ingest excluded from ERP host'
-Assert-Contains $text.InternalTestNginx 'location ~ ^/api/attachments(?:;[^/]*)?/(?:presign|confirm)(?:[;/]|$) {' 'attachment presign and confirm intake excluded'
-Assert-Contains $text.InternalTestNginx 'location ~ ^/api/attachments(?:;[^/]*)?/raw(?:[;/]|$) {' 'attachment raw upload method gate'
+Assert-Contains $text.InternalTestNginx 'location ~ "^/api/website-inquiries(?:;[^/]*)?/ingest(?:[;/]|$)" {' 'external website ingest excluded from ERP host'
+Assert-Contains $text.InternalTestNginx 'location ~ "^/api/attachments(?:;[^/]*)?/(?:presign|confirm)(?:[;/]|$)" {' 'attachment presign and confirm intake excluded'
+Assert-Contains $text.InternalTestNginx 'location ~ "^/api/attachments(?:;[^/]*)?/raw(?:[;/]|$)" {' 'attachment raw upload method gate'
 Assert-Contains $text.InternalTestNginx 'limit_except GET HEAD {' 'internal-test attachment mutation refusal'
 Assert-Contains $text.InternalTestNginx 'Attachment uploads are a three-step protocol: presign, raw PUT, confirm.' 'attachment upload protocol gate'
 $internalInquiryLocations = [regex]::Matches($text.InternalTestNginx, '(?m)^\s*location\s+[^\{]*?/api/website-inquiries[^\{]*\{')
@@ -335,7 +340,7 @@ foreach ($authTemplate in @(@{ Name = 'Simple LAN'; Text = $text.SimpleNginx }, 
     Assert-NotContains $authText 'https://$host' "$authName redirect reflects the caller Host header"
     Assert-Contains $authText 'location = /api/system-test { return 404; }' "$authName exact test-surface denial"
     Assert-Contains $authText 'location ^~ /api/system-test/ { return 404; }' "$authName test-subtree denial before API regex locations"
-    Assert-NginxSystemTestBoundary $authText $authName ($authName -eq 'Simple LAN')
+    Assert-NginxSystemTestBoundary $authText $authName
     if (([regex]::Matches($authText, [regex]::Escape('{'))).Count -ne
         ([regex]::Matches($authText, [regex]::Escape('}'))).Count) {
         throw "Nginx $authName template braces are unbalanced"
@@ -792,12 +797,13 @@ Assert-Contains $text.EnvValidator 'historical OSS requires an HTTPS endpoint wi
 Assert-Contains $text.EnvValidator 'require_value UTEN_OSS_FINAL_BUCKET' 'historical OSS final bucket identity'
 Assert-Contains $text.EnvValidator 'require_value UTEN_OSS_REGION' 'historical OSS region identity'
 
-foreach ($productionProfile in @($text.BaseProfile, $text.ProdProfile)) {
-    Assert-Contains $productionProfile 'business-data-reset-enabled: ${UTEN_BUSINESS_DATA_RESET_ENABLED:false}' 'production business reset defaults closed'
+Assert-Contains $text.BaseProfile 'business-data-reset-enabled: ${UTEN_BUSINESS_DATA_RESET_ENABLED:false}' 'base reset defaults closed'
+foreach ($serverProfile in @($text.ProdProfile, $text.InternalTestProfile)) {
+    Assert-Contains $serverProfile 'business-data-reset-enabled: false' 'server reset profile is permanently disabled'
 }
 Assert-Contains $text.EnvValidator 'expect_exact UTEN_PROFILE prod' 'reset activation validator requires the production profile'
 Assert-Contains $text.EnvValidator 'expect_exact UTEN_DEPLOYMENT_SITE local' 'reset activation validator excludes cloud deployments'
-Assert-Contains $text.EnvValidator 'expect_boolean UTEN_BUSINESS_DATA_RESET_ENABLED' 'local reset activation requires an explicit boolean'
+Assert-Contains $text.EnvValidator 'expect_exact UTEN_BUSINESS_DATA_RESET_ENABLED false' 'server reset is permanently disabled'
 Assert-Contains $text.InternalTestEnvValidator 'expect_exact UTEN_STORAGE_PROVIDER local' 'retired internal-test validator still requires its fixed local provider'
 Assert-Contains $text.InternalTestEnvValidator 'expect_exact UTEN_ATTACHMENT_UPLOADS_ENABLED false' 'retired internal-test intake remains closed'
 Assert-Contains $text.InternalTestEnvValidator 'expect_exact UTEN_ATTACHMENT_SCANNER_PROVIDER disabled' 'retired internal-test scanner remains explicitly disabled'

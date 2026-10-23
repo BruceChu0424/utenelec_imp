@@ -34,7 +34,8 @@ class WorkshopMaterialWeightConversionPostgresTest {
                 CREATE TABLE unit_measurement_profiles(unit_id uuid PRIMARY KEY, measurement_dimension text, mass_unit_code text);
                 CREATE TABLE goods(id uuid PRIMARY KEY, issue_method text DEFAULT 'PERIODIC', color_id uuid);
                 CREATE TABLE goods_bom_items(id uuid PRIMARY KEY, goods_id uuid, component_goods_id uuid,
-                    color_id uuid, qty numeric, is_deleted boolean DEFAULT FALSE);
+                    color_id uuid, qty numeric, is_deleted boolean DEFAULT FALSE,
+                    retirement_reason text, retirement_resolved_at timestamptz);
                 CREATE TABLE production_execution_segments(id uuid PRIMARY KEY, product_goods_id uuid);
                 CREATE TABLE production_execution_periodic_materials(id uuid PRIMARY KEY, execution_segment_id uuid,
                     material_goods_id uuid, material_color_id uuid, unit_id uuid, origin text,

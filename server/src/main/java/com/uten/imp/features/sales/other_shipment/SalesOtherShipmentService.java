@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.other_shipment;
 
+import com.uten.imp.common.util.EmployeeNameResolver.HistoricalWorkerRole;
+
 import com.uten.imp.common.web.HeaderColumnFilter;
 
 import com.uten.imp.common.util.NameRefKeyword;
@@ -303,7 +305,7 @@ public class SalesOtherShipmentService {
 
     private OtherShipmentDetail toDetail(SalesOtherShipment s, List<OtherShipmentItemDto> items,
                                          boolean sourceReadable, boolean writable) {
-        return new OtherShipmentDetail(s.getId(), s.getLegacyId(), s.getBillNo(), s.getBillDate(),
+        OtherShipmentDetail result = new OtherShipmentDetail(s.getId(), s.getLegacyId(), s.getBillNo(), s.getBillDate(),
                 s.getClientId(), s.getWarehouseId(), s.getCurrencyId(), s.getExchangeRate(), s.getTaxRate(),
                 s.getPaymentStyleId(), s.getSettlementMethodId(), s.getSellerId(), s.getSenderId(),
                 s.getMakerId(), s.getApproverId(),
@@ -312,6 +314,15 @@ public class SalesOtherShipmentService {
                 s.isClosed(), sourceReadable ? s.getSourceOrderId() : null,
                 sourceReadable ? s.getSourceDocNo() : null, items,
                 nameResolver.nameOf(s.getMakerId()), s.getCreatedAt(), writable && s.getStatus()!=null && s.getStatus()==STATUS_APPROVED);
+        result.setSellerName(s.getSellerId() != null
+                ? nameResolver.nameOf(s.getSellerId())
+                : nameResolver.historicalWorkerNameWithCodeOf(null, s.getId(), s.getLegacyId(),
+                        HistoricalWorkerRole.SALES_OTHER_SHIPMENT_SELLER));
+        result.setSenderName(s.getSenderId() != null
+                ? nameResolver.nameOf(s.getSenderId())
+                : nameResolver.historicalWorkerNameWithCodeOf(null, s.getId(), s.getLegacyId(),
+                        HistoricalWorkerRole.SALES_OTHER_SHIPMENT_SENDER));
+        return result;
     }
 
     private boolean hasObjectActionAuthority() {

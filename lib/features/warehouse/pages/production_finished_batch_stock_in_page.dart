@@ -4,6 +4,8 @@
 // 确认弹窗 + 原地执行，改为独立页：所选待点收任务列成一张表（默认全勾），
 // 底部「确认批量入库」→ 小结确认弹窗（UtenDialog 短要点）→ confirmAll 整批
 // 同事务提交。幂等键按选择集指纹派生，选择不变重试复用同键，安全重放。
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,6 +21,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -31,13 +34,21 @@ import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_field_codec.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_finished_inbound_task.dart';
+import '../models/warehouse_task_item_selection.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
 
 class ProductionFinishedBatchStockInPage extends ConsumerStatefulWidget {
-  const ProductionFinishedBatchStockInPage({super.key, required this.targets});
+  const ProductionFinishedBatchStockInPage({
+    super.key,
+    required this.targets,
+    this.selectedItemIds,
+    this.selectedItemDocuments = const {},
+  });
 
   /// 列表页多选的待点收任务（doc 类型；documentId 必须在场）。
   final List<ProductionFinishedInboundTask> targets;
+  final List<String>? selectedItemIds;
+  final Map<String, String> selectedItemDocuments;
 
   @override
   ConsumerState<ProductionFinishedBatchStockInPage> createState() =>
@@ -48,14 +59,19 @@ class _ProductionFinishedBatchStockInPageState
     extends ConsumerState<ProductionFinishedBatchStockInPage>
     with FormDraftMixin<ProductionFinishedBatchStockInPage> {
   late List<ProductionFinishedInboundTask> _targets = widget.targets;
+  late Map<String, String> _selectedItemDocuments = Map.of(
+    widget.selectedItemDocuments,
+  );
   final Set<String> _selectedDocumentIds = {};
   bool _saving = false;
+  bool _preparing = false;
   String? _batchSelectionFingerprint;
   String? _batchIdempotencyKey;
   bool _uncertain = false;
 
   @override
-  bool get formDraftBusy => _saving;
+  bool get formDraftBusy => _busy;
+  bool get _busy => _saving || _preparing;
   @override
   bool get formDraftCanReplaySubmission => true;
   @override
@@ -71,6 +87,11 @@ class _ProductionFinishedBatchStockInPageState
                 .map((task) => task.documentId)
                 .whereType<String>()
                 .join(','),
+            ...WarehouseTaskItemSelection(
+              widget.selectedItemIds,
+            ).queryParameters,
+            if (widget.selectedItemIds != null)
+              'itemDocuments': jsonEncode(_orderedItemDocuments),
           },
         ).toString(),
       );
@@ -84,6 +105,8 @@ class _ProductionFinishedBatchStockInPageState
     'fingerprint': _batchSelectionFingerprint,
     'idempotencyKey': _batchIdempotencyKey,
     'uncertain': _uncertain,
+    'selectedItemIds': widget.selectedItemIds,
+    'selectedItemDocuments': _orderedItemDocuments,
     'targets': [
       for (final task in _targets)
         {
@@ -111,23 +134,85 @@ class _ProductionFinishedBatchStockInPageState
   };
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    final originalDocuments = widget.targets
+        .map((task) => task.documentId)
+        .toList();
+    if (originalDocuments.isEmpty ||
+        originalDocuments.any((id) => id == null || id.isEmpty)) {
+      throw const FormatException('当前点收入口缺少原单据身份，请从任务中心重新进入');
+    }
+    final originalIds = originalDocuments.cast<String>().toSet();
+    if (data.containsKey('documentIds')) {
+      final sources = data['documentIds'];
+      if (sources is! List ||
+          sources.any((id) => id is! String || id.isEmpty) ||
+          sources.toSet().length != sources.length ||
+          sources.length != originalIds.length ||
+          !originalIds.containsAll(sources)) {
+        throw const FormatException('点收草稿的来源单据与当前入口不一致，请保留原草稿核对');
+      }
+    }
+    final savedItems = _readSelectedItems(data['selectedItemIds']);
+    final currentItems = _readSelectedItems(widget.selectedItemIds);
+    if (jsonEncode(savedItems) != jsonEncode(currentItems)) {
+      throw const FormatException('原点收草稿的明细选择与当前不一致，请返回任务中心核对');
+    }
     final saved = draftMaps(
       data['targets'],
     ).map(ProductionFinishedInboundTask.fromJson).toList();
-    if (saved.isNotEmpty) _targets = saved;
-    _selectedDocumentIds
-      ..clear()
-      ..addAll(draftStrings(data['selectedDocumentIds']));
-    _batchSelectionFingerprint = data['fingerprint'] as String?;
-    _batchIdempotencyKey = data['idempotencyKey'] as String?;
-    _uncertain = data['uncertain'] == true || formDraftHasUnknownSubmission;
-    final selected = _selectedDocumentIds.toList()..sort();
-    if (_uncertain &&
-        (_batchIdempotencyKey == null ||
-            _selectedDocumentIds.isEmpty ||
-            _batchSelectionFingerprint != selected.join('|'))) {
+    final targets = saved.isNotEmpty ? saved : _targets;
+    final savedDocuments = targets.map((task) => task.documentId).toList();
+    if (savedDocuments.any((id) => id == null || id.isEmpty) ||
+        savedDocuments.toSet().length != targets.length ||
+        savedDocuments.length != originalIds.length ||
+        !originalIds.containsAll(savedDocuments)) {
+      throw const FormatException('点收草稿的来源任务与当前入口不一致，请保留原草稿核对');
+    }
+    final documents = targets
+        .map((task) => task.documentId)
+        .whereType<String>()
+        .toSet();
+    final itemDocuments = _readItemDocuments(
+      data.containsKey('selectedItemDocuments')
+          ? data['selectedItemDocuments']
+          : _selectedItemDocuments,
+      savedItems,
+      documents,
+    );
+    final routeItemDocuments = _readItemDocuments(
+      _selectedItemDocuments,
+      currentItems,
+      documents,
+    );
+    if (jsonEncode(_sortedItemDocuments(routeItemDocuments)) !=
+        jsonEncode(_sortedItemDocuments(itemDocuments))) {
+      throw const FormatException('原点收草稿的明细所属单据与当前不一致，请返回任务中心核对');
+    }
+    final selectedDocuments = draftStrings(data['selectedDocumentIds']);
+    if (selectedDocuments.toSet().length != selectedDocuments.length ||
+        !documents.containsAll(selectedDocuments)) {
+      throw const FormatException('原点收草稿的所选单据已变化，请返回任务中心核对');
+    }
+    final fingerprint = data['fingerprint'] as String?;
+    final key = data['idempotencyKey'] as String?;
+    final uncertain =
+        data['uncertain'] == true || formDraftHasUnknownSubmission;
+    final selected = selectedDocuments.toList()..sort();
+    if (uncertain &&
+        (key?.trim().isNotEmpty != true ||
+            selected.isEmpty ||
+            fingerprint != _fingerprint(selected, savedItems, itemDocuments))) {
       throw const FormatException('原批量点收提交身份不完整，请返回任务中心核对');
     }
+    // Commit the restored snapshot only after every identity check succeeds.
+    _targets = targets;
+    _selectedItemDocuments = itemDocuments;
+    _selectedDocumentIds
+      ..clear()
+      ..addAll(selectedDocuments);
+    _batchSelectionFingerprint = fingerprint;
+    _batchIdempotencyKey = key;
+    _uncertain = uncertain;
     if (mounted) setState(() {});
   }
 
@@ -147,7 +232,7 @@ class _ProductionFinishedBatchStockInPageState
   /// 幂等键随选择集派生：选择不变重试复用同键（服务端按 用户+键 去重安全重放）。
   String _batchKey(Set<String> ids) {
     final sorted = ids.toList()..sort();
-    final fingerprint = sorted.join('|');
+    final fingerprint = _selectionFingerprint(sorted);
     if (_batchSelectionFingerprint != fingerprint ||
         _batchIdempotencyKey == null) {
       _batchSelectionFingerprint = fingerprint;
@@ -156,27 +241,123 @@ class _ProductionFinishedBatchStockInPageState
     return _batchIdempotencyKey!;
   }
 
+  Map<String, String> get _orderedItemDocuments =>
+      _sortedItemDocuments(_selectedItemDocuments);
+
+  static Map<String, String> _sortedItemDocuments(Map<String, String> values) =>
+      {for (final item in values.keys.toList()..sort()) item: values[item]!};
+
+  static List<String>? _readSelectedItems(Object? raw) {
+    if (raw == null) return null;
+    if (raw is! List || raw.any((id) => id is! String)) {
+      throw const FormatException('原点收草稿的明细标识不完整，请返回任务中心核对');
+    }
+    final items = raw.cast<String>();
+    WarehouseTaskItemSelection(items).validate(items);
+    return items.toList()..sort();
+  }
+
+  static Map<String, String> _readItemDocuments(
+    Object? raw,
+    List<String>? items,
+    Set<String> documents,
+  ) {
+    if (raw is! Map ||
+        raw.entries.any(
+          (entry) =>
+              entry.key is! String ||
+              entry.value is! String ||
+              (entry.key as String).trim().isEmpty ||
+              (entry.value as String).trim().isEmpty,
+        )) {
+      throw const FormatException('原点收草稿缺少明细所属单据，请返回任务中心核对');
+    }
+    final mapping = raw.cast<String, String>();
+    if (items == null
+        ? mapping.isNotEmpty
+        : mapping.length != items.length ||
+              !mapping.keys.toSet().containsAll(items) ||
+              !documents.containsAll(mapping.values)) {
+      throw const FormatException('原点收草稿的明细所属单据不完整，请返回任务中心核对');
+    }
+    return Map.of(mapping);
+  }
+
+  static String _fingerprint(
+    List<String> documents,
+    List<String>? items,
+    Map<String, String> mapping,
+  ) => items == null
+      ? documents.join('|')
+      : '${documents.join('|')}#${(items.where((item) => documents.contains(mapping[item])).toList()..sort()).join('|')}';
+
+  String _selectionFingerprint(List<String> sorted) =>
+      _fingerprint(sorted, widget.selectedItemIds, _selectedItemDocuments);
+
+  List<String> _itemsForDocuments(Iterable<String> documents) {
+    _readItemDocuments(
+      _selectedItemDocuments,
+      _readSelectedItems(widget.selectedItemIds),
+      _targets.map((task) => task.documentId).whereType<String>().toSet(),
+    );
+    return [
+      for (final item in widget.selectedItemIds ?? <String>[])
+        if (documents.contains(_selectedItemDocuments[item])) item,
+    ];
+  }
+
   Future<void> _submit() async {
-    if (_saving || _selectedDocumentIds.isEmpty) return;
+    if (_busy || _selectedDocumentIds.isEmpty || formDraftRestorationBlocked) {
+      return;
+    }
+    setState(() => _preparing = true);
+    try {
+      final scope = await captureFormDraftRequestScope();
+      await scope.run(() => _submitScoped(scope));
+      scope.checkCurrent();
+    } catch (error) {
+      if (error is ApiException && error.code == 'SESSION_CHANGED') {
+        invalidateFormDraftIdentity();
+      }
+      if (mounted) context.appApiError(error, fallback: '本次尚未发送，请保留页面后重试');
+    } finally {
+      if (mounted) setState(() => _preparing = false);
+    }
+  }
+
+  Future<void> _submitScoped(AuthenticatedRequestScope requestScope) async {
     if (!ref.read(isSuperAdminProvider) &&
         !ref.read(currentPermissionsProvider).contains(Perm.stockDocApprove)) {
       context.appWarning('当前账号没有仓库入库确认权限');
       return;
     }
     final ids = _selectedDocumentIds.toList()..sort();
+    List<String>? items;
+    try {
+      if (widget.selectedItemIds != null) {
+        items = _itemsForDocuments(ids);
+        if (items.isEmpty) throw const FormatException('本次没有可点收的所选明细');
+      }
+    } on FormatException catch (error) {
+      context.appWarning(error.message);
+      return;
+    }
     // 2026-09-12：原一整段连排确认文案改「短要点」，高度与宽度由 UtenDialog
     // 统一兜（限宽 460 / 限高 60% 屏高 / 超出自滚）。
     final confirmed = await UtenDialog.show(
       context,
-      title: '批量全量点收（${ids.length} 张）',
+      title: '确认所选点收（${ids.length} 张）',
       confirmLabel: '确认批量入库',
-      content: _confirmPoints(Theme.of(context), const [
-        '按每张单当前全部待点收数量执行实物全量接收。',
+      content: _confirmPoints(Theme.of(context), [
+        widget.selectedItemIds == null
+            ? '按每张单当前全部待点收数量执行实物接收。'
+            : '仅点收本次所选 ${items!.length} 项明细，未选明细继续保留待点收。',
         '整批一起办理：只要有一张填的有问题，本次入库整批都不会生效（不会只成功一半）。',
         '存在短收或拒收时，请取消并返回逐单处理。',
       ]),
     );
     if (confirmed != true || !mounted) return;
+    requestScope.checkCurrent();
     if (!formDraftIdentityIsCurrent ||
         (!ref.read(isSuperAdminProvider) &&
             !ref
@@ -184,18 +365,20 @@ class _ProductionFinishedBatchStockInPageState
                 .contains(Perm.stockDocApprove))) {
       return;
     }
-    final key = _batchKey(_selectedDocumentIds);
+    final key = _batchKey(ids.toSet());
     setState(() => _saving = true);
     try {
       _uncertain = true;
       final result = await runFormDraftSubmission(
         () => ref
             .read(productionFinishedInboundTaskRepositoryProvider)
-            .confirmAll(documentIds: ids, idempotencyKey: key),
+            .confirmAll(documentIds: ids, idempotencyKey: key, itemIds: items),
       );
+      requestScope.checkCurrent();
       if (!mounted) return;
       _uncertain = false;
       await completeFormDraft();
+      requestScope.checkCurrent();
       if (!mounted) return;
       context.appSuccess(
         result.replay
@@ -248,13 +431,13 @@ class _ProductionFinishedBatchStockInPageState
         .toList(growable: false);
     return withFormDraft(
       PopScope(
-        canPop: !_saving,
+        canPop: !_busy,
         child: Scaffold(
           appBar: UtenAppBar(
-            title: '批量全量点收 · ${rows.length} 张',
+            title: '批量点收 · ${rows.length} 张',
             leading: UtenBackButton(
-              color: _saving ? theme.disabledColor : null,
-              onPressed: _saving
+              color: _busy ? theme.disabledColor : null,
+              onPressed: _busy
                   ? null
                   : () => popOrBackTo(
                       context,
@@ -267,7 +450,7 @@ class _ProductionFinishedBatchStockInPageState
             child: Stack(
               children: [
                 AbsorbPointer(
-                  absorbing: _saving,
+                  absorbing: _busy,
                   child: UtenContentContainer.wide(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -313,8 +496,9 @@ class _ProductionFinishedBatchStockInPageState
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              '默认全选。本次不入库的单据取消勾选即可移出本批（不会提交、仍留在待点收）；'
-              '勾中的按每张单全部待点收数量一起入库，短收、拒收请逐单进入确认。',
+              widget.selectedItemIds == null
+                  ? '默认全选。取消勾选的单据继续保留待点收。'
+                  : '只办理任务中心所选明细，未选明细继续保留待点收。',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: UtenSpacing.s8),
@@ -342,7 +526,7 @@ class _ProductionFinishedBatchStockInPageState
           idOf: (task) => task.documentId,
           selectedIds: _selectedDocumentIds,
           onSelectedIdsChanged: (next) => setState(() {
-            if (_uncertain) return;
+            if (_busy || _uncertain) return;
             _selectedDocumentIds
               ..clear()
               ..addAll(next);
@@ -365,7 +549,7 @@ class _ProductionFinishedBatchStockInPageState
         size: UtenButtonSize.large,
         icon: Icons.inventory_rounded,
         isLoading: _saving,
-        onPressed: _saving || count == 0 ? null : _submit,
+        onPressed: _busy || count == 0 ? null : _submit,
         onDisabledTap: count == 0
             ? () => context.appWarning('请先勾选待点收任务')
             : null,
@@ -375,6 +559,15 @@ class _ProductionFinishedBatchStockInPageState
   }
 
   List<MasterColumnDef<ProductionFinishedInboundTask>> get _columns => [
+    MasterColumnDef<ProductionFinishedInboundTask>(
+      key: 'status',
+      label: '状态',
+      width: 120,
+      value: (task) =>
+          _uncertain && _selectedDocumentIds.contains(task.documentId)
+          ? '结果待核对'
+          : '待点收',
+    ),
     MasterColumnDef<ProductionFinishedInboundTask>(
       // 2026-09-25 单号列统一：本页全量加载，就地排序+按值筛选。
       key: 'taskNo',

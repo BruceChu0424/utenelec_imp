@@ -32,7 +32,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class StockMovementWarehouseClassGuardPostgresTest {
 
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("stock_movement_class").withUsername("uten").withPassword("uten");
+            .withDatabaseName("stock_movement_class").withUsername("fixture_admin").withPassword("uten");
     private static final AtomicInteger SEQUENCE = new AtomicInteger(700000);
     private static JdbcTemplate jdbc;
 

@@ -293,9 +293,10 @@ public class ProductionMaterialDiscoveryService {
         List<SuggestedItem> suggestions=rows("""
                 SELECT item."goodsId",item."goodsCode",item."goodsName",item."colorId",item."colorName",item."unitId",item."unitName",item.qty,item.spec,item."stockPlace"
                 FROM production_material_discovery_requests request
-                CROSS JOIN LATERAL jsonb_to_recordset(request.requested_materials) AS item(
+                CROSS JOIN LATERAL jsonb_array_elements(request.requested_materials) WITH ORDINALITY suggestion(raw,ordinality)
+                CROSS JOIN LATERAL jsonb_to_record(suggestion.raw) AS item(
                     "goodsId" uuid,"goodsCode" text,"goodsName" text,"colorId" uuid,"colorName" text,"unitId" uuid,"unitName" text,qty numeric,spec text,"stockPlace" text)
-                WHERE request.id=:id ORDER BY item."goodsId",item."colorId" NULLS FIRST
+                WHERE request.id=:id ORDER BY suggestion.ordinality
                 """,id).stream().map(item->new SuggestedItem((UUID)item[0],(String)item[1],(String)item[2],(UUID)item[3],(String)item[4],(UUID)item[5],(String)item[6],item[7]==null?null:decimal(item[7]),(String)item[8],(String)item[9])).toList();
         return new Detail((UUID)r[0],(UUID)r[1],(String)r[2],(String)r[3],(String)r[4],(String)r[5],decimal(r[6]),(String)r[7],(String)r[8],(String)r[9],((Number)r[10]).longValue(),items,docs,suggestions,(String)r[11],documents);
     }

@@ -257,6 +257,75 @@ class _RouterHarness {
 }
 
 void main() {
+  for (final actionAndPath in <(String, String)>[
+    ('PRODUCTION_DRAW', RouteName.warehouseProductionDrawBatchIssue),
+    ('SUBCONTRACT_OUTBOUND', '/warehouse/subcontract-outbound/batch'),
+    ('SALES_OUTBOUND', '/warehouse/sales-outbound/batch'),
+    ('RETURN_RECEIVE', '/warehouse/material-returns/batch-receive'),
+  ]) {
+    testWidgets(
+      '${actionAndPath.$1} keeps both physical identities from one source',
+      (tester) async {
+        final captured = <Uri>[];
+        final errors = <Object>[];
+        final rows = [
+          for (final id in ['first', 'second'])
+            WarehouseTaskCenterRecord(
+              rowKey: '${actionAndPath.$1}:doc:$id',
+              id: 'doc',
+              targetId: 'doc',
+              sourceType: 'TEST',
+              recordType: 'DOCUMENT',
+              status: 'PENDING',
+              statusLabel: '待办',
+              action: actionAndPath.$1,
+              canHandle: true,
+              actionData: const {'documentId': 'doc'},
+              line: WarehouseTaskLine(key: id, itemId: id),
+            ),
+        ];
+        final router = GoRouter(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (_, _) => Scaffold(
+                body: _ActionButton(
+                  rows: rows,
+                  errors: errors,
+                  onMount: () {},
+                  batch: true,
+                ),
+              ),
+            ),
+            GoRoute(
+              path: actionAndPath.$2,
+              builder: (_, state) {
+                captured.add(state.uri);
+                return const Scaffold(body: Text('已进入所选范围'));
+              },
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            child: MaterialApp.router(
+              routerConfig: router,
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: const Locale('zh'),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('open-record')));
+        await tester.pumpAndSettle();
+        expect(errors, isEmpty);
+        expect(captured.single.queryParameters['itemIds'], 'first,second');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   for (final mount in _Mount.values) {
     testWidgets(
       'physical finished row from ${mount.name} retains only its selected lot',

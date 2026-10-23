@@ -16,44 +16,6 @@ class StockQueryRepository {
   final ApiClient api;
   final InstantInventoryRepository _instantInventory;
 
-  /// 按库存页自身的货品范围定位分类，不下载库存明细。
-  Future<Set<String>> instantInventorySearchCategoryIds(
-    String keyword, {
-    required Set<String> categoryRootIds,
-    String? categoryId,
-    bool includeRelated = false,
-    String? warehouseId,
-    bool includeDefective = false,
-    bool includeLineSide = false,
-    String? owningWarehouse,
-    bool owningWarehouseNull = false,
-    String? colorId,
-    String? series,
-    String? unitId,
-    String? attention,
-  }) async {
-    if (keyword.trim().isEmpty || categoryRootIds.isEmpty) return {};
-    final ids = await api.getStringList(
-      ApiEndpoints.stockInstantInventorySearchCategoryIds,
-      query: {
-        'keyword': keyword.trim(),
-        'categoryRootIds': categoryRootIds.toList(growable: false),
-        'categoryId': ?categoryId,
-        if (includeRelated) 'includeRelated': true,
-        'warehouseId': ?warehouseId,
-        'includeDefective': includeDefective,
-        if (includeLineSide) 'includeLineSide': true,
-        'owningWarehouse': ?owningWarehouse,
-        if (owningWarehouseNull) 'owningWarehouseNull': true,
-        'colorId': ?colorId,
-        'series': ?series,
-        'unitId': ?unitId,
-        'attention': ?attention,
-      },
-    );
-    return ids.toSet();
-  }
-
   Future<PagedResult<BalanceRow>> balances({
     int page = 1,
     int size = 20,
@@ -75,7 +37,7 @@ class StockQueryRepository {
         if (order != null && order.isNotEmpty) 'order': order,
       },
     );
-    return PagedResult.fromJson(json, BalanceRow.fromJson);
+    return PagedResult.fromJsonResponsive(json, BalanceRow.fromJson);
   }
 
   /// stock:view projection; no goods:view lookup or local balance calculation.
@@ -87,7 +49,7 @@ class StockQueryRepository {
       '/stock/goods/${Uri.encodeComponent(goodsId)}/inventory-context',
       query: scope.toQueryParameters(),
     );
-    return PagedResult.fromJson(json, InstantInventoryRow.fromJson);
+    return PagedResult.fromJsonResponsive(json, InstantInventoryRow.fromJson);
   }
 
   /// 授权余额调整 (stock:balance:adjust, 自动生成已审核盘点单)。

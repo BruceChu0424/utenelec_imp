@@ -48,12 +48,12 @@ public class DashboardOverviewService {
     private static final String PRODUCTION_SCHEDULE = "productionSchedule";
 
     /**
-     * 已授权待办卡 ← 徽章入口。{@code countFact} 为空 = 取入口红数; 否则取该事实数
+     * 已授权待办卡 ← 徽章入口。{@code countFacts} 为空 = 取入口红数; 否则汇总这些事实数
      * (财务报销入口按「待审批 / 待付款」拆成两张卡, 两张之和即该入口红数)。
      */
     private record DepartmentTodo(
             String entry,
-            String countFact,
+            List<String> countFacts,
             String id,
             String titleSuffix,
             String route,
@@ -61,9 +61,9 @@ public class DashboardOverviewService {
     }
 
     private static final List<DepartmentTodo> DEPARTMENT_TODOS = List.of(
-            new DepartmentTodo("warehouseOutboundCenter", "productionDraw.count",
+            new DepartmentTodo("warehouseOutboundCenter", List.of("productionDraw.count", "workshopMaterial.pendingIssue"),
                     "fulfillment-warehouse-draw", "生产领料待出库", "/warehouse/tasks/outbound?section=DRAW", "FULFILLMENT"),
-            new DepartmentTodo("warehouseInboundCenter", "productionReturn.count",
+            new DepartmentTodo("warehouseInboundCenter", List.of("productionReturn.count", "workshopMaterial.pendingReturn"),
                     "fulfillment-warehouse-return", "生产退料待收仓", "/warehouse/tasks/inbound?section=RETURN", "FULFILLMENT"),
             new DepartmentTodo("purchaseTaskCenter", null,
                     "fulfillment-purchase", "采购任务待处理", "/operations/workbench/purchase", "FULFILLMENT"),
@@ -73,9 +73,9 @@ public class DashboardOverviewService {
                     "visitor-approval", "访客申请待审批", "/visitor-approval", "PEOPLE"),
             new DepartmentTodo("hrProfileReview", null,
                     "profile-review", "员工资料变更待审核", "/hr/profile-changes", "PEOPLE"),
-            new DepartmentTodo("expenseFinance", "expense.pendingApprovalCount",
+            new DepartmentTodo("expenseFinance", List.of("expense.pendingApprovalCount"),
                     "expense-approval", "报销申请待审批", "/expense/approval?queue=pending", "FINANCE"),
-            new DepartmentTodo("expenseFinance", "expense.pendingPaymentCount",
+            new DepartmentTodo("expenseFinance", List.of("expense.pendingPaymentCount"),
                     "expense-payment", "已审批报销待付款", "/expense/approval?queue=payable", "FINANCE"));
 
     private final SecurityContextCurrentUser currentUser;
@@ -202,9 +202,9 @@ public class DashboardOverviewService {
             WorkbenchBadgeReadPort.Entries badges, List<TodoCard> todos) {
         for (DepartmentTodo todo : DEPARTMENT_TODOS) {
             if (!usable(badges, todo.entry())) continue;
-            long count = todo.countFact() == null
+            long count = todo.countFacts() == null
                     ? badges.todo().get(todo.entry())
-                    : badges.fact(todo.countFact());
+                    : todo.countFacts().stream().mapToLong(badges::fact).sum();
             addCountTodo(todos, todo.id(), count, todo.titleSuffix(), todo.route(), todo.sourceType());
         }
     }

@@ -188,6 +188,7 @@ public class WorkshopMaterialCountService {
     /** "其余料都用完了, 记 0": 有账或本期有进出、但还没录的料各记一行 0。 */
     @Transactional
     public ZeroRestResult zeroRest(UUID countId, ZeroRestRequest request) {
+        scope.requireCount(countId);
         return commands.execute("COUNT_ZERO_REST", request.idempotencyKey(), List.of(countId, request),
                 ZeroRestResult.class, () -> {
                     Count count = count(countId, true);
@@ -227,6 +228,7 @@ public class WorkshopMaterialCountService {
      */
     @Transactional
     public PeriodView submit(UUID countId, VersionRequest request) {
+        scope.requireCount(countId);
         return commands.execute("COUNT_SUBMIT", request.idempotencyKey(), List.of(countId, request),
                 PeriodView.class, () -> {
                     Count draft = count(countId, false);
@@ -300,6 +302,7 @@ public class WorkshopMaterialCountService {
         if (reason.length() < 2 || reason.length() > 500) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请写明更正原因 (2 到 500 个字)");
         }
+        scope.requirePeriod(periodId);
         return commands.execute("COUNT_CORRECT", request.idempotencyKey(), List.of(periodId, request),
                 CountDetail.class, () -> {
                     Period loose = bins.period(periodId);

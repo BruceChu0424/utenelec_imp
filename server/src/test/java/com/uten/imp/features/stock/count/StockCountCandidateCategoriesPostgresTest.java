@@ -51,7 +51,7 @@ class StockCountCandidateCategoriesPostgresTest {
                 CREATE TABLE workshop_material_settings(periodic_bin_warehouse_id uuid,periodic_enabled boolean);
                 CREATE TABLE units(id uuid PRIMARY KEY,name text,status text DEFAULT '使用',is_deleted boolean DEFAULT false);
                 CREATE TABLE unit_measurement_profiles(unit_id uuid PRIMARY KEY,measurement_dimension text,mass_unit_code text);
-                CREATE TABLE colors(id uuid PRIMARY KEY,name text,status text DEFAULT '使用',is_deleted boolean DEFAULT false);
+                CREATE TABLE colors(id uuid PRIMARY KEY,name text,status text DEFAULT '使用',is_deleted boolean DEFAULT false,remark text);
                 CREATE TABLE material_categories(id uuid PRIMARY KEY,code text,name text,parent_id uuid,level integer DEFAULT 0,
                   sort_order integer DEFAULT 0,is_deleted boolean DEFAULT false);
                 CREATE TABLE goods(id uuid PRIMARY KEY,code text,name text,category_id uuid,color_id uuid,unit_id uuid,

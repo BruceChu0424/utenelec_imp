@@ -1,6 +1,7 @@
 // 货品批量导入仓库（detect 只读 / commit 原子导入 / latest 最近批次 / undo 撤回）。
-// 上传走原始字节流（postBytes，octet-stream），与附件直传同模式，不经 multipart。
+// 检测上传原始字节；核对提交把文件与选择放在受限 JSON 请求体，避免大量选择超过 URL 限额。
 import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,6 +15,7 @@ abstract interface class GoodsImportRepository {
     Uint8List bytes, {
     required String planId,
     String? filename,
+    Set<String> replaceRowKeys = const {},
   });
   Future<GoodsImportBatchInfo?> latest();
   Future<void> undo(String batchId);
@@ -34,17 +36,19 @@ class DioGoodsImportRepository implements GoodsImportRepository {
     Uint8List bytes, {
     required String planId,
     String? filename,
+    Set<String> replaceRowKeys = const {},
   }) async {
     final normalizedPlanId = planId.trim();
     if (normalizedPlanId.isEmpty) {
       throw ArgumentError.value(planId, 'planId', '检测计划不能为空');
     }
-    final json = await api.postBytes(
+    final json = await api.post(
       ApiEndpoints.goodsImportCommit,
-      bytes,
-      query: {
+      body: {
+        'file': base64Encode(bytes),
         'planId': normalizedPlanId,
         if (filename != null && filename.isNotEmpty) 'filename': filename,
+        'replaceRowKeys': replaceRowKeys.toList(),
       },
     );
     return GoodsImportResult.fromJson(json);

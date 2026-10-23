@@ -1,6 +1,7 @@
 # Transport/security tests inject the engine; they do not download OCR models.
+-c security-constraints.txt
 fastapi==0.141.1
 httpx2==2.15.1
 python-multipart==0.0.32
-Pillow>=11.3,<13
+Pillow>=13,<14
 numpy>=1.26,<3

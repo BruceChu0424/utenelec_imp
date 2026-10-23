@@ -129,6 +129,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         // V740 (ADR-131): 车间整批领料设置、机台与容器、产品认料
                         "workshop_material_settings", "workshop_machines", "workshop_machine_containers",
                         "goods_periodic_material_choices",
+                        "goods_material_identity_evidence",
                         // V802 (ADR-147): 车间内料仓开通记录(开通人、来源仓、版本)
                         "workshop_bins")),
             new FullGroup("count_decisions_and_lineage", "data_change", false,
@@ -188,11 +189,14 @@ class AuditTriggerCoverageMigrationContractTest {
                         "subcontract_return_items", "subcontract_returns",
                         "subcontract_short_delivery_cases", "subcontract_waste_items",
                         "subcontract_wastes")),
+            new FullGroup("goods_code_evidence", "data_change", false,
+                    "货品编号生命周期、使用与回用证据：保留原身份和业务使用事实",
+                    Set.of("goods_code_lifecycles", "goods_code_usage_facts", "goods_code_reuse_releases")),
             new FullGroup("stock_docs", "data_change", false,
                     "库存单据、预留与调整申请: 人工录入并审核的业务单据",
                     Set.of(
                         "stock_balance_adjustment_requests", "stock_document_items",
-                        "stock_documents", "stock_reservations", "stock_draw_issue_batches")),
+                        "stock_documents", "stock_reservations", "stock_draw_issue_batches", "subcontract_selected_outbound_commands", "subcontract_selected_outbound_items")),
             new FullGroup("production_docs", "data_change", false,
                     "生产计划、日报、执行段、退料、点收、质检与直送单据: 人工录入并审核的业务单据",
                     Set.of(
@@ -316,6 +320,7 @@ class AuditTriggerCoverageMigrationContractTest {
             new NoneGroup("retained_private_evidence",
                     "永久原件、私有 before-image 和清理授权是独立证据，保留原载荷/关联并由授权原生入口读取；通用行审计不再次复制密钥、原上传、值单元或历史证据",
                     Set.of("ai_input_originals", "ai_provider_history", "business_record_history", "business_record_identities",
+                            "master_record_versions",
                             "notice_blessing_history",
                             "sales_quote_template_candidate_history", "platform_record_fields")),
             new NoneGroup("notice",
@@ -518,6 +523,9 @@ class AuditTriggerCoverageMigrationContractTest {
                         "client_default_settlement_migration_issues", "legacy_departments",
                         "legacy_finance_import_sources",
                         "legacy_procurement_receipt_import_sources",
+                        "legacy_quantity_counter_import_sources",
+                        "legacy_production_plan_counter_import_sources",
+                        "legacy_production_plan_counter_import_contexts",
                         "legacy_subcontract_order_import_sources",
                         "legacy_warehouse_workshop_links", "production_fqc_legacy_exemptions",
                         "production_plan_costs", "production_workshop_direct_legacy_anomalies",
@@ -643,6 +651,17 @@ class AuditTriggerCoverageMigrationContractTest {
         Set<String> stale = new TreeSet<>(classified);
         stale.removeAll(live);
         assertEquals(Set.of(), stale, "Listed tables must exist in the migrated schema");
+    }
+
+    @Test
+    void colorRemarkAndPaymentStyleHistoryExtensionsDoNotIntroduceAuditPolicyTables() throws IOException {
+        for (int version : List.of(901, 902)) {
+            MigrationSource migration = migrations().stream().filter(source -> source.version() == version).findFirst().orElseThrow();
+            assertFalse(CREATE_TABLE.matcher(stripSqlComments(migration.sql())).find(),
+                    "V" + version + " extends existing master fields/routes without new tables");
+        }
+        assertEquals("data_change", fullTables().get("colors"));
+        assertEquals("data_change", fullTables().get("payment_styles"));
     }
 
     @Test

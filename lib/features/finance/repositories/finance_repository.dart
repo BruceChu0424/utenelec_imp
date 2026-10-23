@@ -128,7 +128,7 @@ class FinanceRepository {
       if (order != null && order.isNotEmpty) 'order': order,
     };
     final json = await api.get(FinanceEndpoints.docBase(_seg), query: query);
-    return PagedResult.fromJson(json, FinanceDocListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, FinanceDocListItem.fromJson);
   }
 
   /// 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径（按 docType
@@ -277,7 +277,7 @@ class ArApLedgerRepository {
       if (order != null && order.isNotEmpty) 'order': order,
     };
     final json = await api.get(FinanceEndpoints.arAp, query: query);
-    return PagedResult.fromJson(json, ArApLedgerItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, ArApLedgerItem.fromJson);
   }
 
   /// 单号列值筛选桶（2026-09-25 单号列统一）：单据号/来源单号与列表同一过滤
@@ -321,7 +321,7 @@ class ArApLedgerRepository {
         'keyword': keyword.trim(),
     };
     final json = await api.get(FinanceEndpoints.arAp, query: query);
-    return PagedResult.fromJson(json, ArApLedgerItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, ArApLedgerItem.fromJson);
   }
 }
 
@@ -384,7 +384,7 @@ class ReconciliationRepository {
       if (order != null && order.isNotEmpty) 'order': order,
     };
     final json = await api.get(FinanceEndpoints.reconciliations, query: query);
-    return PagedResult.fromJson(json, ReconciliationItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, ReconciliationItem.fromJson);
   }
 
   /// 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数；

@@ -34,7 +34,18 @@ class BootstrapComposerTest(unittest.TestCase):
                 original = source.read_bytes()
                 result = composer.compose(original, source.name)
                 marker = f"\\echo Bootstrap module: {source.name}\n".encode()
-                self.assertEqual(result[len(marker):len(marker) + len(original)], original)
+                # Reviewed wrappers may initialize shared mapping helpers;
+                # the shipped loader itself must still appear byte-exactly.
+                offset=result.index(original,len(marker))
+                self.assertEqual(result[offset:offset + len(original)], original)
+
+    def test_owner_modules_initialize_helper_then_flush_before_cleanup(self):
+        body=b"SELECT 1;\n"
+        output=composer.compose(body,"migrate_client_data.sql")
+        self.assertLess(output.index(b"CREATE OR REPLACE FUNCTION pg_temp.legacy_owner_resolution"),output.index(body))
+        self.assertLess(output.index(body),output.index(b"SELECT pg_temp.flush_legacy_owner_custody('migrate_client_data.sql')"))
+        self.assertLess(output.index(b"SELECT pg_temp.flush_legacy_owner_custody"),output.index(b"DROP TABLE pg_temp.%I"))
+        self.assertNotIn(b"legacy_owner_resolution",composer.compose(body,"migrate_goods_data.sql"))
 
     def test_crlf_unicode_strings_identifiers_and_nested_comments_are_byte_exact(self):
         sql = ("-- Unicode 注释 COMMIT;\r\n"
@@ -122,7 +133,7 @@ class BootstrapComposerTest(unittest.TestCase):
         suffix = self.assert_preserved("SELECT 1;\n").decode()
         self.assertEqual(composer.PRESERVED_TEMP_TABLES, (
             "bootstrap_source_master_ids", "bootstrap_legacy_reference_evidence", "bootstrap_bom_exclusions",
-            "bootstrap_warehouse_exclusions"))
+            "bootstrap_warehouse_exclusions", "bootstrap_stock_movement_nonposting"))
         for table in composer.PRESERVED_TEMP_TABLES:
             self.assertIn("'" + table + "'", suffix)
         self.assertIn("relnamespace=pg_my_temp_schema()", suffix)

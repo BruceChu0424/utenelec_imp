@@ -275,7 +275,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
   }
 
   Future<void> _init() async {
-    bool accepts() => mounted;
+    startFormDraftIdentityGuard();
+    bool accepts() => formDraftIdentityIsCurrent;
     setState(() {
       _loading = true;
     });
@@ -743,6 +744,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
     final badQty = <String>[];
     final overQty = <String>[];
     final badWeight = <String>[];
+    (PurchaseGridRow, String)? firstInvalidCell;
     // 行标识用用户看得见的行序 + 货品名（明细表不显示 UUID，报 id 等于没报）。
     String labelOf(int i, PurchaseGridRow r) =>
         '第 ${i + 1} 行（${r.goods!.name ?? r.goods!.code ?? '该货品'}）';
@@ -752,13 +754,14 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
       if (r.goods == null) continue;
       var rowOk = true;
       final qty = double.tryParse(r.qty.text) ?? 0;
-      if (procurementQuantityError(
-            r.qty.text,
-            r.giftQty.text,
-            extraGift: r.hasExtraGift,
-          ) !=
-          null) {
+      final quantityError = procurementQuantityError(
+        r.qty.text,
+        r.giftQty.text,
+        extraGift: r.hasExtraGift,
+      );
+      if (quantityError != null) {
         badQty.add(labelOf(i, r));
+        firstInvalidCell ??= (r, 'qty');
         rowOk = false;
       }
       if (widget.docType != PurchaseDocType.receipt &&
@@ -769,12 +772,14 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
           '第 ${i + 1} 行（${r.goods!.name ?? r.goods!.code ?? '该货品'}，'
           '来源单据剩余 ${r.maxQty}）',
         );
+        firstInvalidCell ??= (r, 'qty');
         rowOk = false;
       }
       if (r.maxGiftQtyText != null &&
           (financeExactDecimalUnits(r.giftQty.text) ?? BigInt.zero) >
               (financeExactDecimalUnits(r.maxGiftQtyText) ?? BigInt.zero)) {
         badQty.add(labelOf(i, r));
+        firstInvalidCell ??= (r, 'giftQty');
         rowOk = false;
       }
       final price = double.tryParse(r.price.text);
@@ -784,17 +789,23 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         final pricingError = r.pricing.validate();
         if (pricingError != null) {
           context.appError('${r.goods?.name ?? "该货品"}：$pricingError');
+          await _grid.revealError(
+            r,
+            columnKey: quantityError != null ? 'qty' : 'price',
+          );
           return;
         }
       }
       final weightText = r.weight.text.trim();
       if (!r.unitRateInputValid) {
         badQty.add(labelOf(i, r));
+        firstInvalidCell ??= (r, 'unitRate');
         rowOk = false;
       }
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
         badWeight.add(labelOf(i, r));
+        firstInvalidCell ??= (r, 'weight');
         rowOk = false;
       }
       if (!rowOk) continue;
@@ -834,6 +845,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
     if (rowIssues.isNotEmpty) {
       // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。
       context.appError(rowIssues.join('\n'));
+      if (firstInvalidCell case final cell?) {
+        await _grid.revealError(cell.$1, columnKey: cell.$2);
+      }
       return;
     }
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。

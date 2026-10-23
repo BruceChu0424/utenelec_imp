@@ -98,7 +98,8 @@ void main() {
     expect(cellMaxWidth, closeTo(_colWidth - _cellPadX, 0.5));
 
     c.addRow(_NoteRow(_long * 8));
-    await tester.pump();
+    // Sampled data widths now publish after bounded layout turns.
+    await tester.pumpAndSettle();
     expect(cellMaxWidth, closeTo(_maxColWidth - _cellPadX, 0.5));
 
     // 整批替换后重新量（新行短，但只增不减 → 维持封顶宽）。

@@ -23,7 +23,7 @@ import static org.mockito.Mockito.mock;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class GlPostingLegacyCashScopePostgresTest {
     private static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine")
-            .withUsername("uten").withPassword("synthetic-gl-boundary-only");
+            .withUsername("fixture_admin").withPassword("synthetic-gl-boundary-only");
     private static final LocalDate DATE=LocalDate.of(2025,1,2);
     private static final UUID OLD_EXPENSE=UUID.randomUUID(), NEW_EXPENSE=UUID.randomUUID(), OLD_VOUCHER=UUID.randomUUID();
     private static final UUID UNPROVEN_VOUCHER=UUID.randomUUID();

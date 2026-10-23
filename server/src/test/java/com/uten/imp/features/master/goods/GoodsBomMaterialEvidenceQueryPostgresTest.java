@@ -37,6 +37,7 @@ class GoodsBomMaterialEvidenceQueryPostgresTest {
         sql("CREATE SCHEMA " + schema);
         sql("SET search_path TO " + schema + ",public");
         MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(db, "goods", "units", "colors", "goods_bom_items",
+                "goods_material_identity_evidence",
                 "goods_periodic_material_choices", "production_execution_segments", "production_plans",
                 "production_material_discovery_requests", "production_material_discovery_lines", "production_material_demands");
         unit = UUID.randomUUID(); color = UUID.randomUUID(); owner = UUID.randomUUID();

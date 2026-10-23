@@ -11,6 +11,8 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.*;
@@ -90,7 +92,9 @@ class GoodsBomImportStatePostgresTest {
         assertNotEquals(before, snapshot(service, Set.of()));
     }
 
-    @Test void waitingImportSeesCommittedNestedParentChangeAndRejectsWithoutWriting() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"APPEND", "MERGE"})
+    void waitingImportSeesCommittedNestedParentChangeAndRejectsWithoutWriting(String mode) throws Exception {
         byte[] file = new XlsxExportService().build(List.of(
                 new ExportColumn("seq", "序号", ExportColumn.TEXT),
                 new ExportColumn("code", "物料编号", ExportColumn.TEXT),
@@ -122,8 +126,10 @@ class GoodsBomImportStatePostgresTest {
             sql(writer, "SELECT id FROM goods WHERE id=? FOR NO KEY UPDATE", child);
             importing.setAutoCommit(false);
             Future<ApiException> result = worker.submit(() -> {
-                try { return assertThrows(ApiException.class,
-                        () -> importer.commit(root, file, BomPasteRequest.Mode.APPEND, token)); }
+                try { return assertThrows(ApiException.class, () -> {
+                    if ("MERGE".equals(mode)) importer.commitMerged(root, file, token, Set.of());
+                    else importer.commit(root, file, BomPasteRequest.Mode.APPEND, token);
+                }); }
                 finally { importing.rollback(); }
             });
             assertTrue(waiting.await(5, TimeUnit.SECONDS));
@@ -133,6 +139,7 @@ class GoodsBomImportStatePostgresTest {
 
             assertEquals(ErrorCode.CONFLICT, result.get(10, TimeUnit.SECONDS).getCode());
             verify(paste, never()).pasteImported(any(), anySet(), anyMap());
+            verify(paste, never()).mergeImported(any(), anySet(), anyMap());
             verify(paste, never()).markImportApplied(anySet());
         }
     }

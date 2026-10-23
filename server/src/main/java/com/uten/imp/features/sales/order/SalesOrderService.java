@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.order;
 
+import com.uten.imp.common.util.EmployeeNameResolver.HistoricalWorkerRole;
+
 import com.uten.imp.common.web.HeaderColumnFilter;
 
 import com.uten.imp.common.util.TaskKeywordSearch;
@@ -3194,6 +3196,10 @@ public class SalesOrderService {
                 o.getFinanceRejectedBy() == null ? null : nameResolver.nameOf(o.getFinanceRejectedBy()),
                 o.getClientFileCurrency(), null, o.getRequotedToId(), o.getRequotedAt(),
                 o.getRequotedToId() == null ? null : REQUOTED_READ_ONLY_REASON);
+        result.setSellerName(o.getSellerId() != null
+                ? nameResolver.nameOf(o.getSellerId())
+                : nameResolver.historicalWorkerNameWithCodeOf(null, o.getId(), o.getLegacyId(),
+                        HistoricalWorkerRole.SALES_ORDER_SELLER));
         if (o.getRequotedToId() != null) result.setHistoryReadOnly(true);
         return result;
     }

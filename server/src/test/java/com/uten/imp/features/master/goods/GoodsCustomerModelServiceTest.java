@@ -57,7 +57,7 @@ class GoodsCustomerModelServiceTest {
                 mock(MouldRepository.class), mock(TxSessionVars.class), em, codes,
                 mock(OwnerVisibility.class), current, mock(GoodsCostMasker.class), relations);
         when(categories.findById(category.getId())).thenReturn(Optional.of(category));
-        when(codes.allocate(any(), any(), any())).thenReturn(new CategoryCodeAllocation("HP1", 1, null, true));
+        when(codes.allocateForNewGoods(any(), any(), any())).thenReturn(new CategoryCodeAllocation("HP1", 1, null, true));
         when(codes.allocateForUpdate(any(), any(), any(), any(), any())).thenReturn(new CategoryCodeAllocation("HP1", 1, null, true));
         color.setName("灰色");
         color.setLegacyId(7);

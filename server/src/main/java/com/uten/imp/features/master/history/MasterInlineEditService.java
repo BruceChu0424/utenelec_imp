@@ -57,7 +57,7 @@ public class MasterInlineEditService {
 
     private record Domain(String table,String permission,Set<String> fields,Class<?> request) {}
     private static final Map<String,Domain> DOMAINS=Map.of(
-        "colors",new Domain("colors","color",Set.of("name","status"),ColorSaveRequest.class),
+        "colors",new Domain("colors","color",Set.of("name","status","remark"),ColorSaveRequest.class),
         "units",new Domain("units","unit",Set.of("name","status","measurementDimension","massUnitCode"),UnitSaveRequest.class),
         "currencies",new Domain("currencies","currency",Set.of("name","status","exchangeRate"),CurrencySaveRequest.class),
         "moulds",new Domain("moulds","mould",Set.of("name","status","categoryId","mnumber","qty","tqty","mstatus","manufacturer","place","keeper","departmentId","keeperId","remark"),MouldSaveRequest.class),
@@ -65,7 +65,7 @@ public class MasterInlineEditService {
         "reference-methods",new Domain("settlement_methods","settlement_method",Set.of("name","termsBase","dueRule","defaultDueDays","fixedDayOfMonth","monthsAhead"),SettlementMethodTermsRequest.class),
         "clients",new Domain("clients","client",Set.of("name","nameEn","fullName","clientRank","region","placeId","legalPerson","linkman","mobile","phone","phone2","fax","postcode","address","email","website","shipVia","shipAddress","bank","bankAccount","taxId","tday","creditFloor","defaultSettlementMethodId","defaultCurrencyId","defaultShipmentPolicy","status","remark"),ClientSaveRequest.class),
         "suppliers",new Domain("suppliers","supplier",Set.of("name","description","place","legalPerson","linkman","mobile","phone","phone2","fax","postcode","address","email","website","shipVia","shipAddress","bank","bankAccount","taxId","tday","defaultSettlementMethodId","defaultCurrencyId","defaultTaxRate","status","remark"),SupplierSaveRequest.class),
-        "warehouses",new Domain("warehouses","warehouse",Set.of("name","location","remark","accountable","workshopDepartmentId","defective","status"),WarehouseSaveRequest.class));
+        "warehouses",new Domain("warehouses","warehouse",Set.of("code","name","location","remark","accountable","workshopDepartmentId","defective","status"),WarehouseSaveRequest.class));
     private static final Set<String> PARTY_BASELINE=Set.of("categoryId","code","name","fullName","clientRank","region","placeId","description","place","legalPerson","linkman","mobile","phone","phone2","fax","postcode","address","email","website","shipVia","shipAddress","bank","bankAccount","taxId","tday","credit","initTotal","creditFloor","status","remark","version");
 
     @Transactional

@@ -46,6 +46,16 @@ class WorkshopMaterialRepository {
     return list.map(WmSetting.fromJson).toList(growable: false);
   }
 
+  Future<List<WmSetting>> taskStatus({
+    Map<String, String> scope = const {},
+  }) async {
+    final list = await api.getList(
+      ApiEndpoints.workshopMaterialTaskStatus,
+      query: scope,
+    );
+    return list.map(WmSetting.fromJson).toList(growable: false);
+  }
+
   /// 发料来源仓滑窗的仓库层级: 只有元数据, 能不能选由服务端给出 (开通设置或发料权限可读)。
   Future<List<WmSourceWarehouse>> sourceWarehouses() async {
     final rows = await api.getList(
@@ -223,7 +233,7 @@ class WorkshopMaterialRepository {
         if (goodsIds.isNotEmpty) 'goodsIds': goodsIds.join(','),
       },
     );
-    return PagedResult.fromJson(json, WmMaterialOption.fromJson);
+    return PagedResult.fromJsonResponsive(json, WmMaterialOption.fromJson);
   }
 
   Future<List<ProductCategoryNode>> requestMaterialCategories(
@@ -281,7 +291,7 @@ class WorkshopMaterialRepository {
         ...scope,
       },
     );
-    return PagedResult.fromJson(json, WmRequisition.fromJson);
+    return PagedResult.fromJsonResponsive(json, WmRequisition.fromJson);
   }
 
   /// 领料单详情 (按申请发料 / 收退回页)。

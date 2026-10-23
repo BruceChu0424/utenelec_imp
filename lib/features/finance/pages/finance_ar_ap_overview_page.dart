@@ -15,6 +15,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
@@ -64,6 +65,7 @@ class _FinanceArApOverviewPageState
   List<ProductCategoryNode> _clientTree = const [];
   List<ProductCategoryNode> _supplierTree = const [];
   bool _treeLoading = false;
+  int _treeGeneration = 0;
   String? _treeError;
 
   // 当前选中的分类导航：(categoryType, categoryId)。null/null = 全部。
@@ -109,6 +111,36 @@ class _FinanceArApOverviewPageState
   @override
   void initState() {
     super.initState();
+    ref.listenManual(exportContextEpochProvider, (previous, next) {
+      if (!mounted || previous == next) return;
+      _searchDebounce?.cancel();
+      _syncingSearchControllers = true;
+      _searchController.clear();
+      _treeSearchController.clear();
+      _syncingSearchControllers = false;
+      setState(() {
+        ++_reportRequestGeneration;
+        ++_searchRequestGeneration;
+        ++_treeGeneration;
+        _data = null;
+        _lastColumns = const [];
+        _clientTree = const [];
+        _supplierTree = const [];
+        _categoryType = null;
+        _categoryId = null;
+        _keyword = '';
+        _searchQuery = '';
+        _visibleFilterIds = null;
+        _noUnifiedSearchMatches = false;
+        _loading = false;
+        _treeLoading = false;
+        _searchLoading = false;
+        _reportError = null;
+        _treeError = null;
+        _searchError = null;
+        _page = 1;
+      });
+    });
     _searchController.addListener(_onPrimarySearchInputChanged);
     _treeSearchController.addListener(_onTreeSearchInputChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -176,6 +208,12 @@ class _FinanceArApOverviewPageState
   }
 
   Future<void> _loadTree() async {
+    final generation = ++_treeGeneration;
+    final readEpoch = ref.read(exportContextEpochProvider);
+    bool current() =>
+        mounted &&
+        generation == _treeGeneration &&
+        readEpoch == ref.read(exportContextEpochProvider);
     setState(() {
       _treeLoading = true;
       _treeError = null;
@@ -185,7 +223,7 @@ class _FinanceArApOverviewPageState
         ref.read(clientCategoryRepositoryProvider).tree(),
         ref.read(supplierCategoryRepositoryProvider).tree(),
       ]);
-      if (!mounted) return;
+      if (!mounted || !current()) return;
       setState(() {
         _clientTree = trees[0];
         _supplierTree = trees[1];
@@ -195,7 +233,7 @@ class _FinanceArApOverviewPageState
         _queueUnifiedSearch(immediate: true);
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !current()) return;
       setState(() {
         _treeLoading = false;
         _treeError = '分类加载失败，请重试：$e';
@@ -404,6 +442,11 @@ class _FinanceArApOverviewPageState
 
   Future<void> _load() async {
     final requestGeneration = ++_reportRequestGeneration;
+    final readEpoch = ref.read(exportContextEpochProvider);
+    bool current() =>
+        mounted &&
+        requestGeneration == _reportRequestGeneration &&
+        readEpoch == ref.read(exportContextEpochProvider);
     final requestedPage = _page;
     setState(() {
       _loading = true;
@@ -427,16 +470,22 @@ class _FinanceArApOverviewPageState
         '/finance/reports/ar-ap/overview',
         query: query,
       );
-      if (!mounted || requestGeneration != _reportRequestGeneration) return;
+      if (!mounted || !current()) return;
+      final decodedReport = await parseReportResponseResponsive(
+        json,
+        requestedPage,
+        isCurrent: current,
+      );
+      if (!mounted || !current()) return;
       setState(() {
-        _data = parseReportResponse(json, requestedPage);
+        _data = decodedReport;
         _lastColumns = _data!.columns;
         _noUnifiedSearchMatches = _keyword.isNotEmpty && _data!.total == 0;
         _loading = false;
         _reportError = null;
       });
     } catch (e) {
-      if (!mounted || requestGeneration != _reportRequestGeneration) return;
+      if (!mounted || !current()) return;
       context.appError(humanErrorMessage(e) ?? '应收应付没有加载出来，请稍后重试');
       setState(() {
         _reportError = '加载应收应付失败，请重试';
@@ -480,7 +529,7 @@ class _FinanceArApOverviewPageState
       '/finance/reports/ar-ap/overview',
       query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
     );
-    final data = parseReportResponse(json, 1);
+    final data = await parseReportResponseResponsive(json, 1);
     return UtenPrintTable(
       columnKeys: [for (final c in data.columns) c.key],
       rowIds: [for (final r in data.rows) r['id']?.toString()],
@@ -729,7 +778,22 @@ class _FinanceArApOverviewPageState
         );
       }
       return _initialTableState(
-        const Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
+        Center(
+          child: _loading
+              ? const CircularProgressIndicator(strokeWidth: 2.5)
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('请重新查询'),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                      label: const Text('查询'),
+                    ),
+                  ],
+                ),
+        ),
       );
     }
     final columns = (data?.columns ?? _lastColumns)

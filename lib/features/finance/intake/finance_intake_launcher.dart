@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/ai/ai_job_models.dart';
 import '../../../shared/ai/ai_job_repository.dart';
@@ -98,7 +99,7 @@ Future<FinanceIntakePatch?> launchFinanceIntakeWithFile(
     ],
   );
   if (!context.mounted || !stillCurrent() || snapshot == null) return null;
-  FinanceIntakeResult checked(AiJobSnapshot value) {
+  Future<FinanceIntakeResult> checked(AiJobSnapshot value) async {
     if (value.id != snapshot.id ||
         value.kind != financeIntakeKind ||
         value.status != AiJobStatus.succeeded ||
@@ -109,7 +110,13 @@ Future<FinanceIntakePatch?> launchFinanceIntakeWithFile(
       );
     }
     final result = FinanceIntakeResult.fromJson(value.result!);
-    if (!result.matchesSource(retained, docType)) {
+    final matches = await result.matchesSourceResponsive(
+      retained,
+      docType,
+      isCurrent: () => context.mounted && stillCurrent(),
+    );
+    if (!context.mounted || !stillCurrent()) throw const UiWorkCancelled();
+    if (!matches) {
       throw ApiException(
         'FINANCE_INTAKE_SOURCE',
         financeIntakeText(context, 'sourceMismatch'),
@@ -118,7 +125,8 @@ Future<FinanceIntakePatch?> launchFinanceIntakeWithFile(
     return result;
   }
 
-  final result = checked(snapshot);
+  final result = await checked(snapshot);
+  if (!context.mounted || !stillCurrent()) return null;
   final selected = await showDialog<Set<FinanceIntakeField>>(
     context: context,
     builder: (_) => FinanceIntakeReviewDialog(
@@ -136,7 +144,8 @@ Future<FinanceIntakePatch?> launchFinanceIntakeWithFile(
   // Confirmation is a second authorization boundary; never apply a stale cached job.
   final fresh = await ref.read(aiJobRepositoryProvider).get(snapshot.id);
   if (!context.mounted || !stillCurrent()) return null;
-  final verified = checked(fresh);
+  final verified = await checked(fresh);
+  if (!context.mounted || !stillCurrent()) return null;
   if (jsonEncode(verified.fields.map((k, v) => MapEntry(k.name, v))) !=
       jsonEncode(result.fields.map((k, v) => MapEntry(k.name, v)))) {
     throw ApiException(

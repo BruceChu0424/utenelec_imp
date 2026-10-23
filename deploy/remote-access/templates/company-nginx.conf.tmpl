@@ -1,7 +1,9 @@
 # Complete dedicated process, independent of the existing company LAN Nginx.
-load_module /usr/lib/nginx/modules/ngx_stream_module.so;
+@@STREAM_MODULE_DIRECTIVE@@
 pid /run/uten-remote/nginx.pid;
-error_log stderr warn;
+# Runtime Nginx error messages can contain unredacted request URIs. Use only the
+# sanitized access metrics and systemd startup/configuration diagnostics.
+error_log /dev/null crit;
 worker_processes 2;
 events { worker_connections 1024; }
 stream {
@@ -112,10 +114,17 @@ http {
         location = /actuator/health { limit_req zone=remote_health burst=60 nodelay; proxy_pass http://remote_app; proxy_read_timeout 5s; gzip off; }
         location ~ ^/actuator/health/(?:liveness|readiness)$ { limit_req zone=remote_health burst=60 nodelay; proxy_pass http://remote_app; proxy_read_timeout 5s; gzip off; }
         location /actuator { return 404; }
+        # Deny matrix-parameter variants before generic API proxy locations.
+        location ~ "^/api/system-test(?:[;/]|$)" { return 404; }
+        # Documentation and hidden files must never fall through to the SPA.
+        location ~* "^/(?:swagger-ui(?:[./;]|$)|swagger-resources(?:[;/]|$)|v[23]/api-docs(?:[.;/]|$))" { return 404; }
+        location ~ /\.(?!well-known(?:/|$)) { return 404; }
         location = /api/system-test { return 404; }
         location ^~ /api/system-test/ { return 404; }
         # Staff entry must not publish the separate anonymous website machine integration.
+        location ~ "^/api/website-inquiries(?:;[^/]*)?/ingest(?:[;/]|$)" { return 404; }
         location = /api/website-inquiries/ingest { return 404; }
+        location ~ "^/api/visitor(?:[;/]|$)" { return 404; }
         location = /api/visitor { return 404; }
         location ^~ /api/visitor/ { return 404; }
         location = /api/expense-claims/invoices/recognize {
@@ -154,9 +163,34 @@ http {
             proxy_pass http://remote_app;
             gzip off;
         }
+        # Inherits the reviewed employee TLS, forwarding headers and no-store map.
+        # Only package bytes receive a larger body budget; Spring keeps all authorization.
+        location ~ ^/api/admin/client-releases/[0-9A-Fa-f-]+/package$ {
+            if ($request_method !~ ^(PUT|OPTIONS)$) { return 405; }
+            client_max_body_size 512m;
+            client_body_timeout 1800s;
+            proxy_request_buffering off;
+            proxy_buffering off;
+            proxy_read_timeout 1800s;
+            proxy_send_timeout 1800s;
+            proxy_pass http://remote_app;
+            gzip off;
+        }
+        location ~ ^/api/client-updates/[0-9A-Fa-f-]+/download$ {
+            if ($request_method !~ ^(GET|HEAD|OPTIONS)$) { return 405; }
+            proxy_cache off;
+            proxy_cache_bypass 1;
+            proxy_no_cache 1;
+            proxy_buffering off;
+            proxy_max_temp_file_size 0;
+            proxy_read_timeout 1800s;
+            proxy_send_timeout 1800s;
+            send_timeout 1800s;
+            proxy_pass http://remote_app;
+            gzip off;
+        }
         location /api/ { proxy_pass http://remote_app; gzip off; }
         location = /api { return 404; }
-        location ~ /\. { return 404; }
         # Missing asset files must never return a successful HTML app shell.
         location ~* "\.(?:js|mjs|wasm|css|json|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|otf)$" {
             try_files $uri =404;

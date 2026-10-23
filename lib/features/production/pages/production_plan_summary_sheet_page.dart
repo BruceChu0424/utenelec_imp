@@ -9,7 +9,6 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -19,6 +18,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import '../../../core/print/pdf_printer.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -29,6 +29,7 @@ import '../../../shared/platform_branding/platform_branding.dart';
 import '../../../shared/platform_branding/platform_branding_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../models/production_material_analysis.dart';
 import '../repositories/production_repository.dart';
 
@@ -53,6 +54,7 @@ class _ProductionPlanSummarySheetPageState
   Map<String, String> _defaultWorkshops = const {};
   ProductionMaterialAnalysisView? _analysis;
   bool _analysisLoading = false;
+  int _analysisLoadGeneration = 0;
   String? _analysisError;
   bool _workshopsLoading = false;
   bool _workshopsLoaded = false;
@@ -60,12 +62,29 @@ class _ProductionPlanSummarySheetPageState
   CancelToken? _workshopCancelToken;
   int _workshopLoadGeneration = 0;
   bool _printing = false;
+  int _printGeneration = 0;
 
   @override
   void initState() {
     super.initState();
     final initial = widget.initialAnalysis;
     _analysis = initial?.analysisId == widget.analysisId ? initial : null;
+    listenReadOwner(ref, () {
+      ++_analysisLoadGeneration;
+      ++_workshopLoadGeneration;
+      ++_printGeneration;
+      _workshopCancelToken?.cancel('summary reader changed');
+      setState(() {
+        _analysis = null;
+        _analysisLoading = false;
+        _analysisError = '查看身份、权限或服务器已变化，请重新加载备料汇总';
+        _defaultWorkshops = const {};
+        _workshopsLoading = false;
+        _workshopsLoaded = false;
+        _workshopsError = null;
+        _printing = false;
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _initialize());
   }
 
@@ -77,8 +96,9 @@ class _ProductionPlanSummarySheetPageState
   }
 
   Future<void> _initialize() async {
+    final ownerCurrent = captureReadOwner(ref);
     await ref.read(masterNameServiceProvider).ensureCommonLoaded();
-    if (!mounted) return;
+    if (!ownerCurrent()) return;
     if (_analysis == null) {
       await _loadAnalysis();
       return;
@@ -88,6 +108,9 @@ class _ProductionPlanSummarySheetPageState
 
   Future<void> _loadAnalysis() async {
     if (!mounted || _analysisLoading) return;
+    final ownerCurrent = captureReadOwner(ref);
+    final generation = ++_analysisLoadGeneration;
+    bool current() => ownerCurrent() && generation == _analysisLoadGeneration;
     setState(() {
       _analysisLoading = true;
       _analysisError = null;
@@ -96,14 +119,14 @@ class _ProductionPlanSummarySheetPageState
       final analysis = await ref
           .read(productionPlanRepositoryProvider)
           .materialAnalysisDetail(widget.analysisId);
-      if (!mounted) return;
+      if (!current()) return;
       setState(() {
         _analysis = analysis;
         _analysisLoading = false;
       });
       unawaited(_loadWorkshops());
     } catch (error) {
-      if (!mounted) return;
+      if (!current()) return;
       setState(() {
         _analysisLoading = false;
         _analysisError = error is ApiException
@@ -117,6 +140,7 @@ class _ProductionPlanSummarySheetPageState
     if (!mounted) return;
     final analysis = _analysis;
     if (analysis == null) return;
+    final ownerCurrent = captureReadOwner(ref);
     final generation = ++_workshopLoadGeneration;
     _workshopCancelToken?.cancel('default workshop lookup superseded');
     final cancelToken = CancelToken();
@@ -140,7 +164,7 @@ class _ProductionPlanSummarySheetPageState
           entry.key: entry.value.departmentName ?? entry.value.departmentId,
       };
     } catch (error) {
-      if (!mounted || generation != _workshopLoadGeneration) return;
+      if (!ownerCurrent() || generation != _workshopLoadGeneration) return;
       setState(() {
         _workshopsLoading = false;
         _workshopsLoaded = false;
@@ -150,7 +174,7 @@ class _ProductionPlanSummarySheetPageState
       });
       return;
     }
-    if (!mounted ||
+    if (!ownerCurrent() ||
         cancelToken.isCancelled ||
         generation != _workshopLoadGeneration) {
       return;
@@ -773,35 +797,61 @@ class _ProductionPlanSummarySheetPageState
   // ===== PDF =====
 
   Future<void> _print() async {
-    if (_printing) return;
+    final analysis = _analysis;
+    if (_printing || analysis == null || !_workshopsLoaded) return;
+    final ownerCurrent = captureReadOwner(ref);
+    final generation = ++_printGeneration;
+    bool current() =>
+        ownerCurrent() &&
+        generation == _printGeneration &&
+        identical(_analysis, analysis);
+    final filename = '生产备料计划汇总单-$_today.pdf';
     setState(() => _printing = true);
     try {
       final bytes = await _buildPdf(
         companyName: ref.read(platformBrandingSnapshotProvider).companyName,
+        isCurrent: current,
       );
-      if (!mounted) return;
-      final ok = await printPdfBytes(bytes, '生产备料计划汇总单-$_today.pdf');
-      if (!mounted) return;
+      if (!current()) return;
+      final ok = await printPdfBytes(bytes, filename);
+      if (!mounted || !current()) return;
       if (!ok) context.appWarning('打印流程未完成');
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !current()) return;
       context.appError('生成 PDF 失败，请重新打印；连续失败时可重启打印服务后再试', force: true);
     } finally {
-      if (mounted) setState(() => _printing = false);
+      if (mounted && generation == _printGeneration) {
+        setState(() => _printing = false);
+      }
     }
   }
 
-  Future<Uint8List> _buildPdf({String? companyName}) async {
+  Future<Uint8List> _buildPdf({
+    String? companyName,
+    required bool Function() isCurrent,
+  }) async {
     final printCompanyName =
         companyName ?? PlatformBranding.defaults.companyName;
-    final fontData = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
+    // Freeze every source before the first await. A PDF must never combine the
+    // former analysis with a later reader's maker, warehouse or workshop names.
+    final buyRows = _supplyRows(MaterialSupplyRoute.buy);
+    final subcontractRows = _supplyRows(MaterialSupplyRoute.subcontract);
+    final makeRows = _makeRows;
+    final missingWorkshopRows = _missingWorkshopRows;
+    final pendingRouteRows = _pendingRouteRows;
+    final today = _today;
+    final makerName = _makerName;
+    final warehouseName = _warehouseName;
+    final version = _view.version;
+    final fontData = await DefaultAssetBundle.of(
+      context,
+    ).load('assets/fonts/NotoSansSCFull.ttf');
+    if (!isCurrent()) throw const UiWorkCancelled();
     final font = pw.Font.ttf(fontData);
     final doc = pw.Document(
       author: printCompanyName,
       theme: pw.ThemeData.withFont(base: font, bold: font),
     );
-    final buyRows = _supplyRows(MaterialSupplyRoute.buy);
-    final subcontractRows = _supplyRows(MaterialSupplyRoute.subcontract);
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
@@ -830,13 +880,13 @@ class _ProductionPlanSummarySheetPageState
           pw.SizedBox(height: 6),
           pw.Center(
             child: pw.Text(
-              '开单日期：$_today    制单人：$_makerName    '
-              '主仓库：$_warehouseName    分析版本：v${_view.version}',
+              '开单日期：$today    制单人：$makerName    '
+              '主仓库：$warehouseName    分析版本：v$version',
               style: const pw.TextStyle(fontSize: 9),
             ),
           ),
           pw.SizedBox(height: 12),
-          if (_missingWorkshopRows.isNotEmpty) ...[
+          if (missingWorkshopRows.isNotEmpty) ...[
             pw.Container(
               padding: const pw.EdgeInsets.all(8),
               decoration: pw.BoxDecoration(
@@ -853,7 +903,7 @@ class _ProductionPlanSummarySheetPageState
                       color: PdfColors.red700,
                     ),
                   ),
-                  for (final row in _missingWorkshopRows)
+                  for (final row in missingWorkshopRows)
                     pw.Text(
                       '· ${row.label}${row.code == null ? '' : '(${row.code})'}',
                       style: const pw.TextStyle(
@@ -866,7 +916,7 @@ class _ProductionPlanSummarySheetPageState
             ),
             pw.SizedBox(height: 10),
           ],
-          if (_pendingRouteRows.isNotEmpty) ...[
+          if (pendingRouteRows.isNotEmpty) ...[
             pw.Container(
               padding: const pw.EdgeInsets.all(8),
               decoration: pw.BoxDecoration(
@@ -883,7 +933,7 @@ class _ProductionPlanSummarySheetPageState
                       color: PdfColors.red700,
                     ),
                   ),
-                  for (final row in _pendingRouteRows)
+                  for (final row in pendingRouteRows)
                     pw.Text(
                       '· ${row.label}${row.code == null ? '' : '(${row.code})'}：'
                       '缺 ${_qty(row.shortageQty)}${row.unit ?? ''}'
@@ -902,7 +952,7 @@ class _ProductionPlanSummarySheetPageState
           _pdfTable(
             const ['产品 / 组件名称', '编号', '颜色', '本批需求', '可生产', '默认车间', '状态', '来源'],
             [
-              for (final row in _makeRows)
+              for (final row in makeRows)
                 [
                   row.label,
                   row.code ?? '',

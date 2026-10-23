@@ -136,6 +136,48 @@ class GoodsImportControllerTest {
         org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx");
     }
 
+    @Test
+    void jsonCommitKeepsA2000RowSelectionOutOfTheRequestUrl() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        GoodsImportController controller = new GoodsImportController(service);
+        UUID planId = UUID.randomUUID();
+        byte[] bytes = new byte[]{7, 8, 9};
+        List<String> keys = java.util.stream.IntStream.rangeClosed(2, 2001).mapToObj(n -> "goods:" + n).toList();
+        var body = new GoodsImportCommitRequest(bytes, planId, "goods.xlsx", keys);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setContentType("application/json");
+        request.setContent(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsBytes(body));
+
+        controller.commitJson(request);
+
+        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.copyOf(keys));
+    }
+
+    @Test
+    void jsonCommitRejectsAnOversizedSelectionBeforeCallingTheService() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        GoodsImportController controller = new GoodsImportController(service);
+        var body = new GoodsImportCommitRequest(new byte[]{1}, UUID.randomUUID(), "goods.xlsx",
+                java.util.stream.IntStream.rangeClosed(1, 2001).mapToObj(n -> "goods:" + n).toList());
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setContent(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsBytes(body));
+
+        assertThrows(ApiException.class, () -> controller.commitJson(request));
+        org.mockito.Mockito.verifyNoInteractions(service);
+    }
+
+    @Test
+    void jsonCommitRejectsMalformedBase64AndAlwaysReleasesTheImportSlot() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        GoodsImportController controller = new GoodsImportController(service);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setContent("{\"file\":\"!invalid!\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThrows(ApiException.class, () -> controller.commitJson(request));
+        MockHttpServletRequest valid = new MockHttpServletRequest(); valid.setContent(new byte[]{1});
+        controller.detect(valid);
+        org.mockito.Mockito.verify(service).detect(new byte[]{1});
+    }
+
     private static boolean isEmpty(Path directory) throws IOException {
         try (Stream<Path> files = Files.list(directory)) {
             return files.findAny().isEmpty();

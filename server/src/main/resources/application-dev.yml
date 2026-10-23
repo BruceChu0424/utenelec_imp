@@ -6,6 +6,11 @@ server:
     enabled: false
 
 spring:
+  flyway:
+    # Local role preparation separates migration ownership from the application
+    # login. Keep these opt-in credentials out of server runtime profiles.
+    user: ${UTEN_DEV_MIGRATOR_DB_USER:${spring.datasource.username}}
+    password: ${UTEN_DEV_MIGRATOR_DB_PASSWORD:${spring.datasource.password}}
   main:
     # 启动日志足以说明状态，关掉 ASCII banner
     banner-mode: "off"
@@ -41,7 +46,7 @@ logging:
 
 uten:
   features:
-    # 本地开发库启用工作台「清空业务数据」测试工具（生产默认关闭）。
+    # 本地开发保留测试入口，还要求回环数据库目标与本地数据库执行授权。
     business-data-reset-enabled: ${UTEN_BUSINESS_DATA_RESET_ENABLED:true}
   jwt:
     issuer: ${UTEN_JWT_ISSUER:uten-imp-dev}

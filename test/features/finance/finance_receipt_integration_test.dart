@@ -34,6 +34,42 @@ import '../../support/document_scope_capability_overrides.dart';
 import '../../support/audit_screenshot_support.dart';
 
 void main() {
+  testWidgets('1000行收款保存定位离屏金额错误且不写入', (tester) async {
+    final detail = _receiptDetail();
+    final template = (detail['items'] as List).first as Map<String, dynamic>;
+    detail['items'] = [
+      for (var index = 0; index < 1000; index++)
+        {
+          ...template,
+          'id': 'receipt-item-$index',
+          'appliedLedgerId': 'ledger-$index',
+          'appliedBillNo': 'AR-$index',
+          'amountOriginal': index == 999 ? 0 : 1,
+        },
+    ];
+    final api = await _pumpEditor(tester, detail: detail);
+    final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
+      find.byType(UtenEditableGrid<FinanceGridRow>),
+    );
+    final last = grid.controller.rows.last;
+    Finder lastAmount() => find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField && identical(widget.controller, last.amount),
+    );
+    expect(lastAmount(), findsNothing);
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(api.writeCalls, 0);
+    expect(lastAmount().hitTestable(), findsOneWidget);
+    final editable = tester.widget<EditableText>(
+      find.descendant(of: lastAmount(), matching: find.byType(EditableText)),
+    );
+    expect(editable.focusNode.hasFocus, isTrue);
+    expect(grid.controller.rows, hasLength(1000));
+    expect(grid.controller.mountedRowCount, lessThan(100));
+    expect(tester.takeException(), isNull);
+  });
+
   for (final width in [375.0, 760.0, 1440.0]) {
     testWidgets('receipt $width keeps rate, bank column and red table total', (
       tester,
@@ -213,7 +249,15 @@ void main() {
     for (final row in draft['rows'] as List) {
       (row as Map)['exchangeRate'] = '9';
     }
-    await state.restoreFormDraft(draft);
+    var restored = false;
+    final restoration = state.restoreFormDraft(draft).whenComplete(() {
+      restored = true;
+    });
+    for (var frame = 0; frame < 1000 && !restored; frame++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(restored, isTrue);
+    await restoration;
     await tester.pumpAndSettle();
     final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
       find.byWidgetPredicate((w) => w is UtenEditableGrid<FinanceGridRow>),

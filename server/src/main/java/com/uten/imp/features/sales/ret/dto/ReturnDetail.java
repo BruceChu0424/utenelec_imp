@@ -59,6 +59,18 @@ public class ReturnDetail extends com.uten.imp.common.history.DocumentHistoryMet
     /** RESHIP/EXCHANGE 是否已重开替换履约预留。 */
     private boolean fulfilmentReopened;
 
+    // Initialized final state keeps the established all-arguments constructor unchanged.
+    @lombok.Getter(lombok.AccessLevel.NONE)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private final HistoricalWorkerNames historicalWorkerNames = new HistoricalWorkerNames();
+
+    public String getSellerName() { return historicalWorkerNames.sellerName; }
+    public void setSellerName(String value) { historicalWorkerNames.sellerName = value; }
+
+    private static final class HistoricalWorkerNames {
+        private String sellerName;
+    }
+
     // Exact text is derived after permission masking; null stays null.
     public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }
     public String getTaxRateExact() { return com.uten.imp.common.util.DecimalText.of(taxRate); }

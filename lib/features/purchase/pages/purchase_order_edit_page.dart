@@ -259,7 +259,11 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       data['rows'],
       (row) => PurchaseGridRow.fromDraft(row, supportsTotalInput: true),
     );
-    _pendingFiles.restoreDraft(draftMap(data['attachments']));
+    await _pendingFiles.restoreDraftResponsive(
+      draftMap(data['attachments']),
+      isCurrent: () => mounted && formDraftIdentityIsCurrent,
+    );
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     final created = draftMaps(data['createdOrders']);
     _createdOrders = created.isEmpty
         ? null
@@ -1315,6 +1319,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     final badPrice = <String>[];
     final badWeight = <String>[];
     final badOverReceipt = <String>[];
+    PurchaseGridRow? firstInvalid;
+    String? firstInvalidColumn;
     final gridRows = _grid.rows;
     // 行标识用用户看得见的行序 + 货品名（明细表不显示 UUID，报 id 等于没报）。
     String labelOf(int i, PurchaseGridRow r) =>
@@ -1323,38 +1329,47 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       final r = gridRows[i];
       if (r.goods == null || !submitted.contains(r)) continue;
       final label = labelOf(i, r);
-      if (!r.unitRateInputValid) badUnitRate.add(label);
-      if (r.supplierId == null) missingSupplier.add(label);
-      if (r.settlementMethodId == null) missingSettlement.add(label);
-      if (r.currencyId == null) missingCurrency.add(label);
+      void addIssue(List<String> issues, String column) {
+        issues.add(label);
+        if (firstInvalid != null) return;
+        firstInvalid = r;
+        firstInvalidColumn = column;
+      }
+
+      if (!r.unitRateInputValid) addIssue(badUnitRate, 'qty');
+      if (r.supplierId == null) addIssue(missingSupplier, 'supplier');
+      if (r.settlementMethodId == null) {
+        addIssue(missingSettlement, 'settlement');
+      }
+      if (r.currencyId == null) addIssue(missingCurrency, 'currency');
       final rate = double.tryParse(rateTextOf(r));
-      if (rate == null || rate <= 0) badRate.add(label);
+      if (rate == null || rate <= 0) addIssue(badRate, 'exchangeRate');
       final tax = double.tryParse(taxTextOf(r));
-      if (tax == null || tax < 0 || tax > 100) badTax.add(label);
+      if (tax == null || tax < 0 || tax > 100) addIssue(badTax, 'taxRate');
       if (procurementQuantityError(
             r.qty.text,
             r.giftQty.text,
             extraGift: r.hasExtraGift,
           ) !=
           null) {
-        badQty.add(label);
+        addIssue(badQty, 'qty');
       }
       // 2026-09 起订货允许超过申请剩余量（超采备货）：不再校验 qty ≤ maxQty。
       if (r.maxGiftQtyText != null &&
           (financeExactDecimalUnits(r.giftQty.text) ?? BigInt.zero) >
               (financeExactDecimalUnits(r.maxGiftQtyText) ?? BigInt.zero)) {
-        badQty.add(label);
+        addIssue(badQty, 'giftQty');
       }
       final price = double.tryParse(r.price.text);
-      if (price == null || price < 0) badPrice.add(label);
+      if (price == null || price < 0) addIssue(badPrice, 'price');
       final weightText = r.weight.text.trim();
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
-        badWeight.add(label);
+        addIssue(badWeight, 'weight');
       }
       // ADR-144 允许超收%：空 = 0%；填了必须是 0 到 100 的数。
       if (!parsePurchaseOverReceiptPct(r.allowedOverReceiptPct.text).valid) {
-        badOverReceipt.add(label);
+        addIssue(badOverReceipt, 'allowedOverReceiptPct');
       }
     }
     // 指路要落到真实入口上：批量条款只在行右键菜单里，含糊的「统一设置」会让用户
@@ -1393,6 +1408,9 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     if (rowIssues.isNotEmpty) {
       // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。
       context.appError(rowIssues.join('\n'));
+      if (firstInvalid case final row?) {
+        await _grid.revealError(row, columnKey: firstInvalidColumn);
+      }
       return;
     }
     // 编辑既有单：一单一套条款（行条款必须全一致）。
@@ -1406,17 +1424,25 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     final settlementEntries = await _settlementEntries();
     if (!mounted || !formDraftIdentityIsCurrent) return;
     final stoppedSettlement = <String>[];
+    PurchaseGridRow? firstStoppedSettlement;
     for (var i = 0; i < gridRows.length; i++) {
       final r = gridRows[i];
       if (r.goods == null || !submitted.contains(r)) continue;
       if (!settlementEntries.containsKey(r.settlementMethodId)) {
         stoppedSettlement.add(labelOf(i, r));
+        firstStoppedSettlement ??= r;
       }
     }
     if (stoppedSettlement.isNotEmpty) {
       context.appError(
         _rowIssueMessage(stoppedSettlement, '的结账方式已停用', action: '请重新选择后再提交'),
       );
+      if (firstStoppedSettlement != null) {
+        await _grid.revealError(
+          firstStoppedSettlement,
+          columnKey: 'settlement',
+        );
+      }
       return;
     }
     // 保存前查重（2026-09-25）：同「供应商+条款+货品+颜色+单位+换算率」多行时弹窗
@@ -1434,6 +1460,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       if (pricingError != null) {
         if (!mounted || !formDraftIdentityIsCurrent) return;
         context.appError('${r.goods?.name ?? "该货品"}：$pricingError');
+        await _grid.revealError(r, columnKey: 'price');
         return;
       }
       if (!r.extraColumnsValid(
@@ -1442,6 +1469,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       )) {
         if (!mounted || !formDraftIdentityIsCurrent) return;
         context.appError('附加列数字或计算有误，请检查数字、除数以及最终金额');
+        await _grid.revealError(r);
         return;
       }
       final remarkText = r.remark.text.trim();

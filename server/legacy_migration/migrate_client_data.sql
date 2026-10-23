@@ -7,7 +7,7 @@
 --   （B_Client.ParentID → SystemItem.ItemID ItemclassID=2）。未分组或悬空记录
 --   统一挂 V275 注册表中的系统“未分类”根。字段语义见 V36。
 -- staging 用真实类型，COPY csv 自动 cast + 空字段→null。
--- emp_id 原样保留为 legacy 快照；owner_employee_id 仅按唯一 employees.legacy_id 精确写入。
+-- emp_id 原样保留；现任负责人只映射在职员工。旧负责人离职/缺失则 ADMIN 临时托管，逐对象写交接证据。
 -- =====================================================================
 
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
@@ -72,13 +72,7 @@ CREATE TEMP TABLE client_stage (
 );
 \copy client_stage FROM '/tmp/client.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
-WITH unique_employees AS (
-    SELECT legacy_id, (array_agg(id ORDER BY id))[1] AS employee_id
-    FROM employees
-    WHERE legacy_id IS NOT NULL
-    GROUP BY legacy_id
-    HAVING count(*) = 1
-), settlement_matches AS (
+WITH settlement_matches AS (
     SELECT legacy_id,
            (array_agg(id ORDER BY id))[1] AS method_id
     FROM settlement_methods
@@ -124,7 +118,7 @@ SELECT
                   reserved.last_seq - cs.allocation_count + cs.seq_ordinal, 'FM000000')
     END,
     cs.full_name, cs.client_rank,
-    cs.place_id, cs.emp_id, employee_owner.employee_id,
+    cs.place_id, cs.emp_id, employee_owner.owner_id,
     cs.legal_person, cs.linkman, cs.mobile, cs.phone, cs.phone2,
     cs.fax, cs.postcode, cs.address, cs.email, cs.website, cs.ship_via, cs.ship_address,
     cs.bank, cs.bank_account, cs.tax_id,
@@ -136,14 +130,15 @@ SELECT
     reserved.last_seq - cs.allocation_count + cs.seq_ordinal
 FROM numbered cs
 CROSS JOIN reserved
-LEFT JOIN unique_employees employee_owner
-  ON employee_owner.legacy_id = CASE
-      WHEN btrim(cs.emp_id) ~ '^[0-9]{1,9}$'
-          THEN NULLIF(btrim(cs.emp_id)::int, 0)
-      ELSE NULL
-  END
+LEFT JOIN LATERAL pg_temp.legacy_owner_resolution(cs.emp_id) employee_owner ON true
 LEFT JOIN settlement_matches settlement_match
   ON settlement_match.legacy_id = cs.price_style;
+
+INSERT INTO pg_temp.legacy_owner_custody
+SELECT 'clients',c.id,c.legacy_id,s.emp_id,resolution.original_employee_id,c.owner_employee_id,resolution.reason
+FROM clients c JOIN client_stage s ON s.legacy_id=c.legacy_id
+CROSS JOIN LATERAL pg_temp.legacy_owner_resolution(s.emp_id) resolution
+WHERE resolution.reason NOT IN ('PUBLIC_SOURCE','CURRENT_EMPLOYEE');
 
 -- Preserve every unresolved non-null legacy default as reconciliation
 -- evidence.  Online services remain fail-closed until an explicit UUID is

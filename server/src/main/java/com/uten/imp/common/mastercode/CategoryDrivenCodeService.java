@@ -34,9 +34,11 @@ import java.util.regex.Pattern;
  *       {@code code_sequence}.</li>
  * </ul>
  * A single sequence row still serializes create, update, move and category-wide
- * prefix changes.  The nearest explicit category prefix wins; an empty prefix
- * inherits.  V279 additionally reserves every normalized full identifier across
- * all business families for life, including deleted and historical values.</p>
+ * prefix changes. The nearest explicit category prefix wins; an empty prefix
+ * inherits. V279 reserves normalized identifiers across business families for
+ * life. V911 allows only a new goods UUID to acquire a proven unused, deleted
+ * goods label through an append-only release ledger; all old UUIDs and claims
+ * remain preserved and all other families keep their lifetime reservations.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -86,6 +88,17 @@ public class CategoryDrivenCodeService {
      */
     @Transactional
     public CategoryCodeAllocation allocate(MasterType type, UUID categoryId, String requestedCode) {
+        return allocateNew(type, categoryId, requestedCode, null);
+    }
+
+    /** Only new goods UUIDs may acquire a proven unused, soft-deleted code. */
+    @Transactional
+    public CategoryCodeAllocation allocateForNewGoods(UUID categoryId, String requestedCode, UUID newGoodsId) {
+        if (newGoodsId == null) throw new IllegalArgumentException("new goods UUID is required");
+        return allocateNew(MasterType.GOODS, categoryId, requestedCode, newGoodsId);
+    }
+
+    private CategoryCodeAllocation allocateNew(MasterType type, UUID categoryId, String requestedCode, UUID newGoodsId) {
         requireType(type);
         lockSequence(type);
         EffectivePrefix effective = effectivePrefixOrFallback(type, categoryId);
@@ -97,7 +110,7 @@ public class CategoryDrivenCodeService {
                 // 超过 99 自然进位到三位（与批量重排的增长口径一致）。
                 for (int suffix = 1; suffix <= SHORT_SUFFIX_LIMIT; suffix++) {
                     String code = format(effective.prefix(), suffix, SHORT_SUFFIX_WIDTH);
-                    if (!codeUnavailable(type, code, null)) {
+                    if (availableForCreation(type, code, newGoodsId)) {
                         return new CategoryCodeAllocation(
                                 code, nextSequenceLocked(type), effective.ownerCategoryId(), true);
                     }
@@ -110,7 +123,7 @@ public class CategoryDrivenCodeService {
             for (int attempt = 0; attempt < MAX_GLOBAL_COLLISION_RETRIES; attempt++) {
                 long sequence = nextSequenceLocked(type);
                 String code = format(effective.prefix(), sequence, 6);
-                if (!codeUnavailable(type, code, null)) {
+                if (availableForCreation(type, code, newGoodsId)) {
                     return new CategoryCodeAllocation(
                             code, sequence, effective.ownerCategoryId(), true);
                 }
@@ -121,23 +134,44 @@ public class CategoryDrivenCodeService {
         }
 
         ManagedSuffix managed = parseManagedSuffix(effective.prefix(), requested);
+        if (type == MasterType.GOODS && newGoodsId != null && codeUnavailable(type, requested, null)
+                && Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_claim_reusable_goods_code(:code,:id)")
+                        .setParameter("code", requested).setParameter("id", newGoodsId).getSingleResult())) {
+            // The old identity counter is never reused, including six-digit
+            // historical display suffixes. Only the proven unused label moves.
+            return new CategoryCodeAllocation(requested, nextSequenceLocked(type),
+                    managed == null ? null : effective.ownerCategoryId(), managed != null);
+        }
         if (managed != null) {
             if (managed.width() >= LONG_SUFFIX_MIN_WIDTH) {
                 requireSequenceAvailable(type, managed.value(), null);
-                requireCodeAvailable(type, requested, null);
+                requireCreationCodeAvailable(type, requested, newGoodsId);
                 reserveSequenceLocked(type, managed.value());
                 return new CategoryCodeAllocation(
                         requested, managed.value(), effective.ownerCategoryId(), true);
             }
             // 短位受管（前缀+2~5 位数字）：序号即编号文本后缀，身份序号另取全局值。
-            requireCodeAvailable(type, requested, null);
+            requireCreationCodeAvailable(type, requested, newGoodsId);
             return new CategoryCodeAllocation(
                     requested, nextSequenceLocked(type), effective.ownerCategoryId(), true);
         }
 
-        requireCodeAvailable(type, requested, null);
+        requireCreationCodeAvailable(type, requested, newGoodsId);
         long sequence = nextSequenceLocked(type);
         return new CategoryCodeAllocation(requested, sequence, null, false);
+    }
+
+    private boolean availableForCreation(MasterType type, String code, UUID newGoodsId) {
+        if (!codeUnavailable(type, code, null)) return true;
+        return type == MasterType.GOODS && newGoodsId != null && Boolean.TRUE.equals(em.createNativeQuery(
+                "SELECT fn_claim_reusable_goods_code(:code,:id)")
+                .setParameter("code", code).setParameter("id", newGoodsId).getSingleResult());
+    }
+
+    private void requireCreationCodeAvailable(MasterType type, String code, UUID newGoodsId) {
+        if (!availableForCreation(type, code, newGoodsId)) {
+            throw new ApiException(ErrorCode.CONFLICT, "编号已占用或缺少完整未使用证明，请使用其它编号");
+        }
     }
 
     /**
@@ -219,6 +253,22 @@ public class CategoryDrivenCodeService {
     public EffectivePrefix effectivePrefix(MasterType type, UUID categoryId) {
         requireType(type);
         return effectivePrefixOrFallback(type, categoryId);
+    }
+
+    /** Read-only counterpart of the long-managed suffix guard used on save. */
+    String requestedSequenceProblem(MasterType type, String requestedCode, UUID entityId, UUID categoryId) {
+        if (type == MasterType.GOODS && entityId == null && em.createNativeQuery(
+                "SELECT fn_goods_code_reusable_owner(:code)").setParameter("code", requestedCode)
+                .getSingleResult() instanceof UUID) return null;
+        String prefix = effectivePrefixOrFallback(type, categoryId).prefix();
+        ManagedSuffix suffix = parseManagedSuffix(prefix, normalizeCode(requestedCode));
+        if (suffix == null || suffix.width() < LONG_SUFFIX_MIN_WIDTH) return null;
+        try {
+            requireSequenceAvailable(type, suffix.value(), entityId);
+            return null;
+        } catch (ApiException conflict) {
+            return conflict.getMessage();
+        }
     }
 
     /**
@@ -407,9 +457,7 @@ public class CategoryDrivenCodeService {
                 type, batchId, categoryId,
                 rootEffective.prefix(), rootEffective.ownerCategoryId());
         setBatchAuditContext(batchId, "final");
-        int updated = updateFinalCodes(
-                type, categoryId,
-                rootEffective.prefix(), rootEffective.ownerCategoryId());
+        int updated = updateFinalCodes(type, batchId, rootEffective.ownerCategoryId());
         clearBatchAuditContext();
         if (updated != affected) {
             throw new ApiException(ErrorCode.CONFLICT, "分类下编号数据已变化，请刷新后重试");
@@ -729,8 +777,11 @@ public class CategoryDrivenCodeService {
                                CASE
                                    WHEN scoped.effective_owner IS NOT NULL
                                        THEN scoped.effective_prefix
-                                            || lpad((row_number() OVER (
-                                                         ORDER BY master.code, master.id))::text, 2, '0')
+                                            || CASE WHEN row_number() OVER (
+                                                         ORDER BY master.code, master.id) < 10
+                                                    THEN '0' ELSE '' END
+                                            || (row_number() OVER (
+                                                         ORDER BY master.code, master.id))::text
                                    ELSE scoped.effective_prefix
                                         || repeat(
                                                '0',
@@ -823,6 +874,7 @@ public class CategoryDrivenCodeService {
                 SET code = '__MCB_' || CAST(:batchId AS text) || '_' || master.code || '_' || CAST(master.id AS text)
                 FROM candidate
                 WHERE master.id = candidate.id
+                  AND master.code IS DISTINCT FROM candidate.target_code
                 """.formatted(type.table),
                 categoryId,
                 resultingPrefix,
@@ -833,25 +885,26 @@ public class CategoryDrivenCodeService {
 
     private int updateFinalCodes(
             MasterType type,
-            UUID categoryId,
-            String resultingPrefix,
+            UUID batchId,
             UUID resultingOwner) {
         String versionUpdate = type.versioned ? ", version = master.version + 1" : "";
-        return baseCandidateQuery(
-                type,
-                """
+        // The first phase changes code and therefore its ordering. The history
+        // inserted before that phase is the authoritative frozen assignment.
+        return em.createNativeQuery("""
                 UPDATE %s master
-                SET code = candidate.target_code,
+                SET code = history.new_code,
                     code_managed = true,
-                    code_prefix_category_id = candidate.effective_owner,
+                    code_prefix_category_id = CAST(:owner AS uuid),
                     updated_at = now()
                     %s
-                FROM candidate
-                WHERE master.id = candidate.id
-                """.formatted(type.table, versionUpdate),
-                categoryId,
-                resultingPrefix,
-                resultingOwner)
+                FROM master_code_history history
+                WHERE history.batch_id = :batchId
+                  AND history.master_type = :type
+                  AND master.id = history.entity_id
+                """.formatted(type.table, versionUpdate))
+                .setParameter("owner", resultingOwner)
+                .setParameter("batchId", batchId)
+                .setParameter("type", type.name())
                 .executeUpdate();
     }
 

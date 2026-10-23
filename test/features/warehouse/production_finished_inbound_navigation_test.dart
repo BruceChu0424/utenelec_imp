@@ -26,6 +26,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/warehouse_request_scope_fixture.dart';
 
 const _arrivalTaskId = '20000000-0000-0000-0000-000000000001';
 const _finalTaskId = '10000000-0000-0000-0000-000000000001';
@@ -248,11 +249,11 @@ void main() {
 
       await tester.tap(find.text('待登记入库'));
       await tester.pump();
-      expect(find.text('先入库后质检(1)'), findsOneWidget);
-      expect(find.text('先质检后入库(1)'), findsOneWidget);
+      expect(find.text('批量登记（先入库后质检）'), findsOneWidget);
+      expect(find.text('批量登记（先质检后入库）'), findsOneWidget);
 
       // 「先入库后质检(N)」：进批量登记页带 preStock=1。
-      await tester.tap(find.text('先入库后质检(1)'));
+      await tester.tap(find.text('批量登记（先入库后质检）'));
       await tester.pumpAndSettle();
       expect(find.byType(_RegistrationRouteProbe), findsOneWidget);
       var location = tester
@@ -272,11 +273,11 @@ void main() {
       // 未办理直接返回：列表刷新清空勾选，重新勾选后改点「先质检后入库(N)」带 preStock=0。
       await tester.tap(find.byKey(const Key('leave-batch-route')));
       await tester.pumpAndSettle();
-      expect(find.text('先质检后入库(1)'), findsNothing);
+      expect(find.text('批量登记（先质检后入库）'), findsNothing);
       await tester.tap(find.text('待登记入库'));
       await tester.pump();
-      expect(find.text('先质检后入库(1)'), findsOneWidget);
-      await tester.tap(find.text('先质检后入库(1)'));
+      expect(find.text('批量登记（先质检后入库）'), findsOneWidget);
+      await tester.tap(find.text('批量登记（先质检后入库）'));
       await tester.pumpAndSettle();
       location = tester
           .widget<_RegistrationRouteProbe>(find.byType(_RegistrationRouteProbe))
@@ -302,6 +303,11 @@ Widget _testApp({
   Set<String> extraPermissions = const {},
 }) => ProviderScope(
   overrides: [
+    ...warehouseRequestScopeFixture(
+      api: api,
+      includeClient: false,
+      includeBadges: false,
+    ),
     localServerReachableProvider.overrideWith(
       (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
     ),

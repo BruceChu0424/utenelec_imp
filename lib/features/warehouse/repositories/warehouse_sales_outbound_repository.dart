@@ -41,6 +41,7 @@ abstract interface class WarehouseSalesOutboundGateway {
     Map<String, String>? stockPlaces,
     Map<String, String?>? lineWarehouses,
     Map<String, double>? lineWeights,
+    List<String>? itemIds,
   });
 }
 
@@ -82,7 +83,10 @@ class WarehouseSalesOutboundRepository
     }
     if (_trimmed(billNo) case final value?) query['billNo'] = value;
     final json = await api.get(_base, query: query);
-    return PagedResult.fromJson(json, WarehouseSalesOutboundSummary.fromJson);
+    return PagedResult.fromJsonResponsive(
+      json,
+      WarehouseSalesOutboundSummary.fromJson,
+    );
   }
 
   @override
@@ -119,6 +123,7 @@ class WarehouseSalesOutboundRepository
     Map<String, String>? stockPlaces,
     Map<String, String?>? lineWarehouses,
     Map<String, double>? lineWeights,
+    List<String>? itemIds,
   }) async {
     final lineIds = <String>{
       ...?stockPlaces?.keys,
@@ -127,6 +132,7 @@ class WarehouseSalesOutboundRepository
     };
     final body = <String, dynamic>{
       'targetStatus': targetStatus.trim().toUpperCase(),
+      'itemIds': ?itemIds,
       if (stockPlaces != null || lineWarehouses != null || lineWeights != null)
         'stockPlaces': [
           for (final lineId in lineIds)

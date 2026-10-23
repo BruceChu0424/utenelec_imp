@@ -1,9 +1,12 @@
 package com.uten.imp.common.mastercode;
 
 import jakarta.persistence.EntityManager;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.UUID;
 
 /**
  * 主档/系统流水编号自动生成：{@code [前缀][顺序号]}，顺序号位数由 {@link MasterCodePrefix#width()} 决定
@@ -18,7 +21,9 @@ import org.springframework.transaction.annotation.Transactional;
  * 供应商改号由 {@link CategoryDrivenCodeService} 负责，不能套用“update 永不改号”的规则。
  *
  * <p>V279 的全局预约表是跨主档、单据和系统号的最终唯一性权威：规范化后的完整编号一经使用即
- * 终身占用，软删后也不复用。各业务表的局部索引和服务层查重只用于更早给出友好错误。
+ * 终身占用。V911 对从未业务使用且有完整生命周期证明的已删货品提供窄例外，由
+ * CategoryDrivenCodeService 的新货品入口受控登记释放；本固定编号服务及其它业务域不放宽。
+ * 各业务表的局部索引和服务层查重只用于更早给出友好错误。
  * 编号不是关联身份，关系仍只保存 UUID。
  *
  * @see MasterCodePrefix
@@ -30,6 +35,32 @@ public class MasterCodeService {
     private static final int MAX_GLOBAL_COLLISION_RETRIES = 1024;
 
     private final EntityManager em;
+
+    /** Empty on create allocates; empty on edit keeps the current display code. */
+    @Transactional
+    public String resolveMutableCode(MasterCodePrefix prefix, String requested,
+                                     UUID entityId, String currentCode) {
+        return resolveMutableCode(prefix, requested, entityId, currentCode, false);
+    }
+
+    /** Internal version recovery may restore the original UUID from its soft-deleted state. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public String resolveMutableCodeForRestore(MasterCodePrefix prefix, String requested,
+                                              UUID entityId, String currentCode) {
+        if (entityId == null) throw new ApiException(ErrorCode.CONFLICT, "编号恢复缺少原资料身份");
+        return resolveMutableCode(prefix, requested, entityId, currentCode, true);
+    }
+
+    private String resolveMutableCode(MasterCodePrefix prefix, String requested, UUID entityId,
+                                     String currentCode, boolean includeDeleted) {
+        if (requested == null || requested.isBlank()) {
+            return currentCode == null ? nextCode(prefix) : currentCode;
+        }
+        var result = MasterIdentifierAvailabilityService.check(em,
+                MasterIdentifierAvailabilityService.Domain.valueOf(prefix.name()), requested, entityId, includeDeleted);
+        if (!result.available()) throw new ApiException(ErrorCode.CONFLICT, result.message());
+        return result.normalizedCode();
+    }
 
     /**
      * 分配并返回下一个完整主档编号。

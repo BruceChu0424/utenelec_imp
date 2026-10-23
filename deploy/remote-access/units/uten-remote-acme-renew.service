@@ -1,0 +1,30 @@
+[Unit]
+Description=Renew company-owned employee and CSR-only DR TLS certificates
+After=network-online.target
+Wants=network-online.target
+OnFailure=uten-alert@%n.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/bin/python3 -I /usr/local/lib/uten-remote/remote_tls.py renew
+TimeoutStartSec=20min
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER
+# The fixed SSH client uses the root-only cert-publisher identity; cloud grants
+# only the forced certificate receiver, never a shell or arbitrary destination.
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+InaccessiblePaths=-/etc/uten-imp -/etc/uten-imp-postgres -/etc/uten-imp-migrator -/var/lib/postgresql -/run/postgresql -/data -/srv/uten-backup
+InaccessiblePaths=-/etc/uten-remote-ca/transport-server-ca.key -/etc/uten-remote-ca/cloud-client-ca.key -/etc/uten-remote-ca/employee-commissioning-ca.key
+ReadWritePaths=/etc/uten-remote-ca /etc/uten-remote/tls /var/lib/uten-remote-acme /var/log/uten-remote-acme
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+

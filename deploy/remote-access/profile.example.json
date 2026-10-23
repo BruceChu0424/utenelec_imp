@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "public_domain": "erp.example.com",
+  "dr_public_domain": "admin.erp.example.com",
   "transport_server_name": "transport.uten.internal",
   "cloud_public_ipv4": "REPLACE_WITH_EIP",
   "cloud_wireguard_ipv4": "10.77.0.1",
@@ -9,5 +10,7 @@
   "company_wireguard_public_key": "REPLACE_WITH_PUBLIC_KEY_ONLY",
   "admin_ipv4_cidr": "REPLACE_WITH_ADMIN_PUBLIC_IP/32",
   "acme_account_uri": "https://acme-v02.api.letsencrypt.org/acme/acct/REPLACE",
-  "remote_backend_port": 8082
+  "remote_backend_port": 8082,
+  "cloud_nginx_stream_module": "/usr/lib64/nginx/modules/ngx_stream_module.so",
+  "company_nginx_stream_module": "/usr/lib/nginx/modules/ngx_stream_module.so"
 }

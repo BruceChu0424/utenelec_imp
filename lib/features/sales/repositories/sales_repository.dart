@@ -122,7 +122,7 @@ class SalesRepository {
       if (order != null && order.isNotEmpty) 'order': order,
     };
     final json = await api.get(_base, query: query);
-    return PagedResult.fromJson(json, SalesDocListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, SalesDocListItem.fromJson);
   }
 
   /// 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径（按 docType
@@ -233,7 +233,7 @@ class SalesRepository {
         if (billNo != null && billNo.trim().isNotEmpty) 'billNo': billNo.trim(),
       },
     );
-    return PagedResult.fromJson(json, SalesOrderProgressRow.fromJson);
+    return PagedResult.fromJsonResponsive(json, SalesOrderProgressRow.fromJson);
   }
 
   /// 订单进度订单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。

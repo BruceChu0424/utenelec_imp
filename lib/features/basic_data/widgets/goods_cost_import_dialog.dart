@@ -1,6 +1,9 @@
-import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -15,9 +18,15 @@ class GoodsCostImportDialog extends StatefulWidget {
     super.key,
     required this.preview,
     required this.lines,
+    this.filename,
+    this.fileNumber = 1,
+    this.fileCount = 1,
   });
   final Map<String, dynamic> preview;
   final List<Map<String, dynamic>> lines;
+  final String? filename;
+  final int fileNumber;
+  final int fileCount;
   @override
   State<GoodsCostImportDialog> createState() => _GoodsCostImportDialogState();
 }
@@ -85,202 +94,218 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => UtenAlertDialog(
-    maxWidth: 1450,
-    scrollable: false,
-    title: Text(_l.costImport),
-    content: SizedBox(
-      width: 1450,
-      height: MediaQuery.sizeOf(context).height * .72,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(_l.costImportReview),
-          if (widget.preview['warnings'] is List)
-            Tooltip(
-              message: (widget.preview['warnings'] as List).join('\n'),
-              child: Text(
-                (widget.preview['warnings'] as List).join(' · '),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
+  Widget build(BuildContext context) => Scaffold(
+    appBar: UtenAppBar(
+      title: _l.costImport,
+      leading: UtenBackButton(onPressed: () => Navigator.pop(context)),
+      showPagePermissionAction: false,
+    ),
+    body: SafeArea(
+      child: UtenContentContainer.wide(
+        selectable: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (widget.filename != null)
+              SelectableText(
+                '${widget.fileNumber}/${widget.fileCount}  ${widget.filename}',
+              ),
+            Text(_l.costImportReview),
+            if (widget.preview['warnings'] is List)
+              Tooltip(
+                message: (widget.preview['warnings'] as List).join('\n'),
+                child: Text(
+                  (widget.preview['warnings'] as List).join(' · '),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            const SizedBox(height: 12),
+            UtenDropdownField(
+              label: _l.costImportBlock,
+              value: _blockKey,
+              allowClear: false,
+              items: [
+                for (final b in _blocks)
+                  UtenDropdownItem(
+                    value: costText(b['key']),
+                    label: costText(b['label']) ?? '—',
+                  ),
+              ],
+              onChanged: (v) {
+                if (v != null) setState(() => _choose(v));
+              },
+            ),
+            if (_error != null)
+              Text(
+                _error!,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
-            ),
-          const SizedBox(height: 12),
-          UtenDropdownField(
-            label: _l.costImportBlock,
-            value: _blockKey,
-            allowClear: false,
-            items: [
-              for (final b in _blocks)
-                UtenDropdownItem(
-                  value: costText(b['key']),
-                  label: costText(b['label']) ?? '—',
-                ),
-            ],
-            onChanged: (v) {
-              if (v != null) setState(() => _choose(v));
-            },
-          ),
-          if (_error != null)
-            Text(
-              _error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: MasterDataTableView<_CostImportRow>(
-              key: ValueKey(_blockKey),
-              tableKey: 'master.goods.cost.import',
-              columns: [
-                MasterColumnDef(
-                  key: 'reviewed',
-                  label: _l.costImportReviewed,
-                  width: 90,
-                  value: (r) => r.reviewed ? _l.costYes : _l.costNo,
-                  // 2026-10-06 全站表格行高统一：Checkbox 默认 40 点击区会把行撑高，
-                  // 编辑行行高以 39 输入控件为准——收紧点击区到控件本身。
-                  cellBuilder: (_, r) => Theme(
-                    data: Theme.of(context).copyWith(
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: Checkbox(
-                      key: ValueKey('cost-import-reviewed-${r.source['key']}'),
-                      value: r.reviewed,
-                      onChanged: (v) => setState(() => r.reviewed = v == true),
-                    ),
-                  ),
-                ),
-                MasterColumnDef(
-                  key: 'name',
-                  label: _l.costGoodsName,
-                  width: 230,
-                  value: (r) => costText(r.source['name']),
-                  cellBuilder: (_, r) => Tooltip(
-                    message: costText(r.source['formula']) ?? '',
-                    child: _text(r.source['name']),
-                  ),
-                ),
-                MasterColumnDef(
-                  key: 'code',
-                  label: _l.costGoodsCode,
-                  width: 150,
-                  value: (r) => costText(r.source['code']),
-                  cellBuilder: (_, r) => _text(r.source['code']),
-                ),
-                MasterColumnDef(
-                  key: 'unit',
-                  label: _l.costUnit,
-                  width: 100,
-                  value: (r) => costText(r.source['unit']),
-                  cellBuilder: (_, r) => _text(r.source['unit']),
-                ),
-                MasterColumnDef(
-                  key: 'kind',
-                  label: _l.costImportKind,
-                  width: 180,
-                  value: (r) => r.kind,
-                  cellBuilder: (_, r) => UtenDropdownField(
-                    hintText: _l.costImportKind,
-                    value: r.kind,
-                    dense: true,
-                    allowClear: false,
-                    items: [
-                      UtenDropdownItem(
-                        value: 'MATERIAL',
-                        label: _l.costImportMaterial,
+            const SizedBox(height: 12),
+            Expanded(
+              child: MasterDataTableView<_CostImportRow>(
+                key: ValueKey(_blockKey),
+                tableKey: 'master.goods.cost.import',
+                columns: [
+                  MasterColumnDef(
+                    key: 'reviewed',
+                    label: _l.costImportReviewed,
+                    width: 90,
+                    value: (r) => r.reviewed ? _l.costYes : _l.costNo,
+                    // 2026-10-06 全站表格行高统一：Checkbox 默认 40 点击区会把行撑高，
+                    // 编辑行行高以 39 输入控件为准——收紧点击区到控件本身。
+                    cellBuilder: (_, r) => Theme(
+                      data: Theme.of(context).copyWith(
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                      UtenDropdownItem(value: 'FEE', label: _l.costImportFee),
-                      UtenDropdownItem(value: 'SKIP', label: _l.costImportSkip),
-                    ],
-                    onChanged: (v) => setState(() {
-                      r.kind = v!;
-                      r.reviewed = false;
-                      if (v == 'FEE') {
-                        r.price.text = costText(r.source['amount']) ?? '';
-                      }
-                    }),
+                      child: Checkbox(
+                        key: ValueKey(
+                          'cost-import-reviewed-${r.source['key']}',
+                        ),
+                        value: r.reviewed,
+                        onChanged: (v) =>
+                            setState(() => r.reviewed = v == true),
+                      ),
+                    ),
                   ),
-                ),
-                MasterColumnDef(
-                  key: 'target',
-                  label: _l.costImportTarget,
-                  width: 300,
-                  value: (r) => r.targetPath,
-                  cellBuilder: (_, r) => r.kind == 'MATERIAL'
-                      ? UtenDropdownField(
-                          key: ValueKey(
-                            'cost-import-target-${r.source['key']}',
-                          ),
-                          hintText: _l.costImportTarget,
-                          value: r.targetPath,
-                          dense: true,
-                          searchable: true,
-                          items: [
-                            for (final line in widget.lines)
-                              UtenDropdownItem(
-                                value: costText(line['path']),
-                                label:
-                                    '${line['goodsName'] ?? ''} · ${line['goodsCode'] ?? ''}',
-                              ),
-                          ],
-                          onChanged: (v) => setState(() {
-                            r.targetPath = v;
-                            r.reviewed = false;
-                          }),
-                        )
-                      : _text('—'),
-                ),
-                MasterColumnDef(
-                  key: 'price',
-                  label: _l.costPrice,
-                  width: 150,
-                  type: 'number',
-                  value: (r) => r.price.text,
-                  exactValueOf: (r) => r.kind == 'SKIP' ? null : r.price.text,
-                  exactListenableOf: (r) => r.price,
-                  cellBuilder: (_, r) => r.kind == 'SKIP'
-                      ? _text('—')
-                      : _input(r.price, _l.costPrice),
-                ),
-                MasterColumnDef(
-                  key: 'rate',
-                  label: _l.costPriceUnitRate,
-                  width: 170,
-                  type: 'number',
-                  value: (r) => r.rate.text,
-                  exactValueOf: (r) =>
-                      r.kind == 'MATERIAL' ? r.rate.text : null,
-                  exactListenableOf: (r) => r.rate,
-                  cellBuilder: (_, r) => r.kind == 'MATERIAL'
-                      ? _input(r.rate, _l.costPriceUnitRate)
-                      : _text('—'),
-                ),
-                MasterColumnDef(
-                  key: 'reason',
-                  label: _l.costNotes,
-                  width: 250,
-                  value: (r) => r.reason.text,
-                  cellBuilder: (_, r) => _input(r.reason, _l.costNotes),
-                ),
-              ],
-              items: _rows,
-              facets: const {},
-              nullCounts: const {},
-              filters: const {},
-              onFilterChanged: (_, _) {},
+                  MasterColumnDef(
+                    key: 'name',
+                    label: _l.costGoodsName,
+                    width: 230,
+                    value: (r) => costText(r.source['name']),
+                    cellBuilder: (_, r) => Tooltip(
+                      message: costText(r.source['formula']) ?? '',
+                      child: _text(r.source['name']),
+                    ),
+                  ),
+                  MasterColumnDef(
+                    key: 'code',
+                    label: _l.costGoodsCode,
+                    width: 150,
+                    value: (r) => costText(r.source['code']),
+                    cellBuilder: (_, r) => _text(r.source['code']),
+                  ),
+                  MasterColumnDef(
+                    key: 'unit',
+                    label: _l.costUnit,
+                    width: 100,
+                    value: (r) => costText(r.source['unit']),
+                    cellBuilder: (_, r) => _text(r.source['unit']),
+                  ),
+                  MasterColumnDef(
+                    key: 'kind',
+                    label: _l.costImportKind,
+                    width: 180,
+                    value: (r) => r.kind,
+                    cellBuilder: (_, r) => UtenDropdownField(
+                      hintText: _l.costImportKind,
+                      value: r.kind,
+                      dense: true,
+                      allowClear: false,
+                      items: [
+                        UtenDropdownItem(
+                          value: 'MATERIAL',
+                          label: _l.costImportMaterial,
+                        ),
+                        UtenDropdownItem(value: 'FEE', label: _l.costImportFee),
+                        UtenDropdownItem(
+                          value: 'SKIP',
+                          label: _l.costImportSkip,
+                        ),
+                      ],
+                      onChanged: (v) => setState(() {
+                        r.kind = v!;
+                        r.reviewed = false;
+                        if (v == 'FEE') {
+                          r.price.text = costText(r.source['amount']) ?? '';
+                        }
+                      }),
+                    ),
+                  ),
+                  MasterColumnDef(
+                    key: 'target',
+                    label: _l.costImportTarget,
+                    width: 300,
+                    value: (r) => r.targetPath,
+                    cellBuilder: (_, r) => r.kind == 'MATERIAL'
+                        ? UtenDropdownField(
+                            key: ValueKey(
+                              'cost-import-target-${r.source['key']}',
+                            ),
+                            hintText: _l.costImportTarget,
+                            value: r.targetPath,
+                            dense: true,
+                            searchable: true,
+                            items: [
+                              for (final line in widget.lines)
+                                UtenDropdownItem(
+                                  value: costText(line['path']),
+                                  label:
+                                      '${line['goodsName'] ?? ''} · ${line['goodsCode'] ?? ''}',
+                                ),
+                            ],
+                            onChanged: (v) => setState(() {
+                              r.targetPath = v;
+                              r.reviewed = false;
+                            }),
+                          )
+                        : _text('—'),
+                  ),
+                  MasterColumnDef(
+                    key: 'price',
+                    label: _l.costPrice,
+                    width: 150,
+                    type: 'number',
+                    value: (r) => r.price.text,
+                    exactValueOf: (r) => r.kind == 'SKIP' ? null : r.price.text,
+                    exactListenableOf: (r) => r.price,
+                    cellBuilder: (_, r) => r.kind == 'SKIP'
+                        ? _text('—')
+                        : _input(r.price, _l.costPrice),
+                  ),
+                  MasterColumnDef(
+                    key: 'rate',
+                    label: _l.costPriceUnitRate,
+                    width: 170,
+                    type: 'number',
+                    value: (r) => r.rate.text,
+                    exactValueOf: (r) =>
+                        r.kind == 'MATERIAL' ? r.rate.text : null,
+                    exactListenableOf: (r) => r.rate,
+                    cellBuilder: (_, r) => r.kind == 'MATERIAL'
+                        ? _input(r.rate, _l.costPriceUnitRate)
+                        : _text('—'),
+                  ),
+                  MasterColumnDef(
+                    key: 'reason',
+                    label: _l.costNotes,
+                    width: 250,
+                    value: (r) => r.reason.text,
+                    cellBuilder: (_, r) => _input(r.reason, _l.costNotes),
+                  ),
+                ],
+                items: _rows,
+                facets: const {},
+                nullCounts: const {},
+                filters: const {},
+                onFilterChanged: (_, _) {},
+                bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: Text(_l.commonCancel),
-      ),
-      UtenButton(onPressed: _apply, child: Text(_l.costImportApply)),
-    ],
+    floatingActionButton: UtenFloatingActionGroup(
+      children: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(_l.commonCancel),
+        ),
+        UtenButton(onPressed: _apply, child: Text(_l.costImportApply)),
+      ],
+    ),
   );
   @override
   void dispose() {

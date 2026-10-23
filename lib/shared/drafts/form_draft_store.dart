@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/performance/responsive_data_codec.dart';
+import '../../core/performance/json_value_snapshot.dart';
+import '../../core/performance/ui_work_budget.dart';
 import '../../core/network/server_config.dart';
 import '../../core/ui/human_error_message.dart';
 import '../../core/router/route_access_policy.dart';
@@ -127,7 +130,9 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       final drafts = <FormDraft>[];
       for (final record in records.entries) {
         try {
-          final json = jsonDecode(record.value) as Map<String, dynamic>;
+          final json =
+              await decodeJsonResponsive(record.value) as Map<String, dynamic>;
+          if (generation != _generation) return;
           if (!isActiveFormDraftRecord(json)) continue;
           final draft = FormDraft.fromJson(json);
           if (record.key != '$prefix${draft.id}') continue;
@@ -249,7 +254,8 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
         final raw = await storage.read('$prefix$id');
         if (generation != _generation) throw StateError('登录身份已变化');
         if (raw == null) return null;
-        final json = jsonDecode(raw) as Map<String, dynamic>;
+        final json =
+            await _decodeForGeneration(raw, generation) as Map<String, dynamic>;
         if (!isActiveFormDraftRecord(json)) return null;
         final draft = FormDraft.fromJson(json);
         if (draft.id != id ||
@@ -298,7 +304,9 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       final existing = await storage.read(key);
       if (generation != _generation) throw StateError('登录身份已变化');
       if (existing == null) throw const FormDraftConflict();
-      final currentJson = jsonDecode(existing) as Map<String, dynamic>;
+      final currentJson =
+          await _decodeForGeneration(existing, generation)
+              as Map<String, dynamic>;
       if (!isActiveFormDraftRecord(currentJson)) {
         throw const FormDraftConflict();
       }
@@ -327,9 +335,10 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
           frozen['server'] != _ownerServer ||
           frozen['userId'] != _ownerScope?.userId ||
           frozen['actorId'] != _ownerScope?.actorId ||
-          sha256
-                  .convert(utf8.encode(frozen['bodyJson'] as String))
-                  .toString() !=
+          await _hashTextForGeneration(
+                frozen['bodyJson'] as String,
+                generation,
+              ) !=
               frozen['bodyHash'] ||
           receipt['status'] != 'COMMITTED' ||
           receipt['fullPayloadVersion'] is! int ||
@@ -342,7 +351,10 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
         throw StateError('原请求证明与确认回执不一致');
       }
       try {
-        final body = jsonDecode(frozen['bodyJson'] as String);
+        final body = await _decodeForGeneration(
+          frozen['bodyJson'] as String,
+          generation,
+        );
         if (body is! Map ||
             body['idempotencyKey'] != frozen['idempotencyKey']) {
           throw const FormatException('原请求标识不一致');
@@ -367,7 +379,7 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       if (!await storage.compareAndSet(
         key,
         expectedValue: existing,
-        value: jsonEncode(savedJson),
+        value: await _encodeForGeneration(savedJson, generation),
       )) {
         throw const FormDraftConflict();
       }
@@ -408,7 +420,9 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       final existing = await storage.read(key);
       if (_closed || generation != _generation) throw StateError('登录身份或权限已变化');
       if (existing == null) throw const FormDraftConflict();
-      final json = jsonDecode(existing) as Map<String, dynamic>;
+      final json =
+          await _decodeForGeneration(existing, generation)
+              as Map<String, dynamic>;
       if (!isActiveFormDraftRecord(json)) throw const FormDraftConflict();
       final current = FormDraft.fromJson(json);
       final frozen = current.data[dailyReportCreateCommandKey];
@@ -420,15 +434,19 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
           frozen['bodyJson'] is! String ||
           frozen['idempotencyKey'] != expectedOperationKey ||
           frozen['bodyHash'] != expectedBodyHash ||
-          sha256
-                  .convert(utf8.encode(frozen['bodyJson'] as String))
-                  .toString() !=
+          await _hashTextForGeneration(
+                frozen['bodyJson'] as String,
+                generation,
+              ) !=
               expectedBodyHash ||
           current.data['createdReportId'] != null ||
           current.data[dailyReportCreateReceiptKey] != null) {
         throw const FormDraftConflict();
       }
-      final body = jsonDecode(frozen['bodyJson'] as String);
+      final body = await _decodeForGeneration(
+        frozen['bodyJson'] as String,
+        generation,
+      );
       if (body is! Map || body['idempotencyKey'] != expectedOperationKey) {
         throw const FormDraftConflict();
       }
@@ -448,7 +466,7 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       if (!await storage.compareAndSet(
         key,
         expectedValue: existing,
-        value: jsonEncode(savedJson),
+        value: await _encodeForGeneration(savedJson, generation),
       )) {
         throw const FormDraftConflict();
       }
@@ -487,7 +505,9 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       if (existing == null) {
         throw const FormDraftConflict();
       }
-      final json = jsonDecode(existing) as Map<String, dynamic>;
+      final json =
+          await _decodeForGeneration(existing, generation)
+              as Map<String, dynamic>;
       if (!isActiveFormDraftRecord(json)) {
         throw const FormDraftConflict();
       }
@@ -511,13 +531,17 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
           parent['requestHash'] != frozen['requestHash'] ||
           parent['fullPayloadHash'] != frozen['fullPayloadHash'] ||
           frozen['bodyJson'] is! String ||
-          sha256
-                  .convert(utf8.encode(frozen['bodyJson'] as String))
-                  .toString() !=
+          await _hashTextForGeneration(
+                frozen['bodyJson'] as String,
+                generation,
+              ) !=
               frozen['bodyHash']) {
         throw const FormDraftConflict();
       }
-      final originalBody = jsonDecode(frozen['bodyJson'] as String);
+      final originalBody = await _decodeForGeneration(
+        frozen['bodyJson'] as String,
+        generation,
+      );
       if (originalBody is! Map ||
           originalBody['idempotencyKey'] != frozen['idempotencyKey']) {
         throw const FormDraftConflict();
@@ -556,10 +580,14 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
             attempt.ownerId != reportId ||
             !attempt.belongsTo(identity) ||
             !attempt.matchesNativeReceipt(row) ||
-            !attempt.matchesFile(
+            !await attempt.matchesFileResponsive(
               name: item['name'] as String,
               contentType: item['contentType'] as String,
-              bytes: base64Decode(item['bytes'] as String),
+              bytes: await decodeBase64Responsive(
+                item['bytes'] as String,
+                isCurrent: () => !_closed && generation == _generation,
+              ),
+              isCurrent: () => !_closed && generation == _generation,
             )) {
           throw StateError('原附件身份、父单或文件指纹与回执不一致');
         }
@@ -595,7 +623,7 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       if (!await storage.compareAndSet(
         key,
         expectedValue: existing,
-        value: jsonEncode(savedJson),
+        value: await _encodeForGeneration(savedJson, generation),
       )) {
         throw const FormDraftConflict();
       }
@@ -696,6 +724,8 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
   Future<T> _safeDraftErrors<T>(Future<T> Function() operation) async {
     try {
       return await operation();
+    } on UiWorkCancelled {
+      throw StateError('登录身份或权限已变化，原草稿继续保留');
     } on FormatException {
       throw const FormDraftConflict();
     } on TypeError {
@@ -728,7 +758,7 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       if (proposed is! Map) throw const FormDraftConflict();
       for (final entry in proposed.entries) {
         if (!frozen.containsKey(entry.key) ||
-            jsonEncode(entry.value) != jsonEncode(frozen[entry.key])) {
+            !jsonValuesEqual(entry.value, frozen[entry.key])) {
           throw const FormDraftConflict();
         }
       }
@@ -764,7 +794,8 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       if (generation != _generation) throw StateError('登录身份已变化');
       final current = existing == null
           ? null
-          : jsonDecode(existing) as Map<String, dynamic>;
+          : await _decodeForGeneration(existing, generation)
+                as Map<String, dynamic>;
       if (current != null && current['id'] != draft.id) {
         throw const FormDraftConflict();
       }
@@ -797,7 +828,7 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       final written = await storage.compareAndSet(
         key,
         expectedValue: existing,
-        value: jsonEncode(saved.toJson()),
+        value: await _encodeForGeneration(saved.toJson(), generation),
       );
       if (!written) throw const FormDraftConflict();
       if (generation == _generation) {
@@ -835,7 +866,9 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       final existing = await storage.read(key);
       if (generation != _generation) throw StateError('登录身份已变化');
       if (existing != null) {
-        final current = jsonDecode(existing) as Map<String, dynamic>;
+        final current =
+            await _decodeForGeneration(existing, generation)
+                as Map<String, dynamic>;
         if (current['id'] != id) throw const FormDraftConflict();
         if (isCleanDiscardedFormDraftRecord(current)) {
           // Nothing left to retain: the editor already returned to its initial values.
@@ -859,13 +892,13 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
         final deleted = await storage.compareAndSet(
           key,
           expectedValue: existing,
-          value: jsonEncode({
+          value: await _encodeForGeneration({
             // Non-history test/custom storage must also retain original bytes.
             if (storage is! FormDraftHistoryStorage) ...current,
             'version': 1, 'id': id, 'completed': true,
             'historyAction': 'deleted', 'revision': const Uuid().v4(),
             'completedAt': DateTime.now().toUtc().toIso8601String(),
-          }),
+          }, generation),
         );
         if (!deleted) throw const FormDraftConflict();
       }
@@ -903,7 +936,9 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       final existing = await storage.read(key);
       if (generation != _generation) throw StateError('登录身份已变化');
       if (existing != null) {
-        final current = jsonDecode(existing) as Map<String, dynamic>;
+        final current =
+            await _decodeForGeneration(existing, generation)
+                as Map<String, dynamic>;
         if (current['id'] != id) throw const FormDraftConflict();
         if (isCleanDiscardedFormDraftRecord(current)) {
           throw const FormDraftConflict();
@@ -920,7 +955,10 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
         final discarded = await storage.compareAndSet(
           key,
           expectedValue: existing,
-          value: jsonEncode(cleanDiscardedFormDraftRecord(id)),
+          value: await _encodeForGeneration(
+            cleanDiscardedFormDraftRecord(id),
+            generation,
+          ),
         );
         if (!discarded) throw const FormDraftConflict();
       }
@@ -956,7 +994,8 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       if (generation != _generation) throw StateError('登录身份已变化');
       final current = existing == null
           ? null
-          : jsonDecode(existing) as Map<String, dynamic>;
+          : await _decodeForGeneration(existing, generation)
+                as Map<String, dynamic>;
       if (current != null && current['id'] != id) {
         throw const FormDraftConflict();
       }
@@ -975,7 +1014,7 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
         final completed = await storage.compareAndSet(
           key,
           expectedValue: existing,
-          value: jsonEncode({
+          value: await _encodeForGeneration({
             if (storage is! FormDraftHistoryStorage && current != null)
               ...current,
             'version': 1,
@@ -984,7 +1023,7 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
             'historyAction': 'completed',
             'revision': const Uuid().v4(),
             'completedAt': DateTime.now().toUtc().toIso8601String(),
-          }),
+          }, generation),
         );
         if (!completed) throw const FormDraftConflict();
       }
@@ -992,6 +1031,55 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
         state = state.where((item) => item.id != id).toList();
       }
     });
+  }
+
+  void _checkCodecGeneration(int generation) {
+    if (_closed || generation != _generation) {
+      throw StateError('登录身份或权限已变化，草稿未写入其他账号');
+    }
+  }
+
+  Future<String> _hashTextForGeneration(String value, int generation) async {
+    _checkCodecGeneration(generation);
+    final encoded = await encodeUtf8Responsive(
+      value,
+      isCurrent: () => !_closed && generation == _generation,
+    );
+    _checkCodecGeneration(generation);
+    final hash = await sha256HexResponsive(
+      encoded,
+      isCurrent: () => !_closed && generation == _generation,
+    );
+    _checkCodecGeneration(generation);
+    return hash;
+  }
+
+  Future<Object?> _decodeForGeneration(String value, int generation) async {
+    _checkCodecGeneration(generation);
+    try {
+      final decoded = await decodeJsonResponsive(
+        value,
+        isCurrent: () => !_closed && generation == _generation,
+      );
+      _checkCodecGeneration(generation);
+      return decoded;
+    } on UiWorkCancelled {
+      throw StateError('登录身份或权限已变化，原草稿继续保留');
+    }
+  }
+
+  Future<String> _encodeForGeneration(Object? value, int generation) async {
+    _checkCodecGeneration(generation);
+    try {
+      final encoded = await encodeJsonResponsive(
+        value,
+        isCurrent: () => !_closed && generation == _generation,
+      );
+      _checkCodecGeneration(generation);
+      return encoded;
+    } on UiWorkCancelled {
+      throw StateError('登录身份或权限已变化，原草稿继续保留');
+    }
   }
 
   void _validateId(String id) {

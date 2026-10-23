@@ -9,6 +9,147 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get clientUpdateDetails => '자세히 보기';
+
+  @override
+  String get clientUpdateNewTitle => '새 버전이 있습니다';
+
+  @override
+  String get clientUpdateSubtitle => '새 버전을 자동으로 확인하고 이 기기의 앱을 업데이트합니다';
+
+  @override
+  String get clientUpdateCurrent => '설치된 버전';
+
+  @override
+  String get clientUpdateLatest => '최신 버전';
+
+  @override
+  String get clientUpdateNow => '지금 업데이트';
+
+  @override
+  String get clientUpdateLater => '나중에';
+
+  @override
+  String get clientUpdateCheck => '업데이트 확인';
+
+  @override
+  String get clientUpdateChecking => '업데이트 확인 중';
+
+  @override
+  String get clientUpdateUpToDate => '최신 버전을 사용 중입니다';
+
+  @override
+  String get clientUpdateDownloading => '업데이트 다운로드 중';
+
+  @override
+  String get clientUpdateInstalling => '업데이트 설치 중';
+
+  @override
+  String get clientUpdateWindowsHint =>
+      '업데이트를 자동으로 다운로드한 후 앱을 종료하고 다시 시작합니다. 기기 설정과 저장된 초안은 유지됩니다. 먼저 작업을 저장해 주세요.';
+
+  @override
+  String get clientUpdateAndroidHint =>
+      '다운로드 후 시스템 설치 확인 화면이 열립니다. 설치 권한이 필요한 경우 허용한 뒤 돌아와 다시 시도해 주세요.';
+
+  @override
+  String get clientUpdateStoreHint => '공식 앱 스토어가 열립니다. 스토어에서 업데이트를 완료해 주세요.';
+
+  @override
+  String get clientUpdateUnsupported => '현재 운영 체제에서는 앱 내 업데이트를 지원하지 않습니다.';
+
+  @override
+  String get clientUpdateFailed =>
+      '업데이트를 완료하지 못했습니다. 네트워크와 설치 권한을 확인한 뒤 다시 시도해 주세요.';
+
+  @override
+  String get clientUpdateInstallerOpened =>
+      '시스템 설치 확인 화면이 열렸습니다. 안내에 따라 업데이트를 완료해 주세요.';
+
+  @override
+  String get clientUpdateNotes => '업데이트 내용';
+
+  @override
+  String get clientUpdateNoNotes => '이 버전의 업데이트 안내가 없습니다.';
+
+  @override
+  String get clientUpdatePublishTitle => '클라이언트 버전 배포';
+
+  @override
+  String get clientUpdatePublishHint =>
+      '플랫폼별 새 버전을 업로드하고 배포합니다. 직원의 클라이언트가 자동으로 확인하고 업데이트를 안내합니다.';
+
+  @override
+  String get clientUpdatePlatform => '플랫폼';
+
+  @override
+  String get clientUpdateArchitecture => '기기 아키텍처';
+
+  @override
+  String get clientUpdateVersion => '버전';
+
+  @override
+  String get clientUpdateBuild => '빌드 번호';
+
+  @override
+  String get clientUpdateStoreUrl => '공식 스토어 주소';
+
+  @override
+  String get clientUpdateChooseFile => '업데이트 패키지 선택';
+
+  @override
+  String get clientUpdatePublish => '업로드 및 배포';
+
+  @override
+  String get clientUpdatePublishing => '업로드 및 배포 중';
+
+  @override
+  String get clientUpdatePublished => '새 클라이언트 버전을 배포했습니다';
+
+  @override
+  String get clientUpdatePublishInvalid =>
+      '버전 정보를 모두 입력하고 기존 배포보다 높은 빌드 번호를 사용하세요. 해당 업데이트 패키지를 선택하거나 공식 스토어 주소를 입력하세요.';
+
+  @override
+  String get clientUpdatePackageHint =>
+      'Windows는 전용 업데이트 ZIP, Android는 정식 서명된 APK를 선택하세요. 배포할 때마다 빌드 번호를 높여야 합니다.';
+
+  @override
+  String get clientUpdateWithdraw => '배포 철회';
+
+  @override
+  String get clientUpdateWithdrawConfirm =>
+      '다른 기기는 이 버전을 더 이상 받지 않습니다. 이미 업데이트한 기기는 이전 버전으로 되돌아가지 않습니다. 배포를 철회하시겠습니까?';
+
+  @override
+  String get clientUpdateReleaseList => '클라이언트 배포 기록';
+
+  @override
+  String get clientUpdateClose => '닫기';
+
+  @override
+  String get clientUpdateRetry => '다시 시도';
+
+  @override
+  String get clientUpdateTitle => '소프트웨어 업데이트';
+
+  @override
+  String get masterStatusDisableTitle => '비활성화 확인';
+
+  @override
+  String get masterStatusEnableTitle => '활성화 확인';
+
+  @override
+  String masterStatusDisableBody(String label, int count) {
+    return '$label의 항목 $count개를 비활성화하시겠습니까? 새 업무에 사용할 수 없으며 기존 문서와 변경 기록은 유지됩니다.';
+  }
+
+  @override
+  String masterStatusEnableBody(String label, int count) {
+    return '$label의 항목 $count개를 활성화하시겠습니까? 새 업무에 다시 사용할 수 있습니다.';
+  }
+
+  @override
   String get websiteInquirySeries => 'Product series';
 
   @override
@@ -11937,4 +12078,171 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get goodsBatchPasteAutoCode => '새 품목 코드는 자동으로 생성됩니다';
+
+  @override
+  String get importReviewSourceRow => '파일 행';
+
+  @override
+  String get importReviewIdentity => '품목';
+
+  @override
+  String get importReviewMatchReason => '일치 기준';
+
+  @override
+  String get importReviewAction => '작업';
+
+  @override
+  String get importReviewEmptyValue => '미입력';
+
+  @override
+  String get importReviewOldValue => '기존 값';
+
+  @override
+  String get importReviewNewValue => '가져온 값';
+
+  @override
+  String get importReviewLegend =>
+      '빨간 취소선은 기존 값, 초록색은 가져온 값입니다. 선택한 충돌만 교체하며 빈 셀은 기존 값을 지우지 않습니다.';
+
+  @override
+  String get importReviewFillLegend =>
+      '누락된 값은 자동으로 채우고 기존 값은 유지합니다. 확인하면 자료를 추가하고 보완합니다.';
+
+  @override
+  String importReviewReplaceSelected(int count) {
+    return '선택 항목 교체 ($count)';
+  }
+
+  @override
+  String get importReviewIgnoreAll => '모든 충돌 무시';
+
+  @override
+  String get importReviewIgnoreExplanation =>
+      '무시는 충돌만 건너뜁니다. 새 품목과 누락 값은 계속 가져옵니다.';
+
+  @override
+  String get importReviewIgnoreRow => '이 행 무시';
+
+  @override
+  String get importReviewRestoreRow => '다시 검토';
+
+  @override
+  String get importReviewAutomaticFill => '자동 보완';
+
+  @override
+  String get importReviewIgnored => '충돌 무시됨';
+
+  @override
+  String get importReviewPending => '검토 대기';
+
+  @override
+  String get importReviewSelected => '교체 예정';
+
+  @override
+  String get importReviewConfirmFill => '보완 확인 및 가져오기';
+
+  @override
+  String get importReviewNoRows => '검토할 차이 없음';
+
+  @override
+  String get importReviewSelectAll => '모든 충돌 선택';
+
+  @override
+  String get goodsImportReviewTitle => '품목 가져오기 차이 검토';
+
+  @override
+  String get bomImportReviewTitle => '구성품 가져오기 차이 검토';
+
+  @override
+  String get importReviewOpen => '차이 검토 및 가져오기';
+
+  @override
+  String get importMatchCode => '코드 일치';
+
+  @override
+  String get importMatchUuid => '시스템 ID 일치';
+
+  @override
+  String get importMatchPathName => '동일 분류 및 이름';
+
+  @override
+  String importReviewSummary(
+    int added,
+    int filled,
+    int conflicts,
+    int unchanged,
+  ) {
+    return '신규 $added, 보완 $filled, 충돌 $conflicts, 동일 $unchanged';
+  }
+
+  @override
+  String importResultSummary(
+    int created,
+    int filled,
+    int updated,
+    int ignored,
+    int unchanged,
+  ) {
+    return '생성 $created, 보완 $filled, 교체 $updated, 무시 $ignored, 동일 $unchanged';
+  }
+
+  @override
+  String get bomImportMergeLabel => '병합 및 검토(파일 외 구성품 유지)';
+
+  @override
+  String get importReviewUnchanged => '변경 없음';
+
+  @override
+  String get goodsImportTemplateHint =>
+      '품목 내보내기 파일을 신규 또는 수정 템플릿으로 사용할 수 있습니다. 분류(경로를 -로 연결)와 품목명은 필수이며 코드는 비워둘 수 있습니다. 수정할 때는 시스템 식별자를 유지하고 새 행에는 기존 품목의 식별자를 복사하지 마세요. 재사용된 코드는 시스템 식별자로 현재 품목을 확인해야 합니다.';
+
+  @override
+  String get goodsImportMergeHint =>
+      '새 품목은 추가하고 기존 품목은 코드 또는 동일 분류와 이름으로 일치시킵니다. 누락 값은 자동 보완하며 나머지 차이는 전체 페이지에서 교체 또는 무시합니다. 빈 셀은 기존 값을 지우지 않습니다. 같은 이름의 모호한 항목은 수정 후 다시 업로드하세요. 동일 코드의 삭제 품목은 파일 내용으로 복원됩니다.';
+
+  @override
+  String get importRedetectCurrent => '현재 파일 다시 검사';
+
+  @override
+  String get importRedetectRequired => '현재 파일을 다시 검사한 후 제출하세요';
+
+  @override
+  String get importRetryPrevious => '이전 제출 재시도';
+
+  @override
+  String get importFilesTransactionNote =>
+      '여러 파일을 선택하면 순서대로 검사하고 가져옵니다. 파일별로 독립 저장되며 이후 실패하거나 닫아도 성공한 파일은 취소되지 않습니다.';
+
+  @override
+  String importFilesCompleted(int completed, int total) {
+    return '파일 $completed/$total개 완료';
+  }
+
+  @override
+  String importFilesCurrent(int position, int total, String filename) {
+    return '파일 $position/$total: $filename';
+  }
+
+  @override
+  String get importFilesPaused =>
+      '현재 파일이 일시 중지되었습니다. 검토를 계속하면 재개하며 이후 파일은 아직 처리되지 않았습니다.';
+
+  @override
+  String get importFilesFailed =>
+      '현재 파일이 완료되지 않아 대기열이 중지되었습니다. 다시 검사하거나 파일을 다시 선택하세요.';
+
+  @override
+  String get importFilesCloseNote =>
+      '닫으면 미처리 파일은 포기하고 성공한 가져오기는 유지합니다. 다시 선택하면 미처리 대기열만 교체합니다.';
+
+  @override
+  String importFilesOutcome(String filename, String summary) {
+    return '완료 $filename: $summary';
+  }
+
+  @override
+  String get importFilesContinue => '현재 파일 처리 계속';
+
+  @override
+  String get importFilesFinished => '선택한 파일을 모두 처리했습니다';
 }

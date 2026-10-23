@@ -52,7 +52,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @Import(FinanceDepartmentReferencePostgresTest.ProbeConfiguration.class)
 class FinanceDepartmentReferencePostgresTest {
     private static final PostgreSQLContainer POSTGRES=new PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("uten_finance_department").withUsername("uten").withPassword("uten");
+            .withDatabaseName("uten_finance_department").withUsername("fixture_admin").withPassword("uten");
     private static final String PICKER="/api/org/departments/finance-allocation-picker-tree";
     private static final ThreadLocal<List<String>> SQL=new ThreadLocal<>();
     @TestConfiguration static class ProbeConfiguration {

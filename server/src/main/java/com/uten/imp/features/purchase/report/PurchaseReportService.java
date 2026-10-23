@@ -43,7 +43,7 @@ import java.util.function.BiFunction;
  * <p>人员名两类来源（与老库视图口径一致）：员工类（申请人/采购员/收货人= B_Worker）走
  * {@code LEFT JOIN employees ... ON id = *_id}，current UUID 为空时才回退 legacy_id；
  * 账号类（制单员/审核员 = Sys_Operator 登录账号，非员工档案）迁移时冻结进 {@code maker_name/approver_name}
- * 文本列，报表 {@code COALESCE(employees 真名, 冻结名)}。
+ * 文本列，报表仅按真实员工 UUID 关联后 {@code COALESCE(employees 真名, 冻结名)}，不按账号旧编号匹配员工。
  *
  * <p>部门：申请单优先 {@code department_id -> departments.id}；仅 UUID 为空时才以
  * {@code department_legacy_id}（老库 StepID）回退 {@code legacy_departments} 冻结名称。
@@ -427,9 +427,7 @@ public class PurchaseReportService {
                 LEFT JOIN employees em_app ON em_app.id = o.applicant_id
                     OR (o.applicant_id IS NULL AND em_app.legacy_id = o.applicant_legacy_id)
                 LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
-                    OR (o.maker_id IS NULL AND em_mk.legacy_id = o.maker_legacy_id)
                 LEFT JOIN employees em_ap ON em_ap.id = o.approver_id
-                    OR (o.approver_id IS NULL AND em_ap.legacy_id = o.approver_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
@@ -522,7 +520,6 @@ public class PurchaseReportService {
                 LEFT JOIN employees em_pur ON em_pur.id = o.purchaser_id
                     OR (o.purchaser_id IS NULL AND em_pur.legacy_id = o.purchaser_legacy_id)
                 LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
-                    OR (o.maker_id IS NULL AND em_mk.legacy_id = o.maker_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
@@ -627,7 +624,6 @@ public class PurchaseReportService {
                 LEFT JOIN employees em_rec ON em_rec.id = o.receiver_id
                     OR (o.receiver_id IS NULL AND em_rec.legacy_id = o.receiver_legacy_id)
                 LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
-                    OR (o.maker_id IS NULL AND em_mk.legacy_id = o.maker_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
@@ -722,9 +718,7 @@ public class PurchaseReportService {
                 LEFT JOIN suppliers sup ON sup.id = o.supplier_id
                 LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
                 LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
-                    OR (o.maker_id IS NULL AND em_mk.legacy_id = o.maker_legacy_id)
                 LEFT JOIN employees em_ap ON em_ap.id = o.approver_id
-                    OR (o.approver_id IS NULL AND em_ap.legacy_id = o.approver_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");

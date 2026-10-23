@@ -86,17 +86,19 @@ RenderBox _overlayBarBox(WidgetTester tester) {
   return box!;
 }
 
-/// 最后一行底边：末行文本向上找最宽的祖先 DecoratedBox（= 整行，含底边线）。
+/// 最后一行底边取实际行重绘边界。首帧只量表头时，表格内容可以比
+/// 外部容器窄；“最宽 DecoratedBox”会把整个表体错当成最后一行。
 RenderBox _lastRowBox(WidgetTester tester, String lastText) {
-  final ancestors = find
-      .ancestor(of: find.text(lastText), matching: find.byType(DecoratedBox))
-      .evaluate();
-  var rowBox = ancestors.first.findRenderObject() as RenderBox;
-  for (final el in ancestors) {
-    final b = el.findRenderObject() as RenderBox;
-    if (b.size.width > rowBox.size.width) rowBox = b;
-  }
-  return rowBox;
+  RenderBox? row;
+  tester.element(find.text(lastText).first).visitAncestorElements((element) {
+    if (element.widget is RepaintBoundary) {
+      row = element.findRenderObject() as RenderBox;
+      return false;
+    }
+    return true;
+  });
+  expect(row, isNotNull);
+  return row!;
 }
 
 void main() {

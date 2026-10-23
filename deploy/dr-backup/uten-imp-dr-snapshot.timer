@@ -1,0 +1,12 @@
+[Unit]
+Description=Five-minute Uten IMP snapshot protection
+
+[Timer]
+OnCalendar=*-*-* *:02/5:00
+RandomizedDelaySec=10
+Persistent=yes
+Unit=uten-imp-dr-snapshot.service
+
+[Install]
+WantedBy=timers.target
+

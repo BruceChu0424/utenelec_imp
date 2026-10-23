@@ -28,6 +28,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -301,6 +302,10 @@ class _WarehouseQualityPreStockInPageState
       final error = row.validate();
       if (error != null) {
         setState(() => _error = error);
+        await _grid.revealError(
+          row,
+          columnKey: row.warehouseError != null ? 'warehouse' : 'place',
+        );
         return;
       }
     }
@@ -311,16 +316,24 @@ class _WarehouseQualityPreStockInPageState
     );
   }
 
-  Future<void> _executePreStockIn(WarehouseIqcPreStockInCommand command) async {
+  Future<void> _executePreStockIn(
+    WarehouseIqcPreStockInCommand command, {
+    AuthenticatedRequestScope? requestScope,
+  }) async {
     if (_saving || !_canPreStockIn) return;
-    _pendingCommand = command;
+    final scopeFuture = requestScope == null
+        ? captureFormDraftRequestScope()
+        : Future.value(requestScope);
+    final previousPending = _pendingCommand;
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
+      final scope = await scopeFuture;
+      _pendingCommand = command;
       final result = await runFormDraftSubmission(
-        () {
+        () => scope.run(() {
           if (!_canPreStockIn) {
             throw ApiException(
               'FORBIDDEN',
@@ -331,18 +344,21 @@ class _WarehouseQualityPreStockInPageState
           return ref
               .read(warehouseIqcStockInRepositoryProvider)
               .preStockIn(widget.receiptType, widget.receiptId, command);
-        },
+        }),
         isDefiniteRejection: (error) =>
-            error.code == 'FORBIDDEN' ||
-            error.httpStatus == 400 ||
-            error.httpStatus == 422 ||
-            (error.httpStatus == 409 && error.code == 'CONFLICT'),
+            previousPending == null &&
+            (error.code == 'FORBIDDEN' ||
+                error.httpStatus == 400 ||
+                error.httpStatus == 422 ||
+                (error.httpStatus == 409 && error.code == 'CONFLICT')),
       );
+      scope.checkCurrent();
       if (!mounted || !formDraftIdentityIsCurrent) return;
       // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
       refreshBadges(ref);
       _pendingCommand = null;
       await completeFormDraft();
+      scope.checkCurrent();
       if (!mounted) return;
       final replayed = result.replayedLineCount;
       context.appSuccess(
@@ -353,17 +369,24 @@ class _WarehouseQualityPreStockInPageState
       if (context.canPop()) {
         context.pop(true);
       } else {
-        await resetFormDraftAfterSubmission(prepare: () => _load());
+        await resetFormDraftAfterSubmission(
+          prepare: () => scope.run(() => _load()),
+        );
       }
     } on ApiException catch (error) {
       if (!mounted) return;
-      if (error.httpStatus == 400 ||
-          error.httpStatus == 403 ||
-          error.httpStatus == 422 ||
-          error.code == 'CONFLICT') {
+      if (previousPending == null &&
+          (error.httpStatus == 400 ||
+              error.httpStatus == 403 ||
+              error.httpStatus == 422 ||
+              error.code == 'CONFLICT')) {
         _pendingCommand = null;
       }
-      setState(() => _error = error.message);
+      setState(
+        () => _error = previousPending == null
+            ? error.message
+            : '${error.message}；这次拒绝不能确认原提交结果，原上架明细继续保留待核对',
+      );
       await checkpointFormDraftAfterCreation();
     } catch (error) {
       if (mounted) {
@@ -379,11 +402,16 @@ class _WarehouseQualityPreStockInPageState
   Future<void> _verifyPreStockIn() async {
     final command = _pendingCommand;
     if (command == null || _saving || _loading || !_canPreStockIn) return;
+    final scopeFuture = captureFormDraftRequestScope();
     setState(() => _loading = true);
     try {
-      final latest = await ref
-          .read(warehouseQualityResultRepositoryProvider)
-          .detail(widget.receiptType, widget.receiptId);
+      final requestScope = await scopeFuture;
+      final latest = await requestScope.run(
+        () => ref
+            .read(warehouseQualityResultRepositoryProvider)
+            .detail(widget.receiptType, widget.receiptId),
+      );
+      requestScope.checkCurrent();
       if (!mounted || !formDraftIdentityIsCurrent) return;
       final lines = {
         for (final line in latest.lines) line.inspectionItemId: line,
@@ -396,8 +424,9 @@ class _WarehouseQualityPreStockInPageState
       if (confirmed) {
         _pendingCommand = null;
         await resetFormDraftAfterSubmission(
-          prepare: () => _load(preserveInputs: false),
+          prepare: () => requestScope.run(() => _load(preserveInputs: false)),
         );
+        requestScope.checkCurrent();
         if (mounted && formDraftIdentityIsCurrent) {
           context.appSuccess('已核对：原上架仓库和库位已记录');
         }
@@ -415,7 +444,7 @@ class _WarehouseQualityPreStockInPageState
         context.appWarning('原待检明细已变化，原提交继续保留，请核对上架记录后处理');
         return;
       }
-      await _executePreStockIn(command);
+      await _executePreStockIn(command, requestScope: requestScope);
     } catch (error) {
       if (mounted && formDraftIdentityIsCurrent) {
         context.appError(describeSubmitError(error, fallback: '核对原上架记录失败'));

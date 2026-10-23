@@ -8,12 +8,9 @@
 --     外贸订单(2953, '2小苏') → 苏君丽(513)；外贸订单(3334, '3刘炎勇') → 刘炎勇(549)。
 --   物料(2113) 下：外贸物料(2891 '胡钟炎') → 545；(2942 '刘炎勇') → 549；(2969 '小苏') → 513。
 --   外贸系列(2682) Number 无法对应到人 → 公共（owner NULL，全员可见）。
--- 幂等：先全量清零再按子树灌入，重跑安全；HR 真员工替换 stub 后 legacy_id 不变，归属不断链。
+-- 当前归属只给在职员工；离职/缺失旧人由 ADMIN 暂管并写交接清单。已维护的当前归属不覆盖。
 -- =====================================================================
 
-
--- ① 全量清零（重跑幂等；新手工设置的归属会被覆盖——正式上线重迁后请复查本表注释）
-UPDATE goods SET owner_employee_id = NULL WHERE owner_employee_id IS NOT NULL;
 
 -- ② 子树根 → 归属人（老库 SystemItem.ItemID → B_Worker.ID）
 CREATE TEMP TABLE owner_root (root_legacy_id int PRIMARY KEY, worker_legacy_id int, note text);
@@ -25,7 +22,8 @@ INSERT INTO owner_root VALUES
     (2942, 549, '物料/外贸物料(刘炎勇)'),
     (2969, 513, '物料/外贸物料(小苏)');
 
--- ③ 每个根递归展开分类闭包 → 批量归属（employees 按 legacy_id 对齐，stub/真员工均可）
+-- ③ 每个根递归展开分类闭包 → 精确旧人解析；仅当前员工直接接责，历史桩交 ADMIN 暂管。
+CREATE TEMP TABLE goods_owner_resolution AS
 WITH RECURSIVE sub AS (
     SELECT c.id AS category_id, r.worker_legacy_id
     FROM material_categories c
@@ -35,11 +33,21 @@ WITH RECURSIVE sub AS (
     FROM material_categories c
     JOIN sub s ON c.parent_id = s.category_id
 )
-UPDATE goods g
-SET owner_employee_id = e.id
-FROM sub
-JOIN employees e ON e.legacy_id = sub.worker_legacy_id
-WHERE g.category_id = sub.category_id;
+SELECT g.id,g.legacy_id,sub.worker_legacy_id,r.owner_id,r.original_employee_id,r.reason
+FROM goods g JOIN sub ON g.category_id=sub.category_id
+CROSS JOIN LATERAL pg_temp.legacy_owner_resolution(sub.worker_legacy_id::text) r
+WHERE g.owner_employee_id IS NULL OR NOT EXISTS (
+ SELECT 1 FROM employees e WHERE e.id=g.owner_employee_id AND NOT e.is_deleted AND e.status IN ('active','probation','onLeave'));
+DO $$ BEGIN
+ IF EXISTS (SELECT id FROM goods_owner_resolution GROUP BY id HAVING count(DISTINCT worker_legacy_id)>1) THEN
+  RAISE EXCEPTION 'Goods owner category roots overlap with different historical owners';
+ END IF;
+END $$;
+UPDATE goods g SET owner_employee_id=r.owner_id FROM goods_owner_resolution r
+WHERE g.id=r.id AND g.owner_employee_id IS DISTINCT FROM r.owner_id;
+INSERT INTO pg_temp.legacy_owner_custody
+SELECT DISTINCT 'goods',id,legacy_id,worker_legacy_id::text,original_employee_id,owner_id,reason
+FROM goods_owner_resolution WHERE reason NOT IN ('PUBLIC_SOURCE','CURRENT_EMPLOYEE');
 
 
 -- ---------------- 校验 ----------------

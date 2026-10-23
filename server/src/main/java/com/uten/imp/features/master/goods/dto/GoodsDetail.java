@@ -164,6 +164,8 @@ public class GoodsDetail {
     @JsonProperty("cNumber")
     private String cNumber;
 
+    private String clientGoodsName;
+
     @JsonProperty("cNumber")
     public String getCNumber() { return cNumber; }
 

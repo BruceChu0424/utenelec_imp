@@ -1113,6 +1113,8 @@ class SalesDocDetail {
     this.settlementMethodId,
     this.sellerId,
     this.senderId,
+    this.sellerName,
+    this.senderName,
     this.makerId,
     this.approverId,
     this.makerName,
@@ -1197,6 +1199,10 @@ class SalesDocDetail {
   final String? settlementMethodId;
   final String? sellerId;
   final String? senderId;
+
+  /// 服务端只读人员姓名，历史业务角色按 B_Worker 身份解析。
+  final String? sellerName;
+  final String? senderName;
   final String? makerId;
   final String? approverId;
 
@@ -1311,6 +1317,8 @@ class SalesDocDetail {
     settlementMethodId: json['settlementMethodId'] as String?,
     sellerId: json['sellerId'] as String?,
     senderId: json['senderId'] as String?,
+    sellerName: json['sellerName'] as String?,
+    senderName: json['senderName'] as String?,
     makerId: json['makerId'] as String?,
     makerName: json['makerName'] as String?,
     createdAt: json['createdAt'] as String?,

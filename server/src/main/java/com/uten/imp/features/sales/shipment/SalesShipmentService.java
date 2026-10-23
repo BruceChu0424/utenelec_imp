@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.shipment;
 
+import com.uten.imp.common.util.EmployeeNameResolver.HistoricalWorkerRole;
+
 import com.uten.imp.common.web.HeaderColumnFilter;
 
 import com.uten.imp.application.port.WarehouseUse;
@@ -1267,6 +1269,8 @@ public class SalesShipmentService {
         UUID actor = currentUser.requireEmployeeId();
         List<SalesShipmentItem> items =
                 itemRepo.findByShipmentIdOrderByLineNoAsc(id);
+        com.uten.imp.common.validation.ExactDocumentSelection.requireComplete(req.getItemIds(),
+                items.stream().map(SalesShipmentItem::getId).toList());
         requireWarehouseTransition(
                 current, SalesShipment.WORK_PENDING_PICK, target);
         if (items.isEmpty()) {
@@ -3512,6 +3516,14 @@ public class SalesShipmentService {
                 s.getWarehouseExceptionReason(), visibleItems,
                 nameResolver.nameOf(s.getMakerId()), s.getCreatedAt(), writable,
                 canReject, canManageWarehouseWork, !canViewCommercial);
+        result.setSellerName(s.getSellerId() != null
+                ? nameResolver.nameOf(s.getSellerId())
+                : nameResolver.historicalWorkerNameWithCodeOf(null, s.getId(), s.getLegacyId(),
+                        HistoricalWorkerRole.SALES_SHIPMENT_SELLER));
+        result.setSenderName(s.getSenderId() != null
+                ? nameResolver.nameOf(s.getSenderId())
+                : nameResolver.historicalWorkerNameWithCodeOf(null, s.getId(), s.getLegacyId(),
+                        HistoricalWorkerRole.SALES_SHIPMENT_SENDER));
         result.getWorkflow().populate(s,customerShipmentPolicy);
         result.getWorkflow().setCanConfirmSales(result.getWorkflow().isCanConfirmSales() && accessPolicy.canWrite(s.getOwnerEmployeeId()));
         return result;

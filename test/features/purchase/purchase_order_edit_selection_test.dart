@@ -21,6 +21,62 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
   testWidgets(
+    '1000-row purchase order save reveals first invalid selected row without writing',
+    (tester) async {
+      final api = _SelectionApi();
+      await _openSourcePreview(tester, api);
+      final grid = tester
+          .widget<UtenEditableGrid<PurchaseGridRow>>(
+            find.byType(UtenEditableGrid<PurchaseGridRow>),
+          )
+          .controller;
+      final template = grid.rows.first;
+      final rows = List.generate(1000, (_) {
+        final row = template.clone()
+          ..supplierId = 's1'
+          ..settlementMethodId = 'settle-1'
+          ..currencyId = 'cny';
+        row.exchangeRate.text = '1';
+        row.taxRate.text = '0';
+        row.qty.text = '1';
+        row.price.text = '1';
+        return row;
+      });
+      rows[950].qty.text = '-1';
+      rows.last.remark.text = '末行保持原输入';
+      grid.replaceAll(rows);
+      grid.setSelected(rows, true);
+      await tester.pumpAndSettle();
+      final invalid = find.byWidgetPredicate(
+        (w) => w is TextField && identical(w.controller, rows[950].qty),
+      );
+      expect(invalid, findsNothing);
+      // Setup may already issue POST requests. The invalid Save
+      // must not dispatch any further POST, including an order creation.
+      final writesBeforeSave = api.writes.length;
+      await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+      await tester.pumpAndSettle();
+      expect(invalid.hitTestable(), findsOneWidget);
+      expect(
+        tester
+            .widget<EditableText>(
+              find.descendant(of: invalid, matching: find.byType(EditableText)),
+            )
+            .focusNode
+            .hasFocus,
+        isTrue,
+      );
+      expect(grid.rows.length, 1000);
+      expect(grid.selectedRows.length, 1000);
+      expect(rows[950].qty.text, '-1');
+      expect(rows.last.remark.text, '末行保持原输入');
+      expect(grid.mountedRowCount, lessThan(100));
+      expect(api.writes, hasLength(writesBeforeSave));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'frozen alternate source rate stays exact in the real save command and distinct merge keys',
     (tester) async {
       final source1 = _preview('source-1', '0.0001', '0', '0.0001')
@@ -363,6 +419,18 @@ class _EmptySessionNotifier extends SessionNotifier {
 class _SelectionApi extends ApiClient {
   _SelectionApi({this.previewRows}) : super(Dio());
   final List<Map<String, dynamic>>? previewRows;
+  final writes = <Object?>[];
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
+    writes.add(body);
+    return {};
+  }
 
   @override
   Future<List<Map<String, dynamic>>> postList(

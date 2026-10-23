@@ -69,6 +69,21 @@ public class ShipmentDetail extends com.uten.imp.common.history.DocumentHistoryM
     /** 商业数据已对当前用户脱敏（金额/单价/成本置 null，与订单 priceMasked 同口径，前端据此渲染掩码样式）。 */
     private boolean priceMasked;
 
+    // Initialized final state keeps the established all-arguments constructor unchanged.
+    @lombok.Getter(lombok.AccessLevel.NONE)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private final HistoricalWorkerNames historicalWorkerNames = new HistoricalWorkerNames();
+
+    public String getSellerName() { return historicalWorkerNames.sellerName; }
+    public void setSellerName(String value) { historicalWorkerNames.sellerName = value; }
+    public String getSenderName() { return historicalWorkerNames.senderName; }
+    public void setSenderName(String value) { historicalWorkerNames.senderName = value; }
+
+    private static final class HistoricalWorkerNames {
+        private String sellerName;
+        private String senderName;
+    }
+
     // Exact text is derived after permission masking; null stays null.
     public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }
     public String getTaxRateExact() { return com.uten.imp.common.util.DecimalText.of(taxRate); }

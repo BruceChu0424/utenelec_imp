@@ -32,16 +32,15 @@ void registerDailyReportLateAttachmentAckTests() {
           storage,
           fake,
           attachments: pipeline.service,
+          initialPermissions: {
+            Perm.productionDailyReportCreate,
+            Perm.productionDailyReportView,
+            Perm.productionDailyReportEdit,
+            Perm.attachmentView,
+            Perm.attachmentUpload,
+          },
         );
         await _prepareRecoveryInput(tester);
-        env.container.read(_identityPermissions.notifier).state = {
-          Perm.productionDailyReportCreate,
-          Perm.productionDailyReportView,
-          Perm.productionDailyReportEdit,
-          Perm.attachmentView,
-          Perm.attachmentUpload,
-        };
-        await tester.pumpAndSettle();
         final pending = tester
             .widgetList<BusinessAttachmentSection>(
               find.byType(BusinessAttachmentSection),

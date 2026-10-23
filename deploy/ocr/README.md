@@ -11,7 +11,8 @@
 | `ocr_server.py` | FastAPI服务；固定PP-OCRv5 mobile检测/识别与文本行方向模型，CPU、关闭MKLDNN，使用PIL检查并解码输入 |
 | `uten-paddle-ocr.service` | systemd 单进程，独立 `uten-ocr` 无登录用户，回环8501，模型缓存 `/opt/uten-ocr/models`，4G内存上限；不写字节码缓存 (`PYTHONDONTWRITEBYTECODE=1`)、看不到其他进程的 /proc 信息 (`ProtectProc=invisible`) |
 | `install-paddle-ocr.sh` | 只能由 root 执行：在 `/opt/uten-ocr` 准备运行环境与 unit 并设为开机自启；代码目录 (模型缓存除外) 有任何不归 root 的文件就拒绝继续；使用前核对脚本行为和依赖版本 |
-| `requirements.txt` | 部署依赖入口；固定PaddleOCR 3.7.0、PaddlePaddle 3.3.1、PaddleX 3.7.2、FastAPI 0.141.1和opencv-contrib-python 4.10.0.84，其余按文件版本边界安装 |
+| `requirements.txt` | 部署依赖入口；固定PaddleOCR 3.7.0、PaddlePaddle 3.3.1、PaddleX 3.7.2、FastAPI 0.141.1和opencv-contrib-python 4.10.0.84，并加载共同安全约束 |
+| `security-constraints.txt` | 部署与无模型测试共同固定 Pillow 13.0.0、aiohttp 3.14.4、certifi 2026.10.19、multidict 6.9.1；需要 Python 3.11 以上，仍需候选环境 `pip check` 与样本推理 |
 | `requirements-test.txt` | 无模型的安全边界测试依赖，不代表真实 OCR 推理环境 |
 | `prepare_models.py` | 显式准备 `PP-OCRv5_mobile_det`、`PP-OCRv5_mobile_rec`、`PP-LCNet_x1_0_textline_ori`，准备后仍需样本推理 |
 | `GET /health` | 返回 `status` 与 `engine_loaded`，仅 HTTP 存活检查 |
@@ -38,8 +39,9 @@ HTTP 上传层可能使用受控临时文件，不宣称整个传输过程完全
 1. 保存当前侧车代码、unit、后端配置和虚拟环境依赖清单的受控备份；不把包含秘密的环境文件复制进仓库。
 2. 将本目录部署文件送入受控暂存区，核对候选摘要，再按安装脚本要求放到 `/opt/uten-ocr`。
    检查 `uten-ocr` 对模型目录及临时目录的访问权限，代码和虚拟环境由 root 拥有；运行服务不使用 SSH 管理员账号。
-3. 按 `requirements.txt` 安装CPU运行时、OpenMP和上游指定的OpenCV contrib，并记录实际 `pip freeze`。
-   当前只固定主要运行包并约束其余版本，不是所有传递依赖的完整锁文件；正式候选仍需按实际环境验证并保存冻结清单。
+3. 按 `requirements.txt` 和同目录 `security-constraints.txt` 安装CPU运行时、OpenMP和上游指定的OpenCV contrib，运行 `pip check`，并记录实际 `pip freeze`。
+   安全约束修复 2026-10-23 确认的依赖风险；Pillow 旧的 `<13` 上限会阻止取得 13.0.0 的修复，因此运行环境和测试环境一同更新。
+   当前仍不是所有传递依赖的完整哈希锁文件；正式候选需对实际冻结清单重新做漏洞扫描并保存环境、模型和回滚证据。
    不要在正式启用过程中无范围地追随最新依赖或默默换模型。
 4. 在运维准备阶段显式使用 `install-paddle-ocr.sh --prepare-models` 下载固定模型；当前目标已有v6缓存不能代替v5模型。
    安装器在准备完成后将模型设为 `root:uten-ocr`，目录0750、文件0640；服务账号只能读取。

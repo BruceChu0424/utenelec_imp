@@ -5,6 +5,8 @@
 // showMasterEditDialog + showMasterDetailSheet，CRUD/详情/并发防护流程与货品 _DetailPane 一致。
 // 查看全员可见（路由不设守卫），编辑按 unit:edit 权限显隐。
 // 文档：见 docs/03-页面/基础资料页.md。
+import 'dart:async';
+
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
@@ -14,7 +16,8 @@ import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
-import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -25,7 +28,6 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
@@ -33,20 +35,18 @@ import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/master_facet.dart';
 import '../models/unit_node.dart';
+import '../models/master_batch.dart';
+import '../repositories/master_batch_repository.dart';
 import '../repositories/unit_repository.dart';
-import '../repositories/master_status_repository.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_inline_edit.dart';
 import '../widgets/master_inline_page_mixin.dart';
 import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
-
-/// 编辑表单里「计量维度」字段 key(与后端 UnitSaveRequest 同名)。
-const kUnitDimensionField = 'measurementDimension';
-
-/// 编辑表单里「等于哪种重量单位」字段 key(与后端 UnitSaveRequest 同名)。
-const kUnitMassUnitField = 'massUnitCode';
+import '../widgets/master_edit_owner.dart';
+import '../widgets/master_status_confirmation.dart';
+import '../widgets/master_batch_feedback.dart';
 
 class UnitPage extends ConsumerStatefulWidget {
   const UnitPage({super.key});
@@ -74,6 +74,8 @@ class _UnitPageState extends ConsumerState<UnitPage>
     _page = null;
     _facets = null;
     _error = null;
+    _selectedUnitIds = {};
+    _invalidateOperations();
   }
 
   @override
@@ -91,26 +93,6 @@ class _UnitPageState extends ConsumerState<UnitPage>
         options: kMasterStatusOptions,
         required: true,
       ),
-    'dimension': MasterInlineField(
-      key: 'measurementDimension',
-      read: (row) => row.measurementDimension,
-      type: MasterFieldType.select,
-      options: _dimensionOptions,
-    ),
-    'massUnit': MasterInlineField(
-      key: 'massUnitCode',
-      read: (row) => row.massUnitCode,
-      enabledOf: (row) =>
-          (inlineEdit.patchFor(row.id).containsKey('measurementDimension')
-              ? inlineEdit.patchFor(row.id)['measurementDimension']
-              : row.measurementDimension) ==
-          'MASS',
-      type: MasterFieldType.select,
-      options: [
-        for (final value in kUnitMassUnitCodes.entries)
-          MasterSelectOption(value: value.key, label: value.value),
-      ],
-    ),
   };
   PagedResult<UnitListItem>? _page;
   int _pageNum = 1;
@@ -124,6 +106,71 @@ class _UnitPageState extends ConsumerState<UnitPage>
 
   /// 详情弹窗加载中（防并发）。与 [_loading]（分页列表加载）是两回事。
   bool _detailLoading = false;
+  Set<String> _selectedUnitIds = {};
+  bool _rowOpBusy = false;
+  int _queryEpoch = 0;
+  final _operationOwners = <MasterEditOwner>{};
+  MasterEditOwner? _busyOwner;
+  MasterEditOwner? _detailOwner;
+
+  MasterEditOwner _operationOwner(String permission, {bool write = true}) {
+    final epoch = _queryEpoch;
+    final owner = MasterEditOwner(
+      context,
+      ref,
+      permissions: {permission},
+      requireWrite: write,
+      isCurrent: () => mounted && epoch == _queryEpoch && !inlineEdit.active,
+    );
+    _operationOwners.add(owner);
+    owner.addListener(() {
+      if (mounted && !owner.isCurrent) {
+        _setOperationBusy(owner, false);
+        if (identical(_detailOwner, owner)) {
+          _detailOwner = null;
+          _detailLoading = false;
+        }
+      }
+    });
+    return owner;
+  }
+
+  void _setOperationBusy(MasterEditOwner owner, bool busy) {
+    if (!mounted || (!busy && !identical(_busyOwner, owner))) return;
+    setState(() {
+      _busyOwner = busy ? owner : null;
+      _rowOpBusy = busy;
+    });
+  }
+
+  void _invalidateOperations() {
+    _queryEpoch++;
+    for (final owner in _operationOwners.toList()) {
+      owner.invalidate();
+    }
+    _busyOwner = null;
+    _detailOwner = null;
+    _rowOpBusy = false;
+    _detailLoading = false;
+  }
+
+  void _releaseOwner(MasterEditOwner owner) {
+    _setOperationBusy(owner, false);
+    if (identical(_detailOwner, owner)) {
+      _detailOwner = null;
+      _detailLoading = false;
+    }
+    _operationOwners.remove(owner);
+    owner.dispose();
+  }
+
+  @override
+  void dispose() {
+    for (final owner in _operationOwners) {
+      owner.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -149,6 +196,7 @@ class _UnitPageState extends ConsumerState<UnitPage>
   // ---- 分页 -------------------------------------------------------------
 
   Future<void> _loadUnits(int page) async {
+    if (page != _pageNum) _invalidateOperations();
     final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
     final generation = _loadRequests.begin();
     setState(() {
@@ -210,6 +258,8 @@ class _UnitPageState extends ConsumerState<UnitPage>
 
   void _onFilterChanged(String key, String? value) {
     setState(() {
+      _invalidateOperations();
+      _selectedUnitIds = {};
       final next = Map<String, String?>.from(_filters);
       if (value == null) {
         next.remove(key);
@@ -221,52 +271,33 @@ class _UnitPageState extends ConsumerState<UnitPage>
     _loadUnits(1);
   }
 
-  /// 计量维度列固定枚举桶：六个维度全量可选（服务端 facet 只聚合有数据的维度，
-  /// 固定枚举保证下拉文案齐全），计数用服务端命中数、无数据时 0（菜单只在 >0 时显数）。
-  List<MasterFacetBucket> _dimensionBuckets() {
-    final counts = <String, int>{
-      for (final b
-          in _facets?.fields['dimension'] ?? const <MasterFacetBucket>[])
-        b.value: b.count,
-    };
-    return [
-      for (final e in kUnitMeasurementDimensions.entries)
-        MasterFacetBucket(
-          value: e.key,
-          label: e.value,
-          count: counts[e.key] ?? 0,
-        ),
-    ];
-  }
-
-  /// 表头筛选桶：dimension 列换成固定枚举桶（其余列用服务端 facet 原桶）。
-  Map<String, List<MasterFacetBucket>> get _columnFacets => {
-    ...(_facets?.fields ?? const <String, List<MasterFacetBucket>>{}),
-    'dimension': _dimensionBuckets(),
-  };
-
   void _onKeywordChanged(String kw) {
-    setState(() => _keyword = kw);
+    setState(() {
+      _invalidateOperations();
+      _selectedUnitIds = {};
+      _keyword = kw;
+    });
     _loadUnits(1);
   }
 
   // ---- 新建/编辑/删除 ---------------------------------------------------
 
-  /// 计量维度选项(value='' 表示未设置/清除；提交时服务端落 unit_measurement_profiles)。
-  static const _dimensionOptions = [
-    MasterSelectOption(value: '', label: '未设置'),
-    MasterSelectOption(value: 'COUNT', label: '数量'),
-    MasterSelectOption(value: 'MASS', label: '重量'),
-    MasterSelectOption(value: 'LENGTH', label: '长度'),
-    MasterSelectOption(value: 'AREA', label: '面积'),
-    MasterSelectOption(value: 'VOLUME', label: '体积'),
-    MasterSelectOption(value: 'OTHER', label: '其他'),
-  ];
-
-  static const _unitFields = [
-    MasterFieldDef(key: 'name', label: '单位名称', required: true, group: '基础'),
-    MasterFieldDef(key: 'code', label: '单位编号', group: '基础', hint: '留空自动生成'),
+  List<MasterFieldDef> _unitFields([String? entityId]) => [
     MasterFieldDef(
+      key: 'code',
+      label: '单位编号',
+      group: '基础',
+      hint: '留空自动生成',
+      identifierDomain: 'UNIT',
+      identifierId: entityId,
+    ),
+    const MasterFieldDef(
+      key: 'name',
+      label: '单位名称',
+      required: true,
+      group: '基础',
+    ),
+    const MasterFieldDef(
       key: 'status',
       label: '状态',
       type: MasterFieldType.select,
@@ -274,197 +305,425 @@ class _UnitPageState extends ConsumerState<UnitPage>
       required: true,
       group: '基础',
     ),
-    MasterFieldDef(
-      key: kUnitDimensionField,
-      label: '计量维度',
-      type: MasterFieldType.select,
-      options: _dimensionOptions,
-      group: '基础',
-      hint: '数量/重量等',
-    ),
-    // 只在计量维度选「重量」时出现(V743/ADR-135)；可不选。
-    MasterFieldDef(
-      key: kUnitMassUnitField,
-      label: '等于哪种重量单位',
-      type: MasterFieldType.custom,
-      group: '基础',
-      customBuilder: _massUnitField,
-    ),
   ];
 
-  static Widget _massUnitField(MasterFieldContext field) =>
-      UnitMassUnitCodeField(field: field);
-
-  /// 提交前收口：计量维度不是「重量」时不带重量单位(字段隐藏后控制器里可能还留着旧选择)。
-  static Map<String, dynamic> _withMassUnitScope(Map<String, dynamic> body) {
-    final next = Map<String, dynamic>.of(body);
-    if (next[kUnitDimensionField] != 'MASS') next[kUnitMassUnitField] = null;
-    return next;
-  }
-
   Future<void> _showCreate() async {
-    await showMasterEditDialog(
-      context: context,
-      draftSpec: FormDraftCatalog.unit.spec(title: '新增单位'),
-      title: '新增单位', // TODO(l10n): 补 arb
-      fields: _unitFields,
-      initialValues: const {
-        'status': '使用',
-        kUnitDimensionField: '',
-        kUnitMassUnitField: '',
-      },
-      readOnlyKeys: _canStatus ? null : const {'status'},
-      onSubmit: _doCreate,
-    );
-  }
-
-  Future<bool> _doCreate(Map<String, dynamic> body) async {
-    // Preserve the actual API failure for the shared draft submission fence.
-    await ref.read(unitRepositoryProvider).create(_withMassUnitScope(body));
-    if (mounted) {
-      context.appSuccess('单位已创建');
-      await _loadUnits(_pageNum);
+    if (!_canCreate || _rowOpBusy) return;
+    final owner = _operationOwner(Perm.unitCreate);
+    try {
+      if (!await owner.bindRequests() || !mounted) return;
+      await showMasterEditDialog(
+        context: context,
+        draftSpec: FormDraftCatalog.unit.spec(title: '新增单位'),
+        title: '新增单位', // TODO(l10n): 补 arb
+        fields: _unitFields(),
+        initialValues: const {'status': '使用'},
+        readOnlyKeys: _canStatus ? null : const {'status'},
+        submissionOwner: owner,
+        onSubmit: (body) async {
+          await ref.read(unitRepositoryProvider).create(body);
+          return true;
+        },
+        onAccepted: () {
+          if (!owner.isCurrent) return;
+          context.appSuccess('单位已创建');
+          unawaited(_loadUnits(_pageNum));
+        },
+      );
+    } finally {
+      _releaseOwner(owner);
     }
-    return true;
   }
 
-  void _showEdit(UnitDetail d) {
-    showMasterEditDialog(
-      context: context,
-      title: '编辑单位', // TODO(l10n): 补 arb
-      fields: _unitFields,
-      initialValues: {
-        'name': d.name ?? '',
-        'code': d.code ?? '',
-        'status': d.status ?? '',
-        kUnitDimensionField: d.measurementDimension ?? '',
-        kUnitMassUnitField: d.massUnitCode ?? '',
-      },
-      readOnlyKeys: _canStatus ? null : const {'status'},
-      onSubmit: (body) => _doUpdate(d.id, body),
-    );
-  }
-
-  Future<bool> _doUpdate(String id, Map<String, dynamic> body) async {
-    final ok = await context.guardRun(
-      () async {
-        await ref
-            .read(unitRepositoryProvider)
-            .update(id, _withMassUnitScope(body));
-      },
-      success: '单位已更新', // TODO(l10n): 补 arb
-      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _loadUnits(_pageNum);
-    return true;
+  Future<void> _showEdit(UnitDetail d, {MasterEditOwner? openingOwner}) async {
+    if (!_canEdit || _rowOpBusy || inlineEdit.active) return;
+    final owner = openingOwner ?? _operationOwner(Perm.unitEdit);
+    try {
+      if (openingOwner == null && !await owner.bindRequests()) return;
+      if (!mounted || !owner.isCurrent) return;
+      await showMasterEditDialog(
+        context: context,
+        title: '编辑单位', // TODO(l10n): 补 arb
+        fields: _unitFields(d.id),
+        initialValues: {
+          'name': d.name ?? '',
+          'code': d.code ?? '',
+          'status': d.status ?? '',
+        },
+        readOnlyKeys: _canStatus ? null : const {'status'},
+        submissionOwner: owner,
+        onSubmit: (body) async {
+          await ref.read(unitRepositoryProvider).update(d.id, body);
+          return true;
+        },
+        onAccepted: () {
+          if (!owner.isCurrent) return;
+          context.appSuccess('单位已更新');
+          unawaited(_loadUnits(_pageNum));
+        },
+      );
+    } finally {
+      if (openingOwner == null) _releaseOwner(owner);
+    }
   }
 
   Future<void> _toggleDetailStatus(UnitDetail d) async {
-    final next = d.status == '使用' ? '禁用' : '使用';
-    final ok = await context.guardRun(
-      () => ref
-          .read(masterStatusRepositoryProvider)
-          .change(resourcePath: ApiEndpoints.unit(d.id), status: next),
-      success: next == '禁用' ? '已停用' : '已启用',
-      errorFallback: '状态变更失败，请稍后重试',
-    );
-    if (ok && mounted) await _loadUnits(_pageNum);
+    await _batchSetUnitStatus({d.id}, d.status == '使用' ? '禁用' : '使用');
   }
 
-  Future<void> _delete(UnitDetail d) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => UtenAlertDialog(
-        title: const Text('删除单位'), // TODO(l10n): 补 arb
-        content: Text(
-          '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该单位')}」吗？', // TODO(l10n): 补 arb
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'), // TODO(l10n): 补 arb
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'), // TODO(l10n): 补 arb
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    if (!mounted) return;
-    final deleted = await context.guardRun(
-      () async {
-        await ref.read(unitRepositoryProvider).delete(d.id);
-      },
-      success: '单位已删除', // TODO(l10n): 补 arb
-      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!deleted || !mounted) return;
-    await _loadUnits(_pageNum);
-    if (mounted && _page != null && _page!.items.isEmpty && _page!.page > 1) {
-      await _loadUnits(_page!.page - 1);
-    }
-  }
+  Future<void> _delete(UnitDetail d) => _batchDeleteUnits({d.id});
 
-  /// 点行：拉详情弹框。独立 [_detailLoading] 防并发 + rootNavigator 防 go_router 误 pop。
+  /// 读取、加载框与详情操作始终属于打开时的身份和查询范围。
   Future<void> _showDetail(String id) async {
     if (_detailLoading) return;
+    final owner = _operationOwner(Perm.unitView, write: false);
+    _detailOwner = owner;
     _detailLoading = true;
-    final nav = Navigator.of(context, rootNavigator: true);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
-    UnitDetail? d;
+    ModalRoute<dynamic>? loadingRoute;
     try {
-      d = await ref.read(unitRepositoryProvider).detail(id);
+      if (!await owner.bindRequests() || !mounted) return;
+      final route = DialogRoute<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          return owner.ownDialog(
+            ctx,
+            const Center(child: CircularProgressIndicator()),
+          );
+        },
+      );
+      loadingRoute = route;
+      owner.trackRoute(route);
+      unawaited(Navigator.of(context, rootNavigator: true).push(route));
+      final detail = await owner.run(
+        () => ref.read(unitRepositoryProvider).detail(id),
+      );
+      final wasLoadingCurrent = loadingRoute.isCurrent;
+      owner.closeRoute(loadingRoute);
+      if (!wasLoadingCurrent ||
+          !mounted ||
+          !owner.isCurrent ||
+          ModalRoute.of(context)?.isCurrent != true) {
+        return;
+      }
+      await showMasterDetailSheet(
+        context: context,
+        title: detail.name?.isNotEmpty == true
+            ? detail.name!
+            : (detail.code ?? '单位详情'),
+        rows: _detailRows(detail),
+        historyEntityType: 'units',
+        historyRecordId: detail.id,
+        onHistoryChanged: () => _loadUnits(_pageNum),
+        dialogScopeBuilder: owner.ownDialog,
+        isCurrent: () => owner.isCurrent,
+        canEdit: _canEdit,
+        canDelete: _canDelete,
+        onToggleStatus: _canStatus
+            ? () {
+                if (owner.isCurrent) _toggleDetailStatus(detail);
+              }
+            : null,
+        statusActionLabel: detail.status == '使用' ? '停用' : '启用',
+        onEdit: () {
+          if (owner.isCurrent) _showEdit(detail);
+        },
+        onDelete: () {
+          if (owner.isCurrent) _delete(detail);
+        },
+      );
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      final wasLoadingCurrent = loadingRoute?.isCurrent == true;
+      owner.closeRoute(loadingRoute);
+      if (wasLoadingCurrent &&
+          mounted &&
+          owner.isCurrent &&
+          ModalRoute.of(context)?.isCurrent == true) {
+        context.appError(e.message);
+      }
     } catch (_) {
-      if (mounted) context.appError('加载单位详情失败'); // TODO(l10n): 补 arb
+      final wasLoadingCurrent = loadingRoute?.isCurrent == true;
+      owner.closeRoute(loadingRoute);
+      if (wasLoadingCurrent &&
+          mounted &&
+          owner.isCurrent &&
+          ModalRoute.of(context)?.isCurrent == true) {
+        context.appError('加载单位详情失败');
+      }
+    } finally {
+      owner.closeRoute(loadingRoute);
+      _releaseOwner(owner);
     }
-    if (!mounted) {
-      nav.pop();
-      return;
-    }
-    nav.pop(); // 关 loading
-    if (d == null) {
-      _detailLoading = false;
-      return;
-    }
-    final detail = d;
-    await showMasterDetailSheet(
-      context: context,
-      title: detail.name?.isNotEmpty == true
-          ? detail.name!
-          : (detail.code ?? '单位详情'),
-      rows: _detailRows(detail),
-      canEdit: _canEdit,
-      canDelete: _canDelete,
-      onToggleStatus: _canStatus ? () => _toggleDetailStatus(detail) : null,
-      statusActionLabel: detail.status == '使用' ? '停用' : '启用',
-      onEdit: () => _showEdit(detail),
-      onDelete: () => _delete(detail),
-    );
-    if (mounted) _detailLoading = false;
   }
 
   List<MasterDetailRow> _detailRows(UnitDetail u) => [
     MasterDetailRow('编号', u.code), // TODO(l10n): 补 arb
     MasterDetailRow('单位名称', u.name), // TODO(l10n): 补 arb
     MasterDetailRow('状态', u.status), // TODO(l10n): 补 arb
-    MasterDetailRow('计量维度', unitDimensionLabel(u.measurementDimension)),
-    if (u.measurementDimension == 'MASS')
-      MasterDetailRow(
-        '等于哪种重量单位',
-        unitMassUnitLabel(u.measurementDimension, u.massUnitCode),
+  ];
+
+  bool get _unitActionsReady =>
+      !_rowOpBusy &&
+      !inlineEdit.active &&
+      !inlineEdit.preparing &&
+      inlineReadReady;
+
+  String? _unitLabel(String id) {
+    for (final unit in _page?.items ?? const <UnitListItem>[]) {
+      if (unit.id == id) {
+        return unit.name?.isNotEmpty == true ? unit.name : unit.code;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _editUnitRow(UnitListItem unit) async {
+    if (!_unitActionsReady || !_canEdit) return;
+    final owner = _operationOwner(Perm.unitEdit);
+    _setOperationBusy(owner, true);
+    var editorOpened = false;
+    try {
+      if (!await owner.bindRequests()) return;
+      final detail = await owner.run(
+        () => ref.read(unitRepositoryProvider).detail(unit.id),
+      );
+      _setOperationBusy(owner, false);
+      if (owner.isCurrent) {
+        editorOpened = true;
+        unawaited(
+          _showEdit(
+            detail,
+            openingOwner: owner,
+          ).whenComplete(() => _releaseOwner(owner)),
+        );
+      }
+    } on ApiException catch (e) {
+      if (mounted && owner.isCurrent) context.appError(e.message);
+    } catch (_) {
+      if (mounted && owner.isCurrent) context.appError('加载单位详情失败');
+    } finally {
+      if (!editorOpened) _releaseOwner(owner);
+    }
+  }
+
+  List<UtenContextMenuEntry> _unitMenuItems(UnitListItem unit) {
+    final selected = Set<String>.unmodifiable(_selectedUnitIds);
+    final multiple = selected.length > 1 && selected.contains(unit.id);
+    if (multiple) {
+      return [
+        if (_canStatus) ...[
+          UtenMenuItem(
+            label: '批量停用(${selected.length})',
+            icon: Icons.pause_circle_outline_rounded,
+            destructive: true,
+            enabled: _unitActionsReady,
+            onTap: () => _batchSetUnitStatus(selected, '禁用'),
+          ),
+          UtenMenuItem(
+            label: '批量启用(${selected.length})',
+            icon: Icons.play_circle_outline_rounded,
+            enabled: _unitActionsReady,
+            onTap: () => _batchSetUnitStatus(selected, '使用'),
+          ),
+        ],
+        if (_canDelete)
+          UtenMenuItem(
+            label: '批量删除(${selected.length})',
+            icon: Icons.delete_outline_rounded,
+            destructive: true,
+            enabled: _unitActionsReady,
+            onTap: () => _batchDeleteUnits(selected),
+          ),
+      ];
+    }
+    return [
+      UtenMenuItem(
+        label: '查看详情',
+        icon: Icons.open_in_new_rounded,
+        enabled: _unitActionsReady,
+        onTap: () => _showDetail(unit.id),
       ),
-    MasterDetailRow('旧系统 ID', u.legacyId?.toString()), // TODO(l10n): 补 arb
+      if (_canEdit)
+        UtenMenuItem(
+          label: '编辑单位',
+          icon: Icons.edit_outlined,
+          enabled: _unitActionsReady,
+          onTap: () => _editUnitRow(unit),
+        ),
+      if (_canStatus)
+        UtenMenuItem(
+          label: unit.status == '禁用' ? '启用单位' : '停用单位',
+          icon: unit.status == '禁用'
+              ? Icons.play_circle_outline_rounded
+              : Icons.pause_circle_outline_rounded,
+          destructive: unit.status != '禁用',
+          enabled: _unitActionsReady,
+          onTap: () =>
+              _batchSetUnitStatus({unit.id}, unit.status == '禁用' ? '使用' : '禁用'),
+        ),
+      if (_canDelete)
+        UtenMenuItem(
+          label: '删除单位',
+          icon: Icons.delete_outline_rounded,
+          destructive: true,
+          enabled: _unitActionsReady,
+          onTap: () => _batchDeleteUnits({unit.id}),
+        ),
+    ];
+  }
+
+  Future<void> _batchSetUnitStatus(Set<String> selected, String status) async {
+    if (!_unitActionsReady || !_canStatus || selected.isEmpty) return;
+    final ids = Set<String>.unmodifiable(selected);
+    final labels = {for (final id in ids) id: _unitLabel(id)};
+    final owner = _operationOwner(Perm.unitStatus);
+    try {
+      if (!await owner.bindRequests() || !mounted) return;
+      final confirmed = await confirmMasterStatusChange(
+        context,
+        disabling: status == '禁用',
+        label: ids.length == 1 ? (labels[ids.first] ?? '该单位') : '选中的单位',
+        count: ids.length,
+        dialogScopeBuilder: owner.ownDialog,
+      );
+      if (!confirmed || !owner.isCurrent || !_unitActionsReady) return;
+      await _runUnitBatch(
+        owner,
+        () => ref
+            .read(masterBatchRepositoryProvider)
+            .changeStatus(
+              entityPath: ApiEndpoints.units,
+              status: status,
+              items: [for (final id in ids) MasterBatchItem(id)],
+            ),
+        action: status == '禁用' ? '停用' : '启用',
+        labels: labels,
+      );
+    } finally {
+      _releaseOwner(owner);
+    }
+  }
+
+  Future<void> _batchDeleteUnits(Set<String> selected) async {
+    if (!_unitActionsReady || !_canDelete || selected.isEmpty) return;
+    final ids = Set<String>.unmodifiable(selected);
+    final labels = {for (final id in ids) id: _unitLabel(id)};
+    final owner = _operationOwner(Perm.unitDelete);
+    try {
+      if (!await owner.bindRequests() || !mounted) return;
+      final confirmed = await UtenDialog.show(
+        context,
+        title: ids.length == 1 ? '删除单位' : '批量删除单位',
+        content: Builder(
+          builder: (ctx) => owner.ownDialog(
+            ctx,
+            Text(
+              ids.length == 1
+                  ? '确定删除「${labels[ids.first] ?? '该单位'}」吗？'
+                  : '确定删除选中的 ${ids.length} 个单位吗？被货品或单据引用的单位将保留并显示原因。',
+            ),
+          ),
+        ),
+        confirmLabel: '删除',
+        danger: true,
+      );
+      if (confirmed != true || !owner.isCurrent || !_unitActionsReady) return;
+      await _runUnitBatch(
+        owner,
+        () => ref
+            .read(masterBatchRepositoryProvider)
+            .delete(
+              entityPath: ApiEndpoints.units,
+              items: [for (final id in ids) MasterBatchItem(id)],
+            ),
+        action: '删除',
+        labels: labels,
+      );
+    } finally {
+      _releaseOwner(owner);
+    }
+  }
+
+  Future<void> _runUnitBatch(
+    MasterEditOwner owner,
+    Future<MasterBatchResult> Function() command, {
+    required String action,
+    required Map<String, String?> labels,
+  }) async {
+    _setOperationBusy(owner, true);
+    try {
+      final result = await owner.run(command);
+      _setOperationBusy(owner, false);
+      if (!mounted || !owner.isCurrent) return;
+      setState(
+        () => _selectedUnitIds = {
+          for (final row in result.results)
+            if (!row.ok && _selectedUnitIds.contains(row.id)) row.id,
+        },
+      );
+      await showMasterBatchOutcome(
+        context,
+        result,
+        action: action,
+        noun: '单位',
+        labelOf: (id) => labels[id],
+        dialogScopeBuilder: owner.ownDialog,
+      );
+      if (!owner.isCurrent) return;
+      await Future.wait([_loadUnits(_pageNum), _loadFacets()]);
+      if (owner.isCurrent && _page?.items.isEmpty == true && _page!.page > 1) {
+        await _loadUnits(_page!.page - 1);
+      }
+    } on ApiException catch (e) {
+      if (mounted && owner.isCurrent) context.appError(e.message);
+    } catch (_) {
+      if (mounted && owner.isCurrent) context.appError('$action失败，请稍后重试');
+    } finally {
+      _setOperationBusy(owner, false);
+    }
+  }
+
+  List<Widget> _unitFloatingActions(BuildContext context, Set<String> ids) => [
+    MasterInlineEditActions<UnitListItem>(
+      controller: inlineEdit,
+      canEdit: _canEdit && inlineReadReady && !_rowOpBusy,
+      onSave: saveInline,
+      embedded: true,
+      additionalActions: [
+        if (ids.isNotEmpty && _canStatus) ...[
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            onPressed: _unitActionsReady
+                ? () => _batchSetUnitStatus(ids, '禁用')
+                : null,
+            child: const Text('停用选中'),
+          ),
+          UtenButton(
+            type: UtenButtonType.tonal,
+            size: UtenButtonSize.large,
+            onPressed: _unitActionsReady
+                ? () => _batchSetUnitStatus(ids, '使用')
+                : null,
+            child: const Text('启用选中'),
+          ),
+        ],
+        if (ids.isNotEmpty && _canDelete)
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            onPressed: _unitActionsReady ? () => _batchDeleteUnits(ids) : null,
+            child: const Text('删除选中'),
+          ),
+        if (_canCreate)
+          UtenButton(
+            size: UtenButtonSize.large,
+            icon: Icons.add_rounded,
+            onPressed: _rowOpBusy ? null : () => inlineNavigate(_showCreate),
+            child: const Text('添加单位'),
+          ),
+      ],
+    ),
   ];
 
   // ---- 列定义 -----------------------------------------------------------
@@ -496,12 +755,6 @@ class _UnitPageState extends ConsumerState<UnitPage>
   }
 
   static final _columns = <MasterColumnDef<UnitListItem>>[
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 72,
-      value: (u) => u.status,
-    ),
     MasterColumnDef(key: 'code', label: '编号', width: 120, value: (u) => u.code),
     MasterColumnDef(
       key: 'name',
@@ -510,21 +763,15 @@ class _UnitPageState extends ConsumerState<UnitPage>
       value: (u) => u.name,
     ),
     MasterColumnDef(
-      key: 'dimension',
-      label: '计量维度',
-      width: 110,
-      value: (u) => unitDimensionLabel(u.measurementDimension),
-    ),
-    // 与服务端导出「重量单位」列同口径：非重量维度留空，重量维度没选写「未指定」。
-    MasterColumnDef(
-      key: 'massUnit',
-      label: '重量单位',
-      width: 100,
-      value: (u) => unitMassUnitLabel(u.measurementDimension, u.massUnitCode),
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (u) => u.status,
     ),
   ];
 
   Future<void> _refresh() async {
+    _invalidateOperations();
     await Future.wait([_loadUnits(1), _loadFacets()]);
   }
 
@@ -557,139 +804,114 @@ class _UnitPageState extends ConsumerState<UnitPage>
             ),
           ],
         ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-        floatingActionButton: inlineFloatingActions(
-          additionalActions: [
-            if (_canCreate)
-              UtenButton(
-                size: UtenButtonSize.large,
-                icon: Icons.add_rounded,
-                onPressed: _showCreate,
-                child: const Text('添加单位'),
-              ),
-          ],
-        ),
-        body: SafeArea(
-          child: UtenContentContainer(
-            child: Padding(
-              padding: const EdgeInsets.only(top: UtenSpacing.s8),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4,
-                    ),
-                    child: UtenSearchBar(
-                      hint: '搜索单位(名称/编号)', // TODO(l10n): 补 arb
-                      initialValue: _keyword,
-                      onChanged: (value) =>
-                          inlineNavigate(() => _onKeywordChanged(value)),
-                    ),
-                  ),
-                  Expanded(
-                    child: MasterDataTableView<UnitListItem>(
-                      bottomContentPadding: (_canCreate || _canEdit)
-                          ? UtenFloatingActionGroup.scrollClearance
-                          : 0,
-                      columnEditingEnabled: _canEdit,
-                      tableKey:
-                          'features.basic_data.pages.unit_page.UnitPageState._buildDraftHost.1',
-                      columns: inlineColumns(_columns),
-                      items: _page?.items ?? const [],
-                      // 导出/打印（V717 unit:export）：打印预览用本页列渲染，
-                      // 导出列集服务端与表格对齐——「表格显示啥导出啥」。
-                      // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
-                      // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
-                      toolbarLeadingActions: [
-                        UtenPrintPreviewButton(
-                          title: '单位资料', // TODO(l10n): 补 arb
-                          subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
-                          loader: _printLoader,
-                          exportEndpoint: '/master/units/export',
-                          exportPermission: Perm.unitExport,
-                          exportReport: '',
-                          exportQuery: _exportQuery,
-                          exportFilename: '单位资料', // TODO(l10n): 补 arb
-                          type: UtenButtonType.primary,
-                          size: UtenButtonSize.large,
-                          icon: null,
+        body: Stack(
+          children: [
+            SafeArea(
+              child: UtenContentContainer(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          bottom: UtenSpacing.s8,
+                          left: UtenSpacing.s4,
+                          right: UtenSpacing.s4,
                         ),
-                        UtenExportButton(
-                          endpoint: '/master/units/export',
-                          requiredPermission: Perm.unitExport,
-                          report: '',
-                          queryParams: _exportQuery,
-                          filename: '单位资料', // TODO(l10n): 补 arb
-                          label: '导出单位', // TODO(l10n): 补 arb
-                          type: UtenButtonType.primary,
-                          size: UtenButtonSize.large,
-                          icon: null,
+                        child: UtenSearchBar(
+                          hint: '搜索单位(名称/编号)', // TODO(l10n): 补 arb
+                          initialValue: _keyword,
+                          onChanged: (value) =>
+                              inlineNavigate(() => _onKeywordChanged(value)),
                         ),
-                      ],
-                      facets: _columnFacets,
-                      nullCounts: _facets?.nullCounts ?? const {},
-                      filters: _filters,
-                      onFilterChanged: (key, value) =>
-                          inlineNavigate(() => _onFilterChanged(key, value)),
-                      onRowTap: inlineEdit.active
-                          ? null
-                          : (u) => _showDetail(u.id),
-                      isLoading: _loading && _page == null,
-                      loadingMore: _loading && _page != null,
-                      error: _error,
-                      onRetry: () => _loadUnits(_pageNum),
-                      emptyMessage: '暂无单位', // TODO(l10n): 补 arb
-                      currentPage: _page?.page ?? 1,
-                      totalPages: _page?.totalPages ?? 1,
-                      paginationScope: _keyword,
-                      onPageChange: (p) => inlineNavigate(() => _loadUnits(p)),
-                    ),
+                      ),
+                      Expanded(
+                        child: MasterDataTableView<UnitListItem>(
+                          bottomContentPadding: (_canCreate || _canEdit)
+                              ? UtenFloatingActionGroup.scrollClearance
+                              : 0,
+                          columnEditingEnabled: _canEdit,
+                          tableKey:
+                              'features.basic_data.pages.unit_page.UnitPageState._buildDraftHost.1',
+                          columns: inlineColumns(_columns),
+                          requiredLeadingColumnKeys: const [
+                            'code',
+                            'name',
+                            'status',
+                          ],
+                          items: _page?.items ?? const [],
+                          selectable: true,
+                          idOf: (unit) => unit.id,
+                          selectedIds: _selectedUnitIds,
+                          onSelectedIdsChanged: (ids) {
+                            if (!_rowOpBusy) {
+                              setState(() => _selectedUnitIds = ids);
+                            }
+                          },
+                          batchActionsBuilder: _unitFloatingActions,
+                          rowMenuBuilder: inlineEdit.active
+                              ? null
+                              : _unitMenuItems,
+                          // 导出/打印（V717 unit:export）：打印预览用本页列渲染，
+                          // 导出列集服务端与表格对齐——「表格显示啥导出啥」。
+                          // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
+                          // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
+                          toolbarLeadingActions: [
+                            UtenPrintPreviewButton(
+                              title: '单位资料', // TODO(l10n): 补 arb
+                              subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
+                              loader: _printLoader,
+                              exportEndpoint: '/master/units/export',
+                              exportPermission: Perm.unitExport,
+                              exportReport: '',
+                              exportQuery: _exportQuery,
+                              exportFilename: '单位资料', // TODO(l10n): 补 arb
+                              type: UtenButtonType.primary,
+                              size: UtenButtonSize.large,
+                              icon: null,
+                            ),
+                            UtenExportButton(
+                              endpoint: '/master/units/export',
+                              requiredPermission: Perm.unitExport,
+                              report: '',
+                              queryParams: _exportQuery,
+                              filename: '单位资料', // TODO(l10n): 补 arb
+                              label: '导出单位', // TODO(l10n): 补 arb
+                              type: UtenButtonType.primary,
+                              size: UtenButtonSize.large,
+                              icon: null,
+                            ),
+                          ],
+                          facets: _facets?.fields ?? const {},
+                          nullCounts: _facets?.nullCounts ?? const {},
+                          filters: _filters,
+                          onFilterChanged: (key, value) => inlineNavigate(
+                            () => _onFilterChanged(key, value),
+                          ),
+                          onRowTap: inlineEdit.active
+                              ? null
+                              : (u) => _showDetail(u.id),
+                          isLoading: _loading && _page == null,
+                          loadingMore: _loading && _page != null,
+                          error: _error,
+                          onRetry: () => _loadUnits(_pageNum),
+                          emptyMessage: '暂无单位', // TODO(l10n): 补 arb
+                          currentPage: _page?.page ?? 1,
+                          totalPages: _page?.totalPages ?? 1,
+                          paginationScope: _keyword,
+                          onPageChange: (p) =>
+                              inlineNavigate(() => _loadUnits(p)),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
-          ),
+            if (_rowOpBusy) const UtenBusyOverlay(title: '正在处理单位'),
+          ],
         ),
       ),
-    );
-  }
-}
-
-/// 「等于哪种重量单位」下拉(V743/ADR-135)：只在同一张表单的计量维度选了「重量」时出现，
-/// 可不选(重量单位没指定就不做折算)。选中值存在表单控制器的自定义值里(草稿随之保存)，
-/// 计量维度改离「重量」时隐藏，提交前由页面把它清空。
-class UnitMassUnitCodeField extends StatelessWidget {
-  const UnitMassUnitCodeField({super.key, required this.field});
-
-  final MasterFieldContext field;
-
-  @override
-  Widget build(BuildContext context) {
-    final form = context.findAncestorStateOfType<MasterEditFormState>();
-    if (form == null) return const SizedBox.shrink();
-    final controller = form.controller;
-    return ListenableBuilder(
-      listenable: controller,
-      builder: (context, _) {
-        if (controller.selectValues[kUnitDimensionField] != 'MASS') {
-          return const SizedBox.shrink();
-        }
-        final current = controller.customValues[kUnitMassUnitField];
-        return UtenDropdownField(
-          label: '等于哪种重量单位',
-          value: current is String && current.isNotEmpty ? current : null,
-          hintText: '可不选',
-          info: '选了以后, 用这个单位做基本单位的货品按数量直接算出重量, 仓库不用另外称重',
-          items: [
-            for (final e in kUnitMassUnitCodes.entries)
-              UtenDropdownItem(value: e.key, label: e.value),
-          ],
-          onChanged: field.onChanged,
-        );
-      },
     );
   }
 }

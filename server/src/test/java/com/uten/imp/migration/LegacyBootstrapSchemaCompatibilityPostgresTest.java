@@ -49,7 +49,7 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
     private static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
-                    .withUsername("uten")
+                    .withUsername("fixture_admin")
                     .withPassword("uten-test-only")
                     // 当前 schema 已有 200+ 张表/数千外键，Flyway clean 逐对象 DROP
                     // 需要的锁位远超默认 64；提高 max_locks_per_transaction 避免

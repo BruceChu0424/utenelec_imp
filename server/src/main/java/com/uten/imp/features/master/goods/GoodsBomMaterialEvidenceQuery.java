@@ -12,7 +12,7 @@ import java.util.UUID;
 import java.util.function.Predicate;
 
 /**
- * 已认料、已申请与仓库已登记的材料身份。它们解释尚未形成 BOM 学习样本的材料，
+ * 已确认待核单耗、已认料、已申请与仓库已登记的材料身份。它们解释尚未形成 BOM 的材料，
  * 不代表已经耗用，不提供推测数量，也不创建 BOM 边。调用方先验证父件可见性。
  */
 @Service
@@ -48,6 +48,15 @@ public class GoodsBomMaterialEvidenceQuery {
                   AND request.status IN ('PENDING', 'CONFIGURED')
                   AND (request.status = 'CONFIGURED' OR NOT plan.is_closed)
             ), evidence AS (
+                SELECT 'MATERIAL_IDENTITY'::text AS source, identity.status,
+                       identity.id AS source_id, identity.material_goods_id AS goods_id,
+                       identity.material_color_id AS color_id, material.unit_id, identity.updated_at
+                FROM goods_material_identity_evidence identity
+                JOIN goods material ON material.id = identity.material_goods_id
+                WHERE identity.product_goods_id = :goods AND NOT identity.is_deleted
+                  AND identity.status = 'PENDING_QUANTITY'
+                  AND material.status IS DISTINCT FROM '禁用'
+                UNION ALL
                 SELECT 'PERIODIC_CHOICE'::text AS source, 'CONFIRMED'::text AS status,
                        choice.id AS source_id, choice.material_goods_id AS goods_id,
                        choice.material_color_id AS color_id, material.unit_id, choice.chosen_at AS updated_at

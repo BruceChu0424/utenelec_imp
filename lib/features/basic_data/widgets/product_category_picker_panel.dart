@@ -80,6 +80,7 @@ Future<ProductCategoryPickResult?> showUtenProductCategoryPickerPanel(
   String subtitle = '选父类 = 该分类子树聚合', // TODO(l10n): 补 arb
   String allLabel = '全部', // TODO(l10n): 补 arb
   bool hideEmptyCategories = true,
+  Widget Function(BuildContext context, Widget child)? scopeBuilder,
 }) {
   // 单根提升：整库只有一个「货品资料」包装根时不占一层，直接列其子类
   //（与货品选择滑窗同口径，2026-09-24）。
@@ -97,13 +98,16 @@ Future<ProductCategoryPickResult?> showUtenProductCategoryPickerPanel(
   return showUtenAdaptivePanel<ProductCategoryPickResult>(
     context: context,
     widthFraction: UtenPanelWidth.form,
-    builder: (_) => _ProductCategoryPickerSheet(
-      tree: visibleTree,
-      initialSelection: initialSelection,
-      title: title,
-      subtitle: subtitle,
-      allLabel: allLabel,
-    ),
+    builder: (panelContext) {
+      final sheet = _ProductCategoryPickerSheet(
+        tree: visibleTree,
+        initialSelection: initialSelection,
+        title: title,
+        subtitle: subtitle,
+        allLabel: allLabel,
+      );
+      return scopeBuilder?.call(panelContext, sheet) ?? sheet;
+    },
   );
 }
 

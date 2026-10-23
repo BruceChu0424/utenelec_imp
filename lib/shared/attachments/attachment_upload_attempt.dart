@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
+import '../../core/performance/responsive_data_codec.dart';
 import 'attachment.dart';
 
 /// Original actor/server and verified parent CREATE proof. This is private
@@ -38,6 +39,30 @@ class AttachmentUploadAttempt {
     'contentType': contentType.split(';').first.trim().toLowerCase(),
     'sizeBytes': bytes.length,
     'fileSha256': sha256.convert(bytes).toString(),
+  });
+
+  static Future<AttachmentUploadAttempt> captureResponsive({
+    required PresignResult grant,
+    required AttachmentUploadIdentity identity,
+    required String ownerType,
+    required String ownerId,
+    required String name,
+    required String contentType,
+    required Uint8List bytes,
+    bool Function()? isCurrent,
+  }) async => AttachmentUploadAttempt.restore({
+    'schema': 1,
+    'server': identity.server,
+    'userId': identity.userId,
+    'actorId': identity.actorId,
+    'parentProofHash': identity.parentProofHash,
+    'storageKey': grant.storageKey,
+    'ownerType': ownerType,
+    'ownerId': ownerId,
+    'originalName': name.trim(),
+    'contentType': contentType.split(';').first.trim().toLowerCase(),
+    'sizeBytes': bytes.length,
+    'fileSha256': await sha256HexResponsive(bytes, isCurrent: isCurrent),
   });
   factory AttachmentUploadAttempt.restore(Map<String, dynamic> json) {
     if (json['schema'] != 1 ||
@@ -87,6 +112,19 @@ class AttachmentUploadAttempt {
           contentType.split(';').first.trim().toLowerCase() &&
       data['sizeBytes'] == bytes.length &&
       data['fileSha256'] == sha256.convert(bytes).toString();
+
+  Future<bool> matchesFileResponsive({
+    required String name,
+    required String contentType,
+    required Uint8List bytes,
+    bool Function()? isCurrent,
+  }) async =>
+      data['originalName'] == name.trim() &&
+      data['contentType'] ==
+          contentType.split(';').first.trim().toLowerCase() &&
+      data['sizeBytes'] == bytes.length &&
+      data['fileSha256'] ==
+          await sha256HexResponsive(bytes, isCurrent: isCurrent);
 
   // The authoritative stored SHA is required. Legacy null never confirms.
   // Name/category metadata can change; identity and original bytes cannot.

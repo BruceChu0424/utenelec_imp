@@ -267,6 +267,7 @@ class _MaterialReturnRequestState
       // 改大小），分开汇总；判定口径与逐行拦截时完全一致，只是换了暴露方式。
       final malformed = <String>[];
       final overAvailable = <String>[];
+      _ReturnRow? firstInvalid;
       for (final row in _grid.rows) {
         if (row.qty.text.trim().isEmpty) continue;
         final qty = double.tryParse(row.qty.text.trim());
@@ -275,9 +276,11 @@ class _MaterialReturnRequestState
             qty < 0 ||
             (qty * 10000 - (qty * 10000).roundToDouble()).abs() > .0000001) {
           malformed.add(_rowLabel(row));
+          firstInvalid ??= row;
           continue;
         }
         if (qty > row.source.availableQty + .0000001) {
+          firstInvalid ??= row;
           overAvailable.add(
             '${_rowLabel(row)}填 ${_number(qty)}，可退 ${_number(row.source.availableQty)} ${row.source.unitName}',
           );
@@ -298,6 +301,9 @@ class _MaterialReturnRequestState
                   '请改小后再提交：${_joinRowIssues(overAvailable)}',
           ].join('\n'),
         );
+        if (firstInvalid != null) {
+          await _grid.revealError(firstInvalid, columnKey: 'qty');
+        }
         return;
       }
       if (items.isEmpty) {

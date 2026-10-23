@@ -235,12 +235,22 @@ class _MaterialSettlementSheetState
       // 待登记材料常有几十行：越量行先收集再统一提示。逐行 return 只暴露第一处，
       // 用户改完再提交才知道第二处，本页又没有行级红框可指，只能靠汇总文案讲清。
       final overLimit = <String>[];
+      _SettlementGridRow? firstInvalid;
+      String? firstInvalidColumn;
       for (final row in _grid.rows) {
         final consumed = _positive(row.consumed.text);
         final loss = _positive(row.loss.text);
         final wip = _positive(row.wip.text);
         final total = consumed + loss + wip;
         if (total > row.source.availableToSettleQty + 0.0000001) {
+          if (firstInvalid == null) {
+            firstInvalid = row;
+            firstInvalidColumn = consumed > 0
+                ? 'consume'
+                : loss > 0
+                ? 'loss'
+                : 'wip';
+          }
           overLimit.add(
             '${row.source.goodsName ?? row.source.goodsCode ?? '物料'} '
             '本次登记 ${_number(total)}，超过可继续登记 ${_number(row.source.availableToSettleQty)} ${row.source.unitName ?? ''}',
@@ -282,6 +292,9 @@ class _MaterialSettlementSheetState
           '以下 ${overLimit.length} 行超过可继续登记数量，请改小后再提交：'
           '${_joinRowIssues(overLimit)}',
         );
+        if (firstInvalid != null) {
+          await _grid.revealError(firstInvalid, columnKey: firstInvalidColumn);
+        }
         return;
       }
       if (lines.isEmpty) {

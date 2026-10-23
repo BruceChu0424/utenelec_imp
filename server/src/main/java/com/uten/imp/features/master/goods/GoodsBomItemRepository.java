@@ -40,6 +40,10 @@ public interface GoodsBomItemRepository extends JpaRepository<GoodsBomItem, UUID
             """, nativeQuery = true)
     List<UUID> findGoodsWithOperationalRows(@Param("ids") Collection<UUID> ids);
 
+    /** One query per visible BOM layer; values are good stock in the component's base unit. */
+    @Query(value = GoodsStockQuantities.SQL, nativeQuery = true)
+    List<Object[]> findComponentStockQuantities(@Param("ids") Collection<UUID> ids);
+
     /**
      * 一批父件的可运营组装边 [行 id, 父件 id, 组件 id, 序号]：一次查询、不加载实体，
      * 组装树逐层下探(批量删除范围、粘贴成环检查)用；迁移占位货品不算可运营边。

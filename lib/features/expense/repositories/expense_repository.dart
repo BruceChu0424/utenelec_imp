@@ -286,7 +286,7 @@ class DioExpenseRepository implements ExpenseRepository {
         if (claimNo != null && claimNo.isNotEmpty) 'claimNo': claimNo,
       },
     );
-    return PagedResult.fromJson(json, ExpenseClaim.fromJson);
+    return PagedResult.fromJsonResponsive(json, ExpenseClaim.fromJson);
   }
 
   @override

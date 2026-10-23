@@ -30,6 +30,9 @@ void materialPolicyCases() {
       expect(tester.widget<RequiredCellFrame>(frame).isEmpty(), isTrue);
       expect(tester.takeException(), isNull);
       expect(_aggregateSubmits(), isEmpty);
+      // Input invalidation now prepares a complete presentation on a real
+      // event turn. Drain that scheduled work before the test disposes it.
+      await tester.pumpAndSettle();
     },
   );
   testWidgets(
@@ -500,9 +503,16 @@ void materialPolicyCases() {
         },
         defaultWorkshops: _workshopDefaultsFor(const ['g-m-7']),
       );
+      final originalRateController = tester
+          .widget<TextField>(_rateField('m-7'))
+          .controller;
       await tester.pump(const Duration(seconds: 46));
       await tester.pumpAndSettle();
       expect(readStarted, isTrue);
+      expect(
+        tester.widget<TextField>(_rateField('m-7')).controller,
+        same(originalRateController),
+      );
       await tester.enterText(_rateField('m-7'), '20');
       lateRead.complete([
         {

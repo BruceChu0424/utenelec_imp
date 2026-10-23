@@ -10,8 +10,17 @@ import java.util.List;
  * @param removed 替换模式下删掉的旧组件行总数
  * @param levels  文件里出现的层数（1 = 只有顶层）
  * @param warnings 写入后的提醒(不拦写入)，如整批领料的料的单个重量与货品资料单重相差 20% 以上
+ * @param updatedCount 合并模式实际采用导入冲突值的行数（单纯补齐不计入）
+ * @param filledCount 合并模式实际补齐空值的行数
+ * @param ignoredCount 合并模式保留现有非空冲突值的行数
+ * @param unchangedCount 合并模式内容完全相同的行数
  */
-public record BomImportResult(int targets, int added, int removed, int levels, List<String> warnings) {
+public record BomImportResult(int targets, int added, int removed, int levels, List<String> warnings,
+                              int updatedCount, int filledCount, int ignoredCount, int unchangedCount) {
+
+    public BomImportResult(int targets, int added, int removed, int levels, List<String> warnings) {
+        this(targets, added, removed, levels, warnings, 0, 0, 0, 0);
+    }
 
     public BomImportResult {
         warnings = warnings == null ? List.of() : List.copyOf(warnings);

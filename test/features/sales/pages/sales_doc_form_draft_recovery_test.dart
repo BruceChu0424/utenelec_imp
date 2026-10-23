@@ -59,24 +59,17 @@ void main() {
         tester.widget(find.byType(UtenEditableGrid<SalesGridRow>));
     final row = grid().controller.rows.single;
     final before = row.exportDraft();
+    final editor =
+        tester.state(find.byType(SalesDocEditPage))
+            as FormDraftMixin<SalesDocEditPage>;
+    final draft = env.container.read(formDraftsProvider).single;
+    final durableBefore = Map<String, String>.of(storage.records);
     env.container.read(_canViewPricesProvider.notifier).state = false;
     await tester.pumpAndSettle();
-    for (final key in ['price', 'discount', 'amount']) {
-      expect(
-        grid().columns.singleWhere((c) => c.key == key).frozenTextOf!(row),
-        '***',
-      );
-    }
-    expect(
-      tester
-          .widget<UtenTotalsSummaryBar>(
-            find.byKey(const Key('sales-edit-totals')),
-          )
-          .entries
-          .last
-          .value,
-      '***',
-    );
+    expect(editor.formDraftIdentityIsCurrent, isFalse);
+    expect(find.byType(UtenEditableGrid<SalesGridRow>), findsNothing);
+    expect(find.byKey(const Key('sales-edit-totals')), findsNothing);
+    expect(find.textContaining('原草稿保留在原账号下'), findsOneWidget);
     expect(
       find.byWidgetPredicate(
         (w) =>
@@ -86,10 +79,31 @@ void main() {
       findsNothing,
     );
     expect(row.exportDraft(), before);
+    expect(storage.records, durableBefore);
+    await expectLater(editor.saveFormDraftNow(), throwsStateError);
     env.container.read(_canViewPricesProvider.notifier).state = true;
     await tester.pumpAndSettle();
+    // Equal permissions cannot revive this old page. Reopening establishes a
+    // new owner and reads the original durable prices without rewriting them.
+    expect(editor.formDraftIdentityIsCurrent, isFalse);
+    expect(find.byType(UtenEditableGrid<SalesGridRow>), findsNothing);
+    expect(find.byKey(const Key('sales-edit-totals')), findsNothing);
+    expect(row.exportDraft(), before);
+    expect(storage.records, durableBefore);
+    expect(env.api.writes, 0);
+    await tester.pumpWidget(const SizedBox());
+    env.router.dispose();
+    env.container.dispose();
+    final reopened = await _pump(
+      tester,
+      storage,
+      location: draft.resumeLocation,
+    );
+    final restored = grid().controller.rows.single;
     expect(
-      grid().columns.singleWhere((c) => c.key == 'price').frozenTextOf!(row),
+      grid().columns.singleWhere((c) => c.key == 'price').frozenTextOf!(
+        restored,
+      ),
       '10',
     );
     expect(
@@ -102,10 +116,13 @@ void main() {
           .value,
       '20.00',
     );
-    expect(env.api.writes, 0);
+    expect(restored.exportDraft(), before);
+    expect(storage.records, durableBefore);
+    expect(reopened.api.writes, 0);
+    expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
-    env.router.dispose();
-    env.container.dispose();
+    reopened.router.dispose();
+    reopened.container.dispose();
   });
 
   testWidgets('销售草稿重开显现已填可选列并向既有API保留精确业务字段', (tester) async {
@@ -756,7 +773,17 @@ Future<void> _seedPartialOrder(
     'createdDocId': createdId,
   };
   row.dispose();
-  await state.restoreFormDraft(data);
+  var restored = false;
+  final restoration = state.restoreFormDraft(data).whenComplete(() {
+    restored = true;
+  });
+  // Bulk row restoration now yields real event turns. Drive the widget-test
+  // clock while awaiting it, instead of deadlocking FakeAsync on its timer.
+  for (var frame = 0; frame < 1000 && !restored; frame++) {
+    await tester.pump(const Duration(milliseconds: 10));
+  }
+  expect(restored, isTrue);
+  await restoration;
   await state.saveFormDraftNow();
   await tester.pumpAndSettle();
 }

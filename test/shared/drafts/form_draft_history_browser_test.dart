@@ -56,6 +56,44 @@ Future<web.IDBDatabase> _open(
   return result.future;
 }
 
+Future<void> _legacyWrite(String name, String key, String value) async {
+  final database = await _open(name, 1);
+  try {
+    final transaction = database.transaction('drafts'.toJS, 'readwrite');
+    final done = Completer<void>();
+    transaction.oncomplete = ((web.Event _) => done.complete()).toJS;
+    transaction.onabort = ((web.Event _) => done.completeError(
+      StateError('legacy write aborted'),
+    )).toJS;
+    transaction.objectStore('drafts').put(value.toJS, key.toJS);
+    await done.future;
+  } finally {
+    database.close();
+  }
+}
+
+Future<String?> _rawHistory(String name, String key) async {
+  final database = await _open(name, 2);
+  try {
+    final done = Completer<String?>();
+    final request = database
+        .transaction('history_payload'.toJS, 'readonly')
+        .objectStore('history_payload')
+        .get(key.toJS);
+    request.onsuccess = ((web.Event _) => done.complete(
+      request.result.isUndefinedOrNull
+          ? null
+          : (request.result as JSString).toDart,
+    )).toJS;
+    request.onerror = ((web.Event _) => done.completeError(
+      StateError('raw history read failed'),
+    )).toJS;
+    return await done.future;
+  } finally {
+    database.close();
+  }
+}
+
 void main() {
   late String databaseName;
   late List<BrowserFormDraftStorage> stores;
@@ -85,6 +123,139 @@ void main() {
     )).toJS;
     await done.future;
   });
+
+  test(
+    'large original CAS has one winner and history retains exact UTF-8/JSON text',
+    () async {
+      final body = jsonDecode(_payload('one')) as Map<String, dynamic>;
+      (body['data'] as Map)['base64'] = 'QUJD' * (10 * 1024 * 1024 ~/ 4);
+      final original = const JsonEncoder.withIndent('  ').convert(body);
+      final first = open();
+      final second = open();
+      await first.write('${prefix}one', original);
+      final a = jsonEncode({...body, 'revision': 'a'});
+      final b = jsonEncode({...body, 'revision': 'b'});
+      final results = await Future.wait([
+        first.compareAndSet('${prefix}one', expectedValue: original, value: a),
+        second.compareAndSet('${prefix}one', expectedValue: original, value: b),
+      ]);
+      expect(results.where((value) => value), hasLength(1));
+      expect(await first.read('${prefix}one'), results.first ? a : b);
+      expect((await first.readHistoryPage(prefix)).entries, hasLength(2));
+      expect(
+        await _rawHistory(databaseName, '$prefix:000000000000001'),
+        original,
+      );
+      expect(
+        (await first.readHistoryRecord(prefix, '1'))!.draft.data['base64'],
+        (body['data'] as Map)['base64'],
+      );
+    },
+  );
+
+  test(
+    'v1 writer racing async preparation aborts upgrade then imports only the latest original',
+    () async {
+      const key = '${prefix}one';
+      final firstRaw = _payload('one');
+      final latest = _payload('one', revision: 'late');
+      (await _open(databaseName, 1, seed: {key: firstRaw})).close();
+      var preparations = 0;
+      final storage = BrowserFormDraftStorage(
+        databaseName: databaseName,
+        beforeMigrationUpgrade: () async {
+          if (++preparations == 1) {
+            await _legacyWrite(databaseName, key, latest);
+          }
+        },
+      );
+      stores.add(storage);
+      expect(
+        (await storage.readHistoryPage(prefix)).entries.single.revision,
+        'late',
+      );
+      expect(preparations, 2);
+      expect(await storage.read(key), latest);
+      expect(
+        await _rawHistory(databaseName, '$prefix:000000000000001'),
+        latest,
+      );
+    },
+  );
+
+  test(
+    'persistent v1 mutation exhausts bounded retries without committing a partial upgrade',
+    () async {
+      const key = '${prefix}one';
+      (await _open(databaseName, 1, seed: {key: _payload('one')})).close();
+      var preparations = 0;
+      final storage = BrowserFormDraftStorage(
+        databaseName: databaseName,
+        beforeMigrationUpgrade: () => _legacyWrite(
+          databaseName,
+          key,
+          _payload('one', revision: 'race-${++preparations}'),
+        ),
+      );
+      stores.add(storage);
+      await expectLater(storage.readHistoryPage(prefix), throwsStateError);
+      expect(preparations, 3);
+      final legacy = await _open(databaseName, 1);
+      try {
+        expect(legacy.objectStoreNames.contains('history_index'), isFalse);
+        final done = Completer<String>();
+        final request = legacy
+            .transaction('drafts'.toJS, 'readonly')
+            .objectStore('drafts')
+            .get(key.toJS);
+        request.onsuccess = ((web.Event _) => done.complete(
+          (request.result as JSString).toDart,
+        )).toJS;
+        expect(await done.future, _payload('one', revision: 'race-3'));
+      } finally {
+        legacy.close();
+      }
+    },
+  );
+
+  test(
+    'a blocked upgrade cannot write later after its open already failed',
+    () async {
+      const key = '${prefix}one';
+      final original = _payload('one');
+      (await _open(databaseName, 1, seed: {key: original})).close();
+      web.IDBDatabase? blocker;
+      final storage = BrowserFormDraftStorage(
+        databaseName: databaseName,
+        beforeMigrationUpgrade: () async {
+          blocker = await _open(databaseName, 1);
+        },
+      );
+      stores.add(storage);
+      try {
+        await expectLater(storage.readHistoryPage(prefix), throwsStateError);
+      } finally {
+        blocker?.close();
+      }
+      // This version-1 open is queued after the formerly blocked request. If
+      // that request writes late, this open fails with a version error.
+      final legacy = await _open(databaseName, 1);
+      try {
+        expect(legacy.objectStoreNames.contains('history_index'), isFalse);
+        final done = Completer<String>();
+        final request = legacy
+            .transaction('drafts'.toJS, 'readonly')
+            .objectStore('drafts')
+            .get(key.toJS);
+        request.onsuccess = ((web.Event _) => done.complete(
+          (request.result as JSString).toDart,
+        )).toJS;
+        expect(await done.future, original);
+      } finally {
+        legacy.close();
+      }
+    },
+  );
 
   test(
     'business reset atomically purges old drafts and history across connections',
@@ -118,6 +289,33 @@ void main() {
       expect(await current.read('${owner}g1_new'), isNotNull);
       await current.synchronizeBusinessReset(owner, 2);
       expect(await current.read('${owner}g1_new'), isNull);
+    },
+  );
+
+  test(
+    'a future database version stays closed and its original draft is preserved',
+    () async {
+      (await _open(
+        databaseName,
+        3,
+        seed: {'${prefix}one': _payload('one')},
+      )).close();
+      await expectLater(open().read('${prefix}one'), throwsStateError);
+      final future = await _open(databaseName, 3);
+      try {
+        expect(future.objectStoreNames.contains('history_index'), isFalse);
+        final done = Completer<String>();
+        final request = future
+            .transaction('drafts'.toJS, 'readonly')
+            .objectStore('drafts')
+            .get('${prefix}one'.toJS);
+        request.onsuccess = ((web.Event _) => done.complete(
+          (request.result as JSString).toDart,
+        )).toJS;
+        expect(await done.future, _payload('one'));
+      } finally {
+        future.close();
+      }
     },
   );
 

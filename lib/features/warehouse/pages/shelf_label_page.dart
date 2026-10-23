@@ -28,6 +28,7 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/latest_request_guard.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../core/print/pdf_printer.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -82,6 +83,19 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      _rowRequests.begin();
+      setState(() {
+        _rows = null;
+        _loading = false;
+        _error = null;
+        _selectedPlace = null;
+        _selectedPlaceWarehouseId = null;
+        _warehouseId = null;
+        _placeFilterActive = false;
+        _filters.clear();
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ref.read(masterNameServiceProvider).ensureLoaded();
       await _load();

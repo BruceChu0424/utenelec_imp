@@ -77,6 +77,26 @@ class MaterialAnalysisPlanningEligibilityTest {
                 MaterialAnalysisService.planningBlockedReasons(sources)).hasSize(10_001));
     }
 
+    @Test
+    void disabledGoodsAndRemovedDeepBomEdgesBlockOnlyTheirOwnSourceAndChildAnchors() {
+        UUID changed = UUID.randomUUID(), child = UUID.randomUUID(), unaffected = UUID.randomUUID();
+        var changedSource = source(changed, null, "OTHER", true, "10");
+        String stale = "BOM 中的原材料已禁用，请先刷新物料分析；已有下达单据须先核对";
+        Map<UUID, String> blocks = MaterialAnalysisService.planningBlockedReasons(List.of(
+                source(child, changed, "MAKE_COMPONENT", true, "10"),
+                changedSource, source(unaffected, null, "OTHER", true, "10")), Map.of(changed, stale));
+
+        assertThat(blocks).containsOnlyKeys(changed, child);
+        assertThat(blocks.get(child)).isEqualTo(stale);
+        var view = changedSource.toView(BigDecimal.ZERO, true,
+                MaterialAnalysisService.ProductPlanState.NONE, blocks.get(changed));
+        assertThat(view.canSchedule()).isFalse();
+        assertThat(view.canIssueSurplus()).isFalse();
+        assertThat(view.scheduleBlockedReason()).contains("请先刷新", "已有下达单据");
+        // Blocking new commitments never deletes the admitted historical requirement.
+        assertThat(view.requestedQty()).isEqualByComparingTo("10");
+    }
+
     private static MaterialAnalysisService.SourceLine source(
             UUID id, UUID parent, String type, boolean approved, String orderQty) {
         Object[] row = new Object[47];

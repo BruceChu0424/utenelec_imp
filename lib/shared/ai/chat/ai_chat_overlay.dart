@@ -887,7 +887,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     }
     if (!_active(generation) || cancel.isCancelled) return;
     final result = AiGuidedFileResult.fromJson(snapshot.result ?? const {});
-    if (!result.matchesSource(file)) {
+    final sourceMatches = await result.matchesSourceResponsive(
+      file,
+      isCurrent: () => _active(generation) && !cancel.isCancelled,
+    );
+    if (!_active(generation) || cancel.isCancelled) return;
+    if (!sourceMatches) {
       throw AiJobFailure(
         code: 'DOCUMENT_SOURCE_MISMATCH',
         message: _t('documentSourceMismatch'),
@@ -1223,11 +1228,17 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     final file = message.sourceFile;
     final identity = ref.read(aiGuidedFileIdentityProvider);
     final workflow = AiGuidedWorkflow.parse(ui.card.args['workflow']);
-    if (jobId == null ||
-        result == null ||
-        file == null ||
-        identity == null ||
-        !result.matchesSource(file)) {
+    if (jobId == null || result == null || file == null || identity == null) {
+      _cardNote(ui, l10n.aiChatCardSourceMissing);
+      return;
+    }
+    final sourceMatches = await result.matchesSourceResponsive(
+      file,
+      isCurrent: () =>
+          _current && ref.read(aiGuidedFileIdentityProvider) == identity,
+    );
+    if (!_current || ref.read(aiGuidedFileIdentityProvider) != identity) return;
+    if (!sourceMatches) {
       _cardNote(ui, l10n.aiChatCardSourceMissing);
       return;
     }
@@ -1257,13 +1268,14 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     }
     final AiGuidedFilePlan verified;
     try {
-      final plan = AiGuidedFilePlan(
+      final plan = await AiGuidedFilePlan.createResponsive(
         jobId: jobId,
         file: file,
         result: result,
         workflow: workflow,
         identity: identity,
         pageRoute: message.documentPageRoute,
+        isCurrent: () => _current && _workflowAllowed(workflow),
       );
       if (!plan.matches(ref)) {
         throw ApiException('FORBIDDEN', _t('permissionChanged'));

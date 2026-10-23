@@ -7,6 +7,7 @@ import 'master_data_table_view.dart';
 
 String bomMaterialEvidenceSource(GoodsBomMaterialEvidence row) =>
     switch (row.source) {
+      'MATERIAL_IDENTITY' => '原料身份核对',
       'PERIODIC_CHOICE' => '车间认料',
       'DISCOVERY_REQUEST' => '车间领料申请',
       'DISCOVERY_CONFIGURED' => '仓库确认用料',
@@ -14,6 +15,11 @@ String bomMaterialEvidenceSource(GoodsBomMaterialEvidence row) =>
     };
 
 String bomMaterialEvidenceNextStep(GoodsBomMaterialEvidence row) {
+  if (row.source == 'MATERIAL_IDENTITY') {
+    return row.inBom
+        ? '已建立正式 BOM；本记录保留原料身份来源'
+        : '已确认原料种类，单耗待核；核对后维护 BOM，当前不参与配方计算、领料或成本';
+  }
   if (row.source == 'PERIODIC_CHOICE') {
     return row.inBom
         ? '按 BOM 单重计算；盘点耗用见内料仓用量报表'
@@ -27,6 +33,12 @@ String bomMaterialEvidenceNextStep(GoodsBomMaterialEvidence row) {
       : '实发、报工审核及余料核清后学习；人工配方或删除记录会限制自动加料';
 }
 
+String bomMaterialEvidenceStructure(GoodsBomMaterialEvidence row) => row.inBom
+    ? '已在 BOM 中'
+    : row.source == 'MATERIAL_IDENTITY' && row.status == 'PENDING_QUANTITY'
+    ? '单耗待核，尚未加入 BOM'
+    : '尚未加入 BOM';
+
 /// 结构证据保留颜色和基本单位，不把申请、认料或仓库配置当成实际消耗。
 class GoodsBomMaterialEvidenceTable extends StatelessWidget {
   const GoodsBomMaterialEvidenceTable({super.key, required this.rows});
@@ -38,7 +50,8 @@ class GoodsBomMaterialEvidenceTable extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       const Text(
-        '选料保存后就会显示在这里。认料只确定材料种类；按单材料要完成实际领退料和报工核清后才学习用量。'
+        '原料身份或选料保存后会显示在这里。单耗待核的身份记录不参与配方计算。'
+        '按单材料要完成实际领退料和报工核清后才学习用量。'
         '整批领料的多产品分摊耗用不能当作逐件实测单耗。',
       ),
       const SizedBox(height: UtenSpacing.s8),
@@ -50,7 +63,7 @@ class GoodsBomMaterialEvidenceTable extends StatelessWidget {
           nullCounts: const {},
           filters: const {},
           onFilterChanged: (_, _) {},
-          emptyMessage: '暂无车间认料或领料选料记录',
+          emptyMessage: '暂无原料身份或选料记录',
           columns: [
             MasterColumnDef(
               key: 'code',
@@ -82,11 +95,11 @@ class GoodsBomMaterialEvidenceTable extends StatelessWidget {
               width: 120,
               value: bomMaterialEvidenceSource,
             ),
-            MasterColumnDef(
+            const MasterColumnDef(
               key: 'structure',
               label: 'BOM 结构',
               width: 130,
-              value: (row) => row.inBom ? '已在 BOM 中' : '尚未加入 BOM',
+              value: bomMaterialEvidenceStructure,
             ),
             MasterColumnDef(
               key: 'count',

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../core/performance/responsive_data_codec.dart';
 import 'form_draft.dart';
 
 enum FormDraftHistoryAction { saved, deleted, completed, imported }
@@ -67,6 +68,127 @@ class FormDraftHistoryRecord {
   final FormDraftHistoryEntry entry;
   final FormDraft draft;
 }
+
+/// Prepared outside an IndexedDB write transaction. [raw] is retained exactly:
+/// neither CAS nor immutable history may use a re-encoded equivalent instead.
+class PreparedFormDraftHistoryValue {
+  const PreparedFormDraftHistoryValue._({
+    required this.raw,
+    required this.validJson,
+    required this.json,
+    required this.draft,
+    required this.compact,
+  });
+  final String? raw;
+  final bool validJson;
+  final Map<String, dynamic>? json;
+  final FormDraft? draft;
+  final String? compact;
+  bool get terminal => json?['completed'] == true && json?['id'] is String;
+}
+
+Future<PreparedFormDraftHistoryValue> prepareFormDraftHistoryValue(
+  String? value,
+) async {
+  if (value == null) {
+    return const PreparedFormDraftHistoryValue._(
+      raw: null,
+      validJson: true,
+      json: null,
+      draft: null,
+      compact: null,
+    );
+  }
+  Map<String, dynamic>? json;
+  try {
+    json = await decodeJsonResponsive(value) as Map<String, dynamic>;
+  } on FormatException {
+    // Unsupported/corrupt originals stay unchanged and outside the index.
+  } on TypeError {
+    // Preserve the same malformed-envelope behavior as the synchronous API.
+  }
+  FormDraft? draft;
+  if (json != null) {
+    try {
+      draft = FormDraft.fromJson(json);
+    } on FormatException {
+      // Terminal and future-version envelopes need not be restorable drafts.
+    } on TypeError {
+      // Keep the original bytes for recovery.
+    } on ArgumentError {
+      // Unknown metadata does not hide healthy sibling records.
+    }
+  }
+  final compact = json?['completed'] == true
+      ? await encodeJsonResponsive({
+          for (final key in const [
+            'version',
+            'id',
+            'completed',
+            'revision',
+            'completedAt',
+            'historyAction',
+            'storageVersion',
+          ])
+            if (json!.containsKey(key)) key: json[key],
+        })
+      : value;
+  return PreparedFormDraftHistoryValue._(
+    raw: value,
+    validJson: json != null,
+    json: json,
+    draft: draft,
+    compact: compact,
+  );
+}
+
+Future<FormDraft?> decodeFormDraftHistoryPayloadResponsive(
+  String? value,
+) async => (await prepareFormDraftHistoryValue(value)).draft;
+
+Future<bool> isFormDraftTerminalMarkerResponsive(String? value) async =>
+    (await prepareFormDraftHistoryValue(value)).terminal;
+
+Future<String?> compactFormDraftTerminalMarkerResponsive(String? value) async =>
+    (await prepareFormDraftHistoryValue(value)).compact;
+
+FormDraftHistoryChange? preparedFormDraftHistoryChange(
+  String key,
+  PreparedFormDraftHistoryValue existing,
+  PreparedFormDraftHistoryValue next, {
+  bool importing = false,
+}) {
+  if (!next.validJson) return null;
+  final terminal = next.raw == null || next.json?['completed'] == true;
+  final source = importing || !terminal ? next : existing;
+  final draft = source.draft;
+  if (draft == null || key != '${formDraftHistoryPrefix(key)}${draft.id}') {
+    return null;
+  }
+  return FormDraftHistoryChange(
+    draft,
+    source.raw!,
+    importing
+        ? FormDraftHistoryAction.imported
+        : terminal
+        ? (next.raw == null || next.json?['historyAction'] == 'deleted'
+              ? FormDraftHistoryAction.deleted
+              : FormDraftHistoryAction.completed)
+        : FormDraftHistoryAction.saved,
+  );
+}
+
+Future<FormDraftHistoryChange?> formDraftHistoryChangeResponsive(
+  String key,
+  String? existing,
+  String? value, {
+  bool importing = false,
+}) async => preparedFormDraftHistoryChange(
+  key,
+  await prepareFormDraftHistoryValue(existing),
+  await prepareFormDraftHistoryValue(value),
+  importing: importing,
+);
 
 String? formDraftHistoryPrefix(String key) {
   final split = key.lastIndexOf('_');

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft.dart';
@@ -49,6 +50,28 @@ class MemoryDraftStorage implements FormDraftStorage {
   }
 }
 
+class _ScheduledOwnerChangeStorage extends MemoryDraftStorage {
+  void Function()? afterRead;
+  int compares = 0;
+  @override
+  Future<String?> read(String key) async {
+    final callback = afterRead;
+    afterRead = null;
+    if (callback != null) Timer.run(callback);
+    return super.read(key);
+  }
+
+  @override
+  Future<bool> compareAndSet(
+    String key, {
+    required String? expectedValue,
+    required String? value,
+  }) {
+    compares++;
+    return super.compareAndSet(key, expectedValue: expectedValue, value: value);
+  }
+}
+
 const _scope = AuthenticatedScope(userId: 'user-1');
 const _perms = {Perm.salesOrderCreate, Perm.salesOrderView};
 
@@ -82,6 +105,91 @@ ProviderContainer _container(
 );
 
 void main() {
+  for (final boundary in ['account', 'server', 'permission']) {
+    for (final phase in ['decode', 'encode']) {
+      test(
+        'large draft $phase rejects $boundary ABA before local CAS',
+        () async {
+          final storage = _ScheduledOwnerChangeStorage();
+          final container = _container(storage);
+          addTearDown(container.dispose);
+          addTearDown(() => debugUiWorkSliceObserver = null);
+          final notifier = container.read(formDraftsProvider.notifier);
+          await notifier.ready;
+          final original = FormDraft.fromJson({
+            ..._draft(
+              'large',
+              data: {
+                'rawQty': '0001.',
+                'note': '原始未完成输入',
+                'rows': List.generate(
+                  4000,
+                  (i) => {
+                    'id': '$i',
+                    for (var field = 0; field < 12; field++)
+                      'field$field': '原值 $i/$field',
+                  },
+                ),
+              },
+            ).toJson(),
+            'revision': 'original',
+          });
+          final key =
+              '${formDraftStoragePrefix('https://server-one/api', _scope)}large';
+          final originalRaw = jsonEncode(original.toJson());
+          var crossed = false;
+          void cross() {
+            if (crossed) return;
+            crossed = true;
+            for (final away in [true, false]) {
+              container.updateOverrides([
+                formDraftStorageProvider.overrideWithValue(storage),
+                authenticatedScopeProvider.overrideWithValue(
+                  away && boundary == 'account'
+                      ? const AuthenticatedScope(userId: 'user-2')
+                      : _scope,
+                ),
+                currentPermissionsProvider.overrideWithValue(
+                  away && boundary == 'permission'
+                      ? <String>{Perm.salesOrderView}
+                      : _perms,
+                ),
+                apiBaseUrlProvider.overrideWithValue(
+                  away && boundary == 'server'
+                      ? 'https://server-two/api'
+                      : 'https://server-one/api',
+                ),
+              ]);
+              container.read(formDraftsProvider);
+            }
+          }
+
+          if (phase == 'decode') {
+            storage.records[key] = originalRaw;
+            storage.afterRead = cross;
+          } else {
+            debugUiWorkSliceObserver = (label, elapsed) {
+              if (label == 'draft-materialise') cross();
+            };
+          }
+          await expectLater(
+            notifier.save(
+              original,
+              expectedRevision: phase == 'decode' ? 'original' : null,
+            ),
+            throwsA(isA<StateError>()),
+          );
+          expect(crossed, isTrue);
+          expect(storage.compares, 0);
+          expect(
+            storage.records[key],
+            phase == 'decode' ? originalRaw : isNull,
+          );
+          await container.read(formDraftsProvider.notifier).ready;
+        },
+      );
+    }
+  }
   test('known outcomes and partial unsent remainder remain deletable', () {
     final route = RouteName.productionFqcSheetHandling('s');
     for (final state in ['notSent', 'rejected', 'confirmed']) {

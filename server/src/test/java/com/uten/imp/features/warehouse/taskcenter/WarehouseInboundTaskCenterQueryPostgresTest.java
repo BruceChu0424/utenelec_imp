@@ -477,6 +477,25 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         return document;
     }
 
+    @Test void manualFinishedInboundDraftsRemainReadonlyHistoryWhileOrdinaryApprovalKeepsItsReviewAction() {
+        UUID unsupported=UUID.randomUUID(),ordinary=UUID.randomUUID();
+        stock(unsupported,"FINISHED_IN","UNSUPPORTED-FINISHED","2026-10-12",null);
+        stock(ordinary,"OTHER_IN","APPROVABLE-OTHER","2026-10-12",null);
+        UUID maker=UUID.randomUUID();
+        execute("UPDATE stock_documents SET maker_id=:maker","maker",maker);
+        var service=service(Set.of("stock_doc:view","stock_doc:approve"),WarehouseTaskScope.ALL,false);
+        var active=service.list(filter("ALL","",1,20));
+        assertThat(active.items()).extracting(Row::id).containsExactly(ordinary);
+        assertThat(active.items().getFirst().action()).isEqualTo("STOCK_REVIEW");
+        var history=service.list(new Filter("FINISHED","","",null,null,null,null,1,20,null,null,TaskView.HISTORY));
+        assertThat(history.items()).singleElement().satisfies(row->{
+            assertThat(row.id()).isEqualTo(unsupported);
+            assertThat(row.canHandle()).isFalse();
+            assertThat(row.action()).isEqualTo("HISTORY_DETAIL");
+            assertThat(row.status()).isEqualTo("FINISHED_LEGACY_DRAFT");
+        });
+    }
+
     @Test void completedReversedAndClosedDocumentsLeaveActiveBeforePagingAndRetainScopedHistory() {
         UUID warehouse=UUID.randomUUID(),outside=UUID.randomUUID();
         UUID draft=UUID.randomUUID(),posted=UUID.randomUUID(),reversed=UUID.randomUUID(),closed=UUID.randomUUID();
@@ -507,9 +526,11 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         assertThat(((Row)service.detail("FINISHED:STOCK_DOCUMENT:"+posted,null).get("row")).id()).isEqualTo(posted);
         assertThatThrownBy(()->service.detail("OTHER:STOCK_DOCUMENT:"+hidden,null)).isInstanceOf(ApiException.class);
         execute("UPDATE stock_documents SET status=0 WHERE id=:id","id",posted);
-        assertThat(service.list(filter("ALL","",1,20)).items()).extracting(Row::id).containsExactlyInAnyOrder(draft,posted);
+        assertThat(service.list(filter("ALL","",1,20)).items()).extracting(Row::id).containsExactly(draft);
         assertThat(service.list(new Filter("ALL","","",null,null,null,null,1,20,null,null,TaskView.HISTORY)).total())
-                .isEqualTo(2);
+                .isEqualTo(3);
+        assertThat(((Row)service.detail("FINISHED:STOCK_DOCUMENT:"+posted,null).get("row")).status())
+                .isEqualTo("FINISHED_LEGACY_DRAFT");
     }
 
     @Test void qualityResultsUseTheSameLifecycleForRowsTotalsAndBillNumberFacets() {
@@ -975,7 +996,8 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         when(stock.nativeReadScope(anyString(),anyString(),any(OwnerScope.class))).thenReturn(new NativeReadScope("1=1",null,Set.of()));
         var production=mock(ProductionStockTaskAccessPolicy.class);
         when(production.canAccessWarehouseTasks()).thenReturn(pool);
-        return new WarehouseInboundTaskCenterQueryService(jdbc,mapper,current,scopes,stock,production);
+        return new WarehouseInboundTaskCenterQueryService(jdbc,mapper,current,scopes,stock,production,
+                new com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope(jdbc,current));
     }
 
     private static Filter filter(String source,String status,int page,int size) { return new Filter(source,status,"",null,null,null,null,page,size); }

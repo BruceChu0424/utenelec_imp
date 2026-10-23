@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class LegacyBankTransferLinesPostgresTest {
     private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine")
-            .withUsername("uten").withPassword("synthetic-bank-history-only");
+            .withUsername("fixture_admin").withPassword("synthetic-bank-history-only");
     private static final UUID HISTORY=UUID.randomUUID(),NATIVE=UUID.randomUUID(),OLD_LINE=UUID.randomUUID();
     private static JdbcTemplate jdbc;
     private static List<String> oldHeader,oldLines;

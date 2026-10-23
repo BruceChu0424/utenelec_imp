@@ -32,7 +32,7 @@ class ProductionExecutionWorkbenchRepository {
         if (salesOrder?.isNotEmpty == true) 'salesOrder': salesOrder,
       },
     );
-    return PagedResult.fromJson(
+    return PagedResult.fromJsonResponsive(
       json,
       ProductionExecutionWorkbenchGroup.fromJson,
     );
@@ -71,10 +71,10 @@ class ProductionExecutionWorkbenchRepository {
       '/production/execution-workbench/$rootType/$rootId/related-documents',
       query: {'page': 1, 'size': size},
     );
-    return PagedResult.fromJson(
+    return (await PagedResult.fromJsonResponsive(
       json,
       ProductionExecutionWorkbenchRelatedDocument.fromJson,
-    ).items;
+    )).items;
   }
 
   /// 车间任务列表。[dateFrom]/[dateTo]（yyyy-MM-dd）只对「历史任务」段
@@ -118,7 +118,7 @@ class ProductionExecutionWorkbenchRepository {
         'order': ?order,
       },
     );
-    return PagedResult.fromJson(
+    return PagedResult.fromJsonResponsive(
       json,
       ProductionExecutionWorkbenchSegment.fromJson,
     );

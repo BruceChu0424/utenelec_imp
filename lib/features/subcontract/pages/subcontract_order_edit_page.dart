@@ -236,7 +236,11 @@ class _SubcontractOrderEditPageState
       data['rows'],
       (row) => SubcontractGridRow.fromDraft(row, supportsTotalInput: true),
     );
-    _pendingFiles.restoreDraft(draftMap(data['attachments']));
+    await _pendingFiles.restoreDraftResponsive(
+      draftMap(data['attachments']),
+      isCurrent: () => mounted && formDraftIdentityIsCurrent,
+    );
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     final created = draftMaps(data['createdOrders']);
     _createdOrders = created.isEmpty
         ? null
@@ -1219,6 +1223,8 @@ class _SubcontractOrderEditPageState
     final badQty = <String>[];
     final badPrice = <String>[];
     final badWeight = <String>[];
+    SubcontractGridRow? firstInvalid;
+    String? firstInvalidColumn;
     final gridRows = _grid.rows;
     // 行标识用用户看得见的行序 + 货品名（明细表不显示 UUID，报 id 等于没报）。
     String labelOf(int i, SubcontractGridRow r) =>
@@ -1227,31 +1233,40 @@ class _SubcontractOrderEditPageState
       final r = gridRows[i];
       if (r.goods == null || !submitted.contains(r)) continue;
       final label = labelOf(i, r);
-      if (r.supplierId == null) missingSupplier.add(label);
-      if (r.settlementMethodId == null) missingSettlement.add(label);
-      if (r.currencyId == null) missingCurrency.add(label);
+      void addIssue(List<String> issues, String column) {
+        issues.add(label);
+        if (firstInvalid != null) return;
+        firstInvalid = r;
+        firstInvalidColumn = column;
+      }
+
+      if (r.supplierId == null) addIssue(missingSupplier, 'supplier');
+      if (r.settlementMethodId == null) {
+        addIssue(missingSettlement, 'settlement');
+      }
+      if (r.currencyId == null) addIssue(missingCurrency, 'currency');
       final rate = double.tryParse(r.exchangeRate.text.trim());
-      if (rate == null || rate <= 0) badRate.add(label);
+      if (rate == null || rate <= 0) addIssue(badRate, 'exchangeRate');
       final taxError = validateSubcontractTaxRate(
         r.taxRate.text,
         required: true,
       );
       if (taxError != null) {
-        taxIssues.putIfAbsent(taxError, () => []).add(label);
+        addIssue(taxIssues.putIfAbsent(taxError, () => []), 'taxRate');
       }
       final qty = double.tryParse(r.qty.text) ?? 0;
-      if (qty <= 0) badQty.add(label);
+      if (qty <= 0) addIssue(badQty, 'qty');
       // 2026-09 起订货允许超过申请剩余量（超委外备货）：不再校验 qty ≤ maxQty。
       final priceError = validateSubcontractOrderPrice(
         docType: SubcontractDocType.order,
         goodsName: r.goods!.name ?? r.goods!.code ?? '该货品',
         priceText: r.price.text,
       );
-      if (priceError != null) badPrice.add(label);
+      if (priceError != null) addIssue(badPrice, 'price');
       final weightText = r.weight.text.trim();
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
-        badWeight.add(label);
+        addIssue(badWeight, 'weight');
       }
     }
     // 与采购订货单同口径：指路必须落到真实入口（批量条款只在行右键菜单里）。
@@ -1277,6 +1292,9 @@ class _SubcontractOrderEditPageState
     if (rowIssues.isNotEmpty) {
       // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。
       context.appError(rowIssues.join('\n'));
+      if (firstInvalid case final row?) {
+        await _grid.revealError(row, columnKey: firstInvalidColumn);
+      }
       return;
     }
     // 编辑既有单：一单一套条款（行条款必须全一致）。
@@ -1287,17 +1305,25 @@ class _SubcontractOrderEditPageState
     final settlementEntries = await _settlementEntries();
     if (!mounted || !formDraftIdentityIsCurrent) return;
     final stoppedSettlement = <String>[];
+    SubcontractGridRow? firstStoppedSettlement;
     for (var i = 0; i < gridRows.length; i++) {
       final r = gridRows[i];
       if (r.goods == null || !submitted.contains(r)) continue;
       if (!settlementEntries.containsKey(r.settlementMethodId)) {
         stoppedSettlement.add(labelOf(i, r));
+        firstStoppedSettlement ??= r;
       }
     }
     if (stoppedSettlement.isNotEmpty) {
       context.appError(
         _rowIssueMessage(stoppedSettlement, '的结算方式已停用', action: '请重新选择后再提交'),
       );
+      if (firstStoppedSettlement != null) {
+        await _grid.revealError(
+          firstStoppedSettlement,
+          columnKey: 'settlement',
+        );
+      }
       return;
     }
     // 保存前查重（2026-09-25，与采购订货单同款）：同「委外商+条款+货品+颜色+单位
@@ -1317,6 +1343,7 @@ class _SubcontractOrderEditPageState
       final pricingError = r.pricing.validate();
       if (pricingError != null) {
         context.appError('${r.goods?.name ?? "该货品"}：$pricingError');
+        await _grid.revealError(r, columnKey: 'price');
         return;
       }
       if (!r.extraColumnsValid(
@@ -1324,6 +1351,7 @@ class _SubcontractOrderEditPageState
             exactLineAmountText(r.qty.text, r.price.text),
       )) {
         context.appError('附加列数字或计算有误，请检查数字、除数以及最终金额');
+        await _grid.revealError(r);
         return;
       }
       final remarkText = r.remark.text.trim();

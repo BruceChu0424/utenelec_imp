@@ -130,7 +130,11 @@ const formDraftsPageCategories = <String, FormDraftsPageCategory>{
     hubTitle: '仓库',
     scope: FormDraftCategoryScope(
       module: BadgeModule.warehouse,
-      routePrefixes: {'/warehouse/', RouteName.stockCountSession},
+      routePrefixes: {
+        '/warehouse/',
+        RouteName.stockCountSession,
+        RouteName.workshopMaterialIssue,
+      },
       excludeTaskDrafts: true,
     ),
     kinds: [DraftDocKind.stockDocument],

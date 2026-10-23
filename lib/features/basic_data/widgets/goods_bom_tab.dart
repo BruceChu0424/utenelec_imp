@@ -1599,6 +1599,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
 
   Map<String, dynamic> _copyBody(GoodsBomItem item) => {
     'componentGoodsId': item.componentGoodsId,
+    'copiedFromBomItemId': item.id,
     'qty': item.qty,
     'price': item.price,
     'summary': item.summary,
@@ -2029,6 +2030,27 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         value: (r) => r.node.item.componentColorName,
       ),
       MasterColumnDef(
+        key: 'material',
+        label: '材质',
+        width: 120,
+        value: (r) => r.node.item.componentMaterial,
+      ),
+      if (_hasPermission(Perm.stockView))
+        MasterColumnDef(
+          key: 'stockQty',
+          label: '库存数量',
+          width: 120,
+          type: 'number',
+          value: (r) {
+            final item = r.node.item;
+            final stock = item.componentStockQty;
+            if (stock == null) return '—';
+            final unit = item.componentUnitName?.trim();
+            return '${formatBomQty(stock)}${unit == null || unit.isEmpty ? '' : ' $unit'}';
+          },
+          exactValueOf: (r) => r.node.item.componentStockQty?.toString(),
+        ),
+      MasterColumnDef(
         key: 'source',
         label: '来源',
         width: 64,
@@ -2160,9 +2182,9 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   child: UtenInlineNotice(
                     key: const Key('bom-selected-materials-notice'),
                     message:
-                        '已记录车间选料：${pendingMaterials.values.take(3).join("、")}'
+                        '已记录材料身份：${pendingMaterials.values.take(3).join("、")}'
                         '${pendingMaterials.length > 3 ? "等 ${pendingMaterials.length} 种" : ""}。'
-                        '尚未加入 BOM；认料需补设计单重，按单用料需核清后学习。',
+                        '尚未加入 BOM；单耗待核的记录不参与配方计算，实际用料按原流程核清后学习。',
                     trailing: UtenButton(
                       onPressed: () =>
                           _showLearning(showMaterialEvidence: true),

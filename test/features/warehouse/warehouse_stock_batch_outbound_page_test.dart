@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -19,6 +22,8 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import '../../helpers/document_scope_fixture.dart';
 
 class _Names extends MasterNameService {
@@ -51,6 +56,12 @@ class _Repo extends StockDocRepository {
   final quantities = <String, double>{};
   final approved = <String>[];
   String? failId;
+  bool withSecondItem = false;
+  final extraItemSources = <String>{};
+  Completer<StockDocOutboundReview>? pendingReview;
+  Completer<StockDocDetail>? pendingApprove;
+  final reviewCalls = <String>[];
+  final unreadable = <String>{};
   StockDocFilter? lastFilter;
 
   @override
@@ -67,6 +78,14 @@ class _Repo extends StockDocRepository {
     makerId: id == 'foreign' ? 'other-owner' : 'me',
     warehouseId: 'leaf',
     items: [
+      if (withSecondItem || extraItemSources.contains(id))
+        StockDocItem(
+          id: 'unselected-$id',
+          goodsId: 'goods-other',
+          qty: 5,
+          qtyText: '5',
+          unitId: 'unit',
+        ),
       StockDocItem(
         id: 'line-$id',
         goodsId: 'goods',
@@ -80,16 +99,26 @@ class _Repo extends StockDocRepository {
   );
 
   @override
-  Future<StockDocOutboundReview> review(String id) async =>
-      StockDocOutboundReview(
-        document: await detail(id),
-        reviewToken: '${statuses[id] ?? 0}:${quantities[id] ?? 0.0001}',
-      );
+  Future<StockDocOutboundReview> review(String id) async {
+    reviewCalls.add(id);
+    if (unreadable.contains(id)) {
+      throw ApiException('NOT_FOUND', '来源不可读取', httpStatus: 404);
+    }
+    if (pendingReview case final pending?) return pending.future;
+    return StockDocOutboundReview(
+      document: await detail(id),
+      reviewToken: '${statuses[id] ?? 0}:${quantities[id] ?? 0.0001}',
+    );
+  }
+
+  @override
+  Future<StockDocOutboundReview> reviewNative(String id) => review(id);
 
   @override
   Future<StockDocDetail> approveReviewed(
     String id, {
     required String expectedReviewToken,
+    List<String>? itemIds,
   }) async {
     final current = await review(id);
     if (current.reviewToken != expectedReviewToken) {
@@ -101,6 +130,7 @@ class _Repo extends StockDocRepository {
   @override
   Future<StockDocDetail> approve(String id) async {
     approved.add(id);
+    if (pendingApprove case final pending?) return pending.future;
     if (id == failId) throw NetworkTimeoutException();
     statuses[id] = 1;
     return detail(id);
@@ -137,11 +167,28 @@ class _Repo extends StockDocRepository {
   }
 }
 
-Future<void> _pump(
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
+
+final _actor = StateProvider<AuthenticatedScope?>(
+  (_) => const AuthenticatedScope(userId: 'me'),
+);
+final _permissions = StateProvider<Set<String>>(
+  (_) => const {Perm.stockDocView, Perm.stockDocApprove},
+);
+final _client = StateProvider<ApiClient>(
+  (_) => ApiClient(Dio(BaseOptions(baseUrl: 'https://stock-test.invalid/api'))),
+);
+
+Future<ProviderContainer> _pump(
   WidgetTester tester,
   _Repo repo,
   Widget page, {
   bool approve = true,
+  bool settle = true,
+  AuthenticatedScope? identity = const AuthenticatedScope(userId: 'me'),
   Size size = const Size(1300, 850),
 }) async {
   tester.view.physicalSize = size;
@@ -155,10 +202,22 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        currentPermissionsProvider.overrideWithValue({
-          Perm.stockDocView,
-          if (approve) Perm.stockDocApprove,
-        }),
+        _actor.overrideWith((_) => identity),
+        _permissions.overrideWith(
+          (_) => {Perm.stockDocView, if (approve) Perm.stockDocApprove},
+        ),
+        _client.overrideWith(
+          (_) => ApiClient(
+            Dio(BaseOptions(baseUrl: 'https://stock-test.invalid/api')),
+          ),
+        ),
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_permissions),
+        ),
+        authenticatedScopeProvider.overrideWith((ref) => ref.watch(_actor)),
+        apiClientProvider.overrideWith((ref) => ref.watch(_client)),
+        sessionProvider.overrideWith(_Session.new),
+        isSuperAdminProvider.overrideWithValue(false),
         sharedPreferencesProvider.overrideWithValue(prefs),
         masterNameServiceProvider.overrideWithValue(_Names()),
         documentScopeOverride(owners: const {'me'}),
@@ -172,8 +231,13 @@ Future<void> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+  }
   expect(tester.takeException(), isNull);
+  return ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
 }
 
 Future<void> _confirm(WidgetTester tester) async {
@@ -192,6 +256,316 @@ Future<void> _confirm(WidgetTester tester) async {
 }
 
 void main() {
+  for (final change in ['cancelled', 'items-changed']) {
+    testWidgets('unknown stock A can be read when unsent B is $change', (
+      tester,
+    ) async {
+      final repo = _Repo(StockDocType.otherOut)..failId = 'a';
+      await _pump(
+        tester,
+        repo,
+        const WarehouseStockBatchOutboundPage(
+          docType: StockDocType.otherOut,
+          documentIds: ['a', 'b'],
+          selectedItemIds: ['line-a', 'line-b'],
+        ),
+      );
+      await _confirm(tester);
+      repo.statuses['a'] = 1;
+      if (change == 'cancelled') {
+        repo.statuses['b'] = 3;
+      } else {
+        repo.extraItemSources.add('b');
+      }
+      await tester.tap(find.text('刷新'));
+      await tester.pumpAndSettle();
+      final table = tester.widget<WarehouseStockOutboundDetailTable>(
+        find.byType(WarehouseStockOutboundDetailTable),
+      );
+      expect(
+        table.documents.singleWhere((document) => document.id == 'a').status,
+        1,
+      );
+      expect(repo.approved, ['a']);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const Key('warehouse-stock-batch-outbound-confirm')),
+            )
+            .onPressed,
+        isNull,
+      );
+      if (change == 'items-changed') {
+        expect(find.textContaining('来源 b'), findsWidgets);
+        expect(
+          table.documents.singleWhere((document) => document.id == 'b').items,
+          isEmpty,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+  for (final hidden in ['b', 'a']) {
+    testWidgets(
+      'unknown stock approval refresh isolates unavailable source $hidden without another POST',
+      (tester) async {
+        final repo = _Repo(StockDocType.otherOut)..failId = 'a';
+        await _pump(
+          tester,
+          repo,
+          const WarehouseStockBatchOutboundPage(
+            docType: StockDocType.otherOut,
+            documentIds: ['a', 'b'],
+            selectedItemIds: ['line-a', 'line-b'],
+          ),
+        );
+        await _confirm(tester);
+        expect(repo.approved, ['a']);
+        repo.statuses['a'] = 1;
+        repo.unreadable.add(hidden);
+        await tester.tap(find.text('刷新'));
+        await tester.pumpAndSettle();
+        expect(repo.approved, ['a']);
+        expect(find.textContaining('随单备注-$hidden'), findsNothing);
+        expect(find.textContaining('来源 $hidden'), findsWidgets);
+        if (hidden == 'a') {
+          expect(
+            tester
+                .widget<UtenButton>(
+                  find.byKey(
+                    const Key('warehouse-stock-batch-outbound-confirm'),
+                  ),
+                )
+                .onPressed,
+            isNull,
+          );
+          repo.unreadable.remove('a');
+          await tester.tap(find.text('刷新'));
+          await tester.pumpAndSettle();
+          expect(repo.approved, ['a']);
+        } else {
+          expect(find.textContaining('来源 b'), findsWidgets);
+          final table = tester.widget<WarehouseStockOutboundDetailTable>(
+            find.byType(WarehouseStockOutboundDetailTable),
+          );
+          expect(
+            table.documents
+                .singleWhere((document) => document.id == 'a')
+                .status,
+            1,
+          );
+          expect(
+            table.documents.singleWhere((document) => document.id == 'b').items,
+            isEmpty,
+          );
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  testWidgets('没有登录身份的核对页不得读取旧单据或显示审批入口', (tester) async {
+    final repo = _Repo(StockDocType.otherOut);
+    await _pump(
+      tester,
+      repo,
+      const WarehouseStockBatchOutboundPage(
+        docType: StockDocType.otherOut,
+        documentIds: ['a'],
+      ),
+      identity: null,
+    );
+    expect(repo.reviewCalls, isEmpty);
+    expect(repo.approved, isEmpty);
+    expect(
+      find.byKey(const Key('warehouse-stock-batch-outbound-confirm')),
+      findsNothing,
+    );
+  });
+  for (final change in ['actor', 'permissions', 'readonly', 'endpoint']) {
+    testWidgets('native review $change在确认框期间变化后不能沿用旧核对写入', (tester) async {
+      final repo = _Repo(StockDocType.otherOut);
+      final container = await _pump(
+        tester,
+        repo,
+        const WarehouseStockBatchOutboundPage(
+          docType: StockDocType.otherOut,
+          documentIds: ['a'],
+        ),
+      );
+      await tester.tap(
+        find.byKey(const Key('warehouse-stock-batch-outbound-confirm')),
+      );
+      await tester.pumpAndSettle();
+      switch (change) {
+        case 'actor':
+          container.read(_actor.notifier).state = const AuthenticatedScope(
+            userId: 'other',
+          );
+        case 'permissions':
+          container.read(_permissions.notifier).state = const {
+            Perm.stockDocView,
+          };
+        case 'readonly':
+          container.read(_actor.notifier).state = const AuthenticatedScope(
+            userId: 'me',
+            readOnly: true,
+          );
+        case 'endpoint':
+          container.read(_client.notifier).state = ApiClient(
+            Dio(BaseOptions(baseUrl: 'https://other-test.invalid/api')),
+          );
+      }
+      await tester.pump();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.widgetWithText(UtenButton, '确认批量出库'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(repo.approved, isEmpty);
+      expect(find.text('OUT-a'), findsNothing);
+      expect(find.text('账号、服务器或权限已变化，请重新进入核对'), findsOneWidget);
+      container.read(_actor.notifier).state = const AuthenticatedScope(
+        userId: 'me',
+      );
+      container.read(_permissions.notifier).state = const {
+        Perm.stockDocView,
+        Perm.stockDocApprove,
+      };
+      await tester.pumpAndSettle();
+      final before = repo.reviewCalls.length;
+      await tester.tap(find.text('刷新'));
+      await tester.pumpAndSettle();
+      expect(repo.reviewCalls.length, before);
+      expect(repo.approved, isEmpty);
+    });
+  }
+  testWidgets('旧身份迟到GET不能回填且返回原身份也不能刷新复活旧页面', (tester) async {
+    final pending = Completer<StockDocOutboundReview>();
+    final repo = _Repo(StockDocType.otherOut)..pendingReview = pending;
+    final container = await _pump(
+      tester,
+      repo,
+      const WarehouseStockBatchOutboundPage(
+        docType: StockDocType.otherOut,
+        documentIds: ['a'],
+      ),
+      settle: false,
+    );
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(repo.reviewCalls, ['a']);
+    container.read(_actor.notifier).state = const AuthenticatedScope(
+      userId: 'other',
+    );
+    await tester.pump();
+    pending.complete(
+      StockDocOutboundReview(
+        document: await repo.detail('a'),
+        reviewToken: 'old',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('OUT-a'), findsNothing);
+    container.read(_actor.notifier).state = const AuthenticatedScope(
+      userId: 'me',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('OUT-a'), findsNothing);
+    expect(repo.approved, isEmpty);
+  });
+  testWidgets('逐单POST期间换人保留已派发命令但不继续下一单或渲染旧成功', (tester) async {
+    final pending = Completer<StockDocDetail>();
+    final repo = _Repo(StockDocType.otherOut)..pendingApprove = pending;
+    final container = await _pump(
+      tester,
+      repo,
+      const WarehouseStockBatchOutboundPage(
+        docType: StockDocType.otherOut,
+        documentIds: ['a', 'b'],
+      ),
+    );
+    await tester.tap(
+      find.byKey(const Key('warehouse-stock-batch-outbound-confirm')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(UtenButton, '确认批量出库'),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(repo.approved, ['a']);
+    container.read(_actor.notifier).state = const AuthenticatedScope(
+      userId: 'other',
+    );
+    await tester.pump();
+    repo.statuses['a'] = 1;
+    pending.complete(await repo.detail('a'));
+    await tester.pumpAndSettle();
+    expect(repo.approved, ['a']);
+    expect(find.text('OUT-a'), findsNothing);
+  });
+  for (final type in [StockDocType.otherIn]) {
+    testWidgets(
+      '${type.code} native inbound reviews selected complete documents',
+      (tester) async {
+        final repo = _Repo(type);
+        await _pump(
+          tester,
+          repo,
+          WarehouseStockBatchOutboundPage(
+            docType: type,
+            documentIds: const ['one'],
+            selectedItemIds: const ['line-one'],
+          ),
+        );
+        expect(find.text('批量入库核对'), findsOneWidget);
+        expect(find.text('入库数量'), findsOneWidget);
+        await tester.tap(
+          find.byKey(const Key('warehouse-stock-batch-outbound-confirm')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.widgetWithText(UtenButton, '确认批量入库'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(repo.approved, ['one']);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  testWidgets(
+    'partial stock-out selection previews one line and never approves siblings',
+    (tester) async {
+      final repo = _Repo(StockDocType.otherOut)..withSecondItem = true;
+      await _pump(
+        tester,
+        repo,
+        const WarehouseStockBatchOutboundPage(
+          docType: StockDocType.otherOut,
+          documentIds: ['one'],
+          selectedItemIds: ['line-one'],
+        ),
+      );
+      final table = tester.widget<WarehouseStockOutboundDetailTable>(
+        find.byType(WarehouseStockOutboundDetailTable),
+      );
+      expect(table.documents.single.items.map((item) => item.id), ['line-one']);
+      expect(find.textContaining('该单据需整单确认'), findsWidgets);
+      await tester.tap(
+        find.byKey(const Key('warehouse-stock-batch-outbound-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(repo.approved, isEmpty);
+      expect(find.byType(AlertDialog), findsNothing);
+    },
+  );
+
   for (final type in [StockDocType.otherOut, StockDocType.finishedOut]) {
     testWidgets(
       '${type.code} reviews live lines, requires second confirmation and completes selected documents',

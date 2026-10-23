@@ -388,6 +388,7 @@ abstract class _MaterialAnalysisCandidatesState
 
   @override
   Future<void> _previewAnalysis() async {
+    final operationCurrent = captureReadOwner(ref);
     if (_previewingAnalysis || !_canManage) return;
     final warehouseId = _warehouseId;
     if (warehouseId == null) {
@@ -438,7 +439,7 @@ abstract class _MaterialAnalysisCandidatesState
             idempotencyKey: key,
             sources: canonicalSources,
           );
-      if (!mounted) return;
+      if (!mounted || !operationCurrent()) return;
       setState(() {
         _previewingAnalysis = false;
         _applyAnalysis(view);
@@ -449,15 +450,16 @@ abstract class _MaterialAnalysisCandidatesState
         }
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !operationCurrent()) return;
       if (await _recoverLatestAnalysisAfterConflict(
         error,
         operation: '刷新物料分析',
       )) {
-        if (!mounted) return;
+        if (!mounted || !operationCurrent()) return;
         setState(() => _previewingAnalysis = false);
         return;
       }
+      if (!operationCurrent()) return;
       setState(() {
         _previewingAnalysis = false;
         _error = productionErrorMessage(error, fallback: '联合物料分析失败');

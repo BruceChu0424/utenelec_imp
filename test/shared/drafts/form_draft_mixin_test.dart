@@ -1,9 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:uten_imp/core/performance/responsive_data_codec.dart';
+import 'package:uten_imp/core/performance/ui_work_budget.dart';
+import 'package:uten_imp/shared/attachments/pending_attachment_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +24,7 @@ import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
 import 'package:uten_imp/shared/drafts/form_draft_storage_api.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
 
@@ -27,6 +32,7 @@ final _testScope = StateProvider<AuthenticatedScope?>(
   (ref) => const AuthenticatedScope(userId: 'user-1'),
 );
 final _testServer = StateProvider<String>((ref) => 'https://test.example/api');
+final _testPermissions = StateProvider<Set<String>>((ref) => {'test:create'});
 
 class MemoryDraftStorage implements FormDraftStorage {
   final records = <String, String>{};
@@ -112,12 +118,16 @@ class TestEditor extends ConsumerStatefulWidget {
   const TestEditor({
     super.key,
     this.withGrid = false,
+    this.withAttachment = false,
+    this.autoInitialize = true,
     this.failRestore = false,
     this.failReload = false,
     this.reloadGate,
     this.onSubmit,
   });
   final bool withGrid;
+  final bool withAttachment;
+  final bool autoInitialize;
   final bool failRestore;
   final bool failReload;
   final Future<void>? reloadGate;
@@ -130,6 +140,7 @@ class TestEditorState extends ConsumerState<TestEditor>
     with FormDraftMixin<TestEditor> {
   final text = TextEditingController();
   final grid = UtenEditableGridController<_DraftGridRow>();
+  final attachments = PendingAttachmentController();
   String choice = 'default';
   bool busy = false;
   bool canReplay = false;
@@ -148,12 +159,14 @@ class TestEditorState extends ConsumerState<TestEditor>
   Iterable<Listenable> get formDraftListenables => [
     text,
     if (widget.withGrid) grid,
+    if (widget.withAttachment) attachments,
   ];
   @override
   Map<String, dynamic> captureFormDraft() => {
     'text': text.text,
     'choice': choice,
     if (widget.withGrid) 'rowCount': grid.rows.length,
+    if (widget.withAttachment) 'attachments': attachments.exportDraft(),
   };
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
@@ -179,13 +192,18 @@ class TestEditorState extends ConsumerState<TestEditor>
   void initState() {
     super.initState();
     if (widget.withGrid) grid.addRow(_DraftGridRow());
-    WidgetsBinding.instance.addPostFrameCallback((_) => initializeFormDraft());
+    if (widget.autoInitialize) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => initializeFormDraft(),
+      );
+    }
   }
 
   @override
   void dispose() {
     text.dispose();
     grid.dispose();
+    attachments.dispose();
     super.dispose();
   }
 
@@ -228,6 +246,8 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
   String initial = '/new',
   bool settle = true,
   bool withGrid = false,
+  bool withAttachment = false,
+  bool autoInitialize = true,
   bool failRestore = false,
   bool failReload = false,
   Future<void>? reloadGate,
@@ -236,7 +256,9 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
   final container = ProviderContainer(
     overrides: [
       authenticatedScopeProvider.overrideWith((ref) => ref.watch(_testScope)),
-      currentPermissionsProvider.overrideWithValue({'test:create'}),
+      currentPermissionsProvider.overrideWith(
+        (ref) => ref.watch(_testPermissions),
+      ),
       apiBaseUrlProvider.overrideWith((ref) => ref.watch(_testServer)),
       formDraftStorageProvider.overrideWithValue(storage),
     ],
@@ -249,6 +271,8 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
         builder: (_, state) => TestEditor(
           key: state.pageKey,
           withGrid: withGrid,
+          withAttachment: withAttachment,
+          autoInitialize: autoInitialize,
           failRestore: failRestore,
           failReload: failReload,
           reloadGate: reloadGate,
@@ -276,6 +300,164 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
 }
 
 void main() {
+  testWidgets(
+    'default early source guard preserves permission ABA before draft initialization',
+    (tester) async {
+      final env = await pumpEditor(
+        tester,
+        MemoryDraftStorage(),
+        autoInitialize: false,
+      );
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      final source = Completer<void>();
+      final loading = () async {
+        editor.startFormDraftIdentityGuard();
+        await source.future;
+        await editor.initializeFormDraft();
+      }();
+      env.container.read(_testPermissions.notifier).state = {};
+      env.container.read(sensitiveReadBoundaryProvider);
+      env.container.read(_testPermissions.notifier).state = {'test:create'};
+      env.container.read(sensitiveReadBoundaryProvider);
+      source.complete();
+      await loading;
+      expect(editor.formDraftIdentityIsCurrent, isFalse);
+      await tester.pumpWidget(const SizedBox.shrink());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
+  testWidgets(
+    'permission ABA during attachment restoration cannot revive the old editor',
+    (tester) async {
+      final env = await pumpEditor(
+        tester,
+        MemoryDraftStorage(),
+        withAttachment: true,
+      );
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      editor.attachments.add(
+        PlatformFile(
+          name: 'current.pdf',
+          size: 1,
+          bytes: Uint8List.fromList([9]),
+        ),
+      );
+      await tester.pumpAndSettle();
+      Object? failure;
+      var finished = false;
+      final restore = editor.attachments
+          .restoreDraftResponsive({
+            'items': [
+              {
+                'name': 'old.pdf',
+                'contentType': 'application/pdf',
+                'bytes': base64Encode(Uint8List(200000)),
+              },
+            ],
+          }, isCurrent: () => editor.formDraftIdentityIsCurrent)
+          .then<void>(
+            (_) => finished = true,
+            onError: (Object error) {
+              failure = error;
+              finished = true;
+            },
+          );
+      env.container.read(_testPermissions.notifier).state = {};
+      env.container.read(sensitiveReadBoundaryProvider);
+      env.container.read(_testPermissions.notifier).state = {'test:create'};
+      env.container.read(sensitiveReadBoundaryProvider);
+      expect(editor.formDraftIdentityIsCurrent, isFalse);
+      for (var frame = 0; frame < 100 && !finished; frame++) {
+        await tester.pump(const Duration(milliseconds: 10));
+        if (!finished) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 50)),
+          );
+        }
+      }
+      expect(finished, isTrue);
+      await restore;
+      expect(failure, isA<UiWorkCancelled>());
+      expect(editor.attachments.items.single.name, 'current.pdf');
+      expect(editor.attachments.items.single.bytes, [9]);
+      await tester.pumpWidget(const SizedBox.shrink());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
+  testWidgets(
+    'draft capture owns incomplete fields and deferred attachment bytes before async persistence',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      final env = await pumpEditor(tester, storage, withAttachment: true);
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      final source = Uint8List.fromList(List.generate(200000, (i) => i % 251));
+      editor.text.text = '0.';
+      editor.attachments.add(
+        PlatformFile(name: 'original.pdf', size: source.length, bytes: source),
+      );
+      final snapshot = editor.captureFormDraftSnapshot();
+      expect(
+        (((snapshot['attachments'] as Map)['items'] as List).single
+            as Map)['bytes'],
+        isA<DraftByteValue>(),
+      );
+      source[0] = 255;
+      var finished = false;
+      final writing = editor.saveFormDraftNow().whenComplete(
+        () => finished = true,
+      );
+      // Advance both Flutter's fake timers and native compute messages. Awaiting
+      // the fake-zone serial writer from runAsync alone cannot drain its timers.
+      for (var frame = 0; frame < 100 && !finished; frame++) {
+        await tester.pump(const Duration(milliseconds: 10));
+        if (!finished) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 50)),
+          );
+        }
+      }
+      expect(finished, isTrue);
+      await writing;
+      await tester.pumpAndSettle();
+      final data = env.container.read(formDraftsProvider).single.data;
+      expect(data['text'], '0.');
+      final bytes = base64Decode(
+        ((((data['attachments'] as Map)['items'] as List).single
+                as Map)['bytes'])
+            as String,
+      );
+      expect(bytes.length, 200000);
+      expect(bytes.first, 0);
+      await tester.pumpWidget(const SizedBox.shrink());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
+  testWidgets(
+    'blocked restoration excludes an already focused keyboard editor',
+    (tester) async {
+      final env = await pumpEditor(tester, MemoryDraftStorage());
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      await tester.enterText(find.byKey(const Key('input')), '原始未完成输入-');
+      await tester.pumpAndSettle();
+      editor.holdFormDraftForSourceReload(StateError('source changed'));
+      await tester.pumpAndSettle();
+      final input = tester.widget<EditableText>(find.byType(EditableText));
+      expect(input.focusNode.hasFocus, isFalse);
+      expect(input.focusNode.canRequestFocus, isFalse);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+      expect(editor.text.text, '原始未完成输入-');
+      await tester.pumpWidget(const SizedBox.shrink());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
   testWidgets(
     'MFA admission preserves an editable form and only a second user click sends again',
     (tester) async {

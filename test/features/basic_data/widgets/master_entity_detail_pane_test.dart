@@ -3,6 +3,7 @@
 // 2026-10-18 口径：批量操作走右键菜单（多选时出批量项），右下悬浮组只挂
 // 「已选 N 项 + 添加X」——测试同步改为经 rowMenuBuilder 驱动批量命令。
 import 'dart:async';
+import 'package:dio/dio.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/features/basic_data/models/master_batch.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/master_batch_repository.dart';
@@ -95,6 +101,11 @@ class _Counters {
   int listCalls = 0;
 }
 
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
+
 Future<_Counters> _pump(
   WidgetTester tester,
   _FakeBatchRepository batch,
@@ -156,11 +167,25 @@ Future<_Counters> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiClientProvider.overrideWithValue(ApiClient(Dio())),
+        sessionProvider.overrideWith(_Session.new),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'pane-batch-test'),
+        ),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.goodsView,
+          Perm.goodsStatus,
+          Perm.goodsDelete,
+        }),
+        isSuperAdminProvider.overrideWithValue(false),
         sharedPreferencesProvider.overrideWithValue(preferences),
         masterBatchRepositoryProvider.overrideWithValue(batch),
         masterStatusRepositoryProvider.overrideWithValue(status),
       ],
       child: MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: MasterEntityDetailPane<_Row, _Row>(
             config: config,
@@ -191,6 +216,13 @@ UtenMenuItem _batchMenuEntry(WidgetTester tester, String label) =>
         .whereType<UtenMenuItem>()
         .firstWhere((e) => e.label == label);
 
+Future<void> _statusAction(WidgetTester tester, UtenMenuItem entry) async {
+  unawaited(Future<void>.sync(entry.onTap));
+  await tester.pumpAndSettle();
+  await tester.tap(find.widgetWithText(FilledButton, '确认'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('批量禁用 100 条只发 1 次请求，带上每行版本，不逐条拉详情', (tester) async {
     final batch = _FakeBatchRepository();
@@ -198,7 +230,7 @@ void main() {
     final counts = await _pump(tester, batch, status);
     await _selectAll(tester);
 
-    await _batchMenuEntry(tester, '批量禁用(100)').onTap();
+    await _statusAction(tester, _batchMenuEntry(tester, '批量禁用(100)'));
     await tester.pumpAndSettle();
 
     expect(batch.statusCalls, hasLength(1), reason: '选 100 条也只发一次批量命令');
@@ -265,7 +297,7 @@ void main() {
     _table(tester).onSelectedIdsChanged!({'g0', 'g1'});
     await tester.pumpAndSettle();
 
-    await _batchMenuEntry(tester, '批量禁用(2)').onTap();
+    await _statusAction(tester, _batchMenuEntry(tester, '批量禁用(2)'));
     await tester.pumpAndSettle();
     expect(batch.statusCalls, hasLength(1));
     expect(
@@ -279,10 +311,10 @@ void main() {
     final status = _FakeStatusRepository();
     final counts = await _pump(tester, _FakeBatchRepository(), status);
     final menu = _table(tester).rowMenuBuilder!(_rows[2]);
-    await menu
-        .whereType<UtenMenuItem>()
-        .firstWhere((e) => e.label == '禁用货品')
-        .onTap();
+    await _statusAction(
+      tester,
+      menu.whereType<UtenMenuItem>().firstWhere((e) => e.label == '禁用货品'),
+    );
     await tester.pumpAndSettle();
 
     expect(status.calls, [('/master/goods/g2', '禁用', 9)]);

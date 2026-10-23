@@ -1,0 +1,10 @@
+# Shared by deployment and model-free tests. Reviewed against official upstream
+# advisories on 2026-10-23; these are targeted security pins, not a full runtime lock.
+# aiohttp GHSA-2g87-pp6c-29x5 and seven other advisories: fixed in 3.14.4.
+aiohttp==3.14.4
+# GHSA-6q48-6c7w-9gw2 / PYSEC-2026-4320 are aliases of one advisory.
+certifi==2026.10.19
+# GHSA-54p9-h82j-f925 / PYSEC-2026-4244 are aliases of one advisory.
+multidict==6.9.1
+# Pillow 13.0.0 contains the fixes for the 39 current 12.3.0 advisories.
+Pillow==13.0.0

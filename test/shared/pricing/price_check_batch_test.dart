@@ -26,6 +26,82 @@ PriceCheckResult result(String key, {String message = 'checked'}) =>
     });
 
 void main() {
+  testWidgets(
+    'editor capture and nested copying wait until the input debounce finishes',
+    (tester) async {
+      final calls = <List<Map<String, dynamic>>>[];
+      var captures = 0;
+      final rows = [
+        item('a')..['source'] = {'version': 1},
+      ];
+      final batch = PriceCheckBatchController((items, _) async {
+        calls.add(items);
+        return [result('a')];
+      });
+      addTearDown(batch.dispose);
+      void changed() => batch.updateFromRows(
+        rows: () => rows,
+        payloadOf: (row) {
+          captures++;
+          return row;
+        },
+        enabled: true,
+      );
+      changed();
+      await tester.pump(const Duration(milliseconds: 200));
+      rows.single['unitPrice'] = '13';
+      changed();
+      await tester.pump(const Duration(milliseconds: 299));
+      expect(captures, 0);
+      expect(calls, isEmpty);
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(captures, 1);
+      expect(calls.single.single['unitPrice'], '13');
+      (rows.single['source'] as Map<String, int>)['version'] = 2;
+      expect(calls.single.single['source'], {'version': 1});
+      expect(batch.result('a'), isNotNull);
+      changed();
+      expect(
+        batch.result('a'),
+        isNull,
+        reason: 'old evidence is invalid before the next capture',
+      );
+      batch.invalidate();
+    },
+  );
+
+  test(
+    'input change during sliced capture prevents all stale network reads',
+    () async {
+      var captures = 0;
+      var requests = 0;
+      final batch = PriceCheckBatchController((items, _) async {
+        requests++;
+        return [];
+      }, delay: Duration.zero);
+      addTearDown(batch.dispose);
+      batch.updateFromRows(
+        rows: () => List.generate(2000, (index) => index),
+        payloadOf: (row) {
+          captures++;
+          return item('$row');
+        },
+        enabled: true,
+      );
+      final invalidated = Completer<void>();
+      Timer(Duration.zero, () {
+        batch.invalidate();
+        invalidated.complete();
+      });
+      await invalidated.future;
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(captures, greaterThan(0));
+      expect(captures, lessThan(2000));
+      expect(requests, 0);
+      expect(batch.loading, isFalse);
+    },
+  );
+
   test('price checks are reads and do not invalidate business-data caches', () {
     expect(
       isBusinessWrite(

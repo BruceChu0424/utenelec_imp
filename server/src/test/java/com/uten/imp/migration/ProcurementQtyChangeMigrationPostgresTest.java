@@ -28,7 +28,7 @@ class ProcurementQtyChangeMigrationPostgresTest {
     private static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp_v486_qty_change")
-                    .withUsername("uten")
+                    .withUsername("fixture_admin")
                     .withPassword("uten-test-only");
 
     @BeforeAll

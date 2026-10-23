@@ -35,13 +35,13 @@ public class GoodsInlineEditService {
     private final Validator validator;
 
     private static final Set<String> EDITABLE = Set.of(
-            "name", "nameEn", "model", "spec", "series", "cNumber", "material", "paper",
+            "name", "clientGoodsName", "nameEn", "model", "spec", "series", "cNumber", "material", "paper",
             "rearInsertCode", "stockPlace", "sourceType", "colorId", "unitId", "mouldId",
             "owningWarehouseId", "minOrderQty", "orderMultipleQty", "price", "discount");
     // Existing full-form apply() assigns these scalars unconditionally. All
     // references and nameEn are deliberately omitted unless explicitly changed.
     private static final Set<String> BASELINE = Set.of(
-            "code", "categoryId", "name", "shortName", "model", "cNumber", "spec", "series",
+            "code", "categoryId", "name", "clientGoodsName", "shortName", "model", "cNumber", "spec", "series",
             "stockPlace", "material", "thickness", "mWeight", "pack", "pieces", "status",
             "sourceType", "rearInsertCode", "paper", "minOrderQty", "orderMultipleQty",
             "price", "discount", "sourceE", "machiningE", "incidentalE", "lacquerE",

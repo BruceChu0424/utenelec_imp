@@ -203,6 +203,14 @@ final class MasterReferenceCatalog {
                 .formatted(PARENT_LABEL, TARGETS)));
         out.add(bomRow(COLOR, "color_id"));
         out.add(bomRow(SUPPLIER, "default_supplier_id"));
+        for (Col column : List.of(new Col(GOODS, "material_goods_id"), new Col(COLOR, "material_color_id"))) {
+            out.add(new Reference(column.target(), "goods_material_identity_evidence", column.column(), RefKind.BOM_ROW, """
+                    SELECT e.%1$s, 'BOM_ROW', CAST(e.id AS text), '材料身份待核：' || %2$s,
+                           p.owner_employee_id, 'goods'
+                    FROM goods_material_identity_evidence e JOIN goods p ON p.id=e.product_goods_id
+                    WHERE e.%1$s %3$s AND NOT e.is_deleted AND NOT p.is_deleted
+                    """.formatted(column.column(), PARENT_LABEL, TARGETS)));
+        }
 
         out.add(new Reference(WAREHOUSE, "warehouses", "parent_id", RefKind.CHILD_WAREHOUSE, """
                 SELECT c.parent_id, 'CHILD_WAREHOUSE', CAST(c.id AS text),
@@ -563,6 +571,9 @@ final class MasterReferenceCatalog {
 
     private static List<Exemption> buildExemptions() {
         List<Exemption> out = new ArrayList<>();
+        exempt(out, ExemptReason.HISTORY, "货品编号完整生命周期证明，不是业务在办引用", "goods_code_lifecycles", "goods_id");
+        exempt(out, ExemptReason.HISTORY, "货品终身业务使用证据，跨软删和清业务保留", "goods_code_usage_facts", "goods_id");
+        exempt(out, ExemptReason.HISTORY, "未使用货品编号复用归属证据，旧新 UUID 独立保留", "goods_code_reuse_releases", "old_goods_id", "new_goods_id");
         exempt(out, ExemptReason.HISTORY, "库存流水", "stock_movements",
                 "goods_id", "color_id", "unit_id", "warehouse_id");
         // V743(ADR-135): 重量调整只追加、称重观测只记已发生的称重, 主档删除后照样能查。
@@ -667,6 +678,8 @@ final class MasterReferenceCatalog {
         exempt(out, ExemptReason.HISTORY, "认料/换料记录的产品与选定料快照",
                 "goods_periodic_material_choices",
                 "product_goods_id", "material_goods_id", "material_color_id");
+        exempt(out, ExemptReason.OWN_CONFIG, "产品自己的原料身份待核配置；不构成活动 BOM 或数量事实",
+                "goods_material_identity_evidence", "product_goods_id");
         exempt(out, ExemptReason.HISTORY, "执行段换料事件的目标料快照",
                 "production_execution_material_changes",
                 "to_material_goods_id", "to_material_color_id");

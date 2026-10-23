@@ -82,7 +82,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
                         .build());
         postgres = new PostgreSQLContainer(DockerImageName.parse(image.get()).asCompatibleSubstituteFor("postgres"))
                 .withDatabaseName("legacy_bootstrap_rehearsal")
-                .withUsername("uten").withPassword("synthetic-test-only")
+                .withUsername("fixture_admin").withPassword("synthetic-test-only")
                 .withFileSystemBind("/var/run/docker.sock", "/var/run/docker.sock", BindMode.READ_WRITE)
                 .withCommand("postgres", "-c", "max_locks_per_transaction=512");
         postgres.start();
@@ -90,7 +90,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
         com.uten.imp.testsupport.TestFlyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("filesystem:" + migrationDirectory).load().migrate();
         clusterId = scalar("SELECT system_identifier FROM pg_control_system()");
-        shell("createdb -U uten -T legacy_bootstrap_rehearsal legacy_bootstrap_template");
+        shell("createdb -U " + postgres.getUsername() + " -T legacy_bootstrap_rehearsal legacy_bootstrap_template");
         shell("mkdir -p /bootstrap/server/legacy_migration /bootstrap/server/src/main/resources/db/migration /bootstrap/server/target");
         try (var files = Files.list(legacy)) {
             for (Path file : files.filter(Files::isRegularFile).toList()) {
@@ -343,7 +343,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
     }
 
     private static void historicalReferenceAndOrphanBomVariant() throws Exception {
-        shell("createdb -U uten -T legacy_bootstrap_template legacy_bootstrap_history");
+        shell("createdb -U " + postgres.getUsername() + " -T legacy_bootstrap_template legacy_bootstrap_history");
         activeDatabase = "legacy_bootstrap_history";
         generateFixture("historical-references.json", "orphan-bom.json", "opening-ambiguity.json", "purchase-missing-masters.json");
         var imported = coordinator();
@@ -520,7 +520,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
     }
 
     private static void stockOnlyReferencesKeepColorAndWeightDimensions() throws Exception {
-        shell("createdb -U uten -T legacy_bootstrap_template legacy_bootstrap_stock_only");
+        shell("createdb -U " + postgres.getUsername() + " -T legacy_bootstrap_template legacy_bootstrap_stock_only");
         activeDatabase = "legacy_bootstrap_stock_only";
         generateFixture("stock-only.json");
         var imported = coordinator();
@@ -542,7 +542,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
     }
 
     private static void malformedSourceAndCryptoFailuresDoNotLeakSensitiveValues() throws Exception {
-        shell("createdb -U uten -T legacy_bootstrap_template legacy_bootstrap_private_copy");
+        shell("createdb -U " + postgres.getUsername() + " -T legacy_bootstrap_template legacy_bootstrap_private_copy");
         activeDatabase = "legacy_bootstrap_private_copy";
         String copyBaselineEmployees = scalar("SELECT count(*) FROM employees");
         String fixtures = ROOT + "/server/src/test/resources/legacy-bootstrap-fixture";
@@ -562,7 +562,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
                 .doesNotContain("PII_CANARY_PRIVATE_IMPORT_930101");
         assertBusinessImportRolledBack(copyBaselineEmployees);
 
-        shell("createdb -U uten -T legacy_bootstrap_template legacy_bootstrap_private_crypto");
+        shell("createdb -U " + postgres.getUsername() + " -T legacy_bootstrap_template legacy_bootstrap_private_crypto");
         activeDatabase = "legacy_bootstrap_private_crypto";
         String cryptoBaselineEmployees = scalar("SELECT count(*) FROM employees");
         generateFixture();

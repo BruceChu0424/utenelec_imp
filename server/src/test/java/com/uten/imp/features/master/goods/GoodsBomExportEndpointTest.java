@@ -73,7 +73,7 @@ class GoodsBomExportEndpointTest {
             // code/qty 用户选了不重复补；缺失的 seq/name 按标准序补在最前；
             // color→colorName、source→sourceType 走别名；表头保留用户文字。
             assertEquals(List.of("序号", "物料名称", "学习来源", "编号", "型号", "规格", "颜色", "来源",
-                    "计量方式", "基准产量", "尾包", "设计使用数量", "真实使用数量", "备注"), labels);
+                    "计量方式", "基准产量", "尾包", "设计使用数量", "真实使用数量", "备注", "组件系统标识"), labels);
             assertEquals("1", workbook.getSheetAt(0).getRow(1).getCell(0).getStringCellValue());
             assertEquals("外壳", workbook.getSheetAt(0).getRow(1).getCell(1).getStringCellValue());
             assertEquals("K01", workbook.getSheetAt(0).getRow(1).getCell(3).getStringCellValue());

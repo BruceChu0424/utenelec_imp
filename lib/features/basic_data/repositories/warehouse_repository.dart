@@ -61,7 +61,7 @@ class DioWarehouseRepository implements WarehouseRepository {
     if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
 
     final json = await api.get(ApiEndpoints.warehouses, query: query);
-    return PagedResult.fromJson(json, WarehouseListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, WarehouseListItem.fromJson);
   }
 
   @override

@@ -32,7 +32,7 @@ import java.util.UUID;
  * - POST   /api/subcontract/material-issues                 → 历史入口已关闭（固定 409；改走仓库委外出仓任务）
  * - PUT    /api/subcontract/material-issues/{id}            → 编辑（仅草稿）
  * - DELETE /api/subcontract/material-issues/{id}            → 删除（草稿/红冲可删；已审核禁删）
- * - POST   /api/subcontract/material-issues/{id}/approve    → 审核（当前安全关闭，返回冲突；不产生库存/财务副作用）
+ * - POST   /api/subcontract/material-issues/{id}/approve    → 原领料单整单审核（可带 itemIds 精确校验选择；实际扣库并建立委外物料台账）
  * - POST   /api/subcontract/material-issues/{id}/reverse    → 红冲（反向入库）
  */
 @RestController
@@ -121,8 +121,9 @@ public class SubcontractMaterialIssueController {
 
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('subcontract_material_issue:approve')")
-    public MaterialIssueDetail approve(@PathVariable UUID id) {
-        return service.approve(id);
+    public MaterialIssueDetail approve(@PathVariable UUID id,
+            @Valid @RequestBody(required = false) com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueApproveRequest request) {
+        return service.approveSelected(id, request);
     }
 
     @PostMapping("/{id}/reverse")

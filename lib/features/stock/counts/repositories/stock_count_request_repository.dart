@@ -24,7 +24,7 @@ class StockCountRequestRepository {
     bool sheet = false,
     int page = 1,
     int size = 50,
-  }) async => PagedResult.fromJson(
+  }) async => PagedResult.fromJsonResponsive(
     await api.get(
       '$base/candidates',
       query: {
@@ -93,7 +93,7 @@ class StockCountRequestRepository {
     String? keyword,
     int page = 1,
     int size = 50,
-  }) async => PagedResult.fromJson(
+  }) async => PagedResult.fromJsonResponsive(
     await api.get(
       base,
       query: {

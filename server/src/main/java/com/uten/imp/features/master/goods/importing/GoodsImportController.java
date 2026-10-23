@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.UUID;
+import java.util.Set;
 import java.util.concurrent.Semaphore;
 
 /**
@@ -50,12 +51,51 @@ public class GoodsImportController {
         return withImportSlot(() -> service.detect(read(request)));
     }
 
-    @PostMapping("/commit")
+    @PostMapping(value = "/commit", consumes = "!application/json")
     @PreAuthorize("hasAuthority('goods:import')")
     public GoodsImportResult commit(@RequestParam UUID planId,
                                     @RequestParam(required = false) String filename,
                                     HttpServletRequest request) throws IOException {
         return withImportSlot(() -> service.commit(planId, read(request), filename));
+    }
+
+    /** A separate mapping condition preserves the existing Java/controller contract. */
+    @PostMapping(value = "/commit", params = "replaceRowKeys", consumes = "!application/json")
+    @PreAuthorize("hasAuthority('goods:import')")
+    public GoodsImportResult commitReviewed(@RequestParam UUID planId,
+                                            @RequestParam(required = false) String filename,
+                                            @RequestParam Set<String> replaceRowKeys,
+                                            HttpServletRequest request) throws IOException {
+        return withImportSlot(() -> service.commit(planId, read(request), filename, replaceRowKeys));
+    }
+
+    @PostMapping(value = "/commit", consumes = "application/json")
+    @PreAuthorize("hasAuthority('goods:import')")
+    public GoodsImportResult commitJson(HttpServletRequest request) throws IOException {
+        return withImportSlot(() -> {
+            // Bound both encoded JSON and decoded workbook before the POI parser.
+            byte[] body = readBounded(request.getInputStream(), request.getContentLengthLong(),
+                    15L * 1024 * 1024, Path.of(System.getProperty("java.io.tmpdir")));
+            GoodsImportCommitRequest selection;
+            try {
+                selection = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readValue(body, GoodsImportCommitRequest.class);
+            } catch (com.fasterxml.jackson.core.JsonProcessingException malformed) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "导入提交内容无效，请重新检测文件");
+            }
+            if (selection == null || selection.file() == null || selection.file().length == 0
+                    || selection.planId() == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "导入提交缺少文件或检测计划");
+            }
+            if (selection.file().length > MAX_BYTES) throw tooLarge();
+            if (selection.replaceRowKeys() != null && (selection.replaceRowKeys().size() > 2000
+                    || selection.replaceRowKeys().stream().anyMatch(key -> key == null || key.length() > 100))) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "替换选择无效或超过 2000 行，请拆分文件后重试");
+            }
+            Set<String> keys = selection.replaceRowKeys() == null
+                    ? Set.of() : Set.copyOf(selection.replaceRowKeys());
+            return service.commit(selection.planId(), selection.file(), selection.filename(), keys);
+        });
     }
 
     @GetMapping("/latest")

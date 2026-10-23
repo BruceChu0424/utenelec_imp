@@ -1,0 +1,28 @@
+[Unit]
+Description=Publish ciphertext backup evidence to independent loopback recovery control
+After=uten-dr-control.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/uten-imp-dr-backup/publish_status.py
+TimeoutStartSec=45s
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+LockPersonality=yes
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1/32
+LimitCORE=0
+ReadWritePaths=/var/lib/uten-imp-dr-backup
+

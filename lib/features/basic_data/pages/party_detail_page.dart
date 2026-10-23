@@ -6,7 +6,7 @@
 //    客户附「信誉分/信用额度/期初应收/铺底额」统计行（大号数字）。
 //  - Tab 分区（UtenCollapsingHeaderScrollView：头部随滚动收起、Tab 栏吸顶）：
 //    客户＝概览/销售条款与财务/联系方式/地址/跟进与行为记录；供应商＝概览/联系方式/
-//    地址/跟进记录。正文键值一律「14 号灰标签 + 16 号加重值」，长文本（地址/备注）整行铺开。
+//    地址/跟进记录。查看与编辑共用字段定义、分组顺序和按内容宽度自适应的网格。
 //  - 就地编辑（2026-09-15 退役弹窗的延续）：客户点「编辑」后**各分区原地变输入**——
 //    概览 Tab 渲染 基础/联系/地址/资质/其他 分组表单，销售条款与财务 Tab 渲染 财务
 //    分组表单；右下悬浮组换「取消/保存」，保存时合并两张表单一次提交，校验失败自动
@@ -36,10 +36,12 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/page_search_lifecycle.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/models/sales_shipment_policy.dart';
 import '../models/client_node.dart';
 import '../models/party_directory_models.dart';
@@ -55,7 +57,10 @@ import '../widgets/client_master_edit.dart';
 import '../models/currency_node.dart';
 import '../models/reference_method_option.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/master_read_only_fields.dart';
 import '../widgets/master_operation_history_panel.dart';
+import '../widgets/master_status_confirmation.dart';
+import '../widgets/master_edit_owner.dart';
 import '../widgets/supplier_master_edit.dart';
 import '../widgets/uten_detail_tab_bar.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -104,9 +109,21 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
 
   bool _loading = true;
   bool _busy = false;
+  bool _confirmingChange = false;
   bool _openingEditor = false;
   int _loadEpoch = 0;
   String? _error;
+  MasterEditOwner? _readOwner;
+  MasterEditOwner? _editOwner;
+  MasterEditOwner? _changeOwner;
+  late final _pageLifecycle = PageSearchLifecycle(
+    onLeave: () {
+      _readOwner?.invalidate();
+      _editOwner?.invalidate();
+      _changeOwner?.invalidate();
+    },
+    onReturn: () => _load(clearCurrent: true),
+  );
 
   PartyDirectoryRepository get _directoryRepo => ref.read(
     _isClient
@@ -132,11 +149,66 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   @override
   void initState() {
     super.initState();
+    ref.listenManual(sensitiveReadBoundaryProvider, (previous, next) {
+      if (previous == next) return;
+      _clearPrivateData();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && ref.read(sensitiveReadBoundaryProvider) == next) {
+          _load(clearCurrent: true);
+        }
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _pageLifecycle.attach(context);
+  }
+
+  void _clearPrivateData() {
+    if (!mounted) return;
+    _loadEpoch++;
+    _readOwner?.invalidate();
+    _changeOwner?.invalidate();
+    setState(() {
+      _stopInlineEdit();
+      _client = null;
+      _supplier = null;
+      _contacts = const [];
+      _addresses = const [];
+      _activities = const [];
+      _lossSummary = null;
+      _creditScore = null;
+      _scoreLoaded = false;
+      _editSettlements = const [];
+      _editCurrencies = const [];
+      _busy = false;
+      _confirmingChange = false;
+      _openingEditor = false;
+      _loading = true;
+      _error = null;
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant PartyDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.id != widget.id || oldWidget.partyType != widget.partyType) {
+      _clearPrivateData();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load(clearCurrent: true);
+      });
+    }
+  }
+
+  @override
   void dispose() {
+    _pageLifecycle.dispose();
+    _readOwner?.dispose();
+    _editOwner?.dispose();
+    _changeOwner?.dispose();
     _tab.dispose();
     _editController?.dispose();
     super.dispose();
@@ -145,7 +217,19 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   Future<void> _load({bool clearCurrent = false}) async {
     if (_busy) return;
     final epoch = ++_loadEpoch;
-    bool current() => mounted && epoch == _loadEpoch;
+    final id = widget.id;
+    final type = widget.partyType;
+    _readOwner?.invalidate();
+    final owner = MasterEditOwner(
+      context,
+      ref,
+      permissions: {_isClient ? Perm.clientView : Perm.supplierView},
+      requireWrite: false,
+      isCurrent: () =>
+          epoch == _loadEpoch && widget.id == id && widget.partyType == type,
+    );
+    _readOwner = owner;
+    bool current() => mounted && owner.isCurrent;
     setState(() {
       _loading = true;
       _error = null;
@@ -161,26 +245,36 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       }
     });
     try {
+      if (!_has(_isClient ? Perm.clientView : Perm.supplierView)) {
+        setState(() {
+          _loading = false;
+          _error = '当前没有资料查看权限';
+        });
+        return;
+      }
+      if (!await owner.bindRequests()) return;
       if (_isClient) {
-        final detail = await ref
-            .read(clientRepositoryProvider)
-            .detail(widget.id);
+        final detail = await owner.run(
+          () => ref.read(clientRepositoryProvider).detail(id),
+        );
         if (!current()) return;
         setState(() => _client = detail);
       } else {
-        final detail = await ref
-            .read(supplierRepositoryProvider)
-            .detail(widget.id);
+        final detail = await owner.run(
+          () => ref.read(supplierRepositoryProvider).detail(id),
+        );
         if (!current()) return;
         setState(() => _supplier = detail);
         unawaited(_loadSubcontractLossSummary());
       }
-      final results = await Future.wait([
-        _directoryRepo.contactMethods(widget.id),
-        _directoryRepo.addresses(widget.id),
-        _directoryRepo.activityRecords(widget.id),
-        if (_isClient) _directoryRepo.creditScore(widget.id),
-      ]);
+      final results = await owner.run(
+        () => Future.wait([
+          _directoryRepo.contactMethods(widget.id),
+          _directoryRepo.addresses(widget.id),
+          _directoryRepo.activityRecords(widget.id),
+          if (_isClient) _directoryRepo.creditScore(widget.id),
+        ]),
+      );
       if (!current()) return;
       setState(() {
         _contacts = results[0] as List<PartyContactMethod>;
@@ -210,6 +304,9 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
             basicDataL10n(context).productionDailyReportLoadFailed;
         _loading = false;
       });
+    } finally {
+      if (identical(_readOwner, owner)) _readOwner = null;
+      owner.dispose();
     }
   }
 
@@ -222,19 +319,37 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         ref.read(isSuperAdminProvider) ||
         perms.contains(Perm.subcontractOrderView);
     if (!allowed) return;
+    final epoch = _loadEpoch;
+    final id = widget.id;
+    final owner = MasterEditOwner(
+      context,
+      ref,
+      permissions: {Perm.supplierView, Perm.subcontractOrderView},
+      requireWrite: false,
+      isCurrent: () => epoch == _loadEpoch && widget.id == id && !_isClient,
+    );
     try {
-      final summary = await loadSubcontractSupplierLossSummary(
-        ref.read(apiClientProvider),
-        widget.id,
+      if (!await owner.bindRequests()) return;
+      final summary = await owner.run(
+        () =>
+            loadSubcontractSupplierLossSummary(ref.read(apiClientProvider), id),
       );
-      if (!mounted) return;
+      if (!mounted || !owner.isCurrent) return;
       setState(() => _lossSummary = summary);
     } catch (_) {
       // 汇总失败静默：主档详情本身不受影响。
+    } finally {
+      owner.dispose();
     }
   }
 
   Future<void> _reloadChildren() async {
+    final epoch = _loadEpoch;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    bool current() =>
+        mounted &&
+        epoch == _loadEpoch &&
+        ref.read(sensitiveReadBoundaryProvider) == boundary;
     try {
       final results = await Future.wait([
         _directoryRepo.contactMethods(widget.id),
@@ -242,7 +357,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         _directoryRepo.activityRecords(widget.id),
         if (_isClient) _directoryRepo.creditScore(widget.id),
       ]);
-      if (!mounted) return;
+      if (!current()) return;
       setState(() {
         _contacts = results[0] as List<PartyContactMethod>;
         _addresses = results[1] as List<PartyAddress>;
@@ -253,9 +368,9 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         }
       });
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && current()) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appError('刷新失败，请稍后重试');
+      if (mounted && current()) context.appError('刷新失败，请稍后重试');
     }
   }
 
@@ -290,6 +405,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         actions: [
           MasterOperationHistoryActions(
             entityType: _isClient ? 'clients' : 'suppliers',
+            recordId: widget.id,
             enabled: !_loading && !_busy && !_editing && !_openingEditor,
             onChanged: _reloadAfterHistory,
           ),
@@ -362,7 +478,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
                       ),
                     ),
                   ),
-                  if (_busy)
+                  if (_busy && !_confirmingChange)
                     const Positioned.fill(
                       child: UtenBusyOverlay(title: '正在处理'),
                     ),
@@ -410,9 +526,9 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     final list = ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(
+        0,
         UtenSpacing.s16,
-        UtenSpacing.s16,
-        UtenSpacing.s16,
+        0,
         UtenFloatingActionGroup.scrollClearance,
       ),
       children: sections,
@@ -453,6 +569,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         ? _title!.trim()
         : (_isClient ? '客户' : '供应商');
     return UtenCard(
+      key: const Key('party-identity-card'),
       padding: const EdgeInsets.all(UtenSpacing.s20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -646,7 +763,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     EdgeInsetsGeometry cardPadding = const EdgeInsets.all(UtenSpacing.s16),
     required Widget child,
   }) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       UtenSectionHeader(title: title, icon: icon, trailing: trailing),
       if (description != null) ...[
@@ -666,176 +783,95 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     ],
   );
 
-  /// 长文本整行铺开（地址/收货地址/备注）。
-  Widget _fullKv(ThemeData theme, String label, String? value) => Padding(
-    padding: const EdgeInsets.only(top: UtenSpacing.s12),
-    child: _kv(theme, label, value),
-  );
-
-  Widget _remarkBody(ThemeData theme, String? remark) {
-    final has = remark?.trim().isNotEmpty == true;
-    return Text(
-      has ? remark!.trim() : '—',
-      style: theme.textTheme.bodyLarge?.copyWith(
-        height: 1.6,
-        color: has ? null : theme.colorScheme.onSurfaceVariant,
-      ),
-    );
-  }
-
   // ======================= Tab 1：概览 =======================
 
   Widget _overviewTab(ThemeData theme) {
     if (_isClient) {
-      final d = _client!;
-      // 编辑态：概览分区原地变输入（基础/联系/地址/资质/其他 分组表单）。
-      if (_editing) {
-        return _tabBody([_editFormCard(theme, finance: false)]);
-      }
-      // 2026-09-15 去重口径：手机/电话等已在「联系方式」Tab 按多条记录展示，
-      // 概览不再平铺重复；财务在「销售条款与财务」Tab。
+      if (_editing) return _tabBody([_editFormCard(theme, finance: false)]);
       return _tabBody([
+        _clientReadOnlyFields(finance: false),
+        const SizedBox(height: UtenSpacing.s20),
         _section(
           theme,
-          title: '基本信息',
-          icon: Icons.badge_outlined,
+          title: '归属与访问',
+          icon: Icons.visibility_outlined,
           child: UtenFormGrid(
+            columns: 4,
+            maxColumns: 4,
+            minFieldWidth: 260,
             children: [
-              _kv(theme, '全称', d.fullName),
-              _kv(theme, basicDataL10n(context).clientNameEnLabel, d.nameEn),
-              _kv(theme, '等级', d.clientRank),
-              _kv(theme, '分类', d.categoryName),
-              _kv(theme, '当前访问', d.accessReasonLabel),
-              _kv(theme, '法人', d.legalPerson),
+              _kv(theme, '分类', _client?.categoryName),
+              _kv(theme, '当前访问', _client?.accessReasonLabel),
             ],
           ),
-        ),
-        const SizedBox(height: UtenSpacing.s16),
-        _section(
-          theme,
-          title: '地址与物流',
-          icon: Icons.local_shipping_outlined,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              UtenFormGrid(
-                children: [
-                  _kv(theme, '区域', d.region),
-                  _kv(theme, '地区', d.placeId),
-                  _kv(theme, '邮编', d.postcode),
-                  _kv(theme, '运输方式', d.shipVia),
-                ],
-              ),
-              _fullKv(theme, '地址', d.address),
-              _fullKv(theme, '收货地址', d.shipAddress),
-            ],
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s16),
-        _section(
-          theme,
-          title: '备注',
-          icon: Icons.notes_outlined,
-          child: _remarkBody(theme, d.remark),
         ),
       ]);
     }
-    final d = _supplier!;
+    final detail = _supplier!;
+    final values = supplierInitialValues(detail);
+    final fields = buildSupplierFields(context, values, const [], ref);
     return _tabBody([
-      _section(
-        theme,
-        title: '基本信息',
-        icon: Icons.badge_outlined,
-        child: UtenFormGrid(
-          children: [
-            _kv(theme, '描述/全称', d.description),
-            _kv(theme, '分类', d.categoryName),
-            _kv(theme, '法人', d.legalPerson),
-          ],
+      UtenCard(
+        key: const Key('party-overview-card'),
+        child: MasterReadOnlyFields(
+          fields: fields,
+          valueOf: (field) => switch (field.key) {
+            'ownerEmployeeId' => detail.ownerEmployeeName ?? detail.empId,
+            'defaultSettlementMethodId' => detail.defaultSettlementMethodName,
+            'defaultCurrencyId' => detail.defaultCurrencyName,
+            _ => values[field.key],
+          },
         ),
       ),
-      const SizedBox(height: UtenSpacing.s16),
-      _section(
-        theme,
-        title: '联系方式',
-        icon: Icons.contact_phone_outlined,
-        description: '快捷字段；多条明细在「联系方式」Tab 按类型逐条登记。',
-        child: UtenFormGrid(
-          children: [
-            _kv(theme, '手机', d.mobile),
-            _kv(theme, '电话', d.phone),
-            _kv(theme, '电话2', d.phone2),
-            _kv(theme, '传真', d.fax),
-            _kv(theme, '邮箱', d.email),
-            _kv(theme, '网址', d.website),
-            _kv(theme, '邮编', d.postcode),
-          ],
-        ),
-      ),
-      const SizedBox(height: UtenSpacing.s16),
-      _section(
-        theme,
-        title: '地址与物流',
-        icon: Icons.local_shipping_outlined,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            UtenFormGrid(
-              children: [
-                _kv(theme, '地区', d.place),
-                _kv(theme, '运输方式', d.shipVia),
-              ],
-            ),
-            _fullKv(theme, '地址', d.address),
-            _fullKv(theme, '收货地址', d.shipAddress),
-          ],
-        ),
-      ),
-      const SizedBox(height: UtenSpacing.s16),
-      _section(
-        theme,
-        title: '财务与税务',
-        icon: Icons.account_balance_outlined,
-        child: UtenFormGrid(
-          children: [
-            _kv(theme, '默认结算方式', d.defaultSettlementMethodName),
-            _kv(theme, '默认币种', d.defaultCurrencyName),
-            _kv(theme, '默认税率', _fmtMoney(d.defaultTaxRate)),
-            _kv(theme, '期初应付', _fmtMoney(d.initTotal)),
-            _kv(theme, '结算天数', d.tday?.toString()),
-            _kv(theme, '开户行', d.bank),
-            _kv(theme, '银行账号', d.bankAccount),
-            _kv(theme, '税号', d.taxId),
-          ],
-        ),
-      ),
-      const SizedBox(height: UtenSpacing.s16),
       if (_lossSummary != null) ...[
+        const SizedBox(height: UtenSpacing.s20),
         _section(
           theme,
           title: '委外损耗',
-          icon: Icons.rule_folder_outlined,
+          icon: Icons.analytics_outlined,
           description: '已结清的委外订货行（自然到齐或接受损耗结案）的损耗统计；每一次短交的判定记录见右侧。',
-          trailing: TextButton.icon(
-            key: const Key('supplier-subcontract-loss-open'),
-            onPressed: () => goFrom(
-              context,
-              RouteName.subcontractShortDeliveriesWith(supplierId: widget.id),
-            ),
-            icon: const Icon(Icons.open_in_new_rounded, size: 18),
-            label: const Text('短交记录'),
-          ),
+          trailing: _has(Perm.subcontractOrderView)
+              ? TextButton.icon(
+                  key: const Key('supplier-subcontract-loss-open'),
+                  onPressed: () {
+                    if (!_has(Perm.subcontractOrderView)) return;
+                    goFrom(
+                      context,
+                      RouteName.subcontractShortDeliveriesWith(
+                        supplierId: widget.id,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                  label: const Text('短交记录'),
+                )
+              : null,
           child: _subcontractLossBody(theme, _lossSummary!),
         ),
-        const SizedBox(height: UtenSpacing.s16),
       ],
-      _section(
-        theme,
-        title: '备注',
-        icon: Icons.notes_outlined,
-        child: _remarkBody(theme, d.remark),
-      ),
     ]);
+  }
+
+  Widget _clientReadOnlyFields({required bool finance}) {
+    final detail = _client!;
+    final values = _clientInitialValues(detail);
+    return UtenCard(
+      key: ValueKey(finance ? 'party-finance-card' : 'party-overview-card'),
+      child: MasterReadOnlyFields(
+        fields: [
+          for (final field in _clientEditFields(detail))
+            if ((field.group == '财务') == finance) field,
+        ],
+        valueOf: (field) => switch (field.key) {
+          'defaultSettlementMethodId' => detail.defaultSettlementMethodName,
+          'defaultCurrencyId' => detail.defaultCurrencyName,
+          'defaultShipmentPolicy' => _shipmentPolicyLabelOf(
+            detail.defaultShipmentPolicy,
+          ),
+          _ => values[field.key],
+        },
+      ),
+    );
   }
 
   Widget _subcontractLossBody(
@@ -950,64 +986,14 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   // ======================= Tab 2（客户）：销售条款与财务 =======================
 
   /// V592 默认销售条款单一事实源：三项默认（结账方式/货运策略/币种）+ 财务字段。
-  Widget _termsTab(ThemeData theme) {
-    final d = _client!;
-    if (_editing) {
-      return _tabBody([_editFormCard(theme, finance: true)]);
-    }
-    return _tabBody([
-      _section(
-        theme,
-        title: '默认销售条款',
-        icon: Icons.receipt_long_outlined,
-        description: '新建销售订货单选客户后按默认结账方式/货运策略/币种预填；每次下单自动记住最新选择，点「编辑」也可直接改。',
-        child: UtenFormGrid(
-          children: [
-            _kv(theme, '默认结账方式', d.defaultSettlementMethodName),
-            _kv(
-              theme,
-              '默认货运策略',
-              // 词表复用销售侧 salesShipmentPolicyLabel；空值交 _kv 显示「—」
-              //（其自带 null→「未返回」文案是订单语境，不适用主档）。
-              _shipmentPolicyLabelOf(d.defaultShipmentPolicy),
-            ),
-            _kv(theme, '默认币种', d.defaultCurrencyName),
-          ],
-        ),
-      ),
-      const SizedBox(height: UtenSpacing.s16),
-      _section(
-        theme,
-        title: '信用与应收',
-        icon: Icons.account_balance_wallet_outlined,
-        child: UtenFormGrid(
-          children: [
-            _kv(theme, '信用额度', _fmtMoney(d.credit)),
-            _kv(theme, '期初应收', _fmtMoney(d.initTotal)),
-            _kv(theme, '铺底额', _fmtMoney(d.creditFloor)),
-            _kv(theme, '结算天数', d.tday?.toString()),
-          ],
-        ),
-      ),
-      const SizedBox(height: UtenSpacing.s16),
-      _section(
-        theme,
-        title: '银行与税务',
-        icon: Icons.account_balance_outlined,
-        child: UtenFormGrid(
-          children: [
-            _kv(theme, '开户行', d.bank),
-            _kv(theme, '银行账号', d.bankAccount),
-            _kv(theme, '税号', d.taxId),
-          ],
-        ),
-      ),
-    ]);
-  }
-
-  // ======================= 就地编辑（客户） =======================
+  Widget _termsTab(ThemeData theme) => _tabBody([
+    _editing
+        ? _editFormCard(theme, finance: true)
+        : _clientReadOnlyFields(finance: true),
+  ]);
 
   Map<String, String> _clientInitialValues(ClientDetail d) => {
+    '_entityId': d.id,
     'name': d.name ?? '',
     'code': d.code ?? '',
     'fullName': d.fullName ?? '',
@@ -1088,7 +1074,9 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       if (d.legacyId != null) 'credit',
     };
     return UtenCard(
+      key: ValueKey(finance ? 'party-finance-card' : 'party-overview-card'),
       child: MasterEditForm(
+        contentPadding: EdgeInsets.zero,
         controller: controller,
         fields: [
           for (final f in controller.fields)
@@ -1115,11 +1103,17 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   /// 退出编辑态（取消/保存成功）：表单 widget 本帧还挂在树上并监听着值容器，
   /// 延后到帧末再释放。
   void _stopInlineEdit() {
+    final owner = _editOwner;
+    _editOwner = null;
+    owner?.invalidate();
     final controller = _editController;
     _editController = null;
     _editing = false;
     if (controller != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+    }
+    if (owner != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => owner.dispose());
     }
   }
 
@@ -1133,7 +1127,10 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     if (_busy || !_canEdit || !_writable) return;
     final d = _client;
     final controller = _editController;
-    if (d == null || controller == null) return;
+    final owner = _editOwner;
+    if (d == null || controller == null || owner == null || !owner.isCurrent) {
+      return;
+    }
     // 一次校验整套字段（跨两个 Tab）；失败就跳到出错字段所在 Tab 并明确提示，绝不静默。
     final body = controller.buildBody();
     if (body == null) {
@@ -1142,32 +1139,40 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       if (message != null && mounted) context.appError(message);
       return;
     }
-    late final bool ok;
     setState(() => _busy = true);
     try {
-      ok = await context.guardRun(
-        () async {
-          await ref.read(clientRepositoryProvider).update(d.id, body);
-        },
-        success: '客户已更新',
-        errorFallback: '更新失败，请稍后重试',
+      await owner.run(
+        () => ref.read(clientRepositoryProvider).update(d.id, body),
       );
+      if (!mounted ||
+          !owner.isCurrent ||
+          !identical(_editController, controller)) {
+        return;
+      }
+      context.appSuccess('客户已更新');
     } on ApiException catch (e) {
+      if (!mounted ||
+          !owner.isCurrent ||
+          !identical(_editController, controller)) {
+        return;
+      }
       // 编号查重 409：编号字段描红 + 显文案，保持编辑态让用户改（编号在概览表单）。
       if (e.message.contains('编号已存在')) {
         _tab.animateTo(0);
         controller.setFieldError('code', e.message);
         return;
       }
-      if (mounted) context.appApiError(e);
+      context.appApiError(e);
       return;
     } catch (_) {
-      if (mounted) context.appError('更新失败，请稍后重试');
+      if (mounted && owner.isCurrent) context.appError('更新失败，请稍后重试');
       return;
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && identical(_editOwner, owner)) {
+        setState(() => _busy = false);
+      }
     }
-    if (!ok || !mounted) return;
+    if (!mounted || !owner.isCurrent) return;
     setState(_stopInlineEdit);
     await _load();
   }
@@ -1841,7 +1846,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       children.add(
         UtenButton(
           key: const Key('party-detail-toggle-status'),
-          type: UtenButtonType.secondary,
+          type: active ? UtenButtonType.danger : UtenButtonType.secondary,
           size: UtenButtonSize.large,
           icon: active ? Icons.pause_circle_outline : Icons.play_circle_outline,
           onPressed: _busy ? null : () => _toggleStatus(active),
@@ -1865,30 +1870,62 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   }
 
   Future<void> _edit() async {
-    if (_busy || _openingEditor || !_canEdit || !_writable) return;
+    if (_loading || _busy || _openingEditor || !_canEdit || !_writable) return;
+    final epoch = _loadEpoch;
+    final detail = _client;
+    final owner = !_isClient || detail == null
+        ? null
+        : MasterEditOwner(
+            context,
+            ref,
+            permissions: {Perm.clientView, Perm.clientEdit},
+            isCurrent: () =>
+                epoch == _loadEpoch &&
+                identical(_client, detail) &&
+                _canEdit &&
+                _writable,
+          );
+    if (owner != null) {
+      _editOwner = owner;
+      owner.addListener(() {
+        if (mounted && !owner.isCurrent && identical(_editOwner, owner)) {
+          _clearPrivateData();
+        }
+      });
+    }
     setState(() => _openingEditor = true);
     try {
-      await _openEditor();
+      if (owner != null && !await owner.bindRequests()) return;
+      await _openEditor(owner: owner, client: detail);
     } finally {
-      if (mounted) setState(() => _openingEditor = false);
+      if (mounted && epoch == _loadEpoch) {
+        setState(() => _openingEditor = false);
+      }
+      if (owner != null && !_editing && identical(_editOwner, owner)) {
+        _editOwner = null;
+        owner.dispose();
+      }
     }
   }
 
-  Future<void> _openEditor() async {
+  Future<void> _openEditor({
+    MasterEditOwner? owner,
+    ClientDetail? client,
+  }) async {
     // 客户：详情页**就地编辑**（分区变输入，不再弹窗）；供应商沿用弹窗。
-    if (_isClient && _client != null) {
+    if (_isClient && client != null && owner != null) {
       final settlements =
-          await loadClientSettlementMethods(context, ref) ??
+          await loadClientSettlementMethods(context, ref, owner: owner) ??
           const <ReferenceMethodOption>[];
-      if (!mounted) return;
+      if (!mounted || !owner.isCurrent) return;
       final currencies =
-          await loadClientCurrencies(context, ref) ??
+          await loadClientCurrencies(context, ref, owner: owner) ??
           const <CurrencyListItem>[];
-      if (!mounted) return;
+      if (!mounted || !owner.isCurrent) return;
       setState(() {
         _editSettlements = settlements;
         _editCurrencies = currencies;
-        _startInlineEdit(_client!);
+        _startInlineEdit(client);
         _editing = true;
       });
       _tab.animateTo(0);
@@ -1915,76 +1952,178 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   }
 
   Future<void> _toggleStatus(bool active) async {
-    if (_busy || _editing || !_canStatus || !_writable) return;
+    if (_loading || _busy || _editing || !_canStatus || !_writable) return;
     final version = _isClient ? _client?.version : _supplier?.version;
-    setState(() => _busy = true);
-    bool ok;
+    final snapshot = _isClient ? _client : _supplier;
+    final type = widget.partyType;
+    final id = widget.id;
+    final label = _title ?? (_isClient ? '客户' : '供应商');
+    final resource = _isClient
+        ? ApiEndpoints.client(id)
+        : ApiEndpoints.supplier(id);
+    final owner = MasterEditOwner(
+      context,
+      ref,
+      permissions: {
+        _isClient ? Perm.clientView : Perm.supplierView,
+        _isClient ? Perm.clientStatus : Perm.supplierStatus,
+      },
+      isCurrent: () =>
+          widget.id == id &&
+          widget.partyType == type &&
+          identical(snapshot, _isClient ? _client : _supplier) &&
+          _canStatus &&
+          _writable &&
+          !_editing,
+    );
+    _changeOwner = owner;
+    owner.addListener(() {
+      if (mounted && !owner.isCurrent && identical(_changeOwner, owner)) {
+        setState(() {
+          _busy = false;
+          _confirmingChange = false;
+        });
+      }
+    });
+    setState(() {
+      _busy = true;
+      _confirmingChange = true;
+    });
     try {
-      ok = await context.guardRun(
+      if (!await owner.bindRequests() || !mounted || !owner.isCurrent) return;
+      if (!await confirmMasterStatusChange(
+            context,
+            disabling: active,
+            label: label,
+            dialogScopeBuilder: owner.ownDialog,
+          ) ||
+          !mounted ||
+          !owner.isCurrent) {
+        return;
+      }
+      setState(() => _confirmingChange = false);
+      await owner.run(
         () => ref
             .read(masterStatusRepositoryProvider)
             .change(
-              resourcePath: _isClient
-                  ? ApiEndpoints.client(widget.id)
-                  : ApiEndpoints.supplier(widget.id),
+              resourcePath: resource,
               status: active ? '禁用' : '使用',
               version: version,
             ),
-        success: active ? '已停用' : '已启用',
       );
+      if (!mounted || !owner.isCurrent) return;
+      context.appSuccess(active ? '已停用' : '已启用');
+      setState(() => _busy = false);
+      await _load();
+    } catch (error) {
+      if (mounted && owner.isCurrent) context.appApiError(error);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (identical(_changeOwner, owner)) {
+        _changeOwner = null;
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _confirmingChange = false;
+          });
+        }
+      }
+      owner.dispose();
     }
-    if (ok && mounted) await _load();
   }
 
   Future<void> _delete() async {
-    if (_busy || _editing || !_canDelete || !_writable) return;
+    if (_loading || _busy || _editing || !_canDelete || !_writable) return;
     final name = _title ?? '';
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => UtenAlertDialog(
-        title: Text(_isClient ? '删除客户' : '删除供应商'),
-        content: Text('确定删除「$name」吗？'),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => _busy = true);
-    bool ok;
-    try {
-      ok = await context.guardRun(
-        () => _isClient
-            ? ref.read(clientRepositoryProvider).delete(widget.id)
-            : ref.read(supplierRepositoryProvider).delete(widget.id),
-        success: _isClient ? '客户已删除' : '供应商已删除',
-        errorFallback: '删除失败，请稍后重试',
-      );
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-    if (!ok || !mounted) return;
-    // 删除后返回：pop 优先（打开方 await 后重载列表）；深链无栈时归位对应
-    // 分类列表页——原来 canPop 为假就停在已删除实体的详情页上。
-    backTo(
+    final snapshot = _isClient ? _client : _supplier;
+    final type = widget.partyType;
+    final id = widget.id;
+    final owner = MasterEditOwner(
       context,
-      defaultPath: _isClient
-          ? RouteName.basicinfoClient
-          : RouteName.basicinfoSupplier,
+      ref,
+      permissions: {
+        _isClient ? Perm.clientView : Perm.supplierView,
+        _isClient ? Perm.clientDelete : Perm.supplierDelete,
+      },
+      isCurrent: () =>
+          widget.id == id &&
+          widget.partyType == type &&
+          identical(snapshot, _isClient ? _client : _supplier) &&
+          _canDelete &&
+          _writable &&
+          !_editing,
     );
+    _changeOwner = owner;
+    owner.addListener(() {
+      if (mounted && !owner.isCurrent && identical(_changeOwner, owner)) {
+        setState(() {
+          _busy = false;
+          _confirmingChange = false;
+        });
+      }
+    });
+    setState(() {
+      _busy = true;
+      _confirmingChange = true;
+    });
+    try {
+      if (!await owner.bindRequests() || !mounted || !owner.isCurrent) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => owner.ownDialog(
+          ctx,
+          UtenAlertDialog(
+            title: Text(_isClient ? '删除客户' : '删除供应商'),
+            content: Text('确定删除「$name」吗？'),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () {
+                  if (ctx.mounted) Navigator.pop(ctx, false);
+                },
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(ctx).colorScheme.error,
+                ),
+                onPressed: () {
+                  if (ctx.mounted) Navigator.pop(ctx, true);
+                },
+                child: const Text('删除'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (confirmed != true || !mounted || !owner.isCurrent) return;
+      setState(() => _confirmingChange = false);
+      await owner.run(
+        () => type == 'client'
+            ? ref.read(clientRepositoryProvider).delete(id)
+            : ref.read(supplierRepositoryProvider).delete(id),
+      );
+      if (!mounted || !owner.isCurrent) return;
+      context.appSuccess(type == 'client' ? '客户已删除' : '供应商已删除');
+      backTo(
+        context,
+        defaultPath: type == 'client'
+            ? RouteName.basicinfoClient
+            : RouteName.basicinfoSupplier,
+      );
+    } catch (error) {
+      if (mounted && owner.isCurrent) context.appApiError(error);
+    } finally {
+      if (identical(_changeOwner, owner)) {
+        _changeOwner = null;
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _confirmingChange = false;
+          });
+        }
+      }
+      owner.dispose();
+    }
   }
 
   // ======================= 通用小件 =======================

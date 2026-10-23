@@ -39,6 +39,27 @@ class OcrServerTest(unittest.TestCase):
                 self.assertEqual(response.status_code, 422)
             engine.assert_not_called()
 
+    def test_supported_image_decoders_survive_the_security_upgrade(self):
+        with patch.object(server, "engine", return_value=FakeEngine()) as engine:
+            for image_format, mime in [("JPEG", "image/jpeg"), ("PNG", "image/png"), ("WEBP", "image/webp")]:
+                with self.subTest(format=image_format):
+                    output = io.BytesIO()
+                    Image.new("RGB", (40, 20), "white").save(output, format=image_format)
+                    response = self.client.post("/ocr/invoice", files={"file": ("invoice", output.getvalue(), mime)})
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(len(response.json()["lines"]), 2)
+            self.assertEqual(engine.call_count, 3)
+
+    def test_other_image_plugins_are_rejected_before_inference(self):
+        with patch.object(server, "engine") as engine:
+            for image_format in ("GIF", "TIFF"):
+                with self.subTest(format=image_format):
+                    output = io.BytesIO()
+                    Image.new("RGB", (40, 20), "white").save(output, format=image_format)
+                    response = self.client.post("/ocr/invoice", files={"file": ("invoice.png", output.getvalue(), "image/png")})
+                    self.assertEqual(response.status_code, 422)
+            engine.assert_not_called()
+
     def test_bounded_upload_size(self):
         with patch.object(server, "MAX_BYTES", 10), patch.object(server, "engine") as engine:
             response = self.client.post("/ocr/invoice", files={"file": ("invoice.png", png(), "image/png")})

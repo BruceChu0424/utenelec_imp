@@ -575,6 +575,7 @@ public class WorkshopMaterialCloseService {
     @Transactional
     public CloseStatusView retry(UUID periodId, RetryRequest request) {
         String key = request == null ? null : request.idempotencyKey();
+        scope.requirePeriod(periodId);
         return commands.execute("CLOSE_RETRY", key, List.of(periodId, key == null ? "" : key), CloseStatusView.class,
                 () -> {
                     Period loose = period(periodId);
@@ -608,6 +609,7 @@ public class WorkshopMaterialCloseService {
         if (reason.length() < 2 || reason.length() > 500) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请写明撤销原因 (2 到 500 个字)");
         }
+        scope.requirePeriod(periodId);
         return commands.execute("CLOSE_REOPEN", request.idempotencyKey(), List.of(periodId, request),
                 CloseStatusView.class, () -> {
                     Period loose = period(periodId);

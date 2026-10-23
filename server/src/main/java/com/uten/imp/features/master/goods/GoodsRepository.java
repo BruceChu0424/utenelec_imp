@@ -18,6 +18,13 @@ import java.util.UUID;
  */
 public interface GoodsRepository extends JpaRepository<Goods, UUID>, JpaSpecificationExecutor<Goods> {
 
+    @Query("""
+            select new com.uten.imp.features.master.goods.importing.GoodsImportIdentity(
+                g.id,g.version,g.code,g.name,c.id,g.deleted,g.ownerEmployeeId)
+            from Goods g left join g.category c
+            """)
+    List<com.uten.imp.features.master.goods.importing.GoodsImportIdentity> findImportIdentities();
+
     /** 迁移/校验用：按老库主键反查。 */
     Optional<Goods> findByLegacyId(Integer legacyId);
 
@@ -28,7 +35,25 @@ public interface GoodsRepository extends JpaRepository<Goods, UUID>, JpaSpecific
     Optional<Goods> findByCodeAndDeletedFalse(String code);
 
     /** 按编号取已软删货品——清单导入同编号命中时恢复原行（同 UUID 同编号复活）用。 */
-    Optional<Goods> findFirstByCodeAndDeletedTrueOrderByIdAsc(String code);
+    @Query(value = """
+            SELECT g.* FROM goods g WHERE g.code=:code AND g.is_deleted
+              AND NOT EXISTS(SELECT 1 FROM goods_code_reuse_releases r WHERE r.old_goods_id=g.id)
+            ORDER BY g.id LIMIT 1
+            """, nativeQuery = true)
+    Optional<Goods> findFirstByCodeAndDeletedTrueOrderByIdAsc(@Param("code") String code);
+
+    @Query(value = """
+            SELECT g.id FROM goods g WHERE g.code=:code AND g.is_deleted
+              AND NOT EXISTS(SELECT 1 FROM goods_code_reuse_releases r WHERE r.old_goods_id=g.id)
+            ORDER BY g.id
+            """, nativeQuery = true)
+    List<UUID> findRestorableDeletedIdsByCode(@Param("code") String code);
+
+    @Query(value = "SELECT EXISTS(SELECT 1 FROM goods_code_reuse_releases WHERE normalized_code=upper(btrim(:code)))", nativeQuery = true)
+    boolean codeHasReuseHistory(@Param("code") String code);
+
+    @Query(value = "SELECT EXISTS(SELECT 1 FROM goods_code_reuse_releases WHERE old_goods_id=:id)", nativeQuery = true)
+    boolean isReleasedGoodsIdentity(@Param("id") UUID id);
 
     /** 编号查重排除自身（编辑改码用）。 */
     boolean existsByCodeAndDeletedFalseAndIdNot(String code, UUID id);

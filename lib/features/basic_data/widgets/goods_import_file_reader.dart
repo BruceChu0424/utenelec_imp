@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 
-const int maxGoodsImportBytes = 50 * 1024 * 1024;
+const int maxGoodsImportBytes = 10 * 1024 * 1024;
 
 /// A user-correctable problem found while reading a selected goods workbook.
 class GoodsImportFileException implements Exception {
@@ -18,11 +18,12 @@ class GoodsImportFileException implements Exception {
 /// whole file inside the picker callback.
 ///
 /// The stream path is important on Flutter Web: it lets us enforce the same
-/// 50 MB limit as the server while producing a useful error instead of the
+/// per-file limit as the server while producing a useful error instead of the
 /// file picker's generic JavaScript exception.
 Future<Uint8List> readGoodsImportFile(
   PlatformFile file, {
   int maxBytes = maxGoodsImportBytes,
+  bool allowLegacyXls = false,
 }) async {
   final limitMessage = 'Excel 文件超过 ${maxBytes ~/ (1024 * 1024)}MB，请拆分后再导入';
   if (file.size > maxBytes) {
@@ -34,7 +35,7 @@ Future<Uint8List> readGoodsImportFile(
     if (directBytes.length > maxBytes) {
       throw GoodsImportFileException(limitMessage);
     }
-    return _validateWorkbookBytes(directBytes);
+    return _validateWorkbookBytes(directBytes, allowLegacyXls: allowLegacyXls);
   }
 
   final stream = file.readStream;
@@ -59,10 +60,16 @@ Future<Uint8List> readGoodsImportFile(
     throw const GoodsImportFileException('无法读取所选 Excel，请确认文件未损坏或未被其它程序占用后重试');
   }
 
-  return _validateWorkbookBytes(builder.takeBytes());
+  return _validateWorkbookBytes(
+    builder.takeBytes(),
+    allowLegacyXls: allowLegacyXls,
+  );
 }
 
-Uint8List _validateWorkbookBytes(Uint8List bytes) {
+Uint8List _validateWorkbookBytes(
+  Uint8List bytes, {
+  bool allowLegacyXls = false,
+}) {
   if (bytes.isEmpty) {
     throw const GoodsImportFileException('所选 Excel 文件为空，请重新选择');
   }
@@ -81,6 +88,8 @@ Uint8List _validateWorkbookBytes(Uint8List bytes) {
     0xE1,
   ];
   if (_startsWith(bytes, encryptedOfficeSignature)) {
+    // Cost imports support legacy XLS; the server still rejects encrypted files.
+    if (allowLegacyXls) return bytes;
     throw const GoodsImportFileException(
       '文件为旧版 .xls 或已设置打开密码；请先另存为未加密的 .xlsx 再导入',
     );

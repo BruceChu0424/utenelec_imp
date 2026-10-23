@@ -1,6 +1,100 @@
 part of 'production_daily_report_exact_segment_test.dart';
 
 void registerDailyReportProductCardTests() {
+  testWidgets(
+    '250-product report reveals offscreen collapsed material error without losing quantities',
+    (tester) async {
+      final items = [
+        for (var i = 0; i < 250; i++)
+          <String, dynamic>{
+            'id': 'window-line-$i',
+            'goodsId': 'goods-1',
+            'planId': 'plan-1',
+            'planItemId': 'window-plan-item-$i',
+            'planNo': 'SJ-001',
+            // Keep the real page's material-source request limit in force:
+            // many product batches can belong to the same execution source.
+            'executionSegmentId': i == 230
+                ? 'window-segment-230'
+                : 'window-segment-shared',
+            'unitId': 'unit-1',
+            'unitRate': 1,
+            'qty': 1,
+            'outputBatchId': 'window-batch-$i',
+            'outputBatchQty': 1,
+          },
+      ];
+      Map<String, dynamic>? saved;
+      final grid = await _pumpEditDraftPage(
+        tester,
+        withMaterials: true,
+        itemsOverride: items,
+        materialsBySegment: {
+          'window-segment-230': [
+            {
+              'planId': 'plan-1',
+              'demandId': 'window-material',
+              'goodsId': 'raw-1',
+              'goodsName': '离屏用料',
+              'executionSegmentId': 'window-segment-230',
+              'issuedQty': 10,
+              'unclearedQty': 10,
+              'availableToSettleQty': 10,
+              'requiredQty': 10,
+              'requiredForProductQty': 10,
+              'requirementMode': 'LINEAR',
+            },
+          ],
+        },
+        candidatesOverride: {'candidates': <dynamic>[], 'receiverLimit': 30},
+        onPutBody: (body) => saved = body,
+      );
+      expect(grid.rows, hasLength(250));
+      final product = grid.rows[230];
+      final showProduct = grid.revealRow(product, alignment: .5);
+      await tester.pumpAndSettle();
+      expect(await showProduct, isTrue);
+      final card = find.byKey(
+        ValueKey('daily-product-details-${product.localRowId}'),
+      );
+      final material = tester
+          .widget<ProductionDailyProductDetailsCard>(card)
+          .materialRows
+          .single;
+      material.materialUsed.text = '';
+      await tester.pumpAndSettle();
+      final collapse = find.descendant(
+        of: card,
+        matching: find.byTooltip('收起子件用料'),
+      );
+      expect(collapse.hitTestable(), findsOneWidget);
+      await tester.tap(collapse);
+      await tester.pumpAndSettle();
+      final showFirst = grid.revealRow(grid.rows.first);
+      await tester.pumpAndSettle();
+      expect(await showFirst, isTrue);
+      expect(card, findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('项用料需要先改正'), findsOneWidget);
+      expect(card.hitTestable(), findsOneWidget);
+      expect(
+        tester
+            .widget<ProductionDailyProductDetailsCard>(card)
+            .materialsExpanded,
+        isTrue,
+      );
+      expect(material.materialUsed.text, isEmpty);
+      expect(grid.rows, hasLength(250));
+      expect(grid.rows.every((row) => row.qty.text == '1'), isTrue);
+      expect(grid.mountedRowCount, lessThan(100));
+      expect(saved, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('多个货品：竖排卡片对齐货品列、独立折叠且提交完整数量', (tester) async {
     final capture = Platform.environment['UTEN_CAPTURE_DAILY_CARDS'] == '1';
     final captureKey = capture ? GlobalKey() : null;

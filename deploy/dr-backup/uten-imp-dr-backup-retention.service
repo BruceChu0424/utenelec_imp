@@ -1,0 +1,28 @@
+[Unit]
+Description=Independent target-side Uten IMP ciphertext retention
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/uten-imp-dr-backup/continuous_backup.py retain --config /etc/uten-imp-dr-backup/receiver.json
+TimeoutStartSec=10min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+PrivateNetwork=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+LimitCORE=0
+ReadWritePaths=/srv/uten-imp-dr/continuous /var/lib/uten-imp-dr-backup
+

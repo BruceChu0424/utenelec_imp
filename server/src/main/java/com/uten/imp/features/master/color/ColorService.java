@@ -51,7 +51,7 @@ public class ColorService {
     private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.COLOR;
 
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。 */
-    private static final Set<String> ALLOWED_NULL_FIELDS = Set.of("code", "name", "status");
+    private static final Set<String> ALLOWED_NULL_FIELDS = Set.of("code", "name", "status", "remark");
 
     /** facet 截断阈值。 */
     private static final int FACET_LIMIT = 50;
@@ -62,6 +62,7 @@ public class ColorService {
         FACET_COLUMNS.put("code", "code");
         FACET_COLUMNS.put("name", "name");
         FACET_COLUMNS.put("status", "status");
+        FACET_COLUMNS.put("remark", "remark");
     }
 
     private final ColorRepository repo;
@@ -79,10 +80,12 @@ public class ColorService {
             ps.add(cb.isFalse(root.get("deleted")));
             ps.add(NameRefKeyword.match(root, q, cb, f.keyword(), pattern -> cb.or(
                         NameRefKeyword.text(cb, root.get("name"), pattern),
-                        NameRefKeyword.text(cb, root.get("code"), pattern))));
+                        NameRefKeyword.text(cb, root.get("code"), pattern),
+                        NameRefKeyword.text(cb, root.get("remark"), pattern))));
             addEq(ps, cb, root, "code", f.code());
             addEq(ps, cb, root, "name", f.name());
             addEq(ps, cb, root, "status", f.status());
+            addEq(ps, cb, root, "remark", f.remark());
             if (f.nullFields() != null) {
                 for (String fld : f.nullFields()) {
                     if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
@@ -106,14 +109,15 @@ public class ColorService {
 
     /**
      * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限防 OOM。
-     * 列集与前端颜色表格一致：编号 / 颜色名称 / 状态。
+     * 列集与前端颜色表格一致：编号 / 颜色名称 / 状态 / 备注。
      */
     @Transactional(readOnly = true)
     public ExportPayload export(ColorQueryFilter f, int maxRows) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "编号", ExportColumn.TEXT),
                 new ExportColumn("name", "颜色名称", ExportColumn.TEXT),
-                new ExportColumn("status", "状态", ExportColumn.TEXT));
+                new ExportColumn("status", "状态", ExportColumn.TEXT),
+                new ExportColumn("remark", "备注", ExportColumn.TEXT));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
         List<Map<String, Object>> rows = ReportQueryKit.collectPages(
                 maxRows, (p, size) -> list(f, p, size), c -> {
@@ -122,6 +126,7 @@ public class ColorService {
                     row.put("code", c.getCode());
                     row.put("name", c.getName());
                     row.put("status", c.getStatus());
+                    row.put("remark", c.getRemark());
                     return row;
                 });
         return new ExportPayload(cols, rows, rows.size());
@@ -151,7 +156,7 @@ public class ColorService {
                     .getSingleResult()).longValue();
             nullCounts.put(field, nc);
         }
-        return new ColorFacets(buckets.get("code"), buckets.get("name"), buckets.get("status"), nullCounts);
+        return new ColorFacets(buckets.get("code"), buckets.get("name"), buckets.get("status"), nullCounts, buckets.get("remark"));
     }
 
     // ===== 详情 / CRUD =====
@@ -223,6 +228,10 @@ public class ColorService {
     private void apply(ColorSaveRequest req, Color c) {
         c.setName(req.getName() == null ? null : req.getName().trim());
         c.setStatus(req.getStatus());
+        if (req.hasRemark()) {
+            String remark = req.getRemark() == null ? null : req.getRemark().trim();
+            c.setRemark(remark == null || remark.isEmpty() ? null : remark);
+        }
     }
 
     /**
@@ -244,11 +253,11 @@ public class ColorService {
     }
 
     private ColorDetail toDetail(Color c) {
-        return new ColorDetail(c.getId(), c.getCode(), c.getName(), c.getStatus(), c.getLegacyId());
+        return new ColorDetail(c.getId(), c.getCode(), c.getName(), c.getStatus(), c.getLegacyId(), c.getRemark());
     }
 
     private ColorListItem toList(Color c) {
-        return new ColorListItem(c.getId(), c.getCode(), c.getName(), c.getStatus(), c.getLegacyId());
+        return new ColorListItem(c.getId(), c.getCode(), c.getName(), c.getStatus(), c.getLegacyId(), c.getRemark());
     }
 
     private Color requireColor(UUID id) {

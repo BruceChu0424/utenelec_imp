@@ -8,6 +8,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../../core/performance/ui_work_budget.dart';
 import 'attachment_text_decoder.dart';
 
 /// 压缩包中的一个条目。
@@ -71,66 +72,113 @@ const int kArchiveEntryLimit = 2000;
 
 /// 读 ZIP 中央目录得到条目清单。失败抛 [ArchiveListingException]。
 ArchiveListing readZipListing(Uint8List bytes) {
-  final view = ByteData.sublistView(bytes);
-  final endOffset = _findEndOfCentralDirectory(bytes);
-  if (endOffset < 0) {
-    throw const ArchiveListingException('这不是一个完整的 ZIP 文件，或文件已损坏');
+  final parser = _ZipListingParser(bytes);
+  while (!parser.done) {
+    parser.advance();
   }
-  var totalEntries = view.getUint16(endOffset + 10, Endian.little);
-  var directoryOffset = view.getUint32(endOffset + 16, Endian.little);
-  if (totalEntries == 0xFFFF || directoryOffset == 0xFFFFFFFF) {
-    final zip64 = _readZip64(view, bytes, endOffset);
-    if (zip64 == null) {
-      throw const ArchiveListingException('ZIP64 索引缺失，无法列出条目');
+  return parser.result;
+}
+
+Future<ArchiveListing> readZipListingInUiSlices(
+  Uint8List bytes, {
+  UiWorkBudget? budget,
+}) async {
+  final work = budget ?? UiWorkBudget();
+  work.ensureCurrent();
+  final parser = _ZipListingParser(bytes);
+  while (!parser.done) {
+    parser.advance();
+    await work.checkpoint(65536);
+  }
+  work.ensureCurrent();
+  return parser.result;
+}
+
+class _ZipListingParser {
+  _ZipListingParser(this.bytes) : view = ByteData.sublistView(bytes) {
+    final endOffset = _findEndOfCentralDirectory(bytes);
+    if (endOffset < 0) {
+      throw const ArchiveListingException('这不是一个完整的 ZIP 文件，或文件已损坏');
     }
-    totalEntries = zip64.$1;
-    directoryOffset = zip64.$2;
-  }
-  if (directoryOffset < 0 || directoryOffset >= bytes.length) {
-    throw const ArchiveListingException('ZIP 索引位置越界，文件可能已损坏');
+    totalEntries = view.getUint16(endOffset + 10, Endian.little);
+    var directoryOffset = view.getUint32(endOffset + 16, Endian.little);
+    if (totalEntries == 0xFFFF || directoryOffset == 0xFFFFFFFF) {
+      final zip64 = _readZip64(view, bytes, endOffset);
+      if (zip64 == null) {
+        throw const ArchiveListingException('ZIP64 索引缺失，无法列出条目');
+      }
+      totalEntries = zip64.$1;
+      directoryOffset = zip64.$2;
+    }
+    if (directoryOffset < 0 || directoryOffset >= bytes.length) {
+      throw const ArchiveListingException('ZIP 索引位置越界，文件可能已损坏');
+    }
+
+    cursor = directoryOffset;
   }
 
+  final Uint8List bytes;
+  final ByteData view;
+  late int totalEntries;
+  late int cursor;
   final entries = <ArchiveEntry>[];
-  var cursor = directoryOffset;
   var seen = 0;
-  while (seen < totalEntries && cursor + 46 <= bytes.length) {
-    if (view.getUint32(cursor, Endian.little) != 0x02014b50) break;
-    final flags = view.getUint16(cursor + 8, Endian.little);
-    final compressed = view.getUint32(cursor + 20, Endian.little);
-    final uncompressed = view.getUint32(cursor + 24, Endian.little);
-    final nameLength = view.getUint16(cursor + 28, Endian.little);
-    final extraLength = view.getUint16(cursor + 30, Endian.little);
-    final commentLength = view.getUint16(cursor + 32, Endian.little);
-    final nameStart = cursor + 46;
-    final nameEnd = nameStart + nameLength;
-    if (nameEnd > bytes.length) break;
-    final rawName = Uint8List.sublistView(bytes, nameStart, nameEnd);
-    // 位 11 = 条目名是 UTF-8；老 WinRAR/资源管理器打的包多半是 GBK，走同一套编码识别。
-    final path = (flags & 0x800) != 0
-        ? utf8.decode(rawName, allowMalformed: true)
-        : decodeAttachmentText(rawName).text;
-    final normalized = path.replaceAll('\\', '/');
-    if (seen < kArchiveEntryLimit) {
-      entries.add(
-        ArchiveEntry(
-          path: normalized,
-          sizeBytes: uncompressed,
-          compressedBytes: compressed,
-          isDirectory: normalized.endsWith('/'),
-        ),
-      );
+  var ended = false;
+  bool get done => ended || seen >= totalEntries || cursor + 46 > bytes.length;
+
+  void advance() {
+    final start = cursor;
+    var inspected = 0;
+    while (!done && cursor - start < 65536 && inspected < 64) {
+      if (view.getUint32(cursor, Endian.little) != 0x02014b50) {
+        ended = true;
+        break;
+      }
+      final flags = view.getUint16(cursor + 8, Endian.little);
+      final compressed = view.getUint32(cursor + 20, Endian.little);
+      final uncompressed = view.getUint32(cursor + 24, Endian.little);
+      final nameLength = view.getUint16(cursor + 28, Endian.little);
+      final extraLength = view.getUint16(cursor + 30, Endian.little);
+      final commentLength = view.getUint16(cursor + 32, Endian.little);
+      final nameStart = cursor + 46;
+      final nameEnd = nameStart + nameLength;
+      if (nameEnd > bytes.length) {
+        ended = true;
+        break;
+      }
+      if (seen < kArchiveEntryLimit) {
+        final rawName = Uint8List.sublistView(bytes, nameStart, nameEnd);
+        // 位 11 = UTF-8；其它名称继续按同一套 GB18030 识别。
+        // 超出显示上限仍验证/计数目录项，但不再解码被丢弃的名称。
+        final path = (flags & 0x800) != 0
+            ? utf8.decode(rawName, allowMalformed: true)
+            : decodeAttachmentText(rawName).text;
+        final normalized = path.replaceAll('\\', '/');
+        entries.add(
+          ArchiveEntry(
+            path: normalized,
+            sizeBytes: uncompressed,
+            compressedBytes: compressed,
+            isDirectory: normalized.endsWith('/'),
+          ),
+        );
+      }
+      cursor = nameEnd + extraLength + commentLength;
+      seen++;
+      inspected++;
     }
-    cursor = nameEnd + extraLength + commentLength;
-    seen++;
   }
-  if (entries.isEmpty && totalEntries > 0) {
-    throw const ArchiveListingException('ZIP 索引读取失败，文件可能已损坏');
+
+  ArchiveListing get result {
+    if (entries.isEmpty && totalEntries > 0) {
+      throw const ArchiveListingException('ZIP 索引读取失败，文件可能已损坏');
+    }
+    return ArchiveListing(
+      entries: entries,
+      totalEntries: seen,
+      truncated: seen > entries.length,
+    );
   }
-  return ArchiveListing(
-    entries: entries,
-    totalEntries: seen,
-    truncated: seen > entries.length,
-  );
 }
 
 /// 从尾部回扫 EOCD 签名；ZIP 注释最长 65535 字节，因此回扫窗口取 64KB + 22。

@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
@@ -49,6 +50,28 @@ PlatformFile _file(String name, [int size = 3]) => PlatformFile(
 );
 
 void main() {
+  test(
+    'responsive restore reuses the verified original encoding for receipts',
+    () async {
+      final encoded = base64Encode(Uint8List(1024 * 1024));
+      final data = <String, dynamic>{
+        'items': [
+          {
+            'localUploadId': 'restored-original',
+            'name': 'original.txt',
+            'contentType': 'text/plain',
+            'bytes': encoded,
+          },
+        ],
+      };
+      final controller = PendingAttachmentController();
+      addTearDown(controller.dispose);
+      await controller.restoreDraftResponsive(data);
+      expect(controller.items.single.bytes.length, 1024 * 1024);
+      expect(identical(controller.items.single.draftBytes, encoded), isTrue);
+      expect(controller.sameOriginalFiles(data), isTrue);
+    },
+  );
   test('add validates type, single-file limit and the in-memory total cap', () {
     final c = PendingAttachmentController(maxFileBytes: 10, maxTotalBytes: 15);
     var notified = 0;

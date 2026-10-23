@@ -25,4 +25,16 @@ public record GoodsImportReport(
         List<String> willCreateUnits,
         int readyToImport,
         int restorableRows,
-        UUID planId) {}
+        UUID planId,
+        List<GoodsImportReviewRow> reviewRows,
+        int addedRows,
+        int unchangedRows,
+        int fillRows,
+        int conflictRows) {
+    public GoodsImportReport(int totalRows, int dataRows, List<GoodsImportError> errors,
+                             List<String> categories, List<String> colors, List<String> units,
+                             int readyToImport, int restorableRows, UUID planId) {
+        this(totalRows, dataRows, errors, categories, colors, units, readyToImport,
+                restorableRows, planId, List.of(), readyToImport - restorableRows, 0, 0, 0);
+    }
+}

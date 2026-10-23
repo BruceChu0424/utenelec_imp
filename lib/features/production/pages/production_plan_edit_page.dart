@@ -537,11 +537,13 @@ class _ProductionPlanEditPageState
       if (parseProductionOverproductionPercent(r.overproductionPercent.text) ==
           null) {
         context.appError('第 ${i + 1} 行允许超产比例填写有误，请填不小于 0 的百分比，最多 4 位小数');
+        await _grid.revealError(r, columnKey: 'allowedOverproductionRate');
         return;
       }
       final qty = double.tryParse(r.qty.text);
       if (qty == null || !qty.isFinite || qty <= 0) {
         context.appError('第 ${i + 1} 行排产量无效');
+        await _grid.revealError(r, columnKey: 'qty');
         return;
       }
     }

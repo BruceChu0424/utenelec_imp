@@ -252,20 +252,36 @@ abstract class _MaterialAnalysisChildShortageState
       !const ['CANCELLED', 'WITHDRAWN', 'REVERSED'].contains(action.status) &&
       const ['SUPPLY', 'AGGREGATE_SUPPLY'].contains(action.operationType);
 
-  bool _groupHasNewOrderFact(
-    _MaterialGroup group,
-    Map<String, double> before,
-  ) => group.paths.any(
-    (path) => path.notifiedTargets.any((target) {
-      final action = _supplyActionOf(target.actionId);
-      return action != null &&
-          _isOrderingAction(action) &&
-          action.requestedQty +
-                  action.publicSurplusQty -
-                  (before[_actionSnapshotKey(action.actionId)] ?? 0) >
-              0.0001;
-    }),
-  );
+  bool _groupHasNewOrderFact(_MaterialGroup group, Map<String, double> before) {
+    final analysis = _analysis;
+    if (analysis == null) return false;
+    final byLine = _analysisIndexes(analysis).groupsByLine;
+    final pending = group.paths.toList();
+    final visited = <String>{};
+    for (var index = 0; index < pending.length; index++) {
+      final path = pending[index];
+      if (!visited.add(path.materialLineId)) continue;
+      for (final target in path.notifiedTargets) {
+        final action = _supplyActionOf(target.actionId);
+        if (action != null &&
+            _isOrderingAction(action) &&
+            action.requestedQty +
+                    action.publicSurplusQty -
+                    (before[_actionSnapshotKey(action.actionId)] ?? 0) >
+                0.0001) {
+          return true;
+        }
+      }
+      for (final target
+          in path.aggregatePreparation?.targetMaterialLineIds ??
+              const <String>[]) {
+        if (byLine[target] case final authority?) {
+          pending.addAll(authority.paths);
+        }
+      }
+    }
+    return false;
+  }
 
   /// 下单增长与私有需求覆盖是两件事实。已满足需求后的追加全属公共备货，
   /// allocatedOrderedQty 不再增长，但这些产出同样需要直属物料。只读本来源
@@ -281,7 +297,10 @@ abstract class _MaterialAnalysisChildShortageState
     return _tableGroupIssuedQty(group, authoritative: true);
   }
 
+  /// 共享制造把实物需求移到权威行后，原路径的 raw 缺口合法归零；原路径
+  /// 仍通过 aggregatePreparation 承担本来源的可办份额，与主表和下单取同一口径。
   double _childShortageUncovered(ProductionMaterialAnalysisMaterial material) =>
+      material.aggregatePreparation?.planningUncoveredQty ??
       material.planningUncoveredQty ??
       _tableShownQty(material, authoritative: true).residual;
 

@@ -12,7 +12,7 @@ import java.util.UUID;
 
 /**
  * 车间内料仓的工作台徽章计数 (ADR-108 约定: 一个来源 = 一个带权限的计数端点)。
- * 仓库任务中心「车间内料仓」: 红 = 待发料 + 待收退回, 黄 = 盘点中。
+ * 待发料计入出库的生产领料，待收退回计入入库的生产退料；周期盘点中仍为内料仓进行中数。
  */
 @RestController
 @RequestMapping("/api/workshop-material")

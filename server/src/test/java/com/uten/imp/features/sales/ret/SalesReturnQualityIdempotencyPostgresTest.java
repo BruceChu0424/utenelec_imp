@@ -82,7 +82,7 @@ class SalesReturnQualityIdempotencyPostgresTest {
     private static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
-                    .withUsername("uten")
+                    .withUsername("fixture_admin")
                     .withPassword("uten");
     private static final UUID ACTOR_ID =
             UUID.fromString("10000000-0000-0000-0000-000000000001");

@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,7 +8,7 @@ import 'package:uten_imp/features/basic_data/repositories/goods_import_repositor
 
 void main() {
   test(
-    'commit sends the detect plan id with the exact workbook bytes',
+    'commit binds the detection, exact file and selected conflicts in the body',
     () async {
       late RequestOptions captured;
       final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
@@ -39,14 +40,18 @@ void main() {
         bytes,
         planId: ' 6d81ea14-947b-4f1b-a4fc-8130ca6546ab ',
         filename: 'goods.xlsx',
+        replaceRowKeys: {'goods:2', 'goods:7'},
       );
 
       expect(captured.path, '/master/goods/import/commit');
-      expect(captured.queryParameters, {
+      expect(captured.queryParameters, isEmpty);
+      expect(captured.data, {
+        'file': base64Encode(bytes),
         'planId': '6d81ea14-947b-4f1b-a4fc-8130ca6546ab',
         'filename': 'goods.xlsx',
+        'replaceRowKeys': ['goods:2', 'goods:7'],
       });
-      expect(captured.data, same(bytes));
+      expect(captured.contentType, 'application/json');
     },
   );
 

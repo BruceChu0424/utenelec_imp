@@ -801,8 +801,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
   }
 
   /// 首屏之后并行补齐：字典(颜色/仓库等)、明细库位号、表头人员姓名，完成后重绘一次。
-  /// 货品名/编号优先用明细快照；库位号与业务员/发货人/确认登记人姓名服务端详情暂未下发，
-  /// 由客户端补查(一次批量货品查询 + 按需的人员查询)。
+  /// 货品名/编号优先用明细快照；人员优先用服务端随单姓名，缺失时才按 UUID 补查。
   Future<void> _resolveDisplayNames(
     SalesMasterNameService names,
     SalesDocDetail d,
@@ -815,8 +814,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
           d.items.map((e) => e.goodsId).whereType<String>(),
         ),
         names.loadEmployeeNames([
-          if (_cfg.hasSeller) d.sellerId,
-          if (_cfg.hasSender) d.senderId,
+          if (_cfg.hasSeller && (d.sellerName?.trim().isEmpty ?? true))
+            d.sellerId,
+          if (_cfg.hasSender && (d.senderName?.trim().isEmpty ?? true))
+            d.senderId,
           d.partialShipmentConfirmedBy,
         ]),
       ]);
@@ -1781,9 +1782,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
         _KV('单据币种', names.currency(d.currencyId)),
       if (_cfg.hasCurrency && _cfg.hasExchangeRate && d.exchangeRate != null)
         _KV('汇率', d.exchangeRate?.toString()),
-      // 业务员/发货人：按 id 经员工字典解析姓名（_load 已预载）。
-      if (_cfg.hasSeller) _KV('业务员', names.employee(d.sellerId)),
-      if (_cfg.hasSender) _KV('发货人', names.employee(d.senderId)),
+      // 随单姓名包含历史人员身份；旧接口未返回时兼容 UUID 字典。
+      if (_cfg.hasSeller)
+        _KV('业务员', names.employeeOr(d.sellerName, d.sellerId)),
+      if (_cfg.hasSender)
+        _KV('发货人', names.employeeOr(d.senderName, d.senderId)),
       if (_cfg.hasValidUntil) _KV('有效期', d.validUntil),
       if (_cfg.hasDeliverDate) _KV('交货日', d.deliverDate),
       if (_cfg.type == SalesDocType.order)

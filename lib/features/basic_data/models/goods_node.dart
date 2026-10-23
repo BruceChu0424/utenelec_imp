@@ -23,8 +23,10 @@ class GoodsListItem {
     required this.id,
     this.code,
     this.name,
+    this.clientGoodsName,
     this.nameEn,
     this.nameEnSource,
+    this.hasBom = false,
     this.spec,
     this.model,
     this.price,
@@ -73,6 +75,7 @@ class GoodsListItem {
   final String id;
   final String? code;
   final String? name;
+  final String? clientGoodsName;
 
   /// English name used to match customer files (goods.name_en, ADR-134);
   /// the goods picker hands it to the sales grid as the default file goods name.
@@ -115,6 +118,7 @@ class GoodsListItem {
   bool get isRelatedSearchMatch => searchMatchKind == 'RELATED';
 
   final bool autoCreated; // 迁移兜底占位货品标记（auto_created 列）
+  final bool hasBom;
 
   final double? stockQty; // 即时库存合计（聚合 stock_balances，仅参与核算仓库；列表展示用）
 
@@ -151,6 +155,7 @@ class GoodsListItem {
     id: json['id'] as String,
     code: json['code'] as String?,
     name: json['name'] as String?,
+    clientGoodsName: json['clientGoodsName'] as String?,
     nameEn: json['nameEn'] as String?,
     nameEnSource: json['nameEnSource'] as String?,
     spec: json['spec'] as String?,
@@ -181,6 +186,7 @@ class GoodsListItem {
     searchRank: (json['searchRank'] as num?)?.toInt(),
     searchMatchKind: json['searchMatchKind'] as String?,
     autoCreated: json['autoCreated'] as bool? ?? false,
+    hasBom: json['hasBom'] == true,
     stockQty: (json['stockQty'] as num?)?.toDouble(),
     stockPlace: json['stockPlace'] as String?,
     // 后端 NUMERIC(18,4)，Jackson 可能发 int 或 double；统一走 num? 再 toDouble。
@@ -288,6 +294,7 @@ class GoodsDetail {
     required this.id,
     this.code,
     this.name,
+    this.clientGoodsName,
     this.nameEn,
     this.nameEnSource,
     this.canEditNameEn = false,
@@ -386,6 +393,7 @@ class GoodsDetail {
   final bool quantityUnitLocked;
   final String? code;
   final String? name;
+  final String? clientGoodsName;
 
   /// English name used to match customer files (goods.name_en, ADR-134).
   final String? nameEn;
@@ -545,6 +553,7 @@ class GoodsDetail {
     id: json['id'] as String,
     code: json['code'] as String?,
     name: json['name'] as String?,
+    clientGoodsName: json['clientGoodsName'] as String?,
     nameEn: json['nameEn'] as String?,
     nameEnSource: json['nameEnSource'] as String?,
     canEditNameEn: json['canEditNameEn'] == true,

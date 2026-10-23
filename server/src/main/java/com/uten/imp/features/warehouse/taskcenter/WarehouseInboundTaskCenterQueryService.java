@@ -7,6 +7,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.StockDocAccessPolicy;
+import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInPermissions;
 import com.uten.imp.security.AuthUser;
@@ -46,6 +47,7 @@ public class WarehouseInboundTaskCenterQueryService {
     private final WarehouseTaskScopePort warehouseScopes;
     private final StockDocAccessPolicy stockAccess;
     private final ProductionStockTaskAccessPolicy productionAccess;
+    private final WorkshopMaterialScope materialScopes;
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Page list(Filter filter) {
@@ -79,7 +81,8 @@ public class WarehouseInboundTaskCenterQueryService {
         var scope = warehouseScopes.current(filter.scopeWarehouseId());
         var owner = stockAccess.nativeReadScope("document.maker_id", "stockOwners", rights.owner());
         var access = new WarehouseInboundTaskCenterSql.Access(rights.inbound(),rights.purchaseHistory(),
-                rights.subcontractHistory(),rights.quality(),rights.stock(),rights.productionPool(),owner.predicate());
+                rights.subcontractHistory(),rights.quality(),rights.stock(),rights.productionPool(),owner.predicate(),
+                WarehouseWorkshopMaterialTaskProjection.scope(rights.workshop(),materialScopes,scope));
         String base = WarehouseInboundTaskCenterSql.base(access,scope,filter.keyword());
         int page = Math.max(1,filter.page());
         int size = Math.max(1,Math.min(100,filter.size()));
@@ -93,6 +96,7 @@ public class WarehouseInboundTaskCenterQueryService {
                         ? actor.getEmployeeId().toString():"")
                 .addValue("limit",size).addValue("offset",((long)page-1)*size);
         parameters.addValues(TaskKeywordSearch.parameters(filter.keyword()));
+        parameters.addValues(access.workshop().parameters());
         if (owner.parameterName()!=null) parameters.addValue(owner.parameterName(),owner.owners());
         String identityFilter="";
         if(identity!=null) {
@@ -100,7 +104,8 @@ public class WarehouseInboundTaskCenterQueryService {
             identityFilter=" AND id=:rowId AND record_type=:recordType";
             if(identity.lineKey()!=null) {
                 parameters.addValue("lineKey",identity.lineKey());
-                identityFilter+=" AND line_data->>'key'=:lineKey";
+                identityFilter+=" AND (line_data->>'key'=:lineKey OR (record_type='WORKSHOP_REQUISITION'"
+                        + " AND split_part(line_data->>'key','~',1)=:lineKey))";
             }
         }
         Long total = jdbc.queryForObject(WarehouseInboundTaskCenterSql.count(base)+identityFilter,parameters,Long.class);
@@ -143,6 +148,17 @@ public class WarehouseInboundTaskCenterQueryService {
         Row row=page.items().getFirst();
         MapSqlParameterSource parameters=new MapSqlParameterSource("id",id);
         String sql=switch(row.recordType()) {
+            case "WORKSHOP_REQUISITION" -> """
+                    SELECT physical.item_id AS id,line.line_no AS "lineNo",goods.code AS "goodsCode",goods.name AS "goodsName",
+                           color.name AS "colorName",unit.name AS "unitName",
+                           physical.quantity AS quantity,physical.requested_qty AS "requestedQty",
+                           physical.fulfilled_qty AS "fulfilledQty"
+                    FROM workshop_material_requisition_lines line
+                    %s
+                    JOIN goods ON goods.id=line.goods_id
+                    LEFT JOIN colors color ON color.id=line.color_id LEFT JOIN units unit ON unit.id=line.unit_id
+                    WHERE line.requisition_id=:id ORDER BY line.line_no,line.id
+                    """.formatted(com.uten.imp.features.warehouse.materialbin.WorkshopMaterialRequisitionFacts.physicalJoin());
             case "PURCHASE_RECEIPT","SUBCONTRACT_RECEIPT" -> """
                     SELECT item.id, item.line_no AS "lineNo", COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code) AS "goodsCode",
                            COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name) AS "goodsName",
@@ -235,6 +251,16 @@ public class WarehouseInboundTaskCenterQueryService {
             // physical item boundary as rows, including legacy three-part keys.
             List<UUID> visibleItems=visibleLineItems(row,warehouseId,parts.length==4?parts[3]:null);
             parameters.addValue("visibleItems",visibleItems.isEmpty()?List.of(new UUID(0,0)):visibleItems);
+            if (row.recordType().equals("WORKSHOP_REQUISITION")) {
+                String names=jdbc.queryForObject("""
+                        SELECT string_agg(DISTINCT leaf.name,'、' ORDER BY leaf.name)
+                        FROM workshop_material_requisition_lines line
+                        %s
+                        LEFT JOIN warehouses leaf ON leaf.id=physical.leaf_warehouse_id
+                        WHERE line.requisition_id=:id AND physical.item_id IN (:visibleItems)
+                        """.formatted(com.uten.imp.features.warehouse.materialbin.WorkshopMaterialRequisitionFacts.physicalJoin()),parameters,String.class);
+                row=row.withWarehouseName(names);
+            }
             sql="SELECT visible_detail.* FROM ("+sql+") visible_detail WHERE visible_detail.id IN (:visibleItems)";
             Long count=jdbc.queryForObject("SELECT COUNT(*) FROM ("+sql+") detail_rows",parameters,Long.class);
             total=count==null?0:count;
@@ -251,15 +277,22 @@ public class WarehouseInboundTaskCenterQueryService {
         var scope=warehouseScopes.current(warehouseId);
         var owner=stockAccess.nativeReadScope("document.maker_id","stockOwners",rights.owner());
         var access=new WarehouseInboundTaskCenterSql.Access(rights.inbound(),rights.purchaseHistory(),
-                rights.subcontractHistory(),rights.quality(),rights.stock(),rights.productionPool(),owner.predicate());
+                rights.subcontractHistory(),rights.quality(),rights.stock(),rights.productionPool(),owner.predicate(),
+                WarehouseWorkshopMaterialTaskProjection.scope(rights.workshop(),materialScopes,scope));
         var parameters=new MapSqlParameterSource("type","ALL").addValue("warehouseScope",scope.idsCsv())
                 .addValue("ownDraftMaker",warehouseId==null && actor.getEmployeeId()!=null?actor.getEmployeeId().toString():"")
                 .addValue("id",row.id()).addValue("record",row.recordType()).addValue("source",row.sourceType());
         if(owner.parameterName()!=null) parameters.addValue(owner.parameterName(),owner.owners());
+        parameters.addValues(access.workshop().parameters());
         String identity=" WHERE id=:id AND record_type=:record AND source_type=:source AND line_data IS NOT NULL";
-        if(lineKey!=null) { identity+=" AND line_data->>'key'=:lineKey";parameters.addValue("lineKey",lineKey); }
+        if(lineKey!=null) {
+            identity+=" AND (line_data->>'key'=:lineKey OR (record_type='WORKSHOP_REQUISITION'"
+                    + " AND split_part(line_data->>'key','~',1)=:lineKey))";
+            parameters.addValue("lineKey",lineKey);
+        }
         return jdbc.query(WarehouseInboundTaskCenterSql.base(access,scope)+
-                " SELECT CAST(line_data->>'key' AS uuid) FROM inbound_rows"+identity,parameters,
+                " SELECT CAST(CASE WHEN record_type='WORKSHOP_REQUISITION' THEN line_data->>'itemId'"
+                + " ELSE line_data->>'key' END AS uuid) FROM inbound_rows"+identity,parameters,
                 (rs,index)->rs.getObject(1,UUID.class));
     }
 
@@ -278,6 +311,7 @@ public class WarehouseInboundTaskCenterQueryService {
         catch (java.io.IOException exception) { throw new SQLException("入库物理身份解析失败",exception); }
         String proposed=rs.getString("action");
         boolean canHandle=switch(proposed) {
+            case "WORKSHOP_REQUISITION" -> status.equals("RETURN_WORKSHOP_PENDING") && rights.has("workshop_material:issue");
             case "ARRIVAL_REGISTER","ARRIVAL_CONTINUE" -> rights.inbound() && rights.has("warehouse_inbound:stock_in");
             case "ARRIVAL_EXCEPTION" -> status.endsWith("_EXCEPTION_RECEIPT_ADJUSTED")
                     && positive(data,"acceptedQty") && number(data,"expectedVersion")>0
@@ -313,7 +347,9 @@ public class WarehouseInboundTaskCenterQueryService {
         });
         String rowKey=source+":"+record+":"+id;
         String action=canHandle?proposed:"HISTORY_DETAIL";
-        if(action.equals("STOCK_EDIT") && !rights.has("stock_doc:edit")) action="STOCK_DETAIL";
+        if(action.equals("STOCK_EDIT") && !rights.has("stock_doc:edit")) {
+            action = rights.has("stock_doc:approve") ? "STOCK_REVIEW" : "STOCK_DETAIL";
+        }
         if(action.equals("HISTORY_DETAIL")) data.put("historyEndpoint","/warehouse/task-center/inbound/"+rowKey+"/detail");
         data.put("status",status);
         Row row=new Row(rowKey,id,source,record,rs.getString("bill_no"),rs.getString("source_doc_no"),
@@ -349,13 +385,15 @@ public class WarehouseInboundTaskCenterQueryService {
         boolean subcontractHistory() { return has("warehouse_subcontract_receipt_history:view"); }
         boolean quality() { return has("warehouse_iqc_stock_in:view") || has("warehouse_iqc_return:view"); }
         boolean stock() { return has("stock_doc:view"); }
+        boolean workshop() { return has("workshop_material:view"); }
         boolean productionPool() { return stock() && warehouseParticipant; }
         boolean history(String source) { return source.equals("PURCHASE")?purchaseHistory():source.equals("SUBCONTRACT")&&subcontractHistory(); }
-        boolean anyView() { return inbound() || purchaseHistory() || subcontractHistory() || quality() || stock(); }
+        boolean anyView() { return inbound() || purchaseHistory() || subcontractHistory() || quality() || stock() || workshop(); }
         boolean sourceAllowed(String source) { return switch(source) {
             case "ALL" -> anyView();
             case "PURCHASE" -> inbound() || purchaseHistory() || quality();
             case "SUBCONTRACT" -> inbound() || subcontractHistory() || quality();
+            case "RETURN" -> stock() || workshop();
             default -> stock();
         }; }
     }
@@ -403,6 +441,7 @@ public class WarehouseInboundTaskCenterQueryService {
         add(result,"FINISHED","成品","REGISTRATION_REVERSED","登记已撤回","neutral");
         add(result,"FINISHED","成品","SOURCE_REVERSED","来源报工已撤回","neutral");
         add(result,"FINISHED","成品","REGISTRATION_CLOSED","登记已办结","neutral");
+        add(result,"FINISHED","成品","LEGACY_DRAFT","历史草稿（不可审核）","neutral");
         for(String source:List.of("FINISHED","OTHER","RETURN")) {
             String prefix=switch(source) {case "FINISHED"->"成品";case "OTHER"->"其它入库";default->"生产退料";};
             add(result,source,prefix,"DRAFT","草稿","neutral");
@@ -411,6 +450,9 @@ public class WarehouseInboundTaskCenterQueryService {
             add(result,source,prefix,"CLOSED","已办结","neutral");
         }
         add(result,"RETURN","生产退料","PENDING_RECEIVE","待仓库收料","success");
+        add(result,"RETURN","生产退料","WORKSHOP_PENDING","内料仓待收退料","success");
+        add(result,"RETURN","生产退料","WORKSHOP_DONE","内料仓已收退料","neutral");
+        add(result,"RETURN","生产退料","WORKSHOP_CANCELLED","内料仓已取消","neutral");
         return Map.copyOf(result);
     }
     private static void add(Map<String,Presentation> values,String source,String prefix,String status,String label,String tone) {

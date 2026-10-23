@@ -356,6 +356,31 @@ class WarehouseDataScopeEndToEndTest {
         assertBadgeEqualsLists(member, null);
     }
 
+    @Test void readableManualDrawNeverInflatesTheActionableProductionBadge() {
+        fixture.loginAs(admin);
+        keepers.replaceKeepers(root, keepersOf(mainKeeper, admin));
+        var request = new StockDocSaveRequest();
+        request.setDocType("DRAW");
+        request.setWarehouseId(warehouseA);
+        request.setBillDate(BusinessTime.today());
+        var line = new StockDocItemLine();
+        line.setGoodsId(world.goodsA());
+        line.setUnitId(world.unitId());
+        line.setUnitRate(BigDecimal.ONE);
+        line.setQty(BigDecimal.ONE);
+        request.setItems(List.of(line));
+        var manual = stock.create(request);
+
+        var visible = outboundCenter.list("DRAW", "ACTIVE", "DRAW_PENDING", "", manual.getBillNo(),
+                null, null, warehouseA, 1, 100, null, null);
+        assertThat(visible.items()).singleElement().satisfies(row -> {
+            assertThat(row.id()).isEqualTo(manual.getId());
+            assertThat(row.canHandle()).isFalse();
+        });
+        assertThat(badges.badges(warehouseA).facts().get("productionDraw.count")).isZero();
+        assertBadgeEqualsLists(admin, warehouseA);
+    }
+
     /**
      * 建单不限仓: 子仓负责人顶班在范围外的仓建了草稿, 这张草稿不能从他自己的列表、草稿徽章和分段草稿数里消失
      * (本人默认范围里自己的草稿不论仓都算); 挑了某个仓就只看那个仓; 别人在范围外的草稿照样看不到。
@@ -512,7 +537,7 @@ class WarehouseDataScopeEndToEndTest {
         assertThat(facts.get("subcontractOutbound.count")).as(label + " subcontract outbound").isEqualTo(
                 outboundTaskTotal(selected, "SUBCONTRACT", "SUBCONTRACT_PENDING"));
         assertThat(facts.get("productionDraw.count")).as(label + " production draw").isEqualTo(
-                outboundTaskTotal(selected, "DRAW", "DRAW_PENDING", "DRAW_PARTIAL", "DRAW_DISCOVERY_PENDING"));
+                actionableProductionDrawTotal(selected));
         assertThat(facts.get("productionReturn.count")).as(label + " production return").isEqualTo(
                 inboundTaskTotal(selected, "RETURN", "RETURN_PENDING_RECEIVE"));
         assertThat(facts.get("workshopMaterial.pendingIssue")).as(label + " workshop issue").isEqualTo(
@@ -556,6 +581,21 @@ class WarehouseDataScopeEndToEndTest {
         for (String status : statuses) {
             total += outboundCenter.list(source, "ACTIVE", status, "", null, null, null,
                     selected, 1, 1, null, null).total();
+        }
+        return total;
+    }
+
+    /** Browsable manual/stale DRAW rows retain their status without becoming warehouse tasks. */
+    private long actionableProductionDrawTotal(UUID selected) {
+        long total = 0;
+        for (String status : List.of("DRAW_PENDING", "DRAW_PARTIAL", "DRAW_DISCOVERY_PENDING")) {
+            int page = 1;
+            com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Page rows;
+            do {
+                rows = outboundCenter.list("DRAW", "ACTIVE", status, "", null, null, null,
+                        selected, page++, 100, null, null);
+                total += rows.items().stream().filter(row -> row.canHandle()).count();
+            } while (page <= rows.totalPages());
         }
         return total;
     }

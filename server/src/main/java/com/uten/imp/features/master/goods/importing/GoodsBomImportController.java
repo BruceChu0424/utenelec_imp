@@ -3,6 +3,7 @@ package com.uten.imp.features.master.goods.importing;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.goods.dto.BomPasteRequest;
+import com.uten.imp.features.master.goods.GoodsBomFileLimits;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,9 +23,9 @@ import java.util.UUID;
  * - POST /api/master/goods/{id}/bom/import/detect?mode= → 只读解析 + 逐行校验报告
  * - POST /api/master/goods/{id}/bom/import/commit?mode= → 重新解析复检后一个事务按层写入
  *
- * <p>格式 = 「导出组件」的 14 列；序号列的级联段（1 / 2 / 2.1）表达层级，
- * 导出改完可直接导回。mode：REPLACE（按文件为准，替换各级现有组件）/
- * APPEND（在现有组件后追加）。
+ * <p>格式与「导出组件」一致；序号列的级联段（1 / 2 / 2.1）表达层级。
+ * MERGE 合并核对保留文件外组件，空值补齐、非空差异按行确认；REPLACE 覆盖和 APPEND 追加保留旧合同。
+ * JSON 提交在请求体中携带 base64 文件和替换行选择，避免大文件的选择列表超过 URL 长度上限。
  */
 @RestController
 @RequestMapping("/api/master/goods")
@@ -47,21 +48,57 @@ public class GoodsBomImportController {
         return withImportSlot(() -> service.detect(id, read(request)));
     }
 
-    @PostMapping("/{id}/bom/import/commit")
+    @PostMapping(value = "/{id}/bom/import/commit", consumes = "!application/json")
     @PreAuthorize("hasAuthority('goods:bom:create')")
     public BomImportResult commit(@PathVariable UUID id,
                                   @RequestParam(defaultValue = "REPLACE") String mode,
                                   @RequestParam(required = false) String stateFingerprint,
+                                  @RequestParam(required = false) java.util.Set<String> replaceRowKeys,
                                   HttpServletRequest request)
             throws IOException {
+        if ("MERGE".equalsIgnoreCase(mode)) {
+            return withImportSlot(() -> service.commitMerged(id, read(request), stateFingerprint, replaceRowKeys));
+        }
+        if (replaceRowKeys != null && !replaceRowKeys.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "逐行替换选择只适用于合并核对导入");
+        }
         BomPasteRequest.Mode parsedMode;
         try {
             parsedMode = BomPasteRequest.Mode.valueOf(mode.toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "导入方式只能是覆盖或追加，请重新选择");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "导入方式只能是合并核对、覆盖或追加，请重新选择");
         }
         BomPasteRequest.Mode finalMode = parsedMode;
         return withImportSlot(() -> service.commit(id, read(request), finalMode, stateFingerprint));
+    }
+
+    @PostMapping(value = "/{id}/bom/import/commit", consumes = "application/json")
+    @PreAuthorize("hasAuthority('goods:bom:create')")
+    public BomImportResult commitJson(@PathVariable UUID id, HttpServletRequest request) throws IOException {
+        return withImportSlot(() -> {
+            byte[] body = GoodsImportController.readBounded(request.getInputStream(), request.getContentLengthLong(),
+                    15L * 1024 * 1024, java.nio.file.Path.of(System.getProperty("java.io.tmpdir")));
+            BomImportCommitRequest selection;
+            try {
+                selection = new com.fasterxml.jackson.databind.ObjectMapper().readValue(body, BomImportCommitRequest.class);
+            } catch (com.fasterxml.jackson.core.JsonProcessingException malformed) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "导入提交内容无效，请重新检测文件");
+            }
+            if (selection == null || selection.file() == null || selection.file().length == 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "导入提交缺少文件，请重新检测");
+            }
+            if (selection.file().length > MAX_BYTES) {
+                throw new ApiException(ErrorCode.PAYLOAD_TOO_LARGE, "导入文件超过 10 MiB，请拆分后重试");
+            }
+            if (selection.replaceRowKeys() != null && (selection.replaceRowKeys().size() > GoodsBomFileLimits.MAX_ROWS
+                    || selection.replaceRowKeys().stream().anyMatch(key -> key == null || key.length() > 100))) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "替换选择无效或超过 2000 行，请拆分文件后重试");
+            }
+            if (selection.mode() != null && !"MERGE".equalsIgnoreCase(selection.mode())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "逐行核对提交仅支持合并导入");
+            }
+            return service.commitMerged(id, selection.file(), selection.stateFingerprint(), selection.replaceRowKeys());
+        });
     }
 
     private byte[] read(HttpServletRequest request) throws IOException {

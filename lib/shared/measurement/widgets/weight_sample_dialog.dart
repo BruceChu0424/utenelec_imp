@@ -21,6 +21,8 @@ import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/idempotency_key.dart';
+import '../../auth/read_owner_fence.dart';
+import '../../providers/export_context_epoch_provider.dart';
 import '../weight_params.dart';
 import '../weight_predictor.dart';
 import '../weight_prefs.dart';
@@ -49,24 +51,34 @@ Future<GoodsWeightDetail?> showWeightSampleDialog(
   String? warehouseId,
   WeightParams? params,
   String? remark,
-}) => showDialog<GoodsWeightDetail>(
-  context: context,
-  barrierDismissible: false,
-  builder: (_) => _WeightSampleDialog(
-    goodsId: goodsId,
-    goodsTitle: goodsTitle,
-    baseUnitName: baseUnitName,
-    supplierId: supplierId,
-    supplierName: supplierName,
-    supplierOptions: supplierOptions,
-    warehouseId: warehouseId,
-    params: params,
-    remark: remark,
-  ),
-);
+}) {
+  // DialogRoute builds on the next frame. Pin the owner before that gap so a
+  // scope change while opening cannot adopt the old row's title or supplier.
+  final ownerEpoch = ProviderScope.containerOf(
+    context,
+    listen: false,
+  ).read(exportContextEpochProvider);
+  return showDialog<GoodsWeightDetail>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _WeightSampleDialog(
+      ownerEpoch: ownerEpoch,
+      goodsId: goodsId,
+      goodsTitle: goodsTitle,
+      baseUnitName: baseUnitName,
+      supplierId: supplierId,
+      supplierName: supplierName,
+      supplierOptions: supplierOptions,
+      warehouseId: warehouseId,
+      params: params,
+      remark: remark,
+    ),
+  );
+}
 
 class _WeightSampleDialog extends ConsumerStatefulWidget {
   const _WeightSampleDialog({
+    required this.ownerEpoch,
     required this.goodsId,
     required this.goodsTitle,
     required this.baseUnitName,
@@ -78,6 +90,7 @@ class _WeightSampleDialog extends ConsumerStatefulWidget {
     required this.remark,
   });
 
+  final int ownerEpoch;
   final String goodsId;
   final String goodsTitle;
   final String? baseUnitName;
@@ -109,12 +122,17 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
   bool _newRegime = false;
   bool _busy = false;
   String? _error;
+  late final bool Function() _ownerCurrent;
+  bool _ownerInvalid = false;
+  bool _saveOutcomeUnknown = false;
 
   String get _unitName => widget.baseUnitName ?? '个';
 
   @override
   void initState() {
     super.initState();
+    _ownerCurrent = captureReadOwner(ref);
+    _ownerInvalid = ref.read(exportContextEpochProvider) != widget.ownerEpoch;
     _supplierId = widget.supplierId;
     _remark = TextEditingController(text: widget.remark ?? '');
     final given = widget.params;
@@ -124,11 +142,30 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
     for (final c in [_qty, _weight, _tare]) {
       c.addListener(_changed);
     }
+    listenReadOwner(ref, _invalidateOwner);
     _ensureParams();
   }
 
+  bool get _isCurrent => mounted && !_ownerInvalid && _ownerCurrent();
+
+  void _invalidateOwner() {
+    if (!mounted || _ownerInvalid) return;
+    setState(() {
+      _ownerInvalid = true;
+      _saveOutcomeUnknown = _busy;
+      _busy = false;
+      _error = null;
+      _paramsError = null;
+      _paramsByKey.clear();
+      _supplierId = null;
+    });
+    for (final controller in [_qty, _weight, _tare, _remark]) {
+      controller.clear();
+    }
+  }
+
   void _changed() {
-    if (mounted) setState(() => _error = null);
+    if (_isCurrent) setState(() => _error = null);
   }
 
   WeightParamsIdentity _identity(String? supplierId) => WeightParamsLine(
@@ -139,6 +176,7 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
   WeightParams? get _params => _paramsByKey[_identity(_supplierId)];
 
   Future<void> _ensureParams() async {
+    if (!_isCurrent) return;
     final key = _identity(_supplierId);
     if (_paramsByKey.containsKey(key)) return;
     _paramsByKey[key] = null;
@@ -146,14 +184,14 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
       final result = await ref.read(weightRepositoryProvider).params([
         WeightParamsLine(goodsId: widget.goodsId, supplierId: _supplierId),
       ]);
-      if (!mounted) return;
+      if (!_isCurrent) return;
       setState(() {
         _paramsByKey[key] = result.params[key];
         _paramsError = null;
       });
     } catch (e) {
       // 取不到当前单重只影响对比行, 不妨碍称样; 但不再静默 (ADR-151)。
-      if (!mounted) return;
+      if (!_isCurrent) return;
       setState(() {
         _paramsByKey.remove(key);
         _paramsError = e;
@@ -211,6 +249,7 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
   }
 
   Future<void> _save() async {
+    if (!_isCurrent || !ref.read(weightSampleAllowedProvider)) return;
     final sample = _sample;
     final gross = _grossInput;
     if (sample == null || gross == null || _busy) {
@@ -248,10 +287,10 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
               ),
             ),
           );
-      if (!mounted) return;
+      if (!mounted || !_isCurrent) return;
       Navigator.of(context).pop(detail);
     } catch (e) {
-      if (!mounted) return;
+      if (!_isCurrent) return;
       setState(() {
         _busy = false;
         _error = e is ApiException ? e.message : '保存失败, 请稍后重试';
@@ -261,6 +300,23 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isCurrent) {
+      return UtenAlertDialog(
+        title: const Text('称样窗口已失效'),
+        content: Text(
+          _saveOutcomeUnknown || _busy
+              ? '账号、服务器或权限已变化。保存请求可能已完成，请先核对结果，勿重复提交。'
+              : '账号、服务器或权限已变化，请关闭后重新打开。',
+        ),
+        actions: [
+          UtenButton(
+            key: const ValueKey('weight-sample-close-invalid'),
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      );
+    }
     final theme = Theme.of(context);
     final allowed = ref.watch(weightSampleAllowedProvider);
     final sampleUnit = ref.watch(warehouseWeightUnitsPrefsProvider).sample;

@@ -3,6 +3,57 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 void main() {
+  testWidgets('slow shaping respects elapsed budget and still reaches the tail', (
+    tester,
+  ) async {
+    var calls = 0;
+    final seen = <int>{};
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 900,
+            height: 400,
+            child: MasterDataTableView<int>(
+              virtualized: true,
+              columns: [
+                MasterColumnDef<int>(
+                  key: 'name',
+                  label: '名称',
+                  width: 72,
+                  value: (row) => '$row',
+                  measureWidthOf: (_, row, _) {
+                    calls++;
+                    seen.add(row);
+                    final clock = Stopwatch()..start();
+                    while (clock.elapsedMicroseconds < 2200) {}
+                    return row == 39 ? 410 : 80;
+                  },
+                ),
+              ],
+              items: List.generate(40, (index) => index),
+              facets: const {},
+              nullCounts: const {},
+              filters: const {},
+              onFilterChanged: (_, _) {},
+              showFullscreenToggle: false,
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(
+      calls,
+      lessThan(8),
+      reason:
+          'a cell-count limit alone would shape all 40 slow cells in this frame',
+    );
+    await tester.pumpAndSettle();
+    expect(seen.length, 40);
+    expect(seen, contains(39));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'rich width callback and inherited geometry retire cached widths for unchanged rows',
     (tester) async {

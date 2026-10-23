@@ -1,0 +1,40 @@
+[Unit]
+Description=Five-minute consistent encrypted deduplicated Uten IMP recovery point
+Wants=network-online.target
+After=network-online.target postgresql.service
+RequiresMountsFor=/data /srv/uten-backup
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/uten-imp-dr-backup/continuous_backup.py snapshot --config /etc/uten-imp-dr-backup/source.json
+TimeoutStartSec=4min
+Restart=on-failure
+RestartSec=30s
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+CPUQuota=50%
+MemoryMax=768M
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_SETGID CAP_SETUID
+AmbientCapabilities=CAP_DAC_READ_SEARCH CAP_SETGID CAP_SETUID
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+LimitCORE=0
+StateDirectory=uten-imp-dr-backup
+StateDirectoryMode=0700
+ReadWritePaths=/data/uten-imp-backups/dr-continuous /var/lib/uten-imp-dr-backup
+

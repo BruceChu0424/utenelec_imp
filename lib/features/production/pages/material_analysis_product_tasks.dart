@@ -1352,7 +1352,9 @@ abstract class _MaterialAnalysisProductTasksState
         error,
         operation: '创建生产计划',
       )) {
-        if (mounted) setState(() => _setGenerating(false));
+        if (mounted && _sessionScopeKey() == sessionScope) {
+          setState(() => _setGenerating(false));
+        }
         return false;
       }
       if (!mounted || !currentScope()) return false;
@@ -1366,7 +1368,9 @@ abstract class _MaterialAnalysisProductTasksState
       // 兜底清场（2026-09-14，与 _notifyRoute 同一口径）：_generating 只要有一条
       // 分支忘了清，`_busy` 就永久为真——整页按钮（含「取消分析」「刷新分析」）
       // 全部变灰，用户看到的是「点了没反应」，且刷新页面前好不了。
-      if (mounted && (_generating || _planSubmissionApproveNow)) {
+      if (mounted &&
+          _sessionScopeKey() == sessionScope &&
+          (_generating || _planSubmissionApproveNow)) {
         setState(() {
           _setGenerating(false);
           _planSubmissionApproveNow = false;

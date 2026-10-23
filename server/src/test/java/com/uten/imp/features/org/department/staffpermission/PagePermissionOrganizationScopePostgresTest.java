@@ -35,7 +35,7 @@ class PagePermissionOrganizationScopePostgresTest {
     private static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
-                    .withUsername("uten")
+                    .withUsername("fixture_admin")
                     .withPassword("uten-test-only");
 
     private static final UUID ROOT_A = uuid("1101");

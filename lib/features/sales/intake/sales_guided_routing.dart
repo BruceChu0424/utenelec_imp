@@ -25,9 +25,14 @@ Future<AiGuidedFilePlan?> prepareGuidedSalesRoute(
   if (!ref.read(currentPermissionsProvider).containsAll(workflow.permissions)) {
     throw ApiException('FORBIDDEN', aiChatText(context, 'permissionChanged'));
   }
-  if (current.workflow == workflow && current.result.matchesSource(file)) {
+  if (current.workflow == workflow &&
+      await current.result.matchesSourceResponsive(
+        file,
+        isCurrent: () => context.mounted && current.matches(ref),
+      )) {
     return current;
   }
+  if (!context.mounted || !current.matches(ref)) return null;
   final contentType = aiGuidedContentTypes[file.extension?.toLowerCase()];
   if (file.bytes == null || contentType == null) {
     throw ApiException(
@@ -80,7 +85,12 @@ Future<AiGuidedFilePlan?> prepareGuidedSalesRoute(
   final offered =
       (!result.needsChoice && result.workflow == workflow) ||
       result.choices.any((choice) => choice.workflow == workflow);
-  if (!offered || !result.matchesSource(file)) {
+  if (!offered ||
+      !await result.matchesSourceResponsive(
+        file,
+        isCurrent: () => context.mounted && current.matches(ref),
+      )) {
+    if (!context.mounted) return null;
     throw ApiException(
       'DOCUMENT_ROUTE_INVALID',
       result.summary.isNotEmpty
@@ -88,13 +98,15 @@ Future<AiGuidedFilePlan?> prepareGuidedSalesRoute(
           : aiChatText(context, 'documentUnsupported'),
     );
   }
-  final proposed = AiGuidedFilePlan(
+  final proposed = await AiGuidedFilePlan.createResponsive(
     jobId: snapshot.id,
     file: file,
     result: result,
     workflow: workflow,
     identity: current.identity,
     pageRoute: current.pageRoute,
+    isCurrent: () => context.mounted && current.matches(ref),
   );
+  if (!context.mounted || !current.matches(ref)) return null;
   return validateAiGuidedFilePlan(ref, proposed);
 }

@@ -61,7 +61,7 @@ import static org.mockito.Mockito.*;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class ProfileChangeBatchPaginationPostgresTest {
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("profile_batch_pages").withUsername("uten").withPassword("uten");
+            .withDatabaseName("profile_batch_pages").withUsername("fixture_admin").withPassword("uten");
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {

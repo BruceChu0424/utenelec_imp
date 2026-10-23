@@ -21,7 +21,7 @@ class CustomerPrepaymentMigrationPostgresTest {
     private static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer("postgres:16.15-alpine")
                     .withDatabaseName("uten_customer_prepayment")
-                    .withUsername("uten")
+                    .withUsername("fixture_admin")
                     .withPassword("uten");
 
     @BeforeAll

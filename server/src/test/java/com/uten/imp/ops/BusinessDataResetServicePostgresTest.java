@@ -93,7 +93,7 @@ class BusinessDataResetServicePostgresTest {
     static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_business_reset")
-                    .withUsername("uten")
+                    .withUsername("fixture_admin")
                     .withPassword("uten");
 
     private final List<EntityManagerFactory> entityManagerFactories = new ArrayList<>();

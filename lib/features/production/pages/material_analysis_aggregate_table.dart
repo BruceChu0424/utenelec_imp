@@ -1272,7 +1272,9 @@ final class _MaterialAggregateTableController {
           skipAutoClaim: skipAutoClaim,
         );
       } finally {
-        owner.bucketActionBusyMessage.value = null;
+        if (owner.mounted && owner._sessionScopeKey() == sessionScope) {
+          owner.bucketActionBusyMessage.value = null;
+        }
       }
       if (!owner.mounted || !stillCurrent()) return false;
       if (_preview == null || _previewRequest == null) {
@@ -1429,12 +1431,16 @@ final class _MaterialAggregateTableController {
     } finally {
       // 遮罩随本段收口(2026-09-14 教训：忙标志/遮罩漏一条 return 分支没清，
       // 整页就被 Positioned.fill 遮罩吃掉所有点击)。
-      owner.bucketActionBusyMessage.value = null;
+      if (owner.mounted && owner._sessionScopeKey() == sessionScope) {
+        owner.bucketActionBusyMessage.value = null;
+      }
       if (owner.mounted) {
         owner._mutateAggregateTable(() {
           saving = false;
-          owner._tableSubmitting = false;
-          owner._planSubmissionApproveNow = false;
+          if (owner._sessionScopeKey() == sessionScope) {
+            owner._tableSubmitting = false;
+            owner._planSubmissionApproveNow = false;
+          }
         });
       }
     }
@@ -1956,10 +1962,11 @@ final class _MaterialAggregateTableController {
   MaterialIssuedQuantitySummary? issuedSummary(_MaterialAggregate aggregate) {
     final analysis = owner._analysis;
     if (analysis == null) return null;
-    final byLine = {
-      for (final material in analysis.materials)
-        material.materialLineId: material,
-    };
+    // Identity text, width measurement and quantity cells all ask for this
+    // projection. Rebuilding all materials for every aggregate made rendering
+    // cost aggregates × analysis size. The existing index has the same exact
+    // material-line identity and is shared by this immutable snapshot.
+    final byLine = owner._analysisIndexes(analysis).materialsById;
     final queue = aggregate.paths.toList();
     final visited = <String>{};
     final actions = <MaterialAnalysisSupplyAction>[];

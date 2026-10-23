@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.*;
     "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class ScopedPublicSurplusReaderPostgresTest {
     private static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("scoped_public_sources").withUsername("uten").withPassword("uten");
+            .withDatabaseName("scoped_public_sources").withUsername("fixture_admin").withPassword("uten");
     private static String legacyDefinition;
     private static List<Map<String,Object>> legacyColumns;
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) throws Exception {

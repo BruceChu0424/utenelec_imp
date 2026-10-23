@@ -7,6 +7,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
+import 'package:uten_imp/features/basic_data/widgets/goods_bom_material_evidence.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 class _Repo extends Fake implements GoodsBomRepository {
@@ -14,6 +15,7 @@ class _Repo extends Fake implements GoodsBomRepository {
   final reads = <String, Completer<List<GoodsBomItem>>>{};
   bool controlled = false;
   int learningReads = 0;
+  bool neutralIdentity = false;
 
   @override
   Future<List<GoodsBomItem>> list(String goodsId) async {
@@ -25,11 +27,11 @@ class _Repo extends Fake implements GoodsBomRepository {
   @override
   Future<GoodsBomLearningSummary> learning(String goodsId) async {
     learningReads++;
-    return const GoodsBomLearningSummary(
+    return GoodsBomLearningSummary(
       materialEvidence: [
         GoodsBomMaterialEvidence(
-          source: 'PERIODIC_CHOICE',
-          status: 'CONFIRMED',
+          source: neutralIdentity ? 'MATERIAL_IDENTITY' : 'PERIODIC_CHOICE',
+          status: neutralIdentity ? 'PENDING_QUANTITY' : 'CONFIRMED',
           componentGoodsId: 'plastic',
           componentName: 'PC颗粒',
           colorName: '白色',
@@ -86,7 +88,7 @@ void main() {
       addTearDown(product.dispose);
       await _pump(tester, repo, product);
       await tester.pumpAndSettle();
-      expect(find.textContaining('已记录车间选料：PC颗粒 (白色)'), findsOneWidget);
+      expect(find.textContaining('已记录材料身份：PC颗粒 (白色)'), findsOneWidget);
       final prior = repo.learningReads;
       await tester.state<GoodsBomTabState>(find.byType(GoodsBomTab)).refresh();
       await tester.pumpAndSettle();
@@ -96,6 +98,39 @@ void main() {
       expect(find.text('PC颗粒'), findsOneWidget);
       expect(find.text('尚未加入 BOM'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'unknown consumption shows material identity without a calculated BOM row',
+    (tester) async {
+      final repo = _Repo()..neutralIdentity = true;
+      final product = ValueNotifier('A');
+      addTearDown(product.dispose);
+      await _pump(tester, repo, product);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('已记录材料身份：PC颗粒'), findsOneWidget);
+      expect(find.textContaining('单耗待核的记录不参与配方计算'), findsOneWidget);
+      await tester.tap(find.text('查看选料与结构'));
+      await tester.pumpAndSettle();
+      expect(find.text('原料身份核对'), findsOneWidget);
+      expect(find.text('单耗待核，尚未加入 BOM'), findsOneWidget);
+      expect(find.textContaining('当前不参与配方计算、领料或成本'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  test(
+    'an established BOM changes the identity label without inventing usage',
+    () {
+      const row = GoodsBomMaterialEvidence(
+        source: 'MATERIAL_IDENTITY',
+        status: 'PENDING_QUANTITY',
+        componentGoodsId: 'plastic',
+        inBom: true,
+      );
+      expect(bomMaterialEvidenceStructure(row), '已在 BOM 中');
+      expect(bomMaterialEvidenceNextStep(row), '已建立正式 BOM；本记录保留原料身份来源');
     },
   );
 

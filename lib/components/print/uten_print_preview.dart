@@ -7,18 +7,18 @@
 // - 下载 Excel：可选，复用 UtenExportButton（加密 xlsx 走后端导出，与页内导出口径一致）；
 // - 数据：loader 返回"显示就绪"的表头 + 行（报表页用 formatReportCell 格式化，与页面表格同口径）。
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart' show kPrimaryButton;
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../shared/platform_tables/table_column_projection.dart';
 import '../../shared/platform_tables/platform_table_models.dart';
 import '../../shared/platform_tables/platform_table_repository.dart';
 import '../../shared/business_columns/business_column.dart';
 import '../../shared/providers/sensitive_read_boundary_provider.dart';
-import 'package:flutter/services.dart' show rootBundle;
-
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 
 import '../../core/print/pdf_printer.dart';
+import '../../core/print/isolated_print_pdf.dart';
+import '../../core/performance/ui_work_budget.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
@@ -26,6 +26,7 @@ import '../buttons/uten_button.dart';
 import '../buttons/uten_export_button.dart';
 import '../feedback/uten_dialog.dart';
 import '../layout/uten_app_bar_action_scope.dart';
+import '../data_display/uten_selection_lifecycle.dart';
 
 /// 打印表格数据：表头 + 行（均为显示就绪字符串）。
 class UtenPrintTable {
@@ -55,7 +56,10 @@ Future<UtenPrintTable> projectUtenPrintTable(
   UtenPrintTable source,
   TableColumnProjection? projection, {
   PlatformTableRepository? repository,
+  UiWorkBudget? budget,
 }) async {
+  final work = budget ?? UiWorkBudget();
+  work.ensureCurrent();
   if (projection == null) return source;
   final keys = source.columnKeys;
   if (keys == null ||
@@ -63,8 +67,11 @@ Future<UtenPrintTable> projectUtenPrintTable(
       keys.toSet().length != keys.length) {
     throw const FormatException('打印数据尚未绑定唯一字段编号，不能套用当前表头');
   }
-  if (source.rows.any((row) => row.length != keys.length)) {
-    throw const FormatException('打印数据列数与字段编号不一致，请刷新后重试');
+  for (final row in source.rows) {
+    if (row.length != keys.length) {
+      throw const FormatException('打印数据列数与字段编号不一致，请刷新后重试');
+    }
+    await work.checkpoint();
   }
   if (projection.columns.isEmpty ||
       projection.columns.map((c) => c.key).toSet().length !=
@@ -89,6 +96,7 @@ Future<UtenPrintTable> projectUtenPrintTable(
       throw const FormatException('当前表头包含尚未加载的字段，不能省略后继续打印');
     }
     final scopes = await repository.scopes();
+    work.ensureCurrent();
     final matches = scopes.where((s) => s.scope == projection.scope);
     if (matches.isEmpty) throw const FormatException('当前账号不能读取这些扩展字段');
     capabilities = matches.first;
@@ -108,7 +116,9 @@ Future<UtenPrintTable> projectUtenPrintTable(
               .map((c) => c.key.substring('platform:'.length))
               .toList(),
         )) {
+          work.ensureCurrent();
           records[row.recordId] = row;
+          await work.checkpoint();
         }
       }
       if (ids.any((id) => !records.containsKey(id))) {
@@ -125,6 +135,7 @@ Future<UtenPrintTable> projectUtenPrintTable(
           .map((column) => column.key.substring('platform:'.length))
           .toList(),
     );
+    work.ensureCurrent();
     for (final definition in authorized) {
       definitions[definition.key] = definition;
     }
@@ -136,6 +147,10 @@ Future<UtenPrintTable> projectUtenPrintTable(
       source.factValues!.length != source.rows.length) {
     throw const FormatException('打印计算依据与明细行数不一致');
   }
+  final allowed = {
+    for (final fact in capabilities?.facts ?? const <PlatformTableFact>[])
+      fact.key: fact,
+  };
   String? calculate(int row, String key, Set<String> visiting) {
     if (visiting.contains(key)) throw const FormatException('计算展示列存在循环引用');
     final definition = definitions[key];
@@ -145,10 +160,6 @@ Future<UtenPrintTable> projectUtenPrintTable(
     if (definition!.priceProtected && capabilities?.priceVisible != true) {
       throw const FormatException('当前账号不能打印所选计算列的价格信息');
     }
-    final allowed = {
-      for (final fact in capabilities?.facts ?? const <PlatformTableFact>[])
-        fact.key: fact,
-    };
     return definition.formula!.calculate((operand) {
       if (operand.constant != null) {
         return businessExactDecimal(operand.constant);
@@ -176,6 +187,29 @@ Future<UtenPrintTable> projectUtenPrintTable(
     });
   }
 
+  final sourceIndexes = projection.columns.map(indexOf).toList(growable: false);
+  final rows = <List<String>>[];
+  for (var row = 0; row < source.rows.length; row++) {
+    final cells = <String>[];
+    for (
+      var columnIndex = 0;
+      columnIndex < projection.columns.length;
+      columnIndex++
+    ) {
+      final column = projection.columns[columnIndex];
+      final sourceIndex = sourceIndexes[columnIndex];
+      cells.add(
+        sourceIndex != null
+            ? source.rows[row][sourceIndex]
+            : capabilities?.supportsValues == false
+            ? calculate(row, column.key, {}) ?? '—'
+            : _printRecordValue(records[source.rowIds![row]], column.key),
+      );
+      await work.checkpoint();
+    }
+    rows.add(cells);
+  }
+  work.ensureCurrent();
   return UtenPrintTable(
     headers: projection.columns.map((c) => c.label).toList(growable: false),
     columnKeys: projection.columns.map((c) => c.key).toList(growable: false),
@@ -184,18 +218,7 @@ Future<UtenPrintTable> projectUtenPrintTable(
         .toList(growable: false),
     rowIds: source.rowIds,
     factValues: source.factValues,
-    rows: [
-      for (var row = 0; row < source.rows.length; row++)
-        [
-          for (final column in projection.columns)
-            if (indexOf(column) != null)
-              source.rows[row][indexOf(column)!]
-            else if (capabilities?.supportsValues == false)
-              calculate(row, column.key, {}) ?? '—'
-            else
-              _printRecordValue(records[source.rowIds![row]], column.key),
-        ],
-    ],
+    rows: rows,
   );
 }
 
@@ -210,6 +233,44 @@ String _printRecordValue(PlatformRowValues? row, String key) {
     throw const FormatException('扩展字段尚未计算成功，请刷新后重试打印');
   }
   return cell.value ?? '';
+}
+
+const _previewRowsPerPage = 20;
+
+/// Full paper selection is independent of which lazy pages are mounted.
+/// Keep the original SelectionArea's concatenated paragraph order, including
+/// repeated headers and page captions; no business value is reformatted.
+Future<String> buildUtenPrintSelectionText(
+  UtenPrintTable table,
+  String title, {
+  String? subtitle,
+  UiWorkBudget? budget,
+}) async {
+  final work = budget ?? UiWorkBudget();
+  work.ensureCurrent();
+  final text = StringBuffer()..write(title);
+  if (subtitle != null && subtitle.isNotEmpty) text.write(subtitle);
+  final count =
+      ((table.rows.length + _previewRowsPerPage - 1) ~/ _previewRowsPerPage)
+          .clamp(1, 1 << 30);
+  for (var page = 0; page < count; page++) {
+    for (final header in table.headers) {
+      text.write(header);
+      await work.checkpoint();
+    }
+    final end = ((page + 1) * _previewRowsPerPage).clamp(0, table.rows.length);
+    for (var index = page * _previewRowsPerPage; index < end; index++) {
+      for (final cell in table.rows[index]) {
+        text.write(cell);
+        await work.checkpoint();
+      }
+    }
+    if (table.rows.isEmpty) text.write('暂无数据');
+    text.write('第 ${page + 1} / $count 页 · 共 ${table.rows.length} 行');
+    await work.checkpoint();
+  }
+  work.ensureCurrent();
+  return text.toString();
 }
 
 /// 弹出通用 A4 打印预览。
@@ -404,6 +465,16 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
   int _contextVersion = 0;
   bool _invalidated = false;
   bool _printing = false;
+  final _pdfGenerator = IsolatedPrintPdfGenerator();
+  final _paperSelectionKey = GlobalKey<SelectionAreaState>();
+  String _selectedPaperText = '';
+  bool _allPaperSelected = false;
+  int _selectionRevision = 0;
+
+  void _resetFullPaperSelection() {
+    _selectionRevision++;
+    _allPaperSelected = false;
+  }
 
   @override
   void initState() {
@@ -417,6 +488,9 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
           _invalidated = true;
           _printing = false;
           _table = null;
+          _pdfGenerator.dispose();
+          _resetFullPaperSelection();
+          _selectedPaperText = '';
           _error = '账号、服务器或权限已变化，请关闭后重新预览';
         });
       },
@@ -439,9 +513,109 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
   @override
   void dispose() {
     _contextVersion++;
+    _selectionRevision++;
+    _pdfGenerator.dispose();
     _boundarySubscription?.close();
     super.dispose();
   }
+
+  void _selectAllPaperText(SelectionChangedCause cause) {
+    if (_table == null || !_isCurrent(_contextVersion)) return;
+    _selectionRevision++;
+    _allPaperSelected = true;
+    _paperSelectionKey.currentState?.selectableRegion.selectAll(cause);
+  }
+
+  Future<void> _copyPaperText() async {
+    final version = _contextVersion;
+    final selection = _selectionRevision;
+    final table = _table;
+    bool current() => _isCurrent(version) && selection == _selectionRevision;
+    if (table == null || !current()) return;
+    try {
+      final text = _allPaperSelected
+          ? await buildUtenPrintSelectionText(
+              table,
+              widget.title,
+              subtitle: widget.subtitle,
+              budget: UiWorkBudget(isCurrent: current),
+            )
+          : _selectedPaperText;
+      if (!current() || text.isEmpty) return;
+      await Clipboard.setData(ClipboardData(text: text));
+      if (current()) {
+        _paperSelectionKey.currentState?.selectableRegion.hideToolbar();
+      }
+    } on UiWorkCancelled {
+      // No stale document is copied after a different selection or identity.
+    } catch (_) {
+      if (mounted && current()) context.appError('复制失败，请重试');
+    }
+  }
+
+  Widget _paperSelection(Widget child) => Listener(
+    onPointerDown: (event) {
+      if (event.buttons == kPrimaryButton) _resetFullPaperSelection();
+    },
+    child: Focus(
+      onKeyEvent: (_, event) {
+        if (event is KeyDownEvent &&
+            const [
+              LogicalKeyboardKey.arrowLeft,
+              LogicalKeyboardKey.arrowRight,
+              LogicalKeyboardKey.arrowUp,
+              LogicalKeyboardKey.arrowDown,
+              LogicalKeyboardKey.home,
+              LogicalKeyboardKey.end,
+              LogicalKeyboardKey.escape,
+            ].contains(event.logicalKey)) {
+          _resetFullPaperSelection();
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Actions(
+        actions: {
+          SelectAllTextIntent: CallbackAction<SelectAllTextIntent>(
+            onInvoke: (intent) {
+              _selectAllPaperText(intent.cause);
+              return null;
+            },
+          ),
+          CopySelectionTextIntent: CallbackAction<CopySelectionTextIntent>(
+            onInvoke: (_) => _copyPaperText(),
+          ),
+        },
+        child: UtenSelectionArea(
+          selectionKey: _paperSelectionKey,
+          onSelectionChanged: (content) =>
+              _selectedPaperText = content?.plainText ?? '',
+          contextMenuBuilder: (context, region) =>
+              AdaptiveTextSelectionToolbar.buttonItems(
+                anchors: region.contextMenuAnchors,
+                buttonItems: [
+                  for (final item in region.contextMenuButtonItems)
+                    if (item.type == ContextMenuButtonType.copy)
+                      ContextMenuButtonItem(
+                        type: item.type,
+                        label: item.label,
+                        onPressed: _copyPaperText,
+                      )
+                    else if (item.type == ContextMenuButtonType.selectAll)
+                      ContextMenuButtonItem(
+                        type: item.type,
+                        label: item.label,
+                        onPressed: () =>
+                            _selectAllPaperText(SelectionChangedCause.toolbar),
+                      )
+                    else
+                      item,
+                ],
+              ),
+          child: child,
+        ),
+      ),
+    ),
+  );
 
   Future<void> _load() async {
     final version = _contextVersion;
@@ -453,6 +627,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
         loaded,
         widget.projection,
         repository: widget.repository,
+        budget: UiWorkBudget(isCurrent: () => _isCurrent(version)),
       );
       if (!_isCurrent(version)) return;
       setState(() => _table = t);
@@ -475,59 +650,19 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
       // UI 使用常用字子集降低首屏体积；打印按需加载完整字体，确保业务数据中的生僻字不丢失。
       final fontData = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
       if (!_isCurrent(version)) return;
-      final font = pw.Font.ttf(fontData);
-      final doc = pw.Document();
-      doc.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4.landscape,
-          margin: const pw.EdgeInsets.all(28),
-          build: (ctx) => [
-            pw.Center(
-              child: pw.Text(
-                widget.title,
-                style: pw.TextStyle(
-                  font: font,
-                  fontSize: 16,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-            ),
-            if (widget.subtitle != null && widget.subtitle!.isNotEmpty) ...[
-              pw.SizedBox(height: 4),
-              pw.Center(
-                child: pw.Text(
-                  widget.subtitle!,
-                  style: pw.TextStyle(font: font, fontSize: 9),
-                ),
-              ),
-            ],
-            pw.SizedBox(height: 10),
-            pw.Table(
-              columnWidths: {
-                for (var i = 0; i < t.headers.length; i++)
-                  i: pw.FlexColumnWidth(t.columnWidths?[i] ?? 1),
-              },
-              border: pw.TableBorder.all(width: 0.5),
-              children: [
-                pw.TableRow(
-                  decoration: const pw.BoxDecoration(
-                    color: PdfColor.fromInt(0xFFEFEFEF),
-                  ),
-                  children: [
-                    for (final h in t.headers)
-                      _pdfCell(font, h, bold: true, center: true),
-                  ],
-                ),
-                for (final row in t.rows)
-                  pw.TableRow(
-                    children: [for (final c in row) _pdfCell(font, c)],
-                  ),
-              ],
-            ),
-          ],
+      final bytes = await _pdfGenerator.generate(
+        PrintPdfRequest(
+          title: widget.title,
+          subtitle: widget.subtitle,
+          headers: t.headers,
+          rows: t.rows,
+          columnWidths: t.columnWidths,
+          fontBytes: fontData.buffer.asUint8List(
+            fontData.offsetInBytes,
+            fontData.lengthInBytes,
+          ),
         ),
       );
-      final bytes = await doc.save();
       if (!_isCurrent(version)) return;
       await printPdfBytes(bytes, '${widget.title}.pdf');
     } catch (_) {
@@ -536,26 +671,6 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
     } finally {
       if (_isCurrent(version)) setState(() => _printing = false);
     }
-  }
-
-  pw.Widget _pdfCell(
-    pw.Font font,
-    String text, {
-    bool bold = false,
-    bool center = false,
-  }) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-      child: pw.Text(
-        text,
-        textAlign: center ? pw.TextAlign.center : null,
-        style: pw.TextStyle(
-          font: font,
-          fontSize: 8,
-          fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
-        ),
-      ),
-    );
   }
 
   // 屏幕预览的工具条与纸面可以滚动；PDF 的纸张、字号和分页保持原契约。
@@ -567,118 +682,140 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
       maxWidth: 1080,
       fillHeight: true,
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    _invalidated ? '预览已失效' : '预览 · ${widget.title}',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s8),
-                  Wrap(
-                    alignment: WrapAlignment.end,
-                    spacing: UtenSpacing.s8,
-                    runSpacing: UtenSpacing.s4,
+      child: NestedScrollView(
+        headerSliverBuilder: (context, innerBoxIsScrolled) => [
+          SliverToBoxAdapter(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      UtenButton(
-                        type: UtenButtonType.tonal,
-                        size: UtenButtonSize.small,
-                        icon: Icons.print_outlined,
-                        isLoading: _printing,
-                        onPressed:
-                            (table == null || table.rows.isEmpty || _printing)
-                            ? null
-                            : _print,
-                        child: const Text('打印'),
-                      ),
-                      if (widget.exportEndpoint != null)
-                        UtenExportButton(
-                          endpoint: widget.exportEndpoint!,
-                          report: widget.exportReport ?? '',
-                          queryParams: widget.exportQuery ?? const {},
-                          bodyParams: {
-                            ...?widget.exportBody,
-                            if (widget.projection != null)
-                              'columnProjection': widget.projection!.toJson(),
-                          },
-                          filename: widget.exportFilename ?? widget.title,
-                          requiredPermission: widget.exportPermission,
-                          enabled: !_invalidated,
-                          prepareExport: () async {
-                            final version = _contextVersion;
-                            return UtenExportSelection(
-                              stillCurrent: () => _isCurrent(version),
-                            );
-                          },
-                          label: '下载Excel',
+                      Text(
+                        _invalidated ? '预览已失效' : '预览 · ${widget.title}',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
-                      UtenButton(
-                        type: UtenButtonType.tonal,
-                        icon: Icons.close_rounded,
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('关闭'),
+                      ),
+                      const SizedBox(height: UtenSpacing.s8),
+                      Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: UtenSpacing.s8,
+                        runSpacing: UtenSpacing.s4,
+                        children: [
+                          UtenButton(
+                            type: UtenButtonType.tonal,
+                            size: UtenButtonSize.small,
+                            icon: Icons.print_outlined,
+                            isLoading: _printing,
+                            onPressed:
+                                (table == null ||
+                                    table.rows.isEmpty ||
+                                    _printing)
+                                ? null
+                                : _print,
+                            child: const Text('打印'),
+                          ),
+                          if (widget.exportEndpoint != null)
+                            UtenExportButton(
+                              endpoint: widget.exportEndpoint!,
+                              report: widget.exportReport ?? '',
+                              queryParams: widget.exportQuery ?? const {},
+                              bodyParams: {
+                                ...?widget.exportBody,
+                                if (widget.projection != null)
+                                  'columnProjection': widget.projection!
+                                      .toJson(),
+                              },
+                              filename: widget.exportFilename ?? widget.title,
+                              requiredPermission: widget.exportPermission,
+                              enabled: !_invalidated,
+                              prepareExport: () async {
+                                final version = _contextVersion;
+                                return UtenExportSelection(
+                                  stillCurrent: () => _isCurrent(version),
+                                );
+                              },
+                              label: '下载Excel',
+                            ),
+                          UtenButton(
+                            type: UtenButtonType.tonal,
+                            icon: Icons.close_rounded,
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('关闭'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+                const Divider(height: 1),
+              ],
             ),
-            const Divider(height: 1),
-            Container(
-              color: theme.colorScheme.surfaceContainerHighest,
-              child: _error != null
-                  ? Padding(
-                      padding: const EdgeInsets.all(UtenSpacing.s16),
-                      child: Text(_error!),
-                    )
-                  : table == null
-                  ? const SizedBox(
-                      height: 160,
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  : Padding(
-                      padding: const EdgeInsets.all(UtenSpacing.s16),
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: SelectionArea(child: _a4Pages(theme, table)),
-                      ),
+          ),
+        ],
+        body: Container(
+          color: theme.colorScheme.surfaceContainerHighest,
+          child: _error != null
+              ? Padding(
+                  padding: const EdgeInsets.all(UtenSpacing.s16),
+                  child: Text(_error!),
+                )
+              : table == null
+              ? const SizedBox(
+                  height: 160,
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : Padding(
+                  padding: const EdgeInsets.all(UtenSpacing.s16),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    primary: false,
+                    child: SizedBox(
+                      width: 1000,
+                      child: _paperSelection(_a4Pages(theme, table)),
                     ),
-            ),
-          ],
+                  ),
+                ),
         ),
       ),
     );
   }
 
   // 纸面保留 1000 宽及原分页；横向查看属于纸面预览的二维内容。
-  static const int _rowsPerPage = 20;
-
   Widget _a4Pages(ThemeData theme, UtenPrintTable t) {
     const paperWidth = 1000.0;
-    final pages = <List<List<String>>>[];
-    for (var i = 0; i < t.rows.length; i += _rowsPerPage) {
-      final end = i + _rowsPerPage > t.rows.length
-          ? t.rows.length
-          : i + _rowsPerPage;
-      pages.add(t.rows.sublist(i, end));
-    }
-    if (pages.isEmpty) pages.add(const []);
-    return Column(
-      children: [
-        for (var p = 0; p < pages.length; p++) ...[
-          if (p > 0) const SizedBox(height: UtenSpacing.s16),
-          _a4Page(theme, t, pages[p], p, pages.length, paperWidth),
-        ],
-      ],
+    final pageCount =
+        ((t.rows.length + _previewRowsPerPage - 1) ~/ _previewRowsPerPage)
+            .clamp(1, 1 << 30);
+    return ListView.builder(
+      key: const ValueKey('uten-print-paper-list'),
+      primary: true,
+      padding: EdgeInsets.zero,
+      itemCount: pageCount,
+      itemBuilder: (context, page) {
+        final start = page * _previewRowsPerPage;
+        final end = (start + _previewRowsPerPage).clamp(0, t.rows.length);
+        return Padding(
+          padding: EdgeInsets.only(top: page == 0 ? 0 : UtenSpacing.s16),
+          child: UtenSelectionLifecycleScope(
+            child: RepaintBoundary(
+              key: ValueKey('uten-print-paper-$page'),
+              child: _a4Page(
+                theme,
+                t,
+                t.rows.sublist(start, end),
+                page,
+                pageCount,
+                paperWidth,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

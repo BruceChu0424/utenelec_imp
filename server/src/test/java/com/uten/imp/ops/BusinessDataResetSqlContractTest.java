@@ -134,6 +134,8 @@ public class BusinessDataResetSqlContractTest {
             Map.entry("production_material_discovery_requests", 710),
             Map.entry("production_draw_issue_batches", 727),
             Map.entry("stock_draw_issue_batches", 771),
+            Map.entry("subcontract_selected_outbound_commands", 900),
+            Map.entry("subcontract_selected_outbound_items", 900),
             Map.entry("production_material_discovery_lines", 710),
             Map.entry("production_bom_learning_samples", 711),
             Map.entry("production_bom_learning_refresh_queue", 711),
@@ -203,6 +205,10 @@ public class BusinessDataResetSqlContractTest {
      * 同样走「读取已安装函数定义 + 锚点替换插入」补丁；与 CLEAR 扩展分开登记。
      */
     private static final Map<String, Integer> PRESERVE_RESET_EXTENSIONS = Map.ofEntries(
+            Map.entry("goods_code_lifecycles", 911),
+            Map.entry("goods_code_usage_facts", 911),
+            Map.entry("goods_code_reuse_releases", 911),
+            Map.entry("goods_material_identity_evidence", 904),
             Map.entry("permission_templates", 894),
             Map.entry("goods_market_reference_bindings", 890),
             Map.entry("platform_column_definition_deletions", 888),
@@ -218,12 +224,16 @@ public class BusinessDataResetSqlContractTest {
             Map.entry("master_operation_history", 885),
             Map.entry("master_operation_history_rows", 885),
             Map.entry("master_operation_history_events", 885),
+            Map.entry("master_record_versions", 898),
             Map.entry("sms_gateway_settings", 867),
             Map.entry("platform_branding", 839),
             Map.entry("ai_user_limits", 815),
             Map.entry("legacy_subcontract_order_import_sources", 624),
             Map.entry("legacy_finance_import_sources", 626),
             Map.entry("legacy_procurement_receipt_import_sources", 627),
+            Map.entry("legacy_quantity_counter_import_sources", 908),
+            Map.entry("legacy_production_plan_counter_import_sources", 913),
+            Map.entry("legacy_production_plan_counter_import_contexts", 913),
             Map.entry("expense_claim_settings", 617),
             Map.entry("party_activity_records", 579),
             Map.entry("party_addresses", 579),
@@ -606,6 +616,15 @@ public class BusinessDataResetSqlContractTest {
                         + "请改成 **当前源码目录：V%d/%d …**（并补一句新迁移做了什么）"
                                 .formatted(head, count))
                 .contains("当前源码目录：V" + head + "/" + count);
+    }
+
+    @Test
+    void colorRemarkAndPaymentStyleHistoryExtensionsKeepExistingResetClassification() throws IOException {
+        assertThat(expectedCurrentPolicy()).containsEntry("colors", "PRESERVE").containsEntry("payment_styles", "PRESERVE");
+        assertThat(extensionSql(901)).contains("ALTER TABLE colors ADD COLUMN remark text")
+                .doesNotContain("CREATE TABLE", "business_data_reset");
+        assertThat(extensionSql(902)).contains("fn_master_history_entity")
+                .doesNotContain("CREATE TABLE", "business_data_reset");
     }
 
     /** Expected complete policy derives from frozen V464 plus explicit reviewed changes, never the installed function. */

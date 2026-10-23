@@ -114,7 +114,18 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
 
   /// 「从应收应付引入」构造：核销台账 id + 单据号 + 本次核销额 预填。
   factory FinanceGridRow.fromApplied(ItemMode mode, AppliedArAp a) {
-    final r = FinanceGridRow(mode: mode)
+    final row = FinanceGridRow(mode: mode);
+    try {
+      row.applyLedger(a);
+      return row;
+    } catch (_) {
+      row.dispose();
+      rethrow;
+    }
+  }
+
+  void applyLedger(AppliedArAp a) {
+    final r = this
       ..appliedLedgerId = a.ledgerId
       ..appliedBillNo = a.appliedBillNo
       ..salesOrderIds = a.salesOrderIds
@@ -134,7 +145,6 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
     r.balanceOriginalText = a.balanceOriginalText;
     r.prepaymentAppliedOriginal = a.prepaymentAppliedOriginal;
     r.amount.text = a.receiptAmountText;
-    return r;
   }
 
   void _syncFromAmountField() {

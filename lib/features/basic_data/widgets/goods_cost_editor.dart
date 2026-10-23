@@ -155,34 +155,71 @@ extension _GoodsCostEditor on _GoodsCostTabState {
   }
 
   Future<void> _importWorkbook() async {
-    final adopted = await _action(() async {
+    Map<String, dynamic>? adopted;
+    await _action(() async {
       final selected = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: const ['xlsx', 'xls'],
-        withData: true,
+        allowMultiple: true,
+        withReadStream: true,
+        readSequential: true,
       );
-      final file = selected?.files.firstOrNull;
-      if (file?.bytes == null || !mounted) return null;
-      final preview = await _repository.importPreview(
-        widget.detail.id,
-        file!.bytes!,
-        file.name,
-      );
-      if (!mounted) return null;
-      final mapping = await showDialog<Map<String, dynamic>>(
-        context: context,
-        builder: (_) => GoodsCostImportDialog(
-          preview: preview,
-          lines: _calculation?.lines ?? [],
-        ),
-      );
-      if (mapping == null) return null;
-      return _repository.importApply({...mapping, 'input': _currentInput()});
+      final files = selected?.files ?? const <PlatformFile>[];
+      var workingInput = copyCostJson(_currentInput());
+      var workingLines = _calculation?.lines ?? <Map<String, dynamic>>[];
+      for (var index = 0; index < files.length; index++) {
+        if (!mounted ||
+            !_capability.canEditSheet(
+              serverAllowed: _sheet == null || _sheet!.canEdit,
+            ) ||
+            _historical != null) {
+          break;
+        }
+        final file = files[index];
+        try {
+          final bytes = await readGoodsImportFile(
+            file,
+            maxBytes: 15 * 1024 * 1024,
+            allowLegacyXls: true,
+          );
+          final preview = await _repository.importPreview(
+            widget.detail.id,
+            bytes,
+            file.name,
+          );
+          if (!mounted) break;
+          final mapping = await Navigator.of(context)
+              .push<Map<String, dynamic>>(
+                MaterialPageRoute(
+                  builder: (_) => GoodsCostImportDialog(
+                    preview: preview,
+                    lines: workingLines,
+                    filename: file.name,
+                    fileNumber: index + 1,
+                    fileCount: files.length,
+                  ),
+                ),
+              );
+          if (mapping == null || !mounted) break;
+          final result = await _repository.importApply({
+            ...mapping,
+            'input': workingInput,
+          });
+          adopted = result;
+          workingInput = copyCostJson(costMap(result['input']));
+          workingLines = GoodsCostCalculation(
+            costMap(result['calculation']),
+          ).lines;
+        } catch (error) {
+          throw StateError('${file.name}: ${_message(error)}');
+        }
+      }
     });
-    if (adopted == null || !mounted) return;
+    final completed = adopted;
+    if (completed == null || !mounted) return;
     _change(() {
-      _input = copyCostJson(costMap(adopted['input']));
-      _calculation = GoodsCostCalculation(costMap(adopted['calculation']));
+      _input = copyCostJson(costMap(completed['input']));
+      _calculation = GoodsCostCalculation(costMap(completed['calculation']));
       _resetEditors();
     });
   }

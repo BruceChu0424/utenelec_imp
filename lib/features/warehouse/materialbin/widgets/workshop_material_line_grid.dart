@@ -110,6 +110,9 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
   required UtenEditableGridController<WmIssueLineRow> grid,
   required List<WmMaterialOption> materials,
   required bool enabled,
+  String materialLabel = '料',
+  bool propagateSelectedChanges = true,
+  bool Function(WmIssueLineRow row)? editableOf,
   bool materialEditable = true,
   bool showLeafWarehouse = false,
   String? leafLabel,
@@ -122,12 +125,17 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
   VoidCallback? onChanged,
 }) {
   final byKey = {for (final m in materials) m.key: m};
+  bool writable(WmIssueLineRow row) =>
+      enabled && (editableOf?.call(row) ?? true);
 
   /// 本行已勾选且还有别的勾选行 → 返回全部勾选行 (含本行); 否则只有本行。
   List<WmIssueLineRow> targets(WmIssueLineRow row) {
+    if (!propagateSelectedChanges) {
+      return [row];
+    }
     final selected = grid.selectedRows;
     if (!grid.isSelected(row) || selected.length < 2) return [row];
-    return selected;
+    return selected.where(writable).toList();
   }
 
   WmLeafStock? leafOf(WmIssueLineRow row) {
@@ -160,7 +168,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
   return [
     EditableGridColumn<WmIssueLineRow>(
       key: 'material',
-      label: '料',
+      label: materialLabel,
       width: 220,
       required: true,
       textOf: (row) =>
@@ -209,7 +217,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
             child: UtenDropdownField(
               key: ValueKey('wm-line-material-${row.id}'),
               dense: true,
-              enabled: enabled,
+              enabled: writable(row),
               allowClear: false,
               value: value?.key,
               hintText: '选择料',
@@ -254,7 +262,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
                     label: value == null ? l10n.wmLeafPick : leafText(row),
                     tooltip: value == null ? null : leafText(row),
                     onPressed:
-                        !enabled ||
+                        !writable(row) ||
                             pickLeafWarehouse == null ||
                             (material == null && row.requisitionLine == null)
                         ? null
@@ -284,7 +292,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
       cellBuilder: (context, row) => TextField(
         key: ValueKey('wm-line-bags-${row.id}'),
         controller: row.bags,
-        enabled: enabled,
+        enabled: writable(row),
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: const UtenInputDecoration(
           InputDecoration(isDense: true, labelText: '数量', suffixText: '袋'),
@@ -315,7 +323,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
           builder: (_, material, _) => TextField(
             key: ValueKey('wm-line-qty-${row.id}'),
             controller: row.qty,
-            enabled: enabled,
+            enabled: writable(row),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: UtenInputDecoration(
               InputDecoration(

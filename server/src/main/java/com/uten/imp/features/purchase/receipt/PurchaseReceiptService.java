@@ -1,4 +1,5 @@
 package com.uten.imp.features.purchase.receipt;
+import com.uten.imp.common.util.EmployeeNameResolver;
 
 import com.uten.imp.common.web.HeaderColumnFilter;
 
@@ -885,9 +886,15 @@ public class PurchaseReceiptService {
                 r.getSupplierId(), r.getWarehouseId(), mask ? null : r.getCurrencyId(),
                 mask ? null : r.getExchangeRate(), mask ? null : r.getTaxRate(),
                 r.getSenderId(), r.getReceiverId(), r.getPurchaserId(),
-                nameResolver.nameWithCodeOf(r.getSenderId()),
-                nameResolver.nameWithCodeOf(r.getReceiverId()),
-                nameResolver.nameWithCodeOf(r.getPurchaserId()),
+                r.getSenderId() != null ? nameResolver.nameWithCodeOf(r.getSenderId())
+                        : nameResolver.historicalWorkerNameWithCodeOf(null, r.getId(), r.getLegacyId(),
+                            EmployeeNameResolver.HistoricalWorkerRole.PURCHASE_RECEIPT_SENDER),
+                r.getReceiverId() != null ? nameResolver.nameWithCodeOf(r.getReceiverId())
+                        : nameResolver.historicalWorkerNameWithCodeOf(null, r.getId(), r.getLegacyId(),
+                            EmployeeNameResolver.HistoricalWorkerRole.PURCHASE_RECEIPT_RECEIVER),
+                r.getPurchaserId() != null ? nameResolver.nameWithCodeOf(r.getPurchaserId())
+                        : nameResolver.historicalWorkerNameWithCodeOf(null, r.getId(), r.getLegacyId(),
+                            EmployeeNameResolver.HistoricalWorkerRole.PURCHASE_RECEIPT_PURCHASER),
                 mask ? null : r.getSettlementMethodId(),
                 mask || r.getSettlementStyleLegacy() == null
                         ? null : r.getSettlementStyleLegacy().intValue(),

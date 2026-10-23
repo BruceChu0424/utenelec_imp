@@ -20,7 +20,10 @@ class HrTaskRepository {
       '/org/hr-tasks/celebrations/history',
       query: {'type': type, 'page': page, 'size': 20},
     );
-    return PagedResult.fromJson(json, HrCelebrationPublication.fromJson);
+    return PagedResult.fromJsonResponsive(
+      json,
+      HrCelebrationPublication.fromJson,
+    );
   }
 
   Future<HrTaskSummary> summary() async {

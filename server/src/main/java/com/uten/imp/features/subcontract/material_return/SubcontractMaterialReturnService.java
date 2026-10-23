@@ -1,4 +1,5 @@
 package com.uten.imp.features.subcontract.material_return;
+import com.uten.imp.common.util.EmployeeNameResolver;
 
 import com.uten.imp.common.web.HeaderColumnFilter;
 
@@ -640,7 +641,9 @@ public class SubcontractMaterialReturnService {
                 : items;
         return new MaterialReturnDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getWorkerId(),
-                nameResolver.nameWithCodeOf(r.getWorkerId()),
+                r.getWorkerId() != null ? nameResolver.nameWithCodeOf(r.getWorkerId())
+                        : nameResolver.historicalWorkerNameWithCodeOf(null, r.getId(), r.getLegacyId(),
+                            EmployeeNameResolver.HistoricalWorkerRole.SUBCONTRACT_MATERIAL_RETURN_OPERATOR),
                 r.getMakerId(), r.getApproverId(),
                 r.getBStyle(), r.getRemark(), priceMasked ? null : r.getTotalOriginal(),
                 priceMasked ? null : r.getTotalLocal(), r.getStatus(),

@@ -30,6 +30,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
@@ -120,6 +121,44 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      _healthRequests.begin();
+      _cycleRequests.begin();
+      _alertRequests.begin();
+      _learningRequests.begin();
+      // Rows and their draft controllers belong to the former read owner.
+      // Dispose after the old widgets have left the tree.
+      final oldDrafts = _drafts.values.toList(growable: false);
+      setState(() {
+        _health = null;
+        _cycle = null;
+        _alerts = null;
+        _learning = null;
+        _healthLoadedKey = null;
+        _cycleLoadedKey = null;
+        _alertsLoadedKey = null;
+        _learningLoadedKey = null;
+        _healthLoading = false;
+        _cycleLoading = false;
+        _alertsLoading = false;
+        _learningLoading = false;
+        _healthError = null;
+        _cycleError = null;
+        _alertsError = null;
+        _learningError = null;
+        _cycleSelected = {};
+        _cycleSelectedRows.clear();
+        _learningUpdates.clear();
+        _drafts.clear();
+        _keyword = '';
+        _search.clear();
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        for (final draft in oldDrafts) {
+          draft.dispose();
+        }
+      });
+    });
     _segment =
         WarehouseInsightSegment.parse(widget.initialSegment) ??
         WarehouseInsightSegment.health;
@@ -527,6 +566,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
   }
 
   Future<void> _saveSample(InsightLearningRow row) async {
+    final ownerCurrent = captureReadOwner(ref);
     final draft = _draftOf(row.goodsId);
     if (draft.saving) return;
     final sampleUnit = ref.read(warehouseWeightUnitsPrefsProvider).sample;
@@ -566,7 +606,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
               ),
             ),
           );
-      if (!mounted) return;
+      if (!mounted || !ownerCurrent()) return;
       final updated = _rowFromDetail(row, detail);
       setState(() {
         draft
@@ -583,7 +623,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
         '(${(updated.tier ?? WeightTier.red).label})',
       );
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !ownerCurrent()) return;
       setState(() {
         draft.saving = false;
         draft.error = e is ApiException ? e.message : '没保存成功, 请重试';
@@ -612,6 +652,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
 
   /// 右键「称样校准…」: 完整的称样弹窗 (可选供应商、扣皮重、从本次起作为新批次)。
   Future<void> _openSampleDialog(InsightLearningRow row) async {
+    final ownerCurrent = captureReadOwner(ref);
     final detail = await showWeightSampleDialog(
       context,
       goodsId: row.goodsId,
@@ -622,7 +663,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
       baseUnitName: row.unitName,
       remark: '库存分析称样校准',
     );
-    if (detail == null || !mounted) return;
+    if (detail == null || !ownerCurrent()) return;
     setState(() => _learningUpdates[row.goodsId] = _rowFromDetail(row, detail));
   }
 
@@ -690,11 +731,10 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
         onTap: () => _openLearning(InsightLearningFilter.needsSample),
       ),
     ];
-    // 一行横排, 放不下左右滑 (手机上不把表格挤到屏幕外)。
-    return SingleChildScrollView(
+    return MetricFilterCards(
       key: const Key('insight-kpis'),
-      scrollDirection: Axis.horizontal,
-      child: MetricFilterCards(items: items, itemWidth: 210),
+      items: items,
+      itemWidth: 156,
     );
   }
 

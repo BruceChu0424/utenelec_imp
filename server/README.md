@@ -53,6 +53,13 @@ PowerShell 可直接运行 `server/dev.ps1`：在 `server/` 中执行 `.\dev.ps1
 **验收、CI、打包不得携带 `-Pdev-run`**，因为该配置会设置 `maven.test.skip=true`，不能提供测试证据。
 它不改变 Flyway、JPA 结构校验、Bean 初始化或日志级别；首次完整主代码编译和应用启动仍需正常完成。
 
+正常 Maven 生命周期会在 `generate-resources` 阶段刷新当前构建输出的 `classes/db/migration`，
+随后从源码重新复制，避免未发布候选迁移改名后留下旧版本文件，导致 Flyway 报
+`Found more than one migration with version ...`。刷新只涉及生成的迁移副本，保留增量编译的
+class 和其他输出，兼容普通启动、测试、打包、`dev-run` 及自定义 `uten.build.directory`。
+需要单独更新资源时使用 `mvn process-resources`；直接调用 `resources:resources` 不经过前置刷新阶段。
+生命周期回归可在仓库根目录运行 `python -m unittest server.ops.test_migration_resources -v`。
+
 `docker-compose.yml` 将容器内 PostgreSQL `5432` 映射为宿主机 `5433`，因此直接运行 Maven/IDE
 时必须连接 `jdbc:postgresql://localhost:5433/uten_imp`；`.env.example` 已与该映射保持一致。若改用
 本机原生 PostgreSQL，需在私有 `.env` 中显式改成实际端口，不要修改共享模板来适配个人环境。
@@ -76,6 +83,45 @@ PowerShell 可直接运行 `server/dev.ps1`：在 `server/` 中执行 `.\dev.ps1
 以上命令**只用于本地开发**。生产不得复制开发 `.env` 或直接运行 `spring-boot:run`；应使用不可变 JAR、
 受控密钥注入、Nginx/systemd 和维护窗口迁移，见上方现役发布运行手册。
 
+### V915 之后的本地数据库账号
+
+旧 Docker 数据卷的 `POSTGRES_USER=uten` 会让应用账号同时成为超级用户和对象 owner。
+V915 撤销业务清空授权后仍检测到它具有执行权，会主动回滚；只取消超级用户身份仍不能消除
+owner 权限。保留该迁移和校验，使用独立的本地开发 PostgreSQL 实例分离账号。
+
+[本地角色准备脚本](ops/prepare-local-postgres-roles.sql) 将管理账号设为 `uten_dev_admin`，
+对象 owner/迁移账号设为 `uten_migrator`，业务连接保留非超级用户 `uten`。
+脚本要求精确的本地确认文字、真实 PostgreSQL system identifier、目标数据库 `uten_imp`、
+独占开发实例和无其他数据库会话；存在其他业务库时拒绝执行。不要对正在进行旧库导入的共享
+开发集群运行该脚本，也不要对公司或云服务器运行。先备份并实际恢复到独立实例验证，
+等待导入结束后再审核切换连接；修改 compose 环境变量不会重新初始化已有数据卷。
+
+新实例使用 `POSTGRES_USER=uten_dev_admin` 初始化，并仅发布到 `127.0.0.1` 的独立端口。
+以该实例当前超级用户连接。通过进程环境设置三个不同的随机口令
+`UTEN_LOCAL_ADMIN_PASSWORD`、`UTEN_LOCAL_MIGRATOR_PASSWORD`、`UTEN_LOCAL_RUNTIME_PASSWORD`
+（20–512 位字母数字），
+不要放入口令行、提交文件或聊天。用同一目标的只读
+`SELECT system_identifier::text FROM pg_catalog.pg_control_system()` 取得实例标识，再向 `psql -X`
+传入 `-v ON_ERROR_STOP=1 -v "local_dev_confirm=PREPARE LOCAL uten_imp"`
+和 `-v expected_system_identifier=<该标识>`，执行上述 SQL 文件。使用 Docker 时需将这三个
+进程环境变量按名称传入 `docker exec --env UTEN_LOCAL_ADMIN_PASSWORD --env UTEN_LOCAL_MIGRATOR_PASSWORD --env UTEN_LOCAL_RUNTIME_PASSWORD`，
+并把 SQL 文件送入容器内的 `psql`，避免打印变量值。脚本不调用业务清空，不执行 Flyway，
+失败事务回滚；重复执行使用 `uten_dev_admin` 登录。
+
+恢复顺序固定为：新空实例执行准备脚本 → 以管理账号执行
+`pg_restore --no-owner --no-privileges --role uten_migrator -d uten_imp <备份>` → 再执行准备脚本
+封闭恢复后对象的权限 → 启动应用执行正常前向迁移 → 检查 readiness 和权限边界。
+不把旧实例的系统 owner、宽授权或 PostgreSQL 全局角色复制到新实例。上述流程要求恢复备份中
+已有真实 Flyway 历史；全新空业务库应先单独完成迁移并再次执行准备脚本封闭权限，随后才启动应用。
+
+切换时仅在私有开发 `.env` 中设置 `UTEN_DB_URL` 为新实例的回环地址，保留
+`UTEN_DB_USER=uten`，将 `UTEN_DB_PASSWORD` 设为新实例的 `UTEN_LOCAL_RUNTIME_PASSWORD`，
+同时设置 `UTEN_DEV_MIGRATOR_DB_USER=uten_migrator`、
+`UTEN_DEV_MIGRATOR_DB_PASSWORD` 为准备脚本使用的迁移口令。只有 Spring `dev` profile
+读取这两个迁移变量，Flyway 负责迁移，Hikari 继续以 `uten` 执行业务。
+未配置这两个变量的旧开发环境仍沿用原连接，并继续受 V915 的安全门禁约束。
+隔离回归入口为 `python -m unittest server.ops.test_prepare_local_postgres_roles -v`。
+
 本机开发在 `.env` 中显式设置 `UTEN_PROFILE=dev`。当前公司内网版本的目标配置为 `prod`，使用
 专用内部附件目录、回环后端、HTTPS反向代理和独立迁移；必须配齐数据库、JWT issuer、CORS及密钥。
 `internal-test` 是旧受限测试运行配置，仍保留其安全门禁，默认禁止附件上传，不能当成新内部附件版本的配置模板。
@@ -85,7 +131,7 @@ PowerShell 可直接运行 `server/dev.ps1`：在 `server/` 中执行 `.\dev.ps1
 
 ### 运维脚本（server/ops/）
 
-清空业务数据只能从工作台「系统测试 > 清空数据」执行([ADR-155](../docs/99-决策记录-ADR/ADR-155-清空业务数据测试文件单一规则与幂等删除.md))，不再提供停机 psql 脚本。
+清空业务数据在所有服务器均已下架；仅本机 `dev` 后端、回环数据库与 Debug 客户端保留工作台「系统测试 > 清空数据」测试入口。V915 撤销运行账号的数据库执行权限，本地独立测试库需 owner 显式授权；服务器禁止恢复。保护与核验步骤见[上线下架说明](../deploy/simple/RUNBOOK.zh-CN.md#上线后业务清空功能下架)，文件规则沿用 [ADR-155](../docs/99-决策记录-ADR/ADR-155-清空业务数据测试文件单一规则与幂等删除.md)。
 
 ### 公司内网运行与历史配置
 

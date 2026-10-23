@@ -60,6 +60,8 @@ import '../../../shared/platform_tables/platform_table_row.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/network/authenticated_request_scope.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -262,7 +264,11 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     _departmentId = data['departmentId'] as String?;
     _createdDocId = data['createdDocId'] as String?;
     _billDate = DateTime.tryParse(draftText(data, 'billDate')) ?? _billDate;
-    _pendingFiles.restoreDraft(draftMap(data['attachments']));
+    await _pendingFiles.restoreDraftResponsive(
+      draftMap(data['attachments']),
+      isCurrent: () => mounted && formDraftIdentityIsCurrent,
+    );
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     _zeroCostGoodsIds
       ..clear()
       ..addAll([
@@ -479,6 +485,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
@@ -869,7 +876,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   }
 
   /// 把暂存附件上传到刚创建的领料单；全部成功才跳详情，失败项留在页面供重试。
-  Future<void> _finishCreatedDoc(String createdId) async {
+  Future<void> _finishCreatedDoc(
+    String createdId,
+    AuthenticatedRequestScope requestScope,
+  ) async {
     setState(() => _saving = true);
     try {
       final ok = await flushPendingAttachments(
@@ -879,8 +889,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         ownerType: 'STOCK_DOCUMENT',
         ownerIds: [createdId],
       );
+      requestScope.checkCurrent();
       if (!mounted || !ok) return;
       await completeFormDraft();
+      requestScope.checkCurrent();
       if (!mounted) return;
       context.replace(RoutePath.stockDocDetail(widget.docType.code, createdId));
     } finally {
@@ -891,8 +903,24 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   Future<void> _save() async {
     if (_isLegacyReadOnly) return;
     if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final scope = await captureFormDraftRequestScope();
+      await scope.run(() => _saveScoped(scope));
+      scope.checkCurrent();
+    } catch (error) {
+      if (error is ApiException && error.code == 'SESSION_CHANGED') {
+        invalidateFormDraftIdentity();
+      }
+      if (mounted) context.appApiError(error, fallback: '保存失败');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _saveScoped(AuthenticatedRequestScope requestScope) async {
     if (_createdDocId case final createdId?) {
-      await _finishCreatedDoc(createdId);
+      await _finishCreatedDoc(createdId, requestScope);
       return;
     }
     if (widget.id != null && !_loadedCanEdit) {
@@ -906,19 +934,23 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     // 行级仓库（V787）：整表扫完一起报，多行时不用改一行存一次才看到下一行。
     if (_usesLineWarehouse) {
       final missingWarehouse = <String>[];
+      StockGridRow? firstInvalid;
       for (var index = 0; index < rows.length; index++) {
         final r = rows[index];
         if (r.goods == null) continue;
         if (r.warehouseId == null) {
+          firstInvalid ??= r;
           missingWarehouse.add(
             '第 ${index + 1} 行（${r.goods!.name ?? r.goods!.code ?? ''}）',
           );
         }
       }
       if (missingWarehouse.isNotEmpty) {
-        return context.appError(
-          '${missingWarehouse.join('、')}未选择仓库，请在表格的仓库列逐行选择',
-        );
+        context.appError('${missingWarehouse.join('、')}未选择仓库，请在表格的仓库列逐行选择');
+        if (firstInvalid != null) {
+          await _grid.revealError(firstInvalid, columnKey: 'warehouse');
+        }
+        return;
       }
     }
     if (widget.docType == StockDocType.transfer && _toWarehouseId == null) {
@@ -953,23 +985,34 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       }
       // 重量(ADR-135)：可选，千克 4 位；看不懂的输入拦下，没称不带，货品按重量计不带。
       if (r.activeWeight.hasError) {
-        return context.appError(
+        context.appError(
           '${r.goods!.name} 的${_isCheck ? '实盘重量' : '实称重量'}看不懂，'
           '例：850g、1.2t、3斤、12',
         );
+        await _grid.revealError(
+          r,
+          columnKey: _isCheck ? 'countWeight' : 'weight',
+        );
+        return;
       }
       final sentKg = _sentKg(r);
       if (_isCheck) {
         final bookQty = double.tryParse(r.bookQty.text);
         if (bookQty == null) {
-          return context.appError('${r.goods!.name} 的账面库存还没加载出来，请稍候再保存');
+          context.appError('${r.goods!.name} 的账面库存还没加载出来，请稍候再保存');
+          await _grid.revealError(r, columnKey: 'bookQty');
+          return;
         }
         final countQty = double.tryParse(r.checkQty.text.trim());
         if (countQty == null || countQty < 0) {
-          return context.appError('${r.goods!.name} 的实盘数量必须填写且不能小于 0');
+          context.appError('${r.goods!.name} 的实盘数量必须填写且不能小于 0');
+          await _grid.revealError(r, columnKey: 'checkQty');
+          return;
         }
         if (countQty == 0 && sentKg != null) {
-          return context.appError('${r.goods!.name} 的实盘数量为 0，不能再填实盘重量');
+          context.appError('${r.goods!.name} 的实盘数量为 0，不能再填实盘重量');
+          await _grid.revealError(r, columnKey: 'countWeight');
+          return;
         }
         m['qty'] = r.bookQty.text.trim(); // 账面精确原文；服务端仍按锁定余额重验
         m['countQty'] = r.checkQty.text.trim();
@@ -1020,6 +1063,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       final d = widget.id == null
           ? await runFormDraftSubmission(() => repo.create(body))
           : await repo.update(widget.id!, body);
+      requestScope.checkCurrent();
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
       bumpListRefresh(ref, widget.docType.refreshKey);
@@ -1027,10 +1071,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         // 新建领料单：先拿到真实 UUID，再把保存前暂存的凭证逐个确认上传。
         setState(() => _createdDocId = d.id);
         await checkpointFormDraftAfterCreation();
-        await _finishCreatedDoc(d.id);
+        requestScope.checkCurrent();
+        await _finishCreatedDoc(d.id, requestScope);
         return;
       }
       await completeFormDraft();
+      requestScope.checkCurrent();
       if (!mounted) return;
       context.replace(RoutePath.stockDocDetail(widget.docType.code, d.id));
     } catch (error) {
@@ -1071,8 +1117,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     ];
   }
 
-  Widget _savedFields(Widget child) =>
-      SavedDocumentFields(locked: _createdDocId != null, child: child);
+  Widget _savedFields(Widget child) => SavedDocumentFields(
+    locked: _saving || _createdDocId != null,
+    child: child,
+  );
 
   /// 普通调拨的调入仓仍与调出仓同类(良品/不良品, ADR-146)；没选调入仓也算合法。
   bool _toWarehouseMatchesSource(List<WarehouseDictEntry> hierarchy) {

@@ -158,7 +158,7 @@ server {
     # behind the authenticated generic /api/ proxy below. Spring removes
     # matrix parameters per path segment, so this earlier regex also closes
     # parent/leaf matrix, slash and child variants before generic /api/.
-    location ~ ^/api/website-inquiries(?:;[^/]*)?/ingest(?:[;/]|$) {
+    location ~ "^/api/website-inquiries(?:;[^/]*)?/ingest(?:[;/]|$)" {
         return 404;
     }
 
@@ -167,11 +167,11 @@ server {
     # control endpoints and make the raw-object endpoint read-only. Employee
     # list/download/delete/reconciliation operations continue through the
     # authenticated generic /api/ proxy and retain their Spring permissions.
-    location ~ ^/api/attachments(?:;[^/]*)?/(?:presign|confirm)(?:[;/]|$) {
+    location ~ "^/api/attachments(?:;[^/]*)?/(?:presign|confirm)(?:[;/]|$)" {
         return 404;
     }
 
-    location ~ ^/api/attachments(?:;[^/]*)?/raw(?:[;/]|$) {
+    location ~ "^/api/attachments(?:;[^/]*)?/raw(?:[;/]|$)" {
         limit_except GET HEAD {
             deny all;
         }
@@ -247,12 +247,22 @@ server {
         proxy_read_timeout 120s;
     }
 
-    # 清空业务数据(超管专属测试端点，ADR-067 §7)是同步长请求：受理后 5 分钟内完成文件阶段
-    # (检查 ≤60s + 排水 ≤45s + 加锁删除测试文件，共用一个截止点，ADR-155) + 清库(至少 5 分钟)。
-    # 精确匹配优先于下方 /api/ 前缀与正则 location，仅此路径放宽到 600s
-    # （前端 ApiClient.postLongRunning 对该端点的接收超时为 10 分钟，与之对齐）。
-    location = /api/system-test/business-data/reset {
-        limit_req zone=uten_test_api_ip burst=500 nodelay;
+    # Even historical internal-test servers may not expose destructive test tools.
+    # Deny matrix-parameter variants before generic API proxy locations.
+    location ~ "^/api/system-test(?:[;/]|$)" { return 404; }
+    # Documentation and hidden files must never fall through to the SPA.
+    location ~* "^/(?:swagger-ui(?:[./;]|$)|swagger-resources(?:[;/]|$)|v[23]/api-docs(?:[.;/]|$))" { return 404; }
+    location ~ /\.(?!well-known(?:/|$)) { return 404; }
+    location = /api/system-test { return 404; }
+    location ^~ /api/system-test/ { return 404; }
+
+    # Only a client-release package PUT may use the 512 MiB body budget.
+    # Application authorization, step-up, streamed size/hash checks stay authoritative.
+    location ~ ^/api/admin/client-releases/[0-9A-Fa-f-]+/package$ {
+        if ($request_method !~ ^(PUT|OPTIONS)$) { return 405; }
+        client_max_body_size 512m;
+        client_body_timeout 1800s;
+        limit_req zone=uten_test_api_ip burst=10 nodelay;
         proxy_pass http://uten_imp_internal_test_backend;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
@@ -260,8 +270,32 @@ server {
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Request-Id $request_id;
-        proxy_read_timeout 600s;
-        proxy_send_timeout 600s;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_read_timeout 1800s;
+        proxy_send_timeout 1800s;
+    }
+
+    # A published client package is streamed after the backend authorizes its ID.
+    # Do not cache a package: withdrawal and account policy must apply to the next request.
+    location ~ ^/api/client-updates/[0-9A-Fa-f-]+/download$ {
+        if ($request_method !~ ^(GET|HEAD|OPTIONS)$) { return 405; }
+        limit_req zone=uten_test_api_ip burst=100 nodelay;
+        proxy_pass http://uten_imp_internal_test_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_cache off;
+        proxy_cache_bypass 1;
+        proxy_no_cache 1;
+        proxy_buffering off;
+        proxy_max_temp_file_size 0;
+        proxy_read_timeout 1800s;
+        proxy_send_timeout 1800s;
+        send_timeout 1800s;
     }
 
     location /api/ {

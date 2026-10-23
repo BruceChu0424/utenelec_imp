@@ -52,6 +52,8 @@ import '../../../components/layout/uten_panel_opening_scope.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/responsive/scale.dart';
+import '../../../core/performance/ui_work_budget.dart';
+import '../../../components/layout/uten_ancestor_row_window.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../models/master_facet.dart';
@@ -62,6 +64,67 @@ import '../../../shared/ai/page_context/ai_page_context.dart';
 export '../../../components/data_display/master_data_table_rows_controller.dart';
 
 part 'master_data_table_view_ai.dart';
+
+/// A presentation-only synchronous read scope. Implementations invoke [read]
+/// immediately and unwind in finally; commands/events/awaits are never scoped.
+typedef MasterTableSelectionReadScope = R Function<R>(R Function() read);
+
+class _MasterWindowSlot {
+  _MasterWindowSlot(this.id);
+  final Object id;
+}
+
+class _DeferredRowKey extends ValueKey<Key> {
+  const _DeferredRowKey(super.value);
+}
+
+R _profileMasterTableWork<R>(String label, R Function() work) {
+  final observer = debugUiWorkSliceObserver;
+  if (observer == null) return work();
+  final clock = Stopwatch()..start();
+  try {
+    return work();
+  } finally {
+    observer(label, clock.elapsed);
+  }
+}
+
+class _MasterRowLayoutProbe extends SingleChildRenderObjectWidget {
+  const _MasterRowLayoutProbe({required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _MasterRowLayout();
+}
+
+class _MasterRowLayout extends RenderProxyBox {
+  @override
+  void performLayout() => _profileMasterTableWork('master.row-layout', () {
+    super.performLayout();
+  });
+}
+
+/// Installed only when the profiling observer is present. Separate intrinsic
+/// measurement from the following constrained layout without changing either.
+class _MasterStretchLayoutProbe extends SingleChildRenderObjectWidget {
+  const _MasterStretchLayoutProbe({required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _MasterStretchLayout();
+}
+
+class _MasterStretchLayout extends RenderProxyBox {
+  @override
+  double computeMaxIntrinsicHeight(double width) => _profileMasterTableWork(
+    'master.intrinsic-height',
+    () => super.computeMaxIntrinsicHeight(width),
+  );
+
+  @override
+  void performLayout() => _profileMasterTableWork('master.stretch-layout', () {
+    super.performLayout();
+  });
+}
 
 /// Actual table selection and foreground for custom cell builders.
 /// Single-row focus and checkbox selection share this visual contract.
@@ -85,6 +148,20 @@ class MasterDataTableCellScope extends InheritedWidget {
       foregroundColor != oldWidget.foregroundColor;
 }
 
+/// A page-owned range/tree picker using the table's ordinary filter header.
+/// The page retains its server query, permission checks and picker lifecycle.
+class MasterHeaderFilterAction {
+  const MasterHeaderFilterAction({
+    required this.onTap,
+    this.value,
+    this.enabled = true,
+  });
+
+  final VoidCallback onTap;
+  final String? value;
+  final bool enabled;
+}
+
 /// 一列定义：[key](筛选键，与后端 query 参数对齐)、[label](列头)、
 /// [width](富内容默认下限)、[value](文本值)、[cellBuilder](可选自定义内容)。
 class MasterColumnDef<T> {
@@ -102,6 +179,8 @@ class MasterColumnDef<T> {
     this.sortable = false,
     this.filterFromRows = false,
     this.columnSearchEnabled,
+    this.facetSearchEnabled = false,
+    this.headerFilterAction,
     this.cellColor,
     this.cellColorListenableOf,
     this.cellBuilder,
@@ -220,6 +299,11 @@ class MasterColumnDef<T> {
   /// convention. Dates, measures, enums and action columns retain their existing
   /// range, choice and sort controls instead of a keyword field.
   final bool? columnSearchEnabled;
+
+  /// Search the complete supplied candidate list without adding a row keyword
+  /// query. Opt in for enum facets whose server API accepts one exact value.
+  final bool facetSearchEnabled;
+  final MasterHeaderFilterAction? headerFilterAction;
 
   bool get supportsKeywordSearch => supportsColumnKeywordSearch(
     key: key,
@@ -343,6 +427,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.externalFilterKeys = const <String>{},
     required this.onFilterChanged,
     this.serverColumnSearch = false,
+    this.preserveQueryOnReturn = false,
     this.onRowTap,
     this.canOpenRow,
     this.onSelectionChanged,
@@ -364,6 +449,8 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.emptyMessage = '暂无数据', // TODO(l10n): 补 arb
     this.currentPage = 1,
     this.scrollToEndRequest = 0,
+    this.revealItemId,
+    this.revealRequest = 0,
     this.totalPages = 1,
     this.showPaginationControls = true,
     this.onPageChange,
@@ -392,6 +479,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.showSelectionColumn = true,
     this.singleSelection = false,
     this.idOf,
+    this.selectionReadScope,
     this.rowKeyOf,
     this.rowWidgetKeyOf,
     this.unselectableLeadingBuilder,
@@ -454,6 +542,8 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 目标页加载后递增此令牌，请求在布局完成后滚到末行。0 不触发；同一令牌
   /// 的普通重建不重复滚动。和翻页同时变化时优先定位末尾，其余翻页仍回顶。
   final int scrollToEndRequest;
+  final String? revealItemId;
+  final int revealRequest;
 
   /// Automatic scrolling retains a contiguous window. A visible boundary page
   /// and one incoming response may temporarily add at most two pages; selected
@@ -505,6 +595,11 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// Server lists forward `search.<column key>` through their normal query and
   /// export path. Complete in-memory tables search the displayed column values.
   final bool serverColumnSearch;
+
+  /// A revision browser keeps its current filters while opening a child page.
+  /// Ordinary workspaces still clear their header query on return by default;
+  /// identity and server-boundary invalidation remain independent of this flag.
+  final bool preserveQueryOnReturn;
 
   /// 行的「打开」操作。列表页（非 embedded）统一为「双击打开」——单击只选中；
   /// embedded（picker/滑窗内明细表）保留单击直达：picker 行的单击语义本来就是
@@ -575,6 +670,10 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// item 引用相等（列表每次 build 重建对象；_BomRow / InstantInventoryRow 无 id 都会踩坑）。
   /// 无 id 的行传复合键，如 `(r) => '${r.goodsId}|${r.colorId}'`。
   final String? Function(T)? idOf;
+
+  /// Amortizes live eligibility context reads within one synchronous identity
+  /// collection. Individual row callbacks remain live outside this scope.
+  final MasterTableSelectionReadScope? selectionReadScope;
 
   /// 行→稳定键提取器，只影响 RepaintBoundary 的行 key（数据刷新时行复用），
   /// 不参与勾选。混合队列里「部分行可勾选」时 idOf 对不可勾选行须返回 null
@@ -911,20 +1010,35 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   void _retainSelectedRows() {
     _selectedRows.removeWhere((id, _) => !widget.selectedIds.contains(id));
+    // idOf can be a live business eligibility predicate. No selected identity
+    // needs retention when the selection is empty.
+    if (widget.selectedIds.isEmpty) return;
     final identity = widget.idOf;
     if (identity == null) {
       _selectedRows.clear();
       return;
     }
-    for (final row in _pages.values.expand((rows) => rows)) {
-      final id = identity(row);
-      if (id != null && widget.selectedIds.contains(id)) {
-        _selectedRows[id] = row;
+    _withSelectionReadScope<void>(() {
+      for (final row in _pages.values.expand((rows) => rows)) {
+        final id = identity(row);
+        if (id != null && widget.selectedIds.contains(id)) {
+          _selectedRows[id] = row;
+        }
       }
-    }
+    });
   }
 
-  List<T> _collectRows(Map<int, List<T>> pages) {
+  R _withSelectionReadScope<R>(R Function() read) {
+    final scope = widget.selectionReadScope;
+    return scope == null ? read() : scope<R>(read);
+  }
+
+  List<T> _collectRows(Map<int, List<T>> pages) => _profileMasterTableWork(
+    'master.collect-rows',
+    () => _collectRowsImpl(pages),
+  );
+
+  List<T> _collectRowsImpl(Map<int, List<T>> pages) {
     final rows = _automaticPagination
         ? pages.values.expand((rows) => rows)
         : widget.items;
@@ -948,7 +1062,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         : merged.where(widget.rowVisible!).toList();
   }
 
-  void _syncRows() {
+  void _syncRows() =>
+      _profileMasterTableWork('master.sync-rows', _syncRowsImpl);
+
+  void _syncRowsImpl() {
     _items = _collectRows(_pages);
     // This already runs at data/projection changes, never at a scroll tick.
     // Compare values rather than the newly collected List identity so selection
@@ -969,12 +1086,21 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       }
     }
     _retainSelectedRows();
-    final liveIds = _items.map((row) => widget.idOf?.call(row)).toSet();
-    widget.rowsController?.update([
-      ..._items,
-      for (final entry in _selectedRows.entries)
-        if (!liveIds.contains(entry.key)) entry.value,
-    ]);
+    final controller = widget.rowsController;
+    if (controller != null) {
+      if (_selectedRows.isEmpty) {
+        controller.update(_items);
+      } else {
+        final liveIds = _withSelectionReadScope(
+          () => _items.map((row) => widget.idOf?.call(row)).toSet(),
+        );
+        controller.update([
+          ..._items,
+          for (final entry in _selectedRows.entries)
+            if (!liveIds.contains(entry.key)) entry.value,
+        ]);
+      }
+    }
     _bindPagination();
   }
 
@@ -1383,6 +1509,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         });
         return;
       }
+      final measurementKeys = [
+        for (final row in needed) (false, _paginationRowId(row)),
+        for (final row in removed) (true, _paginationRowId(row)),
+      ];
+      if (measurementKeys.any(
+        (key) => _measurementRowMounts[key]?.hasMountedContent != true,
+      )) {
+        if (TickerMode.valuesOf(context).enabled &&
+            (ModalRoute.of(context)?.isCurrent ?? true)) {
+          _schedulePrependMeasurement();
+          WidgetsBinding.instance.ensureVisualUpdate();
+        }
+        return;
+      }
       final removedBox = _removeMeasureKey.currentContext?.findRenderObject();
       if (removed.isNotEmpty &&
           (removedBox is! RenderBox || !removedBox.hasSize)) {
@@ -1493,6 +1633,34 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     final measuring = _prependMeasureItems;
     if (measuring != null) _schedulePrependMeasurement();
+    final liveMeasurementKeys = {
+      for (final row in measuring ?? <T>[]) (false, _paginationRowId(row)),
+      for (final row in _removeMeasureItems) (true, _paginationRowId(row)),
+    };
+    _measurementRowMounts.removeWhere(
+      (key, _) => !liveMeasurementKeys.contains(key),
+    );
+    Widget measureRow(T row, bool removing) {
+      final id = _paginationRowId(row);
+      final key = (removing, id);
+      final dataKey = ('data', id);
+      return UtenDeferredRowMount(
+        key: ValueKey(('measurement', key)),
+        controller: _measurementRowMounts.putIfAbsent(
+          key,
+          UtenDeferredRowMountController.new,
+        ),
+        estimatedExtent:
+            _deferredRowHeights[dataKey] ??
+            UtenEditableGridCellSpec.heightOf(context) + UtenSpacing.s16,
+        onExtentMeasured: (height) {
+          _deferredRowHeights[dataKey] = height;
+          _schedulePrependMeasurement();
+        },
+        builder: (_) => buildRow(row),
+      );
+    }
+
     return Stack(
       children: [
         child,
@@ -1505,7 +1673,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               child: Column(
                 key: _prependMeasureKey,
                 mainAxisSize: MainAxisSize.min,
-                children: [for (final row in measuring) buildRow(row)],
+                children: [for (final row in measuring) measureRow(row, false)],
               ),
             ),
           ),
@@ -1519,7 +1687,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 key: _removeMeasureKey,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  for (final row in _removeMeasureItems) buildRow(row),
+                  for (final row in _removeMeasureItems) measureRow(row, true),
                 ],
               ),
             ),
@@ -1564,7 +1732,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   final _platform = PlatformTableController<T>();
   late final _searchLifecycle = PageSearchLifecycle(
     onLeave: () => _queryRestoreRevision++,
-    onReturn: _platform.clearSessionQuery,
+    onReturn: () {
+      if (!widget.preserveQueryOnReturn) {
+        _platform.clearSessionQuery();
+      }
+    },
   );
   List<MasterColumnDef<T>>? _platformColumnCache;
   List<MasterColumnDef<T>>? _platformBaseCache;
@@ -1660,6 +1832,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           .where((c) => !c.defaultVisible)
           .map((c) => c.key)
           .toSet(),
+      // 升级新增列贴着代码默认位置落位（如货品表「模具名称」紧跟「模具编号」），
+      // 而不是被老保存序追到表尾。
+      insertNewColumnsAtDeclaredPosition: true,
     );
     _applyQueryPreferences(
       saved.filters,
@@ -1862,6 +2037,73 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   int? _pendingScrollToEnd;
   int _scrollToEndAttempts = 0;
   bool _scrollToEndScheduled = false;
+  final GlobalKey _revealedRowKey = GlobalKey();
+  String? _pendingRevealId;
+  bool _revealScheduled = false;
+  int _revealAttempts = 0;
+
+  void _scheduleReveal() {
+    if (_pendingRevealId == null || _revealScheduled || widget.isLoading) {
+      return;
+    }
+    _revealScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _revealScheduled = false;
+      if (!mounted || _pendingRevealId == null || widget.isLoading) return;
+      final request = _pendingRevealId;
+      final localTarget = _localWindowSlots[('data', request)];
+      if (localTarget != null && _localRowWindow.mountedRowCount > 0) {
+        _revealScheduled = true;
+        unawaited(
+          _localRowWindow
+              .reveal(
+                localTarget,
+                alignment: .35,
+                isCurrent: () => mounted && _pendingRevealId == request,
+              )
+              .then((_) {
+                if (!mounted) return;
+                _revealScheduled = false;
+                if (_pendingRevealId == request) _pendingRevealId = null;
+                _scheduleReveal();
+              }),
+        );
+        return;
+      }
+      final target = _revealedRowKey.currentContext;
+      if (target != null) {
+        _pendingRevealId = null;
+        // A row spans the entire horizontally scrollable table. Revealing it
+        // on both axes would scroll the identity/name columns out of view.
+        final scrollable = Scrollable.maybeOf(target, axis: Axis.vertical);
+        final renderObject = target.findRenderObject();
+        if (scrollable != null && renderObject != null) {
+          scrollable.position.ensureVisible(renderObject, alignment: 0.35);
+        }
+        return;
+      }
+      final controller = _verticalScrollController;
+      if (controller == null ||
+          controller.positions.length != 1 ||
+          !controller.position.hasContentDimensions) {
+        return;
+      }
+      final position = controller.position;
+      final next = _revealAttempts == 0
+          ? 0.0
+          : (position.pixels + position.viewportDimension * 0.65).clamp(
+              0.0,
+              position.maxScrollExtent,
+            );
+      controller.jumpTo(next);
+      if (++_revealAttempts <= widget.items.length + 2) {
+        _scheduleReveal();
+        WidgetsBinding.instance.scheduleFrame();
+      } else {
+        _pendingRevealId = null;
+      }
+    });
+  }
 
   void _scheduleScrollToEnd() {
     if (_pendingScrollToEnd == null ||
@@ -1885,12 +2127,25 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (controller == null || controller.positions.length != 1) return;
       final position = controller.position;
       if (!position.hasContentDimensions) return;
+      if (_localRowWindow.isMounting ||
+          _deferredRowMounts.values.any((row) => row.isMounting)) {
+        _scheduleScrollToEnd();
+        WidgetsBinding.instance.ensureVisualUpdate();
+        return;
+      }
       final target = position.maxScrollExtent;
-      if (!target.isFinite || (target - position.pixels).abs() < 0.5) {
+      if (!target.isFinite || (target - position.pixels).abs() < 0.000001) {
         _pendingScrollToEnd = null;
         return;
       }
-      controller.jumpTo(target);
+      _deferredLeadingEdge = false;
+      _deferredTrailingEdge = false;
+      _restoringDeferredEdge = true;
+      try {
+        controller.jumpTo(target);
+      } finally {
+        _restoringDeferredEdge = false;
+      }
       // Lazy rows can revise maxScrollExtent after this jump. Recheck the next
       // layout, but bound retries so later rebuilds cannot trap the user at end.
       if (++_scrollToEndAttempts < 8) {
@@ -2303,10 +2558,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   bool _widthGrowthScheduled = false;
   List<T>? _widthGrowthPool;
   int _widthGrowthOffset = 0;
+  int _widthGrowthColumn = 0;
 
   // Text shaping is UI work even when it runs in a post-frame callback.
   // Bound each batch by cells so wide tables also leave time for input/paint.
   static const _widthMeasureCellBudget = 256;
+  static const _widthMeasureTimeBudget = Duration(milliseconds: 2);
 
   /// 输入控制器的内容可以先于业务 value 改变。按列键合并本帧各输入格需要的宽度，
   /// 避免逐格重建表格；列集合改变后丢弃旧格子的延迟回调。
@@ -2328,6 +2585,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   T? _selectedItem;
 
   final _textSelection = UtenTableTextSelection();
+  final _localRowWindow = UtenAncestorRowWindowController<_MasterWindowSlot>();
+  final _localWindowSlots = <Object, _MasterWindowSlot>{};
+  final _deferredRowMounts = <Object, UtenDeferredRowMountController>{};
+  final _deferredRowHeights = <Object, double>{};
+  final _measurementRowMounts = <Object, UtenDeferredRowMountController>{};
+  bool _deferredFallbackActive = false;
+  bool _deferredLeadingEdge = false;
+  bool _deferredTrailingEdge = false;
+  bool _deferredEdgeScheduled = false;
+  bool _restoringDeferredEdge = false;
+  bool _deferredScrollSequence = false;
+  int _deferredEdgeGeneration = 0;
+  int _deferredEdgePasses = 0;
   List<String>? _textSelectionColumnKeys;
   List<String>? _textSelectionRowKeys;
 
@@ -2582,6 +2852,22 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         (sum, i) => sum + (i < _widths.length ? _widths[i] : 0),
       );
 
+  bool _hasFrozenDataColumns(ScrollController controller) {
+    if (!controller.hasClients || controller.positions.length != 1) {
+      return false;
+    }
+    final position = controller.position;
+    if (!position.hasViewportDimension || position.pixels <= 0) return false;
+    final fallback = _hasSelectionColumn ? _selectionColWidth : 0.0;
+    return utenEffectiveFrozenLeadingWidth(
+          requestedWidth: _pinnedLeadingWidth(_pinnedVisibleIndices),
+          viewportWidth: position.viewportDimension,
+          fallbackWidth: fallback,
+          trailingWidth: widget.showColumnChooser ? 48 : 0,
+        ) >
+        fallback;
+  }
+
   /// 固定/取消固定一列：固定 = 记录当前下标后搬到固定块末尾；取消固定 =
   /// 放回固定前的位置（2026-09-25 用户口径「取消固定也要回到对应的地方」）。
   void _toggleColumnPin(String key) {
@@ -2747,6 +3033,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
     _headerH = UtenTableHorizontalScrollController(
       leadingInset: () => _pinnedLeadingWidth(_pinnedVisibleIndices),
+      fallbackLeadingInset: () => _hasSelectionColumn ? _selectionColWidth : 0,
       trailingInset: () => widget.showColumnChooser ? 48 : 0,
     );
     _columnOrder = _columns.map((c) => c.key).toList();
@@ -2756,6 +3043,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _normalizeRequiredLeadingColumns();
     _bodyH = UtenTableHorizontalScrollController(
       leadingInset: () => _pinnedLeadingWidth(_pinnedVisibleIndices),
+      fallbackLeadingInset: () => _hasSelectionColumn ? _selectionColWidth : 0,
       trailingInset: () => widget.showColumnChooser ? 48 : 0,
     );
     _bodyV = ScrollController();
@@ -3102,6 +3390,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   @override
   void didUpdateWidget(covariant MasterDataTableView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // A host may edit a row in place before rebuilding. Retire computed views
+    // even when the List and column callbacks retained their identities.
+    _displayRowsSource = null;
+    _rowFacetScope = null;
     // 拖拽能力被宿主摘除（如切到只读态）：就地取消进行中的拖拽。
     if (widget.rowDrag == null && _dragActive) _cancelRowDrag();
     if (!widget.enableTextSelection ||
@@ -3121,6 +3413,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       oldWidget.rowsController?.detachPagination(this);
     }
     final appended = _updatePages(oldWidget);
+    if (appended) {
+      // An endpoint belongs to the loaded window that the user visited.
+      // Appending a response must keep that viewport, not follow the new end.
+      _deferredLeadingEdge = false;
+      _deferredTrailingEdge = false;
+    }
     _configurePlatform();
     // 包括 200 -> 0 / 移除悬浮动作：新布局不再启用覆盖层时也必须撤掉旧留白。
     if (oldWidget.bottomContentPadding != widget.bottomContentPadding ||
@@ -3153,6 +3451,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _widthGrowthPending = true;
       _widthGrowthPool = null;
       _widthGrowthOffset = 0;
+      _widthGrowthColumn = 0;
     }
     // 吸顶表：数据/列变化改表高 → post-frame 重测锚点；notifier 换实例重绑。
     if (!identical(oldWidget.stickyHeaderPinned, widget.stickyHeaderPinned)) {
@@ -3166,7 +3465,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final requestedEnd =
         widget.scrollToEndRequest != 0 &&
         oldWidget.scrollToEndRequest != widget.scrollToEndRequest;
+    final requestedReveal = widget.revealRequest != oldWidget.revealRequest;
+    if (requestedReveal) {
+      _deferredLeadingEdge = false;
+      _deferredTrailingEdge = false;
+      _pendingRevealId = widget.revealItemId;
+      _revealAttempts = 0;
+    }
     if (requestedEnd) {
+      _deferredLeadingEdge = false;
+      _deferredTrailingEdge = false;
       _pendingScrollToEnd = widget.scrollToEndRequest;
       _scrollToEndAttempts = 0;
     } else if ((!appended && oldWidget.currentPage != widget.currentPage) ||
@@ -3176,6 +3484,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     if (!appended &&
         !requestedEnd &&
+        !requestedReveal &&
         (oldWidget.currentPage != widget.currentPage || _queryChanged)) {
       final page = widget.currentPage;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -3185,7 +3494,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           return;
         }
         final controller = _verticalScrollController;
-        if (controller != null && controller.hasClients) controller.jumpTo(0);
+        if (controller != null && controller.hasClients) {
+          controller.jumpTo(0);
+          if (_deferredFallbackActive) {
+            _deferredLeadingEdge = true;
+            _deferredTrailingEdge = false;
+            _deferredEdgeGeneration = _appendGeneration;
+            _deferredEdgePasses = 0;
+            _scheduleDeferredLeadingEdge();
+          }
+        }
         // 2026-10-02 用户口径「点分类/筛选后分类栏不得消失」：表体随翻页/换筛选
         // 回顶时，联动页（UtenCollapsingHeaderScrollView 的 NestedScrollView）的
         // 外层一起回顶。否则内容替换的滚动校正会被 NestedScrollView 转嫁成外层
@@ -3407,13 +3725,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _widthGrowthPending = false;
     _widthGrowthPool = null;
     _widthGrowthOffset = 0;
+    _widthGrowthColumn = 0;
     _lastScale = scale;
     final pool = _widthSamplePool();
-    final sampleSize = math.min(
-      pool.length,
-      math.max(1, _widthMeasureCellBudget ~/ math.max(1, _columns.length)),
-    );
-    final sample = pool.sublist(0, sampleSize);
+    // First layout measures headers only. Even 256 cells can spend hundreds
+    // of milliseconds shaping rich Chinese text; the tail is time-budgeted.
+    final sample = <T>[];
     final next = List<double>.filled(
       _columns.length,
       _minColWidth,
@@ -3432,9 +3749,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       );
     }
     _widths = next;
-    if (sampleSize < pool.length) {
+    if (pool.isNotEmpty) {
       _widthGrowthPool = pool;
-      _widthGrowthOffset = sampleSize;
+      _widthGrowthOffset = 0;
+      _widthGrowthColumn = 0;
       _widthGrowthPending = true;
       _scheduleWidthGrowth();
     }
@@ -3526,28 +3844,36 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         return;
       }
       final pool = _widthGrowthPool ??= _widthSamplePool();
-      final end = math.min<int>(
-        pool.length,
-        _widthGrowthOffset +
-            math.max<int>(
-              1,
-              _widthMeasureCellBudget ~/ math.max<int>(1, _columns.length),
-            ),
-      );
-      final sample = pool.sublist(_widthGrowthOffset, end);
+      final clock = Stopwatch()..start();
+      var measuredCells = 0;
       var grown = false;
       final next = List<double>.of(_widths);
-      for (var i = 0; i < _columns.length; i++) {
-        if (_manualResized.contains(i)) continue;
-        final def = _columns[i];
-        final fitted = _fitColumnWidth(
-          context,
-          def,
-          _measureColumn(context, def, sample, textScaler),
-        );
-        if (fitted > next[i] + 0.5) {
-          next[i] = fitted;
-          grown = true;
+      while (_widthGrowthOffset < pool.length && _columns.isNotEmpty) {
+        final i = _widthGrowthColumn;
+        final row = pool[_widthGrowthOffset];
+        // Advance before doing caller-supplied measurement. Every accepted
+        // cell is visited once, including a partial row at a slice boundary.
+        _widthGrowthColumn++;
+        if (_widthGrowthColumn == _columns.length) {
+          _widthGrowthColumn = 0;
+          _widthGrowthOffset++;
+        }
+        if (!_manualResized.contains(i)) {
+          final def = _columns[i];
+          final fitted = _fitColumnWidth(
+            context,
+            def,
+            _measureColumn(context, def, [row], textScaler),
+          );
+          if (fitted > next[i] + 0.5) {
+            next[i] = fitted;
+            grown = true;
+          }
+        }
+        measuredCells++;
+        if (measuredCells >= _widthMeasureCellBudget ||
+            clock.elapsed >= _widthMeasureTimeBudget) {
+          break;
         }
       }
       if (grown) {
@@ -3556,14 +3882,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         // advance with the column widths used by newly mounted lazy rows.
         if (_fullscreen) _fsTick.value++;
       }
-      _widthGrowthOffset = end;
-      _widthGrowthPending = end < pool.length;
+      _widthGrowthPending =
+          _columns.isNotEmpty && _widthGrowthOffset < pool.length;
       if (_widthGrowthPending) {
         _scheduleWidthGrowth();
         WidgetsBinding.instance.ensureVisualUpdate();
       } else {
         _widthGrowthPool = null;
         _widthGrowthOffset = 0;
+        _widthGrowthColumn = 0;
       }
     });
   }
@@ -3777,8 +4104,26 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// selectable 的 stretch 行在无界高度下的合法化包裹（见 [_selectableCross]）。
   /// 非 selectable 行用 center、不需要，保持原样零开销。
-  Widget _boundStretchRow(Widget row) =>
-      widget.selectable ? IntrinsicHeight(child: row) : row;
+  Widget _boundStretchRow(Widget row) => widget.selectable
+      ? IntrinsicHeight(
+          child: debugUiWorkSliceObserver == null
+              ? row
+              : _MasterStretchLayoutProbe(child: row),
+        )
+      : row;
+
+  /// Keep roughly one control row warm instead of the viewport default 250px
+  /// on each side. The viewport still lays out every visible child in the same
+  /// pass; automatic keep-alives retain focused editors outside this buffer.
+  /// Avoid depending on body height here: height-only header scrolling reuses
+  /// the body's cached widget stage. Larger text may grow the actual rows.
+  ScrollCacheExtent _rowScrollCache(BuildContext context) =>
+      ScrollCacheExtent.pixels(
+        (UtenEditableGridCellSpec.heightOf(context) + UtenSpacing.s16).clamp(
+          32.0,
+          64.0,
+        ),
+      );
 
   /// 当前页可勾选的行 id 集合（主数据行 + 已展开的前导分组 items；过滤空 id）。
   // —— 本地取值筛选 / 本地排序的取值与显示行 ——
@@ -3795,11 +4140,22 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   /// filterFromRows 列的桶：宿主提供了服务端 facets 时返回 null（以服务端为准）。
+  Object? _rowFacetScope;
+  final Map<String, ({List<MasterFacetBucket> buckets, int nullCount})>
+  _rowFacetCache = {};
+
   ({List<MasterFacetBucket> buckets, int nullCount})? _rowFacetsFor(
     MasterColumnDef<T> def,
   ) {
     if (!def.filterFromRows || _serverPaged) return null;
     if ((widget.facets[def.key] ?? const []).isNotEmpty) return null;
+    final scope = (_items, _columns);
+    if (_rowFacetScope != scope) {
+      _rowFacetScope = scope;
+      _rowFacetCache.clear();
+    }
+    final cached = _rowFacetCache[def.key];
+    if (cached != null) return cached;
     final counts = <String, int>{};
     var nullCount = 0;
     for (final it in _items) {
@@ -3811,7 +4167,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       }
     }
     final values = counts.keys.toList()..sort();
-    return (
+    return _rowFacetCache[def.key] = (
       buckets: [
         for (final v in values) MasterFacetBucket(value: v, count: counts[v]!),
       ],
@@ -3820,7 +4176,33 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   /// 实际渲染/可勾选的行 = 宿主行 − 本地筛选命不中的行，再按本地排序整理。
-  List<T> get _displayItems => _applyRowView(_items);
+  List<T>? _displayRowsSource;
+  List<MasterColumnDef<T>>? _displayRowsColumns;
+  Map<String, String?> _displayRowsFilters = const {};
+  Map<String, String> _displayRowsSearches = const {};
+  Object? _displayRowsSort;
+  List<T> _displayRowsCache = const [];
+
+  List<T> get _displayItems {
+    final sort = (
+      _localSortColumn,
+      _localSortAscending,
+      widget.onSortChange == null,
+    );
+    if (identical(_displayRowsSource, _items) &&
+        identical(_displayRowsColumns, _columns) &&
+        _displayRowsSort == sort &&
+        mapEquals(_displayRowsFilters, _rowFilters) &&
+        mapEquals(_displayRowsSearches, _columnSearches)) {
+      return _displayRowsCache;
+    }
+    _displayRowsSource = _items;
+    _displayRowsColumns = _columns;
+    _displayRowsSort = sort;
+    _displayRowsFilters = Map.of(_rowFilters);
+    _displayRowsSearches = Map.of(_columnSearches);
+    return _displayRowsCache = _applyRowView(_items);
+  }
 
   List<T> _applyRowView(List<T> source) {
     var rows = source;
@@ -3862,42 +4244,51 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         final numeric = _numericColumnTypes.contains(def.type);
         final weight = def.type == 'weight';
         final asc = _localSortAscending;
-        int compare(T a, T b) {
-          final left = def.value(a)?.trim() ?? '';
-          final right = def.value(b)?.trim() ?? '';
-          // 空值/「—」恒排末尾，不随升降序翻到最前；重量列的「未称」同样视为空。
-          bool blank(String text) =>
-              text.isEmpty ||
-              text == '—' ||
-              (weight && _weightSortValue(text) == null);
-          final leftBlank = blank(left);
-          final rightBlank = blank(right);
-          if (leftBlank && rightBlank) return 0;
-          if (leftBlank) return 1;
-          if (rightBlank) return -1;
+        // Resolve presentation and numeric units once per row, not twice for
+        // every comparison. Keep blank-last and mixed numeric/text semantics.
+        final values = rows.map((row) {
+          final text = def.value(row)?.trim() ?? '';
+          final number = weight
+              ? _weightSortValue(text)
+              : numeric
+              ? _numericSortValue(text)
+              : null;
+          return (
+            row: row,
+            text: text,
+            number: number,
+            blank: text.isEmpty || text == '—' || (weight && number == null),
+          );
+        }).toList();
+        values.sort((a, b) {
+          if (a.blank && b.blank) return 0;
+          if (a.blank) return 1;
+          if (b.blank) return -1;
           int base;
           if (weight) {
-            base = _weightSortValue(left)!.compareTo(_weightSortValue(right)!);
+            base = a.number!.compareTo(b.number!);
           } else if (numeric) {
-            final x = _numericSortValue(left);
-            final y = _numericSortValue(right);
-            base = x == null || y == null
-                ? left.compareTo(right)
-                : x.compareTo(y);
+            base = a.number == null || b.number == null
+                ? a.text.compareTo(b.text)
+                : a.number!.compareTo(b.number!);
           } else {
-            base = left.compareTo(right);
+            base = a.text.compareTo(b.text);
           }
           return asc ? base : -base;
-        }
-
-        rows = rows.toList()..sort(compare);
+        });
+        rows = values.map((entry) => entry.row).toList();
       }
     }
     return rows;
   }
 
   /// 内联计算、勿缓存到实例字段——全屏 post-frame 间隙会读到旧值。
-  Set<String> _pageSelectableIds() {
+  Set<String> _pageSelectableIds() => _profileMasterTableWork(
+    'master.selection-ids',
+    () => _withSelectionReadScope(_collectPageSelectableIds),
+  );
+
+  Set<String> _collectPageSelectableIds() {
     final ids = <String>{};
     void add(T it) {
       final id = widget.idOf?.call(it);
@@ -3921,8 +4312,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   /// 表头三态值：false=本页全未选 / true=本页全选 / null=部分选。
-  bool? get _headerCheckValue {
-    final pageIds = _pageSelectableIds();
+  bool? _headerCheckValue(Set<String> pageIds) {
     if (pageIds.isEmpty) return false;
     final hit = pageIds.where(widget.selectedIds.contains).length;
     if (hit == 0) return false;
@@ -4194,6 +4584,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           : ('data', _paginationRowId(row.item as T));
     }
 
+    // Without a business identity the previous row subtree used its slot.
+    // Keep that same identity on the new outer admission shell: refreshed
+    // value-equivalent objects must not replace live native selectables.
+    Object mountId(int index) {
+      final item = plan[index].item;
+      if (!_automaticPagination &&
+          item != null &&
+          widget.rowKeyOf?.call(item) == null &&
+          widget.idOf?.call(item) == null) {
+        return ('slot', index);
+      }
+      return planId(index);
+    }
+
     final indexes = _automaticPagination
         ? {
             for (var i = 0; i < plan.length; i++)
@@ -4214,15 +4618,203 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                   if (dragKey.isNotEmpty) ValueKey('row-drag-slot:$dragKey'): i,
           };
     int? childIndex(Key key) {
+      if (key is _DeferredRowKey) key = key.value;
       if (key is! ValueKey) return null;
       return indexes?[key] ?? dragSlotIndexes?[key];
     }
 
+    List<_MasterWindowSlot>? windowSlots;
+    Widget buildRow(BuildContext ctx, int i) {
+      final slot = windowSlots?[i];
+      Widget selectionRow(Widget child) => _rowSelectionArea(
+        child,
+        onHasSelectionChanged: slot == null
+            ? null
+            : (selected) => _localRowWindow.retain(slot, selected),
+      );
+      if (summaryInline && i == summaryIndex) {
+        return selectionRow(
+          _ViewportPinnedRow(
+            controller: _bodyH,
+            contentWidth: total,
+            fallbackViewportWidth: viewportWidth,
+            child: Padding(
+              padding: const EdgeInsets.only(
+                top: UtenSpacing.s8,
+                left: UtenSpacing.s4,
+                right: UtenSpacing.s4,
+              ),
+              child: widget.summaryBar!,
+            ),
+          ),
+        );
+      }
+      if (!_prepending && _appendError != null && i == plan.length) {
+        return _ViewportPinnedRow(
+          controller: _bodyH,
+          contentWidth: total,
+          fallbackViewportWidth: viewportWidth,
+          child: _appendFailure(),
+        );
+      }
+      if (_loadingMore && i == plan.length) {
+        return const Padding(
+          padding: EdgeInsets.all(UtenSpacing.s12),
+          child: Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+        );
+      }
+      final row = plan[i];
+      // 行区提示（空结果/加载/错误/「无符合」条）：跨满宽钉在视口横滚位，
+      // 不随表格内容横向滚动。
+      if (row.notice != null) {
+        return _ViewportPinnedRow(
+          controller: _bodyH,
+          contentWidth: total,
+          fallbackViewportWidth: viewportWidth,
+          child: row.notice!,
+        );
+      }
+      if (row.header) {
+        return _trackPaginationRow(
+          planId(i),
+          false,
+          selectionRow(_buildGroupHeader(theme, row.group!)),
+        );
+      }
+      // 数据行：item 必非空（仅 header 行 item=null）；显式 null
+      // 判定把 T? 提升为 T，避免对类型参数用 `!` 的告警。
+      final item = row.item;
+      if (item == null) {
+        return const SizedBox.shrink();
+      }
+      // RepaintBoundary 隔离行重绘（选中/列宽/刷新时只绘本行，不蔓延整表）。
+      // 稳定 key：rowKeyOf 优先，缺省回落 idOf（数据刷新时 Selectable
+      // 复用而非重建，降低 SelectionArea 的 CME 抖动，FM2）；否则用下标。
+      final idKey = widget.rowKeyOf?.call(item) ?? widget.idOf?.call(item);
+      final rowWidget = RepaintBoundary(
+        key:
+            widget.rowWidgetKeyOf?.call(item) ??
+            ((idKey != null && idKey.isNotEmpty)
+                ? ValueKey('row:$idKey')
+                : ValueKey('idx:$i')),
+        child: debugUiWorkSliceObserver == null
+            ? selectionRow(_buildDataRow(theme, item))
+            : _MasterRowLayoutProbe(
+                child: selectionRow(_buildDataRow(theme, item)),
+              ),
+      );
+      // 末行挂测量键：覆盖层横滚条按末行定位（贴末行下）。
+      // 内容超高时末行被虚拟化不挂载 → 横滚条钉表体区底。
+      final focused =
+          idKey != null && idKey.isNotEmpty && idKey == _pendingRevealId
+          ? KeyedSubtree(key: _revealedRowKey, child: rowWidget)
+          : rowWidget;
+      final wrapped = i == plan.length - 1
+          ? KeyedSubtree(key: _lastRowKey, child: focused)
+          : focused;
+      // 行拖拽三件套（rowDrag 非空才有）：槽登记 + 长按拾起手势 + 被拖行淡出。
+      // **最外层必须是带 key 的槽**（配合上面的 dragSlotIndexes/findChildIndexCallback）：
+      // 展开插行时元素随 key 平移而非按下标重建，进行中的识别器存活。
+      // 淡出用常驻 AnimatedOpacity 的 opacity 值切换——条件性包新 widget 同样会
+      // 改变结构类型，不允许。
+      Widget dragChild = _wrapRowDragAffordance(item, wrapped);
+      if (widget.rowDrag != null) {
+        final dragKey = _dragKeyOf(item);
+        dragChild = AnimatedOpacity(
+          opacity:
+              _dragActive && dragKey != null && _dragRowKeys.contains(dragKey)
+              ? 0.35
+              : 1.0,
+          duration: const Duration(milliseconds: 150),
+          child: dragChild,
+        );
+      }
+      final draggable = _wrapRowDragSlot(item, dragChild);
+      return _trackPaginationRow(
+        planId(i),
+        row.group == null &&
+            !widget.unpagedItems.any(
+              (local) => _paginationRowId(local) == _paginationRowId(item),
+            ),
+        draggable,
+      );
+    }
+
+    // A variable-height SliverList walks intermediate children on a distant
+    // jump. Large local tables instead keep one content-height child and let
+    // the shared measured row window locate destination rows directly. Server
+    // prepend/pagination and row dragging retain their existing anchor paths.
+    final itemCount = summaryIndex + (summaryInline ? 1 : 0);
+    if ((widget.virtualized || widget.primary) &&
+        !_automaticPagination &&
+        widget.onLoadMore == null &&
+        widget.rowDrag == null &&
+        (widget.rowKeyOf != null || widget.idOf != null)) {
+      final ids = <Object>[
+        for (var i = 0; i < plan.length; i++) planId(i),
+        if (hasFooter) const ('footer',),
+        if (summaryInline) const ('summary',),
+      ];
+      final unique = ids.toSet();
+      if (unique.length == ids.length) {
+        _localWindowSlots.removeWhere((id, _) => !unique.contains(id));
+        windowSlots = [
+          for (final id in ids)
+            _localWindowSlots.putIfAbsent(id, () => _MasterWindowSlot(id)),
+        ];
+      }
+    }
+    final bodyStyle = theme.textTheme.bodyMedium;
+    final estimatedRowExtent =
+        MediaQuery.textScalerOf(context).scale(bodyStyle?.fontSize ?? 14) *
+            (bodyStyle?.height ?? 1.5) +
+        UtenSpacing.s16;
+    final window = windowSlots;
+    final stageFallbackRows =
+        window == null &&
+        plan.length >= UtenAncestorRowWindow.minimumStagedRows;
+    _deferredFallbackActive = stageFallbackRows;
+    if (window == null) {
+      final currentIds = {for (var i = 0; i < plan.length; i++) mountId(i)};
+      _deferredRowMounts.removeWhere((id, _) => !currentIds.contains(id));
+      if (!_prepending) {
+        _deferredRowHeights.removeWhere((id, _) => !currentIds.contains(id));
+      }
+    }
+    Widget buildFallbackRow(BuildContext context, int index) {
+      if (index >= plan.length || plan[index].item == null) {
+        return buildRow(context, index);
+      }
+      final id = mountId(index);
+      final item = plan[index].item as T;
+      final dragId = widget.rowDrag == null ? null : _dragKeyOf(item);
+      final key = _automaticPagination
+          ? ValueKey(('pagination-row', id))
+          : dragId != null && dragId.isNotEmpty
+          ? ValueKey('row-drag-slot:$dragId')
+          : ValueKey(('deferred-row', id));
+      return UtenDeferredRowMount(
+        key: _DeferredRowKey(key),
+        controller: _deferredRowMounts.putIfAbsent(
+          id,
+          UtenDeferredRowMountController.new,
+        ),
+        estimatedExtent: _deferredRowHeights[id] ?? estimatedRowExtent,
+        onExtentMeasured: (height) => _deferredRowHeights[id] = height,
+        deferNewMounts: stageFallbackRows,
+        builder: (context) => buildRow(context, index),
+      );
+    }
+
     final list = ListView.builder(
       controller: _usesPrimaryScroll ? null : _bodyV,
-      // primary 模式：交还给祖先 NestedScrollView 注入的 PrimaryScrollController
-      // 参与联动。shrinkWrap 必须关（否则短表 maxScrollExtent=0，header 收完后
-      // 滚动卡死）；physics 必须 AlwaysScrollable（行少时 body 也要能滚→header 才收）。
+      scrollCacheExtent: _rowScrollCache(context),
       primary: _usesPrimaryScroll,
       shrinkWrap:
           widget.primary ||
@@ -4235,118 +4827,22 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             ? const AlwaysScrollableScrollPhysics()
             : const ClampingScrollPhysics(),
       ),
-      findChildIndexCallback: (indexes == null && dragSlotIndexes == null)
+      findChildIndexCallback:
+          window != null || (indexes == null && dragSlotIndexes == null)
           ? null
           : childIndex,
-      // 留白只参与竖向滚动范围，覆盖层横滚条始终以真实末行为锚点。
       padding: EdgeInsets.only(bottom: _bodyBottomPad + _prependBottomSpace),
-      itemCount: summaryIndex + (summaryInline ? 1 : 0),
-      itemBuilder: (ctx, i) {
-        if (summaryInline && i == summaryIndex) {
-          return _rowSelectionArea(
-            _ViewportPinnedRow(
-              controller: _bodyH,
-              contentWidth: total,
-              fallbackViewportWidth: viewportWidth,
-              child: Padding(
-                padding: const EdgeInsets.only(
-                  top: UtenSpacing.s8,
-                  left: UtenSpacing.s4,
-                  right: UtenSpacing.s4,
-                ),
-                child: widget.summaryBar!,
-              ),
+      itemCount: window == null ? itemCount : 1,
+      itemBuilder: window == null
+          ? buildFallbackRow
+          : (context, _) => UtenAncestorRowWindow<_MasterWindowSlot>(
+              controller: _localRowWindow,
+              rows: window,
+              viewportOnly: true,
+              preserveRowAnchorOnSourceChange: false,
+              estimatedRowExtent: estimatedRowExtent,
+              rowBuilder: (context, _, index) => buildRow(context, index),
             ),
-          );
-        }
-        if (!_prepending && _appendError != null && i == plan.length) {
-          return _ViewportPinnedRow(
-            controller: _bodyH,
-            contentWidth: total,
-            fallbackViewportWidth: viewportWidth,
-            child: _appendFailure(),
-          );
-        }
-        if (_loadingMore && i == plan.length) {
-          return const Padding(
-            padding: EdgeInsets.all(UtenSpacing.s12),
-            child: Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-          );
-        }
-        final row = plan[i];
-        // 行区提示（空结果/加载/错误/「无符合」条）：跨满宽钉在视口横滚位，
-        // 不随表格内容横向滚动。
-        if (row.notice != null) {
-          return _ViewportPinnedRow(
-            controller: _bodyH,
-            contentWidth: total,
-            fallbackViewportWidth: viewportWidth,
-            child: row.notice!,
-          );
-        }
-        if (row.header) {
-          return _trackPaginationRow(
-            planId(i),
-            false,
-            _rowSelectionArea(_buildGroupHeader(theme, row.group!)),
-          );
-        }
-        // 数据行：item 必非空（仅 header 行 item=null）；显式 null
-        // 判定把 T? 提升为 T，避免对类型参数用 `!` 的告警。
-        final item = row.item;
-        if (item == null) {
-          return const SizedBox.shrink();
-        }
-        // RepaintBoundary 隔离行重绘（选中/列宽/刷新时只绘本行，不蔓延整表）。
-        // 稳定 key：rowKeyOf 优先，缺省回落 idOf（数据刷新时 Selectable
-        // 复用而非重建，降低 SelectionArea 的 CME 抖动，FM2）；否则用下标。
-        final idKey = widget.rowKeyOf?.call(item) ?? widget.idOf?.call(item);
-        final rowWidget = RepaintBoundary(
-          key:
-              widget.rowWidgetKeyOf?.call(item) ??
-              ((idKey != null && idKey.isNotEmpty)
-                  ? ValueKey('row:$idKey')
-                  : ValueKey('idx:$i')),
-          child: _rowSelectionArea(_buildDataRow(theme, item)),
-        );
-        // 末行挂测量键：覆盖层横滚条按末行定位（贴末行下）。
-        // 内容超高时末行被虚拟化不挂载 → 横滚条钉表体区底。
-        final wrapped = i == plan.length - 1
-            ? KeyedSubtree(key: _lastRowKey, child: rowWidget)
-            : rowWidget;
-        // 行拖拽三件套（rowDrag 非空才有）：槽登记 + 长按拾起手势 + 被拖行淡出。
-        // **最外层必须是带 key 的槽**（配合上面的 dragSlotIndexes/findChildIndexCallback）：
-        // 展开插行时元素随 key 平移而非按下标重建，进行中的识别器存活。
-        // 淡出用常驻 AnimatedOpacity 的 opacity 值切换——条件性包新 widget 同样会
-        // 改变结构类型，不允许。
-        Widget dragChild = _wrapRowDragAffordance(item, wrapped);
-        if (widget.rowDrag != null) {
-          final dragKey = _dragKeyOf(item);
-          dragChild = AnimatedOpacity(
-            opacity:
-                _dragActive && dragKey != null && _dragRowKeys.contains(dragKey)
-                ? 0.35
-                : 1.0,
-            duration: const Duration(milliseconds: 150),
-            child: dragChild,
-          );
-        }
-        final draggable = _wrapRowDragSlot(item, dragChild);
-        return _trackPaginationRow(
-          planId(i),
-          row.group == null &&
-              !widget.unpagedItems.any(
-                (local) => _paginationRowId(local) == _paginationRowId(item),
-              ),
-          draggable,
-        );
-      },
     );
     final hArea = SingleChildScrollView(
       key: _bodyHorizontalKey,
@@ -4443,6 +4939,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     )) {
       return;
     }
+    _pendingScrollToEnd = null;
+    _deferredLeadingEdge = false;
+    _deferredTrailingEdge = false;
     final controller = _verticalScrollController;
     if (controller == null || !controller.hasClients) return;
     _scheduleVisiblePage();
@@ -4454,6 +4953,114 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     )) {
       _scheduleAppend(prepend: prepend);
     }
+  }
+
+  bool get _hasPendingPageAnchor =>
+      _prependMeasureItems != null ||
+      _prependAnchor.pending ||
+      _appendPage != null;
+
+  void _observeDeferredLeadingEdge(ScrollNotification notification) {
+    if (_restoringDeferredEdge ||
+        !_deferredFallbackActive ||
+        _hasPendingPageAnchor) {
+      return;
+    }
+    final controller = _verticalScrollController;
+    final source = notification.context == null
+        ? null
+        : Scrollable.maybeOf(notification.context!, axis: Axis.vertical);
+    if (controller == null ||
+        controller.positions.length != 1 ||
+        !identical(source?.position, controller.position)) {
+      return;
+    }
+    if (notification is ScrollStartNotification) {
+      _deferredScrollSequence = true;
+      // Layout can start a ballistic correction after our jump has returned.
+      // That is still part of reaching the requested end. A drag or keyboard
+      // scroll supersedes it; wheel intent is handled by _onPaginationWheel.
+      const scrollKeys = [
+        LogicalKeyboardKey.arrowUp,
+        LogicalKeyboardKey.arrowDown,
+        LogicalKeyboardKey.pageUp,
+        LogicalKeyboardKey.pageDown,
+        LogicalKeyboardKey.home,
+        LogicalKeyboardKey.end,
+        LogicalKeyboardKey.space,
+      ];
+      if (notification.dragDetails != null ||
+          HardwareKeyboard.instance.logicalKeysPressed.any(
+            scrollKeys.contains,
+          )) {
+        _pendingScrollToEnd = null;
+      }
+    }
+    if (notification is ScrollUpdateNotification) {
+      if (_deferredScrollSequence || notification.dragDetails != null) {
+        _deferredLeadingEdge = notification.metrics.extentBefore <= .5;
+        _deferredTrailingEdge =
+            !_deferredLeadingEdge && notification.metrics.extentAfter <= .5;
+        if (_deferredLeadingEdge || _deferredTrailingEdge) {
+          _deferredEdgeGeneration = _appendGeneration;
+          _deferredEdgePasses = 0;
+          _scheduleDeferredLeadingEdge();
+        }
+      }
+      _deferredScrollSequence = false;
+    }
+    if (notification is ScrollEndNotification) _deferredScrollSequence = false;
+  }
+
+  void _scheduleDeferredLeadingEdge() {
+    if ((!_deferredLeadingEdge && !_deferredTrailingEdge) ||
+        _deferredEdgeScheduled) {
+      return;
+    }
+    _deferredEdgeScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _deferredEdgeScheduled = false;
+      if (!mounted || (!_deferredLeadingEdge && !_deferredTrailingEdge)) return;
+      final controller = _verticalScrollController;
+      if (!_deferredFallbackActive ||
+          _hasPendingPageAnchor ||
+          _deferredEdgeGeneration != _appendGeneration ||
+          !TickerMode.valuesOf(context).enabled ||
+          (ModalRoute.of(context)?.isCurrent == false) ||
+          controller == null ||
+          controller.positions.length != 1) {
+        _deferredLeadingEdge = false;
+        _deferredTrailingEdge = false;
+        return;
+      }
+      final position = controller.position;
+      if (_deferredRowMounts.values.any((row) => row.isMounting)) {
+        // Waiting for admission does not consume correction attempts. A tall
+        // viewport may legitimately need more than 16 frames at four rows/frame.
+        _scheduleDeferredLeadingEdge();
+        WidgetsBinding.instance.ensureVisualUpdate();
+        return;
+      }
+      final target = _deferredLeadingEdge
+          ? position.minScrollExtent
+          : position.maxScrollExtent;
+      if ((position.pixels - target).abs() > 0.000001 &&
+          ++_deferredEdgePasses <= 8) {
+        // Estimated-to-measured sliver corrections must preserve an explicit
+        // endpoint visit. A real prepend still owns its measured anchor.
+        _restoringDeferredEdge = true;
+        try {
+          position.jumpTo(target);
+        } finally {
+          _restoringDeferredEdge = false;
+        }
+        _scheduleDeferredLeadingEdge();
+        WidgetsBinding.instance.ensureVisualUpdate();
+      } else {
+        _deferredLeadingEdge = false;
+        _deferredTrailingEdge = false;
+      }
+    });
   }
 
   /// 表格批量动作与采购任务工作台一致：选择摘要仍在表头上方，真正业务动作
@@ -4473,6 +5080,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         child: NotificationListener<ScrollNotification>(
           onNotification: (notification) {
             if (notification.metrics.axis == Axis.vertical) {
+              _observeDeferredLeadingEdge(notification);
               _scheduleHBarUpdate();
               _maybeTriggerLoadMore(notification.metrics);
               if (notification is ScrollUpdateNotification ||
@@ -4600,6 +5208,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   Widget _buildTable(BuildContext context) {
     _scheduleScrollToEnd();
+    _scheduleReveal();
     final table = TableColumnProjectionTarget(
       tableKey: _platform.tableKey,
       owner: this,
@@ -4645,6 +5254,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final boundedActions = _usesBoundedFloatingBatchActions;
     final list = ListView.builder(
       controller: _bodyV,
+      scrollCacheExtent: _rowScrollCache(context),
       primary: false,
       physics: _prependAnchor.wrap(const ClampingScrollPhysics()),
       padding: padding.copyWith(
@@ -4744,7 +5354,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   Widget _presentBody(Widget child) =>
       widget.bodyPresentationBuilder?.call(context, child) ?? child;
 
-  Widget _buildProjectedTable(BuildContext context) {
+  Widget _buildProjectedTable(BuildContext context) => _profileMasterTableWork(
+    'master.projected-table',
+    () => _buildProjectedTableImpl(context),
+  );
+
+  Widget _buildProjectedTableImpl(BuildContext context) {
     final columnKeys = _columns.map((column) => column.key).toSet();
     _selectedFacetBuckets.removeWhere(
       (key, bucket) =>
@@ -4766,12 +5381,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final showFullscreen = widget.showFullscreenToggle ?? !widget.embedded;
     final groups = widget.leadingGroups ?? <MasterDataGroup<T>>[];
     final displayItems = _displayItems;
-    final selectionRows = [
-      for (final group in groups)
-        if (_expandedGroups.contains(group.id) || group.initiallyExpanded)
-          for (final item in group.items) _textSelectionRowKey(item),
-      for (final item in displayItems) _textSelectionRowKey(item),
-    ];
+    final selectionRows = _profileMasterTableWork(
+      'master.selection-row-keys',
+      () => <String>[
+        for (final group in groups)
+          if (_expandedGroups.contains(group.id) || group.initiallyExpanded)
+            for (final item in group.items) _textSelectionRowKey(item),
+        for (final item in displayItems) _textSelectionRowKey(item),
+      ],
+    );
     if (!listEquals(_textSelectionRowKeys, selectionRows)) {
       _textSelection.clear();
       _textSelectionRowKeys = selectionRows;
@@ -4863,30 +5481,40 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final total = _totalWidth;
     // 行计划：前导分组（表头下第一区）+ 主数据行。分组折叠=仅一条跨满宽标题行；
     // 展开=其 items 按主表同款列逐行渲染（与主行共用 _widths / _visibleIndices / 横滚）。
-    final plan =
-        <({bool header, MasterDataGroup<T>? group, T? item, Widget? notice})>[];
-    if (bodyNotice != null) {
-      plan.add((header: false, group: null, item: null, notice: bodyNotice));
-    }
-    for (final g in groups) {
-      if (g.initiallyExpanded) _expandedGroups.add(g.id);
-      if (g.items.isEmpty &&
-          (g.total ?? 0) == 0 &&
-          !g.loading &&
-          g.error == null &&
-          g.onExpand == null) {
-        continue; // 明确 N=0 且不可加载的分组不渲染
+    final plan = _profileMasterTableWork('master.row-plan', () {
+      final result =
+          <
+            ({bool header, MasterDataGroup<T>? group, T? item, Widget? notice})
+          >[];
+      if (bodyNotice != null) {
+        result.add((
+          header: false,
+          group: null,
+          item: null,
+          notice: bodyNotice,
+        ));
       }
-      plan.add((header: true, group: g, item: null, notice: null));
-      if (_expandedGroups.contains(g.id)) {
-        for (final it in g.items) {
-          plan.add((header: false, group: g, item: it, notice: null));
+      for (final g in groups) {
+        if (g.initiallyExpanded) _expandedGroups.add(g.id);
+        if (g.items.isEmpty &&
+            (g.total ?? 0) == 0 &&
+            !g.loading &&
+            g.error == null &&
+            g.onExpand == null) {
+          continue; // 明确 N=0 且不可加载的分组不渲染
+        }
+        result.add((header: true, group: g, item: null, notice: null));
+        if (_expandedGroups.contains(g.id)) {
+          for (final it in g.items) {
+            result.add((header: false, group: g, item: it, notice: null));
+          }
         }
       }
-    }
-    for (final it in displayItems) {
-      plan.add((header: false, group: null, item: it, notice: null));
-    }
+      for (final it in displayItems) {
+        result.add((header: false, group: null, item: it, notice: null));
+      }
+      return result;
+    });
     // stretch：列总宽 < 视口宽时（颜色/单位等列少主档）表头与表体撑满视口宽、
     // 内容靠左，而非整体水平居中（Column 默认 crossAxisAlignment.center 会把窄于
     // 视口的表格居中、左右留白）。仅作用于交叉轴（横向），不影响主轴 Flexible(loose)
@@ -5041,12 +5669,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                     return bodyStage!;
                   }
                   bodyStageWidth = c.maxWidth;
-                  return bodyStage = _buildBodyStage(
-                    context,
-                    theme,
-                    plan,
-                    total,
-                    c.maxWidth,
+                  return bodyStage = _profileMasterTableWork<Widget>(
+                    'master.body-stage',
+                    () => _buildBodyStage(
+                      context,
+                      theme,
+                      plan,
+                      total,
+                      c.maxWidth,
+                    ),
                   );
                 },
               ),
@@ -5193,9 +5824,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 显式退出文字选择时只隔离行内容，不改变 ListView 自动创建的
   /// SelectionKeepAlive 的祖先 registrar；行勾选不影响文字选择。
-  Widget _rowSelectionArea(Widget child) => !widget.enableTextSelection
+  Widget _rowSelectionArea(
+    Widget child, {
+    ValueChanged<bool>? onHasSelectionChanged,
+  }) => !widget.enableTextSelection
       ? SelectionContainer.disabled(child: child)
-      : UtenSelectionLifecycleScope(child: child);
+      : UtenSelectionLifecycleScope(
+          onHasSelectionChanged: onHasSelectionChanged,
+          child: child,
+        );
 
   // ===== 行拖拽实现（配置见 UtenTableRowDrag） =====
 
@@ -5971,6 +6608,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 多选表头三态全选格（合成单元格）：false=本页全未选 / true=全选 / 空=部分。
     // 横滚时钉在视口左缘（[UtenFrozenLeadingColumn]），行内留等宽占位保持列对齐。
     // showSelectionColumn=false 时不渲染（该格与整列一起退场，本变量不再挂载）。
+    final pageIds = _hasSelectionColumn
+        ? _pageSelectableIds()
+        : const <String>{};
     final headerSelectionCell = DecoratedBox(
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHigh,
@@ -5980,8 +6620,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         child: Checkbox(
           key: const Key('master-data-table-select-all'),
           tristate: true,
-          value: _headerCheckValue,
-          onChanged: _pageSelectableIds().isEmpty ? null : _onToggleAllPage,
+          value: _headerCheckValue(pageIds),
+          onChanged: pageIds.isEmpty ? null : _onToggleAllPage,
         ),
       ),
     );
@@ -6051,6 +6691,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return UtenFrozenLeadingColumn(
       horizontal: controller,
       width: width,
+      fallbackWidth: _hasSelectionColumn ? _selectionColWidth : 0,
+      trailingWidth: widget.showColumnChooser ? 48 : 0,
       cell: cell,
       row: row,
     );
@@ -6081,6 +6723,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final queryRevision = _queryRestoreRevision;
     final filterCell = _FilterCell(
       label: _columns[i].label,
+      filterAction: _columns[i].headerFilterAction,
+      facetSearchEnabled: _columns[i].facetSearchEnabled,
       selectedBucket: _selectedFacetBuckets[sortKey],
       onBucketSelected: (bucket) {
         if (bucket == null) {
@@ -6331,19 +6975,21 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           );
     if (frozen || !_pinnedKeys.contains(column.key)) return cell;
     return AnimatedBuilder(
-      animation: _bodyH,
+      animation: utenTableHorizontalChanges(_bodyH),
       child: cell,
       builder: (context, child) => UtenTableTextSelectionGate(
-        enabled:
-            !_bodyH.hasClients ||
-            _bodyH.positions.length != 1 ||
-            _bodyH.offset <= 0,
+        enabled: !_hasFrozenDataColumns(_bodyH),
         child: child!,
       ),
     );
   }
 
-  Widget _buildDataRow(ThemeData theme, T item) {
+  Widget _buildDataRow(ThemeData theme, T item) => _profileMasterTableWork(
+    'master.row-build',
+    () => UtenTableCellInputTheme(child: _buildDataRowImpl(theme, item)),
+  );
+
+  Widget _buildDataRowImpl(ThemeData theme, T item) {
     final visibleIndices = _visibleIndices;
     bool showRightDivider(int index) => true;
     // selectable 多选：选中由 selectedIds（业务键）驱动，单选 _selectedItem 失效。
@@ -6909,6 +7555,8 @@ class _FilterCell extends StatefulWidget {
     this.onSort,
     this.info,
     this.leading,
+    this.filterAction,
+    this.facetSearchEnabled = false,
   });
 
   final String label;
@@ -6924,6 +7572,8 @@ class _FilterCell extends StatefulWidget {
   final ValueChanged<MasterFacetBucket?>? onBucketSelected;
   final ValueChanged<String?>? onSearch;
   final String? search;
+  final MasterHeaderFilterAction? filterAction;
+  final bool facetSearchEnabled;
 
   /// 列头说明（MasterColumnDef.info 透传）：非空渲染 ⓘ，悬停 Tooltip、
   /// 点击（含手机）弹说明小窗。
@@ -7006,6 +7656,8 @@ class _FilterCellState extends State<_FilterCell> {
     if (oldWidget.sortKey != widget.sortKey ||
         oldWidget.searchScope != widget.searchScope ||
         oldWidget.search != widget.search ||
+        oldWidget.filterAction?.value != widget.filterAction?.value ||
+        oldWidget.filterAction?.enabled != widget.filterAction?.enabled ||
         (oldWidget.onSearch == null) != (widget.onSearch == null) ||
         (oldWidget.loadFacetPage == null) != (widget.loadFacetPage == null)) {
       _close();
@@ -7138,7 +7790,11 @@ class _FilterCellState extends State<_FilterCell> {
     // 无 facets 且不可排序的列（如部分单据列表的纯标签列头）→ 纯标签，不渲染下拉/排序。
     // 这样文档页可直接复用 MasterDataTableView，与基础资料布局完全一致。
     final interactive =
-        hasFacets || s != null || widget.sortable || widget.onSearch != null;
+        widget.filterAction != null ||
+        hasFacets ||
+        s != null ||
+        widget.sortable ||
+        widget.onSearch != null;
     if (!interactive) {
       return Container(
         // minHeight（非固定 height）：字号放大后表头标签能撑高，不被裁切。
@@ -7172,11 +7828,16 @@ class _FilterCellState extends State<_FilterCell> {
         ),
       );
     }
-    final filtered = s != null || widget.search != null;
+    final filtered =
+        widget.filterAction?.value != null ||
+        s != null ||
+        widget.search != null;
     final highlighted = filtered || widget.sortActive;
     // 选中值用对应桶的展示名（颜色/单位 legacy id → 名称）；找不到回落原值。
     String display;
-    if (widget.search != null) {
+    if (widget.filterAction?.value != null) {
+      display = '${widget.label}：${widget.filterAction!.value}';
+    } else if (widget.search != null) {
       display = '${widget.label}：${widget.search}';
     } else if (s == null) {
       display = widget.label;
@@ -7201,7 +7862,18 @@ class _FilterCellState extends State<_FilterCell> {
     return CompositedTransformTarget(
       link: _link,
       child: InkWell(
-        onTap: interactive ? _open : null,
+        key: ValueKey('master-column-filter-${widget.sortKey}'),
+        onTap: widget.filterAction != null
+            ? widget.filterAction!.enabled
+                  ? () {
+                      if (widget.isCurrent?.call() ?? true) {
+                        widget.filterAction!.onTap();
+                      }
+                    }
+                  : null
+            : interactive
+            ? _open
+            : null,
         child: Container(
           // minHeight（非固定 height）：字号放大后表头标签能撑高，不被裁切。
           constraints: const BoxConstraints(minHeight: 44),
@@ -7333,7 +8005,8 @@ class _FilterCellState extends State<_FilterCell> {
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (widget.onSearch != null)
+                        if (widget.onSearch != null ||
+                            widget.facetSearchEnabled)
                           Padding(
                             padding: const EdgeInsets.all(UtenSpacing.s8),
                             child: Row(
@@ -7377,14 +8050,18 @@ class _FilterCellState extends State<_FilterCell> {
                                           ),
                                     ),
                                     onChanged: (_) => setOverlayState(() {}),
-                                    onSubmitted: (_) => _submitSearch(),
+                                    onSubmitted: widget.onSearch == null
+                                        ? null
+                                        : (_) => _submitSearch(),
                                   ),
                                 ),
-                                const SizedBox(width: UtenSpacing.s4),
-                                TextButton(
-                                  onPressed: _submitSearch,
-                                  child: const Text('搜索'),
-                                ),
+                                if (widget.onSearch != null) ...[
+                                  const SizedBox(width: UtenSpacing.s4),
+                                  TextButton(
+                                    onPressed: _submitSearch,
+                                    child: const Text('搜索'),
+                                  ),
+                                ],
                               ],
                             ),
                           ),

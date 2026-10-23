@@ -338,12 +338,16 @@ SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT name FROM operator_ref_stage op WHERE op.legacy_id = s.approver_legacy)
 FROM order_stage s;
 
+-- Exact first-INSERT historical counters; no new capacity or approval.
+SELECT count(fn_register_legacy_quantity_counter_source(
+    current_setting('uten.bootstrap_run_id')::uuid,'PURCHASE_ORDER_ITEM',to_jsonb(legacy_row.*)))
+FROM order_item_stage legacy_row;
 INSERT INTO purchase_order_items (
-    legacy_id, bill_no, bill_date, order_id, line_no, goods_id, color_id, unit_id, unit_rate,
+    id, legacy_counter_import_run_id, legacy_id, bill_no, bill_date, order_id, line_no, goods_id, color_id, unit_id, unit_rate,
     qty, price, amount_original, amount_local, received_qty, returned_qty, request_item_id, deliver_date,
     weight, source_doc_no, sales_order_no, receipt_no, production_plan_no,
     goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
-SELECT s.legacy_id, a.bill_no, a.bill_date,
+SELECT proof.target_id, proof.run_id, s.legacy_id, a.bill_no, a.bill_date,
        (SELECT id FROM purchase_orders WHERE legacy_id = s.bill_legacy_id),
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy_id ORDER BY s.legacy_id),
        (SELECT id FROM goods WHERE legacy_id = s.goods_legacy_id),
@@ -357,7 +361,10 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
        (SELECT name FROM goods WHERE legacy_id = s.goods_legacy_id),
        'LEGACY_IMPORT', CASE WHEN a.status <> 0 THEN now() ELSE NULL END
-FROM order_item_stage s JOIN order_stage a ON a.legacy_id = s.bill_legacy_id;
+FROM order_item_stage s JOIN order_stage a ON a.legacy_id = s.bill_legacy_id
+JOIN legacy_quantity_counter_import_sources proof
+  ON proof.run_id=current_setting('uten.bootstrap_run_id')::uuid
+ AND proof.source_kind='PURCHASE_ORDER_ITEM' AND proof.source_legacy_id=s.legacy_id;
 
 -- ---------------- 3. 采购收货单 ----------------
 -- 采购员 = sman（业务员，老视图口径）；制单员/审核员名冻结自 Sys_Operator。
@@ -383,8 +390,8 @@ SELECT count(fn_register_legacy_receipt_import_source(
     current_setting('uten.bootstrap_run_id')::uuid,'PURCHASE_ITEM',to_jsonb(legacy_row.*)))
 FROM receipt_item_stage legacy_row;
 INSERT INTO purchase_receipt_items (
-    id, legacy_import_run_id, legacy_id, bill_no, bill_date, receipt_id, order_item_id, goods_id, color_id, unit_id, unit_rate, qty, price, amount_original, amount_local, returned_qty, weight, source_doc_no, order_no, replacement_intent, goods_snapshot_source, gift_qty, sales_order_no, production_plan_no, line_no, goods_code_snapshot, goods_name_snapshot, goods_snapshot_locked_at)
-SELECT proof.target_id, proof.run_id, projected.legacy_id, projected.bill_no, projected.bill_date, projected.receipt_id, projected.order_item_id, projected.goods_id, projected.color_id, projected.unit_id, projected.unit_rate, projected.qty, projected.price, projected.amount_original, projected.amount_local, projected.returned_qty, projected.weight, projected.source_doc_no, projected.order_no, projected.replacement_intent, projected.goods_snapshot_source, projected.gift_qty, projected.sales_order_no, projected.production_plan_no, row_number() OVER(PARTITION BY legacy_row.bill_legacy_id ORDER BY legacy_row.legacy_id), (SELECT code FROM goods WHERE id=projected.goods_id), (SELECT name FROM goods WHERE id=projected.goods_id), CASE WHEN (SELECT status FROM purchase_receipts WHERE id=projected.receipt_id)<>0 THEN now() ELSE NULL END
+    id, legacy_import_run_id, legacy_id, bill_no, bill_date, receipt_id, order_item_id, order_item_legacy_id, goods_id, color_id, unit_id, unit_rate, qty, price, amount_original, amount_local, returned_qty, weight, source_doc_no, order_no, replacement_intent, goods_snapshot_source, gift_qty, sales_order_no, production_plan_no, line_no, goods_code_snapshot, goods_name_snapshot, goods_snapshot_locked_at)
+SELECT proof.target_id, proof.run_id, projected.legacy_id, projected.bill_no, projected.bill_date, projected.receipt_id, projected.order_item_id, projected.order_item_legacy_id, projected.goods_id, projected.color_id, projected.unit_id, projected.unit_rate, projected.qty, projected.price, projected.amount_original, projected.amount_local, projected.returned_qty, projected.weight, projected.source_doc_no, projected.order_no, projected.replacement_intent, projected.goods_snapshot_source, projected.gift_qty, projected.sales_order_no, projected.production_plan_no, row_number() OVER(PARTITION BY legacy_row.bill_legacy_id ORDER BY legacy_row.legacy_id), (SELECT code FROM goods WHERE id=projected.goods_id), (SELECT name FROM goods WHERE id=projected.goods_id), CASE WHEN (SELECT status FROM purchase_receipts WHERE id=projected.receipt_id)<>0 THEN now() ELSE NULL END
 FROM receipt_item_stage legacy_row
 JOIN legacy_procurement_receipt_import_sources proof
   ON proof.run_id=current_setting('uten.bootstrap_run_id')::uuid

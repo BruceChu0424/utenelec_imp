@@ -13,6 +13,25 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 class StockDrawIssueBatchReceiptsTest {
+    @Test void selectedPhysicalLinesAreFrozenAndCannotExpandOnSameKeyReplay() {
+        UUID document = UUID.randomUUID(), first = UUID.randomUUID(), second = UUID.randomUUID();
+        var whole = request(List.of(document), null, null);
+        var selected = request(List.of(document), null, null);
+        selected.setItemIds(List.of(first));
+        var one = StockDrawIssueBatchReceipts.normalize(selected);
+        assertEquals(List.of(first), one.itemIds());
+        assertNotEquals(StockDrawIssueBatchReceipts.normalize(whole).hash(), one.hash());
+        selected.setItemIds(List.of(first, second));
+        assertNotEquals(one.hash(), StockDrawIssueBatchReceipts.normalize(selected).hash());
+        selected.setItemIds(List.of());
+        assertThrows(ApiException.class, () -> StockDrawIssueBatchReceipts.normalize(selected));
+        selected.setItemIds(List.of(first, first));
+        assertThrows(ApiException.class, () -> StockDrawIssueBatchReceipts.normalize(selected));
+        selected.setItemIds(List.of(first));
+        selected.setWeights(List.of(new StockDocIssueBatchRequest.ItemWeight(second, BigDecimal.ONE, false)));
+        assertThrows(ApiException.class, () -> StockDrawIssueBatchReceipts.normalize(selected));
+    }
+
     @Test void normalizationIgnoresOrderDuplicatesWhitespaceAndEquivalentWeightScale() {
         UUID first = UUID.randomUUID(), last = UUID.randomUUID(), item = UUID.randomUUID();
         var a = request(List.of(first, last, first), " 夜班发料 ",

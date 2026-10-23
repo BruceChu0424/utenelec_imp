@@ -23,7 +23,7 @@ class WarehouseArrivalRegistrationIdempotencyPostgresTest {
     private static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_arrival_command")
-                    .withUsername("uten")
+                    .withUsername("fixture_admin")
                     .withPassword("uten-test-only");
 
     @BeforeAll

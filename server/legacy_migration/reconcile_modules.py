@@ -7,6 +7,8 @@ an additional acceptance requirement, not something a row count can prove.
 The only rows a loader may leave out are the reviewed exclusions it records
 itself (orphan BOM edges, and documents/balances the reviewed warehouse
 crosswalk does not carry over, ADR-145); both are persisted with the run.
+Unresolved original cash-account/family rows are separately retained in the
+run's complete typed finance archive and counted as archived, never active cash.
 """
 import json
 import runpy
@@ -32,6 +34,13 @@ def excluded_rows(source):
     if source in WAREHOUSE_EXCLUDABLE:
         return ("(SELECT count(DISTINCT source_row_id) FROM bootstrap_warehouse_exclusions "
                 f"WHERE source_file='{source}')")
+    return "0"
+
+
+def archived_rows(source):
+    if source == "m_allcheck.csv":
+        return ("(SELECT jsonb_array_length(reconciliation_summary->'financeArchiveOnly'->'entries') "
+                "FROM legacy_migration_runs WHERE run_id=current_setting('uten.bootstrap_run_id')::uuid)")
     return "0"
 
 
@@ -82,7 +91,7 @@ def main():
     manifest_path, run_id = sys.argv[1:]
     uuid.UUID(run_id)
     records = {record["file"]: record for record in json.loads(pathlib.Path(manifest_path).read_text(encoding="utf-8-sig"))["files"]}
-    print("CREATE TEMP TABLE bootstrap_module_checks(source text, target text, expected bigint, actual bigint, excluded bigint) ON COMMIT DROP;")
+    print("CREATE TEMP TABLE bootstrap_module_checks(source text, target text, expected bigint, actual bigint, excluded bigint, archived bigint NOT NULL) ON COMMIT DROP;")
     # Created by the stock/purchase loaders; an empty table when nothing was excluded.
     print("CREATE TEMP TABLE IF NOT EXISTS bootstrap_warehouse_exclusions (source_file text NOT NULL, "
           "source_row_id text NOT NULL, legacy_warehouse_id int, reason text NOT NULL, goods_legacy_id int, "
@@ -92,18 +101,19 @@ def main():
         if not isinstance(expected, int) or isinstance(expected, bool) or expected < 0:
             raise ValueError("invalid source row count")
         excluded = excluded_rows(source)
-        print(f"INSERT INTO bootstrap_module_checks SELECT '{source}', '{target}', {expected}, ({query}), {excluded};")
+        archived = archived_rows(source)
+        print(f"INSERT INTO bootstrap_module_checks SELECT '{source}', '{target}', {expected}, ({query}), {excluded}, {archived};")
     emit_master_identity_checks()
-    print("SELECT * FROM bootstrap_module_checks WHERE expected <> actual + excluded;")
+    print("SELECT * FROM bootstrap_module_checks WHERE expected <> actual + excluded + archived;")
     print("""DO $$ BEGIN
-        IF EXISTS (SELECT 1 FROM bootstrap_module_checks WHERE expected <> actual + excluded) THEN
+        IF EXISTS (SELECT 1 FROM bootstrap_module_checks WHERE expected <> actual + excluded + archived) THEN
             RAISE EXCEPTION 'document source/target row reconciliation failed';
         END IF;
     END; $$;
     UPDATE legacy_migration_runs SET reconciliation_summary = reconciliation_summary || jsonb_build_object(
         'moduleRowChecks', (SELECT jsonb_agg(jsonb_build_object(
             'source', source, 'target', target, 'expected', expected, 'actual', actual,
-            'excluded', excluded, 'passed', expected = actual + excluded)
+            'excluded', excluded, 'archived', archived, 'passed', expected = actual + excluded + archived)
             ORDER BY source) FROM bootstrap_module_checks), 'moduleRowChecksPassed', true,
         'masterIdentityChecksPassed', true,
         'historicalAnchors', (SELECT COALESCE(jsonb_agg(to_jsonb(anchor) ORDER BY target_table,legacy_id),'[]'::jsonb)

@@ -17,6 +17,7 @@ import '../models/goods_operation_history.dart';
 import '../repositories/master_operation_history_repository.dart';
 import 'master_inline_edit.dart';
 import 'basic_data_l10n.dart';
+import 'master_record_history_panel.dart';
 
 /// Entry visibility is only a convenience. The server authorizes each change.
 bool canOpenMasterOperationHistory(String entityType, Set<String> permissions) {
@@ -576,19 +577,21 @@ class MasterOperationHistoryActions extends ConsumerWidget {
     required this.entityType,
     required this.onChanged,
     this.enabled = true,
+    this.recordId,
+    this.categoryId,
   });
   final String entityType;
   final VoidCallback onChanged;
   final bool enabled;
+  final String? recordId;
+  final String? categoryId;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = basicDataL10n(context);
-    if (!canOpenMasterOperationHistory(
+    final canUndo = canOpenMasterOperationHistory(
       entityType,
       ref.watch(currentPermissionsProvider),
-    )) {
-      return const SizedBox.shrink();
-    }
+    );
     Future<void> open(bool redo) async {
       if (!await confirmMasterInlineLeave(context) || !context.mounted) return;
       await showMasterOperationHistory(
@@ -603,14 +606,23 @@ class MasterOperationHistoryActions extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       spacing: UtenSpacing.s4,
       children: [
-        UtenAppBarActionButton(
-          label: l10n.goodsHistoryUndo,
-          onPressed: enabled ? () => open(false) : null,
+        MasterRecordHistoryAction(
+          entityType: entityType,
+          recordId: recordId,
+          categoryId: categoryId,
+          onChanged: onChanged,
+          enabled: enabled,
         ),
-        UtenAppBarActionButton(
-          label: l10n.goodsHistoryRedo,
-          onPressed: enabled ? () => open(true) : null,
-        ),
+        if (canUndo)
+          UtenAppBarActionButton(
+            label: l10n.goodsHistoryUndo,
+            onPressed: enabled ? () => open(false) : null,
+          ),
+        if (canUndo)
+          UtenAppBarActionButton(
+            label: l10n.goodsHistoryRedo,
+            onPressed: enabled ? () => open(true) : null,
+          ),
       ],
     );
   }

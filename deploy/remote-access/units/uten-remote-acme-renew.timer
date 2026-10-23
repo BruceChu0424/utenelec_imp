@@ -1,0 +1,11 @@
+[Unit]
+Description=Check independent remote TLS renewal daily
+
+[Timer]
+OnCalendar=*-*-* 03:23:00
+RandomizedDelaySec=30min
+Persistent=true
+Unit=uten-remote-acme-renew.service
+
+[Install]
+WantedBy=timers.target

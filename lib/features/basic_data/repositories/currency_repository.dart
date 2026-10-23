@@ -66,7 +66,7 @@ class DioCurrencyRepository implements CurrencyRepository {
     if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
 
     final json = await api.get(ApiEndpoints.currencies, query: query);
-    return PagedResult.fromJson(json, CurrencyListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, CurrencyListItem.fromJson);
   }
 
   @override

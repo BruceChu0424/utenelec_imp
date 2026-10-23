@@ -23,6 +23,8 @@ import 'interceptors/step_up_interceptor.dart';
 import 'interceptors/remote_mfa_interceptor.dart';
 import 'interceptors/write_deadline_interceptor.dart';
 import 'network_policy.dart';
+import 'responsive_json_decoder.dart';
+import 'responsive_json_transformer.dart';
 
 class ApiClient {
   ApiClient(this._dio);
@@ -349,6 +351,59 @@ class ApiClient {
     }
   }
 
+  /// Client packages stay in a stream instead of retaining a desktop bundle in
+  /// memory. Only API-relative paths are accepted; credentials never follow an
+  /// update manifest to a different origin.
+  Future<Stream<Uint8List>> getPackageStream(
+    String path, {
+    required CancelToken cancelToken,
+  }) async {
+    if (!RegExp(
+      r'^/client-updates/[a-fA-F0-9-]{36}/download$',
+    ).hasMatch(path)) {
+      throw const FormatException('Invalid client package path');
+    }
+    try {
+      final response = await _dio.get<ResponseBody>(
+        path,
+        cancelToken: cancelToken,
+        options: Options(
+          responseType: ResponseType.stream,
+          followRedirects: false,
+          receiveTimeout: const Duration(minutes: 15),
+          extra: const {safeRequestRetryDisabledKey: true},
+        ),
+      );
+      if (response.data == null) throw const FormatException('Empty package');
+      return response.data!.stream;
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  }
+
+  Future<void> uploadClientPackage(
+    String path,
+    Uint8List bytes, {
+    required void Function(int, int) onProgress,
+  }) async {
+    try {
+      await _dio.put<dynamic>(
+        path,
+        data: bytes,
+        onSendProgress: onProgress,
+        options: Options(
+          contentType: 'application/octet-stream',
+          headers: {'Content-Length': bytes.length},
+          sendTimeout: const Duration(minutes: 30),
+          receiveTimeout: const Duration(minutes: 5),
+          extra: const {safeRequestRetryDisabledKey: true},
+        ),
+      );
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  }
+
   Future<Map<String, dynamic>> patch(String path, {Object? body}) async {
     try {
       final r = await _dio.patch<dynamic>(path, data: body);
@@ -415,7 +470,7 @@ class ApiClient {
     return ApiExceptionFactory.fromDioStatusCode(e.response?.statusCode, body);
   }
 
-  /// 当前实际传输目标，包含本地 / 云端连接模式选择。
+  /// Current transport target, including runtime server selection.
   String get baseUrl => _dio.options.baseUrl;
 
   ApiException _convert(DioException e) {
@@ -464,19 +519,20 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   final storage = ref.watch(secureStorageProvider);
   final deviceAuditStore = ref.watch(deviceAuditStoreProvider);
   final baseUrl = ref.watch(apiBaseUrlProvider);
+  final jsonDecoder = ResponsiveJsonDecoder();
+  ref.onDispose(jsonDecoder.dispose);
   Dio auditedDioFactory() {
     final client = Dio(buildApiBaseOptions(baseUrl));
+    client.transformer = ResponsiveJsonTransformer(jsonDecoder);
     client.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
     return client;
   }
 
   final dio = Dio(buildApiBaseOptions(baseUrl));
-  // JSON 解码放后台 isolate（BackgroundTransformer，2026-10-19 用户口径「数据
-  // 加载不能影响前端」）：默认 SyncTransformer 在 UI isolate json.decode，大响应
-  // （货品页每次点分类要拉 2×500 条禁用/不明货品、大 facets）一次冻住几十到
-  // 上百毫秒——整窗掉帧、选中滑入动画被吃掉。后台解码后 UI 线程只拿现成 Map；
-  // Web 平台自动回退同步解码（compute 不可用），小响应开销可忽略。
-  dio.transformer = BackgroundTransformer();
+  // Large responses use a native isolate or a same-origin Web Worker. Web's
+  // ordinary compute/BackgroundTransformer does not create a worker; model
+  // conversion after JSON decoding must also keep its own bounded UI budget.
+  dio.transformer = ResponsiveJsonTransformer(jsonDecoder);
   // 最先挂：后面的重试/刷新都复用同一份 RequestOptions，截止时间要先矫正好。
   dio.interceptors.add(const WriteDeadlineInterceptor());
   dio.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));

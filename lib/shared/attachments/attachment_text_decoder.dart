@@ -12,6 +12,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../../core/performance/ui_work_budget.dart';
 import 'gb18030_table.dart';
 
 /// 识别出的文本编码；`label` 直接显示在预览弹窗的编码角标上。
@@ -88,29 +89,137 @@ bool isStructurallyGb18030(Uint8List bytes) {
   var index = 0;
   var multiByte = false;
   while (index < bytes.length) {
-    final lead = bytes[index];
-    if (lead <= 0x7F) {
-      index++;
-      continue;
-    }
-    if (lead == 0x80 || lead == 0xFF || index + 1 >= bytes.length) return false;
-    final second = bytes[index + 1];
-    if (second >= 0x30 && second <= 0x39) {
-      if (index + 3 >= bytes.length) return false;
-      final third = bytes[index + 2];
-      final fourth = bytes[index + 3];
-      if (third < 0x81 || third > 0xFE || fourth < 0x30 || fourth > 0x39) {
-        return false;
-      }
-      index += 4;
-    } else if (second >= 0x40 && second <= 0xFE && second != 0x7F) {
-      index += 2;
-    } else {
-      return false;
-    }
-    multiByte = true;
+    final length = _gb18030SequenceLength(bytes, index);
+    if (length == 0) return false;
+    multiByte = multiByte || length > 1;
+    index += length;
   }
   return multiByte;
+}
+
+int _gb18030SequenceLength(Uint8List bytes, int index) {
+  final lead = bytes[index];
+  if (lead <= 0x7F) return 1;
+  if (lead == 0x80 || lead == 0xFF || index + 1 >= bytes.length) return 0;
+  final second = bytes[index + 1];
+  if (second >= 0x30 && second <= 0x39) {
+    if (index + 3 >= bytes.length) return 0;
+    final third = bytes[index + 2];
+    final fourth = bytes[index + 3];
+    return third >= 0x81 && third <= 0xFE && fourth >= 0x30 && fourth <= 0x39
+        ? 4
+        : 0;
+  }
+  return second >= 0x40 && second <= 0xFE && second != 0x7F ? 2 : 0;
+}
+
+/// The same encoding decision as [decodeAttachmentText], with real event-loop
+/// turns on Web. Chunk boundaries never split UTF-8/GB18030 characters, and
+/// UTF-16 code units retain their original order (including surrogate pairs).
+Future<DecodedAttachmentText> decodeAttachmentTextInUiSlices(
+  Uint8List bytes, {
+  UiWorkBudget? budget,
+}) async {
+  final work = budget ?? UiWorkBudget();
+  work.ensureCurrent();
+  if (bytes.isEmpty) {
+    return const DecodedAttachmentText('', AttachmentTextEncoding.utf8);
+  }
+  if (_startsWith(bytes, const [0xEF, 0xBB, 0xBF])) {
+    return DecodedAttachmentText(
+      await _utf8InSlices(
+        Uint8List.sublistView(bytes, 3),
+        work,
+        allowMalformed: true,
+      ),
+      AttachmentTextEncoding.utf8Bom,
+    );
+  }
+  final little = _startsWith(bytes, const [0xFF, 0xFE]);
+  if (little || _startsWith(bytes, const [0xFE, 0xFF])) {
+    final buffer = StringBuffer();
+    for (var start = 2; start < bytes.length; start += _textChunkBytes) {
+      final end = (start + _textChunkBytes).clamp(0, bytes.length);
+      buffer.write(
+        _decodeUtf16(
+          Uint8List.sublistView(bytes, start, end),
+          0,
+          littleEndian: little,
+        ),
+      );
+      await work.checkpoint(end - start);
+    }
+    return DecodedAttachmentText(
+      buffer.toString(),
+      little ? AttachmentTextEncoding.utf16le : AttachmentTextEncoding.utf16be,
+    );
+  }
+  try {
+    return DecodedAttachmentText(
+      await _utf8InSlices(bytes, work, allowMalformed: false),
+      AttachmentTextEncoding.utf8,
+    );
+  } on FormatException {
+    // Strict UTF-8 rejection must happen before choosing the legacy encoding.
+  }
+  final boundaries = <int>[0];
+  var index = 0;
+  var multiByte = false;
+  var valid = true;
+  while (index < bytes.length) {
+    final length = _gb18030SequenceLength(bytes, index);
+    if (length == 0) {
+      valid = false;
+      break;
+    }
+    multiByte = multiByte || length > 1;
+    index += length;
+    if (index - boundaries.last >= _textChunkBytes) {
+      boundaries.add(index);
+      await work.checkpoint(_textChunkBytes);
+    }
+  }
+  if (valid && multiByte) {
+    if (boundaries.last != bytes.length) boundaries.add(bytes.length);
+    final buffer = StringBuffer();
+    for (var part = 1; part < boundaries.length; part++) {
+      buffer.write(
+        decodeGb18030(
+          Uint8List.sublistView(bytes, boundaries[part - 1], boundaries[part]),
+        ),
+      );
+      await work.checkpoint(boundaries[part] - boundaries[part - 1]);
+    }
+    return DecodedAttachmentText(
+      buffer.toString(),
+      AttachmentTextEncoding.gb18030,
+    );
+  }
+  return DecodedAttachmentText(
+    await _utf8InSlices(bytes, work, allowMalformed: true),
+    AttachmentTextEncoding.unknown,
+  );
+}
+
+const _textChunkBytes = 16384;
+
+Future<String> _utf8InSlices(
+  Uint8List bytes,
+  UiWorkBudget work, {
+  required bool allowMalformed,
+}) async {
+  final buffer = StringBuffer();
+  final sink = Utf8Decoder(
+    allowMalformed: allowMalformed,
+  ).startChunkedConversion(StringConversionSink.fromStringSink(buffer));
+  for (var start = 0; start < bytes.length; start += _textChunkBytes) {
+    final end = (start + _textChunkBytes).clamp(0, bytes.length);
+    sink.add(Uint8List.sublistView(bytes, start, end));
+    await work.checkpoint(end - start);
+  }
+  sink.close();
+  work.ensureCurrent();
+  return buffer.toString();
 }
 
 /// GB18030 解码：单字节 ASCII、双字节查表、四字节（BMP 段表 + 增补区线性映射）。

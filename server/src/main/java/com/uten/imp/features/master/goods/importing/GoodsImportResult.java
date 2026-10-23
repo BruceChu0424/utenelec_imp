@@ -19,4 +19,16 @@ public record GoodsImportResult(
         int createdCategories,
         int createdColors,
         int createdUnits,
-        List<String> createdCategoryPaths) {}
+        List<String> createdCategoryPaths,
+        int createdCount,
+        int updatedCount,
+        int filledCount,
+        int ignoredCount,
+        int unchangedCount,
+        int restoredCount) {
+    public GoodsImportResult(UUID batchId, int importedCount, int createdCategories,
+                             int createdColors, int createdUnits, List<String> createdCategoryPaths) {
+        this(batchId, importedCount, createdCategories, createdColors, createdUnits,
+                createdCategoryPaths, importedCount, 0, 0, 0, 0, 0);
+    }
+}

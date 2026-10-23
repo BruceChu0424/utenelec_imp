@@ -20,6 +20,7 @@
 // 进页面带上次口径；服务端同步晚到时仅在用户未动手（_dirty=false）才应用；关键字不持久化。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -97,6 +98,19 @@ class _WarehouseReportTablePageState
   @override
   void initState() {
     super.initState();
+    // Keep the monotonic reader epoch observed for this page's whole lifetime.
+    ref.listenManual(exportContextEpochProvider, (previous, next) {
+      if (!mounted || previous == next) return;
+      setState(() {
+        ++_loadGeneration;
+        _data = null;
+        _loading = false;
+        _page = 1;
+        _keyword = '';
+        _filters.clear();
+        _departmentId = null;
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _applyPrefs(ref.read(_prefsProvider));
       _load();
@@ -147,6 +161,11 @@ class _WarehouseReportTablePageState
   Future<void> _load() async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
+    final readEpoch = ref.read(exportContextEpochProvider);
+    bool current() =>
+        mounted &&
+        generation == _loadGeneration &&
+        readEpoch == ref.read(exportContextEpochProvider);
     final requestedPage = _page;
     setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
@@ -166,13 +185,19 @@ class _WarehouseReportTablePageState
         '/stock/reports/${_docType.code}/${_kind.endpoint}',
         query: query,
       );
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || !current()) return;
+      final decodedReport = await parseReportResponseResponsive(
+        json,
+        requestedPage,
+        isCurrent: current,
+      );
+      if (!mounted || !current()) return;
       setState(() {
-        _data = parseReportResponse(json, requestedPage);
+        _data = decodedReport;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || !current()) return;
       context.appError('加载报表失败');
       setState(() => _loading = false);
     }
@@ -246,7 +271,7 @@ class _WarehouseReportTablePageState
       '/stock/reports/${_docType.code}/${_kind.endpoint}',
       query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
     );
-    final data = parseReportResponse(json, 1);
+    final data = await parseReportResponseResponsive(json, 1);
     final display = ref.read(warehouseWeightUnitsPrefsProvider).display;
     return UtenPrintTable(
       columnKeys: [for (final c in data.columns) c.key],

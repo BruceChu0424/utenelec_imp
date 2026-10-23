@@ -1,0 +1,12 @@
+[Unit]
+Description=Hourly Uten IMP encrypted paired off-host backup
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=30
+Persistent=yes
+Unit=uten-imp-dr-backup.service
+
+[Install]
+WantedBy=timers.target
+

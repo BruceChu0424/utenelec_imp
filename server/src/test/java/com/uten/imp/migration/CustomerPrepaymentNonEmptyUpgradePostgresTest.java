@@ -20,7 +20,7 @@ class CustomerPrepaymentNonEmptyUpgradePostgresTest {
     private static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer("postgres:16.15-alpine")
                     .withDatabaseName("uten_customer_prepayment_upgrade")
-                    .withUsername("uten").withPassword("uten");
+                    .withUsername("fixture_admin").withPassword("uten");
 
     @BeforeAll static void start(){POSTGRES.start();}
     @AfterAll static void stop(){POSTGRES.stop();}

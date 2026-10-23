@@ -24,7 +24,7 @@ class AccountBalanceNativeCurrencyUpgradePostgresTest {
             throws Exception {
         try (PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("uten_imp")
-                .withUsername("uten")
+                .withUsername("fixture_admin")
                 .withPassword("uten")) {
             postgres.start();
             com.uten.imp.testsupport.TestFlyway.configure()

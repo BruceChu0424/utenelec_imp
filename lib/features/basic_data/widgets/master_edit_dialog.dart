@@ -9,7 +9,9 @@
 // 「基本信息」内联编辑 Tab 用（嵌入、由外层触发保存）。
 //
 // 容器自适应（参照 showMasterEditDialog）：compact 底部抽屉 / medium+ 居中面板。
-// 字段双列分组（compact 退单列），底部按钮居中。
+// 字段按容器宽度和文字缩放分组自适应排为 1–4 列，底部按钮居中。
+import 'dart:async';
+
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,6 +29,9 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
+import '../repositories/master_identifier_repository.dart';
+import 'master_record_history_panel.dart';
+import 'master_edit_owner.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -103,6 +108,8 @@ class MasterFieldDef {
     this.onAddNew,
     this.customBuilder,
     this.legacyDraftKeys = const [],
+    this.identifierDomain,
+    this.identifierId,
   });
 
   /// 与后端 SaveRequest 字段名对齐（如 name / colorLegacyId）。
@@ -110,6 +117,10 @@ class MasterFieldDef {
 
   /// 仅用于恢复旧版草稿；提交始终使用 [key]。
   final List<String> legacyDraftKeys;
+
+  /// Mutable business code; checks are read-only and never allocate a number.
+  final String? identifierDomain;
+  final String? identifierId;
 
   /// 中文标签。
   final String label;
@@ -188,6 +199,7 @@ class MasterEditFormController extends ChangeNotifier {
           // 字段错误（如后端编号查重）随用户开始编辑自动清除。
           controller.addListener(() {
             if (fieldErrors.remove(f.key) != null) notifyListeners();
+            if (f.key == 'code') _scheduleIdentifierCheck();
           });
           controllers[f.key] = controller;
       }
@@ -220,6 +232,70 @@ class MasterEditFormController extends ChangeNotifier {
   String? errorFieldKey;
 
   int recoveryRevision = 0;
+
+  Future<String?> Function(String)? _identifierChecker;
+  Timer? _identifierDebounce;
+  int _identifierRevision = 0;
+  bool _disposed = false;
+  bool identifierChecking = false;
+  String? identifierError;
+  bool identifierVerified = false;
+
+  void configureIdentifierChecker(Future<String?> Function(String) checker) {
+    if (_identifierChecker != null) return;
+    _identifierChecker = checker;
+    _scheduleIdentifierCheck();
+  }
+
+  void _scheduleIdentifierCheck() {
+    if (_identifierChecker == null || _disposed) return;
+    _identifierDebounce?.cancel();
+    final revision = ++_identifierRevision;
+    final code = controllers['code']?.text.trim() ?? '';
+    if (errorFieldKey == 'code') {
+      error = null;
+      errorFieldKey = null;
+    }
+    identifierError = null;
+    identifierVerified = false;
+    // Existing codes can include legacy conflicts. Keeping the original is
+    // allowed by the database; a blank new code is allocated only on save.
+    if (code.isEmpty ||
+        code.toUpperCase() ==
+            (initialValues['code'] ?? '').trim().toUpperCase()) {
+      identifierChecking = false;
+      notifyListeners();
+      return;
+    }
+    identifierChecking = true;
+    notifyListeners();
+    _identifierDebounce = Timer(
+      const Duration(milliseconds: 300),
+      () => _checkIdentifier(code, revision),
+    );
+  }
+
+  Future<void> _checkIdentifier(String code, int revision) async {
+    String? message;
+    try {
+      message = await _identifierChecker!(code);
+    } on ApiException catch (failure) {
+      message = failure.message;
+    } catch (_) {
+      message = '编号检查失败，请重试';
+    }
+    if (_disposed || revision != _identifierRevision) return;
+    identifierChecking = false;
+    identifierError = message;
+    identifierVerified = message == null;
+    if (errorFieldKey == 'code') {
+      error = message;
+      if (message == null) errorFieldKey = null;
+    }
+    notifyListeners();
+  }
+
+  void retryIdentifierCheck() => _scheduleIdentifierCheck();
 
   Map<String, dynamic> exportDraft() => {
     'text': draftTextValues(controllers),
@@ -266,11 +342,13 @@ class MasterEditFormController extends ChangeNotifier {
 
   void setSelect(String key, String? value) {
     selectValues[key] = value;
+    if (key == 'categoryId') _scheduleIdentifierCheck();
     notifyListeners();
   }
 
   void setCustom(String key, dynamic value) {
     customValues[key] = value;
+    if (key == 'categoryId') _scheduleIdentifierCheck();
     notifyListeners();
   }
 
@@ -283,6 +361,11 @@ class MasterEditFormController extends ChangeNotifier {
   /// 校验全部字段并构造提交 body（含 [fixedValues]）；
   /// 校验失败返 null 并置 [error] / [errorFieldKey]。
   Map<String, dynamic>? buildBody() {
+    final codeField = fieldOf('code');
+    if (codeField != null && !codeField.readOnly) {
+      if (identifierChecking) return _fail(codeField, '正在检查编号，请稍后保存');
+      if (identifierError != null) return _fail(codeField, identifierError!);
+    }
     final body = Map<String, dynamic>.from(fixedValues);
     for (final f in fields) {
       if (f.readOnly) continue; // 只读字段（编号）不上送：新建服务端生成、编辑保留
@@ -357,6 +440,9 @@ class MasterEditFormController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _identifierRevision++;
+    _identifierDebounce?.cancel();
     for (final c in controllers.values) {
       c.dispose();
     }
@@ -377,6 +463,7 @@ class MasterEditForm extends StatefulWidget {
     this.fixedValues = const <String, dynamic>{},
     this.readOnlyKeys,
     this.controller,
+    this.contentPadding = const EdgeInsets.all(UtenSpacing.s16),
   });
 
   /// 本表单渲染的字段；给了 [controller] 时须是它 fields 的子集。
@@ -393,6 +480,7 @@ class MasterEditForm extends StatefulWidget {
 
   /// 外部共享的值容器（页面持有、跨 Tab 存活）；不传则表单自建并随 State 释放。
   final MasterEditFormController? controller;
+  final EdgeInsetsGeometry contentPadding;
 
   @override
   State<MasterEditForm> createState() => MasterEditFormState();
@@ -419,7 +507,47 @@ class MasterEditFormState extends State<MasterEditForm> {
     if (oldWidget.controller != widget.controller) {
       _detach();
       _attach();
+      _configureIdentifierChecker();
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _configureIdentifierChecker();
+  }
+
+  void _configureIdentifierChecker() {
+    final field = _controller.fieldOf('code');
+    final endpoint = switch (field?.identifierDomain) {
+      'GOODS' => 'goods',
+      'CLIENT' => 'clients',
+      'SUPPLIER' => 'suppliers',
+      'MOULD' => 'moulds',
+      'COLOR' => 'colors',
+      'UNIT' => 'units',
+      'ACCOUNT' => 'accounts',
+      'CURRENCY' => 'currencies',
+      'WAREHOUSE' => 'warehouses',
+      _ => null,
+    };
+    if (endpoint == null || field!.readOnly) return;
+    final identifiers = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(masterIdentifierRepositoryProvider);
+    _controller.configureIdentifierChecker((code) async {
+      final category =
+          _controller.customValues['categoryId'] ??
+          _controller.selectValues['categoryId'] ??
+          _controller.fixedValues['categoryId'];
+      return identifiers.check(
+        endpoint,
+        code,
+        entityId: field.identifierId,
+        categoryId: category is String ? category : null,
+      );
+    });
   }
 
   void _attach() {
@@ -481,7 +609,7 @@ class MasterEditFormState extends State<MasterEditForm> {
         (errorKey == null || widget.fields.any((f) => f.key == errorKey));
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(UtenSpacing.s16),
+      padding: widget.contentPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -536,7 +664,9 @@ class MasterEditFormState extends State<MasterEditForm> {
       listenable: controller,
       builder: (context, _) {
         final requiredEmpty = f.required && controller.text.trim().isEmpty;
-        final fieldError = _controller.fieldErrors[f.key];
+        final fieldError =
+            _controller.fieldErrors[f.key] ??
+            (f.key == 'code' ? _controller.identifierError : null);
         final showRed = requiredEmpty || fieldError != null;
         return TextField(
           controller: controller,
@@ -554,6 +684,29 @@ class MasterEditFormState extends State<MasterEditForm> {
                 ),
                 hintText: f.hint,
                 error: utenFieldError(fieldError),
+                suffixIcon: f.key != 'code'
+                    ? null
+                    : _controller.identifierChecking
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : _controller.identifierError != null
+                    ? IconButton(
+                        tooltip: '重新检查编号',
+                        onPressed: _controller.retryIdentifierCheck,
+                        icon: const Icon(Icons.refresh),
+                      )
+                    : _controller.identifierVerified
+                    ? const Tooltip(
+                        message: '编号可用',
+                        child: Icon(Icons.check_circle_outline),
+                      )
+                    : null,
               ),
               theme,
               requiredEmpty: showRed,
@@ -645,7 +798,13 @@ Future<void> showMasterEditDialog({
   Map<String, dynamic> fixedValues = const <String, dynamic>{},
   Set<String>? readOnlyKeys,
   FormDraftSpec? draftSpec,
+  String? historyEntityType,
+  String? historyRecordId,
+  VoidCallback? onHistoryChanged,
+  MasterEditOwner? submissionOwner,
+  VoidCallback? onAccepted,
 }) {
+  if (submissionOwner?.isCurrent == false) return Future<void>.value();
   final formKey = GlobalKey<MasterEditFormState>();
   final body = _MasterEditDialog(
     title: title,
@@ -663,6 +822,11 @@ Future<void> showMasterEditDialog({
     fixedValues: fixedValues,
     readOnlyKeys: readOnlyKeys,
     onSubmit: onSubmit,
+    historyEntityType: historyEntityType,
+    historyRecordId: historyRecordId,
+    onHistoryChanged: onHistoryChanged,
+    submissionOwner: submissionOwner,
+    onAccepted: onAccepted,
   );
   if (context.breakpoint.isCompact) {
     return showModalBottomSheet<void>(
@@ -676,27 +840,42 @@ Future<void> showMasterEditDialog({
           top: Radius.circular(UtenRadius.lg),
         ),
       ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-        child: body,
-      ),
+      builder: (ctx) =>
+          submissionOwner?.ownDialog(
+            ctx,
+            Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.viewInsetsOf(ctx).bottom,
+              ),
+              child: body,
+            ),
+          ) ??
+          Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(ctx).bottom,
+            ),
+            child: body,
+          ),
     );
   }
   return showDialog<void>(
     context: context,
     barrierDismissible: draftSpec == null,
-    builder: (ctx) => UtenDialogFrame(
-      shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
-      child: ConstrainedBox(
-        // 2026-09-14：弹窗宽度随屏幕放缩（原固定 560 太小，一行固定两列）；
-        // 大屏最宽 900，表单网格列数在 _fieldGrid 里按实际宽度自适应。
-        constraints: BoxConstraints(
-          maxWidth: (MediaQuery.sizeOf(ctx).width * 0.92).clamp(560.0, 900.0),
-          maxHeight: MediaQuery.sizeOf(ctx).height * 0.88,
+    builder: (ctx) {
+      final frame = UtenDialogFrame(
+        shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
+        child: ConstrainedBox(
+          // 2026-09-14：弹窗宽度随屏幕放缩（原固定 560 太小，一行固定两列）；
+          // 大屏最宽 900，表单网格列数在 _fieldGrid 里按实际宽度自适应。
+          constraints: BoxConstraints(
+            maxWidth: (MediaQuery.sizeOf(ctx).width * 0.92).clamp(560.0, 900.0),
+            maxHeight: MediaQuery.sizeOf(ctx).height * 0.88,
+          ),
+          child: body,
         ),
-        child: body,
-      ),
-    ),
+      );
+      return submissionOwner?.ownDialog(ctx, frame) ?? frame;
+    },
   );
 }
 
@@ -713,6 +892,11 @@ class _MasterEditDialog extends ConsumerStatefulWidget {
     required this.fixedValues,
     required this.readOnlyKeys,
     required this.onSubmit,
+    this.historyEntityType,
+    this.historyRecordId,
+    this.onHistoryChanged,
+    this.submissionOwner,
+    this.onAccepted,
   });
 
   final String title;
@@ -725,6 +909,11 @@ class _MasterEditDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic> fixedValues;
   final Set<String>? readOnlyKeys;
   final MasterSubmit onSubmit;
+  final String? historyEntityType;
+  final String? historyRecordId;
+  final VoidCallback? onHistoryChanged;
+  final MasterEditOwner? submissionOwner;
+  final VoidCallback? onAccepted;
 
   @override
   ConsumerState<_MasterEditDialog> createState() => _MasterEditDialogState();
@@ -735,6 +924,7 @@ class _MasterEditDialogState extends ConsumerState<_MasterEditDialog>
   late MasterEditFormController _controller;
   bool _saving = false;
   bool _serverCreated = false;
+  bool get _submissionCurrent => widget.submissionOwner?.isCurrent != false;
 
   @override
   bool get formDraftEnabled => widget.draftSpec != null;
@@ -788,15 +978,31 @@ class _MasterEditDialogState extends ConsumerState<_MasterEditDialog>
   }
 
   Future<void> _close() async {
-    if (_saving || !await confirmFormDraftExit() || !mounted) return;
-    Navigator.of(context).pop();
+    if (!mounted ||
+        !_submissionCurrent ||
+        _saving ||
+        !await confirmFormDraftExit() ||
+        !mounted ||
+        !_submissionCurrent) {
+      return;
+    }
+    _closeOwnRoute();
+  }
+
+  void _closeOwnRoute() {
+    final owner = widget.submissionOwner;
+    if (owner == null) {
+      Navigator.of(context).pop();
+    } else {
+      owner.closeRoute(ModalRoute.of(context));
+    }
   }
 
   Future<void> _save() async {
-    if (_saving) return;
+    if (!mounted || !_submissionCurrent || _saving) return;
     if (_serverCreated) {
       await completeFormDraft();
-      if (mounted) Navigator.of(context).pop();
+      if (mounted && _submissionCurrent) _closeOwnRoute();
       return;
     }
     final body = widget.formKey.currentState?.buildBody();
@@ -805,14 +1011,28 @@ class _MasterEditDialogState extends ConsumerState<_MasterEditDialog>
     setState(() => _saving = true);
     try {
       await saveFormDraftNow();
-      ok = await runFormDraftSubmission(() => widget.onSubmit(body));
-      if (ok && mounted) {
+      if (!mounted || !_submissionCurrent) return;
+      Future<bool> submit() =>
+          runFormDraftSubmission(() => widget.onSubmit(body));
+      ok = widget.submissionOwner == null
+          ? await submit()
+          : await widget.submissionOwner!.run(submit);
+      if (ok && mounted && _submissionCurrent) {
         setState(() => _serverCreated = true);
         await saveFormDraftNow();
         await completeFormDraft();
+        if (mounted && _submissionCurrent) {
+          if (widget.submissionOwner != null) {
+            final accepted = widget.onAccepted;
+            _closeOwnRoute();
+            accepted?.call();
+            return;
+          }
+          widget.onAccepted?.call();
+        }
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_submissionCurrent) return;
       // 编号查重 409：编号字段描红 + 显文案，保持弹窗不关让用户改。
       if (e is ApiException && e.message.contains('编号已存在')) {
         widget.formKey.currentState?.setFieldError('code', e.message);
@@ -823,8 +1043,8 @@ class _MasterEditDialogState extends ConsumerState<_MasterEditDialog>
     } finally {
       if (mounted) setState(() => _saving = false);
     }
-    if (!mounted) return;
-    if (ok) Navigator.of(context).pop();
+    if (!mounted || !_submissionCurrent) return;
+    if (ok) _closeOwnRoute();
   }
 
   @override
@@ -853,6 +1073,23 @@ class _MasterEditDialogState extends ConsumerState<_MasterEditDialog>
                     ),
                   ),
                 ),
+                if (widget.historyEntityType != null &&
+                    widget.historyRecordId != null)
+                  MasterRecordHistoryAction(
+                    entityType: widget.historyEntityType!,
+                    recordId: widget.historyRecordId,
+                    enabled: !_saving,
+                    onChanged: () {
+                      if (!_submissionCurrent) return;
+                      // A restored server version invalidates this editor's
+                      // opening snapshot. Keep the history panel above it open.
+                      final route = ModalRoute.of(context);
+                      if (route != null && route.isActive) {
+                        route.navigator?.removeRoute(route);
+                      }
+                      widget.onHistoryChanged?.call();
+                    },
+                  ),
                 IconButton(
                   icon: const Icon(Icons.close_rounded),
                   onPressed: _saving ? null : _close,

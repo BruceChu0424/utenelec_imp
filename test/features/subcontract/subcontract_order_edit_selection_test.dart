@@ -17,6 +17,72 @@ import 'package:uten_imp/features/subcontract/widgets/subcontract_grid_columns.d
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
+  testWidgets(
+    '1000-row subcontract order save reveals first invalid selected row without writing',
+    (tester) async {
+      final api = await _pumpPrefill(tester, const [
+        SubcontractDecompositionLine(
+          sourceDocumentId: 'app-1',
+          sourceDocumentNo: 'WO-SQ-1',
+          sourceItemId: 'it-1',
+          goodsId: 'g-1',
+          requestedQty: 1,
+          orderedQty: 0,
+          pendingQty: 0,
+          remainingQty: 1,
+          kitQty: 1,
+          orderableQty: 1,
+          unitId: 'u-1',
+        ),
+      ]);
+      final grid = tester
+          .widget<UtenEditableGrid<SubcontractGridRow>>(
+            find.byType(UtenEditableGrid<SubcontractGridRow>),
+          )
+          .controller;
+      final template = grid.rows.first;
+      final rows = List.generate(1000, (_) {
+        final row = template.clone()
+          ..supplierId = 's1'
+          ..settlementMethodId = 'settle-1'
+          ..currencyId = 'cny';
+        row.exchangeRate.text = '1';
+        row.taxRate.text = '0';
+        row.qty.text = '1';
+        row.price.text = '1';
+        return row;
+      });
+      rows[950].qty.text = '-1';
+      rows.last.remark.text = '末行保持原输入';
+      grid.replaceAll(rows);
+      grid.setSelected(rows, true);
+      await tester.pumpAndSettle();
+      final invalid = find.byWidgetPredicate(
+        (w) => w is TextField && identical(w.controller, rows[950].qty),
+      );
+      expect(invalid, findsNothing);
+      await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+      await tester.pumpAndSettle();
+      expect(invalid.hitTestable(), findsOneWidget);
+      expect(
+        tester
+            .widget<EditableText>(
+              find.descendant(of: invalid, matching: find.byType(EditableText)),
+            )
+            .focusNode
+            .hasFocus,
+        isTrue,
+      );
+      expect(grid.rows.length, 1000);
+      expect(grid.selectedRows.length, 1000);
+      expect(rows[950].qty.text, '-1');
+      expect(rows.last.remark.text, '末行保持原输入');
+      expect(grid.mountedRowCount, lessThan(100));
+      expect(api.writes, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('带单进入默认全选；取消全部勾选后保存置灰并说明原因；部分勾选只校验勾选行', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1400, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -201,7 +267,7 @@ void main() {
   });
 }
 
-Future<void> _pumpPrefill(
+Future<_SelectionApi> _pumpPrefill(
   WidgetTester tester,
   List<SubcontractDecompositionLine> lines,
 ) async {
@@ -239,6 +305,7 @@ Future<void> _pumpPrefill(
     ),
   );
   await tester.pumpAndSettle();
+  return api;
 }
 
 class _EmptySessionNotifier extends SessionNotifier {
@@ -248,6 +315,18 @@ class _EmptySessionNotifier extends SessionNotifier {
 
 class _SelectionApi extends ApiClient {
   _SelectionApi() : super(Dio());
+  final writes = <Object?>[];
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
+    writes.add(body);
+    return {};
+  }
 
   @override
   Future<Map<String, dynamic>> get(

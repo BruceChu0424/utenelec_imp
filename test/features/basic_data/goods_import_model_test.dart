@@ -31,4 +31,50 @@ void main() {
     expect(report.planId, isNull);
     expect(report.hasErrors, isTrue);
   });
+
+  test(
+    'review preserves numeric text, fills and stable selection identities',
+    () {
+      final report = GoodsImportReport.fromJson({
+        'reviewRows': [
+          {
+            'rowKey': 'goods:5',
+            'rowNum': 5,
+            'code': 'A001',
+            'name': '配件',
+            'categoryPath': '成品-配件',
+            'matchType': 'CODE',
+            'changes': [
+              {
+                'field': 'cNumber',
+                'label': '客户型号',
+                'oldValue': '00111',
+                'newValue': '00222',
+                'kind': 'CONFLICT',
+              },
+              {
+                'field': 'paper',
+                'label': '备注',
+                'oldValue': null,
+                'newValue': '新增备注',
+                'kind': 'FILL',
+              },
+            ],
+          },
+        ],
+        'addedRows': 1,
+        'fillRows': 1,
+        'conflictRows': 1,
+        'unchangedRows': 2,
+      });
+      final row = report.reviewRows.single;
+      expect(row.rowKey, 'goods:5');
+      expect(row.hasConflicts, isTrue);
+      expect(row.changes.first.oldValue, '00111');
+      expect(row.changes.first.newValue, '00222');
+      expect(row.changes.last.isConflict, isFalse);
+      expect(row.changes.last.oldValue, isNull);
+      expect(report.unchangedRows, 2);
+    },
+  );
 }

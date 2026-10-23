@@ -54,6 +54,18 @@ public class GoodsSaveRequest {
 
     public boolean hasCNumber() { return cNumberPresent; }
 
+    private String clientGoodsName;
+    @JsonIgnore
+    private boolean clientGoodsNamePresent;
+
+    @JsonSetter("clientGoodsName")
+    public void setClientGoodsName(String value) {
+        clientGoodsName = value;
+        clientGoodsNamePresent = true;
+    }
+
+    public boolean hasClientGoodsName() { return clientGoodsNamePresent; }
+
     private String spec;         // Standard 规格
     @Digits(integer = 14, fraction = 4)
     private BigDecimal price;    // Price（NUMERIC(18,4)）

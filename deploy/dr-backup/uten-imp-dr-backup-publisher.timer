@@ -1,0 +1,12 @@
+[Unit]
+Description=Fresh backup evidence for DR control every minute
+
+[Timer]
+OnCalendar=minutely
+RandomizedDelaySec=5
+Persistent=yes
+Unit=uten-imp-dr-backup-publisher.service
+
+[Install]
+WantedBy=timers.target
+

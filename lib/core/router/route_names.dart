@@ -79,6 +79,9 @@ abstract final class RouteName {
   // /basicinfo/goods = 货品资料（分类树 + 货品）
   // /basicinfo/mould = 模具资料（分类树 + 模具）
   static const String basicinfo = '/basicinfo';
+  static const String basicinfoHistory = '/basicinfo/history';
+  static const String basicinfoHistoryRevision =
+      '/basicinfo/history/:entityType/:id';
   static const String basicinfoGoods = '/basicinfo/goods';
   // 货品新增 / 详情整页（列表「添加货品」/ 双击行进；静态段 new 须在 :id 前注册）。
   static const String basicinfoGoodsNew = '/basicinfo/goods/new';

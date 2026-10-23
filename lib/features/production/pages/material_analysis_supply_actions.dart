@@ -186,8 +186,10 @@ abstract class _MaterialAnalysisSupplyActionsState
     } finally {
       // 与 _notifyRoute 同款兜底：success/conflict/error 各分支漏清任何一条，
       // 这份消息驱动的全屏遮罩就会一直盖住整页吃掉点击。
-      bucketActionBusyMessage.value = null;
-      if (mounted && _savingRoutes) {
+      if (mounted && _sessionScopeKey() == sessionScope) {
+        bucketActionBusyMessage.value = null;
+      }
+      if (mounted && _sessionScopeKey() == sessionScope && _savingRoutes) {
         setState(() {
           _savingRoutes = false;
           _clearBulkOperation();
@@ -861,7 +863,9 @@ abstract class _MaterialAnalysisSupplyActionsState
         setState(() => _bulkOperationCompleted = completed);
       }
       if (!mounted || !currentScope()) return null;
-      bucketActionBusyMessage.value = null;
+      if (mounted && _sessionScopeKey() == sessionScope) {
+        bucketActionBusyMessage.value = null;
+      }
       // 服务端**只有真的写了东西才会重建快照**（refreshLocked 换 version/
       // fingerprint）。版本与指纹都没动 = 这次提交一条下达都没产生：可能是别人
       // 刚下达过、在途已完全覆盖，也可能是同一份请求的幂等回放。原来这种情况
@@ -918,7 +922,9 @@ abstract class _MaterialAnalysisSupplyActionsState
         operation: '提交${route.label}需求',
       )) {
         if (!mounted || !currentScope()) return null;
-        bucketActionBusyMessage.value = null;
+        if (mounted && _sessionScopeKey() == sessionScope) {
+          bucketActionBusyMessage.value = null;
+        }
         setState(() {
           _notifyingRoute = null;
           _clearBulkOperation();
@@ -926,7 +932,9 @@ abstract class _MaterialAnalysisSupplyActionsState
         return null;
       }
       if (!mounted || !currentScope()) return null;
-      bucketActionBusyMessage.value = null;
+      if (mounted && _sessionScopeKey() == sessionScope) {
+        bucketActionBusyMessage.value = null;
+      }
       setState(() {
         _notifyingRoute = null;
         _clearBulkOperation();
@@ -946,8 +954,12 @@ abstract class _MaterialAnalysisSupplyActionsState
       // Positioned.fill 遮罩会一直盖在整页上吃掉所有点击——表现就是用户说的
       // 「按钮点了没反应」，而且刷新页面前好不了。这类状态必须由 finally 收口，
       // 不能指望每条分支都记得清。
-      bucketActionBusyMessage.value = null;
-      if (mounted && _notifyingRoute != null) {
+      if (mounted && _sessionScopeKey() == sessionScope) {
+        bucketActionBusyMessage.value = null;
+      }
+      if (mounted &&
+          _sessionScopeKey() == sessionScope &&
+          _notifyingRoute != null) {
         setState(() {
           _notifyingRoute = null;
           _clearBulkOperation();

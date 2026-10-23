@@ -35,6 +35,7 @@ import '../providers/goods_clipboard.dart';
 import '../repositories/goods_bom_repository.dart';
 import '../repositories/goods_bom_batch_repository.dart';
 import '../repositories/goods_repository.dart';
+import '../repositories/goods_location_repository.dart';
 import '../repositories/master_inline_edit_repository.dart';
 import '../repositories/goods_facet_repository.dart';
 import '../repositories/product_category_repository.dart';
@@ -45,6 +46,7 @@ import '../widgets/goods_import_dialog.dart';
 import '../widgets/goods_batch_paste_dialog.dart';
 import '../widgets/goods_related_search_control.dart';
 import '../widgets/goods_operation_history_panel.dart';
+import '../widgets/master_record_history_panel.dart';
 import '../widgets/goods_inline_edit.dart';
 import '../widgets/master_inline_edit.dart';
 import '../widgets/master_data_table_view.dart';
@@ -155,11 +157,17 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     required bool compact,
     required bool treeNotEmpty,
   }) {
+    final history = MasterRecordHistoryAction(
+      entityType: 'goods',
+      categoryId: shellSelectedId,
+      onChanged: _reloadAll,
+    );
     if (!canOpenGoodsOperationHistory(ref.watch(currentPermissionsProvider))) {
-      return const [];
+      return [history];
     }
     final l10n = basicDataL10n(context);
     return [
+      history,
       TextButton(
         onPressed: () async {
           if (!await confirmMasterInlineLeave(context) || !context.mounted) {
@@ -514,8 +522,18 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         if ((c.key != 'discount' || canViewDiscount) &&
             (c.key != 'price' || canViewPrice)) ...[
           c,
-          // ADR-134: English name right after the goods name.
-          if (c.key == 'name') nameEnColumn,
+          // Keep the goods and customer names together before other metadata.
+          if (c.key == 'clientGoodsName') nameEnColumn,
+          if (c.key == 'clientGoodsName')
+            MasterColumnDef<GoodsListItem>(
+              key: 'hasBom',
+              label: masterEditText(context, '组装信息', 'Assembly', '조립 정보'),
+              width: 120,
+              exportable: false,
+              value: (goods) => goods.hasBom
+                  ? masterEditText(context, '有组装信息', 'Has assembly', '조립 정보 있음')
+                  : masterEditText(context, '无组装信息', 'No assembly', '조립 정보 없음'),
+            ),
         ],
     ];
   }
@@ -552,6 +570,11 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       columns: _visibleGoodsColumns,
       idOf: (g) => g.id,
       statusOf: (g) => g.status,
+      rowColor: (g) => g.status == '禁用'
+          ? UtenColors.statusNeutral.withValues(alpha: 0.10)
+          : g.hasBom
+          ? UtenColors.success.withValues(alpha: 0.12)
+          : UtenColors.warning.withValues(alpha: 0.10),
       versionOf: (g) => g.version,
       labelOf: _goodsLabel,
       loadCategory: (id) =>
@@ -569,6 +592,19 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         excludeDisabled: categoryBrowsing && !q.hasKeyword,
         excludeStub: true, // 迁移兜底占位归「未分类」节点的集合行
       ),
+      locatePage: (q, id) => ref
+          .read(goodsLocationRepositoryProvider)
+          .locate(
+            id: id,
+            categoryId: q.categoryId,
+            keyword: q.keyword,
+            filters: q.filters,
+            sort: q.sort,
+            order: q.order,
+            size: q.size ?? 20,
+            excludeDisabled: categoryBrowsing && !q.hasKeyword,
+            includeRelated: includeRelated && q.hasKeyword,
+          ),
       loadFacets: (id) async {
         final f = await goods.facets(id);
         return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);
@@ -791,6 +827,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       'sourceType': d.sourceType,
       'model': d.model,
       'cNumber': d.cNumber,
+      'clientGoodsName': d.clientGoodsName,
       'spec': d.spec,
       'material': d.material,
       'series': d.series,
@@ -825,8 +862,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       'rentE': d.rentE,
       'makeRate': d.makeRate,
       'makeE': d.makeE,
-      // ADR-098 委外允许损耗记忆：整体覆盖式回传原样带回，粘贴不清空。
-      'subcontractAllowedLossPct': d.subcontractAllowedLossPct,
+      // 复制建立新资料，只有具成本权限才复制委外损耗记忆。
+      if (!copyMode || _perms.contains(Perm.goodsCostView))
+        'subcontractAllowedLossPct': d.subcontractAllowedLossPct,
       'cTotal': d.cTotal,
       'gTotal': d.gTotal,
     };
@@ -893,7 +931,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   /// 按剪贴板快照在当前分类下新建货品(编号自动生成，名称加「(n)」副本标记)，
   /// 随后把快照里的组件行原样粘到新货品上(全量复制)。每个新货品两次请求
   /// (新建货品 + 服务端原子粘组件)；失败的逐条说明原因，不吞掉。
-  /// 完成后跳到列表最后一页——列表按编号正序，新副本编号最大，落在最下面。
+  /// 完成后按服务端当前查询顺序定位本次创建的货品。
   Future<void> _pasteGoodsCopies(
     MasterEntityPaneController<GoodsListItem, GoodsDetail> pane, {
     required int copies,
@@ -966,7 +1004,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
                       id: '${seq++}',
                       label: '「$label」的组件',
                       ok: false,
-                      reason: e.message,
+                      reason: masterBatchFailureReason(e),
                     ),
                   );
                 }
@@ -977,7 +1015,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
                   id: '${seq++}',
                   label: label,
                   ok: false,
-                  reason: e.message,
+                  reason: masterBatchFailureReason(e),
                 ),
               );
             }
@@ -994,7 +1032,12 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     if (outcome == null || !mounted) return;
     await showMasterBatchOutcome(context, outcome, action: '粘贴', noun: '货品');
     if (mounted && createdIds.isNotEmpty) {
-      await _reloadToLastPage(pane);
+      final revealed = await pane.reveal(createdIds.last);
+      if (!mounted) return;
+      if (!revealed) {
+        await pane.reload();
+        if (mounted) context.appInfo('货品已创建，当前筛选未包含新货品；清除筛选后可查看');
+      }
       pane.selectIds(createdIds);
     }
   }
@@ -1425,6 +1468,13 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       ),
     ),
     MasterColumnDef(
+      key: 'clientGoodsName',
+      label: '客户货品名称',
+      width: 200,
+      columnSearchEnabled: false,
+      value: (g) => g.clientGoodsName,
+    ),
+    MasterColumnDef(
       key: 'code',
       label: '编号',
       width: 120,
@@ -1476,6 +1526,12 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       width: 120,
       value: (g) => g.model,
     ),
+    MasterColumnDef(
+      key: 'cNumber',
+      label: '客户型号',
+      width: 120,
+      value: (g) => g.cNumber,
+    ),
     MasterColumnDef(key: 'spec', label: '规格', width: 150, value: (g) => g.spec),
     MasterColumnDef(
       key: 'paper',
@@ -1484,12 +1540,6 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       // 老系统「备注」列即 B_Goods.Paper（新库 goods.paper）；require_remark 是
       // Require 列迁移残值（真实迁移恒空），仅作兜底回显。
       value: (g) => g.paper ?? g.requireRemark,
-    ),
-    MasterColumnDef(
-      key: 'cNumber',
-      label: '客户型号',
-      width: 120,
-      value: (g) => g.cNumber,
     ),
     MasterColumnDef(
       key: 'mouldCode',

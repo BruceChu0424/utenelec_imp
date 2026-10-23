@@ -25,6 +25,9 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/async/bounded_read_map.dart';
+import '../../../core/performance/ui_work_budget.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -205,6 +208,8 @@ class _WarehouseQualityBatchStockInPageState
 
   Future<void> _load({bool preserveInputs = false}) async {
     final version = ++_requestVersion;
+    bool current() =>
+        mounted && formDraftIdentityIsCurrent && version == _requestVersion;
     final snapshots = preserveInputs
         ? {
             for (final draft in _drafts ?? <WarehouseQualitySliceDraft>[])
@@ -217,50 +222,49 @@ class _WarehouseQualityBatchStockInPageState
     });
     try {
       final repo = ref.read(warehouseQualityResultRepositoryProvider);
-      // 并行拉取所选任务的放行切片（串行 await 时 N 张单要排 N 个往返）。
-      final fetched = await Future.wait(
-        _receipts.map((task) => repo.detail(task.receiptType, task.receiptId)),
-        eagerError: true,
+      final details = await boundedReadMap(
+        _receipts,
+        (task) => repo.detail(task.receiptType, task.receiptId),
+        isCurrent: current,
       );
-      final details = fetched;
-      if (!mounted ||
-          !formDraftIdentityIsCurrent ||
-          version != _requestVersion) {
-        return;
-      }
+      if (!current()) return;
       final selectedItems = _inspectionItemIds?.toSet();
       validateWarehouseQualityInspectionSelection(details, _inspectionItemIds);
-      final drafts = [
-        for (final detail in details)
-          for (final slice in detail.items)
-            if (selectedItems == null ||
-                selectedItems.contains(slice.inspectionItemId))
-              WarehouseQualitySliceDraft(
-                slice,
-                receiptTypeValue: detail.receiptType.apiValue,
-                receiptId: detail.receiptId,
-                receiptNo: detail.billNo,
-                canConfirm: detail.canConfirm,
-                snapshot:
-                    snapshots['${detail.receiptType.apiValue}:${detail.receiptId}:${slice.passEventId}'],
-              ),
-      ];
-      final List<WarehouseQualityMergedRow> nextRows;
+      final drafts = <WarehouseQualitySliceDraft>[];
+      final nextRows = <WarehouseQualityMergedRow>[];
+      final work = UiWorkBudget(isCurrent: current);
       try {
-        nextRows = [
-          for (final detail in details)
-            ...warehouseQualityRowsForDetail(
+        // Preserve receipt/slice order and ownership without rescanning all
+        // previously built drafts for every receipt in a large selection.
+        for (final detail in details) {
+          final receiptDrafts = <WarehouseQualitySliceDraft>[];
+          for (final slice in detail.items) {
+            await work.checkpoint();
+            if (selectedItems != null &&
+                !selectedItems.contains(slice.inspectionItemId)) {
+              continue;
+            }
+            final draft = WarehouseQualitySliceDraft(
+              slice,
+              receiptTypeValue: detail.receiptType.apiValue,
+              receiptId: detail.receiptId,
+              receiptNo: detail.billNo,
+              canConfirm: detail.canConfirm,
+              snapshot:
+                  snapshots['${detail.receiptType.apiValue}:${detail.receiptId}:${slice.passEventId}'],
+            );
+            drafts.add(draft);
+            receiptDrafts.add(draft);
+          }
+          nextRows.addAll(
+            warehouseQualityRowsForDetail(
               detail,
-              drafts
-                  .where(
-                    (draft) =>
-                        draft.receiptTypeValue == detail.receiptType.apiValue &&
-                        draft.receiptId == detail.receiptId,
-                  )
-                  .toList(),
+              receiptDrafts,
               inspectionItemIds: selectedItems,
             ),
-        ];
+          );
+        }
+        work.ensureCurrent();
       } catch (_) {
         for (final draft in drafts) {
           draft.dispose();
@@ -278,13 +282,13 @@ class _WarehouseQualityBatchStockInPageState
       });
       await initializeFormDraft();
     } on ApiException catch (error) {
-      if (!mounted || version != _requestVersion) return;
+      if (!current()) return;
       setState(() {
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || version != _requestVersion) return;
+      if (!current()) return;
       setState(() {
         _error = '待入库明细加载失败，请稍后重试';
         _loading = false;
@@ -380,16 +384,20 @@ class _WarehouseQualityBatchStockInPageState
     WarehouseQualityBatchConfirmCommand command,
   ) async {
     if (_saving || !_canConfirmStockIn) return;
+    final scopeFuture = captureFormDraftRequestScope();
     final previousPending = _pendingCommand;
     var locallyRejected = false;
-    _pendingCommand = command;
+    AuthenticatedRequestScope? boundScope;
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
+      final requestScope = await scopeFuture;
+      boundScope = requestScope;
+      _pendingCommand = command;
       final result = await runFormDraftSubmission(
-        () {
+        () => requestScope.run(() {
           if (!_canConfirmStockIn) {
             locallyRejected = true;
             _pendingCommand = previousPending;
@@ -402,18 +410,22 @@ class _WarehouseQualityBatchStockInPageState
           return ref
               .read(warehouseQualityResultRepositoryProvider)
               .batchConfirm(command);
-        },
+        }),
         isDefiniteRejection: (error) =>
-            (locallyRejected && previousPending == null) ||
-            error.httpStatus == 400 ||
-            error.httpStatus == 422 ||
-            (error.httpStatus == 409 && error.code == 'CONFLICT'),
+            previousPending == null &&
+            (locallyRejected ||
+                error.httpStatus == 400 ||
+                error.httpStatus == 403 ||
+                error.httpStatus == 422 ||
+                (error.httpStatus == 409 && error.code == 'CONFLICT')),
       );
+      requestScope.checkCurrent();
       if (!mounted || !formDraftIdentityIsCurrent) return;
       // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
       refreshBadges(ref);
       _pendingCommand = null;
       await completeFormDraft();
+      requestScope.checkCurrent();
       if (!mounted) return;
       context.appSuccess(
         '已批量入库 ${result.confirmedReceipts} 张收货单 / '
@@ -422,26 +434,40 @@ class _WarehouseQualityBatchStockInPageState
       if (context.canPop()) {
         context.pop(true);
       } else {
-        await resetFormDraftAfterSubmission(prepare: () => _load());
+        await resetFormDraftAfterSubmission(
+          prepare: () => requestScope.run(() => _load()),
+        );
       }
     } on ApiException catch (error) {
       if (!mounted) return;
-      if (error.httpStatus == 400 ||
-          error.httpStatus == 422 ||
-          error.code == 'CONFLICT') {
+      if (previousPending == null &&
+          (error.httpStatus == 400 ||
+              error.httpStatus == 403 ||
+              error.httpStatus == 422 ||
+              error.code == 'CONFLICT')) {
         _pendingCommand = null;
       }
       await _showFailureDialog(
-        error.code == 'CONFLICT'
+        previousPending != null
+            ? '${error.message}；这次拒绝不能确认原提交结果，原批次、明细和幂等键继续保留待核对'
+            : error.code == 'CONFLICT'
             ? '${error.message}（本次入库没有生效；你填的数量和库位都还在，刷新后重新核对再提交）'
             : error.message,
       );
-      if (mounted && error.code == 'CONFLICT') {
-        await _load(preserveInputs: true);
-        if (mounted) {
-          setState(
-            () => _error = '${error.message}；已刷新待入量，保留了本次数量、目标叶仓和库位，请重新核对。',
-          );
+      if (mounted &&
+          previousPending == null &&
+          error.code == 'CONFLICT' &&
+          boundScope != null &&
+          boundScope.isCurrent) {
+        try {
+          await boundScope.run(() => _load(preserveInputs: true));
+          if (mounted && boundScope.isCurrent) {
+            setState(
+              () => _error = '${error.message}；已刷新待入量，保留了本次数量、目标叶仓和库位，请重新核对。',
+            );
+          }
+        } on ApiException catch (scopeError) {
+          if (mounted) context.appError(scopeError.message);
         }
       }
       await checkpointFormDraftAfterCreation();

@@ -174,8 +174,16 @@ bool _hitsNativeInput(PointerDownEvent event) {
 /// layout has completed. Removing a child still removes it immediately; this
 /// does not retain removed text, swallow geometry errors or disable copying.
 class UtenSelectionLifecycleScope extends StatefulWidget {
-  const UtenSelectionLifecycleScope({super.key, required this.child});
+  const UtenSelectionLifecycleScope({
+    super.key,
+    this.onHasSelectionChanged,
+    required this.child,
+  });
   final Widget child;
+
+  /// Optional bridge for content-height windows that do not use the SDK's
+  /// private sliver selection keep-alive. Business checkbox selection is separate.
+  final ValueChanged<bool>? onHasSelectionChanged;
 
   @override
   State<UtenSelectionLifecycleScope> createState() => _LifecycleState();
@@ -185,10 +193,57 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
     implements SelectionRegistrar {
   final _members = LinkedHashSet<Selectable>.identity();
   final _registered = LinkedHashSet<Selectable>.identity();
+  final _selectionListeners = HashMap<Selectable, VoidCallback>.identity();
+  final _selectedMembers = HashSet<Selectable>.identity();
+  bool _hasSelection = false;
   SelectionRegistrar? _parent;
   bool _attached = false;
   bool _active = true;
   bool _flushScheduled = false;
+
+  void _notifySelection() {
+    final next = _selectedMembers.isNotEmpty;
+    if (next == _hasSelection) return;
+    _hasSelection = next;
+    widget.onHasSelectionChanged?.call(next);
+  }
+
+  void _watchSelection(Selectable selectable) {
+    if (widget.onHasSelectionChanged == null) return;
+    void changed() {
+      if (selectable.value.hasSelection) {
+        _selectedMembers.add(selectable);
+      } else {
+        _selectedMembers.remove(selectable);
+      }
+      _notifySelection();
+    }
+
+    _selectionListeners[selectable] = changed;
+    selectable.addListener(changed);
+    changed();
+  }
+
+  @override
+  void didUpdateWidget(UtenSelectionLifecycleScope oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.onHasSelectionChanged == widget.onHasSelectionChanged) return;
+    if (_hasSelection) oldWidget.onHasSelectionChanged?.call(false);
+    if (widget.onHasSelectionChanged == null) {
+      for (final entry in _selectionListeners.entries) {
+        entry.key.removeListener(entry.value);
+      }
+      _selectionListeners.clear();
+      _selectedMembers.clear();
+      _hasSelection = false;
+    } else if (oldWidget.onHasSelectionChanged == null) {
+      for (final member in _members) {
+        _watchSelection(member);
+      }
+    } else if (_hasSelection) {
+      widget.onHasSelectionChanged!(true);
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -204,6 +259,7 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
   void add(Selectable selectable) {
     assert(!_members.contains(selectable), 'Duplicate selection registration');
     _members.add(selectable);
+    _watchSelection(selectable);
     if (_attached && _active && _parent != null) {
       // The SDK already batches ordinary additions until post-frame layout.
       // An extra deferred layer would leave empty native scroll containers
@@ -218,6 +274,10 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
   @override
   void remove(Selectable selectable) {
     _members.remove(selectable);
+    final listener = _selectionListeners.remove(selectable);
+    if (listener != null) selectable.removeListener(listener);
+    _selectedMembers.remove(selectable);
+    _notifySelection();
     if (_registered.remove(selectable)) _parent!.remove(selectable);
   }
 
@@ -285,6 +345,12 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
   @override
   void dispose() {
     _unregister();
+    for (final entry in _selectionListeners.entries) {
+      entry.key.removeListener(entry.value);
+    }
+    _selectionListeners.clear();
+    _selectedMembers.clear();
+    if (_hasSelection) widget.onHasSelectionChanged?.call(false);
     _members.clear();
     _parent = null;
     super.dispose();

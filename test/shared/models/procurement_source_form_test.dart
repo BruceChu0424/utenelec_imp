@@ -17,10 +17,55 @@ import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_doc_edit_page.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_doc_edit_page.dart';
+import 'package:uten_imp/features/subcontract/widgets/subcontract_grid_columns.dart';
 
 import '../../support/native_detail_reader_overrides.dart';
 
 void main() {
+  for (final module in ['purchase', 'subcontract']) {
+    testWidgets('$module 1000行校验定位末行数量且不提交', (tester) async {
+      final api = await _pump(tester, module, 'receipts');
+      late TextEditingController target;
+      late int Function() mountedCount;
+      late int Function() rowCount;
+      if (module == 'purchase') {
+        final controller = _purchaseGrid(tester).controller;
+        final first = controller.rows.first;
+        controller.addRows(List.generate(999, (_) => first.clone()));
+        target = controller.rows.last.qty;
+        mountedCount = () => controller.mountedRowCount;
+        rowCount = () => controller.length;
+      } else {
+        final controller = tester
+            .widget<UtenEditableGrid<SubcontractGridRow>>(
+              find.byType(UtenEditableGrid<SubcontractGridRow>),
+            )
+            .controller;
+        final first = controller.rows.first;
+        controller.addRows(List.generate(999, (_) => first.clone()));
+        target = controller.rows.last.qty;
+        mountedCount = () => controller.mountedRowCount;
+        rowCount = () => controller.length;
+      }
+      target.text = '0';
+      await tester.pumpAndSettle();
+      final field = find.byWidgetPredicate(
+        (widget) => widget is TextField && identical(widget.controller, target),
+      );
+      expect(field, findsNothing);
+      await _saveGift(tester);
+      expect(api.saved, isNull);
+      expect(field.hitTestable(), findsOneWidget);
+      final editable = tester.widget<EditableText>(
+        find.descendant(of: field, matching: find.byType(EditableText)),
+      );
+      expect(editable.focusNode.hasFocus, isTrue);
+      expect(rowCount(), 1000);
+      expect(mountedCount(), lessThan(100));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final segment in ['receipts', 'returns']) {
     testWidgets(
       'purchase $segment separates charged10 gift1 physical11 in actual load and save',

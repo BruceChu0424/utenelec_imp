@@ -11,6 +11,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -82,6 +83,20 @@ class _InstantInventoryOverviewPageState
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      _summaryRequests.begin();
+      _riskRequests.begin();
+      setState(() {
+        _summary = null;
+        _updatedAt = null;
+        _riskPage = null;
+        _selectedRisk = null;
+        _error = null;
+        _riskError = null;
+        _loading = false;
+        _riskLoading = false;
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _refresh();
     });

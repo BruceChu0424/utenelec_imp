@@ -49,6 +49,7 @@ SET_FORMATS = ("uten-paired-internal-v1", "uten-paired-internal-v2")
 OPERATIONS_CONFIG = Path('/etc/uten-imp/operations.json')
 RECOVERY_PROOFS = Path('/var/lib/uten-imp-operations/recovery-proofs.json')
 _MARKET_BACKUP_MODULE = None
+_CLIENT_BACKUP_MODULE = None
 CONSISTENCY_SQL = """
 SELECT EXISTS (
   SELECT 1 FROM attachments a JOIN attachment_object_outbox o
@@ -78,6 +79,8 @@ class Config:
     # Local recovery history and the failure-gap safety floor are independent policies.
     retention_days: int = 14
     min_complete_sets: int = 3
+    # Match UTEN_CLIENT_RELEASES_DIR when the application overrides its derived root.
+    client_releases_root: str | None = None
 
 
 def check_retention_days(value) -> int:
@@ -248,6 +251,73 @@ def restore_market_states(directory: Path, media_root: Path, local_media_root: P
         if root is None:
             raise ValueError("A local media root is required to restore its market state")
         result[provider] = market_backup_module().restore_market_state(directory / "market-state" / provider, Path(root) / "material-forecast")
+    return result
+
+
+def client_backup_module():
+    global _CLIENT_BACKUP_MODULE
+    if _CLIENT_BACKUP_MODULE is None:
+        path = Path(__file__).resolve().with_name("client_release_state_backup.py")
+        info = path.lstat()
+        if (not stat.S_ISREG(info.st_mode) or path.is_symlink() or info.st_size > 256 * 1024
+                or os.name == "posix" and str(path).startswith("/usr/local/")
+                and (info.st_uid != 0 or info.st_mode & 0o022)):
+            raise ValueError("Client-release backup helper is missing or unsafe")
+        spec = importlib.util.spec_from_file_location("uten_installed_client_release_backup", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _CLIENT_BACKUP_MODULE = module
+    return _CLIENT_BACKUP_MODULE
+
+
+def export_client_release_states(config: Config, work: Path, budget: Budget) -> dict:
+    sources = ({"configured": Path(config.client_releases_root)} if config.client_releases_root else
+               {"internal": Path(config.media_root) / "client-releases",
+                **({"local": Path(config.local_media_root) / "client-releases"} if config.local_media_root else {})})
+    result = {}
+    for provider, source in sources.items():
+        if not source.exists() and not source.is_symlink():
+            # No catalog has been created yet; this is an explicit empty scope.
+            continue
+        parent = work / "client-release-state"
+        parent.mkdir(mode=0o700, exist_ok=True)
+        def copied(count):
+            budget.check(count)
+            budget.written(count)
+        result[provider] = client_backup_module().export_client_releases(source, parent / provider, copy_budget=copied)
+    return result
+
+
+def verify_client_release_states(directory: Path, summary: dict) -> None:
+    expected = summary.get("client_release_state", {})
+    if not isinstance(expected, dict) or not set(expected).issubset({"internal", "local", "configured"}):
+        raise ValueError("Invalid paired client-release summary")
+    if "configured" in expected and len(expected) != 1:
+        raise ValueError("Configured client catalog cannot overlap derived scopes")
+    root = directory / "client-release-state"
+    if expected:
+        real_directory(root)
+        if {path.name for path in root.iterdir()} != set(expected):
+            raise ValueError("Paired client-release set is incomplete")
+    elif root.exists() or root.is_symlink():
+        raise ValueError("Unbound paired client-release data")
+    for provider, record in expected.items():
+        if client_backup_module().verify_client_releases(root / provider) != record:
+            raise ValueError("Paired client-release manifest digest/count/bytes differ")
+
+
+def restore_client_release_states(directory: Path, media_root: Path, local_media_root: Path | None = None,
+                                  client_releases_root: Path | None = None) -> dict:
+    summary = verify_set(directory)
+    roots = {"internal": Path(media_root) / "client-releases",
+             "local": Path(local_media_root) / "client-releases" if local_media_root else None,
+             "configured": client_releases_root}
+    result = {}
+    for provider in summary.get("client_release_state", {}):
+        target = roots[provider]
+        if target is None:
+            raise ValueError("An explicit target root is required for the client catalog scope")
+        result[provider] = client_backup_module().restore_client_releases(directory / "client-release-state" / provider, Path(target))
     return result
 
 
@@ -698,6 +768,7 @@ def _backup_locked(config: Config) -> Path:
         connection.close()
     budget.check()
     market_state = export_market_states(config, work, budget)
+    client_release_state = export_client_release_states(config, work, budget)
     dump_size = (work / "database.dump").stat().st_size
     summary = {"format": "uten-paired-internal-v2", "set_id": set_id, "database": config.database,
                "started_at": started_at, "completed_at": now(),
@@ -708,8 +779,10 @@ def _backup_locked(config: Config) -> Path:
                "media_objects": len(objects), "original_bytes": original_bytes, "stored_bytes": stored_bytes,
                "reused_media_objects": reused_objects, "reused_media_bytes": reused_bytes,
                "copied_media_objects": len(objects) - reused_objects,
-               "database_dump_bytes": dump_size, "data_bytes": dump_size + stored_bytes + sum(item["bytes"] for item in market_state.values()),
+               "database_dump_bytes": dump_size, "data_bytes": dump_size + stored_bytes
+               + sum(item["bytes"] for item in market_state.values()) + sum(item["bytes"] for item in client_release_state.values()),
                "market_state": market_state,
+               "client_release_state": client_release_state,
                "database_dump_sha256": digest_file(work / "database.dump"),
                "objects_manifest_sha256": digest_file(work / "objects.jsonl"),
                "references_manifest_sha256": digest_file(work / "references.jsonl"),
@@ -719,7 +792,7 @@ def _backup_locked(config: Config) -> Path:
                              "always at least the " + str(config.min_complete_sets) + " newest complete sets; "
                              "older complete sets beyond both limits and stale unpublished work are removed; "
                              "the success-pointer set and the newest complete set are always kept"),
-               "scope": "Database snapshot, CLEAN attachments and all immutable private document references; unfinished uploads must be retried"}
+               "scope": "Database snapshot, CLEAN attachments, immutable private documents, market state and client release metadata/package pairs; unfinished uploads must be retried"}
     write_json(work / "manifest.json", summary)
     for directory, _, _ in os.walk(work, topdown=False):
         sync_directory(Path(directory))
@@ -1147,6 +1220,9 @@ def verify_set(directory: Path) -> dict:
             or digest_file(directory / "database.dump") != summary["database_dump_sha256"]
             or digest_file(directory / "objects.jsonl") != summary["objects_manifest_sha256"]):
         raise ValueError("Backup set manifest/dump integrity failed")
+    # The optional file catalog is independent of the database/media format;
+    # selecting legacy v1 must never bypass its bound inventory verification.
+    verify_client_release_states(directory, summary)
     if summary["format"] == "uten-paired-internal-v2":
         verify_media(directory, summary)
         verify_market_states(directory, summary)
@@ -1178,9 +1254,20 @@ def main():
     parser.add_argument("--config", type=Path)
     parser.add_argument("--verify", type=Path)
     parser.add_argument("--restore-market", type=Path, help="verified paired set; only restores market state into new/empty media children")
+    parser.add_argument("--restore-client-releases", type=Path, help="verified paired set; restores only into new/empty catalog directories")
     parser.add_argument("--target-media-root", type=Path)
     parser.add_argument("--target-local-media-root", type=Path)
+    parser.add_argument("--target-client-releases-root", type=Path)
     args = parser.parse_args()
+    if sum(value is not None for value in (args.config, args.verify, args.restore_market, args.restore_client_releases)) > 1:
+        parser.error("choose exactly one backup, verify, or isolated restore action")
+    if args.restore_client_releases:
+        if args.target_media_root is None:
+            parser.error("--target-media-root is required for client release restore")
+        print(json.dumps({"clientReleasesRestored": restore_client_release_states(
+            args.restore_client_releases, args.target_media_root, args.target_local_media_root,
+            args.target_client_releases_root)}))
+        return
     if args.restore_market:
         if args.target_media_root is None:
             parser.error("--target-media-root is required for market-state restore")

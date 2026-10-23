@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft.dart';
 import 'package:uten_imp/shared/drafts/form_draft_storage.dart';
@@ -106,6 +107,52 @@ void main() {
     );
     await directory.delete(recursive: true);
   });
+
+  test(
+    'large WAL recovery compares immutable original bytes in responsive slices',
+    () async {
+      final body = _draft('one').toJson();
+      (body['data'] as Map)['attachmentBase64'] =
+          'QUJD' * (10 * 1024 * 1024 ~/ 4);
+      final original = const JsonEncoder.withIndent('  ').convert(body);
+      final interrupted = NativeFormDraftStorage(
+        directoryProvider: () async => directory,
+        afterJournalFlush: () async =>
+            throw StateError('before applying slots'),
+      );
+      await expectLater(interrupted.write(key, original), throwsStateError);
+      final history = '${directory.path}/history_v2/$prefix';
+      final journal =
+          jsonDecode(await File('$history/pending.json').readAsString())
+              as Map<String, dynamic>;
+      final payload = File('$history/payload/0/1.json');
+      final index = File('$history/index/0/1.json');
+      await payload.parent.create(recursive: true);
+      await index.parent.create(recursive: true);
+      await payload.writeAsString(journal['payload'] as String);
+      await index.writeAsString(jsonEncode(journal['entry']));
+      final sentinel = DateTime.utc(2020);
+      await payload.setLastModified(sentinel);
+      var compareSlices = 0;
+      final oldObserver = debugUiWorkSliceObserver;
+      debugUiWorkSliceObserver = (label, _) {
+        if (label == 'draft-immutable-compare') compareSlices++;
+      };
+      addTearDown(() => debugUiWorkSliceObserver = oldObserver);
+      expect(await storage.read(key), original);
+      expect(compareSlices, greaterThan(0));
+      expect(await payload.lastModified(), sentinel.toLocal());
+      expect(await payload.readAsString(), original);
+      expect(
+        (await storage.readHistoryRecord(
+          prefix,
+          '1',
+        ))!.draft.data['attachmentBase64'],
+        (body['data'] as Map)['attachmentBase64'],
+      );
+      expect(await File('$history/pending.json').exists(), isFalse);
+    },
+  );
 
   test('legal history-v2 draft ID cannot alias its scope lock', () async {
     const id = 'history-v2';

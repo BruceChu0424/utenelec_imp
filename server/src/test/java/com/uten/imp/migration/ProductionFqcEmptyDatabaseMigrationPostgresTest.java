@@ -24,7 +24,7 @@ class ProductionFqcEmptyDatabaseMigrationPostgresTest {
     private static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp_fqc_migration")
-                    .withUsername("uten")
+                    .withUsername("fixture_admin")
                     .withPassword("uten-test-only");
 
     @BeforeAll

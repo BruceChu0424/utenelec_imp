@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.*;
         "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class ScopedMakePublicSupplyReaderPostgresTest {
     private static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("scoped_make_public_sources").withUsername("uten").withPassword("uten");
+            .withDatabaseName("scoped_make_public_sources").withUsername("fixture_admin").withPassword("uten");
     private static String legacyDefinition;
     private static List<Map<String, Object>> legacyColumns;
     private static final String COLUMN_QUERY = "SELECT attname,format_type(atttypid,atttypmod) type FROM pg_attribute "

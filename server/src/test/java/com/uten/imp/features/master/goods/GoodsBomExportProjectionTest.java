@@ -41,9 +41,9 @@ class GoodsBomExportProjectionTest {
     void missingImportColumnsArePrependedInCanonicalOrder() {
         var projected = GoodsBomExportProjection.forImportTemplate(new TableColumnProjection(
                 "features...goods_bom_tab", null, List.of(col("learned", "学习来源"))));
-        assertEquals(List.of("seq", "code", "name", "qty", "learned"),
+        assertEquals(List.of("seq", "code", "name", "qty", "learned", "componentGoodsId"),
                 projected.columns().stream().map(TableColumnProjection.Column::key).toList());
-        assertEquals(List.of("序号", "物料编号", "物料名称", "设计使用数量", "学习来源"),
+        assertEquals(List.of("序号", "物料编号", "物料名称", "设计使用数量", "学习来源", "组件系统标识"),
                 projected.columns().stream().map(TableColumnProjection.Column::label).toList());
     }
 
@@ -52,7 +52,7 @@ class GoodsBomExportProjectionTest {
         var projected = GoodsBomExportProjection.forImportTemplate(new TableColumnProjection(
                 "t", null, List.of(col("learned", "来源分类"), col("code", "组件编号"))));
         // code 已在选列里：不重复补；缺失的 seq/name/qty 按标准序排最前。
-        assertEquals(List.of("seq", "name", "qty", "learned", "code"),
+        assertEquals(List.of("seq", "name", "qty", "learned", "code", "componentGoodsId"),
                 projected.columns().stream().map(TableColumnProjection.Column::key).toList());
         assertEquals("组件编号", projected.columns().get(4).label());
         assertEquals("来源分类", projected.columns().get(3).label());
@@ -63,7 +63,7 @@ class GoodsBomExportProjectionTest {
         var projected = GoodsBomExportProjection.forImportTemplate(new TableColumnProjection(
                 "t", null, List.of(col("name", "品名"), col("qty", "数量"), col("seq", "序号"))));
         // 只有 code 缺失：补在最前，用户的三列原序原样跟在后面，不重复。
-        assertEquals(List.of("code", "name", "qty", "seq"),
+        assertEquals(List.of("code", "name", "qty", "seq", "componentGoodsId"),
                 projected.columns().stream().map(TableColumnProjection.Column::key).toList());
         assertEquals("品名", projected.columns().get(1).label());
     }
@@ -75,5 +75,13 @@ class GoodsBomExportProjectionTest {
         var error = assertThrows(ApiException.class, () -> GoodsBomExportProjection.forImportTemplate(
                 new TableColumnProjection("t", null, many)));
         assertEquals(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED, error.getCode());
+    }
+
+    @Test
+    void systemIdentityHeaderCannotBeRenamedOutOfTheRoundTripContract() {
+        var projected = GoodsBomExportProjection.forImportTemplate(new TableColumnProjection(
+                "t", null, List.of(col("componentGoodsId", "自定义标识"), col("seq", "序号"))));
+        assertEquals("组件系统标识", projected.columns().stream()
+                .filter(column -> column.key().equals("componentGoodsId")).findFirst().orElseThrow().label());
     }
 }

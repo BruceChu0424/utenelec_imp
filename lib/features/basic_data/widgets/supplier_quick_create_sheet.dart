@@ -56,6 +56,7 @@ Future<SupplierDetail?> showSupplierQuickCreateSheet(
         label: '编号',
         group: '基础',
         hint: '留空按分类前缀自动生成',
+        identifierDomain: 'SUPPLIER',
       ),
       const MasterFieldDef(key: 'description', label: '描述/全称', group: '基础'),
       const MasterFieldDef(key: 'place', label: '地区', group: '联系'),

@@ -21,6 +21,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../helpers/warehouse_request_scope_fixture.dart';
 
 // 先入库后质检(V596 / ADR-090)前端契约：
 // - 模型：任务行/详情/明细行/退回案件/入库历史带上架位置与来源；
@@ -29,6 +30,80 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 // - 到货登记结果：STOCKED_PENDING_INSPECTION 解析为已上架待检。
 
 void main() {
+  testWidgets(
+    '1000-row pre-stock submit reveals offscreen missing place without writing',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1800, 1000);
+      addTearDown(tester.view.reset);
+      final detail = _detailJson();
+      final pending = Map<String, dynamic>.from(
+        (detail['lines'] as List).cast<Map<String, dynamic>>().firstWhere(
+          (row) => row['inspectionItemId'] == 'inspection-pending',
+        ),
+      );
+      detail['lines'] = [
+        for (var i = 0; i < 1000; i++)
+          {
+            ...pending,
+            'inspectionItemId': 'large-pending-$i',
+            'placeHint': i == 950 ? '' : 'A-01',
+          },
+      ];
+      final stock = _StockInGateway();
+      await tester.pumpWidget(
+        await _app(
+          const WarehouseQualityPreStockInPage(
+            receiptType: 'PURCHASE',
+            receiptId: 'receipt-1',
+          ),
+          quality: _QualityGateway(detail),
+          stockIn: stock,
+          permissions: const {
+            Perm.warehouseIqcStockInView,
+            Perm.warehouseIqcStockInConfirm,
+            Perm.warehouseIqcStockInBeforeInspection,
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      final grid = tester
+          .widget<UtenEditableGrid<WarehousePreStockRow>>(
+            find.byType(UtenEditableGrid<WarehousePreStockRow>),
+          )
+          .controller;
+      expect(grid.rows.length, 1000);
+      final bad = grid.rows.firstWhere(
+        (row) => row.line.inspectionItemId == 'large-pending-950',
+      );
+      final invalid = find.byWidgetPredicate(
+        (w) => w is TextField && identical(w.controller, bad.place),
+      );
+      expect(invalid, findsNothing);
+      await tester.tap(
+        find.byKey(const Key('warehouse-quality-pre-stock-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(invalid.hitTestable(), findsOneWidget);
+      expect(
+        tester
+            .widget<EditableText>(
+              find.descendant(of: invalid, matching: find.byType(EditableText)),
+            )
+            .focusNode
+            .hasFocus,
+        isTrue,
+      );
+      expect(grid.rows.length, 1000);
+      expect(grid.rows.every((row) => row.selected), isTrue);
+      expect(bad.place.text, isEmpty);
+      expect(grid.rows.last.place.text, 'A-01');
+      expect(grid.mountedRowCount, lessThan(100));
+      expect(stock.preStockCalls, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final ids in [
     ['inspection-passed'],
     ['inspection-pending'],
@@ -609,6 +684,7 @@ Future<Widget> _app(
   final preferences = await SharedPreferences.getInstance();
   return ProviderScope(
     overrides: [
+      ...warehouseRequestScopeFixture(includeIdentity: !liveScope),
       warehouseQualityResultRepositoryProvider.overrideWithValue(quality),
       warehouseIqcStockInRepositoryProvider.overrideWithValue(stockIn),
       warehouseIqcReturnRepositoryProvider.overrideWithValue(
@@ -642,7 +718,9 @@ final _livePermissions = StateProvider<Set<String>>(
     Perm.warehouseIqcStockInBeforeInspection,
   },
 );
-final _liveScope = StateProvider<AuthenticatedScope?>((ref) => null);
+final _liveScope = StateProvider<AuthenticatedScope?>(
+  (ref) => const AuthenticatedScope(userId: 'warehouse-user'),
+);
 
 class _QualityGateway implements WarehouseQualityResultGateway {
   _QualityGateway(this.detailJson);

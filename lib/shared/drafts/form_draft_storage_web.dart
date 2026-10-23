@@ -4,7 +4,13 @@ import 'dart:js_interop';
 
 import 'package:web/web.dart' as web;
 
+import '../../core/performance/responsive_data_codec.dart';
+import '../../core/performance/ui_work_budget.dart';
 import 'form_draft_storage_api.dart';
+
+class _MigrationPreparationChanged implements Exception {
+  const _MigrationPreparationChanged();
+}
 
 FormDraftStorage createFormDraftStorage() => BrowserFormDraftStorage();
 
@@ -19,11 +25,16 @@ class BrowserFormDraftStorage
   BrowserFormDraftStorage({
     this.databaseName = 'uten_form_drafts_v1',
     this.afterHistoryQueued,
+    this.beforeMigrationUpgrade,
   });
   final String databaseName;
 
   /// Fault-injection seam: throwing here must abort the whole IDB transaction.
   final void Function()? afterHistoryQueued;
+
+  /// Tests may mutate a legacy connection after preparation, before upgrade.
+  /// The upgrade must abort rather than import a stale original.
+  final Future<void> Function()? beforeMigrationUpgrade;
   static const _stores = [
     'drafts',
     'history_index',
@@ -41,10 +52,117 @@ class BrowserFormDraftStorage
 
   Future<web.IDBDatabase> _open() => _opening ??= _openDatabase();
 
-  Future<web.IDBDatabase> _openDatabase() {
+  Future<web.IDBDatabase> _openDatabase() async {
+    try {
+      for (var attempt = 0; attempt < 3; attempt++) {
+        final probe = await _openForPreparation();
+        if (probe.version == 2) return _observeDatabase(probe);
+        if (probe.version > 2) {
+          probe.close();
+          throw StateError('草稿存储版本较新，请更新客户端；原记录已保留');
+        }
+        final Map<String, String> originals;
+        try {
+          originals = await _readRawDrafts(probe);
+        } finally {
+          probe.close();
+        }
+        final empty = await prepareFormDraftHistoryValue(null);
+        final prepared = <String, FormDraftHistoryChange?>{};
+        for (final entry in originals.entries) {
+          prepared[entry.key] = preparedFormDraftHistoryChange(
+            entry.key,
+            empty,
+            await prepareFormDraftHistoryValue(entry.value),
+            importing: true,
+          );
+        }
+        await beforeMigrationUpgrade?.call();
+        try {
+          return await _upgradePreparedDatabase(originals, prepared);
+        } on _MigrationPreparationChanged {
+          // Another v1 writer changed the raw source while decoding. All v2
+          // stores/history writes rolled back with the aborted upgrade.
+        }
+      }
+      throw StateError('旧草稿仍被其他页面修改，请关闭旧页面后重试；原记录已保留');
+    } catch (_) {
+      _opening = null;
+      rethrow;
+    }
+  }
+
+  web.IDBDatabase _observeDatabase(web.IDBDatabase database) {
+    database.onversionchange = ((web.Event _) {
+      database.close();
+      _opening = null;
+    }).toJS;
+    return database;
+  }
+
+  Future<web.IDBDatabase> _openForPreparation() {
     final result = Completer<web.IDBDatabase>();
+    // No requested version: read v1 originals before opening the v2 upgrade.
+    final request = web.window.indexedDB.open(databaseName);
+    request.onupgradeneeded = ((web.Event _) {
+      (request.result as web.IDBDatabase).createObjectStore('drafts');
+    }).toJS;
+    request.onsuccess = ((web.Event _) {
+      final database = request.result as web.IDBDatabase;
+      database.onversionchange = ((web.Event _) => database.close()).toJS;
+      if (result.isCompleted) {
+        database.close();
+      } else {
+        result.complete(database);
+      }
+    }).toJS;
+    request.onerror = ((web.Event _) {
+      if (!result.isCompleted) result.completeError(StateError('无法打开本机草稿存储'));
+    }).toJS;
+    request.onblocked = ((web.Event _) {
+      if (!result.isCompleted) {
+        result.completeError(StateError('草稿存储被其他网页占用，请关闭旧页面后重试'));
+      }
+    }).toJS;
+    return result.future;
+  }
+
+  Future<Map<String, String>> _readRawDrafts(web.IDBDatabase database) async {
+    final store = database
+        .transaction('drafts'.toJS, 'readonly')
+        .objectStore('drafts');
+    // Queue both requests in this transaction before awaiting either.
+    final keys = _request(
+      store.getAllKeys(),
+      (raw) => (raw as JSArray<JSString>).toDart,
+    );
+    final values = _request(
+      store.getAll(),
+      (raw) => (raw as JSArray<JSString>).toDart,
+    );
+    final allKeys = await keys;
+    final allValues = await values;
+    final records = <String, String>{};
+    final work = UiWorkBudget();
+    for (var i = 0; i < allKeys.length; i++) {
+      records[allKeys[i].toDart] = allValues[i].toDart;
+      await work.checkpoint();
+    }
+    return records;
+  }
+
+  Future<web.IDBDatabase> _upgradePreparedDatabase(
+    Map<String, String> originals,
+    Map<String, FormDraftHistoryChange?> prepared,
+  ) {
+    final result = Completer<web.IDBDatabase>();
+    Object? preparationFailure;
     final request = web.window.indexedDB.open(databaseName, 2);
     request.onupgradeneeded = ((web.Event event) {
+      if (result.isCompleted) {
+        request.transaction?.abort();
+        return;
+      }
       final database = request.result as web.IDBDatabase;
       if (!database.objectStoreNames.contains('drafts')) {
         database.createObjectStore('drafts');
@@ -54,38 +172,45 @@ class BrowserFormDraftStorage
       }
       // Upgrade and import are one transaction: an abort retains the v1 DB.
       final transaction = request.transaction!;
+      var seen = 0;
       final scan = transaction.objectStore('drafts').openCursor();
       scan.onsuccess = ((web.Event event) {
-        if (scan.result.isUndefinedOrNull) return;
+        if (scan.result.isUndefinedOrNull) {
+          if (seen != originals.length) {
+            preparationFailure = const _MigrationPreparationChanged();
+            transaction.abort();
+          }
+          return;
+        }
         final cursor = scan.result as web.IDBCursorWithValue;
         final key = (cursor.key as JSString).toDart;
         final value = (cursor.value as JSString).toDart;
-        _appendHistory(
+        if (!originals.containsKey(key) || originals[key] != value) {
+          preparationFailure = const _MigrationPreparationChanged();
+          transaction.abort();
+          return;
+        }
+        seen++;
+        _appendPreparedHistory(
           transaction,
           key,
-          null,
-          value,
-          importing: true,
+          prepared[key],
           committed: () => cursor.continue_(),
         );
       }).toJS;
     }).toJS;
     request.onsuccess = ((web.Event event) {
       final database = request.result as web.IDBDatabase;
-      database.onversionchange = ((web.Event event) {
-        database.close();
-        _opening = null;
-      }).toJS;
       if (result.isCompleted) {
         database.close();
       } else {
-        result.complete(database);
+        result.complete(_observeDatabase(database));
       }
     }).toJS;
     request.onerror = ((web.Event event) {
       _opening = null;
       if (!result.isCompleted) {
-        result.completeError(StateError('无法打开本机草稿存储'));
+        result.completeError(preparationFailure ?? StateError('无法打开本机草稿存储'));
       }
     }).toJS;
     request.onblocked = ((web.Event event) {
@@ -195,10 +320,13 @@ class BrowserFormDraftStorage
     );
     final allKeys = await keys;
     final allValues = await values;
-    return {
-      for (var index = 0; index < allKeys.length; index++)
-        allKeys[index].toDart: allValues[index].toDart,
-    };
+    final records = <String, String>{};
+    final work = UiWorkBudget();
+    for (var index = 0; index < allKeys.length; index++) {
+      records[allKeys[index].toDart] = allValues[index].toDart;
+      await work.checkpoint();
+    }
+    return records;
   }
 
   @override
@@ -237,15 +365,72 @@ class BrowserFormDraftStorage
     bool compare = false,
   }) async {
     final database = await _open();
+    final next = await prepareFormDraftHistoryValue(value);
+    final expected = compare
+        ? await prepareFormDraftHistoryValue(expectedValue)
+        : null;
+    for (var attempt = 0; attempt < 8; attempt++) {
+      final previous =
+          expected ??
+          await prepareFormDraftHistoryValue(
+            await _request(
+              database
+                  .transaction('drafts'.toJS, 'readonly')
+                  .objectStore('drafts')
+                  .get(key.toJS),
+              (raw) => raw.isUndefinedOrNull ? null : (raw as JSString).toDart,
+            ),
+          );
+      final change = preparedFormDraftHistoryChange(key, previous, next);
+      final String? storedValue;
+      if (value != null) {
+        storedValue = next.compact;
+      } else if (previous.draft case final draft?) {
+        storedValue = await encodeJsonResponsive({
+          'version': 1,
+          'id': draft.id,
+          'completed': true,
+          'historyAction': 'deleted',
+          'revision': 'deleted:${draft.revision}',
+        });
+      } else {
+        storedValue = null;
+      }
+      final committed = await _mutatePrepared(
+        database,
+        key,
+        previous,
+        change,
+        value: value,
+        storedValue: storedValue,
+        compare: compare,
+      );
+      if (committed != null) return committed;
+      // A non-CAS legacy writer must prepare the newest original before retry.
+      // No payload/history write occurred in the previous transaction.
+    }
+    throw StateError('草稿仍被其他页面修改，请稍后重试；原记录已保留');
+  }
+
+  Future<bool?> _mutatePrepared(
+    web.IDBDatabase database,
+    String key,
+    PreparedFormDraftHistoryValue previous,
+    FormDraftHistoryChange? change, {
+    required String? value,
+    required String? storedValue,
+    required bool compare,
+  }) {
     final transaction = database.transaction(
       _stores.map((name) => name.toJS).toList().toJS,
       'readwrite',
       web.IDBTransactionOptions(durability: 'strict'),
     );
-    final result = Completer<bool>();
+    final result = Completer<bool?>();
     var matched = false;
+    var retry = false;
     transaction.oncomplete = ((web.Event event) {
-      if (!result.isCompleted) result.complete(matched);
+      if (!result.isCompleted) result.complete(retry ? null : matched);
     }).toJS;
     void fail() {
       if (!result.isCompleted) {
@@ -266,38 +451,23 @@ class BrowserFormDraftStorage
           final existing = raw.isUndefinedOrNull
               ? null
               : (raw as JSString).toDart;
-          if (compare && existing != expectedValue) return;
+          // This exact original-string check remains inside the active write
+          // transaction. Preparation never replaces the atomic CAS condition.
+          if (existing != previous.raw) {
+            retry = !compare;
+            return;
+          }
           matched = true;
-          if (value == null && isFormDraftTerminalMarker(existing)) return;
-          _appendHistory(
+          if (value == null && previous.terminal) return;
+          _appendPreparedHistory(
             transaction,
             key,
-            existing,
-            value,
+            change,
             committed: () {
-              if (value == null) {
-                // A real draft is retained as a terminal marker, including callers
-                // that still use the lower-level remove API.
-                final draft = decodeFormDraftHistoryPayload(existing);
-                if (draft == null) {
-                  store.delete(key.toJS);
-                } else {
-                  store.put(
-                    jsonEncode({
-                      'version': 1,
-                      'id': draft.id,
-                      'completed': true,
-                      'historyAction': 'deleted',
-                      'revision': 'deleted:${draft.revision}',
-                    }).toJS,
-                    key.toJS,
-                  );
-                }
+              if (storedValue == null) {
+                store.delete(key.toJS);
               } else {
-                store.put(
-                  compactFormDraftTerminalMarker(value)!.toJS,
-                  key.toJS,
-                );
+                store.put(storedValue.toJS, key.toJS);
               }
             },
           );
@@ -340,21 +510,13 @@ class BrowserFormDraftStorage
   String _indexKey(String prefix, int sequence) =>
       '$prefix:${sequence.toString().padLeft(15, '0')}';
 
-  void _appendHistory(
+  void _appendPreparedHistory(
     web.IDBTransaction transaction,
     String key,
-    String? existing,
-    String? value, {
-    bool importing = false,
+    FormDraftHistoryChange? change, {
     required void Function() committed,
   }) {
     final prefix = formDraftHistoryPrefix(key);
-    final change = formDraftHistoryChange(
-      key,
-      existing,
-      value,
-      importing: importing,
-    );
     if (prefix == null || change == null) {
       committed();
       return;
@@ -422,7 +584,7 @@ class BrowserFormDraftStorage
     formDraftHistoryLimit(limit);
     final boundary = before == null ? null : formDraftHistorySequence(before);
     final database = await _open();
-    final result = Completer<FormDraftHistoryPage>();
+    final result = Completer<void>();
     final range = web.IDBKeyRange.bound(
       '$prefix:'.toJS,
       (boundary == null ? '$prefix:\uffff' : _indexKey(prefix, boundary)).toJS,
@@ -433,11 +595,12 @@ class BrowserFormDraftStorage
         .transaction('history_index'.toJS, 'readonly')
         .objectStore('history_index')
         .openCursor(range, 'prev');
-    final entries = <FormDraftHistoryEntry>[];
+    final rows = <(int, String)>[];
+    String? nextCursor;
     var scanned = 0;
     request.onsuccess = ((web.Event event) {
       if (request.result.isUndefinedOrNull) {
-        result.complete(FormDraftHistoryPage(entries: entries));
+        result.complete();
         return;
       }
       final cursor = request.result as web.IDBCursorWithValue;
@@ -445,8 +608,26 @@ class BrowserFormDraftStorage
         (cursor.key as JSString).toDart.substring(prefix.length + 1),
       );
       try {
+        rows.add((sequence, (cursor.value as JSString).toDart));
+      } on TypeError {
+        // Unsupported metadata still consumes one seek slot.
+      }
+      if (++scanned >= limit) {
+        nextCursor = sequence > 1 ? '$sequence' : null;
+        result.complete();
+      } else {
+        cursor.continue_();
+      }
+    }).toJS;
+    request.onerror = ((web.Event event) => result.completeError(
+      StateError('草稿历史读取失败'),
+    )).toJS;
+    await result.future;
+    final entries = <FormDraftHistoryEntry>[];
+    for (final (sequence, raw) in rows) {
+      try {
         final entry = FormDraftHistoryEntry.fromJson(
-          jsonDecode((cursor.value as JSString).toDart) as Map<String, dynamic>,
+          await decodeJsonResponsive(raw) as Map<String, dynamic>,
         );
         if (entry.id == '$sequence') entries.add(entry);
       } on FormatException {
@@ -456,21 +637,8 @@ class BrowserFormDraftStorage
       } on ArgumentError {
         // Future metadata cannot hide other records.
       }
-      if (++scanned >= limit) {
-        result.complete(
-          FormDraftHistoryPage(
-            entries: entries,
-            nextCursor: sequence > 1 ? '$sequence' : null,
-          ),
-        );
-      } else {
-        cursor.continue_();
-      }
-    }).toJS;
-    request.onerror = ((web.Event event) => result.completeError(
-      StateError('草稿历史读取失败'),
-    )).toJS;
-    return result.future;
+    }
+    return FormDraftHistoryPage(entries: entries, nextCursor: nextCursor);
   }
 
   @override
@@ -500,9 +668,9 @@ class BrowserFormDraftStorage
     try {
       if (values[0] == null) return null;
       final entry = FormDraftHistoryEntry.fromJson(
-        jsonDecode(values[0]!) as Map<String, dynamic>,
+        await decodeJsonResponsive(values[0]!) as Map<String, dynamic>,
       );
-      final draft = decodeFormDraftHistoryPayload(values[1]);
+      final draft = await decodeFormDraftHistoryPayloadResponsive(values[1]);
       if (entry.id != id ||
           draft == null ||
           draft.id != entry.draftId ||

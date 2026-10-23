@@ -374,6 +374,7 @@ jobs:
           set -euo pipefail
           python3 -m venv "$RUNNER_TEMP/ocr-tests"
           "$RUNNER_TEMP/ocr-tests/bin/pip" install --quiet -r deploy/ocr/requirements-test.txt
+          "$RUNNER_TEMP/ocr-tests/bin/python" -m pip check
           "$RUNNER_TEMP/ocr-tests/bin/python" -m unittest discover -s deploy/ocr -p 'test_*.py' -v
       - name: Validate deployment templates and script syntax
         shell: bash

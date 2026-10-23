@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.ret;
 
+import com.uten.imp.common.util.EmployeeNameResolver.HistoricalWorkerRole;
+
 import com.uten.imp.common.web.HeaderColumnFilter;
 
 import com.uten.imp.application.port.WarehouseUse;
@@ -1413,7 +1415,7 @@ public class SalesReturnService {
 
     private ReturnDetail toDetail(SalesReturn r, List<ReturnItemDto> items,
                                   boolean sourceReadable, boolean writable) {
-        return new ReturnDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
+        ReturnDetail result = new ReturnDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getClientId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
                 r.getPaymentStyleId(), r.getSettlementMethodId(), r.getSellerId(), r.getMakerId(), r.getApproverId(),
                 r.getLastDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
@@ -1422,6 +1424,11 @@ public class SalesReturnService {
                 nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), writable, r.getReturnReason(),
                 r.getCustomerDisposition(), r.getDispositionStatus(), r.getDispositionDecidedBy(),
                 r.getDispositionDecidedAt(), r.getDispositionReason(), r.isFulfilmentReopened());
+        result.setSellerName(r.getSellerId() != null
+                ? nameResolver.nameOf(r.getSellerId())
+                : nameResolver.historicalWorkerNameWithCodeOf(null, r.getId(), r.getLegacyId(),
+                        HistoricalWorkerRole.SALES_RETURN_SELLER));
+        return result;
     }
 
     private boolean hasObjectActionAuthority() {

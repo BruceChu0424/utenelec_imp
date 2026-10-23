@@ -1,0 +1,438 @@
+package com.uten.imp.features.master.goods.importing;
+
+import com.uten.imp.application.port.GoodsMasterWriteAccessPort;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.master.color.ColorRepository;
+import com.uten.imp.features.master.goods.Goods;
+import com.uten.imp.features.master.goods.GoodsRepository;
+import com.uten.imp.features.master.goods.GoodsService;
+import com.uten.imp.features.master.goods.dto.GoodsSaveRequest;
+import com.uten.imp.features.master.materialcategory.MaterialCategory;
+import com.uten.imp.features.master.materialcategory.MaterialCategoryRepository;
+import com.uten.imp.features.master.unit.UnitRepository;
+import com.uten.imp.security.SecurityContextCurrentUser;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+class GoodsImportMergeTest {
+    @AfterEach void clearSecurity() { SecurityContextHolder.clearContext(); }
+
+    @Test void detectsFillAndConflictCellsWithoutWriting() throws Exception {
+        Fixture f = fixture();
+        f.goods.setCNumber("111");
+        byte[] file = workbook("G1", "现有货品", "222", "新的客户品名", "");
+
+        GoodsImportReport report = f.service.detect(file);
+
+        assertTrue(report.errors().isEmpty());
+        assertEquals(1, report.fillRows());
+        assertEquals(1, report.conflictRows());
+        assertEquals(0, report.addedRows());
+        var changes = report.reviewRows().getFirst().changes();
+        assertEquals("111", changes.stream().filter(c -> c.field().equals("cNumber")).findFirst().orElseThrow().oldValue());
+        assertEquals("CONFLICT", changes.stream().filter(c -> c.field().equals("cNumber")).findFirst().orElseThrow().kind());
+        assertEquals("FILL", changes.stream().filter(c -> c.field().equals("clientGoodsName")).findFirst().orElseThrow().kind());
+        verifyNoInteractions(f.goodsService);
+    }
+
+    @Test void ignoringConflictStillFillsEmptyCellsAndPreservesEveryOtherScalar() throws Exception {
+        Fixture f = fixture();
+        f.goods.setCNumber("111");
+        f.goods.setSpec("原规格");
+        f.goods.setMaterial("不锈钢");
+        f.goods.setPaper("历史备注");
+        f.goods.setShortName("历史简称");
+        f.goods.setThickness(new BigDecimal("3.5000"));
+        f.goods.setMWeight(new BigDecimal("2.0000"));
+        f.goods.setSourceE(new BigDecimal("12.3400"));
+        f.goods.setMinOrderQty(new BigDecimal("50.0000"));
+        f.goods.setNameEn("Existing name");
+        f.goods.setClientGoodsName(null);
+        byte[] file = workbook("G1", "现有货品", "222", "新客户品名", "");
+        var report = f.service.detect(file);
+
+        var result = f.service.commit(report.planId(), file, "goods.xlsx", Set.of());
+
+        GoodsSaveRequest request = captured(f);
+        assertFalse(request.hasCNumber());
+        assertEquals("新客户品名", request.getClientGoodsName());
+        assertEquals("原规格", request.getSpec());
+        assertEquals("不锈钢", request.getMaterial());
+        assertEquals("历史备注", request.getPaper());
+        assertEquals("历史简称", request.getShortName());
+        assertEquals(new BigDecimal("3.5000"), request.getThickness());
+        assertEquals(new BigDecimal("2.0000"), request.getMWeight());
+        assertEquals(new BigDecimal("12.3400"), request.getSourceE());
+        assertEquals(new BigDecimal("50.0000"), request.getMinOrderQty());
+        assertFalse(request.hasNameEn());
+        assertEquals(8L, request.getVersion());
+        assertFalse(request.hasUnitReference());
+        assertFalse(request.hasColorReference());
+        assertEquals(0, result.updatedCount());
+        assertEquals(1, result.filledCount());
+        assertEquals(1, result.ignoredCount());
+        assertEquals(1, result.importedCount());
+    }
+
+    @Test void selectedConflictReplacesOnlyNonblankImportedCells() throws Exception {
+        Fixture f = fixture();
+        f.goods.setCNumber("111");
+        f.goods.setSpec("原规格");
+        byte[] file = workbook("G1", "现有货品", "222", "", "");
+        var report = f.service.detect(file);
+
+        var result = f.service.commit(report.planId(), file, "goods.xlsx", Set.of("goods:2"));
+
+        assertEquals("222", captured(f).getCNumber());
+        assertEquals("原规格", capturedAgain(f).getSpec());
+        assertEquals(1, result.updatedCount());
+        assertEquals(0, result.ignoredCount());
+    }
+
+    @Test void blankCellsAndEqualCellsNeverProduceAnUpdateOrUndoBatch() throws Exception {
+        Fixture f = fixture();
+        f.goods.setCNumber("111");
+        f.goods.setSpec("原规格");
+        byte[] file = workbook("G1", "现有货品", "", "", "原规格");
+        var report = f.service.detect(file);
+
+        assertEquals(0, report.readyToImport());
+        assertEquals(1, report.unchangedRows());
+        assertTrue(report.reviewRows().isEmpty());
+        var result = f.service.commit(report.planId(), file, "goods.xlsx");
+        assertNull(result.batchId());
+        assertEquals(1, result.unchangedCount());
+        verifyNoInteractions(f.goodsService);
+    }
+
+    @Test void ignoringOnlyConflictsDoesNotRegisterAnEmptyUndoBatch() throws Exception {
+        Fixture f = fixture();
+        f.goods.setCNumber("111");
+        byte[] file = workbook("G1", "现有货品", "222", "", "");
+        var report = f.service.detect(file);
+        var result = f.service.commit(report.planId(), file, "goods.xlsx");
+        assertNull(result.batchId());
+        assertEquals(1, result.ignoredCount());
+        assertEquals(0, result.importedCount());
+        verifyNoInteractions(f.goodsService);
+    }
+
+    @Test void samePathAndNameWithoutCodeResolvesTheSingleExistingUuid() throws Exception {
+        Fixture f = fixture();
+        byte[] file = workbook("", "现有货品", "222", "", "");
+        var report = f.service.detect(file);
+        assertTrue(report.errors().isEmpty());
+        assertEquals("PATH_NAME", report.reviewRows().getFirst().matchType());
+        f.service.commit(report.planId(), file, "goods.xlsx");
+        verify(f.goodsService).updateImported(eq(f.goods.getId()), any());
+        verify(f.goodsService, never()).saveImported(any());
+    }
+
+    @Test void ambiguousSamePathAndNameIsNeverGuessed() throws Exception {
+        Fixture f = fixture();
+        Goods duplicate = goods(f.category, "G2", "现有货品");
+        when(f.repo.findImportIdentities()).thenReturn(List.of(identity(f.goods), identity(duplicate)));
+        var report = f.service.detect(workbook("", "现有货品", "222", "", ""));
+        assertNull(report.planId());
+        assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("不唯一")));
+    }
+
+    @Test void samePathAndNameWithAnUnknownExplicitCodeRequiresIdentityCorrection() throws Exception {
+        Fixture f = fixture();
+        var report = f.service.detect(workbook("UNKNOWN", "现有货品", "222", "", ""));
+        assertNull(report.planId());
+        assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("编号不一致")));
+    }
+
+    @Test void sameNameInAnotherCategoryNeedsAnExplicitNewCodeBeforeCreatingNewGoods() throws Exception {
+        Fixture f = fixture();
+        f.goods.setCategory(category("另一分类"));
+        var report = f.service.detect(workbook("", "现有货品", "222", "", ""));
+        assertNull(report.planId());
+        assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("其他分类存在同名")));
+        report = f.service.detect(workbook("NEW-CODE", "现有货品", "222", "", ""));
+        assertTrue(report.errors().isEmpty(), report.errors().toString());
+        assertEquals(1, report.addedRows());
+        assertTrue(report.reviewRows().isEmpty());
+    }
+
+    @Test void detectedGoodsDriftRejectsTheEntireCommit() throws Exception {
+        Fixture f = fixture();
+        byte[] file = workbook("G1", "现有货品", "222", "", "");
+        var report = f.service.detect(file);
+        f.goods.setCNumber("他人补齐");
+        var error = assertThrows(ApiException.class, () -> f.service.commit(report.planId(), file, "goods.xlsx"));
+        assertTrue(error.getMessage().contains("发生了变化"));
+        verifyNoInteractions(f.goodsService);
+    }
+
+    @Test void aNewSamePathAndNameAfterDetectionRejectsTheCommit() throws Exception {
+        Fixture f = fixture();
+        byte[] file = workbook("", "全新货品", "222", "", "");
+        var report = f.service.detect(file);
+        when(f.repo.findImportIdentities()).thenReturn(List.of(identity(f.goods), identity(goods(f.category, "G2", "全新货品"))));
+        assertThrows(ApiException.class, () -> f.service.commit(report.planId(), file, "goods.xlsx"));
+        verifyNoInteractions(f.goodsService);
+    }
+
+    @Test void unsupportedReplacementSelectionIsRejectedBeforeWriting() throws Exception {
+        Fixture f = fixture();
+        byte[] file = workbook("G1", "现有货品", "222", "", "");
+        var report = f.service.detect(file);
+        assertThrows(ApiException.class, () -> f.service.commit(report.planId(), file, "goods.xlsx", Set.of("goods:999")));
+        verifyNoInteractions(f.goodsService);
+    }
+
+    @Test void importPermissionAloneDoesNotAllowEditingExistingGoods() throws Exception {
+        Fixture f = fixture();
+        authorities("goods:import");
+        byte[] file = workbook("G1", "现有货品", "222", "", "");
+        var report = f.service.detect(file);
+        assertThrows(ApiException.class, () -> f.service.commit(report.planId(), file, "goods.xlsx"));
+        verifyNoInteractions(f.goodsService);
+    }
+
+    @Test void objectWriteScopeIsCheckedBeforeExposingStoredValues() throws Exception {
+        Fixture f = fixture();
+        doThrow(new ApiException(com.uten.imp.common.web.ErrorCode.NOT_FOUND, "货品不存在"))
+                .when(f.access).requireWritable(f.goods.getId());
+        assertThrows(ApiException.class, () -> f.service.detect(workbook("G1", "现有货品", "222", "", "")));
+    }
+
+    @Test void uuidAndCodeMustReferToTheSameIdentity() throws Exception {
+        Fixture f = fixture();
+        Goods other = goods(f.category, "G2", "其他货品");
+        when(f.repo.findById(other.getId())).thenReturn(Optional.of(other));
+        byte[] file = workbookWithUuid(other.getId().toString());
+        var report = f.service.detect(file);
+        assertNull(report.planId());
+        assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("不同货品")));
+    }
+
+    @Test void twoNewUnnamedRowsUnderANewCategoryAreRejectedBeforeCreatingDuplicates() throws Exception {
+        Fixture f = fixture();
+        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = book.createSheet("货品");
+            var header = sheet.createRow(0);
+            String[] titles = {"编号", "名称", "类别", "客户型号"};
+            for (int i = 0; i < titles.length; i++) header.createCell(i).setCellValue(titles[i]);
+            for (int n = 1; n <= 2; n++) {
+                var row = sheet.createRow(n);
+                row.createCell(1).setCellValue("新货品");
+                row.createCell(2).setCellValue("新分类-新子类");
+                row.createCell(3).setCellValue(n == 1 ? "111" : "222");
+            }
+            book.write(out);
+            var report = f.service.detect(out.toByteArray());
+            assertNull(report.planId());
+            assertTrue(report.errors().stream().anyMatch(error -> error.rowNum() == 3 && error.message().contains("合并为一行")));
+            verifyNoInteractions(f.goodsService);
+        }
+    }
+
+    @Test void reviewPlansAllowThirtyMinutesAndEvictTheOldestAfterThirtyTwoPlans() throws Exception {
+        Fixture f = fixture();
+        byte[] file = workbook("G1", "现有货品", "222", "", "");
+        var first = f.service.detect(file);
+        @SuppressWarnings("unchecked")
+        var plans = (java.util.Map<UUID, ?>) ReflectionTestUtils.getField(f.service, "plans");
+        assertNotNull(plans);
+        Object plan = plans.get(first.planId());
+        var expiry = plan.getClass().getDeclaredMethod("expiresAt"); expiry.setAccessible(true);
+        long minutes = java.time.Duration.between(java.time.Instant.now(), (java.time.Instant) expiry.invoke(plan)).toMinutes();
+        assertTrue(minutes >= 29 && minutes <= 30);
+        for (int n = 0; n < 32; n++) f.service.detect(file);
+        assertEquals(32, plans.size());
+        var error = assertThrows(ApiException.class, () -> f.service.commit(first.planId(), file, "goods.xlsx"));
+        assertTrue(error.getMessage().contains("已释放"));
+    }
+
+    @Test void oversizedReviewStateIsRejectedInsteadOfExceedingTheSharedCacheBudget() throws Exception {
+        Fixture f = fixture();
+        // Exercise the memory budget without relying on the database's shorter
+        // field limit: even corrupt/legacy oversized values cannot fill the cache.
+        f.goods.setSpec("X".repeat(17 * 1024 * 1024));
+        var error = assertThrows(ApiException.class, () -> f.service.detect(workbook("G1", "现有货品", "222", "", "small")));
+        assertEquals(com.uten.imp.common.web.ErrorCode.PAYLOAD_TOO_LARGE, error.getCode());
+        @SuppressWarnings("unchecked")
+        var plans = (java.util.Map<UUID, ?>) ReflectionTestUtils.getField(f.service, "plans");
+        assertTrue(plans.isEmpty());
+    }
+
+    @Test void exportedNumericDisplayFormatsDoNotRoundPriceOrOrderPolicyDuringImport() throws Exception {
+        Fixture f = fixture();
+        var current = (SecurityContextCurrentUser) ReflectionTestUtils.getField(f.service, "currentUser");
+        when(current.get()).thenReturn(Optional.of(new com.uten.imp.security.AuthUser(UUID.randomUUID(), UUID.randomUUID(),
+                "price-test", Set.of("goods:price:view"), false, true, false)));
+        f.goods.setPrice(new BigDecimal("1.2345"));
+        f.goods.setMinOrderQty(new BigDecimal("0.0001"));
+        f.goods.setOrderMultipleQty(new BigDecimal("2.3456"));
+        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = book.createSheet("货品"); var header = sheet.createRow(0);
+            String[] titles = {"编号", "名称", "类别", "客户型号", "价格", "最小起订量", "订货倍数"};
+            for (int n = 0; n < titles.length; n++) header.createCell(n).setCellValue(titles[n]);
+            var row = sheet.createRow(1);
+            row.createCell(0).setCellValue("G1"); row.createCell(1).setCellValue("现有货品");
+            row.createCell(2).setCellValue("成品"); row.createCell(3).setCellValue("222");
+            var style = book.createCellStyle(); style.setDataFormat(book.createDataFormat().getFormat("0.00"));
+            double[] numbers = {1.2345, 0.0001, 2.3456};
+            for (int n = 0; n < numbers.length; n++) { var cell = row.createCell(n + 4); cell.setCellValue(numbers[n]); cell.setCellStyle(style); }
+            book.write(out);
+            var report = f.service.detect(out.toByteArray());
+            assertTrue(report.errors().isEmpty(), report.errors().toString());
+            assertEquals(List.of("cNumber"), report.reviewRows().getFirst().changes().stream().map(GoodsImportReviewRow.Change::field).toList());
+        }
+    }
+
+    @Test void unchangedExportedLegacyUnitAndColorNamesDoNotCreateUuidRelationships() throws Exception {
+        Fixture f = fixture();
+        var unit = new com.uten.imp.features.master.unit.Unit(); unit.setLegacyId(101); unit.setName("个"); unit.setStatus("使用");
+        var color = new com.uten.imp.features.master.color.Color(); color.setLegacyId(102); color.setName("红色"); color.setStatus("使用");
+        var unitRepo = (UnitRepository) ReflectionTestUtils.getField(f.service, "unitRepo");
+        var colorRepo = (ColorRepository) ReflectionTestUtils.getField(f.service, "colorRepo");
+        when(unitRepo.findAll()).thenReturn(List.of(unit)); when(colorRepo.findAll()).thenReturn(List.of(color));
+        f.goods.setUnitLegacyId(101); f.goods.setColorLegacyId(102);
+        when(f.repo.quantityUnitInUse(f.goods.getId())).thenReturn(true);
+        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = book.createSheet("货品"); var header = sheet.createRow(0);
+            String[] titles = {"编号", "名称", "类别", "客户型号", "单位", "主颜色"};
+            String[] values = {"G1", "现有货品", "成品", "222", "个", "红色"};
+            var row = sheet.createRow(1);
+            for (int n = 0; n < titles.length; n++) { header.createCell(n).setCellValue(titles[n]); row.createCell(n).setCellValue(values[n]); }
+            book.write(out); byte[] file = out.toByteArray(); var report = f.service.detect(file);
+            assertTrue(report.errors().isEmpty(), report.errors().toString());
+            assertEquals(List.of("cNumber"), report.reviewRows().getFirst().changes().stream().map(GoodsImportReviewRow.Change::field).toList());
+            f.service.commit(report.planId(), file, "legacy-roundtrip.xlsx");
+            GoodsSaveRequest request = captured(f);
+            assertFalse(request.hasUnitReference()); assertFalse(request.hasColorReference());
+        }
+    }
+
+    @Test void aReusedDisplayCodeCannotMatchOrFillGoodsWithoutItsSystemUuid() throws Exception {
+        Fixture f = fixture();
+        when(f.repo.codeHasReuseHistory("G1")).thenReturn(true);
+        var report = f.service.detect(workbook("G1", "现有货品", "222", "", ""));
+        assertNull(report.planId());
+        assertTrue(report.errors().stream().anyMatch(error -> error.column().equals("系统标识") && error.message().contains("曾复用")));
+        verifyNoInteractions(f.goodsService);
+        report = f.service.detect(workbook("", "现有货品", "222", "", ""));
+        assertNull(report.planId());
+        assertTrue(report.errors().stream().anyMatch(error -> error.column().equals("系统标识") && error.message().contains("曾复用")));
+        report = f.service.detect(workbookWithUuid(f.goods.getId().toString()));
+        assertTrue(report.errors().isEmpty(), report.errors().toString());
+        assertEquals(1, report.unchangedRows());
+    }
+
+    @Test void ambiguousDeletedIdentitiesNeedAnExplicitUuidInsteadOfTheLowestUuid() throws Exception {
+        Fixture f = fixture();
+        f.goods.setDeleted(true);
+        when(f.repo.findByCodeAndDeletedFalse("G1")).thenReturn(Optional.empty());
+        when(f.repo.findRestorableDeletedIdsByCode("G1")).thenReturn(List.of(f.goods.getId(), UUID.randomUUID()));
+        var ambiguous = f.service.detect(workbook("G1", "现有货品", "222", "", ""));
+        assertNull(ambiguous.planId());
+        assertTrue(ambiguous.errors().stream().anyMatch(error -> error.message().contains("多个已删除")));
+        verify(f.repo, never()).findFirstByCodeAndDeletedTrueOrderByIdAsc("G1");
+        var explicit = f.service.detect(workbookWithUuid(f.goods.getId().toString()));
+        assertTrue(explicit.errors().isEmpty(), explicit.errors().toString());
+        assertEquals(1, explicit.restorableRows());
+        assertNotNull(explicit.planId());
+    }
+
+    private static GoodsSaveRequest captured(Fixture f) {
+        var request = org.mockito.ArgumentCaptor.forClass(GoodsSaveRequest.class);
+        verify(f.goodsService).updateImported(eq(f.goods.getId()), request.capture());
+        return request.getValue();
+    }
+    private static GoodsSaveRequest capturedAgain(Fixture f) { return captured(f); }
+
+    private static Fixture fixture() {
+        authorities("goods:import", "goods:edit");
+        GoodsRepository repo = mock(GoodsRepository.class);
+        GoodsService goodsService = mock(GoodsService.class);
+        MaterialCategoryRepository categories = mock(MaterialCategoryRepository.class);
+        ColorRepository colors = mock(ColorRepository.class);
+        UnitRepository units = mock(UnitRepository.class);
+        EntityManager em = mock(EntityManager.class);
+        Query query = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        SecurityContextCurrentUser user = mock(SecurityContextCurrentUser.class);
+        when(user.requireId()).thenReturn(UUID.randomUUID());
+        MaterialCategory category = category("成品");
+        Goods goods = goods(category, "G1", "现有货品");
+        when(repo.findImportIdentities()).thenAnswer(call -> List.of(identity(goods)));
+        when(repo.findByCodeAndDeletedFalse("G1")).thenReturn(Optional.of(goods));
+        when(repo.findById(goods.getId())).thenReturn(Optional.of(goods));
+        when(categories.findByDeletedFalseOrderBySortOrderAscNameAsc()).thenReturn(List.of(category));
+        when(colors.findAll()).thenReturn(List.of());
+        when(units.findAll()).thenReturn(List.of());
+        var service = new GoodsImportService(goodsService, repo, null, categories,
+                null, colors, null, units, em, user, null);
+        GoodsMasterWriteAccessPort access = mock(GoodsMasterWriteAccessPort.class);
+        ReflectionTestUtils.setField(service, "writeAccess", access);
+        return new Fixture(service, goodsService, repo, goods, category, access);
+    }
+
+    private static void authorities(String... permissions) {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("tester", "n/a",
+                Arrays.stream(permissions).map(SimpleGrantedAuthority::new).toList()));
+    }
+    private static MaterialCategory category(String name) {
+        MaterialCategory category = new MaterialCategory();
+        category.setId(UUID.randomUUID()); category.setName(name); return category;
+    }
+    private static Goods goods(MaterialCategory category, String code, String name) {
+        Goods goods = new Goods();
+        goods.setId(UUID.randomUUID()); goods.setVersion(8); goods.setCode(code);
+        goods.setName(name); goods.setCategory(category); goods.setStatus("使用"); return goods;
+    }
+    private static GoodsImportIdentity identity(Goods goods) {
+        return new GoodsImportIdentity(goods.getId(), goods.getVersion(), goods.getCode(), goods.getName(),
+                goods.getCategory() == null ? null : goods.getCategory().getId(), goods.isDeleted(), goods.getOwnerEmployeeId());
+    }
+    private static byte[] workbook(String code, String name, String customerModel, String customerName, String spec) throws Exception {
+        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = book.createSheet("货品");
+            var header = sheet.createRow(0);
+            String[] titles = {"编号", "名称", "类别", "客户型号", "客户品名", "规格"};
+            for (int i = 0; i < titles.length; i++) header.createCell(i).setCellValue(titles[i]);
+            var row = sheet.createRow(1);
+            String[] values = {code, name, "成品", customerModel, customerName, spec};
+            for (int i = 0; i < values.length; i++) row.createCell(i).setCellValue(values[i]);
+            book.write(out); return out.toByteArray();
+        }
+    }
+    private static byte[] workbookWithUuid(String id) throws Exception {
+        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = book.createSheet("货品");
+            var header = sheet.createRow(0);
+            String[] titles = {"编号", "名称", "类别", "货品UUID"};
+            for (int i = 0; i < titles.length; i++) header.createCell(i).setCellValue(titles[i]);
+            var row = sheet.createRow(1);
+            String[] values = {"G1", "现有货品", "成品", id};
+            for (int i = 0; i < values.length; i++) row.createCell(i).setCellValue(values[i]);
+            book.write(out); return out.toByteArray();
+        }
+    }
+    private record Fixture(GoodsImportService service, GoodsService goodsService, GoodsRepository repo,
+                           Goods goods, MaterialCategory category, GoodsMasterWriteAccessPort access) {}
+}

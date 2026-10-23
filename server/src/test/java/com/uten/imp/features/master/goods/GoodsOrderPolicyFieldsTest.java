@@ -208,6 +208,11 @@ class GoodsOrderPolicyFieldsTest {
     /** 即时库存聚合走原生查询：mock 成空结果。 */
     private static EntityManager stubbedEm() {
         EntityManager em = mock(EntityManager.class);
+        @SuppressWarnings("unchecked")
+        jakarta.persistence.TypedQuery<UUID> bom = mock(jakarta.persistence.TypedQuery.class);
+        when(em.createQuery(anyString(), org.mockito.ArgumentMatchers.eq(UUID.class))).thenReturn(bom);
+        when(bom.setParameter(anyString(), any())).thenReturn(bom);
+        when(bom.getResultList()).thenReturn(List.of());
         Query q = mock(Query.class);
         when(q.setParameter(anyString(), any())).thenReturn(q);
         when(q.getResultList()).thenReturn(List.of());

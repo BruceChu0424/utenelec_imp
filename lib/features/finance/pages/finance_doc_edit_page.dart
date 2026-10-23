@@ -10,7 +10,9 @@
 // 发票号（invoiceNo）仍由用户手工录入（未弃用）。日期统一用 UtenDateField。
 // 保存组装 body 调 create/update，成功后跳详情。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
-import 'dart:convert';
+import '../../../core/performance/json_value_snapshot.dart';
+import '../../../core/performance/ui_work_budget.dart';
+import '../../../shared/forms/prepare_editable_grid_rows.dart';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
@@ -162,7 +164,17 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
   /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
   final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
+  bool _preparingLedgerRows = false;
   bool _intakeBusy = false;
+  int _rowPreparationEpoch = 0;
+
+  bool Function() _rowPreparationOwner(int epoch, {int? rowsRevision}) =>
+      () =>
+          mounted &&
+          formDraftIdentityIsCurrent &&
+          epoch == _rowPreparationEpoch &&
+          (rowsRevision == null || _grid.rowsRevision == rowsRevision);
+
   bool _loading = true;
   bool _showReceiptReconciliation = false;
   bool? _receiptSettlementExpanded;
@@ -181,7 +193,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
   @override
   bool get formDraftEnabled => widget.id == null;
   @override
-  bool get formDraftBusy => _saving || _intakeBusy;
+  bool get formDraftBusy => _saving || _intakeBusy || _preparingLedgerRows;
   @override
   bool get formDraftCanReplaySubmission =>
       _createdDocId != null ||
@@ -293,6 +305,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
   };
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    final prepareEpoch = ++_rowPreparationEpoch;
+    final rowOwner = _rowPreparationOwner(
+      prepareEpoch,
+      rowsRevision: _grid.rowsRevision,
+    );
     _remark.text = draftText(data, 'remark');
     _rate.text = draftText(data, 'rate');
     _amountOriginal.text = draftText(data, 'amountOriginal');
@@ -330,55 +347,59 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       final item = restoreDraftEmployee(employee);
       _empCache[item.id] = item;
     }
-    _pendingFiles.restoreDraft(draftMap(data['attachments']));
-    _grid.replaceAll([
-      for (final item in draftMaps(data['rows']))
-        (() {
-          final row = FinanceGridRow(mode: _cfg.itemMode);
-          row.appliedLedgerId = item['appliedLedgerId'] as String?;
-          row.appliedBillNo = item['appliedBillNo'] as String?;
-          row.authoritativeSalesOrderId =
-              item['authoritativeSalesOrderId'] as String?;
-          row.sourceDocType = item['sourceDocType'] as String?;
-          row.sourceDocNo = item['sourceDocNo'] as String?;
-          row.currencyId = item['currencyId'] as String?;
-          row.currencyCode = item['currencyCode'] as String?;
-          row.receivableOriginalText =
-              item['receivableOriginalText'] as String?;
-          row.receivedOriginalText = item['receivedOriginalText'] as String?;
-          row.writtenOffOriginalText =
-              item['writtenOffOriginalText'] as String?;
-          row.balanceOriginalText = item['balanceOriginalText'] as String?;
-          row.prepaymentAppliedOriginal =
-              item['prepaymentAppliedOriginal'] as String?;
-          row.styleId = item['styleId'] as String?;
-          row.inAccountId = item['inAccountId'] as String?;
-          row.occurDate = item['occurDate'] as String?;
-          row.originalAmountSnapshot =
-              item['originalAmountSnapshot'] as String?;
-          row.amountInputSnapshot = item['amountInputSnapshot'] as String?;
-          row.summarySnapshot = item['summarySnapshot'] as String?;
-          row.receivableOriginal = (item['receivableOriginal'] as num?)
-              ?.toDouble();
-          row.receivedOriginal = (item['receivedOriginal'] as num?)?.toDouble();
-          row.writtenOffOriginal = (item['writtenOffOriginal'] as num?)
-              ?.toDouble();
-          row.balanceOriginal = (item['balanceOriginal'] as num?)?.toDouble();
-          row.salesOrderIds = draftStrings(item['salesOrderIds']);
-          row.salesOrderNos = draftStrings(item['salesOrderNos']);
-          row.setDepartment(
-            draftText(item, 'department'),
-            item['departmentName'] as String?,
-          );
-          row.qty.text = draftText(item, 'qty');
-          row.price.text = draftText(item, 'price');
-          row.amount.text = draftText(item, 'amount');
-          row.exchangeRate.text = draftText(item, 'exchangeRate');
-          row.writeOff.text = draftText(item, 'writeOff');
-          row.remark.text = draftText(item, 'remark');
-          return row;
-        })(),
-    ]);
+    await _pendingFiles.restoreDraftResponsive(
+      draftMap(data['attachments']),
+      isCurrent: rowOwner,
+    );
+    if (!mounted || !rowOwner()) return;
+    final mode = _cfg.itemMode;
+    await prepareEditableGridRows(
+      draftMaps(data['rows']),
+      create: (_) => FinanceGridRow(mode: mode),
+      initialize: (row, item) {
+        row.appliedLedgerId = item['appliedLedgerId'] as String?;
+        row.appliedBillNo = item['appliedBillNo'] as String?;
+        row.authoritativeSalesOrderId =
+            item['authoritativeSalesOrderId'] as String?;
+        row.sourceDocType = item['sourceDocType'] as String?;
+        row.sourceDocNo = item['sourceDocNo'] as String?;
+        row.currencyId = item['currencyId'] as String?;
+        row.currencyCode = item['currencyCode'] as String?;
+        row.receivableOriginalText = item['receivableOriginalText'] as String?;
+        row.receivedOriginalText = item['receivedOriginalText'] as String?;
+        row.writtenOffOriginalText = item['writtenOffOriginalText'] as String?;
+        row.balanceOriginalText = item['balanceOriginalText'] as String?;
+        row.prepaymentAppliedOriginal =
+            item['prepaymentAppliedOriginal'] as String?;
+        row.styleId = item['styleId'] as String?;
+        row.inAccountId = item['inAccountId'] as String?;
+        row.occurDate = item['occurDate'] as String?;
+        row.originalAmountSnapshot = item['originalAmountSnapshot'] as String?;
+        row.amountInputSnapshot = item['amountInputSnapshot'] as String?;
+        row.summarySnapshot = item['summarySnapshot'] as String?;
+        row.receivableOriginal = (item['receivableOriginal'] as num?)
+            ?.toDouble();
+        row.receivedOriginal = (item['receivedOriginal'] as num?)?.toDouble();
+        row.writtenOffOriginal = (item['writtenOffOriginal'] as num?)
+            ?.toDouble();
+        row.balanceOriginal = (item['balanceOriginal'] as num?)?.toDouble();
+        row.salesOrderIds = draftStrings(item['salesOrderIds']);
+        row.salesOrderNos = draftStrings(item['salesOrderNos']);
+        row.setDepartment(
+          draftText(item, 'department'),
+          item['departmentName'] as String?,
+        );
+        row.qty.text = draftText(item, 'qty');
+        row.price.text = draftText(item, 'price');
+        row.amount.text = draftText(item, 'amount');
+        row.exchangeRate.text = draftText(item, 'exchangeRate');
+        row.writeOff.text = draftText(item, 'writeOff');
+        row.remark.text = draftText(item, 'remark');
+      },
+      isCurrent: rowOwner,
+      publish: _grid.replaceAll,
+    );
+    if (!_rowPreparationOwner(prepareEpoch)()) return;
     _syncReceiptRateToRows();
     restoreDraftGridSelection(_grid, data['selected']);
     if (mounted) setState(() {});
@@ -414,6 +435,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
 
   Future<void> _init() async {
     if (!mounted) return;
+    startFormDraftIdentityGuard();
+    final prepareEpoch = ++_rowPreparationEpoch;
+    final isCurrent = _rowPreparationOwner(prepareEpoch);
     setState(() {
       _loading = true;
       _initializationError = null;
@@ -451,7 +475,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
               DocumentDataScope.finance,
               d.makerId,
             );
-        if (!mounted) return;
+        if (!mounted || !isCurrent()) return;
         if (!writable) {
           _initializationError = d.legacyImported
               ? financeLegacyReadOnlyMessage
@@ -463,7 +487,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
           return;
         }
         await _preloadEmployees([d.operatorId]);
-        if (!mounted) return;
+        if (!mounted || !isCurrent()) return;
         _billNo.text = d.billNo ?? '';
         _remark.text = d.remark ?? '';
         _bankFee.text = d.bankFeeAccountAmountText ?? d.bankFeeText ?? '';
@@ -522,64 +546,74 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         _operatorId = d.operatorId;
         _makerName = d.makerName;
         _createdAt = d.createdAt;
-        final rows = <FinanceGridRow>[];
-        for (final it in d.items) {
-          final row = FinanceGridRow(mode: _cfg.itemMode)
-            ..platformFields.sourceRecordId = it.id
-            ..appliedLedgerId = it.appliedLedgerId
-            ..appliedBillNo = it.appliedBillNo
-            ..authoritativeSalesOrderId = it.salesOrderId
-            ..salesOrderIds = it.salesOrderId == null
-                ? const []
-                : [it.salesOrderId!]
-            ..currencyId =
-                it.currencyId ??
-                (_cfg.type == FinanceDocType.payment ? d.currencyId : null)
-            ..balanceOriginal = it.balanceBeforeOriginal
-            ..balanceOriginalText = it.balanceBeforeOriginalText
-            ..styleId = it.expenseStyleId ?? it.incomeStyleId
-            ..inAccountId = it.inAccountId
-            ..occurDate = it.occurDate;
-          row.setDepartment(it.departmentId, it.departmentName);
-          row.qty.text = it.qtyText ?? it.qty?.toString() ?? '';
-          row.price.text = it.priceText ?? it.price?.toString() ?? '';
-          row.amount.text = _cfg.isSettle
-              ? it.amountOriginalText ??
-                    it.amountLocalText ??
-                    it.amountLocal?.toString() ??
-                    ''
-              : it.amountLocalText ?? it.amountLocal?.toString() ?? '';
-          row.originalAmountSnapshot = it.amountOriginalText;
-          row.amountInputSnapshot = row.amount.text;
-          row.summarySnapshot = it.summary;
-          row.exchangeRate.text = _cfg.type == FinanceDocType.receipt
-              ? _rate.text
-              : (it.exchangeRateText ?? '');
-          row.writeOff.text = (d.settlementAuthorityVersion ?? 0) >= 1
-              ? '0'
-              : (it.writeOffAmountText ?? '0');
-          row.remark.text = _cfg.isTransfer
-              ? it.summary ?? it.remark ?? ''
-              : it.remark ?? '';
-          rows.add(row);
-        }
-        _grid.replaceAll(rows);
+        final mode = _cfg.itemMode;
+        await prepareEditableGridRows(
+          d.items,
+          create: (_) => FinanceGridRow(mode: mode),
+          initialize: (row, it) {
+            row
+              ..platformFields.sourceRecordId = it.id
+              ..appliedLedgerId = it.appliedLedgerId
+              ..appliedBillNo = it.appliedBillNo
+              ..authoritativeSalesOrderId = it.salesOrderId
+              ..salesOrderIds = it.salesOrderId == null
+                  ? const []
+                  : [it.salesOrderId!]
+              ..currencyId =
+                  it.currencyId ??
+                  (_cfg.type == FinanceDocType.payment ? d.currencyId : null)
+              ..balanceOriginal = it.balanceBeforeOriginal
+              ..balanceOriginalText = it.balanceBeforeOriginalText
+              ..styleId = it.expenseStyleId ?? it.incomeStyleId
+              ..inAccountId = it.inAccountId
+              ..occurDate = it.occurDate;
+            row.setDepartment(it.departmentId, it.departmentName);
+            row.qty.text = it.qtyText ?? it.qty?.toString() ?? '';
+            row.price.text = it.priceText ?? it.price?.toString() ?? '';
+            row.amount.text = _cfg.isSettle
+                ? it.amountOriginalText ??
+                      it.amountLocalText ??
+                      it.amountLocal?.toString() ??
+                      ''
+                : it.amountLocalText ?? it.amountLocal?.toString() ?? '';
+            row.originalAmountSnapshot = it.amountOriginalText;
+            row.amountInputSnapshot = row.amount.text;
+            row.summarySnapshot = it.summary;
+            row.exchangeRate.text = _cfg.type == FinanceDocType.receipt
+                ? _rate.text
+                : (it.exchangeRateText ?? '');
+            row.writeOff.text = (d.settlementAuthorityVersion ?? 0) >= 1
+                ? '0'
+                : (it.writeOffAmountText ?? '0');
+            row.remark.text = _cfg.isTransfer
+                ? it.summary ?? it.remark ?? ''
+                : it.remark ?? '';
+          },
+          isCurrent: _rowPreparationOwner(
+            prepareEpoch,
+            rowsRevision: _grid.rowsRevision,
+          ),
+          publish: _grid.replaceAll,
+        );
         _syncReceiptRateToRows();
       }
       if (_grid.isEmpty && !_cfg.isSettle) {
         _grid.addRow(FinanceGridRow(mode: _cfg.itemMode));
       }
+    } on UiWorkCancelled {
+      return;
     } on ApiException catch (e) {
+      if (!mounted || !isCurrent()) return;
       _initializationError = e.message;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !isCurrent()) return;
       final l10n =
           Localizations.of<AppLocalizations>(context, AppLocalizations) ??
           AppLocalizationsZh();
       _initializationError =
           humanErrorMessage(error) ?? l10n.productionDailyReportLoadFailed;
     } finally {
-      if (mounted) {
+      if (isCurrent()) {
         setState(() => _loading = false);
         if (_initializationError == null) await initializeFormDraft();
       }
@@ -625,6 +659,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
 
   /// 「从应收应付引入」：弹核销选择器，把所选 AppliedArAp 映射成行追加。
   Future<void> _importFromArAp() async {
+    if (_preparingLedgerRows || _saving || !formDraftIdentityIsCurrent) return;
+    final prepareEpoch = ++_rowPreparationEpoch;
+    final isCurrent = _rowPreparationOwner(prepareEpoch);
     if (_partyId == null || _partyId!.isEmpty) {
       context.appError('请先选择${_cfg.partyLabel}');
       return;
@@ -670,7 +707,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
           ? _switchToPrepaymentAndPickOrder
           : null,
     );
-    if (!mounted) return;
+    if (!mounted || !isCurrent()) return;
     if (picked == null || picked.isEmpty) return;
     final existing = _grid.rows
         .map((row) => row.appliedLedgerId)
@@ -707,9 +744,30 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       });
       _prefillReceiptRateForCurrency();
     }
-    _grid.addRows(
-      additions.map((a) => FinanceGridRow.fromApplied(_cfg.itemMode, a)),
+    final snapshot = JsonValueSnapshot.capture(captureFormDraftSnapshot());
+    final rowOwner = _rowPreparationOwner(
+      prepareEpoch,
+      rowsRevision: _grid.rowsRevision,
     );
+    final mode = _cfg.itemMode;
+    setState(() => _preparingLedgerRows = true);
+    try {
+      await prepareEditableGridRows(
+        additions,
+        create: (_) => FinanceGridRow(mode: mode),
+        initialize: (row, value) => row.applyLedger(value),
+        isCurrent: rowOwner,
+        canPublish: () => snapshot.matches(captureFormDraftSnapshot()),
+        publish: _grid.addRows,
+      );
+    } on UiWorkCancelled {
+      return;
+    } finally {
+      if (mounted && prepareEpoch == _rowPreparationEpoch) {
+        setState(() => _preparingLedgerRows = false);
+      }
+    }
+    if (!mounted || !isCurrent()) return;
     _syncReceiptRateToRows();
     if (_cfg.type == FinanceDocType.receipt) {
       _alignReceiptChannelWithAccount();
@@ -932,7 +990,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
   }
 
   Future<void> _save() async {
-    if (_saving || _intakeBusy) return;
+    if (_saving || _intakeBusy || _preparingLedgerRows) return;
     if (_createdDocId case final createdId?) {
       // 单据已创建、凭证未全部上传：只补传附件，成功后进入详情。
       await _finishCreatedDocument(createdId);
@@ -995,21 +1053,25 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         final ledgerId = r.appliedLedgerId;
         if (ledgerId == null || ledgerId.isEmpty) {
           context.appError('销售收款明细必须引用应收单');
+          await _grid.revealError(r);
           return;
         }
         final amountUnits = financeAmountUnits(r.amount.text.trim());
         if (amountUnits == null || amountUnits <= BigInt.zero) {
           context.appError('请填写大于 0 的本批 AR 核销原币金额');
+          await _grid.revealError(r, columnKey: 'amount');
           return;
         }
         final amountOriginal = financeAmountFromUnits(amountUnits);
         final currencyId = r.currencyId;
         if (currencyId == null || currencyId.isEmpty) {
           context.appError('引用的应收没有币种信息，请删除后重新引用');
+          await _grid.revealError(r);
           return;
         }
         if (_currencyId != null && currencyId != _currencyId) {
           context.appError('同一收款批次只能核销同一原币的应收');
+          await _grid.revealError(r);
           return;
         }
         final exchangeRate = _rate.text.trim();
@@ -1036,19 +1098,23 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         final ledgerId = r.appliedLedgerId;
         if (ledgerId == null || ledgerId.isEmpty) {
           context.appError('采购付款核销明细必须引用应付单');
+          await _grid.revealError(r);
           return;
         }
         if (r.currencyId == null || r.currencyId!.isEmpty) {
           context.appError('引用的应付没有币种信息，请删除后重新引用');
+          await _grid.revealError(r);
           return;
         }
         if (r.currencyId != _currencyId) {
           context.appError('应付核销明细币种必须与付款头币种一致');
+          await _grid.revealError(r);
           return;
         }
         final amountUnits = financeAmountUnits(r.amount.text.trim());
         if (amountUnits == null || amountUnits <= BigInt.zero) {
           context.appError('请填写大于 0、最多 24 位小数的本次付款原币金额');
+          await _grid.revealError(r, columnKey: 'amount');
           return;
         }
         final amountOriginal = financeAmountFromUnits(amountUnits);
@@ -1074,6 +1140,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       final amountUnits = financeAmountUnits(amountText);
       if (amountUnits == null || amountUnits <= BigInt.zero) {
         context.appError('请为每条明细填写大于 0、最多 24 位小数的实际金额');
+        await _grid.revealError(r, columnKey: 'amount');
         return;
       }
       final unchangedAmount = amountText == r.amountInputSnapshot;
@@ -2024,12 +2091,12 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       return;
     }
     final identity = ref.read(aiGuidedFileIdentityProvider);
-    final checkpoint = jsonEncode(captureFormDraft());
+    final checkpoint = JsonValueSnapshot.capture(captureFormDraftSnapshot());
     bool current() =>
         mounted &&
         _canUseIntake &&
         ref.read(aiGuidedFileIdentityProvider) == identity &&
-        jsonEncode(captureFormDraft()) == checkpoint;
+        checkpoint.matches(captureFormDraftSnapshot());
     setState(() => _intakeBusy = true);
     try {
       final file = await ref.read(financeEntryFilePickerProvider)();
@@ -2688,7 +2755,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
             : UtenEditFloatingActions(
                 onCancel: () =>
                     popOrBackTo(context, defaultPath: RouteName.finance),
-                onSave: _intakeBusy ? null : _save,
+                onSave: _intakeBusy || _preparingLedgerRows ? null : _save,
                 saveDisabledHint: _intakeBusy
                     ? financeEntryText(context, 'wait')
                     : null,

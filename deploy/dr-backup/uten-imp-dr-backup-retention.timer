@@ -1,0 +1,12 @@
+[Unit]
+Description=Target controlled retention for completed Uten IMP ciphertext
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=60
+Persistent=yes
+Unit=uten-imp-dr-backup-retention.service
+
+[Install]
+WantedBy=timers.target
+

@@ -4,6 +4,8 @@
 // 换行）、CRLF/LF/CR 三种换行、逗号/分号/制表符三种分隔符自动嗅探（中文 Windows 的
 // Excel 在部分区域设置下导出的是分号）。不做类型推断、不做公式求值——预览就是看原文。
 
+import '../../core/performance/ui_work_budget.dart';
+
 /// 解析结果。`truncated` 为真表示行数超限、只保留了前 [rows] 行。
 class DelimitedTable {
   const DelimitedTable({
@@ -42,16 +44,61 @@ DelimitedTable parseDelimitedText(
   int maxRows = kDelimitedPreviewMaxRows,
 }) {
   final separator = delimiter ?? sniffDelimiter(text);
+  final parser = _DelimitedParser(text, separator, maxRows);
+  while (!parser.done) {
+    parser.advance(16384);
+  }
+  return parser.finish();
+}
+
+/// Shares the parser state machine with the synchronous/native path; quotes,
+/// escaped quotes and CRLF may cross any slice boundary without changing rows.
+Future<DelimitedTable> parseDelimitedTextInUiSlices(
+  String text, {
+  String? delimiter,
+  int maxRows = kDelimitedPreviewMaxRows,
+  UiWorkBudget? budget,
+}) async {
+  final work = budget ?? UiWorkBudget();
+  work.ensureCurrent();
+  var separator = delimiter;
+  if (separator == null) {
+    final sniffer = _DelimiterSniffer(text, 20);
+    while (!sniffer.done) {
+      sniffer.advance(16384);
+      await work.checkpoint(16384);
+    }
+    separator = sniffer.result;
+  }
+  final parser = _DelimitedParser(text, separator, maxRows);
+  while (!parser.done) {
+    parser.advance(16384);
+    await work.checkpoint(16384);
+  }
+  work.ensureCurrent();
+  return parser.finish();
+}
+
+class _DelimitedParser {
+  _DelimitedParser(this.text, this.separator, this.maxRows);
+  final String text;
+  final String separator;
+  final int maxRows;
   final rows = <List<String>>[];
   var row = <String>[];
   final cell = StringBuffer();
+  bool cellHasContent = false;
+  bool rowHasCells = false;
   var quoted = false;
   var total = 0;
   var index = 0;
+  bool get done => index >= text.length;
 
   void endCell() {
-    row.add(cell.toString());
+    if (rows.length < maxRows) row.add(cell.toString());
+    rowHasCells = true;
     cell.clear();
+    cellHasContent = false;
   }
 
   void endRow() {
@@ -59,88 +106,124 @@ DelimitedTable parseDelimitedText(
     total++;
     if (rows.length < maxRows) rows.add(row);
     row = <String>[];
+    rowHasCells = false;
   }
 
-  while (index < text.length) {
-    final char = text[index];
-    if (quoted) {
-      if (char == '"') {
-        if (index + 1 < text.length && text[index + 1] == '"') {
-          cell.write('"');
-          index += 2;
+  void write(String char) {
+    // Past the visible limit we only count records; do not allocate the
+    // discarded cell contents. Quote/empty-tail decisions still use the flag.
+    if (rows.length < maxRows) cell.write(char);
+    cellHasContent = true;
+  }
+
+  void advance(int characters) {
+    final end = index + characters;
+    while (index < text.length && index < end) {
+      final char = text[index];
+      if (quoted) {
+        if (char == '"') {
+          if (index + 1 < text.length && text[index + 1] == '"') {
+            write('"');
+            index += 2;
+            continue;
+          }
+          quoted = false;
+          index++;
           continue;
         }
-        quoted = false;
+        write(char);
         index++;
         continue;
       }
-      cell.write(char);
-      index++;
-      continue;
-    }
-    if (char == '"' && cell.isEmpty) {
-      quoted = true;
-      index++;
-      continue;
-    }
-    if (char == separator) {
-      endCell();
-      index++;
-      continue;
-    }
-    if (char == '\n' || char == '\r') {
-      endRow();
-      // CRLF 只算一次换行。
-      if (char == '\r' && index + 1 < text.length && text[index + 1] == '\n') {
+      if (char == '"' && !cellHasContent) {
+        quoted = true;
         index++;
+        continue;
       }
+      if (char == separator) {
+        endCell();
+        index++;
+        continue;
+      }
+      if (char == '\n' || char == '\r') {
+        endRow();
+        // CRLF 只算一次换行。
+        if (char == '\r' &&
+            index + 1 < text.length &&
+            text[index + 1] == '\n') {
+          index++;
+        }
+        index++;
+        continue;
+      }
+      write(char);
       index++;
-      continue;
     }
-    cell.write(char);
-    index++;
-  }
-  // 最后一行没有换行符结尾时补上；纯空尾行不算一行。
-  if (cell.isNotEmpty || row.isNotEmpty) {
-    endRow();
   }
 
-  return DelimitedTable(
-    rows: rows,
-    delimiter: separator,
-    totalRows: total,
-    truncated: total > rows.length,
-  );
+  DelimitedTable finish() {
+    // 最后一行没有换行符结尾时补上；纯空尾行不算一行。
+    if (cellHasContent || rowHasCells) {
+      endRow();
+    }
+
+    return DelimitedTable(
+      rows: rows,
+      delimiter: separator,
+      totalRows: total,
+      truncated: total > rows.length,
+    );
+  }
 }
 
 /// 分隔符嗅探：取前若干行，数引号外的候选字符，谁多用谁；都没有则用逗号。
 String sniffDelimiter(String text, {int sampleLines = 20}) {
+  final sniffer = _DelimiterSniffer(text, sampleLines);
+  while (!sniffer.done) {
+    sniffer.advance(16384);
+  }
+  return sniffer.result;
+}
+
+class _DelimiterSniffer {
+  _DelimiterSniffer(this.text, this.sampleLines);
+  final String text;
+  final int sampleLines;
   final counts = <String, int>{
     for (final candidate in _candidates) candidate: 0,
   };
   var quoted = false;
   var lines = 0;
-  for (var index = 0; index < text.length && lines < sampleLines; index++) {
-    final char = text[index];
-    if (char == '"') {
-      quoted = !quoted;
-      continue;
-    }
-    if (quoted) continue;
-    if (char == '\n') {
-      lines++;
-      continue;
-    }
-    if (counts.containsKey(char)) counts[char] = counts[char]! + 1;
-  }
-  var best = ',';
-  var bestCount = 0;
-  for (final candidate in _candidates) {
-    final count = counts[candidate]!;
-    if (count > bestCount) {
-      best = candidate;
-      bestCount = count;
+  var index = 0;
+  bool get done => index >= text.length || lines >= sampleLines;
+
+  void advance(int characters) {
+    final end = index + characters;
+    for (; index < text.length && lines < sampleLines && index < end; index++) {
+      final char = text[index];
+      if (char == '"') {
+        quoted = !quoted;
+        continue;
+      }
+      if (quoted) continue;
+      if (char == '\n') {
+        lines++;
+        continue;
+      }
+      if (counts.containsKey(char)) counts[char] = counts[char]! + 1;
     }
   }
-  return best;
+
+  String get result {
+    var best = ',';
+    var bestCount = 0;
+    for (final candidate in _candidates) {
+      final count = counts[candidate]!;
+      if (count > bestCount) {
+        best = candidate;
+        bestCount = count;
+      }
+    }
+    return best;
+  }
 }

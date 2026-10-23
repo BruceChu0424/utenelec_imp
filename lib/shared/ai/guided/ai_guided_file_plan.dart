@@ -5,6 +5,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/server_config.dart';
+import '../../../core/performance/responsive_data_codec.dart';
+import '../../../core/performance/json_value_snapshot.dart';
 import '../../auth/permissions.dart';
 import '../../providers/authenticated_scope_provider.dart';
 import '../../../core/network/api_exception.dart';
@@ -210,6 +212,19 @@ class AiGuidedFileResult {
       fileName == file.name &&
       RegExp(r'^[0-9a-f]{64}$').hasMatch(sha256Hex) &&
       sha256.convert(file.bytes!).toString() == sha256Hex;
+  Future<bool> matchesSourceResponsive(
+    PlatformFile file, {
+    bool Function()? isCurrent,
+  }) async {
+    if (file.bytes == null ||
+        fileName != file.name ||
+        !RegExp(r'^[0-9a-f]{64}$').hasMatch(sha256Hex)) {
+      return false;
+    }
+    return await sha256HexResponsive(file.bytes!, isCurrent: isCurrent) ==
+        sha256Hex;
+  }
+
   Map<String, dynamic> toJson() => {
     'workflow': workflow.code,
     'documentType': documentType,
@@ -278,7 +293,8 @@ class AiGuidedFilePlan {
   final String sourceSha256;
   final String? pageRoute;
   final bool _sourceMatches;
-  String? _draftBytes;
+  DraftByteValue? _draftBytes;
+  DraftByteValue get _draftValue => _draftBytes ??= DraftByteValue(file.bytes!);
   bool matches(WidgetRef ref) =>
       ref.read(aiGuidedFileIdentityProvider) == identity &&
       !identity.scope.readOnly &&
@@ -293,8 +309,78 @@ class AiGuidedFilePlan {
     'result': result.toJson(),
     'fileName': file.name,
     'pageRoute': ?pageRoute,
-    if (includeBytes) 'bytes': _draftBytes ??= base64Encode(file.bytes!),
+    if (includeBytes) 'bytes': _draftValue.jsonValue,
   };
+
+  static Future<AiGuidedFilePlan> createResponsive({
+    required String jobId,
+    required PlatformFile file,
+    required AiGuidedFileResult result,
+    required AiGuidedWorkflow workflow,
+    required AiGuidedFileIdentity identity,
+    String? pageRoute,
+    bool Function()? isCurrent,
+  }) async {
+    final owned = DraftByteValue(file.bytes ?? Uint8List(0));
+    final digest = await sha256HexResponsive(owned.bytes, isCurrent: isCurrent);
+    return AiGuidedFilePlan._retained(
+      jobId: jobId,
+      file: PlatformFile(
+        name: file.name,
+        size: owned.bytes.length,
+        bytes: owned.bytes,
+      ),
+      result: result,
+      workflow: workflow,
+      identity: identity,
+      sourceSha256: digest,
+      pageRoute: safeAiGuidedPageRoute(pageRoute),
+    ).._draftBytes = owned;
+  }
+
+  static Future<AiGuidedFilePlan?> restoreLocalDraftResponsive(
+    Object? raw,
+    AiGuidedFileIdentity? identity, {
+    bool Function()? isCurrent,
+  }) async {
+    if (raw is! Map<String, dynamic> ||
+        identity == null ||
+        raw['bytes'] is! String) {
+      return null;
+    }
+    raw = snapshotJsonValue(raw) as Map<String, dynamic>;
+    final jobId = checkedAiChatId(raw['jobId']);
+    if (jobId == null ||
+        (raw['bytes'] as String).length > 20 * 1024 * 1024 + 4) {
+      return null;
+    }
+    final Uint8List bytes;
+    try {
+      bytes = await decodeBase64Responsive(
+        raw['bytes'] as String,
+        isCurrent: isCurrent,
+      );
+    } on FormatException {
+      return null;
+    }
+    if (bytes.isEmpty || bytes.length > 15 * 1024 * 1024) return null;
+    final workflow = AiGuidedWorkflow.parse(raw['workflow']);
+    if (workflow == AiGuidedWorkflow.none) return null;
+    final plan = await createResponsive(
+      jobId: jobId,
+      file: PlatformFile(
+        name: _text(raw['fileName'], 500),
+        size: bytes.length,
+        bytes: bytes,
+      ),
+      result: AiGuidedFileResult.fromJson(_map(raw['result'])),
+      workflow: workflow,
+      identity: identity,
+      pageRoute: raw['pageRoute'] is String ? raw['pageRoute'] as String : null,
+      isCurrent: isCurrent,
+    );
+    return plan._sourceMatches ? plan : null;
+  }
 
   /// Called only after FormDraftMixin restores this account/server's own draft.
   static AiGuidedFilePlan? restoreLocalDraft(
@@ -369,7 +455,7 @@ Future<AiGuidedFilePlan> validateAiGuidedFilePlan(
     identity: plan.identity,
     sourceSha256: plan.sourceSha256,
     pageRoute: plan.pageRoute,
-  ).._draftBytes = plan._draftBytes;
+  ).._draftBytes = plan._draftValue;
 }
 
 String _text(Object? value, int limit) => value is String

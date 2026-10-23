@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_error.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
@@ -20,6 +21,7 @@ import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.d
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_batch_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/bom_component_picker.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
+import 'package:uten_imp/features/basic_data/repositories/goods_location_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/product_category_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -44,6 +46,7 @@ const _source = GoodsDetail(
   owningWarehouseId: 'warehouse-1',
   price: 20,
   discount: 0.9,
+  subcontractAllowedLossPct: 7.25,
   version: 8,
 );
 
@@ -109,6 +112,9 @@ Future<void> _pumpPage(
         isSuperAdminProvider.overrideWithValue(false),
         productCategoryRepositoryProvider.overrideWithValue(_Categories()),
         goodsRepositoryProvider.overrideWithValue(goods),
+        goodsLocationRepositoryProvider.overrideWithValue(
+          _LocationRepository(goods),
+        ),
         goodsBomRepositoryProvider.overrideWithValue(bom),
         if (maintenance != null)
           goodsBomBatchRepositoryProvider.overrideWithValue(maintenance),
@@ -255,6 +261,7 @@ void main() {
     expect(maintenance.action, BomBatchAction.overwrite);
     expect(maintenance.targets, [_source.id]);
     expect(maintenance.items.single['qty'], _component.qty);
+    expect(maintenance.items.single['copiedFromBomItemId'], _component.id);
     expect(bom.pasted, isEmpty);
   });
 
@@ -380,6 +387,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  for (final canViewCost in [false, true]) {
+    testWidgets('复制货品${canViewCost ? '有' : '无'}成本查看权限时'
+        '${canViewCost ? '保留' : '省略'}来源委外损耗比例', (tester) async {
+      final goods = _GoodsRepository();
+      await _pumpPage(
+        tester,
+        goods,
+        _BomRepository(),
+        bomPermissions: {if (canViewCost) Perm.goodsCostView},
+      );
+      await tester.tap(find.text('原分类'));
+      await tester.pumpAndSettle();
+      await _rightClickAt(tester, tester.getCenter(find.text(_source.name!)));
+      await tester.tap(find.text('复制货品'));
+      await tester.pumpAndSettle();
+      final clipboard = ProviderScope.containerOf(
+        tester.element(find.byType(ProductCategoryPage)),
+      ).read(goodsClipboardProvider);
+      // A source snapshot is not authorization to write the new record's cost.
+      // Enforce permission even when a detail response contains a non-null value.
+      expect(clipboard.goodsList.single.detail.subcontractAllowedLossPct, 7.25);
+      await tester.tap(find.text('新分类'));
+      await tester.pumpAndSettle();
+      await _rightClickBlank(tester);
+      await tester.tap(find.text('粘贴货品'));
+      await tester.pumpAndSettle();
+      final body = goods.created.single;
+      expect(body['categoryId'], 'target-category');
+      if (canViewCost) {
+        expect(body['subcontractAllowedLossPct'], 7.25);
+      } else {
+        expect(body, isNot(contains('subcontractAllowedLossPct')));
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final canCreate in [false, true]) {
     testWidgets(canCreate ? '空分类剪贴板为空时粘贴禁用' : '空分类没有新增权限时粘贴禁用', (tester) async {
       final goods = _GoodsRepository();
@@ -490,6 +534,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(goods.created, isEmpty);
     expect(bom.pasted, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('157条分类中粘贴按实际编号位置定位，不假定副本在末页', (tester) async {
+    final goods = _GoodsRepository(targetCount: 157, copyPrefix: 'AAA');
+    final bom = _BomRepository();
+    await _pumpPage(tester, goods, bom, withClipboard: true);
+    await tester.tap(find.text('新分类'));
+    await tester.pumpAndSettle();
+    await _rightClickAt(tester, tester.getCenter(find.text('已有货品 1')));
+    await tester.tap(find.text('粘贴货品'));
+    await tester.pumpAndSettle();
+    final table = tester.widget<MasterDataTableView<GoodsListItem>>(_table);
+    expect(table.currentPage, 1);
+    expect(table.totalPages, 8);
+    expect(table.items.first.id, 'copy-1');
+    expect(table.selectedIds, {'copy-1'});
+    expect(find.text('测试插座(1)').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -624,6 +686,49 @@ void main() {
     expect(find.text('测试插座(3)').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('组件粘贴被服务端拒绝时结果弹窗逐行列出哪一行什么问题', (tester) async {
+    final goods = _GoodsRepository();
+    final bom = _BomRepository()
+      ..pasteFailure = ApiException(
+        'CONFLICT',
+        '粘贴没有生效：有 2 处问题，现有组件没有任何改动',
+        fieldErrors: const [
+          ApiFieldError(
+            field: '第 1 行 UT3018 包装袋（优腾通用）',
+            message: '目标「测试插座(1)」已有这个组件',
+          ),
+          ApiFieldError(
+            field: '第 7 行 UT3118 6M圆标贴（响臻白）',
+            message: '组件货品已删除或仅为迁移占位',
+          ),
+        ],
+        httpStatus: 409,
+      );
+    await _pumpPage(tester, goods, bom, withClipboard: true);
+    await tester.tap(find.text('新分类'));
+    await tester.pumpAndSettle();
+    await _rightClickBlank(tester);
+    await tester.tap(find.text('粘贴货品'));
+    await tester.pumpAndSettle();
+    // 货品本体建成一条成功；组件失败行带概括句与逐行明细，不再只报「有 2 处问题」。
+    expect(find.text('已粘贴 1 个，1 个没有处理'), findsOneWidget);
+    expect(find.text('「测试插座(1)」的组件'), findsOneWidget);
+    expect(find.textContaining('粘贴没有生效：有 2 处问题'), findsOneWidget);
+    expect(
+      find.textContaining('第 1 行 UT3018 包装袋（优腾通用）：目标「测试插座(1)」已有这个组件'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('第 7 行 UT3118 6M圆标贴（响臻白）：组件货品已删除或仅为迁移占位'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('知道了'));
+    await tester.pumpAndSettle();
+    expect(goods.created, hasLength(1));
+    expect(bom.pasted, hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _MaintenanceRepository implements GoodsBomBatchRepository {
@@ -714,9 +819,14 @@ class _Categories implements ProductCategoryRepository {
 }
 
 class _GoodsRepository implements GoodsRepository {
-  _GoodsRepository({this.targetCount = 0, this.failCreateAttempt});
+  _GoodsRepository({
+    this.targetCount = 0,
+    this.failCreateAttempt,
+    this.copyPrefix = 'DST',
+  });
 
   final int targetCount;
+  final String copyPrefix;
   final int? failCreateAttempt;
   var _createAttempts = 0;
   final _createdNumbers = <int>[];
@@ -726,7 +836,7 @@ class _GoodsRepository implements GoodsRepository {
       <({String? categoryId, int page, String? sort, String? order})>[];
 
   String _copyCode(int number) =>
-      'DST${(targetCount + number).toString().padLeft(4, '0')}';
+      '$copyPrefix${(targetCount + number).toString().padLeft(4, '0')}';
 
   @override
   Future<GoodsDetail> detail(String id) async {
@@ -800,6 +910,10 @@ class _GoodsRepository implements GoodsRepository {
                   'code': _copyCode(_createdNumbers[i]),
                 }),
           ];
+    items.sort(
+      (a, b) =>
+          (order == 'desc' ? -1 : 1) * (a.code ?? '').compareTo(b.code ?? ''),
+    );
     return PagedResult(
       items: items.skip((page - 1) * size).take(size).toList(),
       page: page,
@@ -823,8 +937,35 @@ class _GoodsRepository implements GoodsRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _LocationRepository extends GoodsLocationRepository {
+  _LocationRepository(this.goods) : super(ApiClient(Dio()));
+  final _GoodsRepository goods;
+  @override
+  Future<int?> locate({
+    required String id,
+    String? categoryId,
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+    int size = 20,
+    bool excludeDisabled = false,
+    bool includeRelated = false,
+  }) async {
+    final all = await goods.list(
+      categoryId,
+      size: 10000,
+      sort: sort,
+      order: order,
+    );
+    final index = all.items.indexWhere((item) => item.id == id);
+    return index < 0 ? null : index ~/ size + 1;
+  }
+}
+
 class _BomRepository implements GoodsBomRepository {
   Completer<List<GoodsBomItem>>? pendingCopy;
+  ApiException? pasteFailure;
   final listCalls = <String>[];
   final pasted =
       <
@@ -849,6 +990,7 @@ class _BomRepository implements GoodsBomRepository {
     required List<Map<String, dynamic>> items,
   }) async {
     pasted.add((mode: mode, targets: targets, items: items));
+    if (pasteFailure != null) throw pasteFailure!;
     return BomPasteResult(
       targets: targets.length,
       added: items.length,

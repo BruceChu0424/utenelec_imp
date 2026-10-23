@@ -4,6 +4,8 @@
 // 卡片即筛选——单选互斥由调用方状态保证（选中一张卡即清除其它筛选维度），再点已选卡取消；
 // 计数一律由后端概览/汇总接口提供，不用当前列表页推算或伪造（value 为 null 时显示 '—'）。
 // 复用：任务工作台、销售订单进度查询等「顶部卡片 + 列表」同类页面——视觉与交互只维护这一处。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
@@ -58,29 +60,127 @@ class MetricFilterCards extends StatelessWidget {
 
   final List<MetricFilterCardItem> items;
 
-  /// 单卡宽度；传 `double.infinity` 时占满整行（单卡任务中心的横幅式用法）。
+  /// 最小卡宽度；按可用空间等分排列，窄屏自动换行。
   final double itemWidth;
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: UtenSpacing.s12,
-      runSpacing: UtenSpacing.s12,
-      children: [
-        for (final item in items)
-          SizedBox(
-            width: itemWidth,
-            child: _MetricFilterCard(item: item),
-          ),
-      ],
+    if (items.isEmpty) return const SizedBox.shrink();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (!constraints.hasBoundedWidth) {
+          return SizedBox(
+            width: itemWidth.isFinite ? itemWidth : 220,
+            child: MetricFilterCards(items: items, itemWidth: itemWidth),
+          );
+        }
+        final scale = MediaQuery.textScalerOf(context).scale(1);
+        final minimumWidth = itemWidth * scale;
+        final maximumColumns = minimumWidth.isFinite
+            ? ((constraints.maxWidth + UtenSpacing.s12) /
+                      (minimumWidth + UtenSpacing.s12))
+                  .floor()
+                  .clamp(1, items.length)
+            : 1;
+        final rows = (items.length / maximumColumns).ceil();
+        final columns = (items.length / rows).ceil();
+        final cardWidth =
+            (constraints.maxWidth - (columns - 1) * UtenSpacing.s12) / columns;
+        final contentWidth = math.max(1.0, cardWidth - UtenSpacing.s16 * 2);
+        final theme = Theme.of(context);
+        double measure(
+          String text,
+          TextStyle? style,
+          double width, {
+          int? maxLines,
+        }) {
+          final painter = TextPainter(
+            text: TextSpan(text: text, style: style),
+            textDirection: Directionality.of(context),
+            textScaler: MediaQuery.textScalerOf(context),
+            maxLines: maxLines,
+            ellipsis: maxLines == null ? null : '…',
+          )..layout(maxWidth: width);
+          final height = painter.height;
+          painter.dispose();
+          return height;
+        }
+
+        final labelHeight = items
+            .map(
+              (item) => measure(
+                item.label,
+                theme.textTheme.bodySmall,
+                math.max(1.0, contentWidth - 22 - UtenSpacing.s8),
+              ),
+            )
+            .fold(22.0, math.max);
+        final valueHeight = items
+            .map(
+              (item) => measure(
+                item.value?.toString() ?? '—',
+                theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+                contentWidth,
+              ),
+            )
+            .reduce(math.max);
+        final descriptionHeight = items
+            .map(
+              (item) => measure(
+                item.description ?? ' ',
+                theme.textTheme.bodySmall,
+                contentWidth,
+                maxLines: 2,
+              ),
+            )
+            .reduce(math.max);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var start = 0; start < items.length; start += columns) ...[
+              if (start > 0) const SizedBox(height: UtenSpacing.s12),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var column = 0; column < columns; column++) ...[
+                      if (column > 0) const SizedBox(width: UtenSpacing.s12),
+                      Expanded(
+                        child: start + column < items.length
+                            ? _MetricFilterCard(
+                                item: items[start + column],
+                                labelHeight: labelHeight,
+                                valueHeight: valueHeight,
+                                descriptionHeight: descriptionHeight,
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }
 
 class _MetricFilterCard extends StatelessWidget {
-  const _MetricFilterCard({required this.item});
+  const _MetricFilterCard({
+    required this.item,
+    required this.labelHeight,
+    required this.valueHeight,
+    required this.descriptionHeight,
+  });
 
   final MetricFilterCardItem item;
+  final double labelHeight;
+  final double valueHeight;
+  final double descriptionHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -91,65 +191,68 @@ class _MetricFilterCard extends StatelessWidget {
       button: item.onTap != null,
       selected: selected,
       label: '${item.label}，${item.value ?? '—'}',
-      child: GestureDetector(
-        onTap: item.onTap,
-        child: Container(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          decoration: BoxDecoration(
-            color: selected
-                ? color.withValues(alpha: 0.1)
-                : theme.colorScheme.surface,
-            borderRadius: UtenRadius.lgAll,
-            border: Border.all(
-              color: selected ? color : theme.colorScheme.outlineVariant,
-              width: selected ? 1.5 : 1,
-            ),
-            boxShadow: UtenElevation.low(
-              isDark: theme.brightness == Brightness.dark,
-            ),
+      child: Material(
+        color: selected
+            ? color.withValues(alpha: 0.1)
+            : theme.colorScheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: UtenRadius.lgAll,
+          side: BorderSide(
+            color: selected ? color : theme.colorScheme.outlineVariant,
+            width: selected ? 1.5 : 1,
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: UtenRadius.mdAll,
-                ),
-                child: Icon(item.icon, color: color, size: 22),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.value?.toString() ?? '—',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: color,
-                      ),
-                    ),
-                    Text(
-                      item.label,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    if (item.description?.isNotEmpty == true)
-                      Text(
-                        item.description!,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: item.onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: labelHeight,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(item.icon, color: color, size: 22),
+                      const SizedBox(width: UtenSpacing.s8),
+                      Expanded(
+                        child: Text(
+                          item.label,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: UtenSpacing.s12),
+                SizedBox(
+                  height: valueHeight,
+                  child: Text(
+                    item.value?.toString() ?? '—',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: color,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+                SizedBox(
+                  height: descriptionHeight,
+                  child: Text(
+                    item.description ?? ' ',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

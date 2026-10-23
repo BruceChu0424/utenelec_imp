@@ -1,0 +1,241 @@
+package com.uten.imp.features.master.goods.importing;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.application.port.BusinessEventPublisher;
+import com.uten.imp.application.port.GoodsMasterWriteAccessPort;
+import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.master.color.Color;
+import com.uten.imp.features.master.color.ColorRepository;
+import com.uten.imp.features.master.goods.*;
+import com.uten.imp.features.master.goods.history.GoodsOperationHistoryService;
+import com.uten.imp.features.master.lifecycle.MasterObjectAccess;
+import com.uten.imp.features.master.lifecycle.MasterReferenceGuard;
+import com.uten.imp.features.master.materialcategory.MaterialCategory;
+import com.uten.imp.features.master.materialcategory.MaterialCategoryRepository;
+import com.uten.imp.features.master.unit.Unit;
+import com.uten.imp.features.master.unit.UnitRepository;
+import com.uten.imp.security.*;
+import com.uten.imp.support.MigratedSchemaBaseline;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
+import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionInterceptor;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.io.ByteArrayOutputStream;
+import java.time.Instant;
+import java.util.*;
+import java.util.function.Supplier;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+/** Real import and goods services, Hibernate and migrated PostgreSQL history/undo guards. */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
+class GoodsImportHistoryPostgresTest {
+    static MigratedSchemaBaseline.ScopedDatabase database;
+    static EntityManagerFactory factory;
+    static JpaTransactionManager transactions;
+    EntityManager em;
+    GoodsImportService importer;
+    GoodsOperationHistoryService history;
+    UUID actor, categoryId, existingId;
+    String existingCode, newCode;
+
+    @BeforeAll static void start() throws Exception {
+        database = MigratedSchemaBaseline.openDatabase("goods_import_merge");
+        var bean = new LocalContainerEntityManagerFactoryBean();
+        bean.setDataSource(new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword()));
+        bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
+        bean.setPackagesToScan("com.uten.imp");
+        bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "none"));
+        bean.afterPropertiesSet(); factory = bean.getObject(); transactions = new JpaTransactionManager(factory);
+    }
+    @AfterAll static void stop() throws Exception {
+        if (factory != null) factory.close();
+        if (database != null) database.close();
+    }
+    @AfterEach void close() {
+        if (em != null) {
+            em.close();
+        }
+        SecurityContextHolder.clearContext();
+    }
+    @BeforeEach void prepare() {
+        em = SharedEntityManagerCreator.createSharedEntityManager(factory); actor = UUID.randomUUID(); categoryId = UUID.randomUUID(); existingId = UUID.randomUUID();
+        existingCode = ("IE" + UUID.randomUUID().toString().replace("-", "")).toUpperCase(Locale.ROOT);
+        newCode = ("IN" + UUID.randomUUID().toString().replace("-", "")).toUpperCase(Locale.ROOT);
+        Set<String> permissions = Set.of("goods:view", "goods:edit", "goods:import", "goods:import:undo", "goods:price:edit", "goods:price:view");
+        var principal = new AuthUser(actor, UUID.randomUUID(), "import-test", permissions, false, true, true);
+        var current = mock(SecurityContextCurrentUser.class);
+        when(current.requireId()).thenReturn(actor); when(current.get()).thenReturn(Optional.of(principal));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal, "n/a",
+                permissions.stream().map(SimpleGrantedAuthority::new).toList()));
+        var goods = mock(GoodsRepository.class);
+        when(goods.findById(any())).thenAnswer(call -> Optional.ofNullable(em.find(Goods.class, call.getArgument(0))));
+        when(goods.findByCodeAndDeletedFalse(anyString())).thenAnswer(call -> em.createQuery(
+                "from Goods g where g.code=:code and g.deleted=false", Goods.class)
+                .setParameter("code", call.getArgument(0)).getResultStream().findFirst());
+        when(goods.findImportIdentities()).thenAnswer(call -> em.createQuery("""
+                select new com.uten.imp.features.master.goods.importing.GoodsImportIdentity(
+                  g.id,g.version,g.code,g.name,c.id,g.deleted,g.ownerEmployeeId)
+                from Goods g left join g.category c
+                """, GoodsImportIdentity.class).getResultList());
+        when(goods.quantityUnitInUse(any())).thenAnswer(call -> em.createNativeQuery("SELECT fn_goods_quantity_unit_in_use(:id)")
+                .setParameter("id", call.getArgument(0)).getSingleResult());
+        when(goods.save(any())).thenAnswer(call -> {
+            Goods value = call.getArgument(0);
+            if (!em.contains(value)) {
+                value.setCreatedAt(Instant.now()); value.setUpdatedAt(Instant.now()); em.persist(value);
+            }
+            return value;
+        });
+        var categories = mock(MaterialCategoryRepository.class);
+        when(categories.findByDeletedFalseOrderBySortOrderAscNameAsc()).thenAnswer(call -> em.createQuery(
+                "from MaterialCategory c where c.deleted=false order by c.sortOrder,c.name", MaterialCategory.class).getResultList());
+        when(categories.findById(any())).thenAnswer(call -> Optional.ofNullable(em.find(MaterialCategory.class, call.getArgument(0))));
+        var colors = mock(ColorRepository.class); when(colors.findAll()).thenAnswer(call -> em.createQuery("from Color", Color.class).getResultList());
+        var units = mock(UnitRepository.class); when(units.findAll()).thenAnswer(call -> em.createQuery("from Unit", Unit.class).getResultList());
+        var tx = mock(TxSessionVars.class);
+        var service = transactional(new GoodsService(goods, categories, colors, units, null, tx, em,
+                new CategoryDrivenCodeService(em), mock(OwnerVisibility.class), current, new GoodsCostMasker(current), null));
+        var importTarget = new GoodsImportService(service, goods, null, categories, null, colors, null, units, em, current, null);
+        ReflectionTestUtils.setField(importTarget, "writeAccess", (GoodsMasterWriteAccessPort) id -> {
+            Goods value = em.find(Goods.class, id);
+            if (value == null || value.isDeleted()) throw new IllegalStateException("goods not available");
+        });
+        var access = mock(MasterObjectAccess.class); when(access.readableLabelOwner(anyString())).thenReturn(owner -> true);
+        history = transactional(new GoodsOperationHistoryService(em, new ObjectMapper(), current, tx,
+                new MasterReferenceGuard(em, access), mock(OwnerVisibility.class), mock(BusinessEventPublisher.class)));
+        ReflectionTestUtils.setField(importTarget, "operationHistory", history);
+        importer = transactional(importTarget);
+        inTx(() -> {
+            em.createNativeQuery("INSERT INTO material_categories(id,code,name) VALUES(:id,:code,:name)")
+                    .setParameter("id", categoryId).setParameter("code", "IC" + categoryId.toString().replace("-", ""))
+                    .setParameter("name", categoryName()).executeUpdate();
+            em.createNativeQuery("""
+                    INSERT INTO goods(id,code,name,category_id,c_number,spec,price,name_en,name_en_source,code_sequence)
+                    VALUES(:id,:code,'现有货品',:category,'111','保留规格',12.3400,'Learned English','LEARNED',(SELECT coalesce(max(code_sequence),0)+1 FROM goods))
+                    """).setParameter("id", existingId).setParameter("code", existingCode).setParameter("category", categoryId).executeUpdate();
+            em.createNativeQuery("UPDATE category_master_code_sequences SET last_seq=(SELECT max(code_sequence) FROM goods) WHERE master_type='GOODS'").executeUpdate();
+            return null;
+        });
+    }
+
+    @Test void mixedInsertFillAndReplacementUndoAndRedoRestoreTheExactBeforeAndAfter() throws Exception {
+        byte[] file = workbook();
+        var detected = inTx(() -> importer.detect(file));
+        assertTrue(detected.errors().isEmpty(), detected.errors().toString());
+        var result = inTx(() -> { provenance("/api/master/goods/import/commit", "POST"); return importer.commit(detected.planId(), file, "mixed.xlsx", Set.of("goods:2")); });
+        assertEquals(2, result.importedCount()); assertEquals(1, result.createdCount());
+        assertEquals(1, result.updatedCount()); assertEquals(1, result.filledCount());
+        assertEquals("222", scalar("SELECT c_number FROM goods WHERE id=:id", existingId));
+        assertEquals("客户新名", scalar("SELECT client_goods_name FROM goods WHERE id=:id", existingId));
+        assertEquals("保留规格", scalar("SELECT spec FROM goods WHERE id=:id", existingId));
+        assertEquals("Learned English", scalar("SELECT name_en FROM goods WHERE id=:id", existingId));
+        assertEquals("LEARNED", scalar("SELECT name_en_source FROM goods WHERE id=:id", existingId));
+        UUID newId = (UUID) em.createNativeQuery("SELECT id FROM goods WHERE code=:code").setParameter("code", newCode).getSingleResult();
+        UUID operation = (UUID) em.createNativeQuery("SELECT id FROM goods_operation_history WHERE actor_id=:actor AND operation_type='GOODS_IMPORT'")
+                .setParameter("actor", actor).getSingleResult();
+
+        inTx(() -> { provenance("/api/master/goods/import/" + result.batchId(), "DELETE"); return importer.undo(result.batchId()); });
+
+        assertEquals("111", scalar("SELECT c_number FROM goods WHERE id=:id", existingId));
+        assertNull(scalar("SELECT client_goods_name FROM goods WHERE id=:id", existingId));
+        assertEquals("false", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", existingId));
+        assertEquals("true", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", newId));
+        assertEquals("UNDONE", scalar("SELECT status FROM goods_import_batches WHERE id=:id", result.batchId()));
+        inTx(() -> { provenance("/api/master/goods/history/" + operation + "/redo", "POST"); return history.redo(operation, 1); });
+        assertEquals("222", scalar("SELECT c_number FROM goods WHERE id=:id", existingId));
+        assertEquals("false", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", newId));
+    }
+
+    @Test void laterChangesBlockTheEntireMixedBatchUndoWithoutDeletingTheNewGoods() throws Exception {
+        byte[] file = workbook();
+        var detected = inTx(() -> importer.detect(file));
+        var result = inTx(() -> { provenance("/api/master/goods/import/commit", "POST"); return importer.commit(detected.planId(), file, "mixed.xlsx", Set.of("goods:2")); });
+        inTx(() -> {
+            provenance("/api/master/goods/" + existingId, "PUT");
+            em.createNativeQuery("UPDATE goods SET c_number='333',version=version+1 WHERE id=:id").setParameter("id", existingId).executeUpdate(); return null;
+        });
+        assertThrows(ApiException.class, () -> inTx(() -> { provenance("/api/master/goods/import/" + result.batchId(), "DELETE"); return importer.undo(result.batchId()); }));
+        assertEquals("333", scalar("SELECT c_number FROM goods WHERE id=:id", existingId));
+        assertEquals(1L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods WHERE code=:code AND NOT is_deleted").setParameter("code", newCode).getSingleResult()).longValue());
+        assertEquals("IMPORTED", scalar("SELECT status FROM goods_import_batches WHERE id=:id", result.batchId()));
+    }
+
+    @Test void committedChangeAfterDetectionRejectsBeforeAnyNewGoodsOrBatchIsWritten() throws Exception {
+        byte[] file = workbook();
+        var detected = inTx(() -> importer.detect(file));
+        inTx(() -> { em.createNativeQuery("UPDATE goods SET c_number='其他人补齐',version=version+1 WHERE id=:id").setParameter("id", existingId).executeUpdate(); return null; });
+        assertThrows(ApiException.class, () -> inTx(() -> { provenance("/api/master/goods/import/commit", "POST"); return importer.commit(detected.planId(), file, "mixed.xlsx", Set.of("goods:2")); }));
+        assertEquals(0L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods WHERE code=:code").setParameter("code", newCode).getSingleResult()).longValue());
+        assertEquals(0L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods_import_batches WHERE created_by=:actor").setParameter("actor", actor).getSingleResult()).longValue());
+    }
+
+    @Test void successiveImportsOfTheSameGoodsHaveIndependentReceiptsAndCanUndoInOrder() throws Exception {
+        byte[] firstFile = workbook();
+        var firstPlan = inTx(() -> importer.detect(firstFile));
+        var first = inTx(() -> { provenance("/api/master/goods/import/commit", "POST"); return importer.commit(firstPlan.planId(), firstFile, "first.xlsx", Set.of("goods:2")); });
+        byte[] secondFile = workbook("333");
+        var secondPlan = inTx(() -> importer.detect(secondFile));
+        var second = inTx(() -> { provenance("/api/master/goods/import/commit", "POST"); return importer.commit(secondPlan.planId(), secondFile, "second.xlsx", Set.of("goods:2")); });
+        assertNotEquals(scalar("SELECT operation_id::text FROM goods_import_batches WHERE id=:id", first.batchId()),
+                scalar("SELECT operation_id::text FROM goods_import_batches WHERE id=:id", second.batchId()));
+        inTx(() -> { provenance("/api/master/goods/import/" + second.batchId(), "DELETE"); return importer.undo(second.batchId()); });
+        assertEquals("222", scalar("SELECT c_number FROM goods WHERE id=:id", existingId));
+        assertEquals("IMPORTED", scalar("SELECT status FROM goods_import_batches WHERE id=:id", first.batchId()));
+        assertEquals("UNDONE", scalar("SELECT status FROM goods_import_batches WHERE id=:id", second.batchId()));
+        inTx(() -> { provenance("/api/master/goods/import/" + first.batchId(), "DELETE"); return importer.undo(first.batchId()); });
+        assertEquals("111", scalar("SELECT c_number FROM goods WHERE id=:id", existingId));
+        assertEquals("UNDONE", scalar("SELECT status FROM goods_import_batches WHERE id=:id", first.batchId()));
+        assertEquals("UNDONE", scalar("SELECT status FROM goods_import_batches WHERE id=:id", second.batchId()));
+    }
+
+    private String categoryName() { return "导入核对" + categoryId; }
+    private byte[] workbook() throws Exception { return workbook("222"); }
+    private byte[] workbook(String customerModel) throws Exception {
+        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = book.createSheet("货品"); var header = sheet.createRow(0);
+            String[] titles = {"编号", "名称", "类别", "客户型号", "客户品名", "规格"};
+            for (int n = 0; n < titles.length; n++) header.createCell(n).setCellValue(titles[n]);
+            String[][] values = {{existingCode, "现有货品", categoryName(), customerModel, "客户新名", ""},
+                    {newCode, "新货品", categoryName(), "新客户型号", "", ""}};
+            for (int n = 0; n < values.length; n++) { var row = sheet.createRow(n + 1); for (int c = 0; c < titles.length; c++) row.createCell(c).setCellValue(values[n][c]); }
+            book.write(out); return out.toByteArray();
+        }
+    }
+    private String scalar(String sql, UUID id) { Object value = em.createNativeQuery(sql).setParameter("id", id).getSingleResult(); return value == null ? null : value.toString(); }
+    private void provenance(String path, String method) {
+        em.createNativeQuery("SELECT set_config('app.actor_id',:actor,true),set_config('app.audit_request_id',:request,true),set_config('app.audit_request_path',:path,true),set_config('app.audit_request_method',:method,true)")
+                .setParameter("actor", actor.toString()).setParameter("request", UUID.randomUUID().toString()).setParameter("path", path).setParameter("method", method).getSingleResult();
+        em.createNativeQuery("SELECT fn_begin_goods_history_request()").getSingleResult();
+    }
+    private <T> T inTx(Supplier<T> action) {
+        return new TransactionTemplate(transactions).execute(status -> { T result = action.get(); em.flush(); return result; });
+    }
+    @SuppressWarnings("unchecked")
+    private static <T> T transactional(T target) {
+        var proxy = new ProxyFactory(target); proxy.setProxyTargetClass(true);
+        var advice = new TransactionInterceptor();
+        advice.setTransactionManager(transactions);
+        advice.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
+        proxy.addAdvice(advice);
+        return (T) proxy.getProxy();
+    }
+}

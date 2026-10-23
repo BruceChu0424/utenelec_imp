@@ -21,7 +21,7 @@ class ProcurementIqcWarehouseStockInUpgradePostgresTest {
     static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer("postgres:16.15-alpine")
                     .withDatabaseName("iqc_v446_upgrade")
-                    .withUsername("uten")
+                    .withUsername("fixture_admin")
                     .withPassword("uten");
 
     @Test

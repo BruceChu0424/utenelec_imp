@@ -21,6 +21,7 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -93,6 +94,18 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
   @override
   void initState() {
     super.initState();
+    // Keep the monotonic reader epoch observed for this page's whole lifetime.
+    ref.listenManual(exportContextEpochProvider, (previous, next) {
+      if (!mounted || previous == next) return;
+      setState(() {
+        ++_loadGeneration;
+        _data = null;
+        _loading = false;
+        _page = 1;
+        _keyword = '';
+        _filters.clear();
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _applyPrefs(ref.read(_prefsProvider));
       _load();
@@ -145,6 +158,11 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
   Future<void> _load() async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
+    final readEpoch = ref.read(exportContextEpochProvider);
+    bool current() =>
+        mounted &&
+        generation == _loadGeneration &&
+        readEpoch == ref.read(exportContextEpochProvider);
     final requestedPage = _page;
     setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
@@ -162,13 +180,19 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
         '/sales/reports/${_docType.code}/${_kind.endpoint}',
         query: query,
       );
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || !current()) return;
+      final decodedReport = await parseReportResponseResponsive(
+        json,
+        requestedPage,
+        isCurrent: current,
+      );
+      if (!mounted || !current()) return;
       setState(() {
-        _data = parseReportResponse(json, requestedPage);
+        _data = decodedReport;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || !current()) return;
       context.appError('报表加载失败，请稍后重试');
       setState(() => _loading = false);
     }
@@ -308,7 +332,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
       '/sales/reports/${_docType.code}/${_kind.endpoint}',
       query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
     );
-    final data = parseReportResponse(json, 1);
+    final data = await parseReportResponseResponsive(json, 1);
     return UtenPrintTable(
       columnKeys: [for (final c in data.columns) c.key],
       rowIds: [for (final r in data.rows) r['id']?.toString()],
@@ -592,6 +616,7 @@ class SalesClientDetailDialog extends ConsumerStatefulWidget {
 
 class _SalesClientDetailDialogState
     extends ConsumerState<SalesClientDetailDialog> {
+  bool _readerChanged = false;
   ReportData? _data;
   bool _loading = false;
   int _loadGeneration = 0;
@@ -603,12 +628,26 @@ class _SalesClientDetailDialogState
   @override
   void initState() {
     super.initState();
+    ref.listenManual(exportContextEpochProvider, (previous, next) {
+      if (!mounted || previous == next) return;
+      setState(() {
+        ++_loadGeneration;
+        _data = null;
+        _loading = false;
+        _readerChanged = true;
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   Future<void> _load() async {
-    if (!mounted) return;
+    if (!mounted || _readerChanged) return;
     final generation = ++_loadGeneration;
+    final readEpoch = ref.read(exportContextEpochProvider);
+    bool current() =>
+        mounted &&
+        generation == _loadGeneration &&
+        readEpoch == ref.read(exportContextEpochProvider);
     final requestedPage = _page;
     setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
@@ -630,13 +669,19 @@ class _SalesClientDetailDialogState
           ...sortQueryParams(_sortKey, _sortAsc),
         },
       );
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || !current()) return;
+      final decodedReport = await parseReportResponseResponsive(
+        json,
+        requestedPage,
+        isCurrent: current,
+      );
+      if (!mounted || !current()) return;
       setState(() {
-        _data = parseReportResponse(json, requestedPage);
+        _data = decodedReport;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || !current()) return;
       context.appError('客户明细加载失败，请稍后重试');
       setState(() => _loading = false);
     }
@@ -684,7 +729,7 @@ class _SalesClientDetailDialogState
           ...sortQueryParams(_sortKey, _sortAsc),
         },
       );
-      final data = parseReportResponse(json, page);
+      final data = await parseReportResponseResponsive(json, page);
       if (headers.isEmpty) {
         headers.addAll([for (final c in data.columns) c.label]);
         columnKeys.addAll([for (final c in data.columns) c.key]);
@@ -713,6 +758,23 @@ class _SalesClientDetailDialogState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final size = MediaQuery.of(context).size;
+    if (_readerChanged) {
+      return UtenDialogFrame(
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('账号、权限或服务器已变化，请关闭后重新打开明细'),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('关闭'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     final data = _data;
     // 状态类列排到最前（与主表同口径，见 _buildTable）。
     final mapped = (data?.columns ?? const [])

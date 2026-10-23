@@ -384,7 +384,9 @@ abstract class _MaterialAnalysisBorrowState
         }
       }
     } finally {
-      if (mounted && _borrowing) setState(() => _borrowing = false);
+      if (mounted && _sessionScopeKey() == sessionScope && _borrowing) {
+        setState(() => _borrowing = false);
+      }
     }
   }
 
@@ -449,7 +451,9 @@ abstract class _MaterialAnalysisBorrowState
         );
       }
     } finally {
-      if (mounted) setState(() => _borrowing = false);
+      if (mounted && _sessionScopeKey() == sessionScope) {
+        setState(() => _borrowing = false);
+      }
     }
   }
 
@@ -500,7 +504,9 @@ abstract class _MaterialAnalysisBorrowState
         force: true,
       );
     } finally {
-      if (mounted && _borrowing) setState(() => _borrowing = false);
+      if (mounted && _sessionScopeKey() == sessionScope && _borrowing) {
+        setState(() => _borrowing = false);
+      }
     }
   }
 
@@ -559,7 +565,9 @@ abstract class _MaterialAnalysisBorrowState
         force: true,
       );
     } finally {
-      if (mounted && _borrowing) setState(() => _borrowing = false);
+      if (mounted && _sessionScopeKey() == sessionScope && _borrowing) {
+        setState(() => _borrowing = false);
+      }
     }
   }
 
@@ -661,7 +669,9 @@ abstract class _MaterialAnalysisBorrowState
         force: true,
       );
     } finally {
-      if (mounted && _borrowing) setState(() => _borrowing = false);
+      if (mounted && _sessionScopeKey() == sessionScope && _borrowing) {
+        setState(() => _borrowing = false);
+      }
     }
   }
 

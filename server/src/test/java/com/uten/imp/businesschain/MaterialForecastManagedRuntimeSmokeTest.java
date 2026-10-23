@@ -82,7 +82,7 @@ class MaterialForecastManagedRuntimeSmokeTest {
         String firstRun;
         String revision;
         try (PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("uten_imp").withUsername("uten").withPassword("uten")) {
+                .withDatabaseName("uten_imp").withUsername("fixture_admin").withPassword("uten")) {
             postgres.start();
             Throwable firstFailure = null;
             try {

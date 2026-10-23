@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -22,6 +24,7 @@ import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_repository.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/shared/drafts/form_draft_catalog.dart';
 import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
@@ -214,6 +217,100 @@ class _Costs extends Fake implements GoodsCostRepository {
       'filter': filters,
       'contentDigest': 'actual-1',
     };
+  }
+}
+
+class _CostFilesPicker extends FilePicker {
+  _CostFilesPicker(this.names);
+  final List<String> names;
+  int calls = 0;
+
+  @override
+  Future<FilePickerResult?> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    void Function(FilePickerStatus)? onFileLoading,
+    bool allowCompression = true,
+    int compressionQuality = 30,
+    bool allowMultiple = false,
+    bool withData = false,
+    bool withReadStream = false,
+    bool lockParentWindow = false,
+    bool readSequential = false,
+  }) async {
+    calls++;
+    expect(allowMultiple, isTrue);
+    expect(withReadStream, isTrue);
+    expect(readSequential, isTrue);
+    expect(withData, isFalse);
+    return FilePickerResult([
+      for (var index = 0; index < names.length; index++)
+        PlatformFile(
+          name: names[index],
+          size: 5,
+          readStream: Stream<List<int>>.value([0x50, 0x4b, 3, 4, index]),
+        ),
+    ]);
+  }
+}
+
+class _MultiFileCosts extends _Costs {
+  final previewedFiles = <String>[];
+  final applied = <Map<String, dynamic>>[];
+  String? rejectedFile;
+
+  @override
+  Future<Map<String, dynamic>> importPreview(
+    String goodsId,
+    Uint8List bytes,
+    String filename,
+  ) async {
+    expect(goodsId, 'product');
+    expect(bytes.take(4), [0x50, 0x4b, 3, 4]);
+    previewedFiles.add(filename);
+    if (filename == rejectedFile) {
+      throw ApiException('IMPORT_PREVIEW_FAILED', '第二份文件预览失败');
+    }
+    return {
+      'id': filename,
+      'blocks': [
+        {
+          'key': 'block-$filename',
+          'label': filename,
+          'rows': [
+            {
+              'key': 'row-$filename',
+              'code': 'A001',
+              'name': '待核材料',
+              'unitPrice': '0.123456789123456',
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> importApply(Map<String, dynamic> request) async {
+    applied.add(copyCostJson(request));
+    final input = copyCostJson(costMap(request['input']));
+    final extra = costMap(input['extraFields']);
+    final previous = costText(extra['adoptedFiles']);
+    input['extraFields'] = {
+      ...extra,
+      'adoptedFiles': [
+        if (previous != null) previous,
+        request['importId'],
+      ].join(','),
+    };
+    final calculation = _calculation();
+    calculation['lines'] = [
+      for (final line in costMaps(calculation['lines']))
+        {...line, 'goodsName': '第一份已采用组件'},
+    ];
+    return {'input': input, 'calculation': calculation};
   }
 }
 
@@ -1091,6 +1188,36 @@ Future<void> _adjust(WidgetTester tester, String path) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _reviewCostFile(WidgetTester tester, String filename) async {
+  final page = tester.widget<GoodsCostImportDialog>(
+    find.byType(GoodsCostImportDialog),
+  );
+  expect(page.filename, filename);
+  final l10n = AppLocalizations.of(
+    tester.element(find.byType(GoodsCostImportDialog)),
+  );
+  tester
+      .widget<UtenDropdownField>(
+        find.byKey(ValueKey('cost-import-target-row-$filename')),
+      )
+      .onChanged('edge-a');
+  tester
+      .widget<Checkbox>(
+        find.byKey(ValueKey('cost-import-reviewed-row-$filename')),
+      )
+      .onChanged!(true);
+  await tester.pump();
+  await tester.tap(find.widgetWithText(UtenButton, l10n.costImportApply));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _saveImportedCostDraft(WidgetTester tester) async {
+  final save = find.byKey(const Key('cost-save'));
+  await tester.ensureVisible(save);
+  await tester.tap(save);
+  await tester.pumpAndSettle();
+}
+
 TextField _costInput(WidgetTester tester, Finder formField) =>
     tester.widget<TextField>(
       find.descendant(of: formField, matching: find.byType(TextField)),
@@ -1199,6 +1326,109 @@ void main() {
       ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await icons.load();
   });
+  testWidgets(
+    'multiple cost files review sequentially and apply the accumulated input',
+    (tester) async {
+      final picker = _CostFilesPicker(['first.xlsx', 'second.xlsx']);
+      FilePicker.platform = picker;
+      final repo = _MultiFileCosts();
+      await _pump(tester, repo);
+      final l10n = AppLocalizations.of(
+        tester.element(find.byType(GoodsCostTab)),
+      );
+      await _more(tester, l10n.costImport);
+      var page = tester.widget<GoodsCostImportDialog>(
+        find.byType(GoodsCostImportDialog),
+      );
+      expect(page.fileNumber, 1);
+      expect(page.fileCount, 2);
+      expect(find.text('1/2  first.xlsx'), findsOneWidget);
+      expect(repo.previewedFiles, ['first.xlsx']);
+      expect(repo.applied, isEmpty);
+
+      await _reviewCostFile(tester, 'first.xlsx');
+      page = tester.widget<GoodsCostImportDialog>(
+        find.byType(GoodsCostImportDialog),
+      );
+      expect(page.fileNumber, 2);
+      expect(page.fileCount, 2);
+      expect(page.filename, 'second.xlsx');
+      expect(find.text('2/2  second.xlsx'), findsOneWidget);
+      expect(page.lines.first['goodsName'], '第一份已采用组件');
+      expect(repo.applied, hasLength(1));
+      expect(repo.saved, isNull);
+
+      await _reviewCostFile(tester, 'second.xlsx');
+      expect(find.byType(GoodsCostImportDialog), findsNothing);
+      expect(repo.applied, hasLength(2));
+      expect(
+        costMap(
+          costMap(repo.applied[1]['input'])['extraFields'],
+        )['adoptedFiles'],
+        'first.xlsx',
+      );
+      expect(costMaps(repo.applied[1]['mappings']).single['reviewed'], isTrue);
+      expect(picker.calls, 1);
+      await _saveImportedCostDraft(tester);
+      expect(
+        costMap(repo.saved?['extraFields'])['adoptedFiles'],
+        'first.xlsx,second.xlsx',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'cancelling the second cost file keeps the first adopted draft and stops the batch',
+    (tester) async {
+      FilePicker.platform = _CostFilesPicker([
+        'first.xlsx',
+        'second.xlsx',
+        'third.xlsx',
+      ]);
+      final repo = _MultiFileCosts();
+      await _pump(tester, repo);
+      final l10n = AppLocalizations.of(
+        tester.element(find.byType(GoodsCostTab)),
+      );
+      await _more(tester, l10n.costImport);
+      await _reviewCostFile(tester, 'first.xlsx');
+      expect(find.text('2/3  second.xlsx'), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, l10n.commonCancel));
+      await tester.pumpAndSettle();
+      expect(find.byType(GoodsCostImportDialog), findsNothing);
+      expect(repo.previewedFiles, ['first.xlsx', 'second.xlsx']);
+      expect(repo.applied, hasLength(1));
+      expect(repo.saved, isNull);
+      await _saveImportedCostDraft(tester);
+      expect(costMap(repo.saved?['extraFields'])['adoptedFiles'], 'first.xlsx');
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'a second cost file preview failure preserves the first draft and leaves later files untouched',
+    (tester) async {
+      FilePicker.platform = _CostFilesPicker([
+        'first.xlsx',
+        'second.xlsx',
+        'third.xlsx',
+      ]);
+      final repo = _MultiFileCosts()..rejectedFile = 'second.xlsx';
+      await _pump(tester, repo);
+      final l10n = AppLocalizations.of(
+        tester.element(find.byType(GoodsCostTab)),
+      );
+      await _more(tester, l10n.costImport);
+      await _reviewCostFile(tester, 'first.xlsx');
+      expect(find.byType(GoodsCostImportDialog), findsNothing);
+      expect(repo.previewedFiles, ['first.xlsx', 'second.xlsx']);
+      expect(repo.applied, hasLength(1));
+      expect(repo.saved, isNull);
+      await _saveImportedCostDraft(tester);
+      expect(costMap(repo.saved?['extraFields'])['adoptedFiles'], 'first.xlsx');
+      expect(repo.previewedFiles, isNot(contains('third.xlsx')));
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'cost hierarchy matches assembly levels and keeps repeated occurrences independent',
     (tester) async {

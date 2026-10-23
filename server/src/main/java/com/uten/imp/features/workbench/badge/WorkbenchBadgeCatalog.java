@@ -87,20 +87,24 @@ enum WorkbenchBadgeCatalog {
     warehouseOutboundCenter(Module.warehouse, facts(
             "warehouseSalesOutbound.PENDING_PICK",
             "subcontractOutbound.count",
-            "productionDraw.count"), none()),
+            "productionDraw.count",
+            "workshopMaterial.pendingIssue"), none()),
     /** 入库任务中心: 预计到货实物行 + 到货异常行(仓库侧) + 产成品待点收实物行 + 生产退料实物行。 */
     warehouseInboundCenter(Module.warehouse, facts(
             "warehouseInboundExpectation.count",
             "warehouseArrivalException.count",
             "finishedInbound.count",
-            "productionReturn.count"), none()),
+            "productionReturn.count",
+            "workshopMaterial.pendingReturn"), none()),
     /** 生产领料旧入口别名: 待领实物行 + 车间已提交待仓库确认实收的退料实物行。 */
     warehouseDrawCenter(Module.warehouse, facts(
             "productionDraw.count",
-            "productionReturn.count"), none()),
-    /** 车间内料仓 (ADR-131): 红 = 待发料 + 待收退回 (轮到仓库动手); 黄 = 盘点中 (还没提交的那一期)。 */
+            "productionReturn.count",
+            "workshopMaterial.pendingIssue",
+            "workshopMaterial.pendingReturn"), none()),
+    /** 车间内料仓审核与盘点；实物领退料归出入库，仅计一次。 */
     warehouseWorkshopMaterial(Module.warehouse,
-            facts("workshopMaterial.pendingIssue", "workshopMaterial.pendingReturn"),
+            none(),
             facts("workshopMaterial.counting")),
     /** 仓库侧盘点审核: 待仓库复盘确认的盘点任务。 */
     warehouseStockCountReview(Module.warehouse, facts("stockCountWarehouse.count"), none()),

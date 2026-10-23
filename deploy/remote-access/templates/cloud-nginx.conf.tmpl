@@ -1,16 +1,36 @@
 # Complete dedicated Nginx config; employee TLS is NEVER terminated on this host.
-load_module /usr/lib/nginx/modules/ngx_stream_module.so;
+@@STREAM_MODULE_DIRECTIVE@@
 pid /run/uten-remote/nginx.pid;
-error_log stderr warn;
+# Nginx runtime error messages cannot redact request URIs/query strings. Keep
+# sanitized access metrics; service startup/config diagnostics still go to systemd.
+error_log /dev/null crit;
 worker_processes 2;
 events { worker_connections 1024; }
 stream {
     log_format remote_transport '$time_iso8601 peer=$remote_addr status=$status bytes_in=$bytes_received bytes_out=$bytes_sent duration=$session_time';
     access_log /var/log/uten-remote/transport.log remote_transport;
     limit_conn_zone $binary_remote_addr zone=remote_cloud_conn:10m;
+    map $ssl_preread_server_name $remote_sni_upstream {
+        default "";
+        @@PUBLIC_DOMAIN@@ 127.0.0.1:15443;
+@@DR_SNI_ROUTE@@
+    }
     server {
         listen 0.0.0.0:443;
         limit_conn remote_cloud_conn 32;
+        ssl_preread on;
+        proxy_pass $remote_sni_upstream;
+        proxy_connect_timeout 3s;
+        proxy_timeout 600s;
+        proxy_next_upstream off;
+        proxy_socket_keepalive on;
+        tcp_nodelay on;
+        # Inspect only SNI. Unknown names have no upstream; never terminate employee TLS.
+    }
+    server {
+        listen 127.0.0.1:15443;
+        allow 127.0.0.1;
+        deny all;
         proxy_pass @@COMPANY_WIREGUARD_IPV4@@:8443;
         proxy_connect_timeout 3s;
         proxy_timeout 600s;
@@ -28,6 +48,7 @@ stream {
         proxy_ssl_server_name on;
         proxy_ssl_name @@TRANSPORT_SERVER_NAME@@;
         proxy_ssl_session_reuse on;
-        # No PROXY protocol, public-domain certificate, HTTP listener or LAN routing.
+        # No PROXY protocol, employee certificate/HTTP termination or LAN routing.
     }
 }
+@@DR_GATEWAY_BLOCK@@

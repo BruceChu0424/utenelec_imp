@@ -59,7 +59,7 @@ class WarehouseInboundTaskCenterQueryServiceTest {
                 org.mockito.ArgumentMatchers.any(org.springframework.jdbc.core.namedparam.MapSqlParameterSource.class),
                 org.mockito.ArgumentMatchers.any(org.springframework.jdbc.core.RowMapper.class))).thenReturn(java.util.List.of());
         var service=new WarehouseInboundTaskCenterQueryService(jdbc,new ObjectMapper(),current,scopes,stock,
-                mock(ProductionStockTaskAccessPolicy.class));
+                mock(ProductionStockTaskAccessPolicy.class),mock(com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope.class));
         assertThat(service.list(filter("PURCHASE","")).total()).isZero();
         verify(scopes).withQueryScopeCache(org.mockito.ArgumentMatchers.any());
         verify(scopes,org.mockito.Mockito.never()).withScopeCache(org.mockito.ArgumentMatchers.any());
@@ -75,7 +75,7 @@ class WarehouseInboundTaskCenterQueryServiceTest {
         var stock=mock(StockDocAccessPolicy.class);
         when(stock.scope()).thenReturn(new OwnerScope(false,Set.of()));
         var service=new WarehouseInboundTaskCenterQueryService(jdbc,new ObjectMapper(),current,scope,stock,
-                mock(ProductionStockTaskAccessPolicy.class));
+                mock(ProductionStockTaskAccessPolicy.class),mock(com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope.class));
         assertThatThrownBy(()->service.list(filter("UNKNOWN",""))).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->service.list(filter("ALL","PURCHASE_FUTURE_STATE"))).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->service.list(new Filter("ALL","","",null,null,null,null,1,20,"total","asc")))

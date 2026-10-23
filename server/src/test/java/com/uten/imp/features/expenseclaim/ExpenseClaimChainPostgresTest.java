@@ -32,7 +32,7 @@ import static org.assertj.core.api.Assertions.*;
     "uten.bootstrap.admin-password=ExpenseHarnessAdmin-1!"})
 class ExpenseClaimChainPostgresTest {
     static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine")
-        .withDatabaseName("expense_chain").withUsername("uten").withPassword("uten");
+        .withDatabaseName("expense_chain").withUsername("fixture_admin").withPassword("uten");
     @DynamicPropertySource static void database(DynamicPropertyRegistry r) {
         PG.start();r.add("spring.datasource.url",PG::getJdbcUrl);
         r.add("spring.datasource.username",PG::getUsername);r.add("spring.datasource.password",PG::getPassword);

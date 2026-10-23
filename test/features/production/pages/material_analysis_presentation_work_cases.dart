@@ -73,6 +73,265 @@ Map<String, dynamic> _fiveHundredProductPresentation(
 }
 
 void materialAnalysisPresentationWorkCases() {
+  for (final aba in [false, true]) {
+    for (final decodingFails in [false, true]) {
+      testWidgets(
+        'command owner: priority DTO ${aba ? 'ABA' : 'account change'} ${decodingFails ? 'late error' : 'late result'} never publishes or retries',
+        (tester) async {
+          final session = _OrderAuthoritySession();
+          var commandResponseStarted = false;
+          await _pump(
+            tester,
+            session: session,
+            permissions: {
+              ..._permissions,
+              Perm.productionMaterialAnalysisReallocate,
+            },
+            mutate: (data) {
+              _threeSharedBuySources(data);
+              (data['allowedActions'] as List).add('REALLOCATE');
+              return data;
+            },
+            afterWrite: (data) {
+              commandResponseStarted = true;
+              return {
+                ...data,
+                'analysisNo': 'OLD_DTO_RESPONSE',
+                'supplyActions': [
+                  ...(data['supplyActions'] as List),
+                  for (var i = 0; i < 1500; i++)
+                    {
+                      'actionId': 'dto-$i',
+                      'route': 'BUY',
+                      'operationType': 'SUPPLY',
+                      'requestedQty': i + 1,
+                    },
+                ],
+              };
+            },
+          );
+          final container = ProviderScope.containerOf(
+            tester.element(find.byType(ProductionMaterialAnalysisPage)),
+          );
+          var switchedDuringDecode = false;
+          final previousObserver = debugUiWorkSliceObserver;
+          debugUiWorkSliceObserver = (label, elapsed) {
+            previousObserver?.call(label, elapsed);
+            if (!commandResponseStarted ||
+                label != 'presentation' ||
+                switchedDuringDecode) {
+              return;
+            }
+            switchedDuringDecode = true;
+            session.switchAccount('second-account');
+            container.read(exportContextEpochProvider);
+            if (aba) {
+              session.switchAccount('first-account');
+              container.read(exportContextEpochProvider);
+            }
+            // Failure injection is after a successful command response, inside
+            // DTO work; it must not be presented as a new owner's failed write.
+            if (decodingFails) {
+              throw const FormatException('old-private-decode-error');
+            }
+          };
+          addTearDown(() => debugUiWorkSliceObserver = previousObserver);
+          await tester.tap(
+            find.byKey(const Key('material-analysis-priority-edit')),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.byKey(const ValueKey('material-priority-down-0')),
+          );
+          await tester.tap(
+            find.byKey(const Key('material-analysis-priority-save')),
+          );
+          await tester.pumpAndSettle();
+          expect(switchedDuringDecode, isTrue);
+          expect(
+            requests.where(
+              (request) => request.path.endsWith('/allocation-priorities'),
+            ),
+            hasLength(1),
+          );
+          expect(find.textContaining('OLD_DTO_RESPONSE'), findsNothing);
+          expect(_notices(tester), isNot(contains('生产优先级已更新')));
+          expect(_notices(tester), isNot(contains('old-private-decode-error')));
+          expect(find.textContaining('原操作可能已完成'), findsWidgets);
+          final save = tester.widget<UtenButton>(
+            find.byKey(const Key('material-analysis-priority-save')),
+          );
+          expect(
+            save.onPressed,
+            isNotNull,
+            reason: 'the old owner loading marker is retired, not stranded',
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+  testWidgets(
+    'presentation work: aggregate history follows exact target identities within one action group',
+    (tester) async {
+      await _pump(
+        tester,
+        mutate: (data) {
+          final next = _canonicalSupplyFixture(data);
+          final template = Map<String, dynamic>.from(
+            (next['supplyActions'] as List).first as Map,
+          );
+          next['supplyActions'] = [
+            {
+              ...template,
+              'actionId': 'exact-a',
+              'documentNo': 'EXACT-A',
+              'requestedQty': 1000,
+              'publicSurplusQty': 100,
+            },
+            {
+              ...template,
+              'actionId': 'exact-b',
+              'documentNo': 'EXACT-B',
+              'requestedQty': 2000,
+              'publicSurplusQty': 200,
+            },
+          ];
+          for (var i = 0; i < 3; i++) {
+            final material = _fixtureMaterial(next, 'canonical-$i');
+            material['actionGroupKey'] = 'shared-canonical-group';
+            final references = material['downstreamReferences'] as List;
+            (references.single as Map)['actionId'] = i == 0
+                ? 'exact-a'
+                : 'exact-b';
+          }
+          // The repeated exact target is intentionally reachable from two paths;
+          // both distinct target facts survive, and the shared action counts once.
+          (_fixtureMaterial(next, 'shared-0')['aggregatePreparation']
+              as Map)['targetMaterialLineIds'] = [
+            'canonical-0',
+            'canonical-1',
+          ];
+          return next;
+        },
+      );
+      await _showMaterialSummary(tester);
+      expect(
+        find.textContaining('已下单 3300 = 需求份 3000 + 公共备货 300'),
+        findsWidgets,
+      );
+      expect(find.textContaining('EXACT-A'), findsWidgets);
+      expect(find.textContaining('EXACT-B'), findsWidgets);
+      expect(_submits(), isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'presentation work: an input event supersedes an in-progress large filter',
+    (tester) async {
+      await _pump(tester, mutate: _fiveHundredProductPresentation);
+      final table = _presentationTable(tester);
+      final originalRows = table.items;
+      final before = debugMaterialProjectionPublications;
+      var scheduled = false;
+      var inputHandled = false;
+      debugMaterialProjectionStepObserver = () {
+        if (scheduled) return;
+        scheduled = true;
+        Timer.run(() {
+          expect(_presentationTable(tester).items, same(originalRows));
+          _presentationTable(tester).onFilterChanged('colorName', null);
+          inputHandled = true;
+        });
+      };
+      addTearDown(() => debugMaterialProjectionStepObserver = null);
+      table.onFilterChanged('colorName', '不存在的颜色');
+      await tester.pumpAndSettle();
+      expect(inputHandled, isTrue);
+      expect(_presentationTable(tester).items, same(originalRows));
+      expect(
+        debugMaterialProjectionPublications - before,
+        0,
+        reason:
+            'the previous complete result stays current; the superseded empty result never publishes',
+      );
+      expect(_submits(), isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'presentation work: 500 products yield to event input before atomic publication',
+    (tester) async {
+      final before = debugMaterialProjectionSteps;
+      final published = debugMaterialProjectionPublications;
+      int? stepsAtEvent;
+      int? publicationsAtEvent;
+      var scheduled = false;
+      debugMaterialProjectionStepObserver = () {
+        if (scheduled) return;
+        scheduled = true;
+        Timer.run(() {
+          stepsAtEvent = debugMaterialProjectionSteps - before;
+          publicationsAtEvent = debugMaterialProjectionPublications - published;
+        });
+      };
+      addTearDown(() => debugMaterialProjectionStepObserver = null);
+      await _pump(
+        tester,
+        size: const Size(1800, 945),
+        mutate: _fiveHundredProductPresentation,
+      );
+      expect(
+        stepsAtEvent,
+        inInclusiveRange(1, 256),
+        reason: 'an event turn runs before the complete 2000-node projection',
+      );
+      expect(
+        publicationsAtEvent,
+        0,
+        reason: 'no partial rows or totals are published between slices',
+      );
+      expect(debugMaterialProjectionSteps - before, greaterThan(2000));
+      expect(_presentationTable(tester).items, hasLength(2000));
+      expect(_submits(), isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'presentation work: repeated complete layout reuses the immutable projection',
+    (tester) async {
+      final syncBefore = debugMaterialSynchronousAggregateBuilds;
+      await _pump(tester, mutate: _fiveHundredProductPresentation);
+      final productRows = _presentationTable(tester).items;
+      await _showMaterialSummary(tester);
+      final summaryRows = _presentationTable(tester).items;
+      final before = debugMaterialProjectionSteps;
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-product')),
+      );
+      await tester.pumpAndSettle();
+      expect(_presentationTable(tester).items, same(productRows));
+      await _showMaterialSummary(tester);
+      expect(_presentationTable(tester).items, same(summaryRows));
+      expect(
+        debugMaterialProjectionSteps,
+        before,
+        reason: 'unchanged two-layout snapshots do not rescan BOM/facet facts',
+      );
+      expect(
+        debugMaterialSynchronousAggregateBuilds,
+        syncBefore,
+        reason:
+            'build-time expansion controls also reuse the prepared aggregates',
+      );
+      expect(_submits(), isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'presentation work: visual switches preserve bucket summary work',
     (tester) async {
@@ -217,57 +476,65 @@ void materialAnalysisPresentationWorkCases() {
     );
   }
 
-  testWidgets(
-    'presentation work: layout reuses eligibility and selection facts',
-    (tester) async {
-      await _pump(tester);
-      void inspect(MasterDataTableView<dynamic> current) {
-        for (final row in current.items.cast<Object>()) {
-          _presentationRowId(current, row);
-          _presentationRowState(current, row);
-        }
+  testWidgets('presentation work: layout reuses eligibility and selection facts', (
+    tester,
+  ) async {
+    await _pump(tester);
+    void inspect(MasterDataTableView<dynamic> current) {
+      for (final row in current.items.cast<Object>()) {
+        _presentationRowId(current, row);
+        _presentationRowState(current, row);
       }
+    }
 
-      final current = _presentationTable(tester);
+    final current = _presentationTable(tester);
+    final scopeReads = debugMaterialEligibilityScopeReads;
+    current.selectionReadScope!(() {
       inspect(current);
-      final before = debugMaterialTableEligibilityEvaluations;
-      for (var frame = 0; frame < 8; frame++) {
-        inspect(current);
-      }
-      expect(
-        debugMaterialTableEligibilityEvaluations - before,
-        0,
-        reason:
-            'width batches/layout must not rescan unchanged business eligibility',
-      );
-      await _check(tester, _rowCheckbox('m-2'));
-      await tester.pumpAndSettle();
-      expect(_nodeSelected(tester, 'm-2'), isTrue);
-      final selected = _presentationTable(tester);
-      final Object row =
-          selected.items.singleWhere(
-                (row) =>
-                    _presentationRowKey(selected, row as Object) ==
-                    'MATERIAL|m-2',
-              )
-              as Object;
-      expect(_presentationRowState(selected, row), isTrue);
-      expect(_presentationRowId(selected, row), isNotNull);
-      expect(
-        find.byKey(const Key('material-analysis-submit-orders')),
-        findsOneWidget,
-      );
-      await _showMaterialSummary(tester);
-      await tester.tap(
-        find.byKey(const ValueKey('material-bom-layout-product')),
-      );
-      await tester.pumpAndSettle();
-      expect(_nodeSelected(tester, 'm-2'), isTrue);
-      inspect(_presentationTable(tester));
-      final afterToggle = debugMaterialTableEligibilityEvaluations;
-      inspect(_presentationTable(tester));
-      expect(debugMaterialTableEligibilityEvaluations, afterToggle);
-      expect(tester.takeException(), isNull);
-    },
-  );
+      inspect(current);
+    });
+    expect(
+      debugMaterialEligibilityScopeReads - scopeReads,
+      1,
+      reason:
+          'one synchronous metadata collection shares one owner/access snapshot',
+    );
+    inspect(current);
+    final before = debugMaterialTableEligibilityEvaluations;
+    for (var frame = 0; frame < 8; frame++) {
+      inspect(current);
+    }
+    expect(
+      debugMaterialTableEligibilityEvaluations - before,
+      0,
+      reason:
+          'width batches/layout must not rescan unchanged business eligibility',
+    );
+    await _check(tester, _rowCheckbox('m-2'));
+    await tester.pumpAndSettle();
+    expect(_nodeSelected(tester, 'm-2'), isTrue);
+    final selected = _presentationTable(tester);
+    final Object row =
+        selected.items.singleWhere(
+              (row) =>
+                  _presentationRowKey(selected, row as Object) ==
+                  'MATERIAL|m-2',
+            )
+            as Object;
+    expect(_presentationRowState(selected, row), isTrue);
+    expect(_presentationRowId(selected, row), isNotNull);
+    expect(
+      find.byKey(const Key('material-analysis-submit-orders')),
+      findsOneWidget,
+    );
+    await _showMaterialSummary(tester);
+    await tester.tap(find.byKey(const ValueKey('material-bom-layout-product')));
+    await tester.pumpAndSettle();
+    expect(_nodeSelected(tester, 'm-2'), isTrue);
+    inspect(_presentationTable(tester));
+    final afterToggle = debugMaterialTableEligibilityEvaluations;
+    inspect(_presentationTable(tester));
+    expect(debugMaterialTableEligibilityEvaluations, afterToggle);
+    expect(tester.takeException(), isNull);
+  });
 }

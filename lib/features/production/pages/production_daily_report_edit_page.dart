@@ -315,7 +315,19 @@ class _ProductionDailyReportEditPageState
     _createdReportId = result.resolution.reportId;
     _createRequestState = 'CONFIRMED';
     _createReceiptCheckpoint = result.resolution.toCheckpoint();
-    _pendingFiles.restoreDraft(draftMap(result.checkpoint.data['attachments']));
+    try {
+      await _pendingFiles.restoreDraftResponsive(
+        draftMap(result.checkpoint.data['attachments']),
+        isCurrent: () => mounted && formDraftIdentityIsCurrent,
+      );
+    } catch (_) {
+      if (!mounted || !formDraftIdentityIsCurrent) return;
+      // Creation was already confirmed; a local-file race must not turn that
+      // receipt into a new CREATE or replace the user's newer attachments.
+      context.appWarning('原单已确认保存，当前附件继续保留，请重新核对草稿中的附件回执。');
+      return;
+    }
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     _adoptAcceptedReport(result.resolution.detail!);
     adoptFormDraftRecoveryCheckpoint(result.checkpoint);
   }
@@ -519,7 +531,11 @@ class _ProductionDailyReportEditPageState
     _createdReportId = data['createdReportId'] as String?;
     _createIdempotencyKey =
         data['idempotencyKey'] as String? ?? _createIdempotencyKey;
-    _pendingFiles.restoreDraft(draftMap(data['attachments']));
+    await _pendingFiles.restoreDraftResponsive(
+      draftMap(data['attachments']),
+      isCurrent: () => mounted && formDraftIdentityIsCurrent,
+    );
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     if (_createdReportId case final createdId?) {
       final accepted = await ref
           .read(productionDailyReportRepositoryProvider)
@@ -2360,13 +2376,14 @@ class _ProductionDailyReportEditPageState
 
   /// 提交被去向分配问题拦下时调用：有红框问题的成品行若处于收起态，先展开再报错——
   /// 否则错误文案指到了行，红框却藏在收起区里，用户找不到要改的格子。
-  void _expandAllocationIssueRows() {
+  void _expandAllocationIssueRows({DailyGridRow? firstInvalid}) {
     var changed = false;
     for (final product in _productRows) {
       final key = _groupKey(product);
-      if (product.allocationRows.any(
-            (row) => row.allocationIssue.value != null,
-          ) &&
+      if ((identical(product, firstInvalid) ||
+              product.allocationRows.any(
+                (row) => row.allocationIssue.value != null,
+              )) &&
           _allocationsExpanded.add(key)) {
         _allocationsCollapsed.remove(key);
         changed = true;
@@ -2392,11 +2409,15 @@ class _ProductionDailyReportEditPageState
   }
 
   /// 提交前的去向问题清单(第 N 行 + 原因)；为空才能提交。
-  List<String> _outputAllocationIssues(List<DailyGridRow> rows) {
+  List<String> _outputAllocationIssues(
+    List<DailyGridRow> rows, {
+    ValueChanged<DailyGridRow>? onInvalidRow,
+  }) {
     final issues = <String>[];
     for (var index = 0; index < rows.length; index++) {
       final row = rows[index];
       if (row.goods == null || row.executionSegmentId == null) continue;
+      final before = issues.length;
       // 读不到候选就不知道能不能转：不能当成「没有上层工单」整行送入仓库。
       if (row.directTransferLoadFailed) {
         issues.add('第 ${index + 1} 行：$directTransferLoadFailedText');
@@ -2407,6 +2428,7 @@ class _ProductionDailyReportEditPageState
       final qty = financeExactDecimalUnits(qtyText);
       if (row.directTransferPrecisionIssue != null) {
         issues.add('第 ${index + 1} 行：${row.directTransferPrecisionIssue}');
+        onInvalidRow?.call(row);
         continue;
       }
       var total = BigInt.zero;
@@ -2428,6 +2450,7 @@ class _ProductionDailyReportEditPageState
           '${qtyText ?? '未知'} 不一致，请核对',
         );
       }
+      if (issues.length > before) onInvalidRow?.call(row);
     }
     return issues;
   }
@@ -2830,6 +2853,10 @@ class _ProductionDailyReportEditPageState
         context.appError(
           '第 ${i + 1} 行旧草稿里的完工量或不良数数字特别大，系统没法确认原来填的是多少；请重新填写这两项，其他内容已保留',
         );
+        await _grid.revealError(
+          r,
+          columnKey: r.qtyNeedsVerification ? 'qty' : 'defectQty',
+        );
         return;
       }
       final qtyText = productionExactQuantityText(
@@ -2838,30 +2865,36 @@ class _ProductionDailyReportEditPageState
       final qty = productionExactQuantityUnits(qtyText);
       if (qty == null || qty <= BigInt.zero) {
         context.appError('第 ${i + 1} 行完工申报量必须大于 0、最多四位小数；数量不对时请重新读取或手动填写');
+        await _grid.revealError(r, columnKey: 'qty');
         return;
       }
       if (qty > productionQuantityMaxUnits) {
         context.appError('第 ${i + 1} 行完工申报量超过系统计量范围，请核对原输入；最多 14 位整数和 4 位小数');
+        await _grid.revealError(r, columnKey: 'qty');
         return;
       }
       if (r.hasFixedSupplement &&
           (r.supplementApprovedActualQtyText == null ||
               qtyText != r.supplementApprovedActualQtyText)) {
         context.appError('第 ${i + 1} 行属于已批准的固定追加批次，总量不能修改；当前其他输入已保留');
+        await _grid.revealError(r, columnKey: 'qty');
         return;
       }
       final weightText = r.weight.text.trim();
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
         context.appError('第 ${i + 1} 行实际重量必须大于 0');
+        await _grid.revealError(r, columnKey: 'weight');
         return;
       }
       if (!r.hasLinkedSource || r.executionSegmentId == null) {
         context.appError('第 ${i + 1} 行必须先选择已开工的精确执行子任务');
+        await _grid.revealError(r, columnKey: 'planNo');
         return;
       }
       if (productionReportDefectIssue(r) case final issue?) {
         context.appError('第 ${i + 1} 行$issue');
+        await _grid.revealError(r, columnKey: 'defectQty');
         return;
       }
       if (r.hasLinkedSource &&
@@ -2869,11 +2902,13 @@ class _ProductionDailyReportEditPageState
               r.unitRateText == null ||
               double.parse(r.unitRateText!) <= 0)) {
         context.appError('第 ${i + 1} 行来源任务缺少有效单位或换算率，请维护计划后重试');
+        await _grid.revealError(r, columnKey: 'planNo');
         return;
       }
       final rate = productionExactQuantityUnits(r.unitRateText, scale: 6)!;
       if (rate > productionQuantityMaxUnits) {
         context.appError('第 ${i + 1} 行来源单位换算率超过系统计量范围，请维护来源任务后重试；原输入已保留');
+        await _grid.revealError(r, columnKey: 'planNo');
         return;
       }
       final baseQuantity = financeExactProductUnits(qtyText!, r.unitRateText!)!;
@@ -2881,10 +2916,12 @@ class _ProductionDailyReportEditPageState
         context.appError(
           '第 ${i + 1} 行换算后的基本量为 0，请核对完工量和单位换算率；基本量精度为 0.0001，原输入已保留',
         );
+        await _grid.revealError(r, columnKey: 'qty');
         return;
       }
       if (baseQuantity > productionQuantityMaxUnits) {
         context.appError('第 ${i + 1} 行换算后的基本量超过系统计量范围，请核对数量和单位换算率；原输入已保留');
+        await _grid.revealError(r, columnKey: 'qty');
         return;
       }
       // 普通实际超限允许如实记录，由服务端分账冻结；品质恢复与旧固定追加仍守原授权。
@@ -2892,6 +2929,7 @@ class _ProductionDailyReportEditPageState
       final cap = productionExactQuantityUnits(capText);
       if (r.hasReportQtyCap && cap == null) {
         context.appError('第 ${i + 1} 行来源可报数量缺少精确原文，请重新读取来源核对；实际数量与用料已保留');
+        await _grid.revealError(r, columnKey: 'planNo');
         return;
       }
       if (cap != null && qty > cap && !r.canRecordOverLimit) {
@@ -2907,6 +2945,7 @@ class _ProductionDailyReportEditPageState
                     '请从「我的车间任务 → 固定追加量·续报」入口申报'
               : '第 ${i + 1} 行完工申报量超过当前可报数量 $capText',
         );
+        await _grid.revealError(r, columnKey: 'qty');
         return;
       }
       final overLimitReason = r.overLimitReason.text.trim();
@@ -2915,10 +2954,12 @@ class _ProductionDailyReportEditPageState
               BigInt.zero &&
           (overLimitReason.length < 2 || overLimitReason.length > 500)) {
         context.appError('第 ${i + 1} 行超出当前有效额度，请填写 2–500 字超限原因；实际数量与用料已保留');
+        await _grid.revealError(r, columnKey: 'overLimitReason');
         return;
       }
       if (r.fqcRecoveryAuthorizationId != null && r.isFinal) {
         context.appError('第 ${i + 1} 行是 FQC 返工/补产恢复报工，不能勾选完结');
+        await _grid.revealError(r);
         return;
       }
     }
@@ -2991,6 +3032,7 @@ class _ProductionDailyReportEditPageState
         context.appError(
           '第 ${_productRows.indexOf(r) + 1} 行与同源行累计超出当前有效额度 ${productionQuantityTextFromUnits(total - cap)}，请填写 2–500 字超限原因；实际数量与用料已保留',
         );
+        await _grid.revealError(r, columnKey: 'overLimitReason');
         return;
       }
     }
@@ -2999,6 +3041,7 @@ class _ProductionDailyReportEditPageState
     // 只看勾选成品行的物料子行：未勾选行不进本次提交，其用料也不校验。
     // 全量行（含收起态）都校验：收起只影响看不看得见，不改变必填口径。
     final materialIssues = <String>[];
+    DailyGridRow? firstMaterialIssue;
     for (final row in _allMaterialRows) {
       if (!row.materialEditable ||
           !row.materialInvalid ||
@@ -3008,6 +3051,7 @@ class _ProductionDailyReportEditPageState
         continue;
       }
       final material = row.material!;
+      firstMaterialIssue ??= row.materialParent;
       final name = material.goodsName ?? material.goodsCode ?? '物料';
       final value = row.materialUsedValue;
       final exactValue = productionExactQuantityUnits(row.materialUsed.text);
@@ -3039,6 +3083,9 @@ class _ProductionDailyReportEditPageState
       context.appError(
         '以下 ${materialIssues.length} 项用料需要先改正：${_joinIssues(materialIssues)}',
       );
+      if (firstMaterialIssue != null) {
+        await _grid.revealRow(firstMaterialIssue);
+      }
       return;
     }
     // 转给工单候选读取失败的行先自动重读一次；仍读不到才拦下。重读成功则去向已按最新情况
@@ -3059,13 +3106,20 @@ class _ProductionDailyReportEditPageState
     if (!mounted) return;
     // V736 产出去向分配：每条去向的问题(已不能收、超出还差的量、数量无效、候选读取失败)与合计核对；
     // 更强的不变量(同车间、同货品同颜色、需求份上限、同主仓)由服务端与数据库守卫兜底。
-    final transferIssues = _outputAllocationIssues(rows);
+    DailyGridRow? firstTransferIssue;
+    final transferIssues = _outputAllocationIssues(
+      rows,
+      onInvalidRow: (row) => firstTransferIssue ??= row,
+    );
     if (transferIssues.isNotEmpty) {
       // 收起态的红框藏在收起区：先把有问题的行展开让人看见，再报错。
-      _expandAllocationIssueRows();
+      _expandAllocationIssueRows(firstInvalid: firstTransferIssue);
       context.appError(
         '以下 ${transferIssues.length} 项转送需要先改正：${_joinIssues(transferIssues)}',
       );
+      if (firstTransferIssue case final row?) {
+        await _grid.revealRow(row);
+      }
       return;
     }
     // 保存只承载表格实耗，不清点、不覆盖用量；余料决定由审核页冻结后提交。
@@ -3079,11 +3133,13 @@ class _ProductionDailyReportEditPageState
       if (r.goods == null) continue;
       if (r.planItemId == null && r.planNo.text.trim().isNotEmpty) {
         context.appError('旧报工行只保存了计划号，认不出对应的生产任务；请重新选择来源子任务，或清除来源');
+        await _grid.revealError(r, columnKey: 'planNo');
         return;
       }
       if (r.salesOrderItemId == null &&
           (r.salesOrderNo?.trim().isNotEmpty ?? false)) {
         context.appError('旧报工行只保存了销售订单号，认不出对应的订单明细；请重新选择来源子任务，或清除来源');
+        await _grid.revealError(r, columnKey: 'planNo');
         return;
       }
       final qty = productionQuantityWire(

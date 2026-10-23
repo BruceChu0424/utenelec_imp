@@ -15,6 +15,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_inline_edit.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 typedef _Row = ({String id, String name, int version});
@@ -23,6 +24,11 @@ final _boundary = NotifierProvider<_Boundary, SensitiveReadBoundary>(
   _Boundary.new,
 );
 final _api = ApiClient(Dio());
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
 
 SensitiveReadBoundary _scope(String id, {bool editable = true}) =>
     SensitiveReadBoundary(
@@ -116,6 +122,7 @@ void main() {
       final writes = <String>[];
       final container = ProviderContainer(
         overrides: [
+          sessionProvider.overrideWith(_Session.new),
           apiBaseUrlProvider.overrideWithValue('https://company.invalid/api'),
           authenticatedScopeProvider.overrideWith(
             (ref) => ref.watch(_boundary).identity,

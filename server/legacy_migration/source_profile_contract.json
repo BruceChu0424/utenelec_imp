@@ -1,0 +1,247 @@
+{
+  "format": "legacy-source-profile-contract-v1",
+  "account_mapping_policy": "REVIEWED_SOURCE_ID_CODE_NAME_STATUS_AND_FROZEN_SQL_PROJECTION; NEW_OR_CHANGED_IDENTITY_REQUIRES_REVIEW",
+  "reviewed_accounts": [
+    {
+      "legacy_id": 42,
+      "code_name_status_sha256": "958aa3f928aadc855a30c023b4b219fa9926c05bb704c5a55479d182e126c9ac",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 43,
+      "code_name_status_sha256": "11286a13d4f0fd8bcdb2534b1bc23bb65e30b40092e25029dd04913ee3453bea",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 44,
+      "code_name_status_sha256": "e88d0c0043c8b296392352a3f940b6bbc02340707a5475c00be4359204dd297f",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 45,
+      "code_name_status_sha256": "822dac8bd3ed3d44ccec8e87e71de62e0932443c64674697bfc6caa9771789e7",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 46,
+      "code_name_status_sha256": "8540a097b82a7efe32daa0b71b9c1dc42f436be757c43d370f6c44a5fbc5575e",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 47,
+      "code_name_status_sha256": "deb566c4198d5a984779f0c72e4265eba82ec97cd437caa93471b57f502882a0",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 48,
+      "code_name_status_sha256": "d66bc86284ff64c17a441af05d0d39d8ccec1bc4336b167c663067a79c192ee8",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 49,
+      "code_name_status_sha256": "3f926dd978de8b5775b9f2cc42ebb194290e8c990999ed9a663ba3136bda0f60",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 50,
+      "code_name_status_sha256": "2d3a58634a0ff3c11c93c75a80d3c08aa679dc3d6917d2fc1ccda67ec019b5a6",
+      "account_type": "CHECK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 51,
+      "code_name_status_sha256": "551ab87f619661b8ba412ee9def9d8825ea276ceaea838cb333552cfaaefc11a",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 52,
+      "code_name_status_sha256": "c67e533d6adb4baec181cacf4d07c1a61e8a6c52997b8e5267931672487a66ba",
+      "account_type": "CASH",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 53,
+      "code_name_status_sha256": "19e272ef39aba0c1631a8ebed4852759f9b98e1bd65f2418cbbcc61b9cf9bf26",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 54,
+      "code_name_status_sha256": "124fd3ee3d3e06b3a1831ebd592238fd0012bab825a78bed6ccfde917eb984e4",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 55,
+      "code_name_status_sha256": "adfabb1f82236f210c551d850fda2274f75d9a29203a5f0713a0c18df41fcfd6",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 56,
+      "code_name_status_sha256": "b6826242822b25bc698ba7df262aeb66c2ab1c886efdd5af5e3cfd0d847fad62",
+      "account_type": "FOREIGN_CHECK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 57,
+      "code_name_status_sha256": "4d6caf7997a48b4d17758162846711dd4ab2c4cc004e0f477ef35ef3709b20aa",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 58,
+      "code_name_status_sha256": "10a90819e2c6462fc83a6007a7cd37fc1d522dbab4bca2e892d191fc0531116b",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 59,
+      "code_name_status_sha256": "999c6663aef0f23f7d385dfc1a79206afd7dc6b24e9b63978e7f163d5357b37a",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 60,
+      "code_name_status_sha256": "f2147004ad8492b4163b7396e0f08f581cb35d9b639dc4dd471f0ed5549ebda0",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 61,
+      "code_name_status_sha256": "cf8c32861efe4d5bba561fcb223c12f1b5d6a054ad18314c555adac91ca9df36",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 62,
+      "code_name_status_sha256": "b457c3d55d7db94e9f902caeff5b27ad123434ac391ad7c6b1042978f1e45522",
+      "account_type": "GENERAL",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 63,
+      "code_name_status_sha256": "46b7542ac297a0a10deafffd683bfaafaba5e7f289be251200dbeec5c4af3ce6",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 64,
+      "code_name_status_sha256": "eb06a9bc60e65a7fc2576b38df8388d149371c687a86e7b1dce3d502b2929a5f",
+      "account_type": "OFFSHORE",
+      "currency_legacy_id": 3
+    },
+    {
+      "legacy_id": 65,
+      "code_name_status_sha256": "845dcb028a3db62afee2942884a91e90f94830ef17e55ca2bd0d2b244686d9cd",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 66,
+      "code_name_status_sha256": "63d7a5a6b49791caff9d8ba1081386d56c6c2f3905f40ba29a59b853b46617ed",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 67,
+      "code_name_status_sha256": "ae0bf26b01863b86ca8e1e5bc22bf21e4e4063e2035ea4c9ecca7e2cecfa34f1",
+      "account_type": "THIRD_PARTY",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 68,
+      "code_name_status_sha256": "af981690b17f77ad9c8206b385deb88663eece9a6fb4e7080a7700d6dc74688a",
+      "account_type": "THIRD_PARTY",
+      "currency_legacy_id": 1
+    },
+    {
+      "legacy_id": 69,
+      "code_name_status_sha256": "6ee2bf270ad6a0d4d15e9be8adb01a7b3c52157f515004271eaa6ce2f9cd8038",
+      "account_type": "BANK",
+      "currency_legacy_id": 1
+    }
+  ],
+  "reviewed_workshop_name_sha256": [
+    "8254183e509f96c851c33516bcf8170f38bc4e56279c4a4a1766aa062622b69e",
+    "89fe4905d8e1215057102a4f14a73778b3760aa96bd14c85fd576136b832af58",
+    "a973bddac2e70ffc4eebdd672481e5d203a85404e07e9ecbdd4bd8422ceb427e",
+    "c141d9affef8f61e629054169cf433fa3af05994030f8282c8f8ad60e1eb03eb"
+  ],
+  "mk_stock_year_ceiling": 2012,
+  "mk_stock_zero_fact_columns": [
+    "APrice",
+    "AllOQTY",
+    "AllOTotal",
+    "AllQTY",
+    "AllTotal",
+    "FactQTY",
+    "FactTotal",
+    "INQTY1",
+    "INQTY10",
+    "INQTY11",
+    "INQTY12",
+    "INQTY2",
+    "INQTY3",
+    "INQTY4",
+    "INQTY5",
+    "INQTY6",
+    "INQTY7",
+    "INQTY8",
+    "INQTY9",
+    "INTotal1",
+    "INTotal10",
+    "INTotal11",
+    "INTotal12",
+    "INTotal2",
+    "INTotal3",
+    "INTotal4",
+    "INTotal5",
+    "INTotal6",
+    "INTotal7",
+    "INTotal8",
+    "INTotal9",
+    "LQTY",
+    "OUTQTY1",
+    "OUTQTY10",
+    "OUTQTY11",
+    "OUTQTY12",
+    "OUTQTY2",
+    "OUTQTY3",
+    "OUTQTY4",
+    "OUTQTY5",
+    "OUTQTY6",
+    "OUTQTY7",
+    "OUTQTY8",
+    "OUTQTY9",
+    "OUTTotal1",
+    "OUTTotal10",
+    "OUTTotal11",
+    "OUTTotal12",
+    "OUTTotal2",
+    "OUTTotal3",
+    "OUTTotal4",
+    "OUTTotal5",
+    "OUTTotal6",
+    "OUTTotal7",
+    "OUTTotal8",
+    "OUTTotal9",
+    "QTY",
+    "Total"
+  ],
+  "system_part_policy": "ARCHIVE_OLD_VISIBILITY_ONLY_NEVER_IMPORT_PERMISSION_GRANTS",
+  "system_item_archive_policies": {
+    "10": "ORIGINAL_ACCOUNT_CATEGORY_LABELS_IN_SEPARATE_NAMESPACE",
+    "12": "WORKSHOP_NAME_MIRROR_IN_SEPARATE_NAMESPACE_NOT_FK_IDENTITY"
+  },
+  "system_accinfo_policy": "PRESERVE_LEGACY_COMPANY_AND_BANK_CONTACT_HISTORY; DO_NOT_OVERRIDE_CURRENT_BRANDING_OPENING_PERIOD_OR_LICENSE"
+}

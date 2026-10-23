@@ -223,20 +223,20 @@ void registerDailyReportCreateRecoveryTests() {
         final storage = MemoryFormDraftStorage(),
             fake = _IdentityApi()..successfulCreate = true;
         final pipeline = ControlledAttachmentPipeline(waitAt: 'presign');
+        final allowed = {
+          Perm.productionDailyReportCreate,
+          Perm.productionDailyReportView,
+          Perm.attachmentUpload,
+          Perm.productionDailyReportEdit,
+        };
         final env = await _openIdentityPage(
           tester,
           storage,
           fake,
           attachments: pipeline.service,
+          initialPermissions: allowed,
         );
         await _prepareRecoveryInput(tester);
-        final allowed = {
-          ...env.container.read(_identityPermissions),
-          Perm.attachmentUpload,
-          Perm.productionDailyReportEdit,
-        };
-        env.container.read(_identityPermissions.notifier).state = allowed;
-        await tester.pumpAndSettle();
         final pending = tester
             .widgetList<BusinessAttachmentSection>(
               find.byType(BusinessAttachmentSection),
@@ -262,6 +262,12 @@ void registerDailyReportCreateRecoveryTests() {
           await tester.pump(const Duration(milliseconds: 20));
         }
         expect(pipeline.entered.isCompleted, isTrue);
+        final editor = _identityState(tester);
+        final frozenBefore = jsonEncode(
+          editor.captureFormDraftSnapshot()[dailyReportCreateCommandKey],
+        );
+        final durableBefore = Map<String, String>.from(storage.records);
+        final createBefore = jsonEncode(fake.creates.single);
         switch (changed) {
           case 'permission-aba':
             env.container.read(_identityPermissions.notifier).state = {
@@ -285,7 +291,17 @@ void registerDailyReportCreateRecoveryTests() {
         await tester.pump();
         pipeline.release.complete();
         await tester.pumpAndSettle();
+        expect(editor.formDraftIdentityIsCurrent, isFalse);
+        expect(find.byType(UtenEditableGrid<DailyGridRow>), findsNothing);
+        expect(
+          jsonEncode(
+            editor.captureFormDraftSnapshot()[dailyReportCreateCommandKey],
+          ),
+          frozenBefore,
+        );
+        expect(storage.records, durableBefore);
         expect(fake.creates, hasLength(1));
+        expect(jsonEncode(fake.creates.single), createBefore);
         expect(fake.receiptBodies, hasLength(1));
         expect(pipeline.requests.map((r) => r.path), ['/attachments/presign']);
         expect(pending.items.map((file) => file.draftBytes), ['AQID', 'AQID']);
@@ -308,18 +324,20 @@ void registerDailyReportCreateRecoveryTests() {
           fake = _IdentityApi()..successfulCreate = true;
       final env = await _openIdentityPage(tester, storage, fake);
       await _prepareRecoveryInput(tester);
+      final editor = _identityState(tester);
+      final row = _identityGrid(tester).rows.singleWhere((r) => !r.isSubRow);
+      final durableBefore = Map<String, String>.from(storage.records);
       env.container.read(_identityPermissions.notifier).state = {
         Perm.productionDailyReportCreate,
       };
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
-      await tester.pumpAndSettle();
+      expect(editor.formDraftIdentityIsCurrent, isFalse);
+      expect(find.byKey(const ValueKey('uten-edit-save')), findsNothing);
+      await expectLater(editor.saveFormDraftNow(), throwsStateError);
       expect(fake.creates, isEmpty);
       expect(fake.receiptBodies, isEmpty);
-      expect(
-        _identityGrid(tester).rows.singleWhere((r) => !r.isSubRow).qty.text,
-        '37',
-      );
+      expect(row.qty.text, '37');
+      expect(storage.records, durableBefore);
       expect(tester.takeException(), isNull);
       await _closeIdentityPage(tester, env);
     },

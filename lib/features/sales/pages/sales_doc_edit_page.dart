@@ -24,7 +24,9 @@ import '../../../shared/attachments/pending_attachment_flow.dart';
 import '../../../shared/attachments/pending_attachment_section.dart'
     show PendingFileActionSpec;
 import 'dart:typed_data';
-import 'dart:convert';
+import '../../../core/performance/json_value_snapshot.dart';
+import '../../../core/performance/ui_work_budget.dart';
+import '../../../shared/forms/prepare_editable_grid_rows.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -389,6 +391,16 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   String _batchIntentKey = const Uuid().v4();
   Map<String, dynamic>? _uncertainShipmentBody;
   bool _saving = false;
+  int _rowPreparationEpoch = 0;
+  int _initializationEpoch = 0;
+
+  bool Function() _rowPreparationOwner(int epoch, {int? rowsRevision}) =>
+      () =>
+          mounted &&
+          formDraftIdentityIsCurrent &&
+          epoch == _rowPreparationEpoch &&
+          (rowsRevision == null || _grid.rowsRevision == rowsRevision);
+
   bool _loading = true;
   String? _initializationError;
 
@@ -503,6 +515,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
 
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    final prepareEpoch = ++_rowPreparationEpoch;
+    final prepareOwner = _rowPreparationOwner(prepareEpoch);
+    final rowOwner = _rowPreparationOwner(
+      prepareEpoch,
+      rowsRevision: _grid.rowsRevision,
+    );
     _createdDocId = data['createdDocId'] as String?;
     _createdShipments = draftMaps(data['createdShipments'])
         .map(
@@ -518,22 +536,30 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       }
       final raw = draftMap(data['guidedPlan']);
       final identity = ref.read(aiGuidedFileIdentityProvider);
-      AiGuidedFilePlan? restored = AiGuidedFilePlan.restoreLocalDraft(
-        raw,
-        identity,
-      );
+      AiGuidedFilePlan? restored =
+          await AiGuidedFilePlan.restoreLocalDraftResponsive(
+            raw,
+            identity,
+            isCurrent: () =>
+                prepareOwner() &&
+                ref.read(aiGuidedFileIdentityProvider) == identity,
+          );
       if (restored == null && raw['bytes'] == null) {
         for (final source in draftMaps(
           draftMap(data['attachments'])['items'],
         )) {
           if (source['name'] != raw['fileName']) continue;
-          restored = AiGuidedFilePlan.restoreLocalDraft({
-            ...raw,
-            'bytes': source['bytes'],
-          }, identity);
+          restored = await AiGuidedFilePlan.restoreLocalDraftResponsive(
+            {...raw, 'bytes': source['bytes']},
+            identity,
+            isCurrent: () =>
+                prepareOwner() &&
+                ref.read(aiGuidedFileIdentityProvider) == identity,
+          );
           if (restored != null) break;
         }
       }
+      if (!mounted || !prepareOwner()) return;
       if (restored == null) {
         throw FormatException(aiChatText(context, 'documentSourceMismatch'));
       }
@@ -555,16 +581,24 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     _validUntil = DateTime.tryParse(data['validUntil'] as String? ?? '');
     _deliverDate = DateTime.tryParse(data['deliverDate'] as String? ?? '');
     restoreDraftEmployees(_empCache, data['employees']);
-    restoreDraftGrid(
+    final allowPricingInput = _allowPricingInput;
+    final amountUsesDiscount = _amountUsesDiscount;
+    await restoreDraftGridResponsive(
       _grid,
       data['rows'],
-      (row) => SalesGridRow.fromDraft(
-        row,
-        allowPricingInput: _allowPricingInput,
-        amountUsesDiscount: _amountUsesDiscount,
+      create: (_) => SalesGridRow(
+        allowPricingInput: allowPricingInput,
+        amountUsesDiscount: amountUsesDiscount,
       ),
+      initialize: (row, value) => row.restoreDraft(value),
+      isCurrent: rowOwner,
     );
-    _pendingFiles.restoreDraft(draftMap(data['attachments']));
+    if (!_rowPreparationOwner(prepareEpoch)()) return;
+    await _pendingFiles.restoreDraftResponsive(
+      draftMap(data['attachments']),
+      isCurrent: prepareOwner,
+    );
+    if (!mounted || !prepareOwner()) return;
     _batchIntentKey = data['batchIntentKey'] as String? ?? _batchIntentKey;
     _uncertainShipmentBody = data['uncertainShipmentBody'] is Map
         ? draftMap(data['uncertainShipmentBody'])
@@ -605,13 +639,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   int _quoteAccessEpoch = 0;
   bool _quoteContextInvalidated = false;
   bool Function() _captureQuoteContext() {
-    if (widget.docType != SalesDocType.quote) return () => mounted;
+    if (widget.docType != SalesDocType.quote) {
+      return () => formDraftIdentityIsCurrent;
+    }
     final epoch = _quoteAccessEpoch;
     final identity = _quoteSessionKey(ref.read(sessionProvider));
     final loginEpoch = ref.read(sessionEpochProvider);
     final server = ref.read(apiBaseUrlProvider);
     return () =>
-        mounted &&
+        formDraftIdentityIsCurrent &&
         epoch == _quoteAccessEpoch &&
         identity == _quoteSessionKey(ref.read(sessionProvider)) &&
         loginEpoch == ref.read(sessionEpochProvider) &&
@@ -866,7 +902,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
 
   Future<void> _init() async {
     if (!mounted) return;
-    final isCurrent = _captureQuoteContext();
+    startFormDraftIdentityGuard();
+    final initializationEpoch = ++_initializationEpoch;
+    final prepareEpoch = ++_rowPreparationEpoch;
+    final quoteCurrent = _captureQuoteContext();
+    bool isCurrent() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        initializationEpoch == _initializationEpoch &&
+        quoteCurrent();
     setState(() {
       _loading = true;
       _initializationError = null;
@@ -986,122 +1030,128 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
             d.financeRejectedReason;
         _financeRejectedAt = d.financeRejectedAt;
         _financeRejectedByName = d.financeRejectedByName;
-        final rows = <SalesGridRow>[];
-        for (final it in d.items) {
-          final row =
-              SalesGridRow(
-                  amountUsesDiscount: _amountUsesDiscount,
-                  allowPricingInput: _allowPricingInput,
-                )
-                ..documentItemId = it.id
-                // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
-                ..goods = ref
-                    .read(salesMasterNameServiceProvider)
-                    .goodsOptionOf(it.goodsId)
-                ..orderItemId = it.orderItemId
-                ..outItemId = it.outItemId
-                ..colorId = it.colorId
-                ..unitId = it.unitId
-                ..unitRate = it.unitRate
-                ..unitRateExact = it.exactDecimals['unitRate']
-                ..solution = it.solution
-                ..responsible = it.responsible;
-          row.qty.text =
-              financeExactTrimmed(
-                it.exactDecimals['qty'] ?? it.qty?.toString(),
-              ) ??
-              '';
-          row.weight.text =
-              financeExactTrimmed(
-                it.exactDecimals['weight'] ?? it.weight?.toString(),
-              ) ??
-              '';
-          row.price.text =
-              financeExactTrimmed(
-                it.exactDecimals['price'] ?? it.price?.toString(),
-              ) ??
-              '';
-          // 补列回填（按 docType 仅填该单据类型对应字段；其余保持空）。
-          if (it.machiningPrice != null) {
-            row.machiningPrice.text =
-                financeExactTrimmed(
-                  it.exactDecimals['machiningPrice'] ??
-                      it.machiningPrice.toString(),
-                ) ??
-                '';
-          }
-          if (it.circumference != null) {
-            row.circumference.text =
-                financeExactTrimmed(
-                  it.exactDecimals['circumference'] ??
-                      it.circumference.toString(),
-                ) ??
-                '';
-          }
-          if (it.inboundQty != null) {
-            row.inboundQty.text =
-                financeExactTrimmed(
-                  it.exactDecimals['inboundQty'] ?? it.inboundQty.toString(),
-                ) ??
-                '';
-          }
-          if (it.materialPrice != null) {
-            row.materialPrice.text =
-                financeExactTrimmed(
-                  it.exactDecimals['materialPrice'] ??
-                      it.materialPrice.toString(),
-                ) ??
-                '';
-          }
-          if (it.dieCastPrice != null) {
-            row.dieCastPrice.text =
-                financeExactTrimmed(
-                  it.exactDecimals['dieCastPrice'] ??
-                      it.dieCastPrice.toString(),
-                ) ??
-                '';
-          }
-          if (it.discount != null) {
-            // 旧订单用 null/0 表示不打折；编辑页统一展示为明确的 1 倍，金额语义不变。
-            final discount =
-                widget.docType == SalesDocType.order && it.discount == 0
-                ? 1
-                : it.discount;
-            row.discount.text =
-                widget.docType == SalesDocType.order && it.discount == 0
-                ? '1'
-                : financeExactTrimmed(
-                        it.exactDecimals['discount'] ?? discount.toString(),
-                      ) ??
-                      '';
-          } else if (widget.docType == SalesDocType.quote || d.priceMasked) {
-            // 报价折扣可空(交财务核价)；看不到价格时折扣留空、保存提交 null，
-            // 绝不默认 1(否则会把财务/服务端算好的折扣改回原价)。
-            row.discount.clear();
-          }
-          if (_hasClientPricing) {
+        final rowOwner = _rowPreparationOwner(
+          prepareEpoch,
+          rowsRevision: _grid.rowsRevision,
+        );
+        final amountUsesDiscount = _amountUsesDiscount;
+        final allowPricingInput = _allowPricingInput;
+        await prepareEditableGridRows(
+          d.items,
+          create: (_) => SalesGridRow(
+            amountUsesDiscount: amountUsesDiscount,
+            allowPricingInput: allowPricingInput,
+          ),
+          initialize: (row, it) {
             row
-              ..clientPrice = financeExactTrimmed(
-                it.exactDecimals['clientPrice'] ?? it.clientPrice?.toString(),
-              )
-              ..clientNo = it.clientNo
-              ..priceSource = it.priceSource
-              ..quoteDiscountLocked =
-                  widget.docType == SalesDocType.order &&
-                  (it.quoteLocked || it.quoteDiscount != null);
-            row.clientModel.text = it.clientModel ?? '';
-            row.clientGoodsName.text = it.clientGoodsName ?? '';
-          }
-          row.restoreExtraColumns(
-            it.extraColumns.map((c) => c.toSnapshot()).toList(),
-          );
-          row.remark.text = it.remark ?? '';
-          rows.add(row);
-        }
-        if (_cfg.hasWarehouse) {
-          await _fillStockPlaces(rows);
-        }
-        _grid.replaceAll(rows);
+              ..documentItemId = it.id
+              // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
+              ..goods = ref
+                  .read(salesMasterNameServiceProvider)
+                  .goodsOptionOf(it.goodsId)
+              ..orderItemId = it.orderItemId
+              ..outItemId = it.outItemId
+              ..colorId = it.colorId
+              ..unitId = it.unitId
+              ..unitRate = it.unitRate
+              ..unitRateExact = it.exactDecimals['unitRate']
+              ..solution = it.solution
+              ..responsible = it.responsible;
+            row.qty.text =
+                financeExactTrimmed(
+                  it.exactDecimals['qty'] ?? it.qty?.toString(),
+                ) ??
+                '';
+            row.weight.text =
+                financeExactTrimmed(
+                  it.exactDecimals['weight'] ?? it.weight?.toString(),
+                ) ??
+                '';
+            row.price.text =
+                financeExactTrimmed(
+                  it.exactDecimals['price'] ?? it.price?.toString(),
+                ) ??
+                '';
+            // 补列回填（按 docType 仅填该单据类型对应字段；其余保持空）。
+            if (it.machiningPrice != null) {
+              row.machiningPrice.text =
+                  financeExactTrimmed(
+                    it.exactDecimals['machiningPrice'] ??
+                        it.machiningPrice.toString(),
+                  ) ??
+                  '';
+            }
+            if (it.circumference != null) {
+              row.circumference.text =
+                  financeExactTrimmed(
+                    it.exactDecimals['circumference'] ??
+                        it.circumference.toString(),
+                  ) ??
+                  '';
+            }
+            if (it.inboundQty != null) {
+              row.inboundQty.text =
+                  financeExactTrimmed(
+                    it.exactDecimals['inboundQty'] ?? it.inboundQty.toString(),
+                  ) ??
+                  '';
+            }
+            if (it.materialPrice != null) {
+              row.materialPrice.text =
+                  financeExactTrimmed(
+                    it.exactDecimals['materialPrice'] ??
+                        it.materialPrice.toString(),
+                  ) ??
+                  '';
+            }
+            if (it.dieCastPrice != null) {
+              row.dieCastPrice.text =
+                  financeExactTrimmed(
+                    it.exactDecimals['dieCastPrice'] ??
+                        it.dieCastPrice.toString(),
+                  ) ??
+                  '';
+            }
+            if (it.discount != null) {
+              // 旧订单用 null/0 表示不打折；编辑页统一展示为明确的 1 倍，金额语义不变。
+              final discount =
+                  widget.docType == SalesDocType.order && it.discount == 0
+                  ? 1
+                  : it.discount;
+              row.discount.text =
+                  widget.docType == SalesDocType.order && it.discount == 0
+                  ? '1'
+                  : financeExactTrimmed(
+                          it.exactDecimals['discount'] ?? discount.toString(),
+                        ) ??
+                        '';
+            } else if (widget.docType == SalesDocType.quote || d.priceMasked) {
+              // 报价折扣可空(交财务核价)；看不到价格时折扣留空、保存提交 null，
+              // 绝不默认 1(否则会把财务/服务端算好的折扣改回原价)。
+              row.discount.clear();
+            }
+            if (_hasClientPricing) {
+              row
+                ..clientPrice = financeExactTrimmed(
+                  it.exactDecimals['clientPrice'] ?? it.clientPrice?.toString(),
+                )
+                ..clientNo = it.clientNo
+                ..priceSource = it.priceSource
+                ..quoteDiscountLocked =
+                    widget.docType == SalesDocType.order &&
+                    (it.quoteLocked || it.quoteDiscount != null);
+              row.clientModel.text = it.clientModel ?? '';
+              row.clientGoodsName.text = it.clientGoodsName ?? '';
+            }
+            row.restoreExtraColumns(
+              it.extraColumns.map((c) => c.toSnapshot()).toList(),
+            );
+            row.remark.text = it.remark ?? '';
+          },
+          isCurrent: rowOwner,
+          beforePublish: _cfg.hasWarehouse ? _fillStockPlaces : null,
+          publish: _grid.replaceAll,
+        );
       }
       if (_grid.isEmpty) {
         _grid.addRow(
@@ -1114,7 +1164,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       if (widget.id == null &&
           widget.docType == SalesDocType.shipment &&
           widget.initialOrderId != null) {
-        await _prefillSelectedOrder();
+        await _prefillSelectedOrder(prepareEpoch: prepareEpoch);
       }
       if (isCurrent() && widget.id == null) await initializeFormDraft();
       if (isCurrent() &&
@@ -1138,6 +1188,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           (_) => _resumeAiIntake(aiJobId),
         );
       }
+    } on UiWorkCancelled {
+      return;
     } on ApiException catch (e) {
       if (!mounted || !isCurrent()) return;
       _initializationError = e.message;
@@ -1154,14 +1206,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     }
   }
 
-  Future<void> _prefillSelectedOrder() async {
+  Future<void> _prefillSelectedOrder({required int prepareEpoch}) async {
+    final isCurrent = _rowPreparationOwner(prepareEpoch);
     final prefill = SalesShipmentPrefill.parse(
       widget.initialOrderId!,
       widget.initialOrderItems,
     );
     final repository = ref.read(salesRepositoryProvider(SalesDocType.order));
     final order = await repository.detail(prefill.orderId);
+    if (!isCurrent()) return;
     final progress = await repository.planProgress(prefill.orderId);
+    if (!isCurrent()) return;
     prefill.validate(order, progress);
     final names = ref.read(salesMasterNameServiceProvider);
     await names.loadGoodsNamesWithCodes(
@@ -1171,40 +1226,45 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           .whereType<String>()
           .toSet(),
     );
-    if (!mounted) return;
+    if (!isCurrent()) return;
     if (order.clientId != null) await _onClientChanged(order.clientId);
-    if (!mounted) return;
+    if (!isCurrent()) return;
     _sellerId = order.sellerId ?? _sellerId;
     _settlementMethodId = order.settlementMethodId;
     _currencyId = order.currencyId;
-    final rows = <SalesGridRow>[];
-    for (final item in order.items) {
-      final quantity = prefill.quantities[item.id];
-      if (quantity == null) continue;
-      if (item.goodsId == null) {
-        throw const FormatException('所选订单产品缺少货品信息，请返回订单核对');
-      }
-      final row = SalesGridRow.fromLinked(
-        SalesLinkedItem(
-          goodsId: item.goodsId!,
-          qty: quantity,
-          price: item.price,
-          orderItemId: item.id,
-          colorId: item.colorId,
-          unitId: item.unitId,
-          unitRate: item.unitRate,
-        ),
-        names.goodsOptionOf(item.goodsId)!,
-      );
-      row.unitRateExact = item.exactDecimals['unitRate'];
-      row.price.text =
-          financeExactTrimmed(
-            item.exactDecimals['price'] ?? item.price?.toString(),
-          ) ??
-          '';
-      rows.add(row);
-    }
-    _grid.replaceAll(rows);
+    await prepareEditableGridRows(
+      order.items.where((item) => prefill.quantities.containsKey(item.id)),
+      create: (_) => SalesGridRow(),
+      initialize: (row, item) {
+        final quantity = prefill.quantities[item.id]!;
+        if (item.goodsId == null) {
+          throw const FormatException('所选订单产品缺少货品信息，请返回订单核对');
+        }
+        row.initializeLinked(
+          SalesLinkedItem(
+            goodsId: item.goodsId!,
+            qty: quantity,
+            price: item.price,
+            orderItemId: item.id,
+            colorId: item.colorId,
+            unitId: item.unitId,
+            unitRate: item.unitRate,
+          ),
+          names.goodsOptionOf(item.goodsId)!,
+        );
+        row.unitRateExact = item.exactDecimals['unitRate'];
+        row.price.text =
+            financeExactTrimmed(
+              item.exactDecimals['price'] ?? item.price?.toString(),
+            ) ??
+            '';
+      },
+      isCurrent: _rowPreparationOwner(
+        prepareEpoch,
+        rowsRevision: _grid.rowsRevision,
+      ),
+      publish: _grid.replaceAll,
+    );
   }
 
   DateTime? _parseDate(String? s) =>
@@ -1925,6 +1985,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           r.flagged = true;
         }
       }
+      await _grid.revealError(groups.first.rows.first);
       return false;
     }
     for (final g in groups) {
@@ -1946,7 +2007,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     final isCurrent = _captureQuoteContext();
     if (_guidedPlan != null) {
       if (!_guidedValidated) return;
-      final before = jsonEncode(captureFormDraft());
+      final before = JsonValueSnapshot.capture(captureFormDraftSnapshot());
       setState(() {
         _guidedBusy = true;
         _guidedValidated = false;
@@ -1956,7 +2017,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         await _validateGuidedState();
         if (!mounted ||
             _guidedPlan?.matches(ref) != true ||
-            before != jsonEncode(captureFormDraft())) {
+            !before.matches(captureFormDraftSnapshot())) {
           return;
         }
         setState(() => _guidedValidated = true);
@@ -1991,6 +2052,21 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     final err = _validate();
     if (err != null) {
       context.appError(err);
+      if (_errors.firstOrNull == 'items') {
+        final row = _grid.rows
+            .where((row) => row.invalidNotifier.value)
+            .firstOrNull;
+        if (row != null) {
+          await _grid.revealError(
+            row,
+            columnKey: row.goods == null
+                ? 'goods'
+                : (double.tryParse(row.qty.text.trim()) ?? 0) <= 0
+                ? 'qty'
+                : null,
+          );
+        }
+      }
       return;
     }
     // 销售订货保存前查重（2026-09-25）：同「货品+颜色+单位+换算率」多行时弹窗
@@ -2584,12 +2660,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     ({
       SalesIntakeLaunchResult result,
       AiGuidedFilePlan? plan,
-      String? snapshot,
+      JsonValueSnapshot? snapshot,
     })?
   >
   _recognizeSalesFile(PlatformFile file) async {
     final original = _guidedPlan;
-    final before = original == null ? null : jsonEncode(captureFormDraft());
+    final before = original == null
+        ? null
+        : JsonValueSnapshot.capture(captureFormDraftSnapshot());
     AiGuidedFilePlan? prepared;
     if (original != null) {
       setState(() {
@@ -2609,7 +2687,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
             : AiGuidedWorkflow.salesOrder,
       );
       if (!mounted || prepared == null || !prepared.matches(ref)) return null;
-      if (before != jsonEncode(captureFormDraft())) {
+      if (!before!.matches(captureFormDraftSnapshot())) {
         setState(() {
           _guidedValidated = true;
           _guidedStatus = 'guidedExisting';
@@ -2886,7 +2964,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           return;
         }
       }
-      final formBeforeRecognition = jsonEncode(captureFormDraft());
+      final formBeforeRecognition = JsonValueSnapshot.capture(
+        captureFormDraftSnapshot(),
+      );
       final result = await launchSalesIntakeWithFile(
         context,
         ref,
@@ -2914,7 +2994,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         setState(() => _guidedStatus = 'guidedWaiting');
         return;
       }
-      if (jsonEncode(captureFormDraft()) != formBeforeRecognition) {
+      if (!formBeforeRecognition.matches(captureFormDraftSnapshot())) {
         setState(() => _guidedStatus = 'guidedExisting');
         return;
       }
@@ -2987,12 +3067,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     bool? replacePref,
     String? reRecognizeFile,
     AiGuidedFilePlan? sourcePlan,
-    String? expectedFormSnapshot,
+    JsonValueSnapshot? expectedFormSnapshot,
   }) async {
     final guided = sourcePlan ?? _guidedPlan;
     AiGuidedFilePlan? verified;
     if (guided != null) {
-      final before = expectedFormSnapshot ?? jsonEncode(captureFormDraft());
+      final before =
+          expectedFormSnapshot ??
+          JsonValueSnapshot.capture(captureFormDraftSnapshot());
       verified = await validateAiGuidedFilePlan(ref, guided);
       if (!mounted || !_guidedMatchesPage(verified)) return false;
       final intakeId = result.handoffJobId ?? result.patch?.jobId;
@@ -3009,7 +3091,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           );
         }
       }
-      if (before != jsonEncode(captureFormDraft())) {
+      if (!before.matches(captureFormDraftSnapshot())) {
         setState(() => _guidedStatus = 'guidedExisting');
         return false;
       }
@@ -3017,7 +3099,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     final handoff = result.handoffJobId;
     if (handoff != null) {
       if (verified != null) {
-        final before = jsonEncode(captureFormDraft());
+        final before = JsonValueSnapshot.capture(captureFormDraftSnapshot());
         final quote = await prepareGuidedSalesRoute(
           context,
           ref,
@@ -3026,7 +3108,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           workflow: AiGuidedWorkflow.salesQuote,
         );
         if (!mounted || quote == null || !quote.matches(ref)) return false;
-        if (before != jsonEncode(captureFormDraft())) {
+        if (!before.matches(captureFormDraftSnapshot())) {
           setState(() => _guidedStatus = 'guidedExisting');
           return false;
         }

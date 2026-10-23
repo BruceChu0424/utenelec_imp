@@ -140,8 +140,23 @@ public class ProductionDrawDiscoveryBatchService {
         guard.verifyUnchanged();
 
         Set<UUID> documentIds=new HashSet<>(request.docIds());
+        if (request.itemIds() != null) {
+            Number selected = (Number) em.createNativeQuery("""
+                    SELECT COUNT(*) FROM stock_document_items
+                    WHERE id IN(:items) AND doc_id IN(:documents) AND NOT is_deleted
+                    """).setParameter("items", request.itemIds()).setParameter("documents", request.docIds()).getSingleResult();
+            if (selected.longValue() != request.itemIds().size()) throw validation("所选领料明细不属于本次已有领料单，请刷新后重新选择");
+        }
         List<StockDocIssueBatchRequest.ItemWeight> weights=new ArrayList<>(request.weights());
         for(Discovery command:request.discoveries()) {
+            if (command.selectedSuggestionKeys() != null) {
+                Number count = (Number) em.createNativeQuery("SELECT jsonb_array_length(requested_materials) FROM production_material_discovery_requests WHERE id=:id")
+                        .setParameter("id", command.requestId()).getSingleResult();
+                Set<String> expected = java.util.stream.IntStream.rangeClosed(1, count.intValue())
+                        .mapToObj(index -> "suggestion-" + index).collect(java.util.stream.Collectors.toSet());
+                if (!expected.equals(new HashSet<>(command.selectedSuggestionKeys())))
+                    throw conflict("该材料申请需完整核对，请返回任务中心选齐同申请建议明细；本次未配置或出库");
+            }
             String childKey=configurationKey(actor,request.idempotencyKey(),command.requestId());
             var configured=discovery.configure(command.requestId(),new ProductionMaterialDiscoveryContracts.Configure(
                     command.expectedVersion(),childKey,command.items()));
@@ -155,14 +170,30 @@ public class ProductionDrawDiscoveryBatchService {
         command.setDocIds(documentIds.stream().sorted(Comparator.comparing(UUID::toString)).toList());
         command.setReason(request.reason());
         command.setWeights(weights.isEmpty()?null:weights);
+        if (request.itemIds() != null) {
+            Set<UUID> selectedItems = new HashSet<>(request.itemIds());
+            if (!request.discoveries().isEmpty()) {
+                selectedItems.addAll(NativeQueryResults.typedRows(em.createNativeQuery("""
+                        SELECT DISTINCT item.id FROM production_material_discovery_lines line
+                        JOIN production_planning_package_document_items mapping
+                          ON mapping.demand_id=line.demand_id AND mapping.document_type='DRAW'
+                        JOIN stock_document_items item ON item.id=mapping.document_item_id AND NOT item.is_deleted
+                        WHERE line.request_id IN(:requests)
+                        """).setParameter("requests", request.discoveries().stream().map(Discovery::requestId).toList()), UUID.class));
+            }
+            command.setItemIds(selectedItems.stream().sorted(Comparator.comparing(UUID::toString)).toList());
+        }
         var response=stock.issueFullBatch(command);
         // Freeze success only when every authorized remainder was actually issued.
         // A nested replay must never turn a still-unissued line into a successful batch.
-        if(Boolean.TRUE.equals(em.createNativeQuery("""
+        var remaining=em.createNativeQuery("""
                 SELECT EXISTS(SELECT 1 FROM stock_document_items item
                     WHERE item.doc_id IN(:ids) AND NOT item.is_deleted
-                      AND fn_production_draw_item_requested_qty(item.id)>COALESCE(item.issued_qty,0))
-                """).setParameter("ids",command.getDocIds()).getSingleResult()))
+                      AND fn_production_draw_item_requested_qty(item.id)>COALESCE(item.issued_qty,0)
+                """+(command.getItemIds()==null?"":" AND item.id IN(:items)")+")")
+                .setParameter("ids",command.getDocIds());
+        if(command.getItemIds()!=null)remaining.setParameter("items",command.getItemIds());
+        if(Boolean.TRUE.equals(remaining.getSingleResult()))
             throw conflict("本批仍有未实际出库的领料数量，整批未生效，请刷新后核对");
         em.createNativeQuery("""
                 INSERT INTO production_draw_issue_batches(id,actor_user_id,actor_employee_id,idempotency_key,request_hash,
@@ -188,20 +219,35 @@ public class ProductionDrawDiscoveryBatchService {
             if(item==null||item.requestId()==null||item.expectedVersion()==null||item.expectedVersion()<0||!ids.add(item.requestId()))
                 throw validation("材料申请缺少有效标识、版本或重复选择");
             List<Material> materials=ProductionMaterialDiscoveryService.normalize(item.items());
+            List<String> suggestionKeys = item.selectedSuggestionKeys();
+            if (suggestionKeys != null) {
+                if (suggestionKeys.isEmpty() || suggestionKeys.size() > 500
+                        || suggestionKeys.stream().anyMatch(keyValue -> keyValue == null || !keyValue.matches("suggestion-[1-9][0-9]*"))
+                        || new HashSet<>(suggestionKeys).size() != suggestionKeys.size()) throw validation("所选材料建议明细无效，请刷新后重新选择");
+                suggestionKeys = suggestionKeys.stream().sorted().toList();
+            }
             normalized.add(new Discovery(item.requestId(),item.expectedVersion(),materials,
-                    normalizeDiscoveryWeights(item.weights(),materials)));
+                    normalizeDiscoveryWeights(item.weights(),materials),suggestionKeys));
         }
         String reason=request.reason()==null||request.reason().isBlank()?null:request.reason().strip();
         if(reason!=null&&reason.length()>200)throw validation("统一备注最多200字");
+        List<UUID> selectedItems=request.itemIds();
+        if(selectedItems!=null) {
+            if(documents.isEmpty()||selectedItems.isEmpty()||selectedItems.size()>500||selectedItems.stream().anyMatch(Objects::isNull)
+                    ||new HashSet<>(selectedItems).size()!=selectedItems.size())throw validation("所选领料明细无效，请刷新后重新选择");
+            selectedItems=selectedItems.stream().sorted(Comparator.comparing(UUID::toString)).toList();
+        }
         return new Request(key,documents.stream().sorted(Comparator.comparing(UUID::toString)).toList(),
                 normalized.stream().sorted(Comparator.comparing(item->item.requestId().toString())).toList(),reason,
-                normalizeItemWeights(request.weights()));
+                normalizeItemWeights(request.weights()),selectedItems);
     }
     static String requestHash(Request request) {
         List<String> parts=new ArrayList<>(List.of("PRODUCTION-DRAW-DISCOVERY-BATCH-V1","reason:"+Objects.toString(request.reason(),"")));
         request.docIds().forEach(id->parts.add("DRAW:"+id));
+        if(request.itemIds()!=null)request.itemIds().forEach(id->parts.add("ITEM:"+id));
         for(Discovery item:request.discoveries()) {
             parts.add("DISCOVERY:"+item.requestId()+":"+item.expectedVersion());
+            if(item.selectedSuggestionKeys()!=null)item.selectedSuggestionKeys().forEach(keyValue->parts.add("SUGGESTION:"+item.requestId()+":"+keyValue));
             for(Material material:item.items())parts.add(identity(material.goodsId(),material.colorId(),material.unitId())+":"
                     +material.warehouseId()+":"+material.qty().stripTrailingZeros().toPlainString());
             // 称重只在填了时进哈希, 不带重量的请求哈希与原口径一致。

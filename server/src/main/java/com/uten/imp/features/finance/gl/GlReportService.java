@@ -9,14 +9,19 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
+import static com.uten.imp.features.finance.gl.GlReportSourceScopes.Root.*;
 
 /**
  * 总账报表服务（C3 · 8 张总账报表；数据全部来自 gl_entries + 少量业务表补充列）。
@@ -97,12 +102,13 @@ public class GlReportService {
 
     // ======================== ② 附 9 资产负债表 ========================
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
     public ReportTableResponse balanceSheet(LocalDate dateTo) {
+        GlReportSourceScopes.assertUnambiguous(em);
         LocalDate yearStart = dateTo.withDayOfYear(1);
         LocalDate yearOpen = yearStart.minusDays(1);
-        Map<String, BigDecimal> end = balancesByRoot(dateTo);
-        Map<String, BigDecimal> open = balancesByRoot(yearOpen);
+        Map<GlReportSourceScopes.Root, BigDecimal> end = balancesByRoot(dateTo);
+        Map<GlReportSourceScopes.Root, BigDecimal> open = balancesByRoot(yearOpen);
 
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("item", "项目", 200),
@@ -112,23 +118,23 @@ public class GlReportService {
                 ReportColumn.money("yearStart", "年初余额"));
         List<Map<String, Object>> rows = new ArrayList<>();
         // 资产
-        BigDecimal cash1 = sum(end, "/101/", "/102/"), cash0 = sum(open, "/101/", "/102/");
-        BigDecimal ar1 = sum(end, "/113/"), ar0 = sum(open, "/113/");
-        BigDecimal oar1 = sum(end, "/172/", "/173/"), oar0 = sum(open, "/172/", "/173/");
-        BigDecimal inv1 = sum(end, "/123/"), inv0 = sum(open, "/123/");
-        BigDecimal prepaid1 = sum(end, "/139/"), prepaid0 = sum(open, "/139/");
-        BigDecimal fa1 = sum(end, "/151/"), fa0 = sum(open, "/151/");
+        BigDecimal cash1 = sum(end, CASH, BANK), cash0 = sum(open, CASH, BANK);
+        BigDecimal ar1 = sum(end, RECEIVABLES), ar0 = sum(open, RECEIVABLES);
+        BigDecimal oar1 = sum(end, OTHER_RECEIVABLES, OTHER_RECEIVABLES_ALTERNATE), oar0 = sum(open, OTHER_RECEIVABLES, OTHER_RECEIVABLES_ALTERNATE);
+        BigDecimal inv1 = sum(end, INVENTORY), inv0 = sum(open, INVENTORY);
+        BigDecimal prepaid1 = sum(end, PREPAID), prepaid0 = sum(open, PREPAID);
+        BigDecimal fa1 = sum(end, FIXED_ASSETS), fa0 = sum(open, FIXED_ASSETS);
         BigDecimal assets1 = cash1.add(ar1).add(oar1).add(inv1).add(prepaid1).add(fa1);
         BigDecimal assets0 = cash0.add(ar0).add(oar0).add(inv0).add(prepaid0).add(fa0);
         // 负债
-        BigDecimal ap1 = sum(end, "/203/"), ap0 = sum(open, "/203/");
-        BigDecimal tax1 = sum(end, "/221/"), tax0 = sum(open, "/221/");
-        BigDecimal oap1 = sum(end, "/204/", "/205/"), oap0 = sum(open, "/204/", "/205/");
+        BigDecimal ap1 = sum(end, PAYABLES), ap0 = sum(open, PAYABLES);
+        BigDecimal tax1 = sum(end, TAX_PAYABLE), tax0 = sum(open, TAX_PAYABLE);
+        BigDecimal oap1 = sum(end, OTHER_PAYABLES, OTHER_PAYABLES_ALTERNATE), oap0 = sum(open, OTHER_PAYABLES, OTHER_PAYABLES_ALTERNATE);
         BigDecimal liab1 = ap1.add(tax1).add(oap1), liab0 = ap0.add(tax0).add(oap0);
         // 权益：期初资本 + 未分配利润（/321/ + 累计损益净额）
-        BigDecimal eq1 = sum(end, "/301/"), eq0 = sum(open, "/301/");
-        BigDecimal profit1 = sum(end, "/321/").add(plNet(dateTo));
-        BigDecimal profit0 = sum(open, "/321/").add(plNet(yearOpen));
+        BigDecimal eq1 = sum(end, CAPITAL), eq0 = sum(open, CAPITAL);
+        BigDecimal profit1 = sum(end, RETAINED_PROFIT).add(plNet(dateTo));
+        BigDecimal profit0 = sum(open, RETAINED_PROFIT).add(plNet(yearOpen));
         BigDecimal equity1 = eq1.add(profit1), equity0 = eq0.add(profit0);
 
         addBsRow(rows, "货币资金", "资产", 1, cash1, cash0);
@@ -152,23 +158,15 @@ public class GlReportService {
         return new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1);
     }
 
-    /** 各根科目（/101/ 等）截至 date 的净额，按类别归一化（资产/费用=借正，负债/权益/收入=贷正）。 */
-    private Map<String, BigDecimal> balancesByRoot(LocalDate date) {
-        var q = em.createNativeQuery("""
-                SELECT root.path,
-                       CASE WHEN root.category IN ('LIABILITY','EQUITY','INCOME')
-                            THEN -SUM(e.direction * e.amount) ELSE SUM(e.direction * e.amount) END
-                FROM gl_entries e
-                JOIN payment_styles ps ON ps.id = e.style_id
-                JOIN payment_styles root ON root.level = 0 AND ps.path LIKE root.path || '%'
-                WHERE e.is_deleted = false AND e.entry_date <= :d
-                GROUP BY root.path, root.category
-                """);
+    /** 经来源凭证确认的根分类净额；余额方向沿用根类别，显示编码不参与身份判断。 */
+    private Map<GlReportSourceScopes.Root, BigDecimal> balancesByRoot(LocalDate date) {
+        var q = em.createNativeQuery(GlReportSourceScopes.balancesSql());
         q.setParameter("d", date);
-        List<Object[]> rs = NativeQueryResults.objectArrayRows(q);
-        Map<String, BigDecimal> m = new LinkedHashMap<>();
-        for (Object[] r : rs) m.put((String) r[0], (BigDecimal) r[1]);
-        return m;
+        Map<GlReportSourceScopes.Root, BigDecimal> result = new EnumMap<>(GlReportSourceScopes.Root.class);
+        for (Object[] row : NativeQueryResults.objectArrayRows(q)) {
+            result.put(GlReportSourceScopes.Root.valueOf((String) row[0]), (BigDecimal) row[1]);
+        }
+        return result;
     }
 
     /** 累计损益净额（收入贷净 − 成本费用借净），截至 date。 */
@@ -184,9 +182,9 @@ public class GlReportService {
         return (BigDecimal) q.getSingleResult();
     }
 
-    private static BigDecimal sum(Map<String, BigDecimal> m, String... paths) {
+    private static BigDecimal sum(Map<GlReportSourceScopes.Root, BigDecimal> m, GlReportSourceScopes.Root... roots) {
         BigDecimal t = BigDecimal.ZERO;
-        for (String p : paths) t = t.add(m.getOrDefault(p, BigDecimal.ZERO));
+        for (GlReportSourceScopes.Root root : roots) t = t.add(m.getOrDefault(root, BigDecimal.ZERO));
         return t;
     }
 
@@ -208,9 +206,10 @@ public class GlReportService {
     private List<Map<String, Object>> profitRows(int year) {
         LocalDate from = LocalDate.of(year, 1, 1);
         LocalDate to = LocalDate.of(year, 12, 31);
-        BigDecimal[] income = monthlyByPaths(year, "INCOME", new String[]{"/031/", "/032/"});
-        BigDecimal[] cost = monthlyByPaths(year, "EXPENSE", new String[]{"/041/", "/042/"});
-        BigDecimal[] nonOp = monthlyByPaths(year, "INCOME", new String[]{"/033/"});
+        GlReportSourceScopes.assertUnambiguous(em);
+        BigDecimal[] income = monthlyByRoots(year, "INCOME", MAIN_REVENUE, OTHER_REVENUE);
+        BigDecimal[] cost = monthlyByRoots(year, "EXPENSE", MAIN_COST, OTHER_COST);
+        BigDecimal[] nonOp = monthlyByRoots(year, "INCOME", NON_OPERATING_REVENUE);
         List<String> boundKeys = List.of(GlReportLine.PL_TAX.key(), GlReportLine.SALES_FEE.key(),
                 GlReportLine.PL_FINANCE.key());
         GlReportLineSource.Bindings bindings = lines.bindings(boundKeys);
@@ -261,7 +260,7 @@ public class GlReportService {
         return rows;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
     public ReportTableResponse profitAnnual(int year) {
         List<ReportColumn> cols = new ArrayList<>();
         cols.add(ReportColumn.text("item", "项目", 200));
@@ -271,7 +270,7 @@ public class GlReportService {
         return new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
     public ReportTableResponse profitMonthly(int year, int month) {
         requireMonth(month);
         List<ReportColumn> cols = List.of(
@@ -297,20 +296,10 @@ public class GlReportService {
         return new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1);
     }
 
-    /** 按根 path（/031/ 等）聚合月净额：INCOME 取贷净（-dir），EXPENSE 取借净（+dir）。 */
-    private BigDecimal[] monthlyByPaths(int year, String category, String[] paths) {
-        var q = em.createNativeQuery("""
-                SELECT EXTRACT(MONTH FROM e.entry_date)::int,
-                       SUM(CASE WHEN :cat = 'INCOME' THEN -e.direction * e.amount ELSE e.direction * e.amount END)
-                FROM gl_entries e
-                JOIN payment_styles ps ON ps.id = e.style_id
-                JOIN payment_styles root ON root.level = 0 AND left(ps.path, length(root.path)) = root.path
-                WHERE e.is_deleted = false AND ps.category = :cat AND root.path IN (:paths)
-                  AND e.entry_date BETWEEN :from AND :to
-                GROUP BY 1
-                """);
+    /** 按真实分类树聚合月净额：收入贷净、费用借净，保留原类别与日期口径。 */
+    private BigDecimal[] monthlyByRoots(int year, String category, GlReportSourceScopes.Root... roots) {
+        var q = em.createNativeQuery(GlReportSourceScopes.monthlySql(roots));
         q.setParameter("cat", category);
-        q.setParameter("paths", List.of(paths));
         q.setParameter("from", LocalDate.of(year, 1, 1));
         q.setParameter("to", LocalDate.of(year, 12, 31));
         BigDecimal[] months = new BigDecimal[13];
@@ -348,10 +337,11 @@ public class GlReportService {
                 lines.bindings(keys(GlReportLine.MANUFACTURING)));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
     public ReportTableResponse adminExpense(int year) {
+        GlReportSourceScopes.assertUnambiguous(em);
         Map<String, BigDecimal[]> data = lineMonthly(GlReportLine.ADMIN, year);
-        data.put("ADM_SALES", monthlyByPaths(year, "INCOME", new String[]{"/031/"}));
+        data.put("ADM_SALES", monthlyByRoots(year, "INCOME", MAIN_REVENUE));
         return pivotTable("管理费用项目", GlReportLine.ADMIN, data, lines.bindings(keys(GlReportLine.ADMIN)));
     }
 
@@ -523,20 +513,15 @@ public class GlReportService {
 
     // ======================== ⑧ 附 16 经营损益表 ========================
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
     public ReportTableResponse operatingPl(int year, int month) {
         requireMonth(month);
+        GlReportSourceScopes.assertUnambiguous(em);
         LocalDate from = LocalDate.of(year, month, 1);
         LocalDate to = from.plusMonths(1).minusDays(1);
         String period = String.format("%04d-%02d", year, month);
         // 销售额基数 = 031+032 贷净（模板「应收账款」行）
-        var baseQ = em.createNativeQuery("""
-                SELECT COALESCE(SUM(-e.direction * e.amount),0)
-                FROM gl_entries e JOIN payment_styles ps ON ps.id = e.style_id
-                JOIN payment_styles root ON root.level = 0 AND left(ps.path, length(root.path)) = root.path
-                WHERE e.is_deleted = false AND ps.category='INCOME' AND root.path IN ('/031/','/032/')
-                  AND e.entry_date BETWEEN :from AND :to
-                """);
+        var baseQ = em.createNativeQuery(GlReportSourceScopes.operatingBaseSql());
         baseQ.setParameter("from", from);
         baseQ.setParameter("to", to);
         BigDecimal base = (BigDecimal) baseQ.getSingleResult();

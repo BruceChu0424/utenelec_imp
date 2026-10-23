@@ -179,6 +179,14 @@ public class GoodsService {
         Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
         Page<Goods> p = repo.findAll(spec, pageable);
         List<Goods> content = p.getContent();
+        Set<UUID> goodsWithBom = content.isEmpty() ? Set.of() : new java.util.HashSet<>(
+                em.createQuery("""
+                        select distinct b.goods.id from GoodsBomItem b
+                        where b.goods.id in :ids and b.deleted = false
+                          and b.goods.autoCreated = false and b.component.autoCreated = false
+                        """, UUID.class)
+                        .setParameter("ids", content.stream().map(Goods::getId).toList())
+                        .getResultList());
         // 历史只读回显：UUID 缺失时按本页 legacy 快照批量补颜色/单位名，绝不建立新关系。
         Map<Integer, String> colorNames = colorNamesFor(
                 content.stream().map(Goods::getColorLegacyId).toList());
@@ -199,6 +207,7 @@ public class GoodsService {
                 .map(g -> {
                     var item = toList(g, colorNames, unitNames, mouldsByLegacy, stockByGoods,
                             owningWarehouseNames, owningWorkshopNames);
+                    item.setHasBom(goodsWithBom.contains(g.getId()));
                     if (keyword.active()) {
                         UUID category = g.getCategory() == null ? null : g.getCategory().getId();
                         item.setSearchRank(keyword.rankValue(category, g.getCode(), g.getName(), goodsVisibleValues(g)));
@@ -208,6 +217,67 @@ public class GoodsService {
                 })
                 .toList();
         return new PageResponse<>(items, p);
+    }
+
+    @Transactional(readOnly = true)
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:view')")
+    public com.uten.imp.features.master.goods.dto.GoodsPageLocation locate(
+            GoodsQueryFilter filter, UUID id, int size, String sort, String order) {
+        var cb = em.getCriteriaBuilder();
+        var scope = goodsScope();
+        var subtree = resolveCategoryScopeIds(filter);
+        var keyword = keywordPlan(filter);
+        var targetQuery = cb.createQuery(Goods.class);
+        var targetRoot = targetQuery.from(Goods.class);
+        targetQuery.where(cb.and(
+                goodsPredicate(filter, subtree, scope, targetRoot, cb, keyword),
+                com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, targetRoot.get("id"),
+                        com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, filter.columnSearch()),
+                cb.equal(targetRoot.get("id"), id)));
+        var targets = em.createQuery(targetQuery).setMaxResults(1).getResultList();
+        if (targets.isEmpty()) return new com.uten.imp.features.master.goods.dto.GoodsPageLocation(false, 1, 0);
+        var target = targets.getFirst();
+        var ordering = TableSort.resolve(sort, order, Sort.by("code").and(Sort.by("id")), ALLOWED_SORT);
+        var countQuery = cb.createQuery(Long.class);
+        var root = countQuery.from(Goods.class);
+        Predicate same = cb.conjunction();
+        Predicate before = cb.disjunction();
+        if (keyword.active()) {
+            var rank = keyword.rank(cb, root.get("category").get("id"), root.get("code"), root.get("name"),
+                    goodsVisibleSearchFields(root, mouldCodeForSearch(root)));
+            var targetRank = keyword.rankValue(target.getCategory() == null ? null : target.getCategory().getId(),
+                    target.getCode(), target.getName(), goodsVisibleValues(target));
+            before = cb.lessThan(rank, targetRank);
+            same = cb.equal(rank, targetRank);
+        }
+        for (var part : ordering) {
+            Comparable<?> value = switch (part.getProperty()) {
+                case "price" -> target.getPrice();
+                case "code" -> target.getCode();
+                default -> target.getId();
+            };
+            var expression = root.get(part.getProperty());
+            Predicate earlier = earlierValue(cb, expression, value, part.isAscending());
+            before = cb.or(before, cb.and(same, earlier));
+            same = cb.and(same, value == null ? cb.isNull(expression) : cb.equal(expression, value));
+        }
+        countQuery.select(cb.count(root)).where(cb.and(
+                goodsPredicate(filter, subtree, scope, root, cb, keyword),
+                com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
+                        com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, filter.columnSearch()), before));
+        long preceding = em.createQuery(countQuery).getSingleResult();
+        int pageSize = Pageables.of(1, size).getPageSize();
+        return new com.uten.imp.features.master.goods.dto.GoodsPageLocation(
+                true, Math.toIntExact(preceding / pageSize + 1), (int) (preceding % pageSize));
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static Predicate earlierValue(CriteriaBuilder cb, jakarta.persistence.criteria.Expression expression,
+                                           Comparable value, boolean ascending) {
+        // PostgreSQL default: ascending nulls last, descending nulls first.
+        if (value == null) return ascending ? cb.isNotNull(expression) : cb.disjunction();
+        Predicate comparison = ascending ? cb.lessThan(expression, value) : cb.greaterThan(expression, value);
+        return ascending ? comparison : cb.or(cb.isNull(expression), comparison);
     }
 
     /**
@@ -476,16 +546,8 @@ public class GoodsService {
     private Map<UUID, BigDecimal> stockQuantitiesFor(Collection<UUID> goodsIds) {
         Set<UUID> distinct = goodsIds.stream().filter(Objects::nonNull).collect(Collectors.toSet());
         if (distinct.isEmpty()) return Map.of();
-        String sql = """
-                SELECT b.goods_id, SUM(b.qty) AS qty
-                FROM stock_balances b
-                JOIN warehouses w ON w.id = b.warehouse_id
-                WHERE w.is_accountable AND NOT w.is_defective AND NOT w.is_line_side
-                  AND b.goods_id IN (:ids)
-                GROUP BY b.goods_id
-                """;
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery(sql)
+        List<Object[]> rows = em.createNativeQuery(GoodsStockQuantities.SQL)
                 .setParameter("ids", distinct)
                 .getResultList();
         Map<UUID, BigDecimal> out = new java.util.HashMap<>();
@@ -605,18 +667,20 @@ public class GoodsService {
         boolean showDiscount = canViewDiscount();
         List<ExportColumn> cols = new ArrayList<>();
         cols.add(new ExportColumn("name", "货品名称", ExportColumn.TEXT));
+        cols.add(new ExportColumn("clientGoodsName", "客户货品名称", ExportColumn.TEXT));
         // 英文名称(ADR-134): 紧跟货品名称, 与表格列序一致; 导入同名表头可直接导回。
         cols.add(new ExportColumn("nameEn", "英文名称", ExportColumn.TEXT));
         cols.add(new ExportColumn("code", "编号", ExportColumn.TEXT));
+        cols.add(new ExportColumn("goodsId", "系统标识", ExportColumn.TEXT));
         cols.add(new ExportColumn("categoryPath", "类别", ExportColumn.TEXT));
         cols.add(new ExportColumn("colorName", "主颜色", ExportColumn.TEXT));
         cols.add(new ExportColumn("series", "系列", ExportColumn.TEXT));
         cols.add(new ExportColumn("owningWarehouseName", "所属仓库", ExportColumn.TEXT));
         cols.add(new ExportColumn("owningWorkshopName", "生产车间", ExportColumn.TEXT));
         cols.add(new ExportColumn("model", "型号", ExportColumn.TEXT));
+        cols.add(new ExportColumn("cNumber", "客户型号", ExportColumn.TEXT));
         cols.add(new ExportColumn("spec", "规格", ExportColumn.TEXT));
         cols.add(new ExportColumn("paper", "备注", ExportColumn.TEXT));
-        cols.add(new ExportColumn("cNumber", "客户型号", ExportColumn.TEXT));
         cols.add(new ExportColumn("mouldCode", "模具编号", ExportColumn.TEXT));
         cols.add(new ExportColumn("mouldName", "模具名称", ExportColumn.TEXT));
         cols.add(new ExportColumn("rearInsertCode", "后模镶件编号", ExportColumn.TEXT));
@@ -634,9 +698,11 @@ public class GoodsService {
                 maxRows, (p, size) -> list(f, p, size, sort, order), g -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("name", g.getName());
+                    row.put("clientGoodsName", g.getClientGoodsName());
                     row.put("nameEn", g.getNameEn());
                     row.put("_platformRecordId", g.getId());
                     row.put("code", g.getCode());
+                    row.put("goodsId", g.getId().toString());
                     row.put("categoryPath", categoryPath.get(g.getCategoryId()));
                     row.put("colorName", g.getColorName());
                     row.put("series", g.getSeries());
@@ -903,12 +969,11 @@ public class GoodsService {
         ensurePriceEditIfTouched(null, req);   // 新建：oldGoods=null，提交了价/折扣即视为触碰
         boolean canWriteCosts = costMasker.canView();
         ensureCostWriteAllowed(req, canWriteCosts);
+        ensureSubcontractLossWriteAllowed(null, req, canWriteCosts);
         GoodsCostValuePolicy.validateRequest(req);
         Goods g = new Goods();
         apply(req, g, canWriteCosts, false);   // 新货品还没有任何数量引用
-        applyCodeAllocation(g, categoryCodes.allocate(
-                CategoryDrivenCodeService.MasterType.GOODS,
-                g.getCategory().getId(), req.getCode()));
+        applyCodeAllocation(g, categoryCodes.allocateForNewGoods(g.getCategory().getId(), req.getCode(), g.getId()));
         if (g.getStatus() == null) g.setStatus("使用");
         repo.save(g);
         return toDetail(g, colorNameOf(g), unitNameOf(g), false);
@@ -924,9 +989,7 @@ public class GoodsService {
         GoodsCostValuePolicy.validateRequest(req);
         Goods g = new Goods();
         apply(req, g, true, false);
-        applyCodeAllocation(g, categoryCodes.allocate(
-                CategoryDrivenCodeService.MasterType.GOODS,
-                g.getCategory().getId(), req.getCode()));
+        applyCodeAllocation(g, categoryCodes.allocateForNewGoods(g.getCategory().getId(), req.getCode(), g.getId()));
         if (g.getStatus() == null) g.setStatus("使用");
         repo.save(g);
         return g.getId();
@@ -941,6 +1004,9 @@ public class GoodsService {
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public UUID restoreImported(UUID id, GoodsSaveRequest req) {
+        if (repo.isReleasedGoodsIdentity(id)) {
+            throw new ApiException(ErrorCode.CONFLICT, "原编号已回用于新 UUID 的货品，不能恢复旧货品；请重新导出并核对当前货品");
+        }
         Goods g = repo.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "编号对应的已删除货品不存在，请重新检测文件"));
         if (!g.isDeleted()) {
@@ -953,6 +1019,32 @@ public class GoodsService {
         g.setDeletedAt(null);
         repo.save(g);
         return g.getId();
+    }
+
+    /** Import merge: the caller preserves omitted cells and supplies the detected version. */
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import') and hasAuthority('goods:edit')")
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public UUID updateImported(UUID id, GoodsSaveRequest req) {
+        tx.bind();
+        Goods g = requireGoods(id);
+        requireWritable(g);
+        OptimisticLocks.requireUpToDate(g.getVersion(), req.getVersion());
+        boolean quantityUnitInUse = repo.quantityUnitInUse(id);
+        GoodsQuantityUnitPolicy.requireUnchangedIfUsed(g, req, quantityUnitInUse);
+        if (req.getStatus() != null && !Objects.equals(g.getStatus(), req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:status");
+        }
+        ensurePriceEditIfTouched(g, req);
+        GoodsCostValuePolicy.validateRequest(req);
+        CategoryCodeAllocation previousCode = currentCodeAllocation(g);
+        // All nonimported scalar values come from the locked entity. References
+        // are supplied only when a reviewed nonblank cell actually changes them.
+        apply(req, g, true, quantityUnitInUse);
+        applyCodeAllocation(g, categoryCodes.allocateForUpdate(
+                CategoryDrivenCodeService.MasterType.GOODS,
+                g.getId(), g.getCategory().getId(), req.getCode(), previousCode));
+        repo.save(g);
+        return id;
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('goods:edit', 'goods:status')")
@@ -973,6 +1065,7 @@ public class GoodsService {
         ensurePriceEditIfTouched(g, req);      // 编辑：与既有值比对，未改价/折扣则放行
         boolean canWriteCosts = costMasker.canView();
         ensureCostWriteAllowed(req, canWriteCosts);
+        ensureSubcontractLossWriteAllowed(g, req, canWriteCosts);
         GoodsCostValuePolicy.validateRequest(req);
         CategoryCodeAllocation currentCode = currentCodeAllocation(g);
         apply(req, g, canWriteCosts, quantityUnitInUse);
@@ -1056,6 +1149,19 @@ public class GoodsService {
             throw new ApiException(
                     ErrorCode.FORBIDDEN,
                     "维护货品成本字段需要「查看货品成本」权限，请联系权限管理员开通");
+        }
+    }
+
+    /** Same authority as the dedicated subcontract-loss policy command. */
+    private static void ensureSubcontractLossWriteAllowed(
+            Goods current, GoodsSaveRequest req, boolean canWriteCosts) {
+        if (canWriteCosts || !req.hasSubcontractAllowedLossPct()) return;
+        BigDecimal previous = current == null ? null : current.getSubcontractAllowedLossPct();
+        // This default remains readable. A full form may echo its unchanged
+        // value while editing a name; an explicit clear is still a change.
+        if (bigDecimalChanged(previous, req.getSubcontractAllowedLossPct())) {
+            throw new ApiException(ErrorCode.FORBIDDEN,
+                    "修改委外允许损耗比例需要「查看货品成本」权限，请联系权限管理员开通");
         }
     }
 
@@ -1263,6 +1369,10 @@ public class GoodsService {
     private void apply(GoodsSaveRequest req, Goods g, boolean writeCosts, boolean quantityUnitInUse) {
         g.setCategory(requireCategory(req.getCategoryId()));
         g.setName(req.getName());
+        if (req.hasClientGoodsName()) {
+            g.setClientGoodsName(req.getClientGoodsName() == null || req.getClientGoodsName().isBlank()
+                    ? null : req.getClientGoodsName().trim());
+        }
         g.setShortName(req.getShortName());
         g.setModel(req.getModel());
         if (req.hasCNumber()) {
@@ -1460,7 +1570,7 @@ public class GoodsService {
                 // ADR-134 英文名称 + 当前用户能否单独改英文名称(功能权限 + 对象写范围)。
                 g.getNameEn(), g.getNameEnSource(), canEditNameEn(g),
                 // ADR-146 不良品仓数量另列, 不计入库存合计。
-                stock.getDefectiveQty(), g.getCNumber());
+                stock.getDefectiveQty(), g.getCNumber(), g.getClientGoodsName());
         if (learnedPrices != null && costMasker.canView()) {
             var prices = learnedPrices.find(g.getId());
             d.setDefaultPurchasePriceInfo(prices.purchase());
@@ -1528,6 +1638,7 @@ public class GoodsService {
                 // ADR-134 英文名称(列表只读展示)。
                 g.getNameEn(), g.getNameEnSource());
         item.setMouldId(g.getMould() == null ? null : g.getMould().getId());
+        item.setClientGoodsName(g.getClientGoodsName());
         item.setWritable(canWrite(g));
         return item;
     }

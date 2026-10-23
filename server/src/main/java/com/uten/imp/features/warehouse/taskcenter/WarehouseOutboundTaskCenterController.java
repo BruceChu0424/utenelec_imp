@@ -23,7 +23,7 @@ public class WarehouseOutboundTaskCenterController {
 
     @GetMapping
     @PreAuthorize("hasAnyAuthority('warehouse_sales_outbound:view','subcontract_outbound:view',"
-            + "'warehouse_subcontract_outbound_history:view','stock_doc:view')")
+            + "'warehouse_subcontract_outbound_history:view','stock_doc:view','workshop_material:view')")
     public WarehouseTaskCenterContracts.Page list(
             @RequestParam(defaultValue = "ALL") String source,
             @RequestParam(defaultValue = "ACTIVE") String view,
@@ -44,7 +44,7 @@ public class WarehouseOutboundTaskCenterController {
 
     @GetMapping("/{rowKey}/detail")
     @PreAuthorize("hasAnyAuthority('warehouse_sales_outbound:view','subcontract_outbound:view',"
-            + "'warehouse_subcontract_outbound_history:view','stock_doc:view')")
+            + "'warehouse_subcontract_outbound_history:view','stock_doc:view','workshop_material:view')")
     public WarehouseOutboundTaskCenterQueryService.PhysicalDetail detail(
             @PathVariable String rowKey,
             @RequestParam(required = false) UUID scopeWarehouseId,

@@ -29,10 +29,12 @@ import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
+import '../../../core/router/page_search_lifecycle.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -40,6 +42,7 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/auth/sensitive_write.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../models/master_batch.dart';
 import '../models/master_facet.dart';
@@ -50,6 +53,14 @@ import 'master_batch_feedback.dart';
 import 'master_data_table_view.dart';
 import 'master_inline_edit.dart';
 import 'system_master_category_guard.dart';
+import 'master_status_confirmation.dart';
+
+class _PaneWriteResult<T> {
+  const _PaneWriteResult(this.value, this.isCurrent, this.dialogScope);
+  final T value;
+  final bool Function() isCurrent;
+  final Widget Function(BuildContext, Widget) dialogScope;
+}
 
 /// 明细列表的一次查询条件。[forPrint] 为打印预览全量拉取(货品页据此保持禁用品口径)。
 class MasterPaneQuery {
@@ -125,6 +136,9 @@ abstract interface class MasterEntityPaneController<TItem, TDetail> {
   /// 当前页加载完成后滚到列表末尾，供追加/粘贴完成后的定位使用。
   void scrollToEnd();
 
+  /// Locate an affected record using the current authoritative sort and filters.
+  Future<bool> reveal(String id);
+
   /// 用业务操作的结果替换选择集（例如本次成功粘贴的新货品）。
   void selectIds(Iterable<String> ids);
   void clearSelection();
@@ -169,6 +183,8 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     this.writableOf,
     this.readOnlyRowHint,
     this.defaultSortKey,
+    this.rowColor,
+    this.locatePage,
     this.columnOfFacetField = const {},
     this.filterParamOfColumn = const {},
     this.export,
@@ -239,6 +255,8 @@ class MasterEntityPaneConfig<TItem, TDetail> {
   final bool canDelete;
   final bool canStatus;
   final String? defaultSortKey;
+  final Color? Function(TItem item)? rowColor;
+  final Future<int?> Function(MasterPaneQuery query, String id)? locatePage;
 
   /// 服务端 facet 字段 → 表格列 key(如 empId → ownerEmployeeName)。
   final Map<String, String> columnOfFacetField;
@@ -361,7 +379,16 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   bool _sortAsc = true;
   Set<String> _selectedIds = {};
   bool _busy = false;
+  bool _lifecycleWriting = false;
+  int _writeEpoch = 0;
+  final Set<PopupRoute<dynamic>> _writeDialogs = {};
+  late final _writeLifecycle = PageSearchLifecycle(
+    onLeave: _invalidateWrites,
+    onReturn: () {},
+  );
   int _scrollToEndRequest = 0;
+  String? _revealItemId;
+  int _revealRequest = 0;
 
   /// 折叠滚动外层控制器：滚到底请求时联动收起分类卡（见
   /// [_revealOuterScrollToEnd]）。
@@ -380,6 +407,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       sensitiveReadBoundaryProvider,
       (previous, next) {
         if (!mounted || previous == next) return;
+        _invalidateWrites();
         final retainShell =
             !_loading &&
             _error == null &&
@@ -423,7 +451,15 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _writeLifecycle.attach(context);
+  }
+
+  @override
   void dispose() {
+    _writeLifecycle.dispose();
+    _invalidateWrites();
     _inlineIdentitySubscription?.close();
     _inlineEdit.removeListener(_inlineChanged);
     _inlineEdit.dispose();
@@ -446,7 +482,11 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     if (!_c.canEdit || save == null || baseline == null) {
       throw StateError('当前资料不可编辑，请刷新后重试');
     }
-    await save(id, patch, baseline);
+    await runSensitiveWrite(
+      ref,
+      isCurrent: () => mounted && _c.canEdit && _listError == null,
+      write: () => save(id, patch, baseline),
+    );
     // This callback is awaited before the controller advances to another row.
     // Refresh each completed row's server version, including partial success.
     if (mounted) {
@@ -463,6 +503,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   void didUpdateWidget(MasterEntityDetailPane<TItem, TDetail> old) {
     super.didUpdateWidget(old);
     if (widget.externalSearchPending) {
+      _invalidateWrites();
       _queryVersion++;
       _categoryRequests.begin();
       _listRequests.begin();
@@ -535,6 +576,33 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     }
     setState(() => _scrollToEndRequest++);
     _revealOuterScrollToEnd();
+  }
+
+  @override
+  Future<bool> reveal(String id) async {
+    final locator = _c.locatePage;
+    if (locator == null || busy) return false;
+    final queryVersion = _queryVersion;
+    final targetPage = await runExclusive(
+      () => context.guardLoad(
+        () => locator(_query(size: _page?.size ?? 20), id),
+        errorFallback: '定位资料失败，请刷新后重试',
+      ),
+    );
+    if (!mounted || queryVersion != _queryVersion || targetPage == null) {
+      return false;
+    }
+    await reload(page: targetPage);
+    if (!mounted ||
+        queryVersion != _queryVersion ||
+        !(_page?.items.any((item) => _c.idOf(item) == id) ?? false)) {
+      return false;
+    }
+    setState(() {
+      _revealItemId = id;
+      _revealRequest++;
+    });
+    return true;
   }
 
   /// 滚到底时把折叠页外层（分类信息卡）一并推到底：表体内层由表格自行跳到底，
@@ -626,79 +694,124 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   @override
   Future<void> toggleStatus(TItem row) async {
+    if (!_c.canStatus) return;
     if (!_rowWritable(row)) {
       context.appInfo(_c.readOnlyRowHint?.call(row) ?? '该${_c.noun}为只读');
       return;
     }
     final next = _c.statusOf(row) == '使用' ? '禁用' : '使用';
-    final ok = await runExclusive(
-      () => context.guardRun(
-        () => ref
-            .read(masterStatusRepositoryProvider)
-            .change(
-              resourcePath: _c.statusResourceOf(_c.idOf(row)),
-              status: next,
-              version: _c.versionOf?.call(row),
-            ),
-        success: next == '禁用'
-            ? '${_c.noun}已禁用'
-            : '${_c.noun}已启用', // TODO(l10n): 补 arb
+    final path = _c.statusResourceOf(_c.idOf(row));
+    final version = _c.versionOf?.call(row);
+    final label = _c.labelOf(row);
+    final noun = _c.noun;
+    final result = await _writeCommand<bool>(
+      canWrite: () => _c.canStatus && _rowWritable(row),
+      confirm: (scope) => confirmMasterStatusChange(
+        context,
+        disabling: next == '禁用',
+        label: label,
+        dialogScopeBuilder: scope,
       ),
+      write: () async {
+        await ref
+            .read(masterStatusRepositoryProvider)
+            .change(resourcePath: path, status: next, version: version);
+        return true;
+      },
     );
-    if (ok == true && mounted) await reload();
+    if (result == null || !mounted || !result.isCurrent()) return;
+    context.appSuccess(next == '禁用' ? '$noun已禁用' : '$noun已启用');
+    await reload();
   }
 
   @override
   Future<void> batchSetStatus(Set<String> ids, String status) async {
-    if (ids.isEmpty) return;
-    final result = await runExclusive(
-      () => context.guardAction(
-        () => ref
-            .read(masterBatchRepositoryProvider)
-            .changeStatus(
-              entityPath: _c.batchEntityPath,
-              status: status,
-              items: _batchItems(ids),
-            ),
-        errorFallback: '批量操作失败，请稍后重试', // TODO(l10n): 补 arb
+    if (!_c.canStatus || ids.isEmpty) return;
+    final targets = Set<String>.unmodifiable(ids);
+    final items = List<MasterBatchItem>.unmodifiable(_batchItems(targets));
+    final labels = {for (final id in targets) id: _labelOf(id)};
+    final path = _c.batchEntityPath;
+    final noun = _c.noun;
+    final result = await _writeCommand<MasterBatchResult>(
+      canWrite: () => _c.canStatus && _targetsWritable(targets),
+      confirm: (scope) => confirmMasterStatusChange(
+        context,
+        disabling: status == '禁用',
+        label: noun,
+        count: targets.length,
+        dialogScopeBuilder: scope,
       ),
+      write: () => ref
+          .read(masterBatchRepositoryProvider)
+          .changeStatus(entityPath: path, status: status, items: items),
     );
-    if (result == null || !mounted) return;
-    await _afterBatch(result, status == '禁用' ? '禁用' : '启用');
+    if (result == null || !mounted || !result.isCurrent()) return;
+    await _afterBatch(result, status == '禁用' ? '禁用' : '启用', noun, labels);
   }
 
   @override
   Future<void> batchDelete(Set<String> ids) async {
-    if (ids.isEmpty || _busy || _queryPending) return;
-    final version = _queryVersion;
-    final single = ids.length == 1 ? _labelOf(ids.first) : null;
-    final ok = await UtenDialog.show(
-      context,
-      title: single != null
-          ? '删除${_c.noun}'
-          : '批量删除${_c.noun}', // TODO(l10n): 补 arb
-      content: Text(
-        single != null
-            ? '确定删除「$single」吗？'
-            : '确定删除选中的 ${ids.length} 个${_c.noun}吗？还在被单据、库存或其它资料使用的会逐条说明原因并保留。', // TODO(l10n): 补 arb
-      ),
-      confirmLabel: '删除', // TODO(l10n): 补 arb
-      danger: true,
+    if (!_c.canDelete || ids.isEmpty) return;
+    final targets = Set<String>.unmodifiable(ids);
+    final items = List<MasterBatchItem>.unmodifiable(_batchItems(targets));
+    final labels = {for (final id in targets) id: _labelOf(id)};
+    final path = _c.batchEntityPath;
+    final noun = _c.noun;
+    final single = targets.length == 1 ? labels[targets.single] : null;
+    final result = await _writeCommand<MasterBatchResult>(
+      canWrite: () => _c.canDelete && _targetsWritable(targets),
+      confirm: (scope) async =>
+          await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => scope(
+              dialogContext,
+              UtenAlertDialog(
+                title: Text(single != null ? '删除$noun' : '批量删除$noun'),
+                content: Text(
+                  single != null
+                      ? '确定删除「$single」吗？'
+                      : '确定删除选中的 ${targets.length} 个$noun吗？还在被单据、库存或其它资料使用的会逐条说明原因并保留。',
+                ),
+                actions: [
+                  UtenButton(
+                    type: UtenButtonType.ghost,
+                    onPressed: () {
+                      if (dialogContext.mounted) {
+                        Navigator.pop(dialogContext, false);
+                      }
+                    },
+                    child: const Text('取消'),
+                  ),
+                  UtenButton(
+                    type: UtenButtonType.danger,
+                    onPressed: () {
+                      if (dialogContext.mounted) {
+                        Navigator.pop(dialogContext, true);
+                      }
+                    },
+                    child: const Text('删除'),
+                  ),
+                ],
+              ),
+            ),
+          ) ==
+          true,
+      write: () => ref
+          .read(masterBatchRepositoryProvider)
+          .delete(entityPath: path, items: items),
     );
-    if (ok != true || !mounted || version != _queryVersion) return;
-    final result = await runExclusive(
-      () => context.guardAction(
-        () => ref
-            .read(masterBatchRepositoryProvider)
-            .delete(entityPath: _c.batchEntityPath, items: _batchItems(ids)),
-        errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
-      ),
-    );
-    if (result == null || !mounted) return;
-    await _afterBatch(result, '删除');
+    if (result == null || !mounted || !result.isCurrent()) return;
+    await _afterBatch(result, '删除', noun, labels);
   }
 
-  Future<void> _afterBatch(MasterBatchResult result, String action) async {
+  Future<void> _afterBatch(
+    _PaneWriteResult<MasterBatchResult> command,
+    String action,
+    String noun,
+    Map<String, String?> labels,
+  ) async {
+    if (!command.isCurrent()) return;
+    final result = command.value;
     // 成功的从勾选里剪掉，失败的留着方便用户处理后重试。
     setState(() {
       _selectedIds = {
@@ -710,10 +823,99 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       context,
       result,
       action: action,
-      noun: _c.noun,
-      labelOf: _labelOf,
+      noun: noun,
+      labelOf: (id) => labels[id],
+      dialogScopeBuilder: command.dialogScope,
     );
-    if (mounted) await reload();
+    if (mounted && command.isCurrent()) await reload();
+  }
+
+  bool _targetsWritable(Set<String> ids) {
+    if (_c.writableOf == null) return true;
+    final rows = _rowsById();
+    return ids.every(
+      (id) => rows.containsKey(id) && _rowWritable(rows[id] as TItem),
+    );
+  }
+
+  void _invalidateWrites() {
+    _writeEpoch++;
+    final wasWriting = _lifecycleWriting;
+    _lifecycleWriting = false;
+    final routes = _writeDialogs.toList();
+    _writeDialogs.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final route in routes) {
+        if (route.isActive) route.navigator?.removeRoute(route);
+      }
+      if (mounted && wasWriting) setState(() {});
+    });
+  }
+
+  Future<_PaneWriteResult<R>?> _writeCommand<R>({
+    required bool Function() canWrite,
+    required Future<bool> Function(Widget Function(BuildContext, Widget))
+    confirm,
+    required Future<R> Function() write,
+  }) async {
+    if (_busy ||
+        _queryPending ||
+        _inlineEdit.active ||
+        _loading ||
+        _listLoading ||
+        _listError != null ||
+        !canWrite()) {
+      return null;
+    }
+    final epoch = ++_writeEpoch;
+    final query = _queryVersion;
+    final owner = ref.read(sensitiveReadBoundaryProvider);
+    final path = _c.batchEntityPath;
+    bool current() =>
+        mounted &&
+        epoch == _writeEpoch &&
+        query == _queryVersion &&
+        owner == ref.read(sensitiveReadBoundaryProvider) &&
+        path == _c.batchEntityPath &&
+        !_queryPending &&
+        !_loading &&
+        !_listLoading &&
+        _listError == null &&
+        canWrite();
+    Widget scope(BuildContext context, Widget child) {
+      final route = ModalRoute.of(context);
+      if (route is PopupRoute<dynamic>) _writeDialogs.add(route);
+      return Consumer(
+        builder: (_, ref, _) {
+          ref.watch(sensitiveReadBoundaryProvider);
+          return current() ? child : const SizedBox.shrink();
+        },
+      );
+    }
+
+    final value = await runExclusive<R?>(() async {
+      try {
+        return await runSensitiveWrite<R?>(
+          ref,
+          isCurrent: current,
+          write: () async {
+            if (!await confirm(scope) || !current()) return null;
+            setState(() => _lifecycleWriting = true);
+            return await write();
+          },
+        );
+      } catch (error) {
+        if (mounted && current()) context.appApiError(error);
+        return null;
+      } finally {
+        if (mounted && epoch == _writeEpoch) {
+          setState(() => _lifecycleWriting = false);
+        }
+      }
+    });
+    return value == null || !current()
+        ? null
+        : _PaneWriteResult(value, current, scope);
   }
 
   List<MasterBatchItem> _batchItems(Set<String> ids) {
@@ -743,6 +945,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   // ---- 加载 -------------------------------------------------------------
 
   Future<void> _load({bool retainReadShell = false}) async {
+    _invalidateWrites();
     _queryVersion++;
     _tableQueryVersion++;
     if (widget.externalSearchPending) return;
@@ -830,6 +1033,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   Future<void> _loadList(int page) async {
     if (widget.externalSearchPending) return;
+    _invalidateWrites();
     final generation = _listRequests.begin();
     setState(() {
       _listLoading = true;
@@ -1281,6 +1485,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                     'features.basic_data.widgets.master_entity_detail_pane.MasterEntityDetailPaneState.build.1',
                 primary: true,
                 scrollToEndRequest: _scrollToEndRequest,
+                revealItemId: _revealItemId,
+                revealRequest: _revealRequest,
                 columns: _inlineEdit.columns(
                   columns: _c.columns,
                   idOf: _c.idOf,
@@ -1345,11 +1551,13 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 // 行底色按状态（ADR-169 收编）：使用=蓝档淡底（裸 Colors.lightBlue
                 // 收编进语义档）/ 禁用=灰档淡底（停用归中性终态，原浅红把「停用」
                 // 当异常——基础资料主档停用不是错误，文本仍按 DocStatusBadge 不上色）。
-                rowColor: (row) => switch (_c.statusOf(row)) {
-                  '使用' => UtenColors.info.withValues(alpha: 0.13),
-                  '禁用' => UtenColors.statusNeutral.withValues(alpha: 0.10),
-                  _ => null,
-                },
+                rowColor:
+                    _c.rowColor ??
+                    (row) => switch (_c.statusOf(row)) {
+                      '使用' => UtenColors.info.withValues(alpha: 0.13),
+                      '禁用' => UtenColors.statusNeutral.withValues(alpha: 0.10),
+                      _ => null,
+                    },
                 onRowTap: _c.onOpen == null || _inlineEdit.active
                     ? null
                     : (row) {
@@ -1416,6 +1624,11 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                   ),
                 ),
               ),
+            ),
+          if (_lifecycleWriting)
+            const UtenBusyOverlay(
+              title: '正在处理资料',
+              semanticsKey: Key('master-pane-lifecycle-writing'),
             ),
         ],
       ),

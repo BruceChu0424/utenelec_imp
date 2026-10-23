@@ -8,6 +8,7 @@ import com.uten.imp.features.master.goods.GoodsBomFileLimits;
 import com.uten.imp.features.master.goods.GoodsPeriodicMaterialRules;
 import com.uten.imp.features.master.goods.GoodsRepository;
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
+import com.uten.imp.features.master.goods.dto.BomItemView;
 import com.uten.imp.features.master.goods.dto.BomPasteRequest;
 import com.uten.imp.features.master.goods.dto.BomPasteResult;
 import com.uten.imp.security.CurrentAuthorityGuard;
@@ -45,13 +46,14 @@ import java.util.regex.Pattern;
  * 组装信息导入（goods:bom:create，与「粘贴组件信息」同一权限口径；替换模式另需
  * goods:bom:delete，与粘贴命令一致）。
  *
- * <p>格式 = 配件清单导出的 14 列；序号列的级联段(1 / 2 / 2.1)表达层级。检测只读，
+ * <p>格式与配件清单导出一致；序号列的级联段(1 / 2 / 2.1)表达层级。检测只读，
  * 提交前重新解析并全量复检（导入是原子事务：任何一层写入被数据库拒绝，整体回滚），
  * 所以不需要货品导入那种「计划 TTL」——所有校验都以提交时刻的库内状态为准。</p>
  *
  * <p>写入按层复用 {@link GoodsBomPasteService#paste}（ADR-111 原子命令）：第 1 层
  * 粘到目标货品，第 2 层起按父序号分组粘到对应组件货品；同一层内重复、成环、组件
- * 停用等校验全部由粘贴命令承担，这里只补「文件侧」的校验（序号合法/唯一、父序号
+ * 已删除/迁移占位/停用组件等校验全部由粘贴命令承担(ADR-191)，这里补检测阶段的状态提示
+ * 和「文件侧」的校验(序号合法/唯一、父序号
  * 存在、编号能匹配到货品、数值可解析、目标货品自身不能出现在文件里）。</p>
  *
  * <p>「真实使用数量」列只读(ADR-129：由学习引擎按实物净耗算，人只能「重新学习」)，导入时认得、
@@ -78,9 +80,12 @@ public class GoodsBomImportService {
     static {
         for (String a : new String[]{"序号", "级联序号"}) putAlias(a, "seq");
         for (String a : new String[]{"物料编号", "编号", "组件编号"}) putAlias(a, "code");
+        for (String a : new String[]{"组件系统标识", "组件UUID", "componentGoodsId", "goodsId"}) putAlias(a, "componentGoodsId");
         for (String a : new String[]{"物料名称", "名称", "组件名称"}) putAlias(a, "name");
         putAlias("型号", "model");
         putAlias("规格", "spec");
+        putAlias("材质", "material"); // 只读展示列，不修改货品主档
+        putAlias("库存数量", "stockQty"); // 只读展示列，不修改库存
         putAlias("单位", "unit");
         putAlias("颜色", "color");
         putAlias("来源", "source");
@@ -118,8 +123,184 @@ public class GoodsBomImportService {
     public BomImportReport detect(UUID goodsId, byte[] xlsx) {
         Parsed parsed = parseAndValidate(goodsId, xlsx);
         BomImportReport report = parsed.report();
+        Review review = report.hasErrors() ? Review.EMPTY : review(goodsId, parsed);
         return new BomImportReport(report.totalRows(), report.errors(), report.warnings(), report.levelCounts(),
-                report.readyToImport(), report.hasErrors() ? null : fingerprint(goodsId, xlsx, parsed));
+                report.readyToImport(), report.hasErrors() ? null : fingerprint(goodsId, xlsx, parsed),
+                review.rows(), review.addedRows(), review.unchangedRows(),
+                (int) review.rows().stream().filter(row -> row.changes().stream()
+                        .anyMatch(change -> "FILL".equals(change.kind()))).count(),
+                (int) review.rows().stream().filter(BomImportReviewRow::hasConflict).count());
+    }
+
+    /** The review workflow adds new edges, fills blanks, and changes nonblank values only when selected. */
+    @PreAuthorize("hasAuthority('goods:bom:create')")
+    @Transactional
+    public BomImportResult commitMerged(UUID goodsId, byte[] xlsx, String stateFingerprint,
+                                        Set<String> replaceRowKeys) {
+        if (stateFingerprint == null || !stateFingerprint.startsWith("v1:")) {
+            throw new ApiException(ErrorCode.CONFLICT, "缺少有效的导入检测记录，请重新检测文件后提交");
+        }
+        Parsed parsed = parseAndValidate(goodsId, xlsx);
+        if (!parsed.errors().isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "文件仍有未修正的问题，请先按检测报告修改后重试");
+        }
+        Set<UUID> parents = parentsOf(goodsId, parsed);
+        goodsRepo.lockBomParents(parents);
+        Set<UUID> involved = new LinkedHashSet<>(parents);
+        for (ParsedRow row : parsed.rows()) involved.add(row.goodsId);
+        pasteService.prepareImportReferences(involved);
+        parsed = parseAndValidate(goodsId, xlsx);
+        if (!parsed.errors().isEmpty() || !parents.equals(parentsOf(goodsId, parsed))
+                || !stateFingerprint.equals(fingerprint(goodsId, xlsx, parsed))) {
+            throw new ApiException(ErrorCode.CONFLICT, "BOM、学习用量、货品资料或文件已变化；现有BOM未改动，请重新检测");
+        }
+        Review review = review(goodsId, parsed);
+        Set<String> selected = replaceRowKeys == null ? Set.of() : Set.copyOf(replaceRowKeys);
+        Set<String> conflictKeys = review.rows().stream().filter(BomImportReviewRow::hasConflict)
+                .map(BomImportReviewRow::rowKey).collect(java.util.stream.Collectors.toSet());
+        if (!conflictKeys.containsAll(selected)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "替换选择包含本次检测以外的差异行，请重新核对");
+        }
+        Map<String, BomImportReviewRow> differences = review.rows().stream()
+                .collect(java.util.stream.Collectors.toMap(BomImportReviewRow::rowKey, row -> row));
+        int added = 0, updated = 0, filled = 0, ignored = 0;
+        Set<UUID> written = new LinkedHashSet<>();
+        Set<String> seen = new HashSet<>();
+        List<String> warnings = new ArrayList<>();
+        Map<UUID, List<BomItemSaveRequest>> itemsByParent = new LinkedHashMap<>();
+        Map<UUID, Map<UUID, String>> colorsByParent = new HashMap<>();
+        for (ParsedRow row : parsed.rows()) {
+            UUID parentId = parentOf(goodsId, parsed, row);
+            String key = rowKey(parentId, row.goodsId);
+            if (!seen.add(key)) continue; // Shared graph paths describe one real edge.
+            BomItemView prior = review.existing().getOrDefault(parentId, Map.of()).get(row.goodsId);
+            BomImportReviewRow difference = differences.get(key);
+            if (prior != null && difference == null) continue;
+            List<BomImportReviewRow.Change> accepted = difference == null ? List.of()
+                    : difference.changes().stream().filter(change -> "FILL".equals(change.kind()) || selected.contains(key)).toList();
+            if (difference != null && difference.hasConflict() && !selected.contains(key)) ignored++;
+            if (prior != null && accepted.isEmpty()) continue;
+            Set<String> fields = accepted.stream().map(BomImportReviewRow.Change::field)
+                    .collect(java.util.stream.Collectors.toSet());
+            BomItemSaveRequest item = mergedItem(row, prior, fields, parsed.columns());
+            itemsByParent.computeIfAbsent(parentId, ignoredKey -> new ArrayList<>()).add(item);
+            if (prior == null || fields.contains("color")) {
+                if (!isBlank(row.colorName)) colorsByParent.computeIfAbsent(parentId, ignoredKey -> new HashMap<>())
+                        .put(row.goodsId, row.colorName);
+            }
+            if (prior == null) added++;
+            else {
+                if (accepted.stream().anyMatch(change -> "CONFLICT".equals(change.kind()))) updated++;
+                if (accepted.stream().anyMatch(change -> "FILL".equals(change.kind()))) filled++;
+            }
+        }
+        for (var entry : itemsByParent.entrySet()) {
+            BomPasteResult result = pasteService.mergeImported(new BomPasteRequest(BomPasteRequest.Mode.APPEND,
+                    List.of(new BomPasteRequest.Target(entry.getKey(), null)), entry.getValue()),
+                    parsed.columns(), colorsByParent.getOrDefault(entry.getKey(), Map.of()));
+            written.add(entry.getKey());
+            warnings.addAll(result.warnings());
+        }
+        // A no-op review (unchanged or all ignored) must not create parent history/audit side effects.
+        // After a real write, parent versions consume this file/state fingerprint as before.
+        if (!written.isEmpty()) pasteService.markImportApplied(parents);
+        return new BomImportResult(written.size(), added, 0, parsed.levels().size(), warnings,
+                updated, filled, ignored, review.unchangedRows());
+    }
+
+    private BomItemSaveRequest mergedItem(ParsedRow row, BomItemView prior, Set<String> fields, Set<String> columns) {
+        BomItemSaveRequest item = new BomItemSaveRequest();
+        item.setComponentGoodsId(row.goodsId);
+        item.setQty(prior == null ? row.qty : fields.contains("qty") ? effectiveQty(row) : prior.getQty());
+        if (prior == null) {
+            if (columns.contains("consumptionBasis")) item.setConsumptionBasis(row.basisCode);
+            if (columns.contains("basisOutputQty")) item.setBasisOutputQty(row.basisOutputQty);
+            item.setAllowPartialPackage(row.allowPartialPackage);
+            item.setSummary(row.summary);
+        } else {
+            item.setConsumptionBasis(fields.contains("consumptionBasis") ? row.basisCode : prior.getConsumptionBasis());
+            item.setBasisOutputQty(fields.contains("basisOutputQty") ? effectiveBasisOutputQty(row) : prior.getBasisOutputQty());
+            item.setAllowPartialPackage(fields.contains("allowPartialPackage") ? row.allowPartialPackage : prior.isAllowPartialPackage());
+            item.setSummary(fields.contains("summary") ? row.summary : prior.getSummary());
+        }
+        item.setConfirmUnusualWeight(true);
+        item.setConfirmSecondPeriodicMaterial(true);
+        return item;
+    }
+
+    private Review review(UUID goodsId, Parsed parsed) {
+        Set<UUID> components = parsed.rows().stream().map(row -> row.goodsId)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Map<UUID, Map<UUID, BomItemView>> existing = pasteService.importReviewRows(parentsOf(goodsId, parsed), components);
+        List<BomImportReviewRow> differences = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        int added = 0, unchanged = 0;
+        for (ParsedRow row : parsed.rows()) {
+            UUID parentId = parentOf(goodsId, parsed, row);
+            String key = rowKey(parentId, row.goodsId);
+            if (!seen.add(key)) continue;
+            BomItemView prior = existing.getOrDefault(parentId, Map.of()).get(row.goodsId);
+            if (prior == null) { added++; continue; }
+            List<BomImportReviewRow.Change> changes = new ArrayList<>();
+            change(changes, "qty", "设计使用数量", prior.getQty(), effectiveQty(row));
+            if (row.supplied.contains("consumptionBasis")) {
+                change(changes, "consumptionBasis", "计量方式", basisLabel(prior.getConsumptionBasis()), basisLabel(row.basisCode));
+            }
+            if (row.supplied.contains("basisOutputQty")) {
+                change(changes, "basisOutputQty", "基准产量", prior.getBasisOutputQty(), effectiveBasisOutputQty(row));
+            }
+            if (!row.periodic && row.supplied.contains("allowPartialPackage")) {
+                change(changes, "allowPartialPackage", "尾包", prior.isAllowPartialPackage() ? "允许" : "整包",
+                        Boolean.TRUE.equals(row.allowPartialPackage) ? "允许" : "整包");
+            }
+            if (row.supplied.contains("color")) {
+                change(changes, "color", "颜色", prior.getComponentColorName(), row.colorName);
+            }
+            if (row.supplied.contains("summary")) change(changes, "summary", "备注", prior.getSummary(), row.summary);
+            if (changes.isEmpty()) unchanged++;
+            else differences.add(new BomImportReviewRow(key, row.rowNum, row.goodsId, row.code,
+                    prior.getComponentName(), "", "CODE", "BOM", row.seq, parentId, changes));
+        }
+        return new Review(differences, existing, added, unchanged);
+    }
+
+    private static String basisLabel(String value) {
+        return switch (value == null ? "" : value) {
+            case "PER_UNIT" -> "按每件";
+            case "PER_PACKAGE" -> "按包装";
+            case "FIXED_BATCH" -> "固定批耗";
+            default -> value;
+        };
+    }
+
+    private static BigDecimal effectiveQty(ParsedRow row) {
+        return row.periodic ? row.qty.divide(row.basisOutputQty, GoodsPeriodicMaterialRules.QTY_SCALE, RoundingMode.HALF_UP) : row.qty;
+    }
+
+    private static BigDecimal effectiveBasisOutputQty(ParsedRow row) {
+        return row.periodic ? BigDecimal.ONE : row.basisOutputQty;
+    }
+
+    private static void change(List<BomImportReviewRow.Change> changes, String field, String label, Object oldValue, Object newValue) {
+        String oldText = text(oldValue), newText = text(newValue);
+        if (newText.isBlank() || ("color".equals(field) ? oldText.equalsIgnoreCase(newText) : oldText.equals(newText))) return;
+        changes.add(new BomImportReviewRow.Change(field, label, oldText, newText, oldText.isBlank() ? "FILL" : "CONFLICT"));
+    }
+
+    private static String text(Object value) {
+        return value instanceof BigDecimal number ? number.stripTrailingZeros().toPlainString()
+                : value == null ? "" : value.toString().trim();
+    }
+
+    private static String rowKey(UUID parent, UUID component) { return "bom:" + parent + ":" + component; }
+
+    private UUID parentOf(UUID root, Parsed parsed, ParsedRow row) {
+        return row.parentSeq == null ? root : parsed.bySeq().get(row.parentSeq).goodsId;
+    }
+
+    private record Review(List<BomImportReviewRow> rows, Map<UUID, Map<UUID, BomItemView>> existing,
+                          int addedRows, int unchangedRows) {
+        private static final Review EMPTY = new Review(List.of(), Map.of(), 0, 0);
     }
 
     // ============================================================
@@ -261,7 +442,7 @@ public class GoodsBomImportService {
                 errors.add(new GoodsImportError(1, "表头", "首个工作表无表头行"));
                 return parsedOf(rows, errors, warnings, columns);
             }
-            Map<String, Integer> col = mapHeaders(header);
+            Map<String, Integer> col = mapHeaders(header, errors);
             columns.addAll(col.keySet());
             for (String required : new String[]{"seq", "code", "qty"}) {
                 if (!col.containsKey(required)) {
@@ -301,6 +482,7 @@ public class GoodsBomImportService {
 
         // ---- 树与匹配校验 ----
         validateTree(target, rows, errors, warnings);
+        if (rows.isEmpty()) errors.add(new GoodsImportError(2, "数据", "文件没有可导入的组件行"));
         if (columns.contains("color")) validateColors(goodsId, rows, errors);
         return parsedOf(rows, errors, warnings, columns);
     }
@@ -347,6 +529,13 @@ public class GoodsBomImportService {
         parsed.rowNum = rowNum;
         parsed.seq = seq;
         parsed.code = code;
+        String systemId = trim(df, row, col, "componentGoodsId");
+        if (!isBlank(systemId)) {
+            try { parsed.suppliedGoodsId = UUID.fromString(systemId); }
+            catch (IllegalArgumentException invalid) {
+                errors.add(new GoodsImportError(rowNum, "组件系统标识", "组件系统标识必须是有效 UUID，请重新导出后导入"));
+            }
+        }
         if (isBlank(code)) {
             errors.add(new GoodsImportError(rowNum, "物料编号", "物料编号不能为空"));
         }
@@ -413,6 +602,12 @@ public class GoodsBomImportService {
         parsed.summary = blankToNull(trim(df, row, col, "summary"));
         parsed.name = blankToNull(trim(df, row, col, "name"));
         parsed.colorName = trim(df, row, col, "color");
+        for (String key : new String[]{"consumptionBasis", "basisOutputQty", "allowPartialPackage", "color", "summary"}) {
+            String value = trim(df, row, col, key);
+            if (!isBlank(value) && !("allowPartialPackage".equals(key) && ("—".equals(value) || "-".equals(value)))) {
+                parsed.supplied.add(key);
+            }
+        }
         return parsed;
     }
 
@@ -424,6 +619,7 @@ public class GoodsBomImportService {
         Set<String> seenSeq = new HashSet<>();
         Map<String, Goods> codeIndex = new LinkedHashMap<>();
         Set<String> missingCodes = new HashSet<>();
+        Set<String> reusedCodes = new HashSet<>();
         for (ParsedRow row : rows) {
             if (row.seq != null && !seenSeq.add(row.seq)) {
                 errors.add(new GoodsImportError(row.rowNum, "序号",
@@ -432,12 +628,17 @@ public class GoodsBomImportService {
                 bySeq.put(row.seq, row);
             }
             if (!isBlank(row.code) && !codeIndex.containsKey(row.code) && !missingCodes.contains(row.code)) {
+                if (goodsRepo.codeHasReuseHistory(row.code)) reusedCodes.add(row.code);
                 goodsRepo.findByCodeAndDeletedFalse(row.code)
                         .ifPresentOrElse(g -> codeIndex.put(row.code, g),
                                 () -> missingCodes.add(row.code));
             }
         }
         for (ParsedRow row : rows) {
+            if (reusedCodes.contains(row.code) && row.suppliedGoodsId == null) {
+                errors.add(new GoodsImportError(row.rowNum, "物料编号",
+                        "该编号曾复用，请重新导出并保留组件系统标识，核对当前组件后导入"));
+            }
             if (row.parentSeq != null && !bySeq.containsKey(row.parentSeq)) {
                 errors.add(new GoodsImportError(row.rowNum, "序号",
                         "序号「" + row.seq + "」的上级「" + row.parentSeq + "」不在文件里"));
@@ -448,7 +649,12 @@ public class GoodsBomImportService {
                 errors.add(new GoodsImportError(row.rowNum, "物料编号",
                         "物料编号「" + row.code + "」在系统里不存在"));
             } else {
+                if (row.suppliedGoodsId != null && !row.suppliedGoodsId.equals(component.getId())) {
+                    errors.add(new GoodsImportError(row.rowNum, "组件系统标识",
+                            "组件系统标识与当前编号指向不同货品，请重新导出并核对组件"));
+                }
                 row.goodsId = component.getId();
+                row.periodic = GoodsPeriodicMaterialRules.isPeriodic(component);
                 if (row.name != null && component.getName() != null
                         && !row.name.isBlank() && !row.name.equals(component.getName())) {
                     warnings.add(new GoodsImportError(row.rowNum, "物料名称",
@@ -460,6 +666,13 @@ public class GoodsBomImportService {
                             "不能把货品自己装配成自己的组件（" + row.code + " 就是本货品）"));
                 }
             }
+        }
+        // 检测和提交使用同一状态边界，旧导出文件也不能重新引入停用组件。
+        for (ParsedRow row : rows) {
+            Goods component = codeIndex.get(row.code);
+            if (component == null || !"禁用".equals(component.getStatus())) continue;
+            errors.add(new GoodsImportError(row.rowNum, "物料编号",
+                    "组件「" + row.code + "」已停用，不能加入组装清单；请移除此组件或先重新启用货品"));
         }
         // 同一父级下组件编号重复：粘贴命令会整批拒，这里在检测期就报行号。
         Map<String, Set<UUID>> perParent = new HashMap<>();
@@ -583,7 +796,7 @@ public class GoodsBomImportService {
                 Math.max(0, rows.size() - errorRows), null);
     }
 
-    private Map<String, Integer> mapHeaders(Row header) {
+    private Map<String, Integer> mapHeaders(Row header, List<GoodsImportError> errors) {
         Map<String, Integer> col = new HashMap<>();
         DataFormatter df = new DataFormatter();
         for (int c = 0; c < header.getLastCellNum(); c++) {
@@ -592,7 +805,9 @@ public class GoodsBomImportService {
             String raw = df.formatCellValue(cell);
             if (raw == null) continue;
             String key = HEADER_ALIASES.get(normKey(raw));
-            if (key != null && !col.containsKey(key)) col.put(key, c);
+            if (key != null && col.putIfAbsent(key, c) != null) {
+                errors.add(new GoodsImportError(1, "表头", "列「" + raw.trim() + "」重复或与其他列同义，请只保留一列"));
+            }
         }
         return col;
     }
@@ -680,11 +895,14 @@ public class GoodsBomImportService {
         String code;
         String name;
         UUID goodsId;
+        UUID suppliedGoodsId;
+        boolean periodic;
         BigDecimal qty;
         String basisCode;
         BigDecimal basisOutputQty;
         Boolean allowPartialPackage;
         String colorName;
         String summary;
+        Set<String> supplied = new HashSet<>();
     }
 }

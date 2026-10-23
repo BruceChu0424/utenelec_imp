@@ -13,6 +13,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../components/data_display/uten_selection_lifecycle.dart';
 
 import '../../components/feedback/uten_context_menu.dart';
@@ -276,6 +277,9 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   @override
   void didUpdateWidget(UtenHierarchyTreeView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // A stable host callback can close over changing state. Selection-only
+    // trees without a pass-through predicate may reuse the immutable plan.
+    if (widget.passThrough != null) _rowPlanScope = null;
     if (!identical(widget.nodes, oldWidget.nodes)) _labelWidthCache.clear();
     if (oldWidget.externalSearchQuery != widget.externalSearchQuery ||
         oldWidget.visibleFilterIds != widget.visibleFilterIds) {
@@ -438,7 +442,16 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   }
 
   /// 搜索时：命中节点 + 其全部祖先(命中路径自动展开)。
-  Set<String> _visibleIds() => categoryHits(widget.nodes, _query);
+  Object? _visibleIdsScope;
+  Set<String> _visibleIdsCache = {};
+  Set<String> _visibleIds() {
+    final scope = (widget.nodes, _query);
+    if (_visibleIdsScope != scope) {
+      _visibleIdsScope = scope;
+      _visibleIdsCache = categoryHits(widget.nodes, _query);
+    }
+    return _visibleIdsCache;
+  }
 
   /// 行是否按渲染态展开（与 [_buildNode] 的判定同源）。
   bool _rowExpanded(T node) =>
@@ -449,8 +462,39 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   // Flatten models only. Each visible row is built by the viewport, including
   // children of a large expanded category; recursive Columns eagerly mounted
   // the whole branch on search, selection and expansion.
+  // Match the existing title/rank caches: node lists are immutable snapshots.
+  // Selection and paint changes do not change this model projection.
+  Object? _rowPlanScope;
+  Set<String>? _rowPlanVisible;
+  Set<String> _rowPlanExpanded = {};
+  Set<String> _rowPlanClosing = {};
+  List<({T node, int depth, List<String> ancestors, List<String> branches})>
+  _rowPlanCache = [];
+  Map<Key, int> _rowPlanIndexes = {};
+
   List<({T node, int depth, List<String> ancestors, List<String> branches})>
   _rowPlan(Set<String>? visible) {
+    final scope = (
+      widget.nodes,
+      widget.sortByCode,
+      widget.passThrough,
+      widget.externalSearchQuery ?? _query,
+      _searching,
+    );
+    final closing = {
+      for (final entry in _branchMotions.entries)
+        if (entry.value.closing) entry.key,
+    };
+    if (_rowPlanScope == scope &&
+        setEquals(_rowPlanVisible, visible) &&
+        setEquals(_rowPlanExpanded, _expanded) &&
+        setEquals(_rowPlanClosing, closing)) {
+      return _rowPlanCache;
+    }
+    _rowPlanScope = scope;
+    _rowPlanVisible = visible == null ? null : Set.of(visible);
+    _rowPlanExpanded = Set.of(_expanded);
+    _rowPlanClosing = closing;
     final rows =
         <
           ({T node, int depth, List<String> ancestors, List<String> branches})
@@ -486,7 +530,11 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     }
 
     walk(widget.nodes, 0, const [], const []);
-    return rows;
+    _rowPlanIndexes = {
+      for (var index = 0; index < rows.length; index++)
+        ValueKey('hierarchy-row:${rows[index].node.id}'): index,
+    };
+    return _rowPlanCache = rows;
   }
 
   void _ensureBranchRanks() {
@@ -514,12 +562,21 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   ({String? firstId, String? lastId})? _flatEdgeRowIds;
 
   /// Preserve the established sibling order within each relevance tier.
+  Object? _siblingOrderScope;
+  final Map<List<T>, List<T>> _siblingOrders = Map.identity();
   List<T> _ordered(List<T> nodes) {
+    final query = widget.externalSearchQuery ?? _query;
+    final scope = (widget.nodes, widget.sortByCode, query);
+    if (_siblingOrderScope != scope) {
+      _siblingOrderScope = scope;
+      _siblingOrders.clear();
+    }
+    final cached = _siblingOrders[nodes];
+    if (cached != null) return cached;
     final ordered = widget.sortByCode
         ? ([...nodes]..sort((a, b) => a.code.compareTo(b.code)))
         : [...nodes];
-    final query = widget.externalSearchQuery ?? _query;
-    if (query.trim().isEmpty) return ordered;
+    if (query.trim().isEmpty) return _siblingOrders[nodes] = ordered;
     final positions = {
       for (var index = 0; index < ordered.length; index++)
         ordered[index].id: index,
@@ -530,7 +587,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
       final rank = aRank.compareTo(bRank);
       return rank != 0 ? rank : positions[a.id]!.compareTo(positions[b.id]!);
     });
-    return ordered;
+    return _siblingOrders[nodes] = ordered;
   }
 
   void _toggleExpand(T node) {
@@ -1020,10 +1077,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     );
     final showEmpty =
         (_searching && (visibleFilter?.isEmpty ?? false)) || showExternalEmpty;
-    final rowIndexes = {
-      for (var i = 0; i < plan.length; i++)
-        ValueKey('hierarchy-row:${plan[i].node.id}'): i,
-    };
+    final rowIndexes = _rowPlanIndexes;
     Widget rowBuilder(BuildContext context, int index) {
       if (index < plan.length) {
         final entry = plan[index];

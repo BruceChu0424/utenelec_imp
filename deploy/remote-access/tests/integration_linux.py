@@ -75,11 +75,32 @@ class Backend(BaseHTTPRequestHandler):
         pass
 
 
-def employee_request(directory, path="/api/test", method="GET", body=None, headers=None, hostname="erp.example.test"):
-    context = ssl.create_default_context(cafile=str(directory / "employee-ca.crt"))
+class DrBackend(BaseHTTPRequestHandler):
+    requests = 0
+    last_headers = {}
+
+    def do_GET(self):
+        type(self).requests += 1
+        type(self).last_headers = dict(self.headers)
+        if self.path == "/hold":
+            time.sleep(1)
+        body = b'{"controlPlane":true}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Security-Policy", "script-src 'nonce-fixture'")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+def employee_request(directory, path="/api/test", method="GET", body=None, headers=None, hostname="erp.example.test", cafile="employee-ca.crt"):
+    context = ssl.create_default_context(cafile=str(directory / cafile))
     raw = socket.create_connection(("127.0.0.1", 18444), timeout=5)
     encrypted = context.wrap_socket(raw, server_hostname=hostname)
-    connection = http.client.HTTPConnection("erp.example.test", timeout=5)
+    connection = http.client.HTTPConnection(hostname, timeout=5)
     connection.sock = encrypted
     try:
         connection.request(method, path, body=body, headers=headers or {})
@@ -109,29 +130,37 @@ def main():
     processes = []
     backend = ThreadingHTTPServer(("127.0.0.1", 18082), Backend)
     threading.Thread(target=backend.serve_forever, daemon=True).start()
+    dr_backend = ThreadingHTTPServer(("127.0.0.1", 18087), DrBackend)
+    threading.Thread(target=dr_backend.serve_forever, daemon=True).start()
     with tempfile.TemporaryDirectory(prefix="uten-remote-test-") as temporary:
         directory = Path(temporary)
         directory.chmod(0o755)  # Nginx workers can read the deliberately public test web files.
         try:
-            for ca in ("transport-server-ca", "cloud-client-ca", "employee-ca", "untrusted-ca"):
+            for ca in ("transport-server-ca", "cloud-client-ca", "employee-ca", "untrusted-ca", "dr-ca"):
                 make_ca(directory, ca)
             make_cert(directory, "transport-server", "transport-server-ca", "transport.uten.internal")
             make_cert(directory, "cloud-client", "cloud-client-ca", "cloud-client", client=True)
             make_cert(directory, "untrusted-client", "untrusted-ca", "untrusted-client", client=True)
             make_cert(directory, "employee", "employee-ca", "erp.example.test")
+            make_cert(directory, "dr", "dr-ca", "admin.example.test")
             (directory / "employee-fullchain.crt").write_bytes((directory / "employee.crt").read_bytes())
+            (directory / "dr-fullchain.crt").write_bytes((directory / "dr.crt").read_bytes())
             web = directory / "web"
             web.mkdir()
             (web / "index.html").write_text("<!doctype html><title>isolated</title>")
             (web / "app.12345678.js").write_text("const test = 1;")
             (web / "flutter_bootstrap.js").write_text("const bootstrap = 1;")
-            configs = contract.remote.files(contract.profile())
+            profile = contract.profile()
+            profile["dr_public_domain"] = "admin.example.test"
+            configs = contract.remote.files(profile)
             for role in ("company", "cloud"):
                 work = directory / role
                 work.mkdir()
                 for cache in ("body", "proxy", "fastcgi", "uwsgi", "scgi"):
                     (work / cache).mkdir()
                 config = configs[f"{role}/nginx.conf"]
+                if role == "cloud":
+                    config = config.replace("127.0.0.1:19443", "127.0.0.1:29443").replace("127.0.0.1:9087", "127.0.0.1:18087")
                 # Only test socket/path substitution, not altered TLS or proxy policy.
                 for old, new in (("/etc/uten-remote/tls", str(directory)), ("/var/log/uten-remote", str(work)),
                                  ("/var/cache/uten-remote", str(work)), ("/run/uten-remote", str(work)),
@@ -152,12 +181,18 @@ def main():
             assert "Forwarded" not in Backend.last_headers and "X-Uten-Source" not in Backend.last_headers
             assert Backend.last_headers["Authorization"] == "Bearer TEST_ONLY_SECRET"
             assert employee_request(directory, "/actuator/health/readiness")[0] == 200
-            for blocked in ("/actuator/env", "/actuator/health/secret", "/api/system-test/business-data/reset", "/api/visitor/auth/login", "/api/website-inquiries/ingest"):
+            for blocked in ("/actuator/env", "/actuator/health/secret", "/api/system-test/business-data/reset",
+                            "/api/system-test;probe=1/business-data/reset", "/api/visitor/auth/login",
+                            "/api/visitor;probe=1/auth/login", "/api/website-inquiries/ingest",
+                            "/api/website-inquiries;probe=1/ingest", "/swagger-ui/index.html", "/v3/api-docs", "/.git/config"):
                 assert employee_request(directory, blocked)[0] == 404, blocked
             # The real website integration uses POST with a machine token. It must
             # remain unreachable even if such a token is supplied to this entry.
             before_ingest = Backend.posts
             assert employee_request(directory, "/api/website-inquiries/ingest", "POST", b"{}",
+                                    {"Content-Type": "application/json", "X-Uten-Ingest-Token": "TEST_ONLY_MACHINE_TOKEN"})[0] == 404
+            assert Backend.posts == before_ingest
+            assert employee_request(directory, "/api/website-inquiries;probe=1/ingest", "POST", b"{}",
                                     {"Content-Type": "application/json", "X-Uten-Ingest-Token": "TEST_ONLY_MACHINE_TOKEN"})[0] == 404
             assert Backend.posts == before_ingest
             assert "immutable" in employee_request(directory, "/app.12345678.js")[1]["Cache-Control"]
@@ -169,8 +204,29 @@ def main():
             try:
                 employee_request(directory, hostname="wrong.example.test")
                 raise AssertionError("wrong inner TLS hostname accepted")
-            except ssl.SSLCertVerificationError:
+            except ssl.SSLError:
                 pass
+            # Independent DR TLS remains local to cloud; employee TLS still ends at company.
+            status, headers, body = employee_request(directory, "/v1/state", hostname="admin.example.test", cafile="dr-ca.crt",
+                headers={"Authorization": "Bearer TEST_ONLY_DR_TOKEN", "X-CSRF-Token": "TEST_ONLY_CSRF", "X-Forwarded-For": "198.51.100.1"})
+            assert status == 200 and body == b'{"controlPlane":true}'
+            assert DrBackend.last_headers["Host"] == "admin.example.test"
+            assert DrBackend.last_headers["X-Forwarded-Proto"] == "https"
+            assert "X-Forwarded-For" not in DrBackend.last_headers
+            assert DrBackend.last_headers["Authorization"] == "Bearer TEST_ONLY_DR_TOKEN"
+            assert DrBackend.last_headers["X-CSRF-Token"] == "TEST_ONLY_CSRF"
+            assert headers["Content-Security-Policy"] == "script-src 'nonce-fixture'"
+            before = DrBackend.requests
+            for blocked in ("/v1/broker", "/v1/broker/enroll", "/v1/broker;probe=1/enroll", "/v1/agent/jobs", "/v1/agent;probe=1/jobs",
+                            "/v1/%62roker/enroll", "/v1/agent%2fjobs", "/v1//broker/enroll"):
+                assert employee_request(directory, blocked, hostname="admin.example.test", cafile="dr-ca.crt")[0] == 404
+            assert DrBackend.requests == before
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                statuses = list(pool.map(lambda _: employee_request(directory, "/hold", hostname="admin.example.test", cafile="dr-ca.crt")[0], range(6)))
+            assert 1 <= statuses.count(200) <= 4 and statuses.count(429) >= 2, statuses
+            auth_statuses = [employee_request(directory, path, hostname="admin.example.test", cafile="dr-ca.crt")[0]
+                             for path in ("/v1/auth/login", "/v1/enrollments/claim", "/v1/enrollments/complete", "/v1/auth/login")]
+            assert auth_statuses.count(429) >= 1, auth_statuses
             # A tunnel peer without the cloud mTLS identity cannot reach employee TLS.
             for invalid_client in (None, "untrusted-client"):
                 context = ssl.create_default_context(cafile=str(directory / "transport-server-ca.crt"))
@@ -216,6 +272,7 @@ def main():
                               "employee_hostname_verified": True, "forged_headers_removed": True,
                               "committed_post_not_retried": True, "cache_and_upload_contract": True,
                               "website_machine_ingest_blocked": True,
+                              "dr_global_concurrency_budget": 4, "dr_auth_enrollment_shared_rate_verified": True,
                               "process_database_egress_blocked": args.firewall}))
         finally:
             for process in processes:
@@ -223,6 +280,7 @@ def main():
             for process in processes:
                 process.wait(timeout=5)
             backend.shutdown()
+            dr_backend.shutdown()
 
 
 if __name__ == "__main__":

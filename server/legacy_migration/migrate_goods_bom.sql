@@ -11,6 +11,8 @@
 -- “老库 B_Goods 不存在”处理，否则会把孤儿 B_BomItem 接入当前 BOM（V181 修正）。
 -- color_legacy_id / vend_legacy_id 老库 0 = 未设 → NULL。
 -- sort_order 按老库 ID 序生成（保持老系统 001.jpg 的行序）。
+-- V903: 禁用组件不能进入活动配方，原边按 EXCLUDED_DISABLED_COMPONENT 隔离，
+--   保留原身份、数量、单价、金额；禁用父件自身使用可用组件的配方仍保留。
 -- =====================================================================
 
 -- V711/V739 的 fn_bom_learning_manual_ownership 对每行 INSERT 做整子树递归环检测，
@@ -46,17 +48,30 @@ CREATE TEMP TABLE IF NOT EXISTS bootstrap_bom_exclusions (
     source_legacy_id integer NOT NULL,
     parent_legacy_id integer,
     component_legacy_id integer,
-    reason text NOT NULL CHECK (reason IN ('EXCLUDED_NON_OPERATIONAL_MASTER', 'EXCLUDED_NON_POSITIVE_QTY')),
+    reason text NOT NULL CHECK (reason IN ('EXCLUDED_NON_OPERATIONAL_MASTER', 'EXCLUDED_NON_POSITIVE_QTY',
+                                         'EXCLUDED_DISABLED_COMPONENT')),
+    source_qty numeric,
+    source_price numeric,
+    source_total numeric,
     PRIMARY KEY (source_file, source_legacy_id)
 );
 -- V739 起 goods_bom_items.qty 要求为正（goods_bom_qty_positive_chk）；老库存在
 -- qty=0 的行（实测 142 行）——按孤儿行同款口径显式排除并留痕，不伪造用量。
 INSERT INTO bootstrap_bom_exclusions (
-    source_file, source_legacy_id, parent_legacy_id, component_legacy_id, reason)
+    source_file, source_legacy_id, parent_legacy_id, component_legacy_id, reason,
+    source_qty, source_price, source_total)
 SELECT 'goods_bom.csv', source.legacy_id, source.goods_legacy_id, source.component_legacy_id,
        CASE WHEN source.qty IS NULL OR source.qty <= 0
             THEN 'EXCLUDED_NON_POSITIVE_QTY'
-            ELSE 'EXCLUDED_NON_OPERATIONAL_MASTER' END
+            WHEN NOT EXISTS (SELECT 1 FROM goods parent_goods
+                              WHERE parent_goods.legacy_id = source.goods_legacy_id
+                                AND NOT parent_goods.is_deleted AND NOT parent_goods.auto_created)
+              OR NOT EXISTS (SELECT 1 FROM goods component_goods
+                              WHERE component_goods.legacy_id = source.component_legacy_id
+                                AND NOT component_goods.is_deleted AND NOT component_goods.auto_created)
+            THEN 'EXCLUDED_NON_OPERATIONAL_MASTER'
+            ELSE 'EXCLUDED_DISABLED_COMPONENT' END,
+       source.qty, source.price, source.total
 FROM bom_stage source
 WHERE source.qty IS NULL OR source.qty <= 0
    OR NOT EXISTS (
@@ -66,7 +81,11 @@ WHERE source.qty IS NULL OR source.qty <= 0
    OR NOT EXISTS (
           SELECT 1 FROM goods component_goods
           WHERE component_goods.legacy_id = source.component_legacy_id
-            AND NOT component_goods.is_deleted AND NOT component_goods.auto_created);
+            AND NOT component_goods.is_deleted AND NOT component_goods.auto_created)
+   OR EXISTS (
+          SELECT 1 FROM goods component_goods
+          WHERE component_goods.legacy_id = source.component_legacy_id
+            AND component_goods.status = '禁用');
 
 INSERT INTO goods_bom_items (
     legacy_id, goods_id, component_goods_id,
@@ -93,6 +112,7 @@ JOIN goods g ON g.legacy_id = bs.goods_legacy_id
 JOIN goods c ON c.legacy_id = bs.component_legacy_id
             AND c.is_deleted = FALSE
             AND c.auto_created = FALSE
+            AND c.status IS DISTINCT FROM '禁用'
 WHERE bs.qty > 0;
 
 -- 防御性清理：即使上方 JOIN 被后续改坏，也不允许迁移生成的占位端点进入活动 BOM。
@@ -115,9 +135,9 @@ BEGIN
         JOIN goods parent_goods ON parent_goods.id = bi.goods_id
         JOIN goods component_goods ON component_goods.id = bi.component_goods_id
         WHERE bi.is_deleted = FALSE
-          AND (parent_goods.auto_created OR component_goods.auto_created)
+          AND (parent_goods.auto_created OR component_goods.auto_created OR component_goods.status = '禁用')
     ) THEN
-        RAISE EXCEPTION 'active BOM references auto_created goods';
+        RAISE EXCEPTION 'active BOM references auto_created goods or a disabled component';
     END IF;
 END
 $$;
@@ -153,6 +173,9 @@ WHERE bs.qty > 0
 
 SELECT '⚠ 跳过零/负用量行（V739 要求 qty 为正）：' || count(*) || ' 行' AS 零用量
 FROM bom_stage bs WHERE bs.qty IS NULL OR bs.qty <= 0;
+
+SELECT '⚠ 隔离禁用组件原配方：' || count(*) || ' 行；逐边数量/单价/金额保留在导入对账中' AS 禁用组件
+FROM bootstrap_bom_exclusions WHERE source_file = 'goods_bom.csv' AND reason = 'EXCLUDED_DISABLED_COMPONENT';
 
 SELECT '✔ 活动 BOM 占位端点 0 / 实际 ' || count(*) AS 占位门禁
 FROM goods_bom_items bi

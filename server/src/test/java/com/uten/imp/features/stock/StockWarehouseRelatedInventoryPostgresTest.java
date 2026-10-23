@@ -19,7 +19,6 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.sql.Connection;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -86,8 +85,6 @@ class StockWarehouseRelatedInventoryPostgresTest {
                 .containsExactlyInAnyOrder(world.red().toString(),world.blue().toString(),world.green().toString());
         assertThat(page.getFacets().get("owningWarehouse")).singleElement()
                 .satisfies(bucket->assertThat(bucket.count()).isEqualTo(5));
-        assertThat(service.instantInventoryMatchingCategoryIds(filter(world.parent(),"实物",true),
-                Set.of(world.category(),world.outsideCategory()))).containsExactly(world.category());
         when(costs.canView()).thenReturn(true);
         assertThat(inventory(world.parent(),true,1,20).getItems()).anySatisfy(row->{
             assertThat(row.getGoodsId()).isEqualTo(world.stocked());
@@ -108,11 +105,6 @@ class StockWarehouseRelatedInventoryPostgresTest {
         mvc.perform(get("/api/stock/instant-inventory/attention").param("warehouseId",world.parent().toString())
                         .param("warehouseRelatedOnly","true").param("attention","AWAITING_INSPECTION"))
                 .andExpect(status().isOk()).andExpect(jsonPath("total").value(1));
-        mvc.perform(get("/api/stock/instant-inventory/search-category-ids").param("warehouseId",world.parent().toString())
-                        .param("warehouseRelatedOnly","true").param("keyword","实物")
-                        .param("categoryRootIds",world.category().toString(),world.outsideCategory().toString()))
-                .andExpect(status().isOk()).andExpect(jsonPath("length()").value(1))
-                .andExpect(jsonPath("$[0]").value(world.category().toString()));
     }
 
     @Test void explicitNonaccountableLineSideDefectiveLeafStillShowsItsRealStockAndEmptyWarehouseStaysEmpty() {
@@ -129,7 +121,7 @@ class StockWarehouseRelatedInventoryPostgresTest {
         assertThat(inventory(empty,true,1,20).getTotal()).isZero();
     }
 
-    private record World(UUID parent,UUID category,UUID outsideCategory,UUID stocked,UUID zero,UUID inspecting,
+    private record World(UUID parent,UUID stocked,UUID zero,UUID inspecting,
                          UUID released,UUID red,UUID blue,UUID green) {}
 
     private World world() {
@@ -148,16 +140,12 @@ class StockWarehouseRelatedInventoryPostgresTest {
         balance(first,stocked,null,0);balance(first,zero,blue,0);balance(outside,outsideOnly,red,9);
         inspection(first,inspecting,blue,9,3,2,"PARTIAL");
         inspection(second,released,green,5,5,0,"RESOLVED");
-        return new World(parent,category,outsideCategory,stocked,zero,inspecting,released,red,blue,green);
+        return new World(parent,stocked,zero,inspecting,released,red,blue,green);
     }
 
     private TotaledPageResponse<InstantInventoryRow> inventory(UUID warehouse,boolean related,int page,int size) {
         return (TotaledPageResponse<InstantInventoryRow>)service.instantInventory(null,warehouse,false,false,null,
                 null,null,null,null,null,null,page,size,"name","asc",false,related);
-    }
-    private StockQueryService.InstantInventoryFilter filter(UUID warehouse,String keyword,boolean related) {
-        return new StockQueryService.InstantInventoryFilter(null,warehouse,false,false,keyword,null,null,
-                null,null,null,null,null,false,true,false,related);
     }
     private UUID warehouse(UUID parent) {
         UUID id=UUID.randomUUID();

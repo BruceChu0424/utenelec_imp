@@ -32,7 +32,7 @@ class AccountStatementScalePostgresTest {
     private static final PostgreSQLContainer POSTGRES=
             new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
-                    .withUsername("uten")
+                    .withUsername("fixture_admin")
                     .withPassword("uten");
     private static final int ACCOUNTS=5;
     private static final int ROWS_PER_ACCOUNT=50_000;

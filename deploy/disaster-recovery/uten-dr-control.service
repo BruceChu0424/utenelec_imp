@@ -1,0 +1,40 @@
+[Unit]
+Description=Uten independent disaster recovery control plane
+After=network.target
+
+[Service]
+Type=simple
+User=uten-dr-control
+Group=uten-dr-control
+WorkingDirectory=/opt/uten-dr-control
+LoadCredential=totp-master:/etc/uten-dr-control/totp-master.key
+ExecStart=/opt/uten-dr-control/venv/bin/python -I /opt/uten-dr-control/control_plane.py --config /etc/uten-dr-control/control.json --database /var/lib/uten-dr-control/state.sqlite3 --master-key-file /run/credentials/uten-dr-control.service/totp-master --port 9087
+Restart=on-failure
+RestartSec=5
+UMask=0077
+StateDirectory=uten-dr-control
+StateDirectoryMode=0700
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectProc=invisible
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+ReadWritePaths=/var/lib/uten-dr-control
+MemoryMax=256M
+TasksMax=32
+LimitCORE=0
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

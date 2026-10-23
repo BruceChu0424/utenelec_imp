@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -27,6 +31,7 @@ class MasterInlineField<T> {
     this.customBuilder,
     this.cellBuilder,
     this.validate,
+    this.asyncValidate,
     this.enabledOf,
     this.editableOf,
   });
@@ -40,6 +45,7 @@ class MasterInlineField<T> {
   final Widget Function(BuildContext context, T row, MasterFieldContext field)?
   cellBuilder;
   final String? Function(Object? value)? validate;
+  final Future<String?> Function(String id, Object? value)? asyncValidate;
   final bool Function(T row)? enabledOf;
   final bool Function(T row)? editableOf;
 }
@@ -92,6 +98,63 @@ class MasterInlineEditController<T> extends ChangeNotifier {
   final Map<String, Map<String, Object?>> _originals = {};
   final Map<String, T> _baselines = {};
   final Map<String, Map<String, MasterInlineField<T>>> _fields = {};
+  final Map<String, Timer> _validationTimers = {};
+  final Map<String, int> _validationTokens = {};
+  final Map<String, String> _validationErrors = {};
+  final Set<String> _validationPending = {};
+  int _validationRevision = 0;
+
+  bool isValidating(String id, String key) =>
+      _validationPending.contains('$id/$key');
+  String? validationError(String id, String key) =>
+      _validationErrors['$id/$key'];
+
+  void retryValidation(String id, MasterInlineField<T> field) {
+    if (!active || busy || !_patches.containsKey(id)) return;
+    _validateChanged(id, field, _patches[id]![field.key]);
+    error = null;
+    notifyListeners();
+  }
+
+  void _clearValidation() {
+    for (final timer in _validationTimers.values) {
+      timer.cancel();
+    }
+    _validationTimers.clear();
+    _validationTokens.clear();
+    _validationErrors.clear();
+    _validationPending.clear();
+  }
+
+  void _validateChanged(String id, MasterInlineField<T> field, Object? value) {
+    final check = field.asyncValidate;
+    if (check == null) return;
+    final key = '$id/${field.key}';
+    _validationTimers.remove(key)?.cancel();
+    final token = ++_validationRevision;
+    final epoch = _epoch;
+    _validationTokens[key] = token;
+    _validationErrors.remove(key);
+    _validationPending.remove(key);
+    if (_patches[id]?.containsKey(field.key) != true) return;
+    _validationPending.add(key);
+    _validationTimers[key] = Timer(const Duration(milliseconds: 300), () async {
+      String? problem;
+      try {
+        problem = await check(id, value);
+      } on ApiException catch (failure) {
+        problem = failure.message;
+      } catch (_) {
+        problem = '编号检查失败，请重新输入或重试';
+      }
+      if (_epoch != epoch || _validationTokens[key] != token) return;
+      _validationPending.remove(key);
+      _validationTimers.remove(key);
+      if (problem != null) _validationErrors[key] = problem;
+      if (error == '正在检查编号，请稍后保存') error = problem;
+      notifyListeners();
+    });
+  }
 
   bool get dirty => _patches.isNotEmpty;
   int get changedRows => _patches.length;
@@ -147,11 +210,13 @@ class MasterInlineEditController<T> extends ChangeNotifier {
     _originals.clear();
     _baselines.clear();
     _fields.clear();
+    _clearValidation();
   }
 
   @override
   void dispose() {
     _epoch++;
+    _clearValidation();
     super.dispose();
   }
 
@@ -179,6 +244,7 @@ class MasterInlineEditController<T> extends ChangeNotifier {
       _patches.putIfAbsent(id, () => {})[field.key] = normalized;
     }
     error = null;
+    _validateChanged(id, field, normalized);
     notifyListeners();
   }
 
@@ -283,6 +349,13 @@ class MasterInlineEditController<T> extends ChangeNotifier {
     Future<void> Function()? beforeWrite,
   }) async {
     if (!active || busy || !dirty) return false;
+    if (_validationPending.isNotEmpty || _validationErrors.isNotEmpty) {
+      error = _validationPending.isNotEmpty
+          ? '正在检查编号，请稍后保存'
+          : _validationErrors.values.first;
+      notifyListeners();
+      return false;
+    }
     final pending = <String, Map<String, dynamic>>{};
     for (final entry in _patches.entries) {
       final patch = <String, dynamic>{};
@@ -347,6 +420,10 @@ class MasterInlineEditController<T> extends ChangeNotifier {
         _originals.remove(entry.key);
         _baselines.remove(entry.key);
         _fields.remove(entry.key);
+        for (final key in entry.value.keys) {
+          _validationErrors.remove('${entry.key}/$key');
+          _validationTokens.remove('${entry.key}/$key');
+        }
         notifyListeners();
       }
       busy = false;
@@ -509,6 +586,8 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
   bool _editing = false;
   bool _busy = false;
   bool _editable = true;
+  bool _validating = false;
+  String? _validationError;
 
   bool _canEditField() =>
       widget.field.enabledOf?.call(widget.row) != false &&
@@ -519,6 +598,11 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
     super.initState();
     _busy = widget.controller.busy;
     _editable = _canEditField();
+    _validating = widget.controller.isValidating(widget.id, widget.field.key);
+    _validationError = widget.controller.validationError(
+      widget.id,
+      widget.field.key,
+    );
     widget.controller.addListener(_controllerChanged);
   }
 
@@ -529,9 +613,22 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
     final editable = _canEditField();
     final editableChanged = editable != _editable;
     final busyChanged = busy != _busy;
+    final validating = widget.controller.isValidating(
+      widget.id,
+      widget.field.key,
+    );
+    final problem = widget.controller.validationError(
+      widget.id,
+      widget.field.key,
+    );
+    final validationChanged =
+        validating != _validating || problem != _validationError;
+    _validating = validating;
+    _validationError = problem;
     _editable = editable;
     _busy = busy;
-    if (mounted && (editableChanged || (_editing && busyChanged))) {
+    if (mounted &&
+        (editableChanged || (_editing && (busyChanged || validationChanged)))) {
       setState(() {});
     }
   }
@@ -714,11 +811,34 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
               field.type == MasterFieldType.money
           ? const TextInputType.numberWithOptions(decimal: true, signed: true)
           : TextInputType.text,
-      decoration: InputDecoration(
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-        border: const OutlineInputBorder(),
-        hintText: widget.label,
+      decoration: UtenInputDecoration(
+        InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: 10,
+          ),
+          border: const OutlineInputBorder(),
+          hintText: widget.label,
+          error: utenFieldError(_validationError),
+          suffixIcon: _validating
+              ? const Padding(
+                  padding: EdgeInsets.all(10),
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : _validationError != null
+              ? IconButton(
+                  tooltip: '重新检查编号',
+                  onPressed: () =>
+                      widget.controller.retryValidation(widget.id, field),
+                  icon: const Icon(Icons.refresh),
+                )
+              : null,
+        ),
       ),
       onChanged: _change,
     );

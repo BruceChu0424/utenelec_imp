@@ -1,4 +1,49 @@
 {
+  "clientUpdateDetails": "查看详情",
+  "clientUpdateNewTitle": "发现新版本",
+  "clientUpdateSubtitle": "自动检查新版本，更新此设备上的软件",
+  "clientUpdateCurrent": "当前版本",
+  "clientUpdateLatest": "最新版本",
+  "clientUpdateNow": "立即更新",
+  "clientUpdateLater": "稍后",
+  "clientUpdateCheck": "检查更新",
+  "clientUpdateChecking": "正在检查更新",
+  "clientUpdateUpToDate": "当前已是最新版本",
+  "clientUpdateDownloading": "正在下载更新",
+  "clientUpdateInstalling": "正在安装更新",
+  "clientUpdateWindowsHint": "更新将自动下载，关闭并重新启动软件，保留本机设置和已保存的草稿。请先保存当前工作。",
+  "clientUpdateAndroidHint": "更新下载后会打开系统安装确认。如需允许安装来源，请授权后返回重试。",
+  "clientUpdateStoreHint": "将打开官方应用商店，请在商店中完成更新。",
+  "clientUpdateUnsupported": "当前系统暂不支持应用内更新。",
+  "clientUpdateFailed": "更新未完成，请检查网络和安装权限后重试。",
+  "clientUpdateInstallerOpened": "已打开系统安装确认，请按系统提示完成更新。",
+  "clientUpdateNotes": "更新内容",
+  "clientUpdateNoNotes": "此版本暂无更新说明。",
+  "clientUpdatePublishTitle": "发布客户端版本",
+  "clientUpdatePublishHint": "上传并发布各平台的新版本，员工的客户端会自动检查并提示更新。",
+  "clientUpdatePlatform": "平台",
+  "clientUpdateArchitecture": "设备架构",
+  "clientUpdateVersion": "版本号",
+  "clientUpdateBuild": "构建号",
+  "clientUpdateStoreUrl": "官方商店地址",
+  "clientUpdateChooseFile": "选择更新包",
+  "clientUpdatePublish": "上传并发布",
+  "clientUpdatePublishing": "正在上传并发布",
+  "clientUpdatePublished": "客户端新版本已发布",
+  "clientUpdatePublishInvalid": "请完整填写版本信息，构建号需高于已发布版本，并选择对应更新包或填写官方商店地址。",
+  "clientUpdatePackageHint": "Windows 选择专用更新 ZIP，Android 选择正式签名 APK。每次发布需增加构建号。",
+  "clientUpdateWithdraw": "撤回发布",
+  "clientUpdateWithdrawConfirm": "撤回后，其他设备将不再收到此版本。已经更新的设备不会降级。确定撤回吗？",
+  "clientUpdateReleaseList": "版本发布记录",
+  "clientUpdateClose": "关闭",
+  "clientUpdateRetry": "重试",
+  "clientUpdateTitle": "软件更新",
+  "masterStatusDisableTitle": "确认停用",
+  "masterStatusEnableTitle": "确认启用",
+  "masterStatusDisableBody": "确定停用「{label}」共 {count} 项吗？停用后不能再用于新增业务，已有单据与修改历史保留。",
+  "@masterStatusDisableBody": {"placeholders": {"label": {"type": "String"}, "count": {"type": "int"}}},
+  "masterStatusEnableBody": "确定启用「{label}」共 {count} 项吗？启用后可再次用于新增业务。",
+  "@masterStatusEnableBody": {"placeholders": {"label": {"type": "String"}, "count": {"type": "int"}}},
   "websiteInquirySeries": "产品系列",
   "websiteInquiryProductId": "产品标识",
   "websiteInquirySourceIdentity": "来源标识",
@@ -6285,6 +6330,126 @@
     "placeholders": {
       "count": {
         "type": "int"
+      }
+    }
+  },
+  "importReviewSourceRow": "文件行",
+  "importReviewIdentity": "货品",
+  "importReviewMatchReason": "匹配依据",
+  "importReviewAction": "操作",
+  "importReviewEmptyValue": "未填写",
+  "importReviewOldValue": "原值",
+  "importReviewNewValue": "导入值",
+  "importReviewLegend": "红色删除线为原值，绿色为导入值。仅勾选的冲突会替换；空白不会清空已有值。",
+  "importReviewFillLegend": "缺失值会自动补齐，已有值保持不变。确认后开始新增并补齐资料。",
+  "importReviewReplaceSelected": "批量替换 ({count})",
+  "importReviewIgnoreAll": "全部忽略",
+  "importReviewIgnoreExplanation": "忽略仅跳过冲突，新增货品和空值补齐仍会继续。",
+  "importReviewIgnoreRow": "忽略此行",
+  "importReviewRestoreRow": "恢复核对",
+  "importReviewAutomaticFill": "自动补齐",
+  "importReviewIgnored": "已忽略冲突",
+  "importReviewPending": "待核对",
+  "importReviewSelected": "将替换",
+  "importReviewConfirmFill": "确认补齐并导入",
+  "importReviewNoRows": "没有需要核对的差异",
+  "importReviewSelectAll": "选择全部冲突",
+  "@importReviewReplaceSelected": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "goodsImportReviewTitle": "核对货品导入差异",
+  "bomImportReviewTitle": "核对组件导入差异",
+  "importReviewOpen": "核对差异并导入",
+  "importMatchCode": "编号匹配",
+  "importMatchUuid": "系统标识匹配",
+  "importMatchPathName": "同分类同名称",
+  "importReviewSummary": "新增 {added}，补齐 {filled}，冲突 {conflicts}，相同 {unchanged}",
+  "importResultSummary": "新增 {created}，补齐 {filled}，替换 {updated}，忽略 {ignored}，相同 {unchanged}",
+  "bomImportMergeLabel": "合并核对(保留文件外的组件)",
+  "@importReviewSummary": {
+    "placeholders": {
+      "added": {
+        "type": "int"
+      },
+      "filled": {
+        "type": "int"
+      },
+      "conflicts": {
+        "type": "int"
+      },
+      "unchanged": {
+        "type": "int"
+      }
+    }
+  },
+  "@importResultSummary": {
+    "placeholders": {
+      "created": {
+        "type": "int"
+      },
+      "filled": {
+        "type": "int"
+      },
+      "updated": {
+        "type": "int"
+      },
+      "ignored": {
+        "type": "int"
+      },
+      "unchanged": {
+        "type": "int"
+      }
+    }
+  },
+  "importReviewUnchanged": "无变化",
+  "goodsImportTemplateHint": "可使用「导出货品」文件作为新增或更新模板；必填列为类别(用 - 拼分类路径)和货品名称，编号可留空。更新时保留系统标识；新增行不要沿用旧货品的系统标识。曾被复用的编号必须通过系统标识确认当前货品。",
+  "goodsImportMergeHint": "新货品正常新增；已有货品按编号或同分类同名称匹配。空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值，同名歧义须修正后重传。同编号已删除货品按清单内容恢复。",
+  "importRedetectCurrent": "重新检测当前文件",
+  "importRedetectRequired": "请重新检测当前文件后再提交",
+  "importRetryPrevious": "重试上次提交",
+  "importFilesTransactionNote": "可一次选择多个文件，按顺序检测并导入。每个文件独立保存，后续失败或关闭不会撤销已成功的文件。",
+  "importFilesCompleted": "已完成 {completed}/{total} 个文件",
+  "importFilesCurrent": "文件 {position}/{total}: {filename}",
+  "importFilesPaused": "已暂停当前文件，可继续核对；后续文件尚未处理。",
+  "importFilesFailed": "当前文件未完成，队列已暂停。请重新检测或重新选择文件。",
+  "importFilesCloseNote": "关闭会放弃未处理的文件，已成功导入的文件会保留。重新选择只替换未处理部分。",
+  "importFilesOutcome": "已完成 {filename}: {summary}",
+  "importFilesContinue": "继续处理当前文件",
+  "importFilesFinished": "所选文件已全部处理完成",
+  "@importFilesCompleted": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "@importFilesCurrent": {
+    "placeholders": {
+      "position": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "filename": {
+        "type": "String"
+      }
+    }
+  },
+  "@importFilesOutcome": {
+    "placeholders": {
+      "filename": {
+        "type": "String"
+      },
+      "summary": {
+        "type": "String"
       }
     }
   }

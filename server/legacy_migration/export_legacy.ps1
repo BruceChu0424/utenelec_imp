@@ -28,6 +28,68 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Data   # preload SqlClient for Windows PowerShell 5.1
+# Keep the hot row/cell loop inside the CLR. Calling GetValue/quoting/join from
+# PowerShell for every cell makes million-row exports needlessly slow. This
+# writer consumes the caller's existing reader and never opens a connection,
+# starts a transaction, changes culture, or disposes the caller-owned reader.
+if (-not ('UtenLegacyCsvStream' -as [type])) {
+    $csvWriterSource = @'
+using System;
+using System.Data;
+using System.IO;
+using System.Text;
+
+public static class UtenLegacyCsvStream
+{
+    public static long Write(IDataReader reader, string path, char delimiter)
+    {
+        if (reader == null) throw new ArgumentNullException("reader");
+        long rowCount = 0;
+        using (StreamWriter writer = new StreamWriter(path, false, new UTF8Encoding(false), 65536))
+        {
+            // Explicit Windows line endings preserve the existing CSV bytes.
+            writer.NewLine = "\r\n";
+            int columns = reader.FieldCount;
+            for (int column = 0; column < columns; column++)
+            {
+                if (column != 0) writer.Write(delimiter);
+                writer.Write(reader.GetName(column));
+            }
+            writer.WriteLine();
+            while (reader.Read())
+            {
+                for (int column = 0; column < columns; column++)
+                {
+                    if (column != 0) writer.Write(delimiter);
+                    if (reader.IsDBNull(column)) continue;
+                    // Match the original GetValue(...).ToString() exactly:
+                    // no invariant-culture or date/number reformatting here.
+                    string value = reader.GetValue(column).ToString();
+                    if (value.IndexOf(delimiter) >= 0 || value.IndexOf('"') >= 0
+                        || value.IndexOf('\r') >= 0 || value.IndexOf('\n') >= 0)
+                    {
+                        writer.Write('"');
+                        writer.Write(value.Replace("\"", "\"\""));
+                        writer.Write('"');
+                    }
+                    else writer.Write(value);
+                }
+                writer.WriteLine();
+                rowCount++;
+            }
+        }
+        return rowCount;
+    }
+}
+'@
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        # Core's default reference-assembly set includes System.Data.Common;
+        # overriding it with the .NET Framework facade System.Data loses it.
+        Add-Type -TypeDefinition $csvWriterSource
+    } else {
+        Add-Type -ReferencedAssemblies System.Data -TypeDefinition $csvWriterSource
+    }
+}
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dataDir = Join-Path $here 'data'
 if (-not (Test-Path $dataDir)) { New-Item -ItemType Directory -Path $dataDir | Out-Null }
@@ -53,43 +115,15 @@ function Export-Query {
     }
     $cmd = $null
     $r = $null
-    $fs = $null
-    $w = $null
     try {
         $cmd = $script:exportConnection.CreateCommand()
         $cmd.Transaction = $script:exportTransaction
         $cmd.CommandText = $Sql
         $r = $cmd.ExecuteReader()
-        $enc = New-Object System.Text.UTF8Encoding($false)
-        $fs = [System.IO.File]::Create($OutPath)
-        $w = New-Object System.IO.StreamWriter($fs, $enc)
         try {
-            $headers = for ($i = 0; $i -lt $r.FieldCount; $i++) { $r.GetName($i) }
-            $w.WriteLine(($headers -join $Delimiter))
-            $rowCount = 0
-            while ($r.Read()) {
-                $vals = for ($i = 0; $i -lt $r.FieldCount; $i++) {
-                    if ($r.IsDBNull($i)) {
-                        ''
-                    } else {
-                        # RFC4180: quote fields that contain the delimiter, a double-quote, or a newline;
-                        # otherwise PostgreSQL COPY (FORMAT csv, DELIMITER '|') mis-parses them (e.g. an
-                        # address containing '|' shifts every later column -> "missing data for column X").
-                        $v = $r.GetValue($i).ToString()
-                        if ($v.Contains([string]$Delimiter) -or $v.Contains('"') -or $v.Contains("`r") -or $v.Contains("`n")) {
-                            '"' + ($v -replace '"', '""') + '"'
-                        } else {
-                            $v
-                        }
-                    }
-                }
-                $w.WriteLine(($vals -join $Delimiter))
-                $rowCount++
-            }
+            $rowCount = [UtenLegacyCsvStream]::Write($r, $OutPath, $Delimiter)
         }
         finally {
-            if ($null -ne $w) { $w.Close() }
-            if ($null -ne $fs) { $fs.Close() }
             if ($null -ne $r) { $r.Close() }
         }
     }
@@ -347,6 +381,23 @@ if ($Target -eq 'All') {
 
 $script:exportConnection = New-Object System.Data.SqlClient.SqlConnection($cs)
 $script:exportConnection.Open()
+if ($Target -eq 'All') {
+    # An authority label alone does not prove that this is a sealed restore.
+    # Check the actual connected database before opening the export transaction.
+    $sourceModeCommand = $script:exportConnection.CreateCommand()
+    try {
+        $sourceModeCommand.CommandText = "SELECT CONVERT(varchar(30),DATABASEPROPERTYEX(DB_NAME(),'Updateability'))"
+        $sourceMode = [string]$sourceModeCommand.ExecuteScalar()
+    } finally {
+        $sourceModeCommand.Dispose()
+    }
+    if ($sourceMode -ne 'READ_ONLY') {
+        $script:exportConnection.Dispose()
+        $script:exportConnection = $null
+        throw 'All export requires the connected offline source database to be READ_ONLY; no CSV was exported'
+    }
+    Write-Host 'OK  source READ_ONLY verified on the actual export connection'
+}
 $script:exportTransaction = $script:exportConnection.BeginTransaction(
     [System.Data.IsolationLevel]::Serializable)
 try {

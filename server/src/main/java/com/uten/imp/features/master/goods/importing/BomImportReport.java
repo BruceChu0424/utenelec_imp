@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * 组装信息导入（2026-09-25 用户口径「还可以导入组装，导入的格式和导出的一样」）：
- * 两段式「先检测后提交」，格式 = 配件清单导出的 14 列。
+ * 两段式「先检测后提交」，格式与配件清单导出一致。
  * 序号列的级联段（1 / 2 / 2.1）表达层级——导出改完可直接导回。
  *
  * @param totalRows   非空数据行数（合计行跳过后）
@@ -13,6 +13,7 @@ import java.util.List;
  * @param levelCounts 每层行数（下标 = 层级-1）
  * @param readyToImport 无错时可导入行数
  * @param stateFingerprint 绑定原始文件与全部父件/相关主档状态的版本指纹；有错误时为空
+ * @param reviewRows 按实际父件/组件 UUID 去重的差异；FILL 自动补齐，CONFLICT 由用户逐行选择
  */
 public record BomImportReport(
         int totalRows,
@@ -20,7 +21,19 @@ public record BomImportReport(
         List<GoodsImportError> warnings,
         List<Integer> levelCounts,
         int readyToImport,
-        String stateFingerprint) {
+        String stateFingerprint,
+        List<BomImportReviewRow> reviewRows,
+        int addedRows, int unchangedRows, int fillRows, int conflictRows) {
+
+    public BomImportReport {
+        reviewRows = reviewRows == null ? List.of() : List.copyOf(reviewRows);
+    }
+
+    public BomImportReport(int totalRows, List<GoodsImportError> errors, List<GoodsImportError> warnings,
+                           List<Integer> levelCounts, int readyToImport, String stateFingerprint) {
+        this(totalRows, errors, warnings, levelCounts, readyToImport, stateFingerprint,
+                List.of(), 0, 0, 0, 0);
+    }
 
     /** 便捷判断：无错误行即可提交。 */
     public boolean hasErrors() {

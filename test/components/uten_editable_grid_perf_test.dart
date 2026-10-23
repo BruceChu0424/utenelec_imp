@@ -1,7 +1,7 @@
 // UtenEditableGrid 大数据量性能契约（2026-09-05）：
 // 用**构建计数**（非墙钟）锁「灭重绘风暴」的两条核心性质——
-//   1. 初始构建：N 行明细每格只构建一次（shrinkWrap content-tall 的固有代价是
-//      一次性全量构建，不允许意外翻倍）；
+//   1. 初始构建：大单据仅挂载祖先视口及预读窗口；滚动范围仍属原页面，
+//      不通过分帧最终挂满全部明细来掩盖首屏成本；
 //   2. 敲一个字：只重建受影响的订阅格(金额格/表尾合计)，其余行/格零重建；
 //   3. 勾选一行：只重建选中态变了的那一行(ADR-108：选中集单独通知，行各自订阅)，
 //      宿主挂在 controller 上的监听照常收到通知，提交用的选中集与屏幕勾选一致。
@@ -23,7 +23,7 @@ class _PerfRow extends EditableGridRow with AmountRowMixin {
 }
 
 void main() {
-  testWidgets('300 行初始每格只构建一次', (tester) async {
+  testWidgets('300 行首屏只构建视口预算内的明细，空闲帧不继续挂满', (tester) async {
     tester.view.physicalSize = const Size(1280, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -73,21 +73,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 初建允许 ≤2 次：首帧 + 表头实测高度修正（40 → 实际值）的一次性 setState 整表重建。
-    // 这是 content-tall sticky 表头的固有一次性代价；再有任何多余构建都是回归。
-    expect(builds.length, 300);
-    expect(
-      builds.values.every((n) => n <= 2),
-      isTrue,
-      reason:
-          '存在超过 2 次构建的行：${builds.entries.where((e) => e.value > 2).take(3).toList()}',
-    );
+    expect(builds.length, inInclusiveRange(10, 80));
+    expect(controller.mountedRowCount, lessThan(80));
+    final settledBuilds = Map.of(builds);
 
     // 稳态零重建：再 pump 数帧（无交互），计数不再增长。
     for (var i = 0; i < 3; i++) {
       await tester.pump(const Duration(milliseconds: 16));
     }
-    expect(builds.values.every((n) => n <= 2), isTrue);
+    expect(builds, settledBuilds);
   });
 
   testWidgets('敲一个字只重建该格订阅链，不蔓延整表', (tester) async {

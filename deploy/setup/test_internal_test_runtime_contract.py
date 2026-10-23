@@ -325,9 +325,9 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
             "allow __EXACT_OFFICE_CIDR__;",
             "return 308 https://__INTERNAL_DOMAIN__$request_uri;",
             "proxy_set_header X-Forwarded-Proto $scheme;",
-            "location ~ ^/api/website-inquiries(?:;[^/]*)?/ingest(?:[;/]|$) {",
-            "location ~ ^/api/attachments(?:;[^/]*)?/(?:presign|confirm)(?:[;/]|$) {",
-            "location ~ ^/api/attachments(?:;[^/]*)?/raw(?:[;/]|$) {",
+            'location ~ "^/api/website-inquiries(?:;[^/]*)?/ingest(?:[;/]|$)" {',
+            'location ~ "^/api/attachments(?:;[^/]*)?/(?:presign|confirm)(?:[;/]|$)" {',
+            'location ~ "^/api/attachments(?:;[^/]*)?/raw(?:[;/]|$)" {',
             "location ^~ /swagger-ui/ {",
             "limit_except GET HEAD {",
         ):
@@ -450,18 +450,18 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
         location_declarations = re.findall(r"(?m)^\s*location\s+([^\{]+?)\s*\{", nginx)
         self.assertEqual(
             [item.strip() for item in location_declarations if "/api/website-inquiries" in item],
-            [r"~ ^/api/website-inquiries(?:;[^/]*)?/ingest(?:[;/]|$)"],
+            [r'~ "^/api/website-inquiries(?:;[^/]*)?/ingest(?:[;/]|$)"'],
         )
         self.assertEqual(
             [item.strip() for item in location_declarations if "/api/attachments" in item],
             [
-                r"~ ^/api/attachments(?:;[^/]*)?/(?:presign|confirm)(?:[;/]|$)",
-                r"~ ^/api/attachments(?:;[^/]*)?/raw(?:[;/]|$)",
+                r'~ "^/api/attachments(?:;[^/]*)?/(?:presign|confirm)(?:[;/]|$)"',
+                r'~ "^/api/attachments(?:;[^/]*)?/raw(?:[;/]|$)"',
             ],
         )
-        inquiry_location = r"~ ^/api/website-inquiries(?:;[^/]*)?/ingest(?:[;/]|$)"
-        intake_location = r"~ ^/api/attachments(?:;[^/]*)?/(?:presign|confirm)(?:[;/]|$)"
-        raw_location = r"~ ^/api/attachments(?:;[^/]*)?/raw(?:[;/]|$)"
+        inquiry_location = r'~ "^/api/website-inquiries(?:;[^/]*)?/ingest(?:[;/]|$)"'
+        intake_location = r'~ "^/api/attachments(?:;[^/]*)?/(?:presign|confirm)(?:[;/]|$)"'
+        raw_location = r'~ "^/api/attachments(?:;[^/]*)?/raw(?:[;/]|$)"'
         inquiry_block = location_block(nginx, inquiry_location)
         intake_block = location_block(nginx, intake_location)
         raw_block = location_block(nginx, raw_location)

@@ -1,0 +1,40 @@
+[Unit]
+Description=Uten IMP verified paired ciphertext backup to independent receiver
+Wants=network-online.target
+After=network-online.target postgresql.service
+RequiresMountsFor=/data /srv/uten-backup
+StartLimitIntervalSec=3600
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/uten-imp-dr-backup/continuous_backup.py source --config /etc/uten-imp-dr-backup/source.json
+TimeoutStartSec=35min
+Restart=on-failure
+RestartSec=10min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+CPUQuota=50%
+MemoryMax=768M
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_SETGID CAP_SETUID
+AmbientCapabilities=CAP_DAC_READ_SEARCH CAP_SETGID CAP_SETUID
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+LimitCORE=0
+StateDirectory=uten-imp-dr-backup
+StateDirectoryMode=0700
+ReadWritePaths=/data/uten-imp-backups/dr-continuous /srv/uten-backup/dr-continuous-exports /var/lib/uten-imp-dr-backup
+

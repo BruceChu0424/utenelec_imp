@@ -862,8 +862,6 @@
       "seller_name": "合成员工",
       "maker_legacy": 900801,
       "approver_legacy": 900801,
-      "maker_name": "合成操作员",
-      "approver_name": "合成操作员",
       "remark": "合成首导回归样本；非公司业务数据",
       "status": 1,
       "fulfill_bit": true,

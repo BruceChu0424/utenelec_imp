@@ -33,6 +33,8 @@ import 'package:flutter/services.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../buttons/uten_button.dart';
+import '../data_display/uten_table_text_selection.dart';
+import 'uten_table_horizontal_scroll_controller.dart';
 import '../feedback/uten_context_menu.dart';
 import '../feedback/uten_context_menu_policy.dart';
 import '../inputs/uten_field_hint_icon.dart';
@@ -181,6 +183,8 @@ class UtenFrozenLeadingColumn extends StatelessWidget {
     super.key,
     required this.horizontal,
     required this.width,
+    this.fallbackWidth = 0,
+    this.trailingWidth = 0,
     required this.cell,
     required this.row,
   });
@@ -190,6 +194,10 @@ class UtenFrozenLeadingColumn extends StatelessWidget {
 
   /// 冻结列宽（= 行首格的宽度）。
   final double width;
+
+  /// Selection-column width retained when the full pinned prefix is too wide.
+  final double fallbackWidth;
+  final double trailingWidth;
 
   /// 冻结列的格子内容（与行首格同一份构建结果）。
   final Widget cell;
@@ -216,10 +224,22 @@ class UtenFrozenLeadingColumn extends StatelessWidget {
         // 整行大小 + 内部 Align(48 宽) 后，命中只落在那 48px 上，其余位置照常穿透到行。
         Positioned.fill(
           child: AnimatedBuilder(
-            animation: horizontal,
+            animation: utenTableHorizontalChanges(horizontal),
             builder: (_, child) {
               final dx = _offset;
-              final frozen = dx > 0;
+              final position =
+                  horizontal.hasClients && horizontal.positions.length == 1
+                  ? horizontal.position
+                  : null;
+              final effectiveWidth = utenEffectiveFrozenLeadingWidth(
+                requestedWidth: width,
+                viewportWidth: position?.hasViewportDimension == true
+                    ? position!.viewportDimension
+                    : 0,
+                fallbackWidth: fallbackWidth,
+                trailingWidth: trailingWidth,
+              );
+              final frozen = dx > 0 && effectiveWidth > 0;
               return IgnorePointer(
                 ignoring: !frozen,
                 child: Visibility(
@@ -229,9 +249,19 @@ class UtenFrozenLeadingColumn extends StatelessWidget {
                     child: Align(
                       alignment: AlignmentDirectional.centerStart,
                       child: SizedBox(
-                        width: width,
+                        width: effectiveWidth,
                         height: double.infinity,
-                        child: child,
+                        child: ClipRect(
+                          child: OverflowBox(
+                            alignment: AlignmentDirectional.centerStart,
+                            minWidth: width,
+                            maxWidth: width,
+                            child: UtenTableTextSelectionGate(
+                              enabled: effectiveWidth == width,
+                              child: child!,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -311,7 +341,10 @@ class _UtenFrozenTrailingColumnState extends State<UtenFrozenTrailingColumn> {
         // 宽时平移后的副本画得出来却点不动。
         Positioned.fill(
           child: AnimatedBuilder(
-            animation: Listenable.merge([widget.horizontal, _extentTick]),
+            animation: Listenable.merge([
+              utenTableHorizontalChanges(widget.horizontal),
+              _extentTick,
+            ]),
             builder: (_, child) {
               final controller = widget.horizontal;
               final position =

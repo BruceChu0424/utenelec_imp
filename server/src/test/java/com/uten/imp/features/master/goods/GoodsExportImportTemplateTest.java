@@ -35,9 +35,10 @@ class GoodsExportImportTemplateTest {
             new ExportColumn("name", "货品名称", ExportColumn.TEXT),
             new ExportColumn("code", "编号", ExportColumn.TEXT),
             new ExportColumn("categoryPath", "类别", ExportColumn.TEXT),
-            new ExportColumn("spec", "规格", ExportColumn.TEXT));
+            new ExportColumn("spec", "规格", ExportColumn.TEXT),
+            new ExportColumn("goodsId", "系统标识", ExportColumn.TEXT));
     private static final List<Map<String, Object>> ROWS = List.of(Map.of(
-            "name", "原货品", "code", "OLD001", "categoryPath", "成品-电工", "spec", "10A"));
+            "name", "原货品", "code", "OLD001", "categoryPath", "成品-电工", "spec", "10A", "goodsId", UUID.randomUUID().toString()));
 
     @Test
     void visibleColumnExportRetainsCategoryAndEditedTemplatePassesDetection() throws Exception {
@@ -64,7 +65,12 @@ class GoodsExportImportTemplateTest {
             assertEquals("成品-电工", sheet.getRow(1).getCell(3).getStringCellValue());
             sheet.getRow(1).getCell(0).setCellValue("新增货品");
             sheet.getRow(1).getCell(1).setCellValue("");
+            assertEquals("系统标识", sheet.getRow(0).getCell(4).getStringCellValue());
+            sheet.getRow(1).removeCell(sheet.getRow(1).getCell(4));
             workbook.write(edited);
+            try (var roundTrip = WorkbookFactory.create(new ByteArrayInputStream(edited.toByteArray()))) {
+                assertNull(roundTrip.getSheetAt(0).getRow(1).getCell(4), "A new goods template must not retain the previous system UUID");
+            }
             var report = importer().detect(edited.toByteArray());
             assertTrue(report.errors().isEmpty(), () -> report.errors().toString());
             assertEquals(1, report.readyToImport());
@@ -81,8 +87,8 @@ class GoodsExportImportTemplateTest {
         byte[] bytes = writer().build(COLUMNS, ROWS, normalized, "master_goods");
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
             var header = workbook.getSheetAt(0).getRow(0);
-            assertEquals(List.of("规格", "货品名称", "编号", "类别"),
-                    java.util.stream.IntStream.range(0, 4).mapToObj(i -> header.getCell(i).getStringCellValue()).toList());
+            assertEquals(List.of("规格", "货品名称", "编号", "类别", "系统标识"),
+                    java.util.stream.IntStream.range(0, 5).mapToObj(i -> header.getCell(i).getStringCellValue()).toList());
         }
     }
 

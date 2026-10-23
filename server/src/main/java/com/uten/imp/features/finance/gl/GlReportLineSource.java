@@ -133,19 +133,7 @@ class GlReportLineSource {
      * (与利润表其它行不重复)。
      */
     BigDecimal[] adminMonthly(Collection<String> excludedLineKeys, LocalDate from, LocalDate toInclusive) {
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT EXTRACT(MONTH FROM entry.entry_date)::int, SUM(entry.direction * entry.amount)
-                FROM gl_entries entry
-                JOIN payment_styles style ON style.id = entry.style_id
-                WHERE entry.is_deleted = FALSE AND style.category = 'EXPENSE'
-                  AND left(style.path, 5) = '/043/'
-                  AND NOT EXISTS (
-                      SELECT 1 FROM finance_report_line_bindings binding
-                      WHERE binding.binding_kind = 'STYLE' AND binding.style_id = style.id
-                        AND binding.line_key IN (:excluded))
-                  AND entry.entry_date BETWEEN :from AND :to
-                GROUP BY 1
-                """).setParameter("excluded", new TreeSet<>(excludedLineKeys))
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(GlReportSourceScopes.adminSql()).setParameter("excluded", new TreeSet<>(excludedLineKeys))
                 .setParameter("from", from).setParameter("to", toInclusive));
         BigDecimal[] months = new BigDecimal[13];
         for (Object[] row : rows) months[((Number) row[0]).intValue()] = (BigDecimal) row[1];

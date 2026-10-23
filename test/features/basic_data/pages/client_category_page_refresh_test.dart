@@ -27,6 +27,16 @@ import 'package:uten_imp/features/basic_data/repositories/party_directory_reposi
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+
+import '../../../shared/drafts/memory_form_draft_storage.dart';
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -246,11 +256,17 @@ Future<void> _pumpPage(
       ),
     ],
   );
+  addTearDown(router.dispose);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(preferences),
         apiClientProvider.overrideWithValue(_ReferenceApi()),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        sessionProvider.overrideWith(_Session.new),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'client-category-test'),
+        ),
         currentPermissionsProvider.overrideWithValue({
           Perm.clientCategoryView,
           Perm.clientCategoryEdit,

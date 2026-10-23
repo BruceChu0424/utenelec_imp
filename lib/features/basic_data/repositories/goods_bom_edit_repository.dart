@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
+import '../../../core/performance/json_value_snapshot.dart';
 
 import 'package:uuid/uuid.dart';
 
@@ -247,6 +247,7 @@ class GoodsBomEditDraft implements GoodsBomRepository {
       'componentModel',
       'componentSpec',
       'componentMaterial',
+      'componentStockQty',
       'componentUnitName',
       'componentColorName',
       'componentSourceType',
@@ -541,9 +542,7 @@ class GoodsBomEditDraft implements GoodsBomRepository {
     try {
       await _ensure(rootGoodsId);
       final scope = await _scope();
-      final request = Map<String, dynamic>.from(
-        jsonDecode(jsonEncode(_request())) as Map,
-      );
+      final request = JsonValueSnapshot.capture(_request()).data;
       final json = await scope.run(
         () => api.post('${_path(rootGoodsId)}/preview', body: request),
       );

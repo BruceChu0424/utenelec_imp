@@ -5,10 +5,13 @@
 //  - 返回修改：不提交，重复行整行标红（EditableGridRow.flagged 红底）。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
 
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -115,6 +118,40 @@ class _ExistingSnapshot extends SessionSnapshotNotifier {
 }
 
 void main() {
+  testWidgets('1000行保存校验定位离屏数量错误且不提交', (tester) async {
+    final api = await _pumpEditor(tester, [
+      for (var index = 0; index < 1000; index++)
+        {
+          'id': 'it-$index',
+          'goodsId': 'goods-1',
+          'unitId': 'unit-box',
+          'unitRate': 1,
+          'qty': index == 999 ? 0 : 1,
+          'price': 10,
+        },
+    ]);
+    final grid = tester.widget<UtenEditableGrid<SalesGridRow>>(
+      find.byType(UtenEditableGrid<SalesGridRow>),
+    );
+    final last = grid.controller.rows.last;
+    Finder lastQuantity() => find.byWidgetPredicate(
+      (widget) => widget is TextField && identical(widget.controller, last.qty),
+    );
+    expect(lastQuantity(), findsNothing);
+    expect(grid.controller.mountedRowCount, lessThan(100));
+    await tester.tap(find.text('保存'), kind: PointerDeviceKind.mouse);
+    await tester.pumpAndSettle();
+    expect(api.lastPutBody, isNull);
+    expect(lastQuantity().hitTestable(), findsOneWidget);
+    final editable = tester.widget<EditableText>(
+      find.descendant(of: lastQuantity(), matching: find.byType(EditableText)),
+    );
+    expect(editable.focusNode.hasFocus, isTrue);
+    expect(grid.controller.rows, hasLength(1000));
+    expect(grid.controller.mountedRowCount, lessThan(100));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('数量不同的重复行：汇总合并后提交单行数量之和', (tester) async {
     final api = await _pumpEditor(tester, [
       {

@@ -17,6 +17,7 @@
 // （report.production.detail|summary，ReportFilterPrefs.status）；关键字不持久化。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -94,6 +95,18 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
   @override
   void initState() {
     super.initState();
+    // Keep the monotonic reader epoch observed for this page's whole lifetime.
+    ref.listenManual(exportContextEpochProvider, (previous, next) {
+      if (!mounted || previous == next) return;
+      setState(() {
+        ++_loadGeneration;
+        _data = null;
+        _loading = false;
+        _page = 1;
+        _keyword = '';
+        _filters.clear();
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _applyPrefs(ref.read(_prefsProvider));
       _load();
@@ -137,6 +150,11 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
   Future<void> _load() async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
+    final readEpoch = ref.read(exportContextEpochProvider);
+    bool current() =>
+        mounted &&
+        generation == _loadGeneration &&
+        readEpoch == ref.read(exportContextEpochProvider);
     final requestedPage = _page;
     setState(() => _loading = true);
     // 分段计数与列表同步重取（写操作成功 / 返回本页 / 手动改筛选都经过这里）。
@@ -157,13 +175,19 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
         '/production/reports/plan/${_kind.endpoint}',
         query: query,
       );
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || !current()) return;
+      final decodedReport = await parseReportResponseResponsive(
+        json,
+        requestedPage,
+        isCurrent: current,
+      );
+      if (!mounted || !current()) return;
       setState(() {
-        _data = parseReportResponse(json, requestedPage);
+        _data = decodedReport;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || !current()) return;
       context.appError('加载报表失败');
       setState(() => _loading = false);
     }
@@ -238,7 +262,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
       '/production/reports/plan/${_kind.endpoint}',
       query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
     );
-    final data = parseReportResponse(json, 1);
+    final data = await parseReportResponseResponsive(json, 1);
     return UtenPrintTable(
       columnKeys: [for (final c in data.columns) c.key],
       rowIds: [for (final r in data.rows) r['id']?.toString()],

@@ -400,7 +400,7 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
                 CREATE TABLE settlement_methods(id uuid,name text);
                 CREATE TABLE employees(id uuid,full_name text);
                 CREATE TABLE goods(id uuid,code text,name text, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8));
-                CREATE TABLE colors(id uuid,name text);
+                CREATE TABLE colors(id uuid,name text,remark text);
                 CREATE TABLE units(id uuid,name text);
                 """);
         for (String prefix : List.of("purchase", "subcontract")) {

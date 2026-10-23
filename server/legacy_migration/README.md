@@ -2,6 +2,12 @@
 
 本目录只用于 `YTDQ_2023` 离线一致性快照到新库的首次引导导入或可丢弃演练。它不是切流后的增量同步器，也不是普通运维入口。权威模块清单、对账和生产门禁见 [迁移总索引](../../docs/数据迁移/README.md)。
 
+2026-10-22 的人事优先重建、字典清洗、最新Excel覆盖、老备注语义、全量材质核对、原始附件及本地切换统一从[重建彩排与正式导入执行手册](../../docs/数据迁移/重建彩排与正式导入执行手册.md)执行。`rehearse_local_import.py` 是该本地彩排的Windows原生协调器，各层绑定同一次实际只读导出及SHA，保留既有SQL约束与单事务。原货品loader单独不导二进制；整批协调器增加[扫描后原始附件层](LEGACY_GOODS_MEDIA.md)，不能沿用旧文档“图纸不迁”的结论忽略实际原件。材质只有身份、没有真实单耗时保存V904待核关系，不生成虚构BOM用量。
+
+建库使用 `InitializeRehearsal.java` 和保留原管理员工具，完整命令见主SOP。整批提交后分别执行[通用只读结果验证](RESULT_VERIFICATION.md)与[员工绑定专项](EMPLOYEE_BINDING_AUDIT.md)；预期值来自当次封存源，失败停止切换。历史UUID可追溯、现行责任托管、原密码保全和实际登录是分别记录的结论。
+
+当前本地重建协议为`bootstrap-v18`，保留V913生产累计来源证明，并增加V914财务主档来源保全、SK/ZH独立编号和[财务主档验收](FINANCE_MASTER_SOURCE_ACCEPTANCE.md)。真实财务预置基线须在恢复管理员前捕获，prepare及验收均以本轮基线SHA绑定；人员旧账号显示名仅作为晚写入的来源元数据保留，不恢复旧登录账号。`prepare`必须同时通过[全表处置](SOURCE_TABLE_COVERAGE.md)和[完整列、字典分组与账户审核](SOURCE_COMPLETENESS.md)，显式提供新`--completeness-audit`；先用`export_source_completeness_audit.ps1`从本次实际只读clone取证。正常行数增长不写死；未知结构或来源事实先阻断。v16的旧shell All三个别名已在任何Docker/claim操作前拒绝，请使用主SOP的Python完整入口；下文旧shell全量事务说明只解释此前协议，不作为当前协议执行替代。
+
 `migrate.sh` 的当前 schema 集合由 `verify_candidate.py` 从受审 Git 提交的正式 Flyway 资源逐文件计算，再与发布 checksum manifest 和目标 `flyway_schema_history` 三方精确比较；不再另存固定 head/count。导入映射协议由 `mapping-version.txt` 单独版本化。缺文件、额外版本、checksum 不符、未跟踪或未提交源码全部拒绝。旧 `bootstrap-v10-v426` 只是历史运行身份，不再是当前导入目标。
 
 目录兼容或合成测试不会自动授权目标库。真实源导出、目标首导与业务切换分别需要可核验的批准和证据；现役 PostgreSQL 的前向升级不使用此脚本，也不重导旧业务。任何目标未授权的破坏性历史迁移（包括 V425）不得借首次导入越过；目标 schema 必须事先由该环境批准的正式 migrator 建立。
@@ -21,7 +27,7 @@
 ```bash
 bash server/legacy_migration/migrate.sh --help
 bash server/legacy_migration/migrate.sh --goods --confirm-destructive
-bash server/legacy_migration/migrate.sh --bootstrap-all --confirm-destructive
+# v16完整重建：按主SOP使用rehearse_local_import.py prepare/apply
 ```
 
 `--bootstrap-all` 只允许由正式 Flyway 建好的空业务新库或可丢弃演练库。入口核对目标库名、集群身份和首导批准，并用当前业务表分类逐表检查无业务事实；不会调用业务清空函数。不得在已经切流、含新业务写入或无法完整恢复的数据库运行。
@@ -83,7 +89,11 @@ V630(2026-09-20)退役了 V443 的客户货款类别标签：首导不再按 `B_
 
 「对不上的就不要」：落在 DROP 仓上的库存单据(整张，含调拨任一端)、余额和采购收货单不迁；老库主仓上所属仓库为空的货品明细/余额不迁(设置 `UTEN_LEGACY_UNASSIGNED_WAREHOUSE_CODE=<子仓编号>` 时落到该子仓)。全部逐条写入 `bootstrap_warehouse_exclusions`(装配器跨模块保留)，`reconcile_modules.py` 按它扣减行数对账并写进运行记录 `warehouseExclusions`，`migrate.sh` 导出 `data/import_report/warehouse_exclusions.csv`。销售、委外、采购申请/退货若落在 DROP 仓上直接中止，先人工定去向(老库目前没有这种单据)。
 
-全量顺序：仓库目标主档 → 主档 → 货品 → 货品所属仓库 → 交易模块。货品所属仓库来自人工清单 `data/goods_owning_warehouse.csv`(`goods_legacy_id|warehouse_code`)，由 `python server/legacy_migration/import_product_lists.py --emit-owning-csv server/legacy_migration/data/goods_owning_warehouse.csv` 按新 ERP 产品列表生成，`migrate.sh --goods-owning-warehouse` 只填空；仓库必须是主仓下的可选良品子仓。`import_product_lists.py` 也只匹配这类子仓，找不到报错写 `warehouse_name_unmatched.csv`，不再补建仓库存根。导入映射协议随之升为 `bootstrap-v13`。
+全量顺序：仓库目标主档 → 主档 → 货品 → 货品所属仓库 → 交易模块。货品所属仓库来自人工清单 `data/goods_owning_warehouse.csv`(`goods_legacy_id|warehouse_code`)，由 `python server/legacy_migration/import_product_lists.py --emit-owning-csv server/legacy_migration/data/goods_owning_warehouse.csv` 按新 ERP 产品列表生成，`migrate.sh --goods-owning-warehouse` 只填空；仓库必须是主仓下的可选良品子仓。`import_product_lists.py` 也只匹配这类子仓，找不到报错写 `warehouse_name_unmatched.csv`，不再补建仓库存根。当时导入映射协议升为 `bootstrap-v13`；此前 `bootstrap-v15` 另包含 V908 首次历史累计数量证明与 V909 原始上游编号保全，完整受审文件集必须与 `mapping-version.txt` 一致。
+
+V908 起映射协议前向升为 `bootstrap-v14`：采购订货、销售订货/出货的历史累计计数只在真实首次 INSERT、完整 typed 源行、同 RUNNING BOOTSTRAP run/事务/目标 UUID/源文件 SHA 及完整数量投影均一致时承认原始基线；采购收货复用 V627 原始来源证明并严格约束后加的赠品/审批默认字段。原始超限不是财务批准，不写超收比例、批准超量、库存、需求或新审批。负累计数、在线新增、后续 UPDATE 增长和不合法退货反向仍受原守卫；可纠正减少规则不变。新证据表沿现行 legacy/NONE 迁移汇总审计与业务清空 PRESERVE 策略保留。
+
+V909 起映射协议前向升为 `bootstrap-v15`：采购/委外收货明细完整来源证明增加`order_item_legacy_id` 原始正上游 ID 快照。旧上游订单已缺失时真实 `order_item_id` 保持 NULL，原 ID 与 V627 不可变 source row/file SHA、run 和目标 UUID 一起保留为待核；不猜绑、不补假订单、不删有效收货行。旧证明不含新列时仅兼容 NULL，不回填；新列不可补写、改变或清空。原 goods/color/unit 显式主档校验与全部数量/金额/审批/库存守卫不变，来源快照不形成新容量。
 
 ## 历史资金与期初余额
 

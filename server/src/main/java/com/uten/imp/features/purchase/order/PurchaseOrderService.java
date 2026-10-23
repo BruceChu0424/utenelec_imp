@@ -1,4 +1,5 @@
 package com.uten.imp.features.purchase.order;
+import com.uten.imp.common.util.EmployeeNameResolver;
 
 import com.uten.imp.common.web.HeaderColumnFilter;
 
@@ -1606,7 +1607,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 order.getId(), order.getLegacyId(), order.getBillNo(), order.getBillDate(),
                 order.getSupplierId(), order.getWarehouseId(), priceMasked ? null : order.getCurrencyId(),
                 priceMasked ? null : order.getExchangeRate(), priceMasked ? null : com.uten.imp.common.finance.ProcurementApprovedTaxRate.read(em, "PURCHASE", order.getId(), order.getTaxRate()),
-                order.getPurchaserId(), nameResolver.nameWithCodeOf(order.getPurchaserId()),
+                order.getPurchaserId(), order.getPurchaserId() != null
+                        ? nameResolver.nameWithCodeOf(order.getPurchaserId())
+                        : nameResolver.historicalWorkerNameWithCodeOf(null, order.getId(), order.getLegacyId(),
+                            EmployeeNameResolver.HistoricalWorkerRole.PURCHASE_ORDER_PURCHASER),
                 priceMasked ? null : order.getSettlementMethodId(),
                 priceMasked || order.getSettlementStyleLegacy() == null
                         ? null : order.getSettlementStyleLegacy().intValue(),

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/task_form_drafts.dart';
 import 'warehouse_draw_task.dart';
@@ -8,6 +10,45 @@ bool _queryContains(FormDraft draft, String key, String id) =>
         .map((value) => value.trim())
         .contains(id);
 
+Set<String>? _strictIds(Object? raw) {
+  if (raw is! List ||
+      raw.isEmpty ||
+      raw.any((id) => id is! String || id.isEmpty || id.trim() != id)) {
+    return null;
+  }
+  final ids = raw.cast<String>().toSet();
+  return ids.length == raw.length ? ids : null;
+}
+
+/// These editor routes define an omitted scope as their legacy whole source.
+/// A present empty/malformed scope, or a snapshot whose scope lost its route,
+/// never inherits that compatibility meaning.
+bool _physicalMember(
+  FormDraft draft,
+  Iterable<String>? currentIds, {
+  String queryKey = 'itemIds',
+  String dataKey = 'selectedItemIds',
+}) {
+  final query = Uri.tryParse(draft.route)?.queryParameters;
+  if (query == null) return false;
+  final rawSaved = draft.data[dataKey];
+  if (query.containsKey(queryKey)) {
+    final routed = _strictIds(query[queryKey]!.split(','));
+    if (routed == null) return false;
+    if (draft.data.containsKey(dataKey)) {
+      final saved = _strictIds(rawSaved);
+      if (saved == null ||
+          saved.length != routed.length ||
+          !saved.containsAll(routed)) {
+        return false;
+      }
+    }
+    return currentIds == null || currentIds.any(routed.contains);
+  }
+  if (rawSaved != null) return false;
+  return currentIds == null || currentIds.isNotEmpty;
+}
+
 List<FormDraft> arrivalTaskDrafts(
   Iterable<FormDraft> drafts,
   String expectationId, {
@@ -17,12 +58,12 @@ List<FormDraft> arrivalTaskDrafts(
   matches: (draft) =>
       FormDraftCatalog.arrival.groups(draft) &&
       _queryContains(draft, 'expectationIds', expectationId) &&
-      (expectationItemId == null ||
-          Uri.tryParse(
-                draft.route,
-              )?.queryParameters.containsKey('expectationItemIds') !=
-              true ||
-          _queryContains(draft, 'expectationItemIds', expectationItemId)) &&
+      _physicalMember(
+        draft,
+        expectationItemId == null ? null : [expectationItemId],
+        queryKey: 'expectationItemIds',
+        dataKey: 'expectationItemIds',
+      ) &&
       (draft.data['rows'] is! List ||
           (draft.data['rows'] as List).whereType<Map<Object?, Object?>>().any(
             (row) => row['expectationId'] == expectationId,
@@ -68,25 +109,29 @@ List<FormDraft> drawTaskDrafts(
 
 List<FormDraft> subcontractOutboundTaskDrafts(
   Iterable<FormDraft> drafts,
-  String issueId,
-) => taskDraftsFor(
+  String issueId, {
+  String? itemId,
+}) => taskDraftsFor(
   drafts,
   matches: (draft) =>
-      (FormDraftCatalog.subcontractOutbound.groups(draft) &&
-          Uri.tryParse(draft.route)?.path ==
-              '/warehouse/subcontract-outbound/$issueId') ||
-      (FormDraftCatalog.subcontractOutboundBatch.groups(draft) &&
-          _queryContains(draft, 'issueIds', issueId) &&
-          !(draft.data['completed'] is List &&
-              (draft.data['completed'] as List).contains(issueId))),
+      _physicalMember(draft, itemId == null ? null : [itemId]) &&
+      ((FormDraftCatalog.subcontractOutbound.groups(draft) &&
+              Uri.tryParse(draft.route)?.path ==
+                  '/warehouse/subcontract-outbound/$issueId') ||
+          (FormDraftCatalog.subcontractOutboundBatch.groups(draft) &&
+              _queryContains(draft, 'issueIds', issueId) &&
+              !(draft.data['completed'] is List &&
+                  (draft.data['completed'] as List).contains(issueId)))),
 );
 
 List<FormDraft> salesOutboundTaskDrafts(
   Iterable<FormDraft> drafts,
-  String shipmentId,
-) => taskDraftsFor(
+  String shipmentId, {
+  String? itemId,
+}) => taskDraftsFor(
   drafts,
   matches: (draft) {
+    if (!_physicalMember(draft, itemId == null ? null : [itemId])) return false;
     final uri = Uri.tryParse(draft.route);
     return (FormDraftCatalog.warehouseSalesOutbound.groups(draft) &&
             uri?.path == '/warehouse/sales-outbound/$shipmentId') ||
@@ -102,6 +147,7 @@ List<FormDraft> finishedInboundTaskDrafts(
   String? reportId,
   String? lotId,
   String? documentId,
+  String? itemId,
 }) => taskDraftsFor(
   drafts,
   matches: (draft) =>
@@ -111,12 +157,47 @@ List<FormDraft> finishedInboundTaskDrafts(
           (lotId == null || _finishedArrivalDraftContainsLot(draft, lotId))) ||
       (documentId != null &&
           FormDraftCatalog.productionFinishedBatchStockIn.groups(draft) &&
+          _physicalMember(draft, itemId == null ? null : [itemId]) &&
+          _finishedItemOwner(draft, itemId, documentId) &&
           _queryContains(draft, 'documentIds', documentId) &&
           (draft.data['selectedDocumentIds'] is! List ||
               (draft.data['selectedDocumentIds'] as List).contains(
                 documentId,
               ))),
 );
+
+bool _finishedItemOwner(FormDraft draft, String? itemId, String documentId) {
+  final query =
+      Uri.tryParse(draft.route)?.queryParameters ?? const <String, String>{};
+  final selected = query.containsKey('itemIds')
+      ? _strictIds(query['itemIds']!.split(','))
+      : null;
+  final documents = (query['documentIds'] ?? '').split(',').toSet();
+  bool valid(Object? raw) {
+    if (raw is! Map ||
+        raw.entries.any(
+          (entry) => entry.key is! String || entry.value is! String,
+        )) {
+      return false;
+    }
+    final mapping = raw.cast<String, String>();
+    if (selected == null) return mapping.isEmpty;
+    return mapping.length == selected.length &&
+        mapping.keys.toSet().containsAll(selected) &&
+        documents.containsAll(mapping.values) &&
+        (itemId == null || mapping[itemId] == documentId);
+  }
+
+  if (query.containsKey('itemDocuments')) {
+    try {
+      if (!valid(jsonDecode(query['itemDocuments']!))) return false;
+    } on FormatException {
+      return false;
+    }
+  }
+  return !draft.data.containsKey('selectedItemDocuments') ||
+      valid(draft.data['selectedItemDocuments']);
+}
 
 bool _finishedArrivalDraftContainsLot(FormDraft draft, String lotId) {
   if (Uri.tryParse(draft.route)?.queryParameters.containsKey('lotIds') ==
@@ -133,21 +214,145 @@ bool _finishedArrivalDraftContainsLot(FormDraft draft, String lotId) {
 
 List<FormDraft> stockTaskDrafts(
   Iterable<FormDraft> drafts,
-  String documentId,
-) => taskDraftsFor(
+  String documentId, {
+  String? itemId,
+}) => taskDraftsFor(
   drafts,
   matches: (draft) =>
-      (FormDraftCatalog.warehouseDraw.groups(draft) &&
-          _queryContains(draft, 'documentIds', documentId)) ||
-      (FormDraftCatalog.materialReturnBatchReceive.groups(draft) &&
-          _queryContains(draft, 'documentIds', documentId) &&
-          !(draft.data['rows'] is List &&
-              (draft.data['rows'] as List)
-                  .whereType<Map<Object?, Object?>>()
-                  .any(
-                    (row) =>
-                        row['documentId'] == documentId && row['done'] == true,
-                  ))),
+      _physicalMember(draft, itemId == null ? null : [itemId]) &&
+      ((FormDraftCatalog.warehouseDraw.groups(draft) &&
+              _queryContains(draft, 'documentIds', documentId)) ||
+          (FormDraftCatalog.materialReturnBatchReceive.groups(draft) &&
+              _queryContains(draft, 'documentIds', documentId) &&
+              !(draft.data['rows'] is List &&
+                  (draft.data['rows'] as List)
+                      .whereType<Map<Object?, Object?>>()
+                      .any(
+                        (row) =>
+                            row['documentId'] == documentId &&
+                            row['done'] == true,
+                      )))),
+);
+
+List<FormDraft> workshopMaterialTaskDrafts(
+  Iterable<FormDraft> drafts,
+  String requisitionId, {
+  String? lineId,
+}) => taskDraftsFor(
+  drafts,
+  matches: (draft) {
+    if (FormDraftCatalog.workshopMaterialBatchIssue.groups(draft)) {
+      final uri = Uri.tryParse(draft.route);
+      final raw = uri?.queryParameters['selections'];
+      if (raw == null) return false;
+      try {
+        final routed = _workshopSelections(jsonDecode(raw));
+        final saved = _workshopSelections(draft.data['selections']);
+        if (routed == null ||
+            saved == null ||
+            jsonEncode(routed) != jsonEncode(saved)) {
+          return false;
+        }
+        final lines = routed[requisitionId];
+        return lines != null && (lineId == null || lines.contains(lineId));
+      } on FormatException {
+        return false;
+      }
+    }
+    return FormDraftCatalog.workshopMaterialIssue.groups(draft) &&
+        _queryContains(draft, 'requisitionId', requisitionId) &&
+        _physicalMember(
+          draft,
+          lineId == null ? null : [lineId],
+          queryKey: 'lineIds',
+          dataKey: 'selectedLineIds',
+        ) &&
+        (!draft.data.containsKey('requisitionId') ||
+            draft.data['requisitionId'] == requisitionId);
+  },
+);
+
+Map<String, List<String>>? _workshopSelections(Object? raw) {
+  if (raw is! Map || raw.isEmpty) return null;
+  if (raw.keys.any(
+    (key) => key is! String || key.isEmpty || key.trim() != key,
+  )) {
+    return null;
+  }
+  final result = <String, List<String>>{};
+  for (final key in raw.keys.cast<String>().toList()..sort()) {
+    final ids = _strictIds(raw[key]);
+    if (ids == null) return null;
+    result[key] = ids.toList()..sort();
+  }
+  return result;
+}
+
+Map<String, Object>? _discoveryScope(Object? raw) {
+  if (raw is! String) return null;
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map<String, dynamic> || decoded.isEmpty) return null;
+    final result = <String, Object>{};
+    for (final key in decoded.keys.toList()..sort()) {
+      final value = decoded[key];
+      if (key.isEmpty ||
+          value is! Map ||
+          value['expectedVersion'] is! int ||
+          (value['expectedVersion'] as int) < 0) {
+        return null;
+      }
+      final keys = _strictIds(value['keys']);
+      if (keys == null ||
+          keys.any(
+            (key) => !RegExp(r'^suggestion-[1-9][0-9]*$').hasMatch(key),
+          )) {
+        return null;
+      }
+      result[key] = {
+        'expectedVersion': value['expectedVersion'],
+        'keys': keys.toList()..sort(),
+      };
+    }
+    return result;
+  } on FormatException {
+    return null;
+  }
+}
+
+List<FormDraft> materialDiscoveryTaskDrafts(
+  Iterable<FormDraft> drafts,
+  String requestId, {
+  String? suggestionKey,
+  int? expectedVersion,
+}) => taskDraftsFor(
+  drafts,
+  matches: (draft) {
+    final uri = Uri.tryParse(draft.route);
+    if (FormDraftCatalog.warehouseDiscovery.groups(draft) &&
+        uri?.path == '/warehouse/material-discovery/$requestId') {
+      return true;
+    }
+    if (!FormDraftCatalog.warehouseDraw.groups(draft) ||
+        !_queryContains(draft, 'discoveryRequestIds', requestId)) {
+      return false;
+    }
+    if (uri?.queryParameters.containsKey('discoverySelection') != true) {
+      return draft.data['discoverySelection'] == null;
+    }
+    final scope = _discoveryScope(uri!.queryParameters['discoverySelection']);
+    if (scope == null || !scope.containsKey(requestId)) return false;
+    if (draft.data.containsKey('discoverySelection') &&
+        jsonEncode(_discoveryScope(draft.data['discoverySelection'])) !=
+            jsonEncode(scope)) {
+      return false;
+    }
+    final member = scope[requestId] as Map<String, dynamic>;
+    return (expectedVersion == null ||
+            expectedVersion == member['expectedVersion']) &&
+        (suggestionKey == null ||
+            (member['keys'] as List<String>).contains(suggestionKey));
+  },
 );
 
 List<FormDraft> qualityStockInTaskDrafts(
@@ -155,13 +360,20 @@ List<FormDraft> qualityStockInTaskDrafts(
   String receiptType,
   String receiptId, {
   String? inspectionItemId,
+  Iterable<String>? inspectionItemIds,
 }) => taskDraftsFor(
   drafts,
   matches: (draft) {
     final uri = Uri.tryParse(draft.route);
-    if (inspectionItemId != null &&
-        uri?.queryParameters.containsKey('inspectionItemIds') == true &&
-        !_queryContains(draft, 'inspectionItemIds', inspectionItemId)) {
+    final current =
+        inspectionItemIds ??
+        (inspectionItemId == null ? null : [inspectionItemId]);
+    if (!_physicalMember(
+      draft,
+      current,
+      queryKey: 'inspectionItemIds',
+      dataKey: 'inspectionItemIds',
+    )) {
       return false;
     }
     final segments = uri?.pathSegments ?? const <String>[];

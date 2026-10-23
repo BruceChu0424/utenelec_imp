@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_h_scroll_area.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/components/data_display/uten_table_text_selection.dart';
 
 class _Row extends EditableGridRow {
@@ -28,6 +29,7 @@ Widget _page(
   bool showName = true,
   Set<String> hidden = const {},
   Set<String> pinned = const {},
+  bool wideTail = false,
 }) => MaterialApp(
   home: Scaffold(
     body: SelectionArea(
@@ -78,6 +80,14 @@ Widget _page(
                   readOnly: readOnlyInput,
                 ),
               ),
+              if (wideTail)
+                EditableGridColumn<_Row>(
+                  key: 'tail',
+                  label: 'Reference',
+                  width: 1000,
+                  textOf: (_) => 'Reference',
+                  cellBuilder: (_, _) => const Text('Reference'),
+                ),
             ],
           ),
         ],
@@ -152,6 +162,50 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null);
   });
+
+  _testWindows(
+    'large grid retains only native selected rows across distant scroll and releases cleared selection',
+    (tester) async {
+      final rows = List.generate(1000, (i) => _Row('Product row $i'));
+      final controller = UtenEditableGridController<_Row>(initial: rows);
+      await tester.pumpWidget(_page(controller));
+      await tester.pumpAndSettle();
+      final first = tester.getRect(find.text('Product row 0'));
+      final second = tester.getRect(find.text('Product row 1'));
+      final gesture = await tester.startGesture(
+        Offset(first.left + 1, first.center.dy),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveTo(Offset(first.right, first.center.dy));
+      await tester.pump();
+      await gesture.moveTo(Offset(second.right + 2, second.center.dy));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+      final scroll = Scrollable.of(
+        tester.element(find.byType(UtenEditableGrid<_Row>)),
+        axis: Axis.vertical,
+      );
+      scroll.position.jumpTo(20000);
+      await tester.pumpAndSettle();
+      expect(find.text('Product row 0'), findsOneWidget);
+      expect(find.text('Product row 1'), findsOneWidget);
+      expect(controller.mountedRowCount, lessThan(40));
+      await _copyShortcut(tester);
+      expect(clipboard, contains('Product row 0'));
+      expect(clipboard, contains('Product row 1'));
+      tester
+          .state<SelectionAreaState>(_bodyArea)
+          .selectableRegion
+          .clearSelection();
+      await tester.pumpAndSettle();
+      expect(find.text('Product row 1'), findsNothing);
+      expect(controller.rows, hasLength(1000));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      controller.dispose();
+    },
+  );
 
   _testWindows(
     'plain and custom cells share a stable body-only selection region',
@@ -436,7 +490,7 @@ void main() {
   _testWindows(
     'frozen cells copy once and keep native input state while scrolling',
     (tester) async {
-      tester.view.physicalSize = const Size(520, 600);
+      tester.view.physicalSize = const Size(1000, 600);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       final controller = UtenEditableGridController<_Row>(
@@ -444,7 +498,7 @@ void main() {
       );
       addTearDown(controller.dispose);
       await tester.pumpWidget(
-        _page(controller, pinned: const {'name', 'note'}),
+        _page(controller, pinned: const {'name', 'note'}, wideTail: true),
       );
       await tester.pumpAndSettle();
       final inputState = tester.state<EditableTextState>(
@@ -453,6 +507,16 @@ void main() {
       final horizontal = tester
           .widget<UtenHScrollArea>(find.byType(UtenHScrollArea))
           .controller!;
+      final prefix = tester
+          .widgetList<UtenFrozenLeadingColumn>(
+            find.byType(UtenFrozenLeadingColumn),
+          )
+          .firstWhere((column) => identical(column.horizontal, horizontal));
+      expect(
+        prefix.width + 120,
+        lessThanOrEqualTo(horizontal.position.viewportDimension),
+        reason: 'full pinned copy needs a visible ordinary-column window',
+      );
       horizontal.jumpTo(100);
       await tester.pumpAndSettle();
       expect(
@@ -460,7 +524,9 @@ void main() {
         same(inputState),
       );
       expect(find.text('Alpha goods'), findsNWidgets(2));
-      await tester.tap(find.text('Alpha goods').last);
+      final visibleName = find.text('Alpha goods').hitTestable();
+      expect(visibleName, findsOneWidget);
+      await tester.tap(visibleName);
       tester.state<SelectionAreaState>(_bodyArea).selectableRegion.selectAll();
       await tester.pump();
       await _copyShortcut(tester);

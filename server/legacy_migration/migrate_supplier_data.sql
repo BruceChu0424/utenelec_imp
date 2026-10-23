@@ -7,7 +7,7 @@
 --   （B_Provider.ParentID → SystemItem.ItemID ItemclassID=3）。老库 386 条全部已分组，
 --   故 category_id 无 NULL。字段语义见 V38。
 -- staging 用真实类型，COPY csv 自动 cast + 空字段→null。
--- emp_id 原样保留为 legacy 快照；owner_employee_id 仅按唯一 employees.legacy_id 精确写入。
+-- emp_id 原样保留；当前 owner 只映射在职员工，离职或无法解析的旧负责人由 ADMIN 临时托管。
 -- =====================================================================
 
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
@@ -68,13 +68,7 @@ CREATE TEMP TABLE supplier_stage (
 );
 \copy supplier_stage FROM '/tmp/supplier.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
-WITH unique_employees AS (
-    SELECT legacy_id, (array_agg(id ORDER BY id))[1] AS employee_id
-    FROM employees
-    WHERE legacy_id IS NOT NULL
-    GROUP BY legacy_id
-    HAVING count(*) = 1
-), numbered AS (
+WITH numbered AS (
     SELECT ss.*,
            row_number() OVER (ORDER BY ss.legacy_id) AS seq_ordinal,
            count(*) OVER ()::bigint AS allocation_count
@@ -101,7 +95,7 @@ SELECT
          FROM system_master_category_registry
          WHERE id = '27500000-0000-4000-8000-000000000001'::uuid)),
     ss.name, ss.code, ss.description, ss.place,
-    ss.emp_id, employee_owner.employee_id,
+    ss.emp_id, employee_owner.owner_id,
     ss.legal_person, ss.linkman, ss.mobile, ss.phone, ss.phone2, ss.fax,
     ss.postcode, ss.address, ss.email, ss.website, ss.ship_via, ss.ship_address,
     ss.bank, ss.bank_account, ss.tax_id, ss.init_total, ss.init_total2, ss.exchange_rate,
@@ -109,12 +103,13 @@ SELECT
     reserved.last_seq - ss.allocation_count + ss.seq_ordinal
 FROM numbered ss
 CROSS JOIN reserved
-LEFT JOIN unique_employees employee_owner
-  ON employee_owner.legacy_id = CASE
-      WHEN btrim(ss.emp_id) ~ '^[0-9]{1,9}$'
-          THEN NULLIF(btrim(ss.emp_id)::int, 0)
-      ELSE NULL
-  END;
+LEFT JOIN LATERAL pg_temp.legacy_owner_resolution(ss.emp_id) employee_owner ON true;
+
+INSERT INTO pg_temp.legacy_owner_custody
+SELECT 'suppliers',s.id,s.legacy_id,stage.emp_id,resolution.original_employee_id,s.owner_employee_id,resolution.reason
+FROM suppliers s JOIN supplier_stage stage ON stage.legacy_id=s.legacy_id
+CROSS JOIN LATERAL pg_temp.legacy_owner_resolution(stage.emp_id) resolution
+WHERE resolution.reason NOT IN ('PUBLIC_SOURCE','CURRENT_EMPLOYEE');
 
 
 SELECT '✔ 供应商 ' || count(*) ||

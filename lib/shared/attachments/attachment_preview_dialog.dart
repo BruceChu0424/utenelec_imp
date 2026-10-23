@@ -8,7 +8,7 @@ import '../../core/theme/uten_tokens.dart';
 import 'attachment_archive_listing.dart';
 import 'attachment_delimited_text.dart';
 import 'attachment_file_rules.dart';
-import 'attachment_text_decoder.dart';
+import 'attachment_preview_parser.dart';
 
 /// 附件内嵌预览（2026-09-09 起，2026-09-11 扩到办公常见类型）。
 ///
@@ -59,7 +59,7 @@ class AttachmentPreviewDialog extends StatefulWidget {
 
 class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
   late final AttachmentPreviewKind _kind;
-  late final Future<_PreviewPayload> _payload;
+  late final Future<AttachmentPreviewPayload> _payload;
   final PdfViewerController _pdf = PdfViewerController();
 
   int? _page;
@@ -75,35 +75,11 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
     _kind = declared == AttachmentPreviewKind.serverPdf
         ? AttachmentPreviewKind.pdf
         : declared;
-    // 解码/解析放到下一个微任务：首帧先出骨架，大文件不会卡住弹窗的打开动画。
-    _payload = Future.microtask(() => _parse(_kind, widget.bytes));
-  }
-
-  static _PreviewPayload _parse(AttachmentPreviewKind kind, Uint8List bytes) {
-    try {
-      switch (kind) {
-        case AttachmentPreviewKind.text:
-          final decoded = decodeAttachmentText(bytes);
-          return _PreviewPayload(text: decoded);
-        case AttachmentPreviewKind.csv:
-          final decoded = decodeAttachmentText(bytes);
-          return _PreviewPayload(
-            text: decoded,
-            table: parseDelimitedText(decoded.text),
-          );
-        case AttachmentPreviewKind.archive:
-          return _PreviewPayload(listing: readZipListing(bytes));
-        case AttachmentPreviewKind.image:
-        case AttachmentPreviewKind.pdf:
-        case AttachmentPreviewKind.serverPdf:
-        case AttachmentPreviewKind.none:
-          return const _PreviewPayload();
-      }
-    } on ArchiveListingException catch (error) {
-      return _PreviewPayload(error: error.message);
-    } catch (_) {
-      return const _PreviewPayload(error: '文件内容无法解析，请下载原件查看');
-    }
+    _payload = parseAttachmentPreview(
+      _kind,
+      widget.bytes,
+      isCurrent: () => mounted,
+    );
   }
 
   void _close() {
@@ -167,7 +143,7 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
           },
           child: Focus(
             autofocus: true,
-            child: FutureBuilder<_PreviewPayload>(
+            child: FutureBuilder<AttachmentPreviewPayload>(
               future: _payload,
               builder: (context, snapshot) {
                 final payload = snapshot.data;
@@ -203,7 +179,7 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
   Widget _header(
     ThemeData theme,
     AttachmentFileKind kind,
-    _PreviewPayload? payload,
+    AttachmentPreviewPayload? payload,
   ) {
     final subtitle = _subtitle(payload);
     return Padding(
@@ -267,7 +243,7 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
   }
 
   /// 副标题如实交代「你看到的是什么」：文本的编码、表格的行列数、包内条目数、页码。
-  String? _subtitle(_PreviewPayload? payload) {
+  String? _subtitle(AttachmentPreviewPayload? payload) {
     if (payload == null) return null;
     switch (_kind) {
       case AttachmentPreviewKind.text:
@@ -355,7 +331,7 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
     ),
   );
 
-  Widget _body(ThemeData theme, _PreviewPayload payload) {
+  Widget _body(ThemeData theme, AttachmentPreviewPayload payload) {
     switch (_kind) {
       case AttachmentPreviewKind.pdf:
         return PdfViewer(
@@ -429,16 +405,6 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
         );
     }
   }
-}
-
-/// 各通道的解析产物；一次只用其中一项。
-class _PreviewPayload {
-  const _PreviewPayload({this.text, this.table, this.listing, this.error});
-
-  final DecodedAttachmentText? text;
-  final DelimitedTable? table;
-  final ArchiveListing? listing;
-  final String? error;
 }
 
 class _PreviewLoading extends StatelessWidget {

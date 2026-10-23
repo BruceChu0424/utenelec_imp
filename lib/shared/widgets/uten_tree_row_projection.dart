@@ -1,5 +1,9 @@
 import 'package:flutter/foundation.dart' show listEquals;
 
+/// Counts only boundary discovery, independently of the ancestor paths that
+/// form part of the output. Used to prevent quadratic subtree rescans.
+int debugTreeProjectionBoundaryVisits = 0;
+
 /// 一行在树里的结构投影：由**最终渲染序**（扁平 DFS）与每行的 depth 推导。
 ///
 /// 全站只保留这一份推导（2026-09-15）。此前物料分析主表与「父件+下层一起下单」
@@ -74,23 +78,43 @@ List<UtenTreeRowProjection> utenTreeProjection<T>(
   final childCounts = List<int>.filled(count, 0);
   final subtreeEnds = List<int>.filled(count, 0);
   final hasNextSibling = List<bool>.filled(count, false);
+  final open = <int>[];
+  assert(() {
+    debugTreeProjectionBoundaryVisits = 0;
+    return true;
+  }());
   for (var index = 0; index < count; index++) {
-    var cursor = index + 1;
-    var children = 0;
-    while (cursor < count && depths[cursor] > depths[index]) {
-      if (depths[cursor] == depths[index] + 1) children++;
-      cursor++;
+    assert(() {
+      debugTreeProjectionBoundaryVisits++;
+      return true;
+    }());
+    while (open.isNotEmpty && depths[open.last] >= depths[index]) {
+      final previous = open.removeLast();
+      subtreeEnds[previous] = index;
+      hasNextSibling[previous] =
+          depths[previous] == depths[index] &&
+          (treeKeys == null || treeKeys[previous] == treeKeys[index]);
+      assert(() {
+        debugTreeProjectionBoundaryVisits++;
+        return true;
+      }());
     }
-    childCounts[index] = children;
-    subtreeEnds[index] = cursor;
-    hasNextSibling[index] =
-        cursor < count &&
-        depths[cursor] == depths[index] &&
-        (treeKeys == null || treeKeys[cursor] == treeKeys[index]);
+    if (open.isNotEmpty && depths[open.last] == depths[index] - 1) {
+      childCounts[open.last]++;
+    }
+    open.add(index);
+  }
+  for (final index in open) {
+    subtreeEnds[index] = count;
+    assert(() {
+      debugTreeProjectionBoundaryVisits++;
+      return true;
+    }());
   }
   final result = <UtenTreeRowProjection>[];
   // 每个深度上「最近一个已出现的祖先」的下标，用来 O(1) 继承祖先链。
   final ancestorAtDepth = <int, int>{};
+  final ancestorDepths = <int>[];
   for (var index = 0; index < count; index++) {
     final depth = depths[index];
     List<bool> continuations;
@@ -109,8 +133,11 @@ List<UtenTreeRowProjection> utenTreeProjection<T>(
         ];
       }
     }
+    while (ancestorDepths.isNotEmpty && ancestorDepths.last >= depth) {
+      ancestorAtDepth.remove(ancestorDepths.removeLast());
+    }
     ancestorAtDepth[depth] = index;
-    ancestorAtDepth.removeWhere((key, value) => key > depth);
+    ancestorDepths.add(depth);
     result.add(
       UtenTreeRowProjection(
         depth: depth,

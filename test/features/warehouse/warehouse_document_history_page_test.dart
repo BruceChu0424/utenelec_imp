@@ -82,9 +82,10 @@ void main() {
     expect(wastes.lastBillNo, isNull);
     expect(wastes.lastSourceDocNo, isNull);
     expect(wastes.lastRange, ('2026-10-01', '2026-10-12'));
-    expect(table(type.value).requiredLeadingColumnKeys, [
+    expect(table(type.value).requiredLeadingColumnKeys, ['status', 'billNo']);
+    expect(table(type.value).columns.take(2).map((column) => column.key), [
       'status',
-      'goodsName',
+      'billNo',
     ]);
     expect(
       table(type.value).items.single.type,

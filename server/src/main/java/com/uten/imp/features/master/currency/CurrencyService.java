@@ -187,7 +187,7 @@ public class CurrencyService {
         }
         Currency c = new Currency();
         apply(req, c);
-        c.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        c.setCode(masterCodeService.resolveMutableCode(CODE_PREFIX, req.getCode(), null, null));
         if (c.getStatus() == null) c.setStatus("使用");
         repo.save(c);
         return toDetail(c);
@@ -208,6 +208,7 @@ public class CurrencyService {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("currency:status");
         }
         apply(req, c);
+        c.setCode(masterCodeService.resolveMutableCode(CODE_PREFIX, req.getCode(), c.getId(), c.getCode()));
         repo.save(c);
         return toDetail(c);
     }

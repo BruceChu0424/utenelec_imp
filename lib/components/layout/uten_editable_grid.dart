@@ -1,5 +1,6 @@
 import '../data_display/uten_table_surface.dart';
 import 'uten_panel_opening_scope.dart';
+import 'uten_ancestor_row_window.dart';
 import '../data_display/uten_table_text_selection.dart';
 import '../data_display/uten_selection_lifecycle.dart';
 import '../../shared/platform_tables/platform_table_binding.dart';
@@ -9,6 +10,7 @@ import '../../shared/platform_tables/platform_column_header_actions.dart';
 import '../../shared/platform_tables/platform_table_widgets.dart';
 import '../../shared/platform_tables/table_column_projection.dart';
 import '../../core/router/page_search_lifecycle.dart';
+import '../../core/performance/ui_work_budget.dart';
 import '../../shared/platform_tables/platform_row_draft.dart';
 import '../../shared/search/column_keyword_policy.dart';
 import '../../shared/search/keyword_search.dart';
@@ -49,6 +51,7 @@ import '../../shared/widgets/column_editor_dialog.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import '../inputs/uten_input_decoration.dart';
 import 'dart:convert';
 import '../data_display/uten_status_cell_color.dart';
@@ -63,6 +66,7 @@ import 'uten_grid_header_filter_cell.dart';
 import 'uten_h_scroll_area.dart';
 import 'uten_sticky_header.dart';
 import 'uten_table_column_kit.dart';
+import 'uten_table_horizontal_scroll_controller.dart';
 import '../data_display/uten_color_name.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 
@@ -71,6 +75,17 @@ import '../../shared/ai/page_context/ai_page_context.dart';
 export '../inputs/uten_table_cell_spec.dart';
 
 part 'uten_editable_grid_ai.dart';
+
+R _profileEditableGridWork<R>(String label, R Function() work) {
+  final observer = debugUiWorkSliceObserver;
+  if (observer == null) return work();
+  final clock = Stopwatch()..start();
+  try {
+    return work();
+  } finally {
+    observer(label, clock.elapsed);
+  }
+}
 
 /// 行模型基类。行持有自己的 TextEditingController / ValueNotifier（跨重建存活）。
 /// 删行/清空/替换时由 [UtenEditableGridController] 调 [dispose] 释放，避免泄漏。
@@ -399,6 +414,60 @@ class UtenEditableGridController<T extends EditableGridRow>
   }
 
   final List<T> _rows;
+  final _presentations = <Object, _GridPresentation<T>>{};
+
+  /// Number of mounted row widgets across attached views. Business operations
+  /// continue to use [rows], including rows outside the viewport.
+  int get mountedRowCount => _presentations.values.fold(
+    0,
+    (count, presentation) => count + presentation.mountedRows(),
+  );
+
+  bool get isMounting => _presentations.values.any((view) => view.isMounting());
+
+  /// Wait for real row mounting/layout and height correction in attached views.
+  Future<void> get settled async {
+    await Future.wait([
+      for (final view in List.of(_presentations.values)) view.settled(),
+    ]);
+  }
+
+  /// Mount and reveal a model row using the existing page scroll position.
+  /// Clears a view-only query if it hides the explicitly requested row.
+  Future<bool> revealRow(T row, {double alignment = .15}) async {
+    for (final view in List.of(_presentations.values)) {
+      if (await view.reveal(row, null, false, alignment)) return true;
+    }
+    return false;
+  }
+
+  /// Reveal a visible column and optionally focus its first editable control.
+  /// Hidden/unauthorized columns are never made visible by this operation.
+  Future<bool> revealCell(
+    T row,
+    String columnKey, {
+    bool requestFocus = true,
+    double alignment = .15,
+  }) async {
+    for (final view in List.of(_presentations.values)) {
+      if (await view.reveal(row, columnKey, requestFocus, alignment)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Validation navigation: focus a known editable column when available,
+  /// otherwise reveal its row without changing the column's visibility.
+  Future<bool> revealError(T row, {String? columnKey}) async {
+    for (final view in List.of(_presentations.values)) {
+      if (await view.error(row, columnKey)) return true;
+    }
+    return false;
+  }
+
+  List<T>? _rowsSnapshot;
+  Set<T>? _rowMembership;
   final Map<PlatformRowDraft, VoidCallback> _platformDraftListeners = {};
   void _bindPlatformDrafts() {
     final current = _rows.map((row) => row.platformFields).toSet();
@@ -429,7 +498,15 @@ class UtenEditableGridController<T extends EditableGridRow>
   /// 行集修订号(每次行集变化 +1)，表头筛选结果按它缓存。
   int get rowsRevision => _rowsRevision;
 
-  void _rowsChanged() {
+  void _rowsChanged() =>
+      _profileEditableGridWork('grid.rows-changed', _rowsChangedBody);
+
+  void _rowsChangedBody() {
+    // Publish a fresh immutable snapshot before synchronous total listeners can
+    // inspect the new rows. Selection-only notifications reuse the snapshot.
+    _rowsSnapshot = null;
+    _rowMembership = null;
+    _total.reattachTo(_rows);
     _bindPlatformDrafts();
     _rowsRevision++;
     _rowsSignal.fire();
@@ -441,48 +518,45 @@ class UtenEditableGridController<T extends EditableGridRow>
     notifyListeners();
   }
 
-  List<T> get rows => List.unmodifiable(_rows);
+  List<T> get rows => _rowsSnapshot ??= List<T>.unmodifiable(_rows);
+  Set<T> get _currentRows => _rowMembership ??= _rows.toSet();
   int get length => _rows.length;
   bool get isEmpty => _rows.isEmpty;
   T operator [](int i) => _rows[i];
 
   void addRow(T row) {
     _rows.add(row);
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
   void addRows(Iterable<T> rows) {
     _rows.addAll(rows);
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
   void insertAt(int i, T row) {
     _rows.insert(i, row);
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
   void removeAt(int i) {
     _rows[i].dispose();
     _rows.removeAt(i);
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
   /// 批量删除（按对象身份，删除前 dispose）。用于批量模式多选删除。
   void removeRows(List<T> victims) {
     if (victims.isEmpty) return;
+    final current = _currentRows;
     final kill = <T>{};
     for (final v in victims) {
-      if (_rows.contains(v) && kill.add(v)) {
+      if (current.contains(v) && kill.add(v)) {
         v.dispose();
       }
     }
     if (kill.isEmpty) return;
     _rows.removeWhere(kill.contains);
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
@@ -500,7 +574,6 @@ class UtenEditableGridController<T extends EditableGridRow>
     _rows
       ..clear()
       ..addAll(rows);
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
@@ -512,7 +585,6 @@ class UtenEditableGridController<T extends EditableGridRow>
     _rows
       ..clear()
       ..addAll(rows);
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
@@ -521,7 +593,6 @@ class UtenEditableGridController<T extends EditableGridRow>
       r.dispose();
     }
     _rows.clear();
-    _total.reattachTo(_rows);
     _rowsChanged();
   }
 
@@ -537,7 +608,7 @@ class UtenEditableGridController<T extends EditableGridRow>
 
   /// 当前选中的行（快照；已删行自动排除）。批量操作（统一设供应商等）取此列表。
   List<T> get selectedRows =>
-      List.unmodifiable(_selected.where(_rows.contains));
+      List<T>.unmodifiable(_selected.where(_currentRows.contains));
 
   void toggleSelect(T row) {
     if (!_selected.add(row)) _selected.remove(row);
@@ -634,6 +705,7 @@ class UtenEditableGridController<T extends EditableGridRow>
       entry.key.removeListener(entry.value);
     }
     _platformDraftListeners.clear();
+    _presentations.clear();
     for (final r in _rows) {
       r.dispose();
     }
@@ -645,6 +717,21 @@ class UtenEditableGridController<T extends EditableGridRow>
     _selectionSignal.dispose();
     super.dispose();
   }
+}
+
+class _GridPresentation<T extends EditableGridRow> {
+  const _GridPresentation({
+    required this.reveal,
+    required this.error,
+    required this.mountedRows,
+    required this.isMounting,
+    required this.settled,
+  });
+  final Future<bool> Function(T, String?, bool, double) reveal;
+  final Future<bool> Function(T, String?) error;
+  final int Function() mountedRows;
+  final bool Function() isMounting;
+  final Future<void> Function() settled;
 }
 
 /// 单行选中态订阅：选中集变化时只在本行选中态真变了才重建本行(ADR-108)。
@@ -810,19 +897,21 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   final UtenEditableGridController<T> controller;
   final List<EditableGridColumn<T>> columns;
 
-  /// Default predecessor for a newly introduced column (column key → anchor
-  /// key). Applies only while that column has no saved position; an explicit
-  /// user order always wins. Missing anchors keep the usual append behavior.
-  final Map<String, String> defaultColumnOrderAnchors;
+  /// Defaults apply only to columns without a saved position. A present null
+  /// puts the column first; a string anchors it after that column. Absent keys,
+  /// unknown anchors and cycles retain the safe append fallback. Existing user
+  /// positions, visibility, widths and pins are not rewritten.
+  final Map<String, String?> defaultColumnOrderAnchors;
 
   /// Optional independent content immediately below its owning data row.
   ///
   /// Details receive the visible viewport width and natural, unbounded height;
   /// they stay in place when the data columns scroll horizontally. They are
-  /// mounted once, outside the row selection/menu region, and never become
+  /// mounted outside the row selection/menu region, and never become
   /// controller rows, selectable records, copied rows, or exported columns.
-  /// Return null when a row has no details. The details widget owns expansion
-  /// and subscribes to its row's values; the grid listens only to row-set changes.
+  /// Return null when a row has no details. Keep expansion and editing values
+  /// in the row/parent model: large tables unmount offscreen details. The details
+  /// widget subscribes to those values; the grid listens only to row-set changes.
   /// The default null preserves the existing grid layout and edit interactions.
   final Widget? Function(BuildContext context, T row)? rowDetailsBuilder;
 
@@ -1022,6 +1111,118 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
 class _UtenEditableGridState<T extends EditableGridRow>
     extends State<UtenEditableGrid<T>>
     with UtenColumnHeaderDragHost<UtenEditableGrid<T>> {
+  final _rowWindow = UtenAncestorRowWindowController<T>();
+
+  double get _rowExtentEstimate {
+    final style = Theme.of(context).textTheme.bodyMedium;
+    final lineHeight =
+        MediaQuery.textScalerOf(context).scale(style?.fontSize ?? 14) *
+        (style?.height ?? 1.2);
+    final minimum = lineHeight + UtenEditableGrid.cellVerticalPadding * 2 + 1;
+    return minimum > 52 ? minimum : 52;
+  }
+
+  void _attachPresentation() {
+    widget.controller._presentations[this] = _GridPresentation<T>(
+      reveal: _revealRow,
+      error: (row, key) {
+        final visible =
+            mounted &&
+            key != null &&
+            _visibleColumnIndices.any((i) => _columns[i].key == key);
+        // Decide fallback before starting. Cancellation must never restart an
+        // obsolete navigation as a fresh row-only request.
+        return _revealRow(row, visible ? key : null, visible, .15);
+      },
+      mountedRows: () => _rowWindow.mountedRowCount,
+      isMounting: () => _rowWindow.isMounting,
+      settled: () => _rowWindow.settled,
+    );
+  }
+
+  Future<bool> _revealRow(
+    T row,
+    String? columnKey,
+    bool focus,
+    double alignment,
+  ) async {
+    if (!mounted ||
+        !TickerMode.valuesOf(context).enabled ||
+        ModalRoute.of(context)?.isCurrent == false ||
+        !_allRows().contains(row)) {
+      return false;
+    }
+    final scope = _columnQueryScope;
+    // A save button's focus request may still be queued in the initiating
+    // pointer event. Flush that request before recording the navigation owner.
+    if (SchedulerBinding.instance.schedulerPhase !=
+        SchedulerPhase.persistentCallbacks) {
+      FocusManager.instance.applyFocusChangesIfNeeded();
+    }
+    final focusOwner = FocusManager.instance.primaryFocus;
+    bool current() =>
+        mounted &&
+        scope == _columnQueryScope &&
+        TickerMode.valuesOf(context).enabled &&
+        ModalRoute.of(context)?.isCurrent != false &&
+        (!focus || identical(FocusManager.instance.primaryFocus, focusOwner));
+    if (columnKey != null &&
+        !_visibleColumnIndices.any((i) => _columns[i].key == columnKey)) {
+      return false;
+    }
+    if (!_visibleRows().contains(row)) {
+      setState(() {
+        _columnFilters.clear();
+        _columnSearches.clear();
+        _visibleRowsFilterKey = null;
+        _textSelection.clear();
+        _saveColumnQuery();
+      });
+      await WidgetsBinding.instance.endOfFrame;
+      if (!current()) return false;
+    }
+    if (!await _rowWindow.reveal(
+      row,
+      alignment: alignment,
+      isCurrent: current,
+    )) {
+      return false;
+    }
+    if (!current()) return false;
+    if (columnKey == null) return true;
+    final rowContext = _rowWindow.contextFor(row);
+    if (rowContext is! Element || !rowContext.mounted) return false;
+    Element? cell;
+    void visitCell(Element element) {
+      if (element.widget.key == ValueKey(('uten-grid-cell', columnKey))) {
+        cell = element;
+        return;
+      }
+      if (cell == null) element.visitChildren(visitCell);
+    }
+
+    rowContext.visitChildren(visitCell);
+    final target = cell;
+    if (target == null || !target.mounted) return false;
+    await Scrollable.ensureVisible(target, alignment: alignment);
+    if (!current() || !target.mounted) return false;
+    if (focus) {
+      EditableText? input;
+      void visitInput(Element element) {
+        final candidate = element.widget;
+        if (candidate is EditableText && !candidate.readOnly) {
+          input = candidate;
+          return;
+        }
+        if (input == null) element.visitChildren(visitInput);
+      }
+
+      target.visitChildren(visitInput);
+      input?.focusNode.requestFocus();
+    }
+    return true;
+  }
+
   final _platform = PlatformTableController<T>();
   late final _searchLifecycle = PageSearchLifecycle(
     onLeave: () => _headerQueryScope++,
@@ -1065,7 +1266,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
     ];
   }
 
-  void _configurePlatform() {
+  void _configurePlatform() =>
+      _profileEditableGridWork('grid.platform', _configurePlatformBody);
+
+  void _configurePlatformBody() {
     _projection = TableColumnProjectionScope.read(context);
     _platform.configure(
       context,
@@ -1095,6 +1299,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
       },
     );
     _platformColumnCache = null;
+    // A refreshed column source/theme must supersede any pending text sample.
+    _autoGrowDirty = true;
     _applyPlatformLayout();
   }
 
@@ -1381,7 +1587,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     _detailsLayoutPending = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _detailsLayoutPending = false;
-      if (!mounted || widget.rowDetailsBuilder == null) return;
+      if (!mounted) return;
       // Re-measure the shared sticky header and horizontal scrollbar after a
       // detail expands/collapses. Batch all layout notifications into one frame.
       setState(() {});
@@ -1581,6 +1787,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   /// 自动加宽待重算标记：初始行 / 行集变化时置 true，build 里量完清掉。
   bool _autoGrowDirty = true;
+  int _autoGrowGeneration = 0;
 
   /// 上次量宽的字号系数与文字样式快照：敲字监听回调里拿不到 BuildContext，
   /// 复用 build 时捕获的（bodyLarge + tabular 数字，覆盖 TextField/Text 两种单元）。
@@ -1631,9 +1838,22 @@ class _UtenEditableGridState<T extends EditableGridRow>
   @override
   void initState() {
     super.initState();
+    _profileEditableGridWork('grid.init', _initializeGrid);
+  }
+
+  void _initializeGrid() {
     _platform.addListener(_platformChanged);
-    _headerH = ScrollController();
-    _bodyH = ScrollController();
+    _attachPresentation();
+    _headerH = UtenTableHorizontalScrollController(
+      leadingInset: () => _pinnedLeadingWidth(_pinnedVisibleColumnIndices),
+      fallbackLeadingInset: () => widget._showSelect ? _selectColWidth : 0,
+      trailingInset: () => widget._showRowActionColumn ? _deleteColWidth : 0,
+    );
+    _bodyH = UtenTableHorizontalScrollController(
+      leadingInset: () => _pinnedLeadingWidth(_pinnedVisibleColumnIndices),
+      fallbackLeadingInset: () => widget._showSelect ? _selectColWidth : 0,
+      trailingInset: () => widget._showRowActionColumn ? _deleteColWidth : 0,
+    );
     _headerH.addListener(() => _sync(_headerH));
     _bodyH.addListener(() => _sync(_bodyH));
     _widths = _columns
@@ -1770,6 +1990,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
     _configurePlatform();
     // 行控制器换实例 → 重挂监听（增删行驱动 sticky 位置重算 + 自动加宽绑到新行集）。
     if (!identical(oldWidget.controller, widget.controller)) {
+      oldWidget.controller._presentations.remove(this);
+      _attachPresentation();
       oldWidget.controller.rowsListenable.removeListener(_onControllerChanged);
       widget.controller.rowsListenable.addListener(_onControllerChanged);
       _visibleRowsAll = null; // 可见行缓存按旧控制器修订号记的，作废。
@@ -1867,10 +2089,13 @@ class _UtenEditableGridState<T extends EditableGridRow>
     };
     final missing = known.where((key) => !retained.contains(key)).toList();
     final children = <String, List<String>>{};
+    final leading = <String>[];
     final unanchored = <String>[];
     for (final key in missing) {
       final anchor = widget.defaultColumnOrderAnchors[key];
-      if (anchor != null && anchor != key && knownSet.contains(anchor)) {
+      if (widget.defaultColumnOrderAnchors.containsKey(key) && anchor == null) {
+        leading.add(key);
+      } else if (anchor != null && anchor != key && knownSet.contains(anchor)) {
         (children[anchor] ??= []).add(key);
       } else {
         unanchored.add(key);
@@ -1886,6 +2111,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
       }
     }
 
+    leading.forEach(emit);
     retained.forEach(emit);
     unanchored.forEach(emit);
     missing.forEach(emit);
@@ -2237,7 +2463,13 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 冻结快照/精确桶列也可透过 listenableOf 更新关键词结果。
   /// 返回行集是否变化。[force]=true 强制重挂（列集合或 controller 实例变化，
   /// 行集不变也要换绑，否则闭包里的列下标已失效）。
-  bool _rewireAutoGrowListeners({bool force = false}) {
+  bool _rewireAutoGrowListeners({bool force = false}) =>
+      _profileEditableGridWork(
+        'grid.rewire-listeners',
+        () => _rewireAutoGrowListenersBody(force: force),
+      );
+
+  bool _rewireAutoGrowListenersBody({bool force = false}) {
     final rows = widget.controller.rows;
     if (!force && _sameRowIdentities(_wiredRows, rows)) return false;
     for (final u in _autoGrowUnsubs) {
@@ -2358,12 +2590,14 @@ class _UtenEditableGridState<T extends EditableGridRow>
     WidgetsBinding.instance.ensureVisualUpdate();
   }
 
-  /// 自动加宽量宽入口（build 首行调用）：首帧 / 行集变化 / 字号档变化时，对所有
-  /// 提供 textOf 且未被手动锁定的列量前 [_autoGrowSampleSize] 行的最宽文本。
-  /// 只增不减（普通行集变化不会把列缩回去）；字号档变化时回列定义基准重算（可缩，
-  /// 保证系统改大字号后列重新适配）。量宽直接写 [_widths]，同帧布局即用新值
-  /// （与 MasterDataTableView._ensureWidths 同款做法，不经 setState）。
-  void _ensureAutoFit(BuildContext context) {
+  /// 首帧只确定表头/控件地板；原有前 [_autoGrowSampleSize] 行样本在真实布局帧之间
+  /// 逐格量宽。普通更新只增不减，字号变化回列定义基准重算，手动列宽始终优先。
+  void _ensureAutoFit(BuildContext context) => _profileEditableGridWork(
+    'grid.auto-fit',
+    () => _ensureAutoFitBody(context),
+  );
+
+  void _ensureAutoFitBody(BuildContext context) {
     for (var i = 0; i < _columns.length && i < _widths.length; i++) {
       final minimum = _minimumColumnWidth(context, _columns[i]);
       if (_widths[i] < minimum) _widths[i] = minimum;
@@ -2387,34 +2621,98 @@ class _UtenEditableGridState<T extends EditableGridRow>
         .copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
     if (!_autoGrowDirty) return;
     _autoGrowDirty = false;
-    final rows = widget.controller.rows;
-    final sample = rows.length < _autoGrowSampleSize
-        ? rows.length
-        : _autoGrowSampleSize;
+    final columns = _columns;
     final headerStyle = UtenTableHeader.textStyle(Theme.of(context));
-    for (var i = 0; i < _columns.length && i < _widths.length; i++) {
-      final col = _columns[i];
+    for (var i = 0; i < columns.length && i < _widths.length; i++) {
+      final col = columns[i];
       if (_manualResized.contains(col.key)) continue;
       var w = scaleChanged
           ? col.width.clamp(_minColWidth, double.infinity)
           : _widths[i];
       // 表头地板：所有列都参与（不限于提供 textOf 的列）——标签本身必须显示全。
       w = _growOnly(w, _headerNeededWidth(col, headerStyle, scaler));
-      final textOf = col.textOf;
-      if (textOf != null) {
-        for (var r = 0; r < sample; r++) {
-          w = _growOnly(
-            w,
-            _measureText(textOf(rows[r]), _measureStyle, scaler) +
-                _cellChromeX +
-                (col.chromeWidthOf?.call(context) ?? col.chromeWidth) +
-                _autoGrowBuffer,
-          );
-        }
-      }
       final minimum = _minimumColumnWidth(context, col);
       _widths[i] = w < minimum ? minimum : w;
     }
+    _scheduleAutoFitData(
+      generation: ++_autoGrowGeneration,
+      controller: widget.controller,
+      revision: widget.controller.rowsRevision,
+      columns: columns,
+      rows: widget.controller.rows,
+      chromeWidths: chromeWidths,
+      scaler: scaler,
+      style: _measureStyle,
+    );
+  }
+
+  void _scheduleAutoFitData({
+    required int generation,
+    required UtenEditableGridController<T> controller,
+    required int revision,
+    required List<EditableGridColumn<T>> columns,
+    required List<T> rows,
+    required List<double> chromeWidths,
+    required TextScaler scaler,
+    required TextStyle style,
+  }) {
+    final sample = rows.length < _autoGrowSampleSize
+        ? rows.length
+        : _autoGrowSampleSize;
+    if (sample == 0) return;
+    var columnIndex = 0;
+    var rowIndex = 0;
+    void measure(Duration _) {
+      if (!mounted ||
+          generation != _autoGrowGeneration ||
+          !identical(widget.controller, controller) ||
+          controller.rowsRevision != revision ||
+          !identical(_columns, columns) ||
+          _lastScaler != scaler ||
+          _measureStyle != style) {
+        return;
+      }
+      final clock = Stopwatch()..start();
+      var cells = 0;
+      var changed = false;
+      while (columnIndex < columns.length &&
+          columnIndex < _widths.length &&
+          cells < 32 &&
+          (cells == 0 || clock.elapsed < const Duration(milliseconds: 2))) {
+        final column = columns[columnIndex];
+        final read = column.textOf;
+        if (_manualResized.contains(column.key) || read == null) {
+          columnIndex++;
+          rowIndex = 0;
+          continue;
+        }
+        final next = _growOnly(
+          _widths[columnIndex],
+          _measureText(read(rows[rowIndex]), style, scaler) +
+              _cellChromeX +
+              chromeWidths[columnIndex] +
+              _autoGrowBuffer,
+        );
+        cells++;
+        if (next > _widths[columnIndex]) {
+          _widths[columnIndex] = next;
+          changed = true;
+        }
+        if (++rowIndex >= sample) {
+          columnIndex++;
+          rowIndex = 0;
+        }
+      }
+      debugUiWorkSliceObserver?.call('grid.auto-fit-batch', clock.elapsed);
+      if (changed) setState(() {});
+      if (columnIndex < columns.length && columnIndex < _widths.length) {
+        WidgetsBinding.instance.addPostFrameCallback(measure);
+        WidgetsBinding.instance.ensureVisualUpdate();
+      }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback(measure);
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   /// 该列表头完整显示所需宽度：标签（含必填星号）+ 左右内边距 + 下拉箭头 / ⓘ 图标。
@@ -2463,6 +2761,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   @override
   void dispose() {
+    widget.controller._presentations.remove(this);
     _projection?.remove(this);
     _searchLifecycle.dispose();
     _textSelection.dispose();
@@ -2783,7 +3082,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
             child: _buildProjectedGrid(context),
           ),
         );
-  Widget _buildProjectedGrid(BuildContext context) {
+  Widget _buildProjectedGrid(BuildContext context) => _profileEditableGridWork(
+    'grid.projected-build',
+    () => _buildProjectedGridBody(context),
+  );
+
+  Widget _buildProjectedGridBody(BuildContext context) {
     _publishProjection();
     _ensureAutoFit(context); // 随内容自动加宽：首帧/行集/字号档变化时量宽（手动锁定列除外）。
     final theme = Theme.of(context);
@@ -2818,7 +3122,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
             // 表头占位：真正的表头在下方 Stack 覆盖层里（始终挂载，横滚 offset 不丢），
             // 流内只留同高占位撑起布局。
             SizedBox(height: _headerHeight),
-            // 表体：content-tall（shrinkWrap），横滚条走共用 UtenHScrollArea——
+            // 表体保留内容总高；大单据按祖先viewport窗口挂载，横滚条走共用 UtenHScrollArea——
             // 内容不超高 → 末行下方紧贴的自然滚动条；超高 → 钉视口底。
             // 空态只占可视宽，不进「列宽和」的横滚盒：列总宽超过面板/视口时，
             // 居中于滚动内容会把空态引导块（含按钮）推出屏幕外（2026-10-10
@@ -2849,70 +3153,59 @@ class _UtenEditableGridState<T extends EditableGridRow>
                       return const _EmptyRows(message: '没有符合表头筛选条件的行');
                     }
                     final detailsBuilder = widget.rowDetailsBuilder;
-                    final rowIndices = detailsBuilder == null
-                        ? null
-                        : (Map<T, int>.identity()..addEntries(
-                            rows.asMap().entries.map(
-                              (entry) => MapEntry(entry.value, entry.key),
-                            ),
-                          ));
                     Widget rowList(double canvasWidth, {double? detailsWidth}) {
                       return UtenHScrollArea(
                         controller: _bodyH,
                         child: SizedBox(
                           width: canvasWidth,
-                          child: ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            padding: EdgeInsets.zero,
-                            itemCount: rows.length,
-                            findChildIndexCallback: rowIndices == null
-                                ? null
-                                : (key) => key is ObjectKey
-                                      ? rowIndices[key.value]
-                                      : null,
-                            itemBuilder: (context, i) {
-                              final row = rows[i];
+                          child: UtenAncestorRowWindow<T>(
+                            controller: _rowWindow,
+                            rows: rows,
+                            estimatedRowExtent: _rowExtentEstimate,
+                            onExtentChanged: _onDetailsLayoutChanged,
+                            rowBuilder: (context, row, i) {
                               final dataRow = _rowCellOrMenuRegion(
                                 row,
                                 i,
                                 divider,
                                 visibleColumnIndices,
                               );
-                              return RepaintBoundary(
-                                key: detailsBuilder == null
-                                    ? null
-                                    : ObjectKey(row),
-                                // 主行与详情共用身份；筛选、删除、插入后展开状态不会串行。
-                                child: detailsBuilder == null
-                                    ? dataRow
-                                    : Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
-                                        children: [
-                                          dataRow,
-                                          NotificationListener<
-                                            SizeChangedLayoutNotification
-                                          >(
-                                            onNotification: (_) {
-                                              _onDetailsLayoutChanged();
-                                              return true;
-                                            },
-                                            child: SizeChangedLayoutNotifier(
-                                              child: _ViewportRowDetails(
-                                                horizontal: _bodyH,
-                                                viewportWidth: detailsWidth!,
-                                                builder: (context) =>
-                                                    detailsBuilder(
-                                                      context,
-                                                      row,
-                                                    ),
+                              return UtenSelectionLifecycleScope(
+                                onHasSelectionChanged: (selected) =>
+                                    _rowWindow.retain(row, selected),
+                                child: RepaintBoundary(
+                                  key: ObjectKey(row),
+                                  // 主行与详情共用身份；筛选、删除、插入后展开状态不会串行。
+                                  child: detailsBuilder == null
+                                      ? dataRow
+                                      : Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.stretch,
+                                          children: [
+                                            dataRow,
+                                            NotificationListener<
+                                              SizeChangedLayoutNotification
+                                            >(
+                                              onNotification: (_) {
+                                                _onDetailsLayoutChanged();
+                                                return true;
+                                              },
+                                              child: SizeChangedLayoutNotifier(
+                                                child: _ViewportRowDetails(
+                                                  horizontal: _bodyH,
+                                                  viewportWidth: detailsWidth!,
+                                                  builder: (context) =>
+                                                      detailsBuilder(
+                                                        context,
+                                                        row,
+                                                      ),
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
+                                          ],
+                                        ),
+                                ),
                               );
                             },
                           ),
@@ -3703,6 +3996,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
     return UtenFrozenLeadingColumn(
       horizontal: _headerH,
       width: width,
+      fallbackWidth: widget._showSelect ? _selectColWidth : 0,
+      trailingWidth: widget._showRowActionColumn ? _deleteColWidth : 0,
       cell: cell,
       row: row,
     );
@@ -4105,6 +4400,8 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
         wrapped = UtenFrozenLeadingColumn(
           horizontal: horizontal,
           width: frozenLeadingWidth,
+          fallbackWidth: showSelect ? selectColWidth : 0,
+          trailingWidth: showDelete ? deleteColWidth : 0,
           cell: frozenLeadingCell,
           row: wrapped,
         );
@@ -4232,6 +4529,7 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
         ? null
         : column.cellColorListenableOf?.call(row);
     final cell = SizedBox(
+      key: ValueKey(('uten-grid-cell', column.key)),
       width: widths[i],
       child: listenable == null
           ? build()
@@ -4243,16 +4541,31 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
     final horizontal = frozenSelectionScroll;
     if (!pinnedColumnIndices.contains(i) || horizontal == null) return cell;
     return AnimatedBuilder(
-      animation: horizontal,
+      animation: utenTableHorizontalChanges(horizontal),
       child: cell,
       builder: (context, child) => UtenTableTextSelectionGate(
-        enabled:
-            !horizontal.hasClients ||
-            horizontal.positions.length != 1 ||
-            horizontal.offset <= 0,
+        enabled: !_hasFrozenDataColumns(horizontal),
         child: child!,
       ),
     );
+  }
+
+  bool _hasFrozenDataColumns(ScrollController horizontal) {
+    if (!horizontal.hasClients || horizontal.positions.length != 1) {
+      return false;
+    }
+    final position = horizontal.position;
+    if (!position.hasViewportDimension || position.pixels <= 0) return false;
+    final fallback = showSelect ? selectColWidth : 0.0;
+    return utenEffectiveFrozenLeadingWidth(
+          requestedWidth:
+              fallback +
+              pinnedColumnIndices.fold(0.0, (sum, i) => sum + widths[i]),
+          viewportWidth: position.viewportDimension,
+          fallbackWidth: fallback,
+          trailingWidth: showDelete ? deleteColWidth : 0,
+        ) >
+        fallback;
   }
 
   /// 拉伸行的合法化包裹：stretch 在无界高度（表体在竖向 ListView 里）下会让

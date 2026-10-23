@@ -1,5 +1,6 @@
 import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
+import '../../../core/performance/responsive_data_codec.dart';
 
 import '../models/finance_doc.dart';
 
@@ -58,6 +59,20 @@ class FinanceIntakeResult {
       RegExp(r'^[0-9a-f]{64}$').hasMatch(sourceSha256 as String) &&
       file.bytes?.isNotEmpty == true &&
       sha256.convert(file.bytes!).toString() == sourceSha256;
+
+  Future<bool> matchesSourceResponsive(
+    PlatformFile file,
+    FinanceDocType type, {
+    bool Function()? isCurrent,
+  }) async =>
+      (type == FinanceDocType.receipt || type == FinanceDocType.payment) &&
+      docType == type.name &&
+      fileName == file.name &&
+      sourceSha256 is String &&
+      RegExp(r'^[0-9a-f]{64}$').hasMatch(sourceSha256 as String) &&
+      file.bytes?.isNotEmpty == true &&
+      await sha256HexResponsive(file.bytes!, isCurrent: isCurrent) ==
+          sourceSha256;
 
   static String? _checkedValue(FinanceIntakeField field, Object? raw) {
     if (raw is! String) return null;

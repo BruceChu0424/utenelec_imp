@@ -439,6 +439,21 @@ SET qty = EXCLUDED.qty, amount_local = EXCLUDED.amount_local, weight = EXCLUDED.
     weight_estimated = EXCLUDED.weight_estimated,
     last_movement_date = now(), updated_at = now();
 
+-- A signed CHECK surplus remains its own physical fact. For ordinary or
+-- transfer events, a negative recorded base quantity requires source review;
+-- neither ABS nor a fabricated minimum quantity may reinterpret it.
+DO $legacy_stock_movement_quantity$
+BEGIN
+    IF EXISTS(SELECT 1 FROM stock_document_items i JOIN stock_documents d ON d.id=i.doc_id
+        WHERE d.status=1 AND i.goods_id IS NOT NULL AND i.base_qty<0
+          AND ((d.doc_type IN('OTHER_IN','OTHER_OUT','DRAW','WDRAW','FINISHED_IN','FINISHED_OUT') AND d.warehouse_id IS NOT NULL)
+            OR(d.doc_type='TRANSFER' AND(d.warehouse_id IS NOT NULL OR d.to_warehouse_id IS NOT NULL)))) THEN
+        RAISE EXCEPTION 'negative original base quantity cannot become a stock movement'
+            USING ERRCODE='23514',CONSTRAINT='legacy_stock_movement_source_quantity_guard';
+    END IF;
+END;
+$legacy_stock_movement_quantity$;
+
 -- ======================== 回填仓库流水（已审单据 → stock_movements，供报表） ========================
 -- 流水仓(ADR-145)：明细带了拆分子仓就用它(老库主仓 132 一端)，否则用单据头仓。
 INSERT INTO stock_movements (transaction_date, movement_type, source_doc_type, source_doc_id, source_item_id,
@@ -452,7 +467,7 @@ SELECT d.bill_date::timestamptz,
        i.base_qty, i.unit_id, i.unit_rate, i.amount_local, NULLIF(i.remark,'')
 FROM stock_document_items i JOIN stock_documents d ON d.id = i.doc_id
 WHERE d.status = 1 AND d.doc_type IN ('OTHER_IN','OTHER_OUT','DRAW','WDRAW','FINISHED_IN','FINISHED_OUT')
-  AND i.goods_id IS NOT NULL AND d.warehouse_id IS NOT NULL;
+  AND i.goods_id IS NOT NULL AND d.warehouse_id IS NOT NULL AND i.base_qty > 0;
 
 -- 调拨：调出仓 -8 / 调入仓 +7（两条）
 INSERT INTO stock_movements (transaction_date, movement_type, source_doc_type, source_doc_id, source_item_id,
@@ -461,7 +476,7 @@ SELECT d.bill_date::timestamptz, 8, 'STOCK_DOC', d.id, i.id, i.goods_id, i.color
        CASE WHEN d.warehouse_id = fn_warehouse_root_id() THEN i.warehouse_id ELSE d.warehouse_id END,
        -1, i.base_qty, i.unit_id, i.unit_rate, '调拨出'
 FROM stock_document_items i JOIN stock_documents d ON d.id = i.doc_id
-WHERE d.status = 1 AND d.doc_type = 'TRANSFER' AND d.warehouse_id IS NOT NULL AND i.goods_id IS NOT NULL;
+WHERE d.status = 1 AND d.doc_type = 'TRANSFER' AND d.warehouse_id IS NOT NULL AND i.goods_id IS NOT NULL AND i.base_qty > 0;
 
 INSERT INTO stock_movements (transaction_date, movement_type, source_doc_type, source_doc_id, source_item_id,
     goods_id, color_id, warehouse_id, direction, qty, unit_id, unit_rate, remark)
@@ -469,7 +484,7 @@ SELECT d.bill_date::timestamptz, 7, 'STOCK_DOC', d.id, i.id, i.goods_id, i.color
        CASE WHEN d.to_warehouse_id = fn_warehouse_root_id() THEN i.warehouse_id ELSE d.to_warehouse_id END,
        1, i.base_qty, i.unit_id, i.unit_rate, '调拨入'
 FROM stock_document_items i JOIN stock_documents d ON d.id = i.doc_id
-WHERE d.status = 1 AND d.doc_type = 'TRANSFER' AND d.to_warehouse_id IS NOT NULL AND i.goods_id IS NOT NULL;
+WHERE d.status = 1 AND d.doc_type = 'TRANSFER' AND d.to_warehouse_id IS NOT NULL AND i.goods_id IS NOT NULL AND i.base_qty > 0;
 
 -- 盘点：surplus>0 盘盈入 +9 / surplus<0 盘亏出 -10（按盘盈亏量，非全量）
 INSERT INTO stock_movements (transaction_date, movement_type, source_doc_type, source_doc_id, source_item_id,

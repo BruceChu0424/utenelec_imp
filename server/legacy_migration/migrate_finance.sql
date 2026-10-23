@@ -119,7 +119,7 @@ ON CONFLICT (legacy_id) DO UPDATE SET
     status = EXCLUDED.status,
     sort_order = EXCLUDED.sort_order;
 
--- M_Acc (27 rows, 13 cols) -> accounts
+-- M_Acc (source inventory, 13 cols) -> accounts
 CREATE TEMP TABLE m_acc_stage (
     legacy_id int, code text, name text, bank_account_no text,
     init_balance numeric(18,4), receipts_total numeric(18,4),
@@ -128,13 +128,48 @@ CREATE TEMP TABLE m_acc_stage (
     style_legacy_id int, a_style int);
 \copy m_acc_stage FROM '/tmp/m_acc.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
--- M_Style (124 rows, 15 cols) -> payment_styles (tree)
+-- M_Style (source inventory, 15 cols) -> payment_styles (tree)
 CREATE TEMP TABLE m_style_stage (
     legacy_id int, style_class_id int, code text, name text, parent_legacy int,
     remark text, status int, dept_status boolean, next_number text,
     init_total numeric(18,4), q_status boolean,
     orient_status1 boolean, orient_status2 boolean, unit text, item_id int);
 \copy m_style_stage FROM '/tmp/m_style.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+
+-- Display codes belong to the current platform namespace. Compute global
+-- source-order sequences once, before depth-layered tree insertion; never reset
+-- the sequence for each depth. Complete typed original rows stay in TEMP until
+-- all V626 row proofs have finished, then are flushed to run source evidence.
+CREATE TEMP TABLE finance_master_source_stage AS
+SELECT 'M_STYLE'::text source_kind,s.legacy_id,
+       'SK'||lpad(row_number() OVER(ORDER BY s.legacy_id)::text,6,'0') target_code,
+       to_jsonb(s) typed_source,
+       encode(digest(to_jsonb(s)::text,'sha256'),'hex') source_row_sha256
+FROM m_style_stage s
+UNION ALL
+SELECT 'M_ACC',s.legacy_id,
+       'ZH'||lpad(row_number() OVER(ORDER BY s.legacy_id)::text,6,'0'),
+       to_jsonb(s),encode(digest(to_jsonb(s)::text,'sha256'),'hex')
+FROM m_acc_stage s;
+ALTER TABLE finance_master_source_stage ADD PRIMARY KEY(source_kind,legacy_id);
+DO $$ BEGIN
+    PERFORM fn_require_legacy_bootstrap(current_setting('uten.bootstrap_run_id')::uuid,'m_style.csv');
+    PERFORM fn_require_legacy_bootstrap(current_setting('uten.bootstrap_run_id')::uuid,'m_acc.csv');
+    IF (SELECT count(*) FROM m_style_stage)>999999 OR (SELECT count(*) FROM m_acc_stage)>999999 THEN
+        RAISE EXCEPTION 'finance source master count exceeds the current six-digit namespace' USING ERRCODE='23514';
+    END IF;
+END; $$;
+
+-- Snapshot existing system master/role state before source rows are inserted.
+-- Independently captured fresh-seed JSON remains the external acceptance anchor.
+CREATE TEMP TABLE finance_seed_before_stage AS
+SELECT 'PAYMENT_STYLE'::text source_kind,p.id::text identity,
+       to_jsonb(p)-ARRAY['created_at','updated_at','created_by','updated_by'] payload
+FROM payment_styles p
+UNION ALL
+SELECT 'POSTING_ROLE',p.role_key,
+       to_jsonb(p)-ARRAY['created_at','updated_at','created_by','updated_by']
+FROM system_posting_style_roles p;
 
 -- M_in (42,489 rows, 16 cols extracted) -> ar_ap_ledger (direction=AR)
 CREATE TEMP TABLE m_in_stage (
@@ -297,12 +332,12 @@ SET category_id = COALESCE(suppliers.category_id, EXCLUDED.category_id);
 
 
 -- =====================================================================
--- (1) accounts master (M_Acc 27 rows -> accounts, account_type rebuilt
+-- (1) accounts master (M_Acc source rows -> accounts, account_type rebuilt
 --     from AccName keyword CASE; AStyle degraded, ignored)
 -- =====================================================================
 -- The legacy DB stores AccName/Status as Chinese (GBK in MSSQL, UTF-8 after
 -- export). The migrate matches Chinese substrings via chr(codepoint) to keep
--- this SQL file pure ASCII. Keyword list below covers all 27 sample accounts;
+-- the reviewed known-name rules remain ahead of the source-ancestry fallback;
 -- if a future account uses a new keyword, append a new WHEN branch.
 --
 -- account_type rebuild rules (AStyle all=1, type recognized by AccName):
@@ -368,7 +403,7 @@ BEGIN
 END $$;
 
 -- =====================================================================
--- (2) payment_styles tree (M_Style 124 nodes -> payment_styles, by category)
+-- (2) payment_styles tree (M_Style source nodes -> payment_styles, by category)
 -- =====================================================================
 -- category mapping: StyleClassid 1->ACCOUNT / 2->LIABILITY / 3->EQUITY /
 --                   4->EXPENSE / 5->INCOME
@@ -393,6 +428,40 @@ WITH RECURSIVE t AS (
 )
 SELECT legacy_id, MIN(depth) AS depth FROM t GROUP BY legacy_id;
 
+-- Account type fallback follows the original source hierarchy, never current
+-- SK display codes or a same-name/code child. Positive missing/cyclic source
+-- ancestry is a review error; a bank-family root must be uniquely identified.
+CREATE TEMP TABLE finance_account_lineage_stage AS
+WITH RECURSIVE ancestry AS (
+ SELECT account.legacy_id account_legacy_id,style.legacy_id style_legacy_id,
+        style.parent_legacy,style.style_class_id,style.code,style.name,
+        ARRAY[style.legacy_id]::integer[] visited,false cycle
+ FROM m_acc_stage account
+ LEFT JOIN m_style_stage style ON style.legacy_id=NULLIF(account.style_legacy_id,0)
+ WHERE NULLIF(account.style_legacy_id,0) IS NOT NULL
+ UNION ALL
+ SELECT ancestry.account_legacy_id,parent.legacy_id,parent.parent_legacy,
+        parent.style_class_id,parent.code,parent.name,
+        ancestry.visited||parent.legacy_id,parent.legacy_id=ANY(ancestry.visited)
+ FROM ancestry
+ LEFT JOIN m_style_stage parent ON parent.legacy_id=ancestry.parent_legacy
+ WHERE ancestry.style_legacy_id IS NOT NULL AND NOT ancestry.cycle
+   AND ancestry.parent_legacy IS NOT NULL AND ancestry.parent_legacy<>0
+)
+SELECT * FROM ancestry;
+DO $$ BEGIN
+    IF EXISTS(SELECT 1 FROM finance_account_lineage_stage WHERE cycle OR style_legacy_id IS NULL) THEN
+        RAISE EXCEPTION 'finance account source ancestry is missing or cyclic; reviewed source repair is required' USING ERRCODE='23514';
+    END IF;
+    IF EXISTS(SELECT 1 FROM finance_account_lineage_stage
+              WHERE coalesce(parent_legacy,0)=0 AND style_class_id=1 AND btrim(code)='102')
+       AND (SELECT count(*) FROM m_style_stage
+             WHERE coalesce(parent_legacy,0)=0 AND style_class_id=1
+               AND btrim(code)='102' AND btrim(name)='银行存款')<>1 THEN
+        RAISE EXCEPTION 'finance account source bank root is missing or ambiguous; no name-only fallback is permitted' USING ERRCODE='23514';
+    END IF;
+END; $$;
+
 DO $$
 DECLARE d INT; maxd INT;
 BEGIN
@@ -401,9 +470,10 @@ BEGIN
         INSERT INTO payment_styles (
             legacy_id, code, name, category, level, sort_order, parent_id,
             is_departmental, is_receipt, is_payment,
-            linked_account_legacy_id, linked_account_id, init_balance, status)
+            linked_account_legacy_id, linked_account_id, init_balance, status,
+            legacy_source_code,legacy_source_item_id,legacy_source_import_run_id)
         SELECT
-            s.legacy_id, s.code, s.name,
+            s.legacy_id, source_master.target_code, s.name,
             CASE s.style_class_id
                 WHEN 1 THEN 'ACCOUNT'
                 WHEN 2 THEN 'LIABILITY'
@@ -421,8 +491,11 @@ BEGIN
             COALESCE(s.orient_status2, FALSE),
             NULL::integer, NULL::uuid, -- bind the optional reverse account link after final accounts exist
             s.init_total,
-            chr(20351) || chr(29992) -- '使用'
+            chr(20351) || chr(29992), -- '使用'
+            s.code,s.item_id,current_setting('uten.bootstrap_run_id')::uuid
         FROM m_style_stage s JOIN ps_depth n ON n.legacy_id = s.legacy_id
+        JOIN finance_master_source_stage source_master
+          ON source_master.source_kind='M_STYLE' AND source_master.legacy_id=s.legacy_id
         WHERE n.depth = d
         ON CONFLICT (legacy_id) DO UPDATE SET
             code = EXCLUDED.code,
@@ -437,7 +510,10 @@ BEGIN
             linked_account_legacy_id = EXCLUDED.linked_account_legacy_id,
             linked_account_id = EXCLUDED.linked_account_id,
             init_balance = EXCLUDED.init_balance,
-            status = EXCLUDED.status;
+            status = EXCLUDED.status,
+            legacy_source_code=EXCLUDED.legacy_source_code,
+            legacy_source_item_id=EXCLUDED.legacy_source_item_id,
+            legacy_source_import_run_id=EXCLUDED.legacy_source_import_run_id;
     END LOOP;
 END $$;
 
@@ -447,7 +523,7 @@ INSERT INTO accounts (
     init_balance, receipts_total, payments_total, balance_current,
     parent_legacy_id, style_legacy_id, status)
 SELECT
-    s.legacy_id, NULLIF(s.code, ''), s.name, NULLIF(s.bank_account_no, ''),
+    s.legacy_id, source_master.target_code, s.name, NULLIF(s.bank_account_no, ''),
     CASE
         -- Chinese keyword mapping (AccName is Chinese in the live legacy DB)
         WHEN s.name LIKE '%' || chr(39321) || '%'                                       THEN 'OFFSHORE'        -- Xianggang (Hong Kong)
@@ -456,7 +532,7 @@ SELECT
         WHEN s.name LIKE '%' || chr(29616) || chr(37329) || '%'                         THEN 'CASH'            -- Xian Jin (cash)
         WHEN s.name = chr(25903) || chr(31080) AND s.status = chr(31105) || chr(29992) THEN 'CHECK'           -- Zhi Piao + Jin Yong
         WHEN s.name = chr(25903) || chr(31080) THEN 'FOREIGN_CHECK'                     -- Zhi Piao + other
-        WHEN s.name = chr(19968) || chr(33324) || chr(24080) || chr(25143) THEN 'GENERAL'  -- Yi Ban Zhang Hu
+        WHEN s.name IN ('一般账户','一般帐户') THEN 'GENERAL' -- preserve both reviewed generic-account spellings before bank ancestry fallback
         WHEN s.name LIKE '%' || chr(20892) || '%'
              OR s.name LIKE '%' || chr(24037) || chr(21830) || '%'
              OR s.name LIKE '%' || chr(24037) || chr(34892) || '%'
@@ -473,6 +549,12 @@ SELECT
              OR s.name LIKE '%' || chr(20013) || chr(34892) || '%'
              OR s.name LIKE '%' || chr(24191) || chr(21457) || '%'
              OR s.name = chr(22522) || chr(26412) || chr(25143) THEN 'BANK'
+        WHEN EXISTS(SELECT 1 FROM finance_account_lineage_stage root
+                    WHERE root.account_legacy_id=s.legacy_id AND coalesce(root.parent_legacy,0)=0
+                      AND root.style_class_id=1 AND btrim(root.code)='102' AND btrim(root.name)='银行存款')
+         AND NOT EXISTS(SELECT 1 FROM finance_account_lineage_stage ancestor
+                        WHERE ancestor.account_legacy_id=s.legacy_id AND ancestor.style_class_id IS DISTINCT FROM 1)
+        THEN 'BANK'
         ELSE 'GENERAL'
     END,
     CASE
@@ -492,18 +574,37 @@ SELECT
     COALESCE(s.payments_total, 0), COALESCE(s.balance_current, 0),
     NULLIF(s.parent_legacy_id, 0), NULLIF(s.style_legacy_id, 0),
     COALESCE(NULLIF(s.status, ''), chr(20351) || chr(29992))  -- 'Shi Yong' (In Use) default
-FROM m_acc_stage s;
+FROM m_acc_stage s JOIN finance_master_source_stage source_master
+  ON source_master.source_kind='M_ACC' AND source_master.legacy_id=s.legacy_id;
 
 
 -- Accounts require final active ACCOUNT leaf UUIDs at insertion (V277).
 -- Once they exist, resolve the style's optional reverse account reference;
 -- no approved money fact or historical account authority is patched later.
 UPDATE payment_styles style
-SET linked_account_legacy_id = NULLIF(source.item_id, 0),
-    linked_account_id = account.id
+SET linked_account_legacy_id = CASE
+        WHEN source.item_id>0 AND style.category='ACCOUNT' AND account.status='使用' AND NOT account.is_deleted
+        THEN account.legacy_id ELSE NULL END,
+    linked_account_id = CASE
+        WHEN source.item_id>0 AND style.category='ACCOUNT' AND account.status='使用' AND NOT account.is_deleted
+        THEN account.id ELSE NULL END
 FROM m_style_stage source
 LEFT JOIN accounts account ON account.legacy_id = NULLIF(source.item_id, 0)
 WHERE style.legacy_id = source.legacy_id;
+
+-- Keep every original reference, including NULL/0 and unavailable accounts.
+-- This is source review evidence, never a live account or monetary approval.
+CREATE TEMP TABLE finance_master_reference_review_stage AS
+SELECT source.legacy_id,CASE
+    WHEN source.item_id IS NULL OR source.item_id=0 THEN 'NO_SOURCE_REFERENCE'
+    WHEN source.item_id<0 THEN 'INVALID_SOURCE_REFERENCE'
+    WHEN source.style_class_id IS DISTINCT FROM 1 THEN 'NON_ACCOUNT_CLASS'
+    WHEN account.id IS NULL THEN 'MISSING_ACCOUNT'
+    WHEN account.is_deleted THEN 'ACCOUNT_DELETED'
+    WHEN account.status IS DISTINCT FROM '使用' THEN 'ACCOUNT_DISABLED'
+    ELSE 'BOUND' END reference_reason
+FROM m_style_stage source
+LEFT JOIN accounts account ON account.legacy_id=source.item_id;
 
 -- =====================================================================
 -- Historical employee identity before immutable finance source rows：B_Worker → employees stub（融合键 legacy_id，经手人/收款人）
@@ -580,9 +681,88 @@ FROM m_oget_item_stage legacy_row ORDER BY legacy_row.bill_legacy_id, legacy_row
 --   (design doc 25 sec 4.2); unsupported source kinds require source reconciliation.
 -- source_doc_id JOINed by BStyle to the right finance doc table legacy_id;
 --   no match -> NULL (tolerates historical dirty rows).
+-- A missing original account or unsupported original family cannot become
+-- active cash history. Preserve its complete typed source with this run;
+-- never create a current account, balance, posting or approval to make it fit.
+SELECT fn_require_legacy_bootstrap(current_setting('uten.bootstrap_run_id')::uuid,'m_allcheck.csv');
+
+CREATE TEMP TABLE bootstrap_finance_archive_only AS
+SELECT 'm_allcheck.csv'::text AS source_file, source.legacy_id AS source_legacy_id,
+       (row_number() OVER (ORDER BY source.legacy_id) + 1)::bigint AS source_row_number,
+       source.acc_id AS legacy_account_id, source.b_style AS legacy_bstyle,
+       to_jsonb(source.*) AS typed_source,
+       encode(digest(to_jsonb(source.*)::text,'sha256'),'hex') AS source_row_sha256,
+       file.sha256::text AS source_file_sha256,
+       array_remove(ARRAY[
+           CASE WHEN NOT EXISTS(SELECT 1 FROM m_acc_stage account WHERE account.legacy_id=source.acc_id)
+                THEN 'MISSING_ORIGINAL_ACCOUNT' END,
+           CASE WHEN source.b_style IS NULL OR source.b_style NOT IN(20,21,22,23,27)
+                THEN 'UNSUPPORTED_ORIGINAL_DOCUMENT_FAMILY' END],NULL)::text[] AS reason_codes,
+       'ARCHIVE_ONLY'::text AS disposition
+FROM m_allcheck_stage source CROSS JOIN legacy_migration_run_files file
+WHERE file.run_id=current_setting('uten.bootstrap_run_id')::uuid AND file.file_name='m_allcheck.csv';
+DELETE FROM bootstrap_finance_archive_only WHERE cardinality(reason_codes)=0;
+ALTER TABLE bootstrap_finance_archive_only ADD PRIMARY KEY(source_legacy_id);
+
+DO $$ BEGIN
+    IF EXISTS(SELECT 1 FROM m_acc_stage source WHERE NOT EXISTS(
+        SELECT 1 FROM accounts target WHERE target.legacy_id=source.legacy_id))
+       OR EXISTS(SELECT 1 FROM accounts target WHERE target.legacy_id IS NULL OR NOT EXISTS(
+        SELECT 1 FROM m_acc_stage source WHERE source.legacy_id=target.legacy_id)) THEN
+        RAISE EXCEPTION 'finance source account identities do not exactly match active imported accounts';
+    END IF;
+END; $$;
+
 SELECT fn_import_legacy_finance_source(
     current_setting('uten.bootstrap_run_id')::uuid, 'ACCOUNT_FLOW', to_jsonb(legacy_row.*))
-FROM m_allcheck_stage legacy_row ORDER BY legacy_row.legacy_id;
+FROM m_allcheck_stage legacy_row
+WHERE NOT EXISTS(SELECT 1 FROM bootstrap_finance_archive_only archived
+                 WHERE archived.source_legacy_id=legacy_row.legacy_id)
+ORDER BY legacy_row.legacy_id;
+
+-- Individual historical deltas can be signed. The existing native CHECK is
+-- about the final Shanghai account/currency/month SUM, never a changed source.
+DO $$ BEGIN
+    IF EXISTS(
+        SELECT 1 FROM finance_reconciliations flow
+        WHERE NOT COALESCE(flow.is_deleted,FALSE)
+        GROUP BY flow.account_id,flow.account_currency_id,
+                 date_trunc('month',flow.bill_date AT TIME ZONE 'Asia/Shanghai')::date
+        HAVING SUM(COALESCE(flow.in_amount,0))<0 OR SUM(COALESCE(flow.out_amount,0))<0
+    ) THEN
+        RAISE EXCEPTION 'source account-flow final monthly aggregate is negative; preserve source and review before import'
+            USING ERRCODE='23514',CONSTRAINT='legacy_account_flow_final_monthly_nonnegative';
+    END IF;
+END; $$;
+SELECT fn_rebuild_account_flow_monthly_summaries(NULL);
+SELECT fn_assert_account_flow_monthly_integrity(NULL);
+
+DO $$ BEGIN
+    IF (SELECT count(*) FROM m_allcheck_stage)<>(SELECT count(*) FROM finance_reconciliations WHERE legacy_id IS NOT NULL)
+            +(SELECT count(*) FROM bootstrap_finance_archive_only)
+       OR EXISTS(SELECT 1 FROM bootstrap_finance_archive_only archived JOIN finance_reconciliations target
+                 ON target.legacy_id=archived.source_legacy_id)
+       OR EXISTS(SELECT 1 FROM bootstrap_finance_archive_only archived JOIN legacy_finance_import_sources proof
+                 ON proof.run_id=current_setting('uten.bootstrap_run_id')::uuid AND proof.source_kind='ACCOUNT_FLOW'
+                    AND proof.source_legacy_id=archived.source_legacy_id) THEN
+        RAISE EXCEPTION 'finance active/account-flow source/archive-only identities do not reconcile';
+    END IF;
+END; $$;
+
+-- compose_bootstrap removes module staging tables; retain the explicit source
+-- disposition in the existing run summary before that cleanup, with no new DDL.
+UPDATE legacy_migration_runs SET reconciliation_summary=reconciliation_summary||jsonb_build_object(
+    'financeArchiveOnly',jsonb_build_object('format','finance-source-archive-only-v1',
+        'source_file','m_allcheck.csv','source_file_sha256',(
+            SELECT sha256::text FROM legacy_migration_run_files
+            WHERE run_id=current_setting('uten.bootstrap_run_id')::uuid AND file_name='m_allcheck.csv'),
+        'source_count',(SELECT count(*) FROM m_allcheck_stage),
+        'active_count',(SELECT count(*) FROM finance_reconciliations WHERE legacy_id IS NOT NULL),
+        'archived_count',(SELECT count(*) FROM bootstrap_finance_archive_only),
+        'session_timezone',current_setting('TimeZone'),
+        'entries',(SELECT COALESCE(jsonb_agg(to_jsonb(archived) ORDER BY source_legacy_id),'[]'::jsonb)
+                   FROM bootstrap_finance_archive_only archived)))
+WHERE run_id=current_setting('uten.bootstrap_run_id')::uuid;
 
 
 -- Verified source open items come after all original cash headers so actual
@@ -619,18 +799,19 @@ REFRESH MATERIALIZED VIEW finance_ar_ap_mv;
 -- =====================================================================
 SELECT '==== Row count reconciliation ====' AS section;
 
-SELECT 'accounts (expect 27)                ' || COUNT(*) FROM accounts;
-SELECT 'payment_styles (expect 124)         ' || COUNT(*) FROM payment_styles;
+SELECT 'accounts source/target ' || (SELECT count(*) FROM m_acc_stage) || ' / ' || COUNT(*) FROM accounts;
+SELECT 'payment_styles source/total ' || (SELECT count(*) FROM m_style_stage) || ' / ' || COUNT(*) FROM payment_styles;
 SELECT 'ar_ap_ledger total (= current stages)' || COUNT(*) FROM ar_ap_ledger;
 SELECT 'ar_ap_ledger.AR (= current M_in)      ' || COUNT(*) FROM ar_ap_ledger WHERE direction='AR';
 SELECT 'ar_ap_ledger.AP (= current M_out)     ' || COUNT(*) FROM ar_ap_ledger WHERE direction='AP';
-SELECT 'finance_receipts (expect 7804)      ' || COUNT(*) FROM finance_receipts;
-SELECT 'finance_payments (expect 4545)      ' || COUNT(*) FROM finance_payments;
-SELECT 'finance_expenses (expect 1125)      ' || COUNT(*) FROM finance_expenses;
-SELECT 'finance_expense_items (expect 8537) ' || COUNT(*) FROM finance_expense_items;
-SELECT 'finance_other_incomes (expect 1552) ' || COUNT(*) FROM finance_other_incomes;
+SELECT 'finance_receipts                   ' || COUNT(*) FROM finance_receipts;
+SELECT 'finance_payments                   ' || COUNT(*) FROM finance_payments;
+SELECT 'finance_expenses                   ' || COUNT(*) FROM finance_expenses;
+SELECT 'finance_expense_items              ' || COUNT(*) FROM finance_expense_items;
+SELECT 'finance_other_incomes              ' || COUNT(*) FROM finance_other_incomes;
 SELECT 'finance_other_income_items (1551)   ' || COUNT(*) FROM finance_other_income_items;
-SELECT 'finance_reconciliations (expect30626)' || COUNT(*) FROM finance_reconciliations;
+SELECT 'finance_reconciliations (active legacy snapshots)' || COUNT(*) FROM finance_reconciliations;
+SELECT 'finance source archive-only (no active account/flow)' || COUNT(*) FROM bootstrap_finance_archive_only;
 
 SELECT '==== ar_ap_ledger.direction x source_doc_type distribution ====' AS section;
 SELECT direction, source_doc_type, COUNT(*) AS cnt
@@ -720,6 +901,54 @@ SELECT 'MV AP rows                            ' || COUNT(*) FROM finance_ar_ap_m
 -- Diagnostic SELECTs above remain useful to operators, but are not relied on
 -- for correctness.
 -- =====================================================================
+-- V626 preserves an unknown historical paid date when the original balance
+-- is already zero. Only complete typed original rows from this transaction's
+-- exact AR/AP source namespace can authorize that one missing-date case.
+-- Build the small candidate set once; never re-project every opening row.
+ANALYZE public.legacy_finance_import_sources;
+ANALYZE public.ar_ap_ledger;
+CREATE TEMP TABLE finance_verified_missing_settlement_date_stage (
+    ledger_id uuid PRIMARY KEY
+) ON COMMIT DROP;
+INSERT INTO finance_verified_missing_settlement_date_stage(ledger_id)
+WITH source_candidates AS MATERIALIZED (
+    SELECT 'AR_OPENING'::text source_kind,'m_in.csv'::text source_file,
+           source.legacy_id,to_jsonb(source.*) typed_source
+    FROM m_in_stage source WHERE source.balance=0 AND source.paid_date IS NULL
+    UNION ALL
+    SELECT 'AP_OPENING','m_out.csv',source.legacy_id,to_jsonb(source.*)
+    FROM m_out_stage source WHERE source.balance=0 AND source.paid_date IS NULL
+), candidate_projections AS MATERIALIZED (
+    SELECT ledger.id,proof.target_fields,proof.target_snapshot_sha256,
+           to_jsonb(ledger.*) actual_payload,
+           fn_legacy_finance_opening_projection(source.source_kind,source.typed_source)
+             ||jsonb_build_object('id',ledger.id,'legacy_import_run_id',proof.run_id) expected_payload
+    FROM source_candidates source
+    JOIN public.legacy_finance_import_sources proof
+      ON proof.run_id=current_setting('uten.bootstrap_run_id')::uuid
+     AND proof.source_kind=source.source_kind AND proof.source_file=source.source_file
+     AND proof.source_legacy_id=source.legacy_id AND proof.target_table='ar_ap_ledger'
+     AND proof.issued_txid=txid_current()
+     AND proof.source_row_sha256=encode(digest(source.typed_source::text,'sha256'),'hex')
+    JOIN public.legacy_migration_run_files file ON file.run_id=proof.run_id
+     AND file.file_name=source.source_file AND file.sha256=proof.source_file_sha256
+    JOIN public.ar_ap_ledger ledger ON ledger.id=proof.target_id
+     AND ledger.legacy_import_run_id=proof.run_id AND ledger.legacy_id=source.legacy_id
+     AND ledger.direction=CASE source.source_kind WHEN 'AR_OPENING' THEN 'AR' ELSE 'AP' END
+     AND ledger.legacy_source=CASE source.source_kind WHEN 'AR_OPENING' THEN 'M_in' ELSE 'M_out' END
+     AND ledger.is_settled AND ledger.amount_balance=0 AND ledger.settled_date IS NULL
+)
+SELECT candidate.id FROM candidate_projections candidate
+CROSS JOIN LATERAL (
+    SELECT array_agg(key ORDER BY key) fields FROM jsonb_object_keys(candidate.expected_payload) key
+) expected
+WHERE candidate.target_fields=expected.fields
+  AND candidate.target_snapshot_sha256=encode(digest(
+        fn_legacy_finance_snapshot(candidate.expected_payload,expected.fields)::text,'sha256'),'hex')
+  AND candidate.target_snapshot_sha256=encode(digest(
+        fn_legacy_finance_snapshot(candidate.actual_payload,expected.fields)::text,'sha256'),'hex');
+ANALYZE finance_verified_missing_settlement_date_stage;
+
 DO $$
 DECLARE
     broken_count BIGINT;
@@ -748,10 +977,11 @@ BEGIN
     END IF;
 
     SELECT COUNT(*) INTO broken_count
-    FROM ar_ap_ledger
-    WHERE is_settled IS DISTINCT FROM (amount_balance = 0)
-       OR (is_settled AND settled_date IS NULL)
-       OR (NOT is_settled AND settled_date IS NOT NULL);
+    FROM public.ar_ap_ledger ledger
+    LEFT JOIN finance_verified_missing_settlement_date_stage verified ON verified.ledger_id=ledger.id
+    WHERE ledger.is_settled IS DISTINCT FROM (ledger.amount_balance = 0)
+       OR (ledger.is_settled AND ledger.settled_date IS NULL AND verified.ledger_id IS NULL)
+       OR (NOT ledger.is_settled AND ledger.settled_date IS NOT NULL);
     IF broken_count <> 0 THEN
         RAISE EXCEPTION 'finance migration settlement-state violations: %', broken_count;
     END IF;
@@ -813,6 +1043,22 @@ BEGIN
         RAISE EXCEPTION 'finance migration logical source UUID mismatches: %', broken_count;
     END IF;
 
+    -- Original fee identity is not authority to reinterpret an income node
+    -- as an expense. Preserve its raw ID and exact fee; only the original
+    -- existing EXPENSE identity may occupy the typed expense UUID.
+    SELECT COUNT(*) INTO broken_count
+    FROM finance_receipts receipt
+    JOIN m_get_stage source_row ON source_row.legacy_id=receipt.legacy_id
+    WHERE receipt.other_fee_style_legacy_id IS DISTINCT FROM
+            CASE WHEN source_row.qtfymc>0 THEN source_row.qtfymc ELSE NULL END
+       OR receipt.other_fee IS DISTINCT FROM source_row.qtfy
+       OR receipt.other_fee_style_id IS DISTINCT FROM
+            (SELECT style.id FROM payment_styles style
+             WHERE style.legacy_id=NULLIF(source_row.qtfymc,0) AND style.category='EXPENSE');
+    IF broken_count<>0 THEN
+        RAISE EXCEPTION 'finance migration original other-fee identity or amount mismatches: %',broken_count;
+    END IF;
+
     IF (SELECT COUNT(*) FROM finance_receipts)
        <> (SELECT COUNT(*) FROM m_get_stage) THEN
         RAISE EXCEPTION 'finance_receipts row count mismatch';
@@ -837,9 +1083,9 @@ BEGIN
        <> (SELECT COUNT(*) FROM m_oget_item_stage) THEN
         RAISE EXCEPTION 'finance_other_income_items row count mismatch';
     END IF;
-    IF (SELECT COUNT(*) FROM finance_reconciliations)
+    IF (SELECT COUNT(*) FROM finance_reconciliations)+(SELECT COUNT(*) FROM bootstrap_finance_archive_only)
        <> (SELECT COUNT(*) FROM m_allcheck_stage) THEN
-        RAISE EXCEPTION 'finance_reconciliations row count mismatch';
+        RAISE EXCEPTION 'finance_reconciliations plus explicit source archive row count mismatch';
     END IF;
 
     -- The import mode only relaxes runtime active/leaf rules. Existence and
@@ -909,3 +1155,69 @@ SELECT set_config(
 -- ADR-112: 科目导入完成、引用守卫恢复正常之后, 按默认科目名单为还没有任何绑定的
 -- 总账附表/经营损益表行补默认绑定(幂等: 已有绑定的行不动; 只绑费用类末级科目)。
 SELECT fn_finance_report_line_bindings_seed_defaults();
+
+-- Explicit empty-role initialization from this batch's true typed source roots.
+-- Existing system configuration is authoritative and is never overwritten.
+-- No source ID, display SK code, or account/category name is a lookup key.
+CREATE TEMP TABLE finance_source_role_candidates_stage AS
+SELECT policy.role_key,policy.category,source.legacy_id,style.id style_id
+FROM (VALUES ('INVENTORY_ASSET','ACCOUNT','123'),
+             ('SALES_COST','EXPENSE','041'),
+             ('SALES_REVENUE','INCOME','031')) policy(role_key,category,raw_root_code)
+JOIN m_style_stage source ON btrim(source.code)=policy.raw_root_code
+ AND (source.parent_legacy IS NULL OR source.parent_legacy=0)
+JOIN payment_styles style ON style.legacy_id=source.legacy_id
+ AND style.legacy_source_import_run_id=current_setting('uten.bootstrap_run_id')::uuid
+ AND style.legacy_source_code IS NOT DISTINCT FROM source.code
+ AND style.parent_id IS NULL AND style.category=policy.category
+ AND style.status='使用' AND NOT style.is_deleted
+WHERE CASE source.style_class_id WHEN 1 THEN 'ACCOUNT' WHEN 2 THEN 'LIABILITY'
+ WHEN 3 THEN 'EQUITY' WHEN 4 THEN 'EXPENSE' WHEN 5 THEN 'INCOME' ELSE 'METHOD' END=policy.category;
+CREATE TEMP TABLE finance_source_roles_bound_stage AS
+WITH unique_candidates AS (
+ SELECT role_key,min(category) category,min(legacy_id) legacy_id,
+        (array_agg(style_id))[1] style_id
+ FROM finance_source_role_candidates_stage GROUP BY role_key HAVING count(*)=1
+), bound AS (
+ UPDATE system_posting_style_roles role SET style_id=candidate.style_id
+ FROM unique_candidates candidate
+ WHERE role.role_key=candidate.role_key AND role.style_id IS NULL
+   AND role.required_category=candidate.category
+ RETURNING role.role_key,role.style_id
+)
+SELECT bound.*,candidate.legacy_id source_style_legacy_id
+FROM bound JOIN unique_candidates candidate USING(role_key,style_id);
+
+-- All V626 source registrations above are finished. Only now flush the complete
+-- typed master source rows; putting this JSON in summary earlier would add work
+-- to every financial provenance registration. This is run source evidence, not
+-- a newly invented immutable table or approval of an unavailable association.
+UPDATE legacy_migration_runs run
+SET reconciliation_summary=run.reconciliation_summary||jsonb_build_object(
+ 'financeMasterSources',jsonb_build_object(
+  'format','finance-master-sources-v1','run_id',run.run_id,
+  'manifest_sha256',run.export_manifest_sha256,'frozen_commit',run.migration_repository_commit,
+  'seed_baseline_sha256',run.reconciliation_summary->>'financeSeedBaselineSha256',
+  'style_file_sha256',(SELECT sha256 FROM legacy_migration_run_files WHERE run_id=run.run_id AND file_name='m_style.csv'),
+  'account_file_sha256',(SELECT sha256 FROM legacy_migration_run_files WHERE run_id=run.run_id AND file_name='m_acc.csv'),
+  'style_source_count',(SELECT count(*) FROM m_style_stage),
+  'account_source_count',(SELECT count(*) FROM m_acc_stage),
+  'styles',(SELECT coalesce(jsonb_object_agg(source.legacy_id::text,jsonb_build_object(
+    'typed_source',source.typed_source,'source_row_sha256',source.source_row_sha256,
+    'target_id',target.id,'target_code',target.code,'reference_reason',review.reference_reason)
+    ORDER BY source.legacy_id),'{}'::jsonb)
+   FROM finance_master_source_stage source
+   JOIN payment_styles target ON target.legacy_id=source.legacy_id
+   JOIN finance_master_reference_review_stage review ON review.legacy_id=source.legacy_id
+   WHERE source.source_kind='M_STYLE'),
+  'accounts',(SELECT coalesce(jsonb_object_agg(source.legacy_id::text,jsonb_build_object(
+    'typed_source',source.typed_source,'source_row_sha256',source.source_row_sha256,
+    'target_id',target.id,'target_code',target.code) ORDER BY source.legacy_id),'{}'::jsonb)
+   FROM finance_master_source_stage source JOIN accounts target ON target.legacy_id=source.legacy_id
+   WHERE source.source_kind='M_ACC'),
+  'seed_before',(SELECT coalesce(jsonb_agg(to_jsonb(before_row) ORDER BY source_kind,identity),'[]'::jsonb)
+    FROM finance_seed_before_stage before_row),
+  'role_source_bindings',(SELECT coalesce(jsonb_agg(to_jsonb(binding) ORDER BY role_key),'[]'::jsonb)
+    FROM finance_source_roles_bound_stage binding)
+ ))
+WHERE run.run_id=current_setting('uten.bootstrap_run_id')::uuid;

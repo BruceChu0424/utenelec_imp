@@ -267,7 +267,7 @@ abstract final class BadgeFact {
       'productionDraw.MATERIALS_TO_DEFINE';
   static const productionReturn = 'productionReturn.count';
 
-  /// 车间内料仓 (ADR-131): 待发料 / 待收退回 / 盘点中 (来源键 workshopMaterial)。
+  /// 内料仓领退料分别归出入库；盘点仍归内料仓 (来源键 workshopMaterial)。
   static const workshopMaterialPendingIssue = 'workshopMaterial.pendingIssue';
   static const workshopMaterialPendingReturn = 'workshopMaterial.pendingReturn';
   static const workshopMaterialCounting = 'workshopMaterial.counting';

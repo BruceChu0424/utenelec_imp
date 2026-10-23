@@ -1,0 +1,19 @@
+{
+  "format": "uten-pdf-worker-v1",
+  "compiler": "Dart SDK version: 3.12.2 (stable) (Tue Jun 9 01:11:39 2026 -0700) on \"windows_x64\"",
+  "flags": [
+    "-O2",
+    "--csp",
+    "--no-source-maps"
+  ],
+  "sources": {
+    "tool/pdf_worker.dart": "0d3f04ec93b590a5f68a097579b4f732c2307710b37e9d8af26a676aa583a629",
+    "lib/core/print/print_pdf_document.dart": "72df30284c9b88cdf2344317f849f909dcdc5b82308d82f168a8d0a91daeecb7",
+    "lib/core/performance/ui_work_budget.dart": "732f2d68fe966ae24be685b5d73b9fb8f0818eba3c3c7fa243114dcbf8955e3c",
+    "pubspec.lock": "f87aecd82ef3e9625c6191a02ffd41ebdf0adb7c2135d56e05095572909eb72f"
+  },
+  "workerSha256": "e3257da576e47fb84e2e79f6524123e253cc2aacd384b8a5ee3016b606afe6f4",
+  "workerBytes": 1153940,
+  "protocolVersion": 1,
+  "sourceTextNormalization": "LF"
+}

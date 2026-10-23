@@ -48,7 +48,10 @@ class SubcontractShortDeliveryRepository {
           'orderBillNo': orderBillNo.trim(),
       },
     );
-    return PagedResult.fromJson(json, SubcontractShortDeliveryCase.fromJson);
+    return PagedResult.fromJsonResponsive(
+      json,
+      SubcontractShortDeliveryCase.fromJson,
+    );
   }
 
   /// 订货单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径。

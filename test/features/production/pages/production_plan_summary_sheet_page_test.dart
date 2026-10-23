@@ -4,19 +4,157 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_plan_summary_sheet_page.dart';
 import 'package:uten_imp/features/production/production_routes.dart';
 import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
 import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
 
 void main() {
+  for (final kind in ['account', 'permissions', 'server', 'ABA']) {
+    for (final fail in [false, true]) {
+      testWidgets(
+        'summary DTO owner change $kind rejects late data/error fail=$fail',
+        (tester) async {
+          final api = _DtoRaceSummaryApi();
+          final container = _summaryContainer(api);
+          addTearDown(container.dispose);
+          final previousObserver = debugUiWorkSliceObserver;
+          addTearDown(() => debugUiWorkSliceObserver = previousObserver);
+          var switched = false;
+          debugUiWorkSliceObserver = (label, elapsed) {
+            if (switched || label != 'presentation') return;
+            switched = true;
+            _changeSummaryOwner(container, kind);
+            if (fail) throw StateError('OLD_PRIVATE_ERROR');
+          };
+          await tester.pumpWidget(
+            UncontrolledProviderScope(
+              container: container,
+              child: const MaterialApp(
+                home: ProductionPlanSummarySheetPage(analysisId: 'analysis-1'),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(switched, isTrue);
+          expect(find.byKey(const Key('plan-summary-paper')), findsNothing);
+          expect(find.textContaining('OLD_PRIVATE'), findsNothing);
+          expect(find.textContaining('查看身份、权限或服务器已变化'), findsOneWidget);
+          expect(find.byType(CircularProgressIndicator), findsNothing);
+          expect(api.lookups, isEmpty);
+          expect(
+            tester
+                .widget<UtenButton>(find.byKey(const Key('plan-summary-print')))
+                .onPressed,
+            isNull,
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  testWidgets(
+    'summary scope change retires loaded snapshot and delayed workshops',
+    (tester) async {
+      final api = _ControlledWorkshopApi();
+      final container = _summaryContainer(api);
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: ProductionPlanSummarySheetPage(
+              analysisId: 'analysis-1',
+              initialAnalysis: _analysis(),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(api.lookups.length, 1);
+      _changeSummaryOwner(container, 'ABA');
+      await tester.pump();
+      expect(api.lookups.single.cancelToken.isCancelled, isTrue);
+      api.lookups.single.completer.complete(_workshopRows(coverAll: true));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('plan-summary-paper')), findsNothing);
+      expect(find.text('注塑车间'), findsNothing);
+      expect(
+        tester
+            .widget<UtenButton>(find.byKey(const Key('plan-summary-print')))
+            .onPressed,
+        isNull,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'summary owner change while PDF font is pending prevents print dispatch',
+    (tester) async {
+      final container = _summaryContainer(_workshopApi(coverAll: true));
+      addTearDown(container.dispose);
+      final bundle = _DelayedSummaryFontBundle();
+      var printCalls = 0;
+      const channel = MethodChannel('net.nfet.printing');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (_) async {
+            printCalls++;
+            return true;
+          });
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null),
+      );
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: DefaultAssetBundle(
+            bundle: bundle,
+            child: MaterialApp(
+              home: ProductionPlanSummarySheetPage(
+                analysisId: 'analysis-1',
+                initialAnalysis: _analysis(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('plan-summary-print')));
+      await tester.pump();
+      expect(bundle.requested, isTrue);
+      _changeSummaryOwner(container, 'server');
+      await tester.pump();
+      bundle.font.complete(ByteData(0));
+      await tester.pumpAndSettle();
+      expect(printCalls, 0);
+      expect(find.byKey(const Key('plan-summary-paper')), findsNothing);
+      expect(
+        tester
+            .widget<UtenButton>(find.byKey(const Key('plan-summary-print')))
+            .isLoading,
+        isFalse,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'summary sheet renders company header, three sections, missing-workshop list and aggregated supply rows',
     (tester) async {
@@ -299,6 +437,83 @@ void main() {
     expect(find.byKey(const Key('plan-summary-paper')), findsOneWidget);
     expect(find.text('生产备料计划汇总单'), findsOneWidget);
   });
+}
+
+final _summaryOwner = StateProvider<AuthenticatedScope?>(
+  (ref) => const AuthenticatedScope(userId: 'A'),
+);
+final _summaryPermissions = StateProvider<Set<String>>((ref) => {'view'});
+final _summaryServer = StateProvider<String>((ref) => 'https://a.invalid/api');
+
+ProviderContainer _summaryContainer(ApiClient api) => ProviderContainer(
+  overrides: [
+    apiClientProvider.overrideWithValue(api),
+    masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
+    platformBrandingSnapshotProvider.overrideWithValue(
+      PlatformBranding.defaults,
+    ),
+    authenticatedScopeProvider.overrideWith((ref) => ref.watch(_summaryOwner)),
+    currentPermissionsProvider.overrideWith(
+      (ref) => ref.watch(_summaryPermissions),
+    ),
+    apiBaseUrlProvider.overrideWith((ref) => ref.watch(_summaryServer)),
+  ],
+);
+
+void _changeSummaryOwner(ProviderContainer container, String kind) {
+  if (kind == 'permissions') {
+    container.read(_summaryPermissions.notifier).state = {};
+  } else if (kind == 'server') {
+    container.read(_summaryServer.notifier).state = 'https://b.invalid/api';
+  } else {
+    container.read(_summaryOwner.notifier).state = const AuthenticatedScope(
+      userId: 'B',
+    );
+  }
+  container.read(exportContextEpochProvider);
+  if (kind == 'ABA') {
+    container.read(_summaryOwner.notifier).state = const AuthenticatedScope(
+      userId: 'A',
+    );
+    container.read(exportContextEpochProvider);
+  }
+}
+
+class _DtoRaceSummaryApi extends _ControlledWorkshopApi {
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => {
+    'analysisId': 'analysis-1',
+    'version': 3,
+    'fingerprint': 'fp',
+    'warehouseId': 'wh-1',
+    'products': <Object>[],
+    'flatMaterials': [
+      for (var i = 0; i < 1500; i++)
+        {
+          'materialLineId': 'm-$i',
+          'goodsName': 'OLD_PRIVATE',
+          'requiredQty': 1,
+          'shortageQty': 1,
+        },
+    ],
+    'allowedActions': ['VIEW'],
+  };
+}
+
+class _DelayedSummaryFontBundle extends CachingAssetBundle {
+  final font = Completer<ByteData>();
+  bool requested = false;
+  @override
+  Future<ByteData> load(String key) {
+    if (key == 'assets/fonts/NotoSansSCFull.ttf') {
+      requested = true;
+      return font.future;
+    }
+    return rootBundle.load(key);
+  }
 }
 
 class _WorkshopLookup {

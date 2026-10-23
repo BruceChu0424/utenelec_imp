@@ -146,8 +146,14 @@ public class UnitService {
      * @return 保存后的计量设置(未设置维度为 null)，直接回给详情，不再回读
      */
     private MeasurementSetting applyMeasurement(Unit u, UnitSaveRequest req, boolean existingUnit) {
-        String dimension = normalizedCode(req.getMeasurementDimension());
-        String massUnitCode = normalizedCode(req.getMassUnitCode());
+        MeasurementSetting before = existingUnit ? lockedMeasurement(u.getId()) : null;
+        // Basic unit maintenance omits internal measurement rules. Omission
+        // preserves their current authoritative values, including under edits.
+        if (existingUnit && !req.hasMeasurementDimension() && !req.hasMassUnitCode()) return before;
+        String dimension = req.hasMeasurementDimension()
+                ? normalizedCode(req.getMeasurementDimension()) : before == null ? null : before.dimension();
+        String massUnitCode = req.hasMassUnitCode() ? normalizedCode(req.getMassUnitCode())
+                : MASS.equals(dimension) && before != null ? before.massUnitCode() : null;
         if (dimension != null && !MEASUREMENT_DIMENSIONS.contains(dimension)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "计量维度只能是数量、重量、长度、面积、体积或其他，请重新选择：" + req.getMeasurementDimension());
@@ -162,7 +168,6 @@ public class UnitService {
                         "只有计量维度为「重量」的单位才能选择等于哪种重量单位");
             }
         }
-        MeasurementSetting before = existingUnit ? lockedMeasurement(u.getId()) : null;
         MeasurementSetting after = dimension == null ? null : new MeasurementSetting(dimension, massUnitCode);
         if (java.util.Objects.equals(before, after)) return after;
         boolean touchesMass = (before != null && before.mass()) || (after != null && after.mass());
@@ -312,23 +317,16 @@ public class UnitService {
 
     // ===== 加密 Excel 导出（2026-09-25「表格显示啥导出啥」，V717） =====
 
-    /** 计量维度代码 → 展示文字（与前端 unit_page 的 _dimensionOptions 同口径）。 */
-    private static final Map<String, String> DIMENSION_LABELS = Map.of(
-            "COUNT", "数量", "MASS", "重量", "LENGTH", "长度",
-            "AREA", "面积", "VOLUME", "体积", "OTHER", "其他");
-
     /**
      * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限防 OOM。
-     * 列集与前端单位表格一致：编号 / 单位名称 / 状态 / 计量维度 / 重量单位。
+     * 列集与日常单位资料一致：名称 / 编号 / 状态。
      */
     @Transactional(readOnly = true)
     public ExportPayload export(UnitQueryFilter f, int maxRows) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "编号", ExportColumn.TEXT),
                 new ExportColumn("name", "单位名称", ExportColumn.TEXT),
-                new ExportColumn("status", "状态", ExportColumn.TEXT),
-                new ExportColumn("dimension", "计量维度", ExportColumn.TEXT),
-                new ExportColumn("massUnit", "重量单位", ExportColumn.TEXT));
+                new ExportColumn("status", "状态", ExportColumn.TEXT));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
         List<Map<String, Object>> rows = ReportQueryKit.collectPages(
                 maxRows, (p, size) -> list(f, p, size), u -> {
@@ -337,20 +335,9 @@ public class UnitService {
                     row.put("code", u.getCode());
                     row.put("name", u.getName());
                     row.put("status", u.getStatus());
-                    row.put("dimension", u.getMeasurementDimension() == null
-                            ? "未设置"
-                            : DIMENSION_LABELS.getOrDefault(u.getMeasurementDimension(),
-                                    u.getMeasurementDimension()));
-                    row.put("massUnit", massUnitDisplay(u.getMeasurementDimension(), u.getMassUnitCode()));
                     return row;
                 });
         return new ExportPayload(cols, rows, rows.size());
-    }
-
-    /** 「重量单位」列文字(与前端 unit_page 重量单位列同口径)：重量维度没选时写「未指定」，非重量维度留空。 */
-    static String massUnitDisplay(String dimension, String massUnitCode) {
-        if (!MASS.equals(dimension)) return "";
-        return massUnitCode == null ? "未指定" : MASS_UNIT_LABELS.getOrDefault(massUnitCode, massUnitCode);
     }
 
     // ===== facets（各字段 distinct + 空值计数） =====
@@ -443,6 +430,12 @@ public class UnitService {
         if (u.getStatus() == null) u.setStatus("使用");
         // legacy_id 只保存旧库 B_Unit.ID。在线新建保持 null，关系只使用 UUID。
         repo.save(u);
+        if (!req.hasMeasurementDimension() && !req.hasMassUnitCode()) {
+            com.uten.imp.common.measure.WeightUnit.tryParse(name).ifPresent(weight -> {
+                req.setMeasurementDimension("MASS");
+                req.setMassUnitCode(weight.code());
+            });
+        }
         return toDetail(u, applyMeasurement(u, req, false));
     }
 

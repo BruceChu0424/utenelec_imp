@@ -45,6 +45,7 @@ import '../repositories/goods_cost_repository.dart';
 import 'goods_cost_actual_panel.dart';
 import 'goods_cost_production_evidence.dart';
 import 'goods_cost_import_dialog.dart';
+import 'goods_import_file_reader.dart';
 import 'master_data_table_view.dart';
 import 'uten_client_picker.dart';
 
@@ -338,6 +339,8 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   }
 
   String _message(Object e) => e is ApiException
+      ? e.message
+      : e is GoodsImportFileException
       ? e.message
       : e is StateError
       ? e.message

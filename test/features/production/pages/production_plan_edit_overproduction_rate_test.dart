@@ -74,6 +74,49 @@ Future<List<Map<String, dynamic>>> _save(
 }
 
 void main() {
+  for (final column in ['qty', 'allowedOverproductionRate']) {
+    testWidgets(
+      '1000-row plan save reveals offscreen invalid $column without submitting or losing input',
+      (tester) async {
+        final api = await _open(tester, secondRate: 0);
+        final grid = tester.widget<UtenEditableGrid<ProductionGridRow>>(
+          find.byType(UtenEditableGrid<ProductionGridRow>),
+        );
+        final template = grid.controller.rows.first;
+        final models = List.generate(1000, (_) => template.clone());
+        final bad = models[950];
+        final input = column == 'qty' ? bad.qty : bad.overproductionPercent;
+        input.text = '-1';
+        models.last.remark.text = '保留最后一行原输入';
+        grid.controller.replaceAll(models);
+        await tester.pumpAndSettle();
+        final badField = find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField && identical(widget.controller, input),
+        );
+        expect(badField, findsNothing);
+        expect(grid.controller.mountedRowCount, lessThan(100));
+
+        await tester.tap(find.text('保存'));
+        await tester.pumpAndSettle();
+
+        expect(badField.hitTestable(), findsOneWidget);
+        final editable = tester.widget<EditableText>(
+          find.descendant(of: badField, matching: find.byType(EditableText)),
+        );
+        expect(editable.focusNode.hasFocus, isTrue);
+        expect(grid.controller.rows.length, 1000);
+        expect(identical(grid.controller.rows[950], bad), isTrue);
+        expect(input.text, '-1');
+        expect(models.last.remark.text, '保留最后一行原输入');
+        expect(api.attempted, isNull);
+        expect(api.saved, isNull);
+        expect(grid.controller.mountedRowCount, lessThan(100));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'maximum 14+4 quantity and original quantity load and save every digit',
     (tester) async {

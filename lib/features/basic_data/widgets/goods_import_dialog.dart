@@ -1,8 +1,7 @@
 // 货品批量导入流程弹窗：选文件 → 检测 → 报告（错误/将自动新建）→ 确认导入 → 结果。
 //
-// 两段式（先检测后导入）：检测出的硬错误（编号空/重复/已存在、必填缺失、引用歧义）会拦住
-// 提交，让用户改完重传；无错才允许「确认导入」。提交是后端原子事务（缺分类/颜色/单位自动
-// 新建，编号查重命中整批回滚），绝不「传一半」。
+// 先检测再核对：新货品新增，已有货品补齐空值；非空冲突在全页中选择替换或忽略。
+// 文件内重复、必填缺失和身份歧义阻止提交；服务端按检测计划在事务中复核并写入。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:typed_data';
 
@@ -14,10 +13,13 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_drop_target.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
+import '../../../core/network/api_exception.dart';
 import '../models/goods_import.dart';
 import '../repositories/goods_import_repository.dart';
 import 'basic_data_l10n.dart';
 import 'goods_import_file_reader.dart';
+import 'goods_import_review.dart';
+import 'import_file_queue.dart';
 
 /// 弹出导入流程。[onImported] 在导入成功后回调（调用方刷新货品列表）。
 Future<void> showGoodsImportDialog(
@@ -27,6 +29,7 @@ Future<void> showGoodsImportDialog(
 }) {
   return showDialog<void>(
     context: context,
+    barrierDismissible: false,
     // 导入弹窗文字（步骤说明/错误结果）可框选复制（准则 §3.4）。
     builder: (ctx) => SelectionArea(
       child: UtenDialogFrame(
@@ -58,62 +61,82 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
   Uint8List? _bytes;
   GoodsImportReport? _report;
   GoodsImportResult? _result;
+  bool _reviewing = false;
+  Set<String>? _submittedSelection;
+  bool _commitUncertain = false;
+  String? _detectionMessage;
+  final _queue = ImportFileQueue();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     // 弹窗整块都是拖放接收区（Web/桌面端）：xlsx 直接拖进来检测。
-    return UtenDropTarget(
-      enabled: !_detecting && !_committing,
-      hint: '松开鼠标检测 Excel',
-      onFiles: (files) => _detectFile(files.first),
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UtenSpacing.s16,
-                UtenSpacing.s12,
-                UtenSpacing.s8,
-                UtenSpacing.s12,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '导入货品',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+    return PopScope(
+      canPop: !_detecting && !_committing && !_reviewing,
+      child: UtenDropTarget(
+        enabled: !_detecting && !_committing && !_reviewing,
+        hint: '松开鼠标检测 Excel',
+        onFiles: _replaceQueueAndDetect,
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s16,
+                  UtenSpacing.s12,
+                  UtenSpacing.s8,
+                  UtenSpacing.s12,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '导入货品',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: _detecting || _committing || _reviewing
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const Divider(height: 1),
-            Flexible(
-              child: SingleChildScrollView(
+              const Divider(height: 1),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(UtenSpacing.s16),
+                  child: _body(theme),
+                ),
+              ),
+              const Divider(height: 1),
+              Padding(
                 padding: const EdgeInsets.all(UtenSpacing.s16),
-                child: _body(theme),
+                child: _actions(theme),
               ),
-            ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: _actions(theme),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _body(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ImportFileQueueSummary(queue: _queue),
+        _currentBody(theme),
+      ],
+    );
+  }
+
+  Widget _currentBody(ThemeData theme) {
     if (_committing) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: UtenSpacing.s32),
@@ -132,6 +155,20 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     if (_report != null) {
       return _reportView(theme, _report!);
     }
+    if (_bytes != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _detectionMessage ?? basicDataL10n(context).importRedetectRequired,
+          ),
+          TextButton(
+            onPressed: _redetectCurrentFile,
+            child: Text(basicDataL10n(context).importRedetectCurrent),
+          ),
+        ],
+      );
+    }
     // 初始：选文件 + 格式说明
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -139,14 +176,12 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
         Text('选择未加密的 .xlsx 文件，系统会先检测再导入。', style: theme.textTheme.bodyMedium),
         const SizedBox(height: UtenSpacing.s8),
         Text(
-          '可使用「导出货品」文件作为新增模板；导出会保留必填列。\n'
-          '必填列：编号、类别(用 - 拼分类路径)、货品名称。\n'
-          '可导入列：系列、型号、规格、材质、主颜色、单位、来源、价格、'
+          '${basicDataL10n(context).goodsImportTemplateHint}\n'
+          '可导入列：客户货品名称、客户型号、系列、型号、规格、材质、主颜色、单位、来源、价格、'
           '最小起订量、订货倍数、状态、后模镶件编号、备注。\n'
           '${basicDataL10n(context).goodsNameEnImportHint}\n'
-          '客户型号、模具编号、模具名称、所属仓库、生产车间仅识别不导入。\n'
-          '此处仅新增货品。编号可留空自动生成；编号与在用货品重复不能导入，'
-          '与已删除货品同编号会按清单内容恢复该货品；修改已有货品请在货品详情中保存。\n'
+          '模具编号、模具名称、所属仓库、生产车间仅识别不导入。\n'
+          '${basicDataL10n(context).goodsImportMergeHint}\n'
           '缺失的分类/颜色/单位会自动新建。\n'
           '如从「导出货品」取得文件，导出时请不要设置密码。',
           style: theme.textTheme.bodySmall?.copyWith(
@@ -175,6 +210,18 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           '${r.hasErrors ? "，发现 ${r.errors.length} 个问题" : "，可导入 ${r.readyToImport} 条"}',
         ),
         const SizedBox(height: UtenSpacing.s12),
+        if (!r.hasErrors && r.reviewRows.isNotEmpty) ...[
+          Text(
+            basicDataL10n(context).importReviewSummary(
+              r.addedRows,
+              r.fillRows,
+              r.conflictRows,
+              r.unchangedRows,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          Text(basicDataL10n(context).importReviewIgnoreExplanation),
+        ],
         if (r.hasErrors) ...[
           Container(
             padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -251,6 +298,15 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
         ),
         const SizedBox(height: UtenSpacing.s12),
         Text('已导入 ${r.importedCount} 条货品', style: theme.textTheme.bodyMedium),
+        Text(
+          basicDataL10n(context).importResultSummary(
+            r.createdCount,
+            r.filledCount,
+            r.updatedCount,
+            r.ignoredCount,
+            r.unchangedCount,
+          ),
+        ),
         if (r.createdCategories > 0 ||
             r.createdColors > 0 ||
             r.createdUnits > 0)
@@ -264,12 +320,15 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
             ),
           ),
         const SizedBox(height: UtenSpacing.s8),
-        Text(
-          '如导入有误，可点工具栏「撤回」一键撤销本次导入。',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+        if (r.batchId.isNotEmpty &&
+            r.importedCount > 0 &&
+            _queue.completed.length <= 1)
+          Text(
+            '如导入有误，可点工具栏「撤回」一键撤销本次导入。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
       ],
     );
   }
@@ -302,62 +361,132 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           onPressed: _pickAndDetect,
           child: Text(_report == null ? '选择 Excel 文件' : '重新选择'),
         ),
+        if (_queue.hasPending && _report == null && _bytes == null)
+          UtenButton(
+            onPressed: _detecting || _reviewing ? null : _detectCurrentFile,
+            child: Text(basicDataL10n(context).importFilesContinue),
+          ),
         if (canConfirm)
           UtenButton(
             icon: Icons.check_rounded,
-            onPressed: _commit,
-            child: const Text('确认导入'),
+            onPressed: _reviewing || _detecting
+                ? null
+                : _commitUncertain
+                ? () => _commit(_submittedSelection ?? {})
+                : _reviewAndCommit,
+            child: Text(
+              _commitUncertain
+                  ? basicDataL10n(context).importRetryPrevious
+                  : _report!.reviewRows.isNotEmpty
+                  ? basicDataL10n(context).importReviewOpen
+                  : '确认导入',
+            ),
           ),
       ],
     );
   }
 
   Future<void> _pickAndDetect() async {
-    setState(() => _detecting = true);
+    if (_detecting || _committing || _reviewing) return;
+    final uncertain = _commitUncertain;
+    final previousReport = _report;
+    final previousBytes = _bytes;
+    final previousSelection = _submittedSelection;
+    _beginDetection();
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: const ['xlsx'],
+        allowMultiple: true,
         withReadStream: true,
         readSequential: true,
       );
-      final f = result?.files.firstOrNull;
-      if (f == null) {
-        if (mounted) setState(() => _detecting = false);
+      final files = result?.files;
+      if (files == null || files.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _detecting = false;
+            _queue.pause();
+            if (uncertain) {
+              _report = previousReport;
+              _bytes = previousBytes;
+              _submittedSelection = previousSelection;
+              _commitUncertain = true;
+            }
+          });
+        }
         return;
       }
-      await _detectFile(f);
+      await _replaceQueueAndDetect(files);
     } catch (_) {
       if (!mounted) return;
-      setState(() => _detecting = false);
+      setState(() {
+        _detecting = false;
+        _queue.pause(failed: true);
+        if (uncertain) {
+          _report = previousReport;
+          _bytes = previousBytes;
+          _submittedSelection = previousSelection;
+          _commitUncertain = true;
+        }
+      });
       context.appError('选择文件时出了问题，请重试');
     }
   }
 
-  /// 检测一个工作簿（文件选择框与拖入共用）。
-  Future<void> _detectFile(PlatformFile f) async {
-    if (!mounted) return;
-    setState(() => _detecting = true);
+  Future<void> _replaceQueueAndDetect(List<PlatformFile> files) async {
+    if (!mounted || files.isEmpty || _committing || _reviewing) return;
+    setState(() => _queue.replacePending(files));
+    await _detectCurrentFile();
+  }
+
+  /// Never detect later files before the current file has committed.
+  Future<void> _detectCurrentFile() async {
+    final file = _queue.current;
+    if (!mounted || file == null || _committing || _reviewing) return;
+    _beginDetection();
     try {
-      final bytes = await readGoodsImportFile(f);
+      final bytes = _queue.currentBytes ?? await readGoodsImportFile(file);
+      if (!mounted) return;
+      _queue.currentBytes = bytes;
+      _bytes = bytes;
       final report = await ref
           .read(goodsImportRepositoryProvider)
           .detect(bytes);
       if (!mounted) return;
       setState(() {
         _bytes = bytes;
-        _pickedName = f.name;
+        _pickedName = file.name;
         _report = report;
         _result = null;
         _detecting = false;
+        if (report.hasErrors) {
+          _queue.pause(failed: true);
+        } else {
+          _queue.phase = ImportFileQueuePhase.waiting;
+        }
       });
+      if (!report.hasErrors && report.reviewRows.isNotEmpty) {
+        await _reviewAndCommit();
+      } else if (!report.hasErrors &&
+          report.restorableRows == 0 &&
+          _queue.approved) {
+        await _commit({});
+      }
     } on GoodsImportFileException catch (e) {
       if (!mounted) return;
-      setState(() => _detecting = false);
+      setState(() {
+        _detecting = false;
+        _detectionMessage = e.message;
+        _queue.pause(failed: true);
+      });
       context.appError(e.message);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _detecting = false);
+      setState(() {
+        _detecting = false;
+        _queue.pause(failed: true);
+      });
       context.appApiError(
         e,
         fallback: '读取或检测文件时出了问题，请刷新页面重试；仍失败请联系管理员重启 Web 服务',
@@ -365,28 +494,128 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     }
   }
 
-  Future<void> _commit() async {
+  void _beginDetection() {
+    setState(() {
+      _detecting = true;
+      _report = null;
+      _bytes = null;
+      _result = null;
+      _submittedSelection = null;
+      _commitUncertain = false;
+      _detectionMessage = null;
+      _queue.phase = ImportFileQueuePhase.detecting;
+    });
+  }
+
+  Future<void> _redetectCurrentFile() async {
+    if (_detecting || _committing || _reviewing) return;
+    _queue.approved = false;
+    await _detectCurrentFile();
+  }
+
+  Future<void> _reviewAndCommit() async {
+    final report = _report;
+    if (_detecting ||
+        _committing ||
+        _reviewing ||
+        report == null ||
+        report.hasErrors) {
+      return;
+    }
+    Set<String> selected = {};
+    if (report.reviewRows.isNotEmpty) {
+      setState(() {
+        _reviewing = true;
+        _queue.phase = ImportFileQueuePhase.reviewing;
+      });
+      final result = await reviewGoodsImport(
+        context,
+        title: basicDataL10n(context).goodsImportReviewTitle,
+        filename: _queue.current == null
+            ? null
+            : basicDataL10n(context).importFilesCurrent(
+                _queue.position,
+                _queue.total,
+                _queue.current!.name,
+              ),
+        rows: report.reviewRows,
+        added: report.addedRows,
+        filled: report.fillRows,
+        conflicts: report.conflictRows,
+        unchanged: report.unchangedRows,
+      );
+      if (!mounted) return;
+      setState(() => _reviewing = false);
+      if (result == null) {
+        setState(() => _queue.pause());
+        return;
+      }
+      selected = result;
+    }
+    await _commit(selected);
+  }
+
+  Future<void> _commit(Set<String> selected) async {
+    if (_committing || _detecting || _report?.hasErrors != false) return;
     final bytes = _bytes;
     final planId = _report?.planId;
     if (bytes == null || planId == null || planId.isEmpty) {
       context.appError('检测结果已过期，请重新选择文件并检测');
       return;
     }
-    setState(() => _committing = true);
+    setState(() {
+      _committing = true;
+      _submittedSelection = Set.of(selected);
+      _queue.phase = ImportFileQueuePhase.committing;
+    });
     try {
       final res = await ref
           .read(goodsImportRepositoryProvider)
-          .commit(bytes, planId: planId, filename: _pickedName);
+          .commit(
+            bytes,
+            planId: planId,
+            filename: _pickedName,
+            replaceRowKeys: selected,
+          );
       if (!mounted) return;
       setState(() {
         _result = res;
         _committing = false;
+        _queue.approved = true;
+        _queue.succeed(
+          basicDataL10n(context).importResultSummary(
+            res.createdCount,
+            res.filledCount,
+            res.updatedCount,
+            res.ignoredCount,
+            res.unchangedCount,
+          ),
+        );
       });
       context.appSuccess('已导入 ${res.importedCount} 条货品');
       widget.onImported?.call();
+      if (_queue.hasPending) await _detectCurrentFile();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _committing = false);
+      setState(() {
+        _committing = false;
+        _queue.pause(failed: true);
+        if (e is ApiException &&
+            e.code != 'NETWORK' &&
+            e.code != 'NETWORK_TIMEOUT' &&
+            (e.httpStatus ?? 0) < 500) {
+          _report = null;
+          _commitUncertain = false;
+          _detectionMessage = e.message;
+        } else {
+          _commitUncertain =
+              e is! ApiException ||
+              e.code == 'NETWORK' ||
+              e.code == 'NETWORK_TIMEOUT' ||
+              (e.httpStatus ?? 0) >= 500;
+        }
+      });
+      if (_commitUncertain) widget.onImported?.call();
       context.appApiError(e);
     }
   }

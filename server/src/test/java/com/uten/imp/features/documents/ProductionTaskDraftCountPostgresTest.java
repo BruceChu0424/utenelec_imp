@@ -32,7 +32,7 @@ class ProductionTaskDraftCountPostgresTest {
     private static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("production_task_draft_count")
-                    .withUsername("uten")
+                    .withUsername("fixture_admin")
                     .withPassword("uten");
     private static final AtomicInteger SEQUENCE = new AtomicInteger(800000);
     private static final LocalDate DATE = LocalDate.of(2026, 9, 12);

@@ -90,6 +90,46 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
     }
 
     @Test
+    void disabledGoodsRetireRealBomReferencesAcrossTwoLevelsBeforeTheNextAnalysisRead() {
+        UUID unit=UUID.randomUUID(), root=UUID.randomUUID(), semi=UUID.randomUUID();
+        UUID disabledRaw=UUID.randomUUID(), keptRaw=UUID.randomUUID(), keptRoot=UUID.randomUUID();
+        jdbc.update("INSERT INTO units(id,code,name) VALUES(?,?,?)",unit,"DISABLE-TREE-U-"+unit,"piece");
+        for(UUID goods:List.of(root,semi,disabledRaw,keptRaw,keptRoot)) insertGoods(goods,unit,"DISABLE-TREE-");
+        UUID rootSemi=UUID.randomUUID(),semiRaw=UUID.randomUUID(),directRaw=UUID.randomUUID();
+        UUID semiKept=UUID.randomUUID(),rootKept=UUID.randomUUID();
+        for(Object[] edge:List.of(new Object[]{rootSemi,root,semi,2},new Object[]{semiRaw,semi,disabledRaw,3},
+                new Object[]{directRaw,root,disabledRaw,1},new Object[]{semiKept,semi,keptRaw,2},
+                new Object[]{rootKept,root,keptRoot,4})) {
+            jdbc.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty) VALUES(?,?,?,?)",edge);
+        }
+        UUID sourceId=UUID.randomUUID();
+        var source=sourceLine(sourceId,root,unit);
+        var reader=new MaterialAnalysisBomSnapshotReader(entityManager);
+        assertThat(reader.read(List.of(source)).get(sourceId)).hasSize(5);
+
+        jdbc.update("UPDATE goods SET status='禁用' WHERE id=?",disabledRaw);
+        var afterRawDisable=reader.read(List.of(source)).get(sourceId);
+        assertThat(afterRawDisable).hasSize(3);
+        assertThat(afterRawDisable).extracting(row->row[2]).containsOnly(semi,keptRaw,keptRoot);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM goods_bom_items WHERE id IN (?,?) AND is_deleted AND retirement_reason='COMPONENT_DISABLED'",
+                Integer.class,semiRaw,directRaw)).isEqualTo(2);
+        jdbc.update("UPDATE goods SET status='使用' WHERE id=?",disabledRaw);
+        assertThat(reader.read(List.of(source)).get(sourceId)).hasSize(3);
+
+        jdbc.update("UPDATE goods SET status='禁用' WHERE id=?",semi);
+        var afterSemiDisable=reader.read(List.of(source)).get(sourceId);
+        assertThat(afterSemiDisable).singleElement().satisfies(row->{
+            assertThat(row[0]).isEqualTo(rootKept);
+            assertThat(row[2]).isEqualTo(keptRoot);
+            assertThat((BigDecimal)row[8]).isEqualByComparingTo("4");
+        });
+        // The disabled assembly's own recipe is retained, while the root no longer traverses it.
+        assertThat(jdbc.queryForObject("SELECT is_deleted FROM goods_bom_items WHERE id=?",Boolean.class,semiKept)).isFalse();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM goods_bom_items WHERE id IN (?,?,?,?,?)",Integer.class,
+                rootSemi,semiRaw,directRaw,semiKept,rootKept)).isEqualTo(5);
+    }
+
+    @Test
     void twoLevelBomPreviewDerivesParentPathThroughHibernate() {
         UUID unitId = UUID.randomUUID();
         UUID finishedGoodsId = UUID.randomUUID();

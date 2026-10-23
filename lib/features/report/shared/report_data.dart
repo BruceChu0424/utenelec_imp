@@ -5,6 +5,7 @@
 // 名称（客户/仓库/货品/人员…）服务端 JOIN 出，前端直接展示。
 
 import '../../basic_data/models/master_facet.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import 'report_column.dart';
 import 'report_total.dart';
 
@@ -32,6 +33,53 @@ class ReportData {
   /// 表格下方合计（服务端在**整个结果集**上算出，与当前页无关）。
   /// 该报表未声明合计列时为空 —— 合计条整体不渲染，绝不退化成「当前页求和」。
   final List<ReportTotal> totals;
+}
+
+/// Decodes display metadata in bounded slices before a page publishes it.
+/// The original server totals, ordering and display-ready row values survive.
+Future<ReportData> parseReportResponseResponsive(
+  Map<String, dynamic> json,
+  int fallbackPage, {
+  bool Function()? isCurrent,
+}) async {
+  final work = UiWorkBudget(isCurrent: isCurrent);
+  final columns = await mapInUiSlices<dynamic, ReportColumn>(
+    json['columns'] as List? ?? const [],
+    (value) => ReportColumn.fromJson(value as Map<String, dynamic>),
+    budget: work,
+  );
+  final facets = <String, List<MasterFacetBucket>>{};
+  if (json['facets'] case final Map<Object?, Object?> raw) {
+    for (final entry in raw.entries) {
+      if (entry.value case final List<dynamic> values) {
+        facets[entry.key
+            .toString()] = await mapInUiSlices<dynamic, MasterFacetBucket>(
+          values,
+          (value) => MasterFacetBucket.fromJson(value as Map<String, dynamic>),
+          budget: work,
+        );
+      }
+      await work.checkpoint();
+    }
+  }
+  final totals = await mapInUiSlices<dynamic, ReportTotal>(
+    json['totals'] as List? ?? const [],
+    (value) => ReportTotal.fromJson(value as Map<String, dynamic>),
+    budget: work,
+  );
+  work.ensureCurrent();
+  return ReportData(
+    columns: columns,
+    rows: (json['rows'] as List? ?? const []).cast<Map<String, dynamic>>(),
+    facets: facets,
+    page: (json['page'] as num?)?.toInt() ?? fallbackPage,
+    totalPages: (json['totalPages'] as num?)?.toInt() ?? 1,
+    total: (json['total'] as num?)?.toInt() ?? 0,
+    meta: json['meta'] is Map
+        ? Map<String, dynamic>.from(json['meta'] as Map)
+        : const <String, dynamic>{},
+    totals: totals,
+  );
 }
 
 /// 解析后端 ReportTableResponse JSON 为 [ReportData]。

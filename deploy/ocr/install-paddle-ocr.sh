@@ -53,7 +53,7 @@ if ! id uten-ocr >/dev/null 2>&1; then
 fi
 install -d -m 0750 -o root -g uten-ocr "$DEST/models"
 cd "$DEST"
-for f in ocr_server.py uten-paddle-ocr.service requirements.txt prepare_models.py; do
+for f in ocr_server.py uten-paddle-ocr.service requirements.txt security-constraints.txt prepare_models.py; do
   [[ -f "$f" ]] || { log "缺少 $f (先将对应 deploy/ocr 文件安装到 /opt/uten-ocr/)"; exit 1; }
 done
 
@@ -61,6 +61,7 @@ if [[ ! -d venv ]]; then
   log "创建 venv …"
   "$PY" -m venv venv
 fi
+./venv/bin/python -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else "OCR security baseline requires Python 3.11 or newer")'
 # OpenCV 的动态库依赖不要求桌面或显示器；PaddleX 按包名检查 contrib wheel。
 GLIB_PACKAGE=libglib2.0-0
 if apt-cache show libglib2.0-0t64 >/dev/null 2>&1; then GLIB_PACKAGE=libglib2.0-0t64; fi
@@ -71,14 +72,15 @@ log "安装依赖（paddlepaddle CPU 版约 500MB，paddleocr 会另拉模型到
 ./venv/bin/pip uninstall -y -q opencv-python opencv-python-headless opencv-contrib-python-headless >/dev/null 2>&1 || true
 ./venv/bin/pip install --quiet -r requirements.txt
 ./venv/bin/pip install --quiet --force-reinstall --no-deps 'opencv-contrib-python==4.10.0.84'
+./venv/bin/pip check
 ./venv/bin/python -c 'import cv2; print("OpenCV import verified")'
 ./venv/bin/pip freeze > installed-requirements.txt
 # The HTTP service must not be able to replace its own Python code or packages.
 chown -R root:root "$DEST/venv"
 find "$DEST/venv" -type d -exec chmod 0755 {} +
 find "$DEST/venv" -type f -exec chmod a+r,go-w {} +
-chown root:root ocr_server.py prepare_models.py requirements.txt uten-paddle-ocr.service
-chmod 0644 ocr_server.py prepare_models.py requirements.txt uten-paddle-ocr.service
+chown root:root ocr_server.py prepare_models.py requirements.txt security-constraints.txt uten-paddle-ocr.service
+chmod 0644 ocr_server.py prepare_models.py requirements.txt security-constraints.txt uten-paddle-ocr.service
 sudo -u uten-ocr "$DEST/venv/bin/python" -c \
   'import cv2, importlib.metadata as m; assert m.version("opencv-contrib-python") == "4.10.0.84"; assert cv2.__version__.startswith("4.10."); print("Service identity OpenCV import and metadata verified")'
 log "pip 依赖完成"; du -sh "$DEST" || true

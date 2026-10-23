@@ -1,3 +1,4 @@
+import '../../../core/performance/ui_work_budget.dart';
 import 'production_material_analysis.dart';
 
 const materialAggregateMaxGroups = 500;
@@ -185,43 +186,64 @@ class MaterialAggregateChildRequirement {
 }
 
 class MaterialAggregateOrderGroupPreview {
-  MaterialAggregateOrderGroupPreview.fromJson(Map<String, dynamic> json)
-    : clientGroupKey = json['clientGroupKey'] as String,
-      compatibilityKey = json['compatibilityKey'] as String? ?? '',
-      route = MaterialSupplyRoute.fromWire(json['route']),
-      goodsId = json['goodsId'] as String,
-      goodsCode = json['goodsCode'] as String? ?? '',
-      goodsName = json['goodsName'] as String? ?? '',
-      colorId = json['colorId'] as String?,
-      colorName = json['colorName'] as String? ?? '',
-      unitId = json['unitId'] as String?,
-      unitName = json['unitName'] as String? ?? '',
-      sourceRequiredQty = _amount(json['sourceRequiredQty']),
-      orderedQty = _amount(json['orderedQty']),
-      remainingQty = _amount(json['remainingQty']),
-      requestedQty = _amount(json['requestedQty']),
-      publicExtraQty = _amount(json['publicExtraQty']),
-      publicExtraQtyExact = json['publicExtraQtyExact'] as String?,
-      safetyQty = _amount(json['safetyQty']),
-      departmentId = json['departmentId'] as String?,
-      workerId = json['workerId'] as String?,
-      teamDepartmentId = json['teamDepartmentId'] as String?,
-      billDate = json['billDate'] as String?,
-      deliveryDate = json['deliveryDate'] as String?,
-      productNo = json['productNo'] as String?,
-      allowedOverproductionRate = (json['allowedOverproductionRate'] as num?)
-          ?.toDouble(),
-      sources = _list(
-        json['sources'],
-        MaterialAggregateSourceAllocation.fromJson,
-      ),
-      sharedBomChildren = _list(
-        json['sharedBomChildren'],
-        MaterialAggregateChildRequirement.fromJson,
-      ),
-      blockedReason = json['blockedReason'] as String?,
-      existingBatchId = json['existingBatchId'] as String?,
-      priorOutputQty = _amount(json['priorOutputQty']);
+  MaterialAggregateOrderGroupPreview.fromJson(
+    Map<String, dynamic> json, {
+    List<MaterialAggregateSourceAllocation>? sources,
+    List<MaterialAggregateChildRequirement>? sharedBomChildren,
+  }) : clientGroupKey = json['clientGroupKey'] as String,
+       compatibilityKey = json['compatibilityKey'] as String? ?? '',
+       route = MaterialSupplyRoute.fromWire(json['route']),
+       goodsId = json['goodsId'] as String,
+       goodsCode = json['goodsCode'] as String? ?? '',
+       goodsName = json['goodsName'] as String? ?? '',
+       colorId = json['colorId'] as String?,
+       colorName = json['colorName'] as String? ?? '',
+       unitId = json['unitId'] as String?,
+       unitName = json['unitName'] as String? ?? '',
+       sourceRequiredQty = _amount(json['sourceRequiredQty']),
+       orderedQty = _amount(json['orderedQty']),
+       remainingQty = _amount(json['remainingQty']),
+       requestedQty = _amount(json['requestedQty']),
+       publicExtraQty = _amount(json['publicExtraQty']),
+       publicExtraQtyExact = json['publicExtraQtyExact'] as String?,
+       safetyQty = _amount(json['safetyQty']),
+       departmentId = json['departmentId'] as String?,
+       workerId = json['workerId'] as String?,
+       teamDepartmentId = json['teamDepartmentId'] as String?,
+       billDate = json['billDate'] as String?,
+       deliveryDate = json['deliveryDate'] as String?,
+       productNo = json['productNo'] as String?,
+       allowedOverproductionRate = (json['allowedOverproductionRate'] as num?)
+           ?.toDouble(),
+       sources =
+           sources ??
+           _list(json['sources'], MaterialAggregateSourceAllocation.fromJson),
+       sharedBomChildren =
+           sharedBomChildren ??
+           _list(
+             json['sharedBomChildren'],
+             MaterialAggregateChildRequirement.fromJson,
+           ),
+       blockedReason = json['blockedReason'] as String?,
+       existingBatchId = json['existingBatchId'] as String?,
+       priorOutputQty = _amount(json['priorOutputQty']);
+
+  static Future<MaterialAggregateOrderGroupPreview> _fromJsonResponsive(
+    Map<String, dynamic> json,
+    UiWorkBudget work,
+  ) async => MaterialAggregateOrderGroupPreview.fromJson(
+    json,
+    sources: await _listResponsive(
+      json['sources'],
+      MaterialAggregateSourceAllocation.fromJson,
+      work,
+    ),
+    sharedBomChildren: await _listResponsive(
+      json['sharedBomChildren'],
+      MaterialAggregateChildRequirement.fromJson,
+      work,
+    ),
+  );
   final String clientGroupKey,
       compatibilityKey,
       goodsId,
@@ -255,17 +277,51 @@ class MaterialAggregateOrderGroupPreview {
 
 class MaterialAggregateOrderPreview {
   MaterialAggregateOrderPreview.fromJson(Map<String, dynamic> json)
-    : analysisId = json['analysisId'] as String,
-      version = (json['version'] as num).toInt(),
-      fingerprint = json['fingerprint'] as String,
-      previewFingerprint = json['previewFingerprint'] as String,
-      groups = _list(
-        json['groups'],
-        MaterialAggregateOrderGroupPreview.fromJson,
-      ),
-      analysis = ProductionMaterialAnalysisView.fromJson(
-        Map<String, dynamic>.from(json['analysis'] as Map),
+    : this._fromAnalysis(
+        json,
+        ProductionMaterialAnalysisView.fromJson(
+          Map<String, dynamic>.from(json['analysis'] as Map),
+        ),
       );
+
+  static Future<MaterialAggregateOrderPreview> fromJsonResponsive(
+    Map<String, dynamic> json, {
+    UiWorkBudget? budget,
+  }) async {
+    final work = budget ?? UiWorkBudget();
+    final analysis = await ProductionMaterialAnalysisView.fromJsonResponsive(
+      Map<String, dynamic>.from(json['analysis'] as Map),
+      budget: work,
+    );
+    final groups = <MaterialAggregateOrderGroupPreview>[];
+    for (final item in json['groups'] as List? ?? const []) {
+      groups.add(
+        await MaterialAggregateOrderGroupPreview._fromJsonResponsive(
+          Map<String, dynamic>.from(item as Map),
+          work,
+        ),
+      );
+      await work.checkpoint();
+    }
+    work.ensureCurrent();
+    return MaterialAggregateOrderPreview._fromAnalysis(
+      json,
+      analysis,
+      groups: groups,
+    );
+  }
+
+  MaterialAggregateOrderPreview._fromAnalysis(
+    Map<String, dynamic> json,
+    this.analysis, {
+    List<MaterialAggregateOrderGroupPreview>? groups,
+  }) : analysisId = json['analysisId'] as String,
+       version = (json['version'] as num).toInt(),
+       fingerprint = json['fingerprint'] as String,
+       previewFingerprint = json['previewFingerprint'] as String,
+       groups =
+           groups ??
+           _list(json['groups'], MaterialAggregateOrderGroupPreview.fromJson);
   final String analysisId, fingerprint, previewFingerprint;
   final int version;
   final List<MaterialAggregateOrderGroupPreview> groups;
@@ -273,26 +329,27 @@ class MaterialAggregateOrderPreview {
 }
 
 class MaterialAggregateOrderBatch {
-  MaterialAggregateOrderBatch.fromJson(Map<String, dynamic> json)
-    : batchId = json['batchId'] as String?,
-      clientGroupKey = json['clientGroupKey'] as String,
-      route = MaterialSupplyRoute.fromWire(json['route']),
-      documentType = json['documentType'] as String? ?? '',
-      documentId = json['documentId'] as String?,
-      documentNo = json['documentNo'] as String? ?? '',
-      planId = json['planId'] as String?,
-      anchorAnalysisItemId = json['anchorAnalysisItemId'] as String?,
-      qty = _amount(json['qty']),
-      publicExtraQty = _amount(json['publicExtraQty']),
-      generatedPlan = json['generatedPlan'] is Map
-          ? ProductionGeneratedPlanRef.fromJson(
-              Map<String, dynamic>.from(json['generatedPlan'] as Map),
-            )
-          : null,
-      sources = _list(
-        json['sources'],
-        MaterialAggregateSourceAllocation.fromJson,
-      );
+  MaterialAggregateOrderBatch.fromJson(
+    Map<String, dynamic> json, {
+    List<MaterialAggregateSourceAllocation>? sources,
+  }) : batchId = json['batchId'] as String?,
+       clientGroupKey = json['clientGroupKey'] as String,
+       route = MaterialSupplyRoute.fromWire(json['route']),
+       documentType = json['documentType'] as String? ?? '',
+       documentId = json['documentId'] as String?,
+       documentNo = json['documentNo'] as String? ?? '',
+       planId = json['planId'] as String?,
+       anchorAnalysisItemId = json['anchorAnalysisItemId'] as String?,
+       qty = _amount(json['qty']),
+       publicExtraQty = _amount(json['publicExtraQty']),
+       generatedPlan = json['generatedPlan'] is Map
+           ? ProductionGeneratedPlanRef.fromJson(
+               Map<String, dynamic>.from(json['generatedPlan'] as Map),
+             )
+           : null,
+       sources =
+           sources ??
+           _list(json['sources'], MaterialAggregateSourceAllocation.fromJson);
   final String clientGroupKey, documentType, documentNo;
   final String? batchId, documentId, planId, anchorAnalysisItemId;
   final MaterialSupplyRoute? route;
@@ -303,15 +360,66 @@ class MaterialAggregateOrderBatch {
 
 class MaterialAggregateOrderResult {
   MaterialAggregateOrderResult.fromJson(Map<String, dynamic> json)
-    : analysis = ProductionMaterialAnalysisView.fromJson(
-        Map<String, dynamic>.from(json['analysis'] as Map),
-      ),
-      replayed = json['replayed'] == true,
-      batches = _list(json['batches'], MaterialAggregateOrderBatch.fromJson),
-      materialIdentityBridges = _list(
-        json['materialIdentityBridges'],
-        MaterialAggregateIdentityBridge.fromJson,
+    : this._fromAnalysis(
+        json,
+        ProductionMaterialAnalysisView.fromJson(
+          Map<String, dynamic>.from(json['analysis'] as Map),
+        ),
       );
+
+  static Future<MaterialAggregateOrderResult> fromJsonResponsive(
+    Map<String, dynamic> json, {
+    UiWorkBudget? budget,
+  }) async {
+    final work = budget ?? UiWorkBudget();
+    final analysis = await ProductionMaterialAnalysisView.fromJsonResponsive(
+      Map<String, dynamic>.from(json['analysis'] as Map),
+      budget: work,
+    );
+    final batches = <MaterialAggregateOrderBatch>[];
+    for (final item in json['batches'] as List? ?? const []) {
+      final row = Map<String, dynamic>.from(item as Map);
+      batches.add(
+        MaterialAggregateOrderBatch.fromJson(
+          row,
+          sources: await _listResponsive(
+            row['sources'],
+            MaterialAggregateSourceAllocation.fromJson,
+            work,
+          ),
+        ),
+      );
+      await work.checkpoint();
+    }
+    final bridges = await _listResponsive(
+      json['materialIdentityBridges'],
+      MaterialAggregateIdentityBridge.fromJson,
+      work,
+    );
+    work.ensureCurrent();
+    return MaterialAggregateOrderResult._fromAnalysis(
+      json,
+      analysis,
+      batches: batches,
+      materialIdentityBridges: bridges,
+    );
+  }
+
+  MaterialAggregateOrderResult._fromAnalysis(
+    Map<String, dynamic> json,
+    this.analysis, {
+    List<MaterialAggregateOrderBatch>? batches,
+    List<MaterialAggregateIdentityBridge>? materialIdentityBridges,
+  }) : replayed = json['replayed'] == true,
+       batches =
+           batches ??
+           _list(json['batches'], MaterialAggregateOrderBatch.fromJson),
+       materialIdentityBridges =
+           materialIdentityBridges ??
+           _list(
+             json['materialIdentityBridges'],
+             MaterialAggregateIdentityBridge.fromJson,
+           );
   final ProductionMaterialAnalysisView analysis;
   final bool replayed;
   final List<MaterialAggregateOrderBatch> batches;
@@ -336,3 +444,17 @@ List<T> _list<T>(Object? value, T Function(Map<String, dynamic>) decode) => [
   for (final item in value as List? ?? const [])
     decode(Map<String, dynamic>.from(item as Map)),
 ];
+
+Future<List<T>> _listResponsive<T>(
+  Object? value,
+  T Function(Map<String, dynamic>) decode,
+  UiWorkBudget work,
+) async {
+  final result = <T>[];
+  for (final item in value as List? ?? const []) {
+    result.add(decode(Map<String, dynamic>.from(item as Map)));
+    await work.checkpoint();
+  }
+  work.ensureCurrent();
+  return result;
+}

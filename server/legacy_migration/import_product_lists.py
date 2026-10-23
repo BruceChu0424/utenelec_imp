@@ -3,6 +3,11 @@
 """
 产品列表 Excel 移植脚本（新 ERP → uten_imp 平台）
 
+整库重建请用 prepare_clean_master_data.py + prepare_goods_excel.py 离线派生后
+导入：本脚本保留为既有库的补空工具，不创建 Excel 新货品，不能代表全量导入。
+prepare_goods_excel.py 保留原始编码/legacy 身份，在 BOM/交易前导入最新非空
+属性、新货品和来源，并保存全部 80 列、价格策略子行及双层哈希证据。
+
 用途
 ----
 平台上架 / 数据重导时，把 `product lists/` 目录下三个新 ERP 导出的产品列表
@@ -155,10 +160,11 @@ def emit_owning_csv(rows: list[dict], legacy_goods_csv: Path, crosswalk_csv: Pat
         writer = csv.writer(sink, delimiter="|", lineterminator="\n")
         writer.writerow(["goods_legacy_id", "warehouse_code"])
         for row in csv.DictReader(fh, delimiter="|"):
-            target = by_name.get(norm_name(row.get("Goods_Name") or ""))
-            if not target or not (row.get("ID") or "").strip():
+            target = by_name.get(norm_name(row.get("name") or row.get("Goods_Name") or ""))
+            legacy_id = (row.get("legacy_id") or row.get("ID") or "").strip()
+            if not target or not legacy_id:
                 continue
-            writer.writerow([row["ID"].strip(), targets[warehouse_name_key(target)]])
+            writer.writerow([legacy_id, targets[warehouse_name_key(target)]])
             written += 1
     print(f"所属仓库清单：Excel 去重名称 {len(by_name)}(丢弃冲突名 {len(conflicts)})；"
           f"写出老库货品 {written} 条 → {out}")
@@ -174,8 +180,7 @@ def load_rows(data_dir: Path, files: list[str]) -> list[dict]:
     for fn in files:
         p = data_dir / fn
         if not p.exists():
-            print(f"[WARN] 文件不存在，跳过：{p}")
-            continue
+            raise SystemExit(f"必需产品列表文件不存在，拒绝不完整导入：{p}")
         wb = xlrd.open_workbook(str(p))
         s = wb.sheet_by_index(0)
         hdr = [cell_str(s.cell_value(0, c)) for c in range(s.ncols)]

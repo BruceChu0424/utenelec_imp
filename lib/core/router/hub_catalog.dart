@@ -33,7 +33,6 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     RoutePath.stockDocNew('OTHER_OUT'),
     RoutePath.stockDocNew('FINISHED_OUT'),
     RoutePath.stockDocNew('OTHER_IN'),
-    RoutePath.stockDocNew('FINISHED_IN'),
     RoutePath.stockDocNew('TRANSFER'),
     RoutePath.stockDocNew('CHECK'),
     RouteName.stockInstantInventory,

@@ -609,6 +609,180 @@ void main() {
     }
   }
 
+  for (final aggregateEntry in [false, true]) {
+    testWidgets(
+      '多层自制接管后的委外追加按原路径权威缺口补采购，不把已转交的零需求当成备齐 (汇总入口=$aggregateEntry)',
+      (tester) async {
+        var supplyRounds = 0;
+        await _pump(
+          tester,
+          issuedRoot: true,
+          extraPermissions: const {Perm.productionMaterialAnalysisOverSupply},
+          mutate: (data) {
+            (data['flatMaterials'] as List).add(
+              _material(
+                line: 'm-owner',
+                name: '已下达的功能件',
+                product: 'product-2',
+                confirmed: 'MAKE',
+                net: 0,
+              ),
+            );
+            _line(data, 'm-p')
+              ..['parentNodeKey'] = 'n-m-owner'
+              ..['level'] = 2
+              ..['aggregatePreparation'] = {
+                'requiredQty': 1000,
+                'orderedQty': 1000,
+                'allocatedOrderedQty': 1000,
+                'orderedQtyExact': true,
+                'planningUncoveredQty': 0,
+                'netShortageQty': 0,
+                'targetMaterialLineIds': ['m-p'],
+                'actionable': true,
+              };
+            _line(data, 'm-pc')
+              ..['level'] = 3
+              ..['requiredQty'] = 0
+              ..['planningUncoveredQty'] = 0
+              ..['netShortageQty'] = 0
+              ..['additionalSupplyRecommendedQty'] = 0
+              ..['requirementState'] = 'DELEGATED_TO_MAKE_CHILD'
+              ..['actionable'] = false
+              ..['aggregatePreparation'] = {
+                'requiredQty': 1000,
+                'orderedQty': 1000,
+                'allocatedOrderedQty': 1000,
+                'orderedQtyExact': true,
+                'planningUncoveredQty': 0,
+                'netShortageQty': 0,
+                'targetMaterialLineIds': ['m-pc'],
+                'actionable': true,
+              };
+            return data;
+          },
+          afterAggregate: (data) {
+            supplyRounds++;
+            final parent = _line(data, 'm-p')['aggregatePreparation'] as Map;
+            parent['orderedQty'] = 1100;
+            parent['allocatedOrderedQty'] = 1000;
+            final leaf = _line(data, 'm-pc')['aggregatePreparation'] as Map;
+            final supplied = supplyRounds > 1;
+            leaf['requiredQty'] = 1100;
+            leaf['planningUncoveredQty'] = supplied ? 0 : 100;
+            leaf['netShortageQty'] = supplied ? 0 : 100;
+            if (supplied) leaf['orderedQty'] = 1100;
+            _line(data, 'm-pc')['planningUncoveredQty'] = 0;
+          },
+        );
+        if (aggregateEntry) {
+          await tester.tap(
+            find.byKey(const ValueKey('material-bom-layout-material')),
+          );
+          await tester.pumpAndSettle();
+        }
+        final field = aggregateEntry
+            ? find.byKey(const ValueKey('material-aggregate-qty-g-m-p||unit-1'))
+            : _appendQty('m-p');
+        Finder checkbox(String line) => aggregateEntry
+            ? find.descendant(
+                of: find.byKey(ValueKey('material-aggregate-g-$line||unit-1')),
+                matching: find.byType(Checkbox),
+              )
+            : _rowCheckbox(line);
+        if (!aggregateEntry && checkbox('m-p').evaluate().isEmpty) {
+          await tester.tap(
+            find.byKey(
+              const ValueKey('material-table-toggle-MATERIAL|m-owner'),
+            ),
+          );
+          await tester.pumpAndSettle();
+        }
+        await tester.enterText(field, '100');
+        await tester.pumpAndSettle();
+        if (tester.widget<Checkbox>(checkbox('m-p').last).value != true) {
+          await _check(tester, checkbox('m-p'));
+        }
+        if (checkbox('m-pc').evaluate().isNotEmpty &&
+            tester.widget<Checkbox>(checkbox('m-pc').last).value == true) {
+          await _check(tester, checkbox('m-pc'));
+        }
+        await _submitMainTable(tester);
+        expect(find.byKey(const Key('child-shortage-dialog')), findsOneWidget);
+        await tester.tap(find.byKey(const Key('child-shortage-go')));
+        await tester.pumpAndSettle();
+        expect(_pageLine('m-pc'), findsOneWidget);
+        final input = find
+            .descendant(of: _pageLine('m-pc'), matching: find.byType(TextField))
+            .first;
+        expect(tester.widget<TextField>(input).controller!.text, '100');
+        await _submitShortagePage(tester);
+        expect(_submittedSourceQty('m-pc'), 100);
+        expect(find.byKey(const Key('child-shortage-done')), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('历史原路径总量未知时沿精确权威桥识别新行动，不冒用共享整批数量', (tester) async {
+    await _pump(
+      tester,
+      issuedRoot: true,
+      extraPermissions: const {Perm.productionMaterialAnalysisOverSupply},
+      mutate: (data) {
+        _line(data, 'm-p')['aggregatePreparation'] = {
+          'requiredQty': 1000,
+          'orderedQty': 0,
+          'totalOrderedQty': 5000,
+          'allocatedOrderedQty': 1000,
+          'orderedQtyExact': false,
+          'planningUncoveredQty': 0,
+          'netShortageQty': 0,
+          'targetMaterialLineIds': ['m-authority'],
+          'actionable': true,
+        };
+        (data['flatMaterials'] as List).add(
+          _material(
+            line: 'm-authority',
+            name: '共享委外权威行',
+            product: 'product-authority',
+            confirmed: 'SUBCONTRACT',
+            net: 0,
+          )..['goodsId'] = 'g-m-p',
+        );
+        return data;
+      },
+      afterAggregate: (data) {
+        final parent = _line(data, 'm-p');
+        final references = (parent['downstreamReferences'] as List)
+            .where((reference) => (reference as Map)['actionId'] != 'act-p')
+            .toList();
+        _line(data, 'm-authority')['downstreamReferences'] = references;
+        parent['downstreamReferences'] = <Object>[];
+        (parent['aggregatePreparation'] as Map)
+          ..['orderedQtyExact'] = false
+          ..['allocatedOrderedQty'] = 1000;
+        _line(data, 'm-pc')['planningUncoveredQty'] = 700;
+      },
+    );
+    await tester.enterText(_appendQty('m-p'), '100');
+    await tester.pumpAndSettle();
+    if (tester.widget<Checkbox>(_rowCheckbox('m-p').last).value != true) {
+      await _check(tester, _rowCheckbox('m-p'));
+    }
+    if (tester.widget<Checkbox>(_rowCheckbox('m-pc').last).value == true) {
+      await _check(tester, _rowCheckbox('m-pc'));
+    }
+    await _submitMainTable(tester);
+    expect(find.byKey(const Key('child-shortage-dialog')), findsOneWidget);
+    expect(find.text('本次已下单，数量见关联单据'), findsOneWidget);
+    expect(_submittedSourceQty('m-pc'), isNull);
+    await tester.tap(find.byKey(const Key('child-shortage-later')));
+    await tester.pumpAndSettle();
+    expect(_submittedSourceQty('m-pc'), isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('补料页：取消勾选的不提交；没定供应方式的不能勾并说原因', (tester) async {
     await _pump(
       tester,

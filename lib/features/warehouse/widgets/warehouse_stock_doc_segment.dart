@@ -1,3 +1,5 @@
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 仓库任务中心 · 通用单据分段（新建 XXX + 历史 XXX 一体化工作台）。
 //
@@ -174,6 +176,21 @@ class _WarehouseStockDocSegmentState
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      setState(() {
+        _reloadGeneration++;
+        _columnFilters.reset();
+        clearDraftSelection();
+        _list.invalidateReadOwner(notify: false);
+      });
+      final ownerCurrent = captureReadOwner(ref);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!ownerCurrent() || ref.read(authenticatedScopeProvider) == null) {
+          return;
+        }
+        if (_shouldLoad) _reload(1);
+      });
+    });
     _list.keyword = widget.keyword;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(masterNameServiceProvider).ensureLoaded();
@@ -284,6 +301,7 @@ class _WarehouseStockDocSegmentState
               ),
             ),
       },
+      isCurrent: captureReadOwner(ref),
       onLoaded: () {
         if (mounted) setState(() {});
       },
@@ -306,7 +324,12 @@ class _WarehouseStockDocSegmentState
       return;
     }
     unawaited(_loadBillNoFacets());
-    await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+    await _list.load(
+      page ?? _list.pageNum,
+      silent: silent,
+      fetch: _fetch,
+      isCurrent: captureReadOwner(ref),
+    );
     if (!mounted || generation != _reloadGeneration) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || generation != _reloadGeneration) return;
@@ -467,8 +490,13 @@ class _WarehouseStockDocSegmentState
               : UtenStatusBadgeType.neutral,
         ),
       ),
-      // 2026-10-08 用户口径「状态或进度列默认放最前」：出库进度（未出库 /
-      // 部分出库 / 已出完）是领料单的第二条进度列，紧跟状态列前置。
+      MasterColumnDef(
+        key: 'billNo',
+        sortable: true,
+        label: '单据号',
+        width: 160,
+        value: (it) => it.billNo,
+      ),
       if (isDraw)
         MasterColumnDef(
           key: 'issueStatus',
@@ -479,14 +507,6 @@ class _WarehouseStockDocSegmentState
           // 未出库=黄 / 部分出库=橙 / 已出完=绿。
           cellColor: (context, it) => drawIssueStatusCellColor(it.issueStatus),
         ),
-      MasterColumnDef(
-        // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
-        key: 'billNo',
-        sortable: true,
-        label: '单据号',
-        width: 160,
-        value: (it) => it.billNo,
-      ),
       MasterColumnDef(
         key: 'billDate',
         label: '日期',

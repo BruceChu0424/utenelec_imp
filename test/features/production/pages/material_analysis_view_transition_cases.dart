@@ -71,7 +71,7 @@ void materialAnalysisViewTransitionCases() {
   });
 
   testWidgets(
-    'view transition paints feedback before replacing the single table',
+    'view transition keeps the previous table visible and interactive while preparing',
     (tester) async {
       await _pump(tester);
       final tableFinder = find.byKey(
@@ -99,7 +99,7 @@ void materialAnalysisViewTransitionCases() {
               find.byKey(const Key('material-view-switch-opacity')),
             )
             .opacity,
-        0,
+        1,
       );
       expect(tester.state(tableFinder), same(originalState));
       await tester.pump(const Duration(milliseconds: 60));
@@ -113,8 +113,18 @@ void materialAnalysisViewTransitionCases() {
               identical(widget.child, opacity.child),
         ),
       );
-      expect(fade.opacity.value, greaterThan(0));
-      expect(fade.opacity.value, lessThan(1));
+      expect(fade.opacity.value, 1);
+      expect(
+        find.ancestor(
+          of: tableFinder,
+          matching: find.byWidgetPredicate(
+            (widget) => widget is IgnorePointer && widget.ignoring,
+          ),
+        ),
+        findsNothing,
+        reason:
+            'read-only preparation must not disable scrolling or interaction',
+      );
       expect(_presentationTable(tester).items, same(originalItems));
       await tester.pumpAndSettle();
       expect(_isMaterialSummary(tester), isTrue);

@@ -183,6 +183,7 @@ class WmSetting {
     this.goLiveDate,
     this.rowVersion = 0,
     this.currentPeriod,
+    this.pendingPeriod,
     this.revokeBlockers = const [],
     this.allowedActions = const [],
   });
@@ -207,6 +208,7 @@ class WmSetting {
   /// 开通状态版本 (批量命令按它判断是否被别人改过; 未开通为 0)。
   final int rowVersion;
   final WmPeriod? currentPeriod;
+  final WmPeriod? pendingPeriod;
 
   /// 撤销这一步现在做不了的原因 (服务端给出); 空 = 可以撤销。
   final List<String> revokeBlockers;
@@ -222,6 +224,7 @@ class WmSetting {
 
   factory WmSetting.fromJson(Map<String, dynamic> json) {
     final period = _map(json['currentPeriod']);
+    final pending = _map(json['pendingPeriod']);
     return WmSetting(
       workshopDepartmentId: json['workshopDepartmentId'] as String,
       workshopName: _s(json['workshopName']) ?? '',
@@ -239,6 +242,9 @@ class WmSetting {
       currentPeriod: period == null || period['id'] == null
           ? null
           : WmPeriod.fromJson(period),
+      pendingPeriod: pending == null || pending['id'] == null
+          ? null
+          : WmPeriod.fromJson(pending),
       revokeBlockers: _strings(json['revokeBlockers']),
       allowedActions: _strings(json['allowedActions']),
     );

@@ -37,6 +37,7 @@ class GoodsImportRestoreDeletedTest {
         when(goods.existsByCodeAndDeletedFalse("208035801")).thenReturn(false);
         when(goods.findFirstByCodeAndDeletedTrueOrderByIdAsc("208035801"))
                 .thenReturn(Optional.of(deleted));
+        when(goods.findRestorableDeletedIdsByCode("208035801")).thenReturn(List.of(deletedId));
         deleted.setId(deletedId);
         GoodsImportService service = service(goods, null);
 
@@ -71,6 +72,7 @@ class GoodsImportRestoreDeletedTest {
         when(goods.existsByCodeAndDeletedFalse("208035801")).thenReturn(false);
         when(goods.findFirstByCodeAndDeletedTrueOrderByIdAsc("208035801"))
                 .thenReturn(Optional.of(deleted));
+        when(goods.findRestorableDeletedIdsByCode("208035801")).thenReturn(List.of(deletedId));
         when(goodsService.restoreImported(any(UUID.class), any())).thenReturn(deletedId);
         GoodsImportService service = service(goods, goodsService);
 

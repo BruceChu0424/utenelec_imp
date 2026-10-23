@@ -38,7 +38,7 @@ class V238ToCurrentSyntheticMigrationPostgresTest {
     private static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp_rehearsal")
-                    .withUsername("uten")
+                    .withUsername("fixture_admin")
                     .withPassword("uten-test-only");
 
     @BeforeAll

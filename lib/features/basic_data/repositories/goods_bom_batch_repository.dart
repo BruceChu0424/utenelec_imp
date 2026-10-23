@@ -1,4 +1,4 @@
-import 'dart:convert';
+import '../../../core/performance/json_value_snapshot.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -205,9 +205,7 @@ class DioGoodsBomBatchRepository implements GoodsBomBatchRepository {
     };
     // The caller owns the page/session fence. Isolate the reviewed intent from
     // any mutable picker/form collections before yielding to the transport.
-    final frozen = Map<String, dynamic>.from(
-      jsonDecode(jsonEncode(body)) as Map,
-    );
+    final frozen = JsonValueSnapshot.capture(body).data;
     final result = await api.post('$_path/preview', body: frozen);
     return BomBatchPreview.fromJson(result);
   }

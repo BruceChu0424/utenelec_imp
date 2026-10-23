@@ -1,4 +1,5 @@
 package com.uten.imp.features.purchase.request;
+import com.uten.imp.common.util.EmployeeNameResolver;
 
 import com.uten.imp.common.web.HeaderColumnFilter;
 
@@ -605,8 +606,11 @@ public class PurchaseRequestService {
         // 申购人=制单员时共用同一份「姓名(工号)」，避免同人两次解析（2026-10-17 统一口径：
         // 采购/委外详情页人员身份一律 姓名(工号)，与 docs/00-项目准则/01-命名规范.md 一致）。
         String makerName = nameResolver.nameWithCodeOf(r.getMakerId());
-        String applicantName = java.util.Objects.equals(r.getApplicantId(), r.getMakerId())
-                ? makerName : nameResolver.nameWithCodeOf(r.getApplicantId());
+        String applicantName = r.getApplicantId() == null
+                ? nameResolver.historicalWorkerNameWithCodeOf(null, r.getId(), r.getLegacyId(),
+                    EmployeeNameResolver.HistoricalWorkerRole.PURCHASE_REQUEST_APPLICANT)
+                : java.util.Objects.equals(r.getApplicantId(), r.getMakerId())
+                    ? makerName : nameResolver.nameWithCodeOf(r.getApplicantId());
         return new RequestDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getWarehouseId(), r.getDepartmentId(), r.getApplicantId(), r.getMakerId(), r.getApproverId(),
                 r.getNeedDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(),

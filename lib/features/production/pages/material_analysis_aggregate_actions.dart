@@ -635,7 +635,7 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
       }
       return false;
     } finally {
-      if (owner.mounted) {
+      if (owner.mounted && owner._sessionScopeKey() == sessionScope) {
         owner._mutateAggregateTable(() => owner._cancellingAction = false);
       }
     }

@@ -11,7 +11,7 @@ import java.util.Set;
 /** Keeps the import schema when a screen projection omits the category context. */
 final class GoodsExportProjection {
     private static final Map<String, String> REQUIRED = Map.of(
-            "name", "货品名称", "code", "编号", "categoryPath", "类别");
+            "name", "货品名称", "code", "编号", "categoryPath", "类别", "goodsId", "系统标识");
 
     private GoodsExportProjection() { }
 
@@ -31,7 +31,7 @@ final class GoodsExportProjection {
                     column.key(), label, column.width(), column.type(), column.definition()));
         }
         // Use canonical headers even when the user renamed a visible required field.
-        for (String key : new String[]{"name", "code", "categoryPath"}) {
+        for (String key : new String[]{"name", "code", "categoryPath", "goodsId"}) {
             if (!present.contains(key)) columns.add(new TableColumnProjection.Column(
                     key, REQUIRED.get(key), null, null, null));
         }

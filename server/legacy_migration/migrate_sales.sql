@@ -294,14 +294,18 @@ SELECT s.legacy_id, s.bill_no, s.bill_date,
 FROM order_stage s
 ON CONFLICT (legacy_id) DO NOTHING;
 
+-- Exact first-INSERT historical counters; no new capacity or approval.
+SELECT count(fn_register_legacy_quantity_counter_source(
+    current_setting('uten.bootstrap_run_id')::uuid,'SALES_ORDER_ITEM',to_jsonb(legacy_row.*)))
+FROM order_item_stage legacy_row;
 INSERT INTO sales_order_items (
-    legacy_id, bill_no, bill_date, order_id, line_no, goods_id,
+    id, legacy_counter_import_run_id, legacy_id, bill_no, bill_date, order_id, line_no, goods_id,
     goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at,
     color_id, unit_id, unit_rate,
     qty, price, amount_original, amount_local, shipped_qty, returned_qty, flag_qty, discount,
     tax_amount, weight, client_no, client_model, deliver_date, source_doc_no, remark,
     machining_price, circumference, inbound_qty, in_no, out_no)
-SELECT s.legacy_id, o.bill_no, o.bill_date,
+SELECT proof.target_id, proof.run_id, s.legacy_id, o.bill_no, o.bill_date,
        (SELECT id FROM sales_orders WHERE legacy_id = s.bill_legacy),
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy ORDER BY s.legacy_id),
        (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy),
@@ -319,7 +323,10 @@ SELECT s.legacy_id, o.bill_no, o.bill_date,
        NULLIF(s.remark, ''),
        s.machining_price, s.circumference, COALESCE(s.inbound_qty, 0),
        NULLIF(s.in_no, ''), NULLIF(s.out_no, '')
-FROM order_item_stage s JOIN order_stage o ON o.legacy_id = s.bill_legacy;
+FROM order_item_stage s JOIN order_stage o ON o.legacy_id = s.bill_legacy
+JOIN legacy_quantity_counter_import_sources proof
+  ON proof.run_id=current_setting('uten.bootstrap_run_id')::uuid
+ AND proof.source_kind='SALES_ORDER_ITEM' AND proof.source_legacy_id=s.legacy_id;
 
 -- BOM 子表：718 行，先 INSERT 全量 parent_id=NULL（避免自挂 FK 顺序依赖），再 UPDATE 自挂 parent_id
 INSERT INTO sales_order_cost_items (
@@ -383,14 +390,18 @@ SELECT s.legacy_id, s.bill_no, s.bill_date,
 FROM ship_stage s
 ON CONFLICT (legacy_id) DO NOTHING;
 
+-- Exact first-INSERT historical counters; no new capacity or approval.
+SELECT count(fn_register_legacy_quantity_counter_source(
+    current_setting('uten.bootstrap_run_id')::uuid,'SALES_SHIPMENT_ITEM',to_jsonb(legacy_row.*)))
+FROM ship_item_stage legacy_row;
 INSERT INTO sales_shipment_items (
-    legacy_id, bill_no, bill_date, shipment_id, order_item_id, line_no, goods_id,
+    id, legacy_counter_import_run_id, legacy_id, bill_no, bill_date, shipment_id, order_item_id, line_no, goods_id,
     goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at,
     color_id, unit_id,
     unit_rate, qty, price, amount_original, amount_local, cost_amount, returned_qty, returned_amount,
     weight, parcel_qty, carton_count, client_no, client_model, source_doc_no, remark,
     material_price, die_cast_price, machining_price, circumference, discount)
-SELECT s.legacy_id, o.bill_no, o.bill_date,
+SELECT proof.target_id, proof.run_id, s.legacy_id, o.bill_no, o.bill_date,
        (SELECT id FROM sales_shipments WHERE legacy_id = s.bill_legacy),
        (SELECT id FROM sales_order_items WHERE legacy_id = s.order_item_legacy AND s.order_item_legacy <> 0),
                                                                        -- 真FK骨干：0/null -> NULL
@@ -409,12 +420,15 @@ SELECT s.legacy_id, o.bill_no, o.bill_date,
        NULLIF(CONCAT_WS(' | ', NULLIF(s.order_no, ''), NULLIF(s.swdraw_no, '')), ''),
        NULLIF(s.remark, ''),
        s.material_price, s.die_cast_price, s.machining_price, s.circumference, COALESCE(s.discount, 0)
-FROM ship_item_stage s JOIN ship_stage o ON o.legacy_id = s.bill_legacy;
+FROM ship_item_stage s JOIN ship_stage o ON o.legacy_id = s.bill_legacy
+JOIN legacy_quantity_counter_import_sources proof
+  ON proof.run_id=current_setting('uten.bootstrap_run_id')::uuid
+ AND proof.source_kind='SALES_SHIPMENT_ITEM' AND proof.source_legacy_id=s.legacy_id;
 
 -- ---------------- 4. 其它出货单（S_OtherOut，不挂订单/不立应收） ----------------
 INSERT INTO sales_other_shipments (
     legacy_id, bill_no, bill_date, client_id, warehouse_id, currency_id, exchange_rate, tax_rate,
-    payment_style_id, seller_id, sender_id, maker_id, approver_id, ship_addr, link_phone, parcel_count,
+    payment_style_id, settlement_method_id, seller_id, sender_id, maker_id, approver_id, ship_addr, link_phone, parcel_count,
     print_count, last_date, remark, total_original, total_local, status, is_closed, source_doc_no,
     source_order_id,
     seller_legacy_id, sender_legacy_id, maker_legacy_id, approver_legacy_id)
@@ -422,7 +436,7 @@ SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM clients    WHERE legacy_id = s.client_legacy),  -- client_id 可空（内部领用）
        (SELECT warehouse_id FROM warehouse_target_stage WHERE legacy_id = s.warehouse_legacy),
        (SELECT id FROM currencies WHERE legacy_id = s.cur_legacy),
-       COALESCE(s.exchange_rate, 1), s.tax_rate, s.p_style,
+       COALESCE(s.exchange_rate, 1), s.tax_rate, s.p_style, (SELECT id FROM settlement_methods WHERE legacy_id=s.p_style),
        NULL, NULL, NULL, NULL,                       -- *_id(UUID) 留空，待 employees.legacy_id 对齐回填
        s.ship_addr, s.link_phone, s.p_count, s.print_count, s.last_date,
        s.remark, s.total_original,
@@ -513,8 +527,6 @@ FROM return_item_stage s JOIN return_stage r ON r.legacy_id = s.bill_legacy;
 UPDATE sales_orders d SET settlement_method_id = m.id
 FROM settlement_methods m WHERE m.legacy_id = d.payment_style_id;
 UPDATE sales_shipments d SET settlement_method_id = m.id
-FROM settlement_methods m WHERE m.legacy_id = d.payment_style_id;
-UPDATE sales_other_shipments d SET settlement_method_id = m.id
 FROM settlement_methods m WHERE m.legacy_id = d.payment_style_id;
 UPDATE sales_returns d SET settlement_method_id = m.id
 FROM settlement_methods m WHERE m.legacy_id = d.payment_style_id;

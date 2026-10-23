@@ -80,6 +80,10 @@ class LegacyFinanceImportSmokePostgresTest {
             JdbcTemplate tx=new JdbcTemplate(new SingleConnectionDataSource(connection,true));
             UUID run=context(tx);
             tx.update("""
+                    UPDATE legacy_migration_runs SET mapping_version='bootstrap-v19' WHERE run_id=?
+                    """,run);
+            tx.execute("SET LOCAL uten.bootstrap_mapping_version='bootstrap-v19'");
+            tx.update("""
                     INSERT INTO payment_styles(legacy_id,code,name,category,status,is_receipt,is_payment)
                     VALUES(907010,'SYN-SECOND-ACCOUNT','Synthetic account leaf','ACCOUNT','使用',true,true),
                           (907011,'SYN-EXPENSE','Synthetic expense leaf','EXPENSE','使用',false,true),
@@ -108,11 +112,51 @@ class LegacyFinanceImportSmokePostgresTest {
                 }
             }
             assertThat(tx.queryForObject("SELECT count(DISTINCT source_kind) FROM legacy_finance_import_sources WHERE run_id=?",Integer.class,run)).isEqualTo(9);
-            tx.update("UPDATE legacy_migration_runs SET status='SUCCESS' WHERE run_id=?",run);
+            tx.execute("SELECT fn_rebuild_account_flow_monthly_summaries(NULL); SELECT fn_assert_account_flow_monthly_integrity(NULL)");
+            tx.update("UPDATE legacy_migration_runs SET status='SUCCESS',reconciliation_status='PASSED',finished_at=now(),exit_code=0 WHERE run_id=?",run);
             tx.execute("SET CONSTRAINTS ALL IMMEDIATE");
             assertThat(tx.queryForObject("SELECT amount_local FROM finance_expenses WHERE legacy_id=907003",java.math.BigDecimal.class)).isEqualByComparingTo("0");
             assertThat(tx.queryForObject("SELECT amount_original FROM finance_expenses WHERE legacy_id=907003",java.math.BigDecimal.class)).isEqualByComparingTo("2");
             connection.rollback();
+        }
+    }
+
+    @Test void missingOriginalPaidDateNeedsTheExactTypedRowAndSameTransactionProof() throws Exception {
+        try(Connection connection=DriverManager.getConnection(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword())) {
+            connection.setAutoCommit(false);
+            JdbcTemplate tx=new JdbcTemplate(new SingleConnectionDataSource(connection,true));
+            UUID run=context(tx);
+            tx.update("UPDATE legacy_migration_runs SET mapping_version='bootstrap-v19' WHERE run_id=?",run);
+            tx.execute("SET LOCAL uten.bootstrap_mapping_version='bootstrap-v19'");
+            String loader=Files.readString(Path.of("legacy_migration/migrate_finance.sql"));
+            for(String table:new String[]{"m_in_stage","m_out_stage"}) {
+                var matcher=Pattern.compile("CREATE TEMP TABLE "+table+" \\(.*?;",Pattern.DOTALL).matcher(loader);
+                assertThat(matcher.find()).isTrue();tx.execute(matcher.group());
+            }
+            ObjectNode original=(ObjectNode)new ObjectMapper().readTree(source("m_in.csv"));
+            original.put("total",5);original.put("settled",5);original.put("balance",0);original.putNull("paid_date");
+            tx.update("INSERT INTO m_in_stage SELECT * FROM jsonb_populate_record(NULL::m_in_stage,?::jsonb)",original.toString());
+            // Use the actual typed stage tuple, just as the reviewed loader does.
+            tx.queryForObject("SELECT fn_import_legacy_finance_source(?,'AR_OPENING',to_jsonb(s.*)) FROM m_in_stage s",UUID.class,run);
+            int start=loader.indexOf("ANALYZE public.legacy_finance_import_sources;");
+            assertThat(start).isGreaterThan(0);
+            String verifier=loader.substring(start,loader.indexOf("DO $$",start));
+            var matcher=Pattern.compile("SELECT COUNT\\(\\*\\) INTO broken_count\\s+FROM public.ar_ap_ledger ledger.*?;",Pattern.DOTALL).matcher(loader);
+            assertThat(matcher.find()).isTrue();String violations=matcher.group().replace(" INTO broken_count","");
+            tx.execute(verifier);
+            assertThat(tx.queryForObject("SELECT count(*) FROM finance_verified_missing_settlement_date_stage",Integer.class)).isEqualTo(1);
+            assertThat(tx.queryForObject(violations,Integer.class)).isZero();
+            for(String mutation:new String[]{
+                    "UPDATE m_in_stage SET note='Synthetic changed source payload'",
+                    "UPDATE m_in_stage SET paid_date='2025-01-03T00:00:00Z'",
+                    "UPDATE legacy_migration_run_files SET sha256=repeat('0',64) WHERE file_name='m_in.csv' AND run_id='"+run+"'"}) {
+                var save=connection.setSavepoint();tx.execute(mutation);
+                tx.execute("DROP TABLE finance_verified_missing_settlement_date_stage");tx.execute(verifier);
+                assertThat(tx.queryForObject(violations,Integer.class)).isEqualTo(1);
+                connection.rollback(save);
+            }
+            tx.update("UPDATE legacy_migration_runs SET status='SUCCESS',reconciliation_status='PASSED',exit_code=0,finished_at=now() WHERE run_id=?",run);
+            tx.execute("SET CONSTRAINTS ALL IMMEDIATE");connection.rollback();
         }
     }
 

@@ -55,7 +55,8 @@ class SubcontractApplicationKitPostgresTest {
                     auto_created boolean DEFAULT false, issue_method text DEFAULT 'PER_ORDER');
                 CREATE TABLE goods_bom_items(id uuid PRIMARY KEY, goods_id uuid, component_goods_id uuid, color_id uuid,
                     qty numeric(18,6), is_deleted boolean DEFAULT false, consumption_basis text DEFAULT 'PER_UNIT',
-                    control_stage text DEFAULT 'START', sort_order integer DEFAULT 1);
+                    control_stage text DEFAULT 'START', sort_order integer DEFAULT 1,
+                    retirement_reason text, retirement_resolved_at timestamptz);
                 CREATE TABLE subcontract_applications(id uuid PRIMARY KEY, status smallint DEFAULT 1,
                     is_deleted boolean DEFAULT false, is_closed boolean DEFAULT false);
                 CREATE TABLE subcontract_application_items(id uuid PRIMARY KEY, application_id uuid, goods_id uuid,
@@ -76,7 +77,8 @@ class SubcontractApplicationKitPostgresTest {
                     issued_qty numeric(18,4) DEFAULT 0, is_deleted boolean DEFAULT false, draw_closed_at timestamptz);
                 CREATE TABLE subcontract_material_issues(id uuid PRIMARY KEY, status smallint, is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_material_issue_items(id uuid PRIMARY KEY, issue_id uuid, plan_item_id uuid,
-                    qty numeric(18,4), is_deleted boolean DEFAULT false);
+                    qty numeric(18,4), is_deleted boolean DEFAULT false,
+                    warehouse_split_command_id uuid, warehouse_split_at timestamptz);
                 CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY, analysis_id uuid, route text, operation_type text,
                     status text, external_document_type text, external_document_id uuid, public_surplus_external_item_id uuid);
                 CREATE TABLE preplan_supply_action_allocations(id uuid PRIMARY KEY, action_id uuid, analysis_id uuid,

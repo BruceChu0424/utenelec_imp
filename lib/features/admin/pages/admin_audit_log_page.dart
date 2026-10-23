@@ -34,6 +34,7 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/latest_request_guard.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -415,6 +416,16 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      setState(() {
+        _invalidateScopeResults();
+        _selectedActor = null;
+        _keyword = '';
+        _requestId = '';
+        _searchController.clear();
+        _requestIdController.clear();
+      });
+    });
     _scrollController.addListener(_onPageScrollPositionChanged);
     _scheduleInitialRequestInvestigation();
   }

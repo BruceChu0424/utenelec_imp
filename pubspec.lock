@@ -725,13 +725,12 @@ packages:
     source: hosted
     version: "0.6.0"
   riverpod:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: riverpod
-      sha256: "484dfc873ea4c4f4240e5635444fa066f87b07862b7279ebd004a2b71fba4b7a"
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.4.3"
+      path: "third_party/riverpod"
+      relative: true
+    source: path
+    version: "3.4.3+uten.1"
   rxdart:
     dependency: transitive
     description:

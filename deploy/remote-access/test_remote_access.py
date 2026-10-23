@@ -83,6 +83,31 @@ class ProfileTests(unittest.TestCase):
             self.assertEqual(original, (path / "company/nginx.conf").read_bytes())
             self.assertNotIn("@@", original.decode())
 
+    def test_distribution_stream_module_is_explicit_bounded_and_role_specific(self):
+        candidate = profile()
+        candidate["cloud_nginx_stream_module"] = "/usr/lib64/nginx/modules/ngx_stream_module.so"
+        files = remote.files(candidate)
+        self.assertIn("load_module /usr/lib64/nginx/modules/ngx_stream_module.so;", files["cloud/nginx.conf"])
+        self.assertIn("load_module /usr/lib/nginx/modules/ngx_stream_module.so;", files["company/nginx.conf"])
+        candidate["cloud_nginx_stream_module"] = "builtin"
+        self.assertNotIn("load_module", remote.files(candidate)["cloud/nginx.conf"])
+        for value in ("/tmp/untrusted.so", "/usr/lib64/nginx/modules/ngx_stream_module.so; include /etc/passwd", "builtin\nhttp {}", None):
+            candidate["cloud_nginx_stream_module"] = value
+            with self.assertRaises(remote.InvalidProfile):
+                remote.validate(candidate)
+
+    def test_private_commissioning_needs_no_fake_domain_or_acme_account(self):
+        candidate = {key: value for key, value in profile().items() if key in remote.COMMISSIONING_FIELDS}
+        files = remote.files(candidate, commissioning_only=True)
+        self.assertNotIn("dns-records.txt", files)
+        self.assertIn("NOT configured", files["COMMISSIONING-ONLY.txt"])
+        self.assertIn("server_name remote-commissioning.invalid;", files["company/nginx.conf"])
+        with self.assertRaises(remote.InvalidProfile):
+            remote.files(candidate)
+        candidate["public_domain"] = "erp.example.test"
+        with self.assertRaises(remote.InvalidProfile):
+            remote.files(candidate, commissioning_only=True)
+
 
 class BoundaryTests(unittest.TestCase):
     def setUp(self):
@@ -97,6 +122,27 @@ class BoundaryTests(unittest.TestCase):
         self.assertIn("proxy_ssl_name transport.uten.internal;", config)
         self.assertNotIn("listen 0.0.0.0:443 ssl", config)
         self.assertNotIn("proxy_protocol on", config)
+        self.assertIn("ssl_preread on;", config)
+        self.assertIn("erp.example.test 127.0.0.1:15443;", config)
+        self.assertIn('default "";', config)
+
+    def test_dr_is_separate_sni_control_plane_without_employee_key_or_trusted_client_headers(self):
+        candidate = profile()
+        candidate["dr_public_domain"] = "admin.example.test"
+        files = remote.files(candidate)
+        cloud = files["cloud/nginx.conf"]
+        self.assertIn("admin.example.test 127.0.0.1:19443;", cloud)
+        self.assertIn("listen 127.0.0.1:19443 ssl http2;", cloud)
+        self.assertIn("proxy_pass http://127.0.0.1:9087;", cloud)
+        self.assertIn("/etc/uten-remote/tls/dr.key", cloud)
+        self.assertNotIn("employee.key", cloud)
+        self.assertIn('proxy_set_header X-Forwarded-For "";', cloud)
+        self.assertIn('location ^~ /v1/broker/ { return 404; }', cloud)
+        self.assertIn('location ^~ /v1/agent/ { return 404; }', cloud)
+        self.assertIn("client_max_body_size 128k;", cloud)
+        self.assertIn("limit_conn dr_global_connections 4;", cloud)
+        self.assertIn("limit_req zone=dr_login burst=2 nodelay;", cloud)
+        self.assertIn("15443, 19443, 9087", files["cloud/firewall.nft"])
 
     def test_company_has_two_layers_and_dedicated_remote_app_port(self):
         config = self.files["company/nginx.conf"]
@@ -138,6 +184,16 @@ class BoundaryTests(unittest.TestCase):
                              "/etc/uten-imp-postgres", "/var/lib/postgresql", "InaccessiblePaths=/etc/uten-remote/wireguard"):
                 self.assertIn(required, unit)
         self.assertNotIn("CAP_NET_ADMIN", self.files["company/uten-remote-nginx.service"])
+        self.assertIn("SupplementaryGroups=uten-web", self.files["company/uten-remote-nginx.service"])
+        self.assertNotIn("SupplementaryGroups=uten-web", self.files["cloud/uten-remote-nginx.service"])
+
+    def test_runtime_logs_cannot_implicitly_capture_sensitive_request_queries(self):
+        for role in ("cloud", "company"):
+            config = self.files[role + "/nginx.conf"]
+            self.assertIn("error_log /dev/null crit;", config)
+            self.assertNotIn("$request_uri", config)
+            self.assertNotIn("$request ", config)
+            self.assertNotIn("$args", config)
 
     def test_atomic_firewall_replace_keeps_other_tables(self):
         text = self.files["company/firewall.nft"]

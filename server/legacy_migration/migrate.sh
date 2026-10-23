@@ -96,7 +96,7 @@ usage () {
   --hr-cleanup | --hr-roster
   --shelf-labels（货架库位：人工 CSV，非老库导出）
   --goods-owner
-  --bootstrap-all（兼容别名：--all、-a）
+  --bootstrap-all（旧协议兼容别名：--all、-a；bootstrap-v16 起完整导入改用 rehearse_local_import.py）
 
 安全确认（二选一）：
   1. 第二个参数传 --confirm-destructive
@@ -143,6 +143,32 @@ if [ -z "$TARGET" ]; then
     usage >&2
     exit 64
 fi
+
+# Protocol v16 has one complete HR/Excel/warehouse/proof execution plan.
+# Reject the old shell All aliases before confirmation, Docker, input/key
+# inspection or a claim. Single-module behavior is deliberately unchanged.
+case "$TARGET" in --bootstrap-all|--all|-a)
+    if [ ! -f "$HERE/mapping-version.txt" ]; then
+        echo "✗ 完整导入映射版本缺失；未检查输入或连接数据库。" >&2
+        exit 64
+    fi
+    shell_all_mapping="$(tr -d '\r\n' < "$HERE/mapping-version.txt")"
+    shell_all_mapping="${shell_all_mapping#$'\xEF\xBB\xBF'}"
+    if [[ ! "$shell_all_mapping" =~ ^bootstrap-v([1-9][0-9]*)$ ]]; then
+        echo "✗ 完整导入映射版本无效；未检查输入或连接数据库。" >&2
+        exit 64
+    fi
+    # String patterns avoid arithmetic overflow on an arbitrarily long version.
+    case "${BASH_REMATCH[1]}" in
+        [1-9]|1[0-5]) ;;
+        *)
+            echo "✗ bootstrap-v16 起的完整导入只允许使用 rehearse_local_import.py；旧 shell All 入口已关闭。" >&2
+            echo "  请按 docs/数据迁移/重建彩排与正式导入执行手册.md 使用 Python 完整导入入口。" >&2
+            exit 64
+            ;;
+    esac
+    ;;
+esac
 
 EXPECTED_CONFIRMATION="RESET_${PG_DB}"
 if [ "$CONFIRMED" -ne 1 ] && \

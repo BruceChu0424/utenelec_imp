@@ -135,21 +135,39 @@ require_value() {
 }
 
 require_secret() {
-  local key="$1" value
-  value="$(env_value "$key")"
-  [[ -n "$value" ]] || die "$key must not be empty"
-  [[ "$value" != *REPLACE* && "$value" != *CHANGE_ME* ]] || die "$key still contains a placeholder"
-  [[ "$value" != *[[:space:]]* ]] || die "$key must not contain whitespace"
-  (( ${#value} >= 32 )) || die "$key must contain at least 32 characters"
+  local key="$1" minimum="${2:-32}"
+  # Read the protected file directly: secret values never enter argv or diagnostics.
+  if ! /usr/bin/python3 -I - "$ENV_FILE" "$key" "$minimum" <<'SECRET'
+import pathlib
+import re
+import sys
+
+try:
+    matches = [line.partition("=")[2] for line in pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+               if line.partition("=")[0] == sys.argv[2]]
+    if len(matches) != 1:
+        raise ValueError()
+    value = matches[0]
+    normalized = re.sub(r"[-_\s]", "", value.lower())
+    markers = ("replace", "changeme", "placeholder", "yourpassword", "yoursecret", "yourkey", "example", "${")
+    if (not value or any(marker in normalized for marker in markers)
+            or ("<" in normalized and ">" in normalized)
+            or any(character.isspace() or ord(character) < 32 or 127 <= ord(character) <= 159 for character in value)
+            or len(value.encode("utf-8")) < int(sys.argv[3])
+            or len(set(value)) < 8
+            or any(all(value[index] == value[index % period] for index in range(period, len(value)))
+                   for period in range(1, min(8, len(value) // 2) + 1))):
+        raise ValueError()
+except (OSError, UnicodeError, ValueError):
+    raise SystemExit(1)
+SECRET
+  then
+    die "$key requires a non-placeholder, non-predictable secret of at least $minimum UTF-8 bytes"
+  fi
 }
 
 require_credential() {
-  local key="$1" minimum_length="$2" value
-  value="$(env_value "$key")"
-  [[ -n "$value" ]] || die "$key must not be empty"
-  [[ "$value" != *REPLACE* && "$value" != *CHANGE_ME* ]] || die "$key still contains a placeholder"
-  [[ "$value" != *[[:space:]]* ]] || die "$key must not contain whitespace"
-  (( ${#value} >= minimum_length )) || die "$key must contain at least $minimum_length characters"
+  require_secret "$1" "$2"
 }
 
 validate_bootstrap_admin_state() {
@@ -236,9 +254,8 @@ fi
 
 expect_exact UTEN_PROFILE prod
 expect_exact UTEN_DEPLOYMENT_SITE local
-# Only this prod/local installation may explicitly enable company LAN testing.
-# The key remains mandatory; templates default false and cloud is not this lane.
-expect_boolean UTEN_BUSINESS_DATA_RESET_ENABLED
+# Launch retirement: no server may restore reset through an environment override.
+expect_exact UTEN_BUSINESS_DATA_RESET_ENABLED false
 expect_exact SERVER_ADDRESS 127.0.0.1
 expect_exact SERVER_PORT 8080
 expect_exact UTEN_DB_URL jdbc:postgresql://127.0.0.1:5432/uten_imp

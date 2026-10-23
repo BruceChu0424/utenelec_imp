@@ -5,9 +5,9 @@
 // Debug 可显式设置开发覆盖。Web Release 始终走当前页面同源 /api，并通过公司
 // 内外网的 split-horizon DNS / 不同访问入口落到对应站点；Web 不运行局域网探针。
 //
-// ADR-183 的日常云入口只转发端到端加密流量，业务仍由公司本地主站处理。
-// 灾备接管必须重新认证并撤销旧会话，不向云入口复制业务 JWT 密钥，
-// 连接失败也不能自动重放写请求或启用另一份业务写主。
+// 日常云入口按 ADR-183 转发到公司同一业务服务，不持有 JWT 或业务数据库密钥。
+// 本机连接选择不改变公司的写主；灾备接管由独立受控作业完成，并撤销旧会话后重新登录，
+// 不通过共享 JWT 密钥或客户端自动回放请求来实现切换。
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

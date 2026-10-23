@@ -25,6 +25,12 @@ import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dar
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
 
 final _grants = StateProvider<Set<String>>((ref) => {});
 final _owner = StateProvider<AuthenticatedScope?>((ref) => null);
@@ -224,7 +230,7 @@ Future<void> _pump(
   Set<String> grants,
   _ReadApi api,
   Size size, {
-  AuthenticatedScope? owner,
+  AuthenticatedScope? owner = const AuthenticatedScope(userId: 'read-test'),
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -275,6 +281,7 @@ Future<void> _pump(
         sharedPreferencesProvider.overrideWithValue(preferences),
         apiClientProvider.overrideWithValue(api),
         apiBaseUrlProvider.overrideWithValue('https://company.invalid/api'),
+        sessionProvider.overrideWith(_Session.new),
         _owner.overrideWith((ref) => owner),
         authenticatedScopeProvider.overrideWith((ref) => ref.watch(_owner)),
         _grants.overrideWith((ref) => grants),

@@ -148,6 +148,25 @@ class WarehouseDetail {
   /// 主仓：唯一没有上级的仓。
   bool get isMain => parentId == null || parentId!.isEmpty;
 
+  factory WarehouseDetail.fromListItem(WarehouseListItem row) =>
+      WarehouseDetail(
+        id: row.id,
+        code: row.code,
+        name: row.name,
+        location: row.location,
+        remark: row.remark,
+        accountable: row.accountable,
+        workshopDepartmentId: row.workshopDepartmentId,
+        workshopDepartmentName: row.workshopDepartmentName,
+        legacyOperatorId: row.legacyOperatorId,
+        status: row.status,
+        legacyId: row.legacyId,
+        parentId: row.parentId,
+        lineSide: row.lineSide,
+        defective: row.defective,
+        selectableForNew: row.selectableForNew,
+      );
+
   factory WarehouseDetail.fromJson(Map<String, dynamic> json) =>
       WarehouseDetail(
         id: json['id'] as String,

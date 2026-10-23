@@ -10,7 +10,10 @@
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
 
-FlutterWindow::~FlutterWindow() { ResetWindowTitleChannel(); }
+FlutterWindow::~FlutterWindow() {
+  client_update_channel_.reset();
+  ResetWindowTitleChannel();
+}
 
 bool FlutterWindow::OnCreate() {
   if (!Win32Window::OnCreate()) {
@@ -28,6 +31,8 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  client_update_channel_ = std::make_unique<ClientUpdateChannel>(
+      flutter_controller_->engine()->messenger(), GetHandle());
   window_title_channel_ =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
           flutter_controller_->engine()->messenger(),
@@ -105,6 +110,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  client_update_channel_.reset();
   ResetWindowTitleChannel();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;

@@ -1,10 +1,13 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:math' as math;
 
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/performance/responsive_data_codec.dart';
+import '../../core/performance/ui_work_budget.dart';
 import 'form_draft_storage_api.dart';
 
 FormDraftStorage createFormDraftStorage() => NativeFormDraftStorage();
@@ -67,14 +70,27 @@ class NativeFormDraftStorage
     }
   }
 
-  Future<String?> _read(File file) async =>
-      await file.exists() ? file.readAsString() : null;
+  Future<String?> _read(File file) async => await file.exists()
+      ? decodeUtf8Responsive(await file.readAsBytes())
+      : null;
+
+  Future<bool> _sameRaw(String? left, String? right) async {
+    if (identical(left, right)) return true;
+    if (left == null || right == null || left.length != right.length) {
+      return false;
+    }
+    if (left.length < 64 * 1024) return left == right;
+    return Isolate.run(() => left == right);
+  }
 
   Future<void> _replace(File target, String value) async {
     await target.parent.create(recursive: true);
     final temporary = File('${target.path}.${const Uuid().v4()}.tmp');
     try {
-      await temporary.writeAsString(value, flush: true);
+      await temporary.writeAsBytes(
+        await encodeUtf8Responsive(value),
+        flush: true,
+      );
       await temporary.rename(target.path);
     } finally {
       if (await temporary.exists()) await temporary.delete();
@@ -117,14 +133,22 @@ class NativeFormDraftStorage
   Future<bool> _verifyImmutable(File file, String value) async {
     if (!await file.exists()) return false;
     final existing = await file.readAsBytes();
-    final expected = utf8.encode(value);
+    final expected = await encodeUtf8Responsive(value);
     if (existing.length != expected.length) {
       throw StateError('草稿历史序号冲突，原记录已保留');
     }
-    for (var index = 0; index < existing.length; index++) {
-      if (existing[index] != expected[index]) {
-        throw StateError('草稿历史序号冲突，原记录已保留');
+    final work = UiWorkBudget(
+      maxItems: 65536,
+      debugLabel: 'draft-immutable-compare',
+    );
+    for (var start = 0; start < existing.length; start += 16384) {
+      final end = math.min(start + 16384, existing.length);
+      for (var index = start; index < end; index++) {
+        if (existing[index] != expected[index]) {
+          throw StateError('草稿历史序号冲突，原记录已保留');
+        }
       }
+      await work.checkpoint(end - start);
     }
     return true;
   }
@@ -132,7 +156,12 @@ class NativeFormDraftStorage
   Future<void> _importKey(Directory directory, File legacy, String key) async {
     if (await _active(directory, key).exists()) return;
     final value = await _read(legacy);
-    final change = formDraftHistoryChange(key, null, value, importing: true);
+    final change = await formDraftHistoryChangeResponsive(
+      key,
+      null,
+      value,
+      importing: true,
+    );
     if (change != null) await _commit(directory, legacy, key, value, change);
   }
 
@@ -211,7 +240,8 @@ class NativeFormDraftStorage
       ).create(recursive: true);
       final pending = await _read(File('${directory.path}/pending.json'));
       if (pending != null) {
-        final journal = jsonDecode(pending) as Map<String, dynamic>;
+        final journal =
+            await decodeJsonResponsive(pending) as Map<String, dynamic>;
         final key = journal['key'] as String;
         if (formDraftHistoryPrefix(key) != prefix) {
           throw const FormatException('草稿历史事务身份无效');
@@ -238,7 +268,7 @@ class NativeFormDraftStorage
             } on FormatException {
               return; // Preserve damaged source bytes in their original file.
             }
-            final change = formDraftHistoryChange(
+            final change = await formDraftHistoryChangeResponsive(
               key,
               null,
               value,
@@ -260,19 +290,21 @@ class NativeFormDraftStorage
     File legacy,
     String key,
     String? value,
-    FormDraftHistoryChange change,
-  ) async {
+    FormDraftHistoryChange change, {
+    String? compactValue,
+  }) async {
     final sequence = await _head(directory) + 1;
     final entry = change.entry(sequence);
     final terminal = value == null
-        ? jsonEncode({
+        ? await encodeJsonResponsive({
             'version': 1,
             'id': change.draft.id,
             'completed': true,
             'historyAction': 'deleted',
             'revision': const Uuid().v4(),
           })
-        : compactFormDraftTerminalMarker(value)!;
+        : compactValue ??
+              (await compactFormDraftTerminalMarkerResponsive(value))!;
     final journal = <String, dynamic>{
       'key': key,
       'sequence': sequence,
@@ -281,7 +313,10 @@ class NativeFormDraftStorage
       'value': terminal,
       'legacyExpected': await _read(legacy),
     };
-    await _replace(File('${directory.path}/pending.json'), jsonEncode(journal));
+    await _replace(
+      File('${directory.path}/pending.json'),
+      await encodeJsonResponsive(journal),
+    );
     await afterJournalFlush?.call();
     await _apply(directory, legacy, journal);
   }
@@ -299,9 +334,9 @@ class NativeFormDraftStorage
     // replacing any source, so a second interruption cannot lose it.
     if (!journal.containsKey('lateEntry')) {
       final legacyNow = await _read(legacy);
-      if (legacyNow != journal['legacyExpected'] &&
-          !isFormDraftTerminalMarker(legacyNow)) {
-        final late = formDraftHistoryChange(
+      if (!await _sameRaw(legacyNow, journal['legacyExpected'] as String?) &&
+          !await isFormDraftTerminalMarkerResponsive(legacyNow)) {
+        final late = await formDraftHistoryChangeResponsive(
           key,
           null,
           legacyNow,
@@ -312,7 +347,7 @@ class NativeFormDraftStorage
           journal['latePayload'] = late.payload;
           await _replace(
             File('${directory.path}/pending.json'),
-            jsonEncode(journal),
+            await encodeJsonResponsive(journal),
           );
         }
       }
@@ -326,7 +361,10 @@ class NativeFormDraftStorage
     }
     final immutable = <(File, String)>[
       (_slot(directory, sequence, 'payload'), journal['payload'] as String),
-      (_slot(directory, sequence, 'index'), jsonEncode(journal['entry'])),
+      (
+        _slot(directory, sequence, 'index'),
+        await encodeJsonResponsive(journal['entry']),
+      ),
       if (journal['lateEntry'] != null) ...[
         (
           _slot(directory, sequence + 1, 'payload'),
@@ -334,7 +372,7 @@ class NativeFormDraftStorage
         ),
         (
           _slot(directory, sequence + 1, 'index'),
-          jsonEncode(journal['lateEntry']),
+          await encodeJsonResponsive(journal['lateEntry']),
         ),
       ],
     ];
@@ -353,7 +391,7 @@ class NativeFormDraftStorage
     );
     await _replace(
       legacy,
-      jsonEncode({
+      await encodeJsonResponsive({
         'version': 1,
         'id': key.substring(formDraftHistoryPrefix(key)!.length),
         'completed': true,
@@ -396,7 +434,8 @@ class NativeFormDraftStorage
       // active listing encounters them; history paging never rescans payloads.
       for (final record in legacy.entries) {
         if (formDraftHistoryPrefix(record.key) == prefix &&
-            decodeFormDraftHistoryPayload(record.value) != null) {
+            await decodeFormDraftHistoryPayloadResponsive(record.value) !=
+                null) {
           await _locked(
             record.key,
             (file) => _importKey(directory, file, record.key),
@@ -430,15 +469,29 @@ class NativeFormDraftStorage
     bool compare = false,
   }) async {
     final prefix = formDraftHistoryPrefix(key);
+    // These immutable caller inputs can be decoded before acquiring the OS
+    // lock. The exact original comparison still occurs while holding the lock.
+    final next = await prepareFormDraftHistoryValue(value);
+    final expected = compare
+        ? await prepareFormDraftHistoryValue(expectedValue)
+        : null;
     Future<bool> perform(File legacy, Directory? directory) async {
       if (directory != null) await _importKey(directory, legacy, key);
       final active = directory == null ? legacy : _active(directory, key);
       final existing = await _read(active) ?? await _read(legacy);
-      if (compare && existing != expectedValue) return false;
-      if (value == null && isFormDraftTerminalMarker(existing)) return true;
-      final change = formDraftHistoryChange(key, existing, value);
+      if (compare && !await _sameRaw(existing, expectedValue)) return false;
+      final previous = expected ?? await prepareFormDraftHistoryValue(existing);
+      if (value == null && previous.terminal) return true;
+      final change = preparedFormDraftHistoryChange(key, previous, next);
       if (directory != null && change != null) {
-        await _commit(directory, legacy, key, value, change);
+        await _commit(
+          directory,
+          legacy,
+          key,
+          value,
+          change,
+          compactValue: next.compact,
+        );
       } else if (value == null) {
         if (await active.exists()) await active.delete();
       } else {
@@ -492,7 +545,7 @@ class NativeFormDraftStorage
           final raw = await _read(_slot(directory, sequence, 'index'));
           if (raw != null) {
             final entry = FormDraftHistoryEntry.fromJson(
-              jsonDecode(raw) as Map<String, dynamic>,
+              await decodeJsonResponsive(raw) as Map<String, dynamic>,
             );
             if (entry.id == '$sequence') entries.add(entry);
           }
@@ -519,9 +572,9 @@ class NativeFormDraftStorage
         final metadata = await _read(_slot(directory, sequence, 'index'));
         if (metadata == null) return null;
         final entry = FormDraftHistoryEntry.fromJson(
-          jsonDecode(metadata) as Map<String, dynamic>,
+          await decodeJsonResponsive(metadata) as Map<String, dynamic>,
         );
-        final draft = decodeFormDraftHistoryPayload(
+        final draft = await decodeFormDraftHistoryPayloadResponsive(
           await _read(_slot(directory, sequence, 'payload')),
         );
         if (entry.id != id ||

@@ -664,6 +664,10 @@ BEGIN
     REVOKE ALL ON FUNCTION public.fn_register_legacy_receipt_import_source(uuid,text,jsonb) FROM PUBLIC, uten;
   END IF;
   -- V625 calls this private invoker-only guard through seven fixed definers.
+  -- Launch retirement: blanket function grants must never reopen business reset.
+  IF to_regprocedure('public.business_data_reset()') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.business_data_reset() FROM PUBLIC, uten;
+  END IF;
   IF to_regprocedure('public.fn_require_runtime_maintenance(boolean)') IS NOT NULL THEN
     REVOKE ALL ON FUNCTION public.fn_require_runtime_maintenance(boolean) FROM PUBLIC, uten;
   END IF;

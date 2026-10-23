@@ -311,7 +311,7 @@ class ExpenseClaimFullchainMigrationPostgresTest {
 
     private static PostgreSQLContainer database() {
         return new PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("expense_migration").withUsername("uten").withPassword("uten");
+                .withDatabaseName("expense_migration").withUsername("fixture_admin").withPassword("uten");
     }
 
     private static void migrate(PostgreSQLContainer postgres, String target) {

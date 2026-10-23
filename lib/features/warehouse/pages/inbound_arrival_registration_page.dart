@@ -58,6 +58,7 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
@@ -126,7 +127,7 @@ class _InboundArrivalRegistrationPageState
     extends ConsumerState<InboundArrivalRegistrationPage>
     with FormDraftMixin<InboundArrivalRegistrationPage> {
   @override
-  bool get formDraftBusy => _saving;
+  bool get formDraftBusy => _saving || _preparingSubmission;
   @override
   bool get formDraftCanReplaySubmission => true;
   @override
@@ -275,6 +276,7 @@ class _InboundArrivalRegistrationPageState
   String? _receiverId;
   bool _loading = false;
   bool _saving = false;
+  bool _preparingSubmission = false;
 
   /// 短交确认弹窗要先撤「正在登记」全屏遮罩才点得动(遮罩是 root Overlay 的裸图层, 每次路由
   /// 重排都被重新抬到最顶, 一定压住后推的弹窗)。
@@ -417,6 +419,7 @@ class _InboundArrivalRegistrationPageState
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
     // Construct while ref is live, including a failed/empty source read whose
     // first interaction with the loader would otherwise be dispose().
     _suggestions = InboundPlaceSuggestionLoader(
@@ -826,6 +829,27 @@ class _InboundArrivalRegistrationPageState
   );
 
   Future<void> _save(InboundRoute route) async {
+    if (_saving || _preparingSubmission) return;
+    final selectedLines = List<_BatchArrivalLine>.of(_lineGrid.selectedRows);
+    final scopeFuture = captureFormDraftRequestScope();
+    setState(() => _preparingSubmission = true);
+    try {
+      final requestScope = await scopeFuture;
+      await requestScope.run(
+        () => _saveWithScope(route, requestScope, selectedLines),
+      );
+    } catch (error) {
+      if (mounted) context.appError(arrivalRegistrationFailureReason(error));
+    } finally {
+      if (mounted) setState(() => _preparingSubmission = false);
+    }
+  }
+
+  Future<void> _saveWithScope(
+    InboundRoute route,
+    AuthenticatedRequestScope requestScope,
+    List<_BatchArrivalLine> submitLines,
+  ) async {
     if (!_canRegisterNow) {
       context.appError('当前账号没有登记并送检权限，请返回任务中心刷新权限');
       return;
@@ -852,7 +876,6 @@ class _InboundArrivalRegistrationPageState
     }
     // 勾选=本次要登记送检的行(2026-09-17，与订货单编辑页同款)：右下两个
     // 提交按钮没勾行时已置灰，这里再兜一层；未勾选行不进校验也不进提交。
-    final submitLines = _lineGrid.selectedRows;
     if (submitLines.isEmpty) {
       context.appError('请先勾选要登记送检的明细行(未勾选的行本次不登记)');
       return;
@@ -864,6 +887,14 @@ class _InboundArrivalRegistrationPageState
     final badQty = <String>[];
     final missingWarehouse = <String>[];
     final missingPlace = <String>[];
+    _BatchArrivalLine? firstInvalid;
+    String? firstInvalidColumn;
+    void rememberInvalid(_BatchArrivalLine line, String column) {
+      if (firstInvalid != null) return;
+      firstInvalid = line;
+      firstInvalidColumn = column;
+    }
+
     final stockInFirst = route.isStockInFirst;
     for (var index = 0; index < _lines.length; index++) {
       final line = _lines[index];
@@ -878,13 +909,16 @@ class _InboundArrivalRegistrationPageState
           ) !=
           null) {
         badQty.add(label);
+        rememberInvalid(line, 'qty');
       }
       if (line.warehouseId == null || line.warehouseId!.isEmpty) {
         missingWarehouse.add(label);
+        rememberInvalid(line, 'warehouse');
       }
       // 先入库后质检：库位是实物落点，逐行必填。
       if (stockInFirst && line.place.text.trim().isEmpty) {
         missingPlace.add(label);
+        rememberInvalid(line, 'place');
       }
     }
     final rowIssues = <String>[
@@ -906,6 +940,9 @@ class _InboundArrivalRegistrationPageState
     if (rowIssues.isNotEmpty) {
       // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。
       context.appError(rowIssues.join('\n'));
+      if (firstInvalid case final row?) {
+        await _lineGrid.revealError(row, columnKey: firstInvalidColumn);
+      }
       return;
     }
     // 采购收货单必须有采购员(批量页取订货负责人预填，不可编辑)；
@@ -966,8 +1003,9 @@ class _InboundArrivalRegistrationPageState
               ? '另有 $excludedCount 行未勾选：本次不登记、不写库存，仍留在任务中心待登记送检。'
               : ''),
     );
+    requestScope.checkCurrent();
     if (!confirmed || !mounted) return;
-    await _register(route, submitLines);
+    await _register(route, submitLines, requestScope);
   }
 
   /// 提交登记(确认弹窗后的一个事务命令)：失败按 [arrivalRegistrationFailureReason]
@@ -977,12 +1015,14 @@ class _InboundArrivalRegistrationPageState
   Future<void> _register(
     InboundRoute route,
     List<_BatchArrivalLine> submitLines,
+    AuthenticatedRequestScope requestScope,
   ) async {
     setState(() => _saving = true);
     try {
       while (true) {
         try {
-          await _registerOnce(route, submitLines);
+          requestScope.checkCurrent();
+          await _registerOnce(route, submitLines, requestScope);
           return;
         } on ApiException catch (error) {
           final ambiguous =
@@ -998,6 +1038,7 @@ class _InboundArrivalRegistrationPageState
           await WidgetsBinding.instance.endOfFrame;
           if (!mounted) return;
           final resolved = await _pickArrivalSource(context, error);
+          requestScope.checkCurrent();
           // 「返回修改」：停在原页不报错，行保持自动识别，由用户改完再提交。
           if (resolved == null) return;
           setState(() {
@@ -1023,8 +1064,10 @@ class _InboundArrivalRegistrationPageState
   Future<void> _registerOnce(
     InboundRoute route,
     List<_BatchArrivalLine> submitLines,
+    AuthenticatedRequestScope requestScope,
   ) async {
     await saveFormDraftNow();
+    requestScope.checkCurrent();
     final repo = ref.read(procurementInboundRepositoryProvider);
     // 幂等键随草稿持久化(_registrationId)，再按路线与本批内容派生：响应丢失后原样重试安全重放，
     // 改了数量/仓库/重量再提交是另一次登记。
@@ -1070,6 +1113,7 @@ class _InboundArrivalRegistrationPageState
       body: body,
       register: (payload) => runFormDraftSubmission(
         () {
+          requestScope.checkCurrent();
           if (route.isStockInFirst && !_canStockInBeforeInspection) {
             throw ApiException(
               'FORBIDDEN',
@@ -1087,10 +1131,12 @@ class _InboundArrivalRegistrationPageState
       ),
       setBusy: _setSaving,
     );
+    requestScope.checkCurrent();
     if (batch == null) return;
     // 本次登记行的资料学习已随同一服务端事务完成，原命令重放不会再次覆盖资料。
     if (!mounted) return;
     await completeFormDraft();
+    requestScope.checkCurrent();
     if (!mounted) return;
     bumpListRefresh(
       ref,
@@ -1210,7 +1256,8 @@ class _InboundArrivalRegistrationPageState
               : Stack(
                   children: [
                     AbsorbPointer(
-                      absorbing: _saving || !canRegister,
+                      absorbing:
+                          _saving || _preparingSubmission || !canRegister,
                       child: _buildForm(context, theme, canRegister),
                     ),
                     // 提交期间全屏加载遮罩(整批到货登记事务)。
@@ -1326,7 +1373,8 @@ class _InboundArrivalRegistrationPageState
               showAddRow: false,
               showRowDelete: false,
               selectable: canRegister,
-              selectionEnabled: canRegister && !_saving,
+              selectionEnabled:
+                  canRegister && !_saving && !_preparingSubmission,
               onRemoveRows: canRegister ? _removeFromThisRegistration : null,
               removeRowsActionLabel: '移出本次登记',
               removeRowsDialogTitle: '移出本次登记',
@@ -1342,7 +1390,8 @@ class _InboundArrivalRegistrationPageState
               showRemoveRowsAction: false,
               // 2026-09-14：行末常驻 ⊖(走同一条「移出本次登记」确认与回调)。
               showInlineRemoveAction: true,
-              rowMenuExtraBuilder: canRegister && !_saving
+              rowMenuExtraBuilder:
+                  canRegister && !_saving && !_preparingSubmission
                   ? (context, selected) => [
                       UtenMenuItem(
                         label: '批量设置入库仓库 (${selected.length})',
@@ -1463,7 +1512,8 @@ class _InboundArrivalRegistrationPageState
       colorNameOf: (line) => line.item.colorName,
       unitNameOf: (line) => line.item.unitName,
     );
-    bool editable(_BatchArrivalLine line) => canRegister && !_saving;
+    bool editable(_BatchArrivalLine line) =>
+        canRegister && !_saving && !_preparingSubmission;
     final stockInFirst = (_route ?? _activeRoute).isStockInFirst;
     return [
       EditableGridColumn(
@@ -1651,6 +1701,7 @@ class _InboundArrivalRegistrationPageState
     final canSubmit =
         canRegister &&
         !_saving &&
+        !_preparingSubmission &&
         !_suggestions.loading &&
         _lines.isNotEmpty &&
         hasCheckedLine;
@@ -1672,7 +1723,9 @@ class _InboundArrivalRegistrationPageState
         UtenButton(
           type: UtenButtonType.secondary,
           size: UtenButtonSize.large,
-          onPressed: _saving ? null : () => context.pop(),
+          onPressed: _saving || _preparingSubmission
+              ? null
+              : () => context.pop(),
           child: const Text('取消'),
         ),
         for (final route in routes)

@@ -51,7 +51,7 @@ import java.util.function.BiFunction;
  *
  * <p>人员名：maker/approver（Sys_Operator 冻结 *_name，不入 employees）→ {@code COALESCE(em.full_name, t.*_name)}；
  * operator/work（B_Worker stub）→ {@code COALESCE(em_op.full_name, t.operator_name)} + 子类括注（legacy_category）。
- * JOIN 范式以 {@code em.id=t.*_id} 为准，仅 current UUID 为空时回退 legacy_id。
+ * 制单/审核只按真实员工 UUID 关联；仅 operator/work 员工角色在 UUID 为空时回退 B_Worker legacy_id。
  *
  * <p>_null 参数类型坑_：可选过滤一律 {@code CAST(:param AS 类型) IS NULL OR ...}（见 MEMORY）。
  *
@@ -1312,9 +1312,7 @@ public class FinanceReportService {
                 LEFT JOIN employees em_op ON em_op.id=t.operator_id
                     OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 LEFT JOIN employees em_mk ON em_mk.id=t.maker_id
-                    OR (t.maker_id IS NULL AND em_mk.legacy_id=t.maker_legacy_id)
                 LEFT JOIN employees em_ap ON em_ap.id=t.approver_id
-                    OR (t.approver_id IS NULL AND em_ap.legacy_id=t.approver_legacy_id)
                 """;
         FinanceWhereBuilder w = financeDocumentWhere(
                 "WHERE COALESCE(t.is_deleted,false)=false", "t.maker_id", readScope);
@@ -1433,9 +1431,7 @@ public class FinanceReportService {
                 LEFT JOIN employees em_op ON em_op.id=t.operator_id
                     OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 LEFT JOIN employees em_mk ON em_mk.id=t.maker_id
-                    OR (t.maker_id IS NULL AND em_mk.legacy_id=t.maker_legacy_id)
                 LEFT JOIN employees em_ap ON em_ap.id=t.approver_id
-                    OR (t.approver_id IS NULL AND em_ap.legacy_id=t.approver_legacy_id)
                 """;
         FinanceWhereBuilder w = financeDocumentWhere(
                 "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",
@@ -1541,9 +1537,7 @@ public class FinanceReportService {
                 LEFT JOIN employees em_op ON em_op.id=t.operator_id
                     OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 LEFT JOIN employees em_mk ON em_mk.id=t.maker_id
-                    OR (t.maker_id IS NULL AND em_mk.legacy_id=t.maker_legacy_id)
                 LEFT JOIN employees em_ap ON em_ap.id=t.approver_id
-                    OR (t.approver_id IS NULL AND em_ap.legacy_id=t.approver_legacy_id)
                 """;
         FinanceWhereBuilder w = financeDocumentWhere(
                 "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",

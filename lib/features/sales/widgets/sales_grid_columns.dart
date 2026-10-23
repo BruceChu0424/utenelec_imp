@@ -322,20 +322,29 @@ class SalesGridRow extends EditableGridRow
     bool amountUsesDiscount = false,
     bool allowPricingInput = false,
   }) {
-    final r =
-        SalesGridRow(
-            amountUsesDiscount: amountUsesDiscount,
-            allowPricingInput: allowPricingInput,
-          )
-          ..goods = goods
-          ..orderItemId = li.orderItemId
-          ..outItemId = li.outItemId
-          ..colorId = li.colorId
-          ..unitId = li.unitId
-          ..unitRate = li.unitRate;
+    final row = SalesGridRow(
+      amountUsesDiscount: amountUsesDiscount,
+      allowPricingInput: allowPricingInput,
+    );
+    try {
+      row.initializeLinked(li, goods);
+      return row;
+    } catch (_) {
+      row.dispose();
+      rethrow;
+    }
+  }
+
+  void initializeLinked(SalesLinkedItem li, GoodsOption goods) {
+    final r = this
+      ..goods = goods
+      ..orderItemId = li.orderItemId
+      ..outItemId = li.outItemId
+      ..colorId = li.colorId
+      ..unitId = li.unitId
+      ..unitRate = li.unitRate;
     r.qty.text = li.qty.toString();
     if (li.price != null) r.price.text = li.price.toString();
-    return r;
   }
 
   /// 识别客户文件导入的一行：货品/颜色/单位、数量、标价预览(只读)、折扣、
@@ -456,31 +465,43 @@ class SalesGridRow extends EditableGridRow
     bool allowPricingInput = false,
     bool? amountUsesDiscount,
   }) {
-    final row =
-        SalesGridRow(
-            amountUsesDiscount:
-                amountUsesDiscount ?? data['amountUsesDiscount'] == true,
-            allowPricingInput: allowPricingInput,
-          )
-          ..goods = restoreDraftGoods(data['goods'])
-          ..stockPlaceNotifier.value = data['stockPlace'] as String?
-          ..unitRate = (data['unitRate'] as num?)?.toDouble()
-          ..documentItemId = data['documentItemId'] as String?
-          ..orderItemId = data['orderItemId'] as String?
-          ..outItemId = data['outItemId'] as String?
-          ..colorId = data['colorId'] as String?
-          ..unitId = data['unitId'] as String?
-          ..unitRateExact = data['unitRateExact'] as String?
-          ..solution = data['solution'] as String?
-          ..responsible = data['responsible'] as String?
-          ..clientPrice = data['clientPrice'] as String?
-          ..clientNo = data['clientNo'] as String?
-          ..priceSource = data['priceSource'] as String?
-          ..quoteDiscountLocked = data['quoteDiscountLocked'] == true
-          ..intakeLineKey = data['intakeLineKey'] as String?
-          ..userConfirmed = data['userConfirmed'] == true
-          ..setNameEn = data['setNameEn'] == true
-          ..prefilledNameEn = data['prefilledNameEn'] as String?;
+    final row = SalesGridRow(
+      amountUsesDiscount:
+          amountUsesDiscount ?? data['amountUsesDiscount'] == true,
+      allowPricingInput: allowPricingInput,
+    );
+    try {
+      row.restoreDraft(data);
+      return row;
+    } catch (_) {
+      row.dispose();
+      rethrow;
+    }
+  }
+
+  /// Restores into an already-owned row so interrupted bulk preparation can
+  /// dispose it even when a malformed field throws during initialization.
+  void restoreDraft(Map<String, dynamic> data) {
+    final row = this
+      ..goods = restoreDraftGoods(data['goods'])
+      ..stockPlaceNotifier.value = data['stockPlace'] as String?
+      ..unitRate = (data['unitRate'] as num?)?.toDouble()
+      ..documentItemId = data['documentItemId'] as String?
+      ..orderItemId = data['orderItemId'] as String?
+      ..outItemId = data['outItemId'] as String?
+      ..colorId = data['colorId'] as String?
+      ..unitId = data['unitId'] as String?
+      ..unitRateExact = data['unitRateExact'] as String?
+      ..solution = data['solution'] as String?
+      ..responsible = data['responsible'] as String?
+      ..clientPrice = data['clientPrice'] as String?
+      ..clientNo = data['clientNo'] as String?
+      ..priceSource = data['priceSource'] as String?
+      ..quoteDiscountLocked = data['quoteDiscountLocked'] == true
+      ..intakeLineKey = data['intakeLineKey'] as String?
+      ..userConfirmed = data['userConfirmed'] == true
+      ..setNameEn = data['setNameEn'] == true
+      ..prefilledNameEn = data['prefilledNameEn'] as String?;
     restoreDraftTextValues(row._draftTextControllers, draftMap(data['text']));
     row.restoreExtraColumns(data['extraColumns']);
     if (row.canEditTotal) row.pricing.restoreState(data['pricing']);
@@ -489,7 +510,6 @@ class SalesGridRow extends EditableGridRow
       data['aiReview'] as String?,
       goodsMatch: data['aiReviewGoodsMatch'] as String?,
     );
-    return row;
   }
 
   /// 深拷贝（明细复制/粘贴用）：新建行 + 拷贝各控制器文本 + 透传字段 + 自动重算金额。

@@ -67,7 +67,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE)
 class DailyReportApprovalV2PostgresTest {
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("uten_review_v2").withUsername("uten").withPassword("uten");
+            .withDatabaseName("uten_review_v2").withUsername("fixture_admin").withPassword("uten");
     private static final UUID LEGACY_ACTOR = UUID.randomUUID(), LEGACY_REPORT = UUID.randomUUID();
     private static String legacyXmin;
     private static String migrationFrom;

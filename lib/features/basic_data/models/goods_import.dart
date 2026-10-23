@@ -18,7 +18,73 @@ class GoodsImportError {
   );
 }
 
-/// 导入「检测」报告（只读）。
+/// 文件中一个非空字段相对当前主档或 BOM 行的变化。
+class GoodsImportChange {
+  const GoodsImportChange({
+    required this.field,
+    required this.label,
+    required this.oldValue,
+    required this.newValue,
+    required this.kind,
+  });
+
+  final String field;
+  final String label;
+  final String? oldValue;
+  final String? newValue;
+  final String kind;
+  bool get isConflict => kind == 'CONFLICT';
+
+  factory GoodsImportChange.fromJson(Map<String, dynamic> json) =>
+      GoodsImportChange(
+        field: json['field'] as String? ?? '',
+        label: json['label'] as String? ?? '',
+        oldValue: json['oldValue']?.toString(),
+        newValue: json['newValue']?.toString(),
+        kind: json['kind'] as String? ?? 'CONFLICT',
+      );
+}
+
+/// 检测计划里的稳定行键。提交只传用户选中的冲突行键，不信任客户端字段值。
+class GoodsImportReviewRow {
+  const GoodsImportReviewRow({
+    required this.rowKey,
+    required this.rowNum,
+    required this.code,
+    required this.name,
+    required this.categoryPath,
+    required this.matchType,
+    required this.changes,
+    this.seq,
+  });
+
+  final String rowKey;
+  final int rowNum;
+  final String code;
+  final String name;
+  final String categoryPath;
+  final String matchType;
+  final String? seq;
+  final List<GoodsImportChange> changes;
+  bool get hasConflicts => changes.any((change) => change.isConflict);
+
+  factory GoodsImportReviewRow.fromJson(Map<String, dynamic> json) =>
+      GoodsImportReviewRow(
+        rowKey: json['rowKey'] as String? ?? '',
+        rowNum: (json['rowNum'] as num?)?.toInt() ?? 0,
+        code: json['code'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+        categoryPath: json['categoryPath'] as String? ?? '',
+        matchType: json['matchType'] as String? ?? '',
+        seq: json['seq']?.toString(),
+        changes: [
+          for (final change in json['changes'] as List? ?? const [])
+            GoodsImportChange.fromJson(change as Map<String, dynamic>),
+        ],
+      );
+}
+
+/// 导入「检测」报告(只读)。
 class GoodsImportReport {
   const GoodsImportReport({
     required this.totalRows,
@@ -30,6 +96,11 @@ class GoodsImportReport {
     required this.readyToImport,
     required this.restorableRows,
     required this.planId,
+    this.reviewRows = const [],
+    this.addedRows = 0,
+    this.unchangedRows = 0,
+    this.fillRows = 0,
+    this.conflictRows = 0,
   });
   final int totalRows;
   final int dataRows;
@@ -44,6 +115,11 @@ class GoodsImportReport {
 
   /// 短期、单次使用的 detect -> commit 计划。服务重启或过期后须重新检测。
   final String? planId;
+  final List<GoodsImportReviewRow> reviewRows;
+  final int addedRows;
+  final int unchangedRows;
+  final int fillRows;
+  final int conflictRows;
 
   bool get hasErrors => errors.isNotEmpty;
 
@@ -63,6 +139,14 @@ class GoodsImportReport {
         readyToImport: (j['readyToImport'] as num?)?.toInt() ?? 0,
         restorableRows: (j['restorableRows'] as num?)?.toInt() ?? 0,
         planId: j['planId'] as String?,
+        reviewRows: [
+          for (final row in j['reviewRows'] as List? ?? const [])
+            GoodsImportReviewRow.fromJson(row as Map<String, dynamic>),
+        ],
+        addedRows: (j['addedRows'] as num?)?.toInt() ?? 0,
+        unchangedRows: (j['unchangedRows'] as num?)?.toInt() ?? 0,
+        fillRows: (j['fillRows'] as num?)?.toInt() ?? 0,
+        conflictRows: (j['conflictRows'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -75,6 +159,12 @@ class GoodsImportResult {
     required this.createdColors,
     required this.createdUnits,
     required this.createdCategoryPaths,
+    this.createdCount = 0,
+    this.updatedCount = 0,
+    this.filledCount = 0,
+    this.ignoredCount = 0,
+    this.unchangedCount = 0,
+    this.restoredCount = 0,
   });
   final String batchId;
   final int importedCount;
@@ -82,6 +172,12 @@ class GoodsImportResult {
   final int createdColors;
   final int createdUnits;
   final List<String> createdCategoryPaths;
+  final int createdCount;
+  final int updatedCount;
+  final int filledCount;
+  final int ignoredCount;
+  final int unchangedCount;
+  final int restoredCount;
 
   factory GoodsImportResult.fromJson(Map<String, dynamic> j) =>
       GoodsImportResult(
@@ -92,6 +188,12 @@ class GoodsImportResult {
         createdUnits: (j['createdUnits'] as num?)?.toInt() ?? 0,
         createdCategoryPaths: ((j['createdCategoryPaths'] as List?) ?? const [])
             .cast<String>(),
+        createdCount: (j['createdCount'] as num?)?.toInt() ?? 0,
+        updatedCount: (j['updatedCount'] as num?)?.toInt() ?? 0,
+        filledCount: (j['filledCount'] as num?)?.toInt() ?? 0,
+        ignoredCount: (j['ignoredCount'] as num?)?.toInt() ?? 0,
+        unchangedCount: (j['unchangedCount'] as num?)?.toInt() ?? 0,
+        restoredCount: (j['restoredCount'] as num?)?.toInt() ?? 0,
       );
 }
 

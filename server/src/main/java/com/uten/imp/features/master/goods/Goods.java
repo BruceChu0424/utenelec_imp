@@ -258,6 +258,9 @@ public class Goods extends SoftDeletableEntity {
     private String stockPlace;          // StockPlace
     @Column(name = "c_number")
     private String cNumber;             // CNumber
+
+    @Column(name = "client_goods_name")
+    private String clientGoodsName;
     @Column(name = "v_number")
     private String vNumber;             // VNumber
     @Column(name = "bs_test")

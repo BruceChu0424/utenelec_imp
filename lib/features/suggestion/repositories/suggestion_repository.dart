@@ -62,7 +62,7 @@ class DioSuggestionRepository implements SuggestionRepository {
         'size': size,
       },
     );
-    return PagedResult.fromJson(json, _fromJson);
+    return PagedResult.fromJsonResponsive(json, _fromJson);
   }
 
   @override

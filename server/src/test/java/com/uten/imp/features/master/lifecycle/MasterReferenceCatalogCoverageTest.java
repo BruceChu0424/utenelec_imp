@@ -126,6 +126,63 @@ class MasterReferenceCatalogCoverageTest {
     }
 
     @Test
+    void goodsCodeUsageTracksBusinessIdentityColumnsAndClassifiesJsonSnapshotsExplicitly() throws SQLException {
+        Set<String> tracked = new TreeSet<>();
+        try (Connection connection = connection(); var statement = connection.createStatement();
+             var rows = statement.executeQuery("SELECT table_name,column_name FROM fn_goods_code_usage_columns()")) {
+            while (rows.next()) tracked.add(rows.getString(1) + "." + rows.getString(2));
+        }
+        assertThat(tracked).contains("goods_bom_items.goods_id", "goods_bom_items.component_goods_id",
+                "sales_order_items.goods_id", "stock_balances.goods_id", "rd_tasks.goods_id",
+                "goods_cost_sheets.input", "goods_cost_sheets.calculation", "goods_cost_snapshots.payload",
+                "production_material_discovery_requests.requested_materials",
+                "production_material_increment_requests.source_snapshot",
+                "production_material_increment_requests.before_snapshot", "production_material_increment_requests.after_snapshot",
+                "production_material_demands.consumption_snapshot", "production_planning_drafts.payload",
+                "production_bom_learning_samples.materials", "production_bom_learning_samples.entry_generations",
+                "sales_order_revision_logs.before_snapshot", "sales_order_revision_logs.after_snapshot");
+        assertThat(tracked).noneMatch(column -> column.startsWith("audit_")
+                || column.startsWith("goods_operation_history") || column.startsWith("master_operation_history")
+                || column.startsWith("master_record_") || column.startsWith("business_outbox.")
+                || column.startsWith("platform_record_") || column.startsWith("goods_code_"));
+        // Every JSON column in the business identity families must be tracked or
+        // explicitly classified below. Adding a new snapshot cannot silently
+        // bypass the lifetime usage evidence by using a different JSON key.
+        Set<String> nonBusinessJson = Set.of("goods_cost_templates.input", "goods_cost_imports.preview",
+                "goods_cost_import_mappings.mappings", "goods_cost_import_mappings.base_input", "goods_cost_import_mappings.result_input",
+                "goods_cost_commands.result", // command receipt is covered by the saved sheet and frozen snapshot
+                "production_material_return_receiving_confirmations.line_weights", // return-line UUID -> weight; goods identity is retained on the referenced return item
+                "production_material_increment_reversals.draw_item_quantities"); // stock draw-line UUID -> quantity; the immutable demand and draw items retain goods identity
+        List<String> unclassifiedJson = new ArrayList<>();
+        try (Connection connection = connection(); var statement = connection.createStatement(); var rows = statement.executeQuery("""
+                SELECT c.relname,a.attname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
+                WHERE n.nspname='public' AND NOT c.relispartition AND c.relkind IN ('r','p')
+                  AND a.atttypid='jsonb'::regtype AND (
+                    c.relname ~ '^(goods_cost_|production_material_)'
+                    OR c.relname IN ('production_bom_learning_samples','sales_order_revision_logs','sales_quote_revision_logs'))
+                """)) {
+            while (rows.next()) {
+                String column = rows.getString(1) + "." + rows.getString(2);
+                if (!tracked.contains(column) && !nonBusinessJson.contains(column)) unclassifiedJson.add(column);
+            }
+        }
+        assertThat(unclassifiedJson).as("New business JSON identity columns need lifetime tracking or an explicit covered/configuration classification").isEmpty();
+        try (Connection connection = connection(); var statement = connection.createStatement(); var rows = statement.executeQuery("""
+                SELECT target.table_name,target.column_name,target.kind,t.tgargs
+                FROM fn_goods_code_usage_columns() target
+                LEFT JOIN pg_class c ON c.relname=target.table_name AND c.relnamespace='public'::regnamespace
+                LEFT JOIN pg_trigger t ON t.tgrelid=c.oid AND t.tgname='trg_track_goods_code_usage' AND NOT t.tgisinternal
+                """)) {
+            while (rows.next()) {
+                byte[] args = rows.getBytes(4);
+                assertThat(args).as("Missing lifetime tracking trigger on %s", rows.getString(1)).isNotNull();
+                assertThat(new String(args, java.nio.charset.StandardCharsets.UTF_8)).contains(rows.getString(3) + ":" + rows.getString(2));
+            }
+        }
+    }
+
+    @Test
     void everyKindsWholeReferenceQueryRunsOnTheMigratedSchema() throws SQLException {
         try (Connection connection = connection()) {
             for (MasterEntityKind kind : MasterEntityKind.values()) {

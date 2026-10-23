@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:collection/collection.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,44 @@ import 'package:uten_imp/features/production/models/production_material_analysis
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 
 void main() {
+  test(
+    'responsive sparse decoder preserves exact facts and yields on large results',
+    () async {
+      final response = _response(_prototype(), [
+        for (var i = 0; i < 2000; i++)
+          {'materialLineId': 'node-$i', 'requiredQty': i + 0.1234},
+      ]);
+      final expected = ProductionMaterialAnalysisView.fromJson(response);
+      var inputTurnRan = false;
+      Timer.run(() => inputTurnRan = true);
+      final actual = await ProductionMaterialAnalysisView.fromJsonResponsive(
+        response,
+      );
+      expect(inputTurnRan, isTrue);
+      expect(actual.analysisId, expected.analysisId);
+      expect(actual.version, expected.version);
+      expect(actual.fingerprint, expected.fingerprint);
+      expect(actual.allowedActions, expected.allowedActions);
+      expect(actual.materials.map(_facts), expected.materials.map(_facts));
+      expect(
+        identical(
+          actual.materials.first.warehouseStocks,
+          actual.materials.last.warehouseStocks,
+        ),
+        isTrue,
+      );
+      await expectLater(
+        ProductionMaterialAnalysisView.fromJsonResponsive({
+          ...response,
+          'flatMaterials': [
+            {'materialKey': 'missing'},
+          ],
+        }),
+        throwsFormatException,
+      );
+    },
+  );
+
   test(
     'full prototype overlays preserve every value including explicit empty facts',
     () {

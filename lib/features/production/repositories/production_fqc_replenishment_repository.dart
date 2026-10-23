@@ -18,7 +18,10 @@ class ProductionFqcReplenishmentRepository {
       ApiEndpoints.productionQualityReplenishments,
       query: {'page': page, 'size': size},
     );
-    return PagedResult.fromJson(json, ProductionFqcReplenishmentTask.fromJson);
+    return PagedResult.fromJsonResponsive(
+      json,
+      ProductionFqcReplenishmentTask.fromJson,
+    );
   }
 
   Future<PagedResult<ProductionFqcReplenishmentMaterialTask>> materialTasks({
@@ -29,7 +32,7 @@ class ProductionFqcReplenishmentRepository {
       ApiEndpoints.productionQualityReplenishmentMaterialTasks,
       query: {'page': page, 'size': size},
     );
-    return PagedResult.fromJson(
+    return PagedResult.fromJsonResponsive(
       json,
       ProductionFqcReplenishmentMaterialTask.fromJson,
     );

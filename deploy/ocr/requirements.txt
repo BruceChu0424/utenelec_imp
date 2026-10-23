@@ -1,11 +1,17 @@
 # Engine and model generation are fixed; retain pip freeze for deployment rollback.
+-c security-constraints.txt
 paddleocr==3.7.0
 paddlepaddle==3.3.1
 paddlex==3.7.2
 fastapi==0.141.1
 uvicorn>=0.34,<1
 python-multipart==0.0.32
-Pillow>=11.3,<13
+Pillow>=13,<14
 numpy>=1.26,<3
+# Declare these security-sensitive transitive dependencies explicitly so an
+# upgrade of an existing venv cannot retain a vulnerable installed version.
+aiohttp
+certifi
+multidict
 # PaddleX validates this exact distribution; do not substitute a headless wheel.
 opencv-contrib-python==4.10.0.84

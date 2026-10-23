@@ -1,0 +1,2 @@
+Defaults:uten-cert-receiver env_reset, !setenv
+uten-cert-receiver ALL=(root) NOPASSWD: /usr/bin/python3 -I /usr/local/lib/uten-remote/cert_receiver.py root get-csr, /usr/bin/python3 -I /usr/local/lib/uten-remote/cert_receiver.py root publish-cert, /usr/bin/python3 -I /usr/local/lib/uten-remote/cert_receiver.py root publish-status

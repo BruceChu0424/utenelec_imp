@@ -74,10 +74,10 @@ class GoodsUuidRelationshipServiceTest {
         when(relationships.unit(unit.getId())).thenReturn(unit);
         when(relationships.unit(thicknessUnit.getId())).thenReturn(thicknessUnit);
         when(relationships.unit(weightUnit.getId())).thenReturn(weightUnit);
-        when(codes.allocate(
+        when(codes.allocateForNewGoods(
                 org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.isNull()))
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new CategoryCodeAllocation("HP000001", 1, null, true));
 
         GoodsSaveRequest request = new GoodsSaveRequest();
@@ -115,10 +115,10 @@ class GoodsUuidRelationshipServiceTest {
         when(goodsRepo.findById(org.mockito.ArgumentMatchers.any(UUID.class)))
                 .thenReturn(Optional.empty());
         CategoryDrivenCodeService codes = mock(CategoryDrivenCodeService.class);
-        when(codes.allocate(
+        when(codes.allocateForNewGoods(
                 org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.isNull()))
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new CategoryCodeAllocation("HP000002", 2, null, true));
         GoodsService service = new GoodsService(
                 goodsRepo, categoryRepo, mock(ColorRepository.class), mock(UnitRepository.class),

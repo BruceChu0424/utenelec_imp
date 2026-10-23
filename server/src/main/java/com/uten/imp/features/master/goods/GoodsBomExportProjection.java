@@ -38,7 +38,12 @@ final class GoodsBomExportProjection {
             if (!present.contains(required.getKey())) columns.add(new TableColumnProjection.Column(
                     required.getKey(), required.getValue(), null, null, null));
         }
-        columns.addAll(projection.columns());
+        for (var column : projection.columns()) {
+            columns.add("componentGoodsId".equals(column.key()) ? new TableColumnProjection.Column(
+                    column.key(), "组件系统标识", column.width(), column.type(), column.definition()) : column);
+        }
+        if (!present.contains("componentGoodsId")) columns.add(new TableColumnProjection.Column(
+                "componentGoodsId", "组件系统标识", null, null, null));
         if (columns.size() > 160) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "配件清单导出需保留序号、编号、名称和设计使用数量，请减少选中的导出列后重试");

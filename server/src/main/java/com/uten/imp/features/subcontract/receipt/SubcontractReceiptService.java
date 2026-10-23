@@ -1,4 +1,5 @@
 package com.uten.imp.features.subcontract.receipt;
+import com.uten.imp.common.util.EmployeeNameResolver;
 
 import com.uten.imp.common.web.HeaderColumnFilter;
 
@@ -1128,7 +1129,9 @@ public class SubcontractReceiptService {
         return new ReceiptDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), mask ? null : r.getCurrencyId(),
                 mask ? null : r.getExchangeRate(), mask ? null : r.getTaxRate(),
-                r.getSenderId(), nameResolver.nameWithCodeOf(r.getSenderId()),
+                r.getSenderId(), r.getSenderId() != null ? nameResolver.nameWithCodeOf(r.getSenderId())
+                        : nameResolver.historicalWorkerNameWithCodeOf(null, r.getId(), r.getLegacyId(),
+                            EmployeeNameResolver.HistoricalWorkerRole.SUBCONTRACT_RECEIPT_RECEIVER),
                 r.getMakerId(), r.getApproverId(), r.getLastDate(), r.isApPosted(), r.getRemark(),
                 mask ? null : r.getTotalOriginal(), mask ? null : r.getTotalLocal(),
                 r.getStatus(), r.isClosed(), r.getSourceDocNo(), safeItems,

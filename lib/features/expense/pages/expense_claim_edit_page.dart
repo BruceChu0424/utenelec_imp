@@ -8,7 +8,7 @@
 // 编辑 REJECTED 保存后仍在 REJECTED，重提在详情页（清驳回痕迹并重新通知审批人）。
 
 import 'package:flutter/material.dart';
-import 'dart:convert';
+import '../../../core/performance/json_value_snapshot.dart';
 import 'package:uuid/uuid.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
@@ -135,10 +135,15 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
         ? data['guidedAttachmentId'] as String
         : null;
     _guidedUploadStarted = data['guidedUploadStarted'] == true;
-    final restoredPlan = AiGuidedFilePlan.restoreLocalDraft(
+    final restoreIdentity = ref.read(aiGuidedFileIdentityProvider);
+    final restoredPlan = await AiGuidedFilePlan.restoreLocalDraftResponsive(
       data['guidedPlan'],
-      ref.read(aiGuidedFileIdentityProvider),
+      restoreIdentity,
+      isCurrent: () =>
+          formDraftIdentityIsCurrent &&
+          ref.read(aiGuidedFileIdentityProvider) == restoreIdentity,
     );
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     if (data['guidedPlan'] != null &&
         (restoredPlan == null ||
             restoredPlan.workflow != AiGuidedWorkflow.expenseClaim)) {
@@ -458,7 +463,7 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
     setState(() => _busy = true);
     try {
       if (_guidedPlan case final plan?) {
-        final before = jsonEncode(captureFormDraft());
+        final before = JsonValueSnapshot.capture(captureFormDraftSnapshot());
         setState(() {
           _guidedValidated = false;
           _guidedStatus = 'guidedValidating';
@@ -467,11 +472,10 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
         if (!mounted || !verified.matches(ref)) return;
         // Only the status label changes during this guard; fields must not.
         final after = {
-          ...captureFormDraft(),
-          'guidedStatus':
-              (jsonDecode(before) as Map<String, dynamic>)['guidedStatus'],
+          ...captureFormDraftSnapshot(),
+          'guidedStatus': before.data['guidedStatus'],
         };
-        if (jsonEncode(after) != before) {
+        if (!before.matches(after)) {
           setState(() {
             _guidedValidated = true;
             _guidedStatus = 'guidedExisting';

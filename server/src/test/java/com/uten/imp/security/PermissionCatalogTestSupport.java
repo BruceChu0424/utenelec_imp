@@ -52,7 +52,7 @@ final class PermissionCatalogTestSupport {
         if (jdbc == null) {
             postgres = new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
-                    .withUsername("uten")
+                    .withUsername("fixture_admin")
                     .withPassword("uten-test-only");
             postgres.start();
             com.uten.imp.testsupport.TestFlyway.configure()

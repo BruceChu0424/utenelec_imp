@@ -75,49 +75,20 @@ die() { printf '%s\\n' 'Invalid synthetic environment syntax' >&2; exit 7; }
             locations[match.group(1).strip()] = source[start:cursor - 1].strip()
         return locations
 
-    def test_public_and_cloud_nginx_block_the_whole_test_surface(self):
-        for path in ("deploy/nginx/uten-imp.conf.example", "deploy/cloud/nginx-cloud.conf.example"):
+    def test_every_server_nginx_blocks_the_whole_test_surface(self):
+        for path in (
+            "deploy/nginx/uten-imp.conf.example",
+            "deploy/nginx/uten-imp-http-lan.conf",
+            "deploy/nginx/uten-imp-internal-test.conf.example",
+            "deploy/cloud/nginx-cloud.conf.example",
+            "deploy/remote-access/templates/company-nginx.conf.tmpl",
+        ):
             nginx = (ROOT / path).read_text(encoding="utf-8")
             test_locations = {header: body for header, body in self.nginx_locations(nginx).items()
                               if "/api/system-test" in header}
             with self.subTest(path=path):
-                self.assertEqual({"= /api/system-test", "^~ /api/system-test/"}, set(test_locations))
+                self.assertEqual({"= /api/system-test", "^~ /api/system-test/", '~ "^/api/system-test(?:[;/]|$)"'}, set(test_locations))
                 self.assertTrue(all(body == "return 404;" for body in test_locations.values()))
-
-    def test_lan_only_forwards_three_exact_reset_actions_with_existing_api_guards(self):
-        runbook = (ROOT / "deploy/simple/RUNBOOK.zh-CN.md").read_text(encoding="utf-8")
-        self.assertIn("cp deploy/nginx/uten-imp-http-lan.conf /etc/nginx/sites-available/uten-imp", runbook)
-        nginx = (ROOT / "deploy/nginx/uten-imp-http-lan.conf").read_text(encoding="utf-8")
-        locations = self.nginx_locations(nginx)
-        actions = {"preview": "GET|HEAD|OPTIONS", "last-result": "GET|HEAD|OPTIONS", "reset": "POST|OPTIONS"}
-        expected = {"= /api/system-test", "^~ /api/system-test/"} | {
-            "= /api/system-test/business-data/" + action for action in actions}
-        self.assertEqual(expected, {header for header in locations if "/api/system-test" in header})
-        self.assertEqual("return 404;", locations["= /api/system-test"])
-        self.assertEqual("return 404;", locations["^~ /api/system-test/"])
-        api_proxy = set(re.findall(r"^\s*(proxy_(?:pass|http_version|set_header)\s+[^;]+;)",
-                                   locations["/api/"], re.MULTILINE))
-        self.assertTrue(api_proxy)
-        for action, method in actions.items():
-            body = locations["= /api/system-test/business-data/" + action]
-            with self.subTest(action=action):
-                self.assertIn(f"if ($request_method !~ ^({method})$) {{ return 405; }}", body)
-                self.assertEqual(api_proxy, set(re.findall(
-                    r"^\s*(proxy_(?:pass|http_version|set_header)\s+[^;]+;)", body, re.MULTILINE)))
-                self.assertIn("limit_req zone=uten_api_ip burst=500 nodelay;", body)
-                # Inherit the same LAN ACL, security headers and 2 MiB body cap.
-                self.assertNotIn("add_header", body)
-                self.assertNotIn("allow ", body)
-                self.assertNotIn("client_max_body_size", body)
-                # Forward Origin/preflight to the existing Spring CORS allowlist;
-                # the edge must not create a wildcard or suppress credentials.
-                self.assertNotIn("Access-Control-Allow", body)
-                if action == "reset":
-                    self.assertIn("proxy_read_timeout 600s;", body)
-                    self.assertIn("proxy_send_timeout 600s;", body)
-                else:
-                    self.assertNotIn("proxy_read_timeout", body)
-                    self.assertNotIn("proxy_send_timeout", body)
 
     def validate_reset_policy(self, values):
         source = (ROOT / "deploy/setup/validate-server-env.sh").read_text(encoding="utf-8")
@@ -128,17 +99,22 @@ die() { printf '%s\\n' 'Invalid synthetic environment syntax' >&2; exit 7; }
         with tempfile.TemporaryDirectory() as directory:
             env = Path(directory) / "reset-policy.env"
             env.write_text("".join(f"{key}={value}\n" for key, value in values), encoding="utf-8")
-            return subprocess.run(["bash", "-c", 'set -euo pipefail\nENV_FILE="$1"\n' + helpers + policy,
-                                   "reset-policy", str(env)], capture_output=True, text=True)
+            # Passing multiline Bash via -c is re-quoted by Windows subprocess;
+            # run a real script so failures cannot be swallowed by altered quoting.
+            script = Path(directory) / "reset-policy.sh"
+            script.write_text('set -euo pipefail\nENV_FILE="$1"\n' + helpers + policy,
+                              encoding="utf-8", newline="\n")
+            return subprocess.run([shutil.which("bash") or "bash", script.as_posix(), env.as_posix()],
+                                  capture_output=True, text=True)
 
-    def test_reset_requires_explicit_boolean_on_prod_local_only(self):
-        for enabled in ("false", "true"):
+    def test_reset_is_permanently_disabled_on_prod_local(self):
+        for enabled in ("false",):
             with self.subTest(enabled=enabled):
                 result = self.validate_reset_policy([
                     ("UTEN_PROFILE", "prod"), ("UTEN_DEPLOYMENT_SITE", "local"),
                     ("UTEN_BUSINESS_DATA_RESET_ENABLED", enabled)])
                 self.assertEqual(0, result.returncode, result.stderr)
-        for site, enabled in (("cloud", "true"), ("cloud", "false"), ("", "true"),
+        for site, enabled in (("local", "true"), ("cloud", "true"), ("cloud", "false"), ("", "true"),
                               ("local", "yes"), ("local", "TRUE"), ("local", "")):
             with self.subTest(site=site, enabled=enabled):
                 result = self.validate_reset_policy([
@@ -285,8 +261,9 @@ class NginxResetTemplateVerifierTest(unittest.TestCase):
             "lan": (ROOT / "deploy/nginx/uten-imp-http-lan.conf").read_text(encoding="utf-8"),
             "public": (ROOT / "deploy/nginx/uten-imp.conf.example").read_text(encoding="utf-8"),
             "cloud": (ROOT / "deploy/cloud/nginx-cloud.conf.example").read_text(encoding="utf-8"),
+            "internal-test": (ROOT / "deploy/nginx/uten-imp-internal-test.conf.example").read_text(encoding="utf-8"),
+            "remote": (ROOT / "deploy/remote-access/templates/company-nginx.conf.tmpl").read_text(encoding="utf-8"),
         }
-        cls.locations = CurrentStorageConfigurationTest.nginx_locations(cls.templates["lan"])
 
     def check_cases(self, cases):
         # Parse and invoke the repository function itself. No template file, host
@@ -306,7 +283,7 @@ if ($null -eq $definition) { throw 'Missing real Nginx boundary function' }
 . ([scriptblock]::Create($definition.Extent.Text))
 $results = foreach ($case in (Get-Content -LiteralPath $Cases -Raw | ConvertFrom-Json)) {
     try {
-        Assert-NginxSystemTestBoundary $case.text $case.id $case.allowReset
+        Assert-NginxSystemTestBoundary $case.text $case.id
         [pscustomobject]@{ id = $case.id; accepted = $true; error = '' }
     } catch {
         [pscustomobject]@{ id = $case.id; accepted = $false; error = $_.Exception.Message }
@@ -332,112 +309,62 @@ ConvertTo-Json -InputObject @($results) -Depth 4 -Compress
                 if not fixture["accepted"]:
                     self.assertIn("Forbidden deployment contract:", outcome["error"])
 
-    def case(self, name, text, *, template="lan", accepted=False):
-        return {"id": name, "text": text, "allowReset": template == "lan", "accepted": accepted}
-
-    def change_body(self, action, old, new):
-        body = self.locations["= /api/system-test/business-data/" + action]
-        self.assertIn(old, body)
-        return self.templates["lan"].replace(body, body.replace(old, new, 1), 1)
+    def case(self, name, text, *, accepted=False):
+        return {"id": name, "text": text, "accepted": accepted}
 
     def add_location(self, template, location):
         before, after = self.templates[template].rsplit("}", 1)
         return before + "\n" + location + "\n}" + after
 
-    def test_reviewed_lan_public_and_cloud_templates_pass(self):
-        self.check_cases([self.case(name, text, template=name, accepted=True)
+    def test_all_server_templates_pass_the_same_closed_boundary(self):
+        self.check_cases([self.case(name, text, accepted=True)
                           for name, text in self.templates.items()])
 
-    def test_each_required_location_is_required_with_its_original_denial(self):
+    def test_required_root_and_subtree_denials_cannot_be_removed_or_weakened(self):
         cases = []
-        for action in ("preview", "last-result", "reset"):
-            header = "location = /api/system-test/business-data/" + action
-            cases.append(self.case("missing-" + action, self.templates["lan"].replace(header, "location = /removed")))
-        for header in ("location = /api/system-test", "location ^~ /api/system-test/"):
-            cases.append(self.case("missing-" + header, self.templates["lan"].replace(header, "location = /removed")))
-        cases.append(self.case("root-not-404", self.templates["lan"].replace(
-            "location = /api/system-test { return 404; }", "location = /api/system-test { return 200; }")))
+        for template, text in self.templates.items():
+            for header in ("location = /api/system-test", "location ^~ /api/system-test/", 'location ~ "^/api/system-test(?:[;/]|$)"'):
+                cases.append(self.case(template + "-missing-" + header, text.replace(header, "location = /removed")))
+                original = header + " { return 404; }"
+                for replacement in ("return 200;", "proxy_pass http://uten_imp_backend;", "return 404; allow all;"):
+                    cases.append(self.case(template + replacement + header,
+                                           text.replace(original, header + " { " + replacement + " }")))
         self.check_cases(cases)
 
-    def test_unknown_duplicate_and_broad_locations_fail_even_on_the_same_line(self):
-        cases = [self.case("additional", self.add_location(
-                           "lan", "location = /api/system-test/unknown { proxy_pass http://uten_imp_backend; }")),
-                 self.case("inline-additional", self.templates["lan"].replace(
-                     "location = /api/system-test { return 404; }",
-                     "location = /api/system-test { return 404; } location = /api/system-test/unknown { return 200; }")),
-                 self.case("duplicate", self.add_location("lan", "location = /api/system-test { return 404; }"))]
-        for modifier in ("", "^~ ", "~ "):
-            cases.append(self.case("broad-" + modifier, self.templates["lan"].replace(
-                "location = /api/system-test/business-data/reset", "location " + modifier + "/api/system-test/business-data/reset")))
+    def test_every_server_rejects_exact_reset_preview_and_result_exceptions(self):
+        cases = []
+        for template in self.templates:
+            for action in ("reset", "preview", "last-result", "unknown"):
+                for modifier in ("= ", "", "^~ ", "~ "):
+                    location = ("location " + modifier + "/api/system-test/business-data/" + action
+                                + " { proxy_pass http://uten_imp_backend; }")
+                    cases.append(self.case(template + action + modifier, self.add_location(template, location)))
         self.check_cases(cases)
 
-    def test_multiline_headers_keep_exact_allowlist_and_reject_unknown_locations(self):
+    def test_unknown_and_duplicate_locations_fail_even_on_the_same_line(self):
         cases = []
-        for action in ("preview", "last-result", "reset"):
-            header = "location = /api/system-test/business-data/" + action + " {"
-            multiline = "location\n =\n /api/system-test/business-data/" + action + "\n {"
-            cases.append(self.case("reviewed-multiline-" + action,
-                                   self.templates["lan"].replace(header, multiline), accepted=True))
-        for index, header in enumerate((
-                "location =\n /api/system-test/unreviewed {",
-                "location\n = /api/system-test/unreviewed {",
-                "location = /api/system-test/unreviewed\n {",
-                "location ^~\n /api/system-test/unreviewed {",
-                "location ~\n ^/api/system-test/unreviewed {",
-                'location =\n "/api/system-test/unreviewed" {')):
-            cases.append(self.case("unreviewed-multiline-" + str(index), self.add_location(
-                "lan", header + " proxy_pass http://uten_imp_backend; }")))
+        for template, text in self.templates.items():
+            cases.append(self.case(template + "-duplicate", self.add_location(
+                template, "location = /api/system-test { return 404; }")))
+            cases.append(self.case(template + "-inline", text.replace(
+                "location = /api/system-test { return 404; }",
+                "location = /api/system-test { return 404; } location = /api/system-test/unknown { return 200; }")))
         self.check_cases(cases)
 
-    def test_read_and_reset_methods_remain_exact_and_cors_preflight_is_forwarded(self):
+    def test_multiline_headers_preserve_the_denial_and_reject_new_exceptions(self):
         cases = []
-        for action in ("preview", "last-result", "reset"):
-            allowed = "POST|OPTIONS" if action == "reset" else "GET|HEAD|OPTIONS"
-            for replacement in ("GET|POST|HEAD|OPTIONS", allowed.replace("|OPTIONS", "")):
-                cases.append(self.case(action + "-" + replacement,
-                                       self.change_body(action, allowed, replacement)))
-            cases.append(self.case(action + "-no-method-guard", self.change_body(
-                action, f"if ($request_method !~ ^({allowed})$) {{ return 405; }}", "")))
-        self.check_cases(cases)
-
-    def test_proxy_rate_and_every_forwarded_header_are_mandatory(self):
-        directives = ["limit_req zone=uten_api_ip burst=500 nodelay;",
-                      "proxy_pass http://uten_imp_backend;", "proxy_http_version 1.1;",
-                      'proxy_set_header Connection "";', "proxy_set_header Host $host;",
-                      "proxy_set_header X-Forwarded-For $remote_addr;",
-                      "proxy_set_header X-Forwarded-Proto $scheme;",
-                      "proxy_set_header X-Request-Id $request_id;"]
-        self.check_cases([self.case("missing-" + directive, self.change_body(action, directive, ""))
-                          for action in ("preview", "last-result", "reset") for directive in directives])
-
-    def test_no_route_may_override_inherited_acl_headers_body_limit_or_cors(self):
-        additions = ["allow all;", "deny all;", "client_max_body_size 0;",
-                     'add_header Strict-Transport-Security "changed";',
-                     "add_header Access-Control-Allow-Origin *;", "auth_request off;"]
-        self.check_cases([self.case("extra-" + directive, self.change_body(
-            action, "proxy_http_version 1.1;", "proxy_http_version 1.1; " + directive))
-            for action in ("preview", "last-result", "reset") for directive in additions])
-
-    def test_only_reset_gets_both_exact_long_timeouts(self):
-        cases = []
-        for kind in ("read", "send"):
-            directive = f"proxy_{kind}_timeout 600s;"
-            cases.append(self.case("missing-" + kind, self.change_body("reset", directive, "")))
-            cases.append(self.case("unbounded-" + kind, self.change_body("reset", directive, f"proxy_{kind}_timeout 0;")))
-            for action in ("preview", "last-result"):
-                cases.append(self.case(action + "-unexpected-" + kind, self.change_body(
-                    action, "proxy_http_version 1.1;", "proxy_http_version 1.1; " + directive)))
-        self.check_cases(cases)
-
-    def test_public_and_cloud_never_allow_a_reset_exception(self):
-        cases = []
-        body = self.locations["= /api/system-test/business-data/reset"]
-        for template in ("public", "cloud"):
-            cases.append(self.case(template + "-reset", self.add_location(template,
-                                   "location = /api/system-test/business-data/reset { " + body + " }"), template=template))
-            cases.append(self.case(template + "-deny-bypass", self.templates[template].replace(
-                "location ^~ /api/system-test/ { return 404; }",
-                "location ^~ /api/system-test/ { proxy_pass http://uten_imp_backend; }"), template=template))
+        for template, text in self.templates.items():
+            cases.append(self.case(template + "-multiline-denial", text.replace(
+                "location = /api/system-test {", "location\n =\n /api/system-test\n {"), accepted=True))
+            for index, header in enumerate((
+                    "location =\n /api/system-test/unreviewed {",
+                    "location\n = /api/system-test/unreviewed {",
+                    "location = /api/system-test/unreviewed\n {",
+                    "location ^~\n /api/system-test/unreviewed {",
+                    "location ~\n ^/api/system-test/unreviewed {",
+                    'location =\n "/api/system-test/unreviewed" {')):
+                cases.append(self.case(template + str(index), self.add_location(
+                    template, header + " proxy_pass http://uten_imp_backend; }")))
         self.check_cases(cases)
 
 

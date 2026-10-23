@@ -45,7 +45,7 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
     private static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
-                    .withUsername("uten")
+                    .withUsername("fixture_admin")
                     .withPassword("uten");
 
     private static EntityManagerFactory entityManagerFactory;

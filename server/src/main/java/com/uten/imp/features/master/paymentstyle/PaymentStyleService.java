@@ -293,6 +293,39 @@ public class PaymentStyleService {
                 "财务类别不能直接删除；请改为“禁用”以保留历史、审计与并发业务引用安全");
     }
 
+    /** One request/transaction; parent-child order follows the native status rules. */
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('payment_style:view') and hasAuthority('payment_style:status')")
+    @Transactional
+    public com.uten.imp.features.master.lifecycle.dto.MasterBatchResult batchStatus(
+            String status,List<com.uten.imp.features.master.lifecycle.dto.MasterBatchRequests.Item> items) {
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("payment_style:view","payment_style:status");
+        if(!STATUSES.contains(status)||items==null||items.isEmpty()||items.size()>500)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择最多500个类别，并指定使用或禁用状态");
+        tx.bind();lockStyleHierarchy();
+        Set<UUID> ids=new java.util.LinkedHashSet<>();
+        for(var item:items) {if(item==null||item.id()==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"类别身份不能为空");ids.add(item.id());}
+        var rows=repo.findAllById(ids).stream().filter(style->!style.isDeleted()).sorted(
+            java.util.Comparator.<PaymentStyle>comparingInt(style->(style.getLevel()==null?0:style.getLevel())*(status.equals("使用")?1:-1)).thenComparing(PaymentStyle::getId)).toList();
+        var results=new java.util.LinkedHashMap<UUID,com.uten.imp.features.master.lifecycle.dto.MasterBatchResult.ItemResult>();
+        for(var row:rows) {
+            String label=row.getCode()+" "+row.getName();
+            if(status.equals(row.getStatus())) {
+                results.put(row.getId(),new com.uten.imp.features.master.lifecycle.dto.MasterBatchResult.ItemResult(row.getId(),label,true,"原本就是「"+status+"」，未改动"));continue;
+            }
+            var request=new PaymentStyleUpdateRequest();request.setStatus(status);
+            try {
+                // Self-call keeps this one transaction. All native checks run
+                // before save/flush; only a business refusal is partial success.
+                update(row.getId(),request);
+                results.put(row.getId(),new com.uten.imp.features.master.lifecycle.dto.MasterBatchResult.ItemResult(row.getId(),label,true,null));
+            } catch(ApiException refusal) {
+                results.put(row.getId(),new com.uten.imp.features.master.lifecycle.dto.MasterBatchResult.ItemResult(row.getId(),label,false,refusal.getMessage()));
+            }
+        }
+        return com.uten.imp.features.master.lifecycle.dto.MasterBatchResult.of(ids.stream().map(id->results.getOrDefault(id,
+            new com.uten.imp.features.master.lifecycle.dto.MasterBatchResult.ItemResult(id,null,false,"类别不存在或已删除，请刷新后重试"))).toList());
+    }
+
     /** 移动后按 parent 关系递归重建整棵子树，不依赖移动前的旧 path 排序。 */
     private void rebuildSubtreeHierarchy(UUID rootId) {
         if (repo.rebuildSubtreeHierarchy(rootId) == 0) {

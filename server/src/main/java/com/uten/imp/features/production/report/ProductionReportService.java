@@ -38,8 +38,8 @@ import java.util.function.BiFunction;
  * </ol>
  *
  * <p>人员名：制单员/审核员 {@code COALESCE(em.full_name, p.*_name)}——
- * em 经 {@code *_legacy_id} OR-JOIN employees（HR 录入 legacy_id 后用真名），否则用迁移期冻结的老库
- * Sys_Operator.fname / B_Worker.Emp_Name（migrate 双表 COALESCE 取名，同委外范式）。
+ * em 仅经真实员工 UUID 关联；历史 Sys_Operator 账号使用迁移期冻结名称，
+ * 不把制单/审核旧账号编号当作 B_Worker 员工编号。
  * 跟单员/车间负责人在老库是 varchar 文本名，直接显示（非 ID，免 JOIN）。
  *
  * <p><b>null 参数类型坑</b>：可选过滤由 {@link WhereBuilder#add} 仅在值非空时追加（不传 null 进 SQL）；
@@ -327,9 +327,7 @@ public class ProductionReportService {
         String fromJoin = """
                 FROM production_plans p
                 LEFT JOIN employees em_mk ON em_mk.id = p.maker_id
-                    OR (p.maker_id IS NULL AND em_mk.legacy_id = p.maker_legacy_id)
                 LEFT JOIN employees em_ap ON em_ap.id = p.approver_id
-                    OR (p.approver_id IS NULL AND em_ap.legacy_id = p.approver_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(p.is_deleted,false)=false"
                 // 汇总只显示父计划：拆分生成的子计划（subplan_links）不出现在汇总，明细报表仍全量

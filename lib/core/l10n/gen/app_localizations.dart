@@ -100,6 +100,264 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// No description provided for @clientUpdateDetails.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看详情'**
+  String get clientUpdateDetails;
+
+  /// No description provided for @clientUpdateNewTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'发现新版本'**
+  String get clientUpdateNewTitle;
+
+  /// No description provided for @clientUpdateSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动检查新版本，更新此设备上的软件'**
+  String get clientUpdateSubtitle;
+
+  /// No description provided for @clientUpdateCurrent.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前版本'**
+  String get clientUpdateCurrent;
+
+  /// No description provided for @clientUpdateLatest.
+  ///
+  /// In zh, this message translates to:
+  /// **'最新版本'**
+  String get clientUpdateLatest;
+
+  /// No description provided for @clientUpdateNow.
+  ///
+  /// In zh, this message translates to:
+  /// **'立即更新'**
+  String get clientUpdateNow;
+
+  /// No description provided for @clientUpdateLater.
+  ///
+  /// In zh, this message translates to:
+  /// **'稍后'**
+  String get clientUpdateLater;
+
+  /// No description provided for @clientUpdateCheck.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查更新'**
+  String get clientUpdateCheck;
+
+  /// No description provided for @clientUpdateChecking.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在检查更新'**
+  String get clientUpdateChecking;
+
+  /// No description provided for @clientUpdateUpToDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前已是最新版本'**
+  String get clientUpdateUpToDate;
+
+  /// No description provided for @clientUpdateDownloading.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在下载更新'**
+  String get clientUpdateDownloading;
+
+  /// No description provided for @clientUpdateInstalling.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在安装更新'**
+  String get clientUpdateInstalling;
+
+  /// No description provided for @clientUpdateWindowsHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新将自动下载，关闭并重新启动软件，保留本机设置和已保存的草稿。请先保存当前工作。'**
+  String get clientUpdateWindowsHint;
+
+  /// No description provided for @clientUpdateAndroidHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新下载后会打开系统安装确认。如需允许安装来源，请授权后返回重试。'**
+  String get clientUpdateAndroidHint;
+
+  /// No description provided for @clientUpdateStoreHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'将打开官方应用商店，请在商店中完成更新。'**
+  String get clientUpdateStoreHint;
+
+  /// No description provided for @clientUpdateUnsupported.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前系统暂不支持应用内更新。'**
+  String get clientUpdateUnsupported;
+
+  /// No description provided for @clientUpdateFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新未完成，请检查网络和安装权限后重试。'**
+  String get clientUpdateFailed;
+
+  /// No description provided for @clientUpdateInstallerOpened.
+  ///
+  /// In zh, this message translates to:
+  /// **'已打开系统安装确认，请按系统提示完成更新。'**
+  String get clientUpdateInstallerOpened;
+
+  /// No description provided for @clientUpdateNotes.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新内容'**
+  String get clientUpdateNotes;
+
+  /// No description provided for @clientUpdateNoNotes.
+  ///
+  /// In zh, this message translates to:
+  /// **'此版本暂无更新说明。'**
+  String get clientUpdateNoNotes;
+
+  /// No description provided for @clientUpdatePublishTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'发布客户端版本'**
+  String get clientUpdatePublishTitle;
+
+  /// No description provided for @clientUpdatePublishHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传并发布各平台的新版本，员工的客户端会自动检查并提示更新。'**
+  String get clientUpdatePublishHint;
+
+  /// No description provided for @clientUpdatePlatform.
+  ///
+  /// In zh, this message translates to:
+  /// **'平台'**
+  String get clientUpdatePlatform;
+
+  /// No description provided for @clientUpdateArchitecture.
+  ///
+  /// In zh, this message translates to:
+  /// **'设备架构'**
+  String get clientUpdateArchitecture;
+
+  /// No description provided for @clientUpdateVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'版本号'**
+  String get clientUpdateVersion;
+
+  /// No description provided for @clientUpdateBuild.
+  ///
+  /// In zh, this message translates to:
+  /// **'构建号'**
+  String get clientUpdateBuild;
+
+  /// No description provided for @clientUpdateStoreUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'官方商店地址'**
+  String get clientUpdateStoreUrl;
+
+  /// No description provided for @clientUpdateChooseFile.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择更新包'**
+  String get clientUpdateChooseFile;
+
+  /// No description provided for @clientUpdatePublish.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传并发布'**
+  String get clientUpdatePublish;
+
+  /// No description provided for @clientUpdatePublishing.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在上传并发布'**
+  String get clientUpdatePublishing;
+
+  /// No description provided for @clientUpdatePublished.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户端新版本已发布'**
+  String get clientUpdatePublished;
+
+  /// No description provided for @clientUpdatePublishInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'请完整填写版本信息，构建号需高于已发布版本，并选择对应更新包或填写官方商店地址。'**
+  String get clientUpdatePublishInvalid;
+
+  /// No description provided for @clientUpdatePackageHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'Windows 选择专用更新 ZIP，Android 选择正式签名 APK。每次发布需增加构建号。'**
+  String get clientUpdatePackageHint;
+
+  /// No description provided for @clientUpdateWithdraw.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回发布'**
+  String get clientUpdateWithdraw;
+
+  /// No description provided for @clientUpdateWithdrawConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回后，其他设备将不再收到此版本。已经更新的设备不会降级。确定撤回吗？'**
+  String get clientUpdateWithdrawConfirm;
+
+  /// No description provided for @clientUpdateReleaseList.
+  ///
+  /// In zh, this message translates to:
+  /// **'版本发布记录'**
+  String get clientUpdateReleaseList;
+
+  /// No description provided for @clientUpdateClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get clientUpdateClose;
+
+  /// No description provided for @clientUpdateRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get clientUpdateRetry;
+
+  /// No description provided for @clientUpdateTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'软件更新'**
+  String get clientUpdateTitle;
+
+  /// No description provided for @masterStatusDisableTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认停用'**
+  String get masterStatusDisableTitle;
+
+  /// No description provided for @masterStatusEnableTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认启用'**
+  String get masterStatusEnableTitle;
+
+  /// No description provided for @masterStatusDisableBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定停用「{label}」共 {count} 项吗？停用后不能再用于新增业务，已有单据与修改历史保留。'**
+  String masterStatusDisableBody(String label, int count);
+
+  /// No description provided for @masterStatusEnableBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定启用「{label}」共 {count} 项吗？启用后可再次用于新增业务。'**
+  String masterStatusEnableBody(String label, int count);
+
   /// No description provided for @websiteInquirySeries.
   ///
   /// In zh, this message translates to:
@@ -21338,6 +21596,287 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'新货品编号由系统自动生成'**
   String get goodsBatchPasteAutoCode;
+
+  /// No description provided for @importReviewSourceRow.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件行'**
+  String get importReviewSourceRow;
+
+  /// No description provided for @importReviewIdentity.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品'**
+  String get importReviewIdentity;
+
+  /// No description provided for @importReviewMatchReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'匹配依据'**
+  String get importReviewMatchReason;
+
+  /// No description provided for @importReviewAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作'**
+  String get importReviewAction;
+
+  /// No description provided for @importReviewEmptyValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'未填写'**
+  String get importReviewEmptyValue;
+
+  /// No description provided for @importReviewOldValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'原值'**
+  String get importReviewOldValue;
+
+  /// No description provided for @importReviewNewValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入值'**
+  String get importReviewNewValue;
+
+  /// No description provided for @importReviewLegend.
+  ///
+  /// In zh, this message translates to:
+  /// **'红色删除线为原值，绿色为导入值。仅勾选的冲突会替换；空白不会清空已有值。'**
+  String get importReviewLegend;
+
+  /// No description provided for @importReviewFillLegend.
+  ///
+  /// In zh, this message translates to:
+  /// **'缺失值会自动补齐，已有值保持不变。确认后开始新增并补齐资料。'**
+  String get importReviewFillLegend;
+
+  /// No description provided for @importReviewReplaceSelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量替换 ({count})'**
+  String importReviewReplaceSelected(int count);
+
+  /// No description provided for @importReviewIgnoreAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部忽略'**
+  String get importReviewIgnoreAll;
+
+  /// No description provided for @importReviewIgnoreExplanation.
+  ///
+  /// In zh, this message translates to:
+  /// **'忽略仅跳过冲突，新增货品和空值补齐仍会继续。'**
+  String get importReviewIgnoreExplanation;
+
+  /// No description provided for @importReviewIgnoreRow.
+  ///
+  /// In zh, this message translates to:
+  /// **'忽略此行'**
+  String get importReviewIgnoreRow;
+
+  /// No description provided for @importReviewRestoreRow.
+  ///
+  /// In zh, this message translates to:
+  /// **'恢复核对'**
+  String get importReviewRestoreRow;
+
+  /// No description provided for @importReviewAutomaticFill.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动补齐'**
+  String get importReviewAutomaticFill;
+
+  /// No description provided for @importReviewIgnored.
+  ///
+  /// In zh, this message translates to:
+  /// **'已忽略冲突'**
+  String get importReviewIgnored;
+
+  /// No description provided for @importReviewPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'待核对'**
+  String get importReviewPending;
+
+  /// No description provided for @importReviewSelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'将替换'**
+  String get importReviewSelected;
+
+  /// No description provided for @importReviewConfirmFill.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认补齐并导入'**
+  String get importReviewConfirmFill;
+
+  /// No description provided for @importReviewNoRows.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有需要核对的差异'**
+  String get importReviewNoRows;
+
+  /// No description provided for @importReviewSelectAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择全部冲突'**
+  String get importReviewSelectAll;
+
+  /// No description provided for @goodsImportReviewTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对货品导入差异'**
+  String get goodsImportReviewTitle;
+
+  /// No description provided for @bomImportReviewTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对组件导入差异'**
+  String get bomImportReviewTitle;
+
+  /// No description provided for @importReviewOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对差异并导入'**
+  String get importReviewOpen;
+
+  /// No description provided for @importMatchCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'编号匹配'**
+  String get importMatchCode;
+
+  /// No description provided for @importMatchUuid.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统标识匹配'**
+  String get importMatchUuid;
+
+  /// No description provided for @importMatchPathName.
+  ///
+  /// In zh, this message translates to:
+  /// **'同分类同名称'**
+  String get importMatchPathName;
+
+  /// No description provided for @importReviewSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增 {added}，补齐 {filled}，冲突 {conflicts}，相同 {unchanged}'**
+  String importReviewSummary(
+    int added,
+    int filled,
+    int conflicts,
+    int unchanged,
+  );
+
+  /// No description provided for @importResultSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增 {created}，补齐 {filled}，替换 {updated}，忽略 {ignored}，相同 {unchanged}'**
+  String importResultSummary(
+    int created,
+    int filled,
+    int updated,
+    int ignored,
+    int unchanged,
+  );
+
+  /// No description provided for @bomImportMergeLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'合并核对(保留文件外的组件)'**
+  String get bomImportMergeLabel;
+
+  /// No description provided for @importReviewUnchanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'无变化'**
+  String get importReviewUnchanged;
+
+  /// No description provided for @goodsImportTemplateHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'可使用「导出货品」文件作为新增或更新模板；必填列为类别(用 - 拼分类路径)和货品名称，编号可留空。更新时保留系统标识；新增行不要沿用旧货品的系统标识。曾被复用的编号必须通过系统标识确认当前货品。'**
+  String get goodsImportTemplateHint;
+
+  /// No description provided for @goodsImportMergeHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'新货品正常新增；已有货品按编号或同分类同名称匹配。空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值，同名歧义须修正后重传。同编号已删除货品按清单内容恢复。'**
+  String get goodsImportMergeHint;
+
+  /// No description provided for @importRedetectCurrent.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新检测当前文件'**
+  String get importRedetectCurrent;
+
+  /// No description provided for @importRedetectRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请重新检测当前文件后再提交'**
+  String get importRedetectRequired;
+
+  /// No description provided for @importRetryPrevious.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试上次提交'**
+  String get importRetryPrevious;
+
+  /// No description provided for @importFilesTransactionNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'可一次选择多个文件，按顺序检测并导入。每个文件独立保存，后续失败或关闭不会撤销已成功的文件。'**
+  String get importFilesTransactionNote;
+
+  /// No description provided for @importFilesCompleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已完成 {completed}/{total} 个文件'**
+  String importFilesCompleted(int completed, int total);
+
+  /// No description provided for @importFilesCurrent.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件 {position}/{total}: {filename}'**
+  String importFilesCurrent(int position, int total, String filename);
+
+  /// No description provided for @importFilesPaused.
+  ///
+  /// In zh, this message translates to:
+  /// **'已暂停当前文件，可继续核对；后续文件尚未处理。'**
+  String get importFilesPaused;
+
+  /// No description provided for @importFilesFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前文件未完成，队列已暂停。请重新检测或重新选择文件。'**
+  String get importFilesFailed;
+
+  /// No description provided for @importFilesCloseNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭会放弃未处理的文件，已成功导入的文件会保留。重新选择只替换未处理部分。'**
+  String get importFilesCloseNote;
+
+  /// No description provided for @importFilesOutcome.
+  ///
+  /// In zh, this message translates to:
+  /// **'已完成 {filename}: {summary}'**
+  String importFilesOutcome(String filename, String summary);
+
+  /// No description provided for @importFilesContinue.
+  ///
+  /// In zh, this message translates to:
+  /// **'继续处理当前文件'**
+  String get importFilesContinue;
+
+  /// No description provided for @importFilesFinished.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选文件已全部处理完成'**
+  String get importFilesFinished;
 }
 
 class _AppLocalizationsDelegate

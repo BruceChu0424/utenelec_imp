@@ -37,6 +37,35 @@ void main() {
       expect(result, same(bytes));
     });
 
+    test(
+      'legacy cost import accepts a bounded OLE stream only when opted in',
+      () async {
+        final bytes = Uint8List.fromList([
+          0xD0,
+          0xCF,
+          0x11,
+          0xE0,
+          0xA1,
+          0xB1,
+          0x1A,
+          0xE1,
+        ]);
+        final file = PlatformFile(
+          name: 'cost.xls',
+          size: bytes.length,
+          readStream: Stream.value(bytes),
+        );
+        expect(
+          await readGoodsImportFile(
+            file,
+            allowLegacyXls: true,
+            maxBytes: 15 * 1024 * 1024,
+          ),
+          bytes,
+        );
+      },
+    );
+
     test('assembles a streamed workbook', () async {
       final file = PlatformFile(
         name: 'goods.xlsx',
@@ -65,7 +94,7 @@ void main() {
           isA<GoodsImportFileException>().having(
             (error) => error.message,
             'message',
-            contains('50MB'),
+            contains('10MB'),
           ),
         ),
       );

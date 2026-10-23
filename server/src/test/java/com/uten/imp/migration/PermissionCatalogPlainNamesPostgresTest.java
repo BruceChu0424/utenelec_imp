@@ -95,8 +95,12 @@ class PermissionCatalogPlainNamesPostgresTest {
             String originalId=db.queryForObject("SELECT id::text FROM permissions WHERE code='stock_doc:reverse'",String.class);
             String originalAuthority=authorityMetadata(db);
             long epoch=epoch(db);
-            var result=com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).load().migrate();
+            // This contract covers the V896/V897 rename and action split. Later feature
+            // migrations have their own catalog and authorization deltas.
+            var result=com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).target("897").load().migrate();
             assertThat(result.migrationsExecuted).isEqualTo(2);
+            assertThat(db.queryForObject("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",String.class))
+                    .isEqualTo("897");
             assertThat(epoch(db)).isGreaterThan(epoch);
             var afterCodes=new LinkedHashSet<>(db.queryForList("SELECT code FROM permissions",String.class));
             assertThat(afterCodes).containsExactlyInAnyOrderElementsOf(union(beforeCodes,union(Set.copyOf(SPLIT),Set.of(ASSET_REVERSE))));

@@ -129,7 +129,11 @@ void materialUnifiedHandlingCases() {
       requests.where((request) => request.path.endsWith('/withdraw')),
       isEmpty,
     );
-    expect(_notices(tester), contains('分析状态或撤回权限已变化'));
+    // The old owner's confirmation is retired before the permission-warning
+    // branch; neither its write nor its late toast belongs to the new account.
+    expect(_notices(tester), isEmpty);
+    expect(find.byKey(const Key('material-plan-cancel-reason')), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('整计划撤回：确认期间反审核权限失效不得写请求', (tester) async {

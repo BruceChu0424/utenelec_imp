@@ -23,7 +23,7 @@ import com.uten.imp.common.web.ErrorCode;
  * 兼容两类历史数据：
  * <ol>
  *   <li>回填前写入的 users.id（账号 ID）→ 经 users.employee_id 解析其绑定员工姓名；</li>
- *   <li>老库迁移行：maker/approver 为 NULL，姓名走 maker_legacy_id / maker_name 等遗留列（报表层处理）。</li>
+ *   <li>老库迁移行：maker/approver 为 NULL，姓名使用 maker_name / approver_name 冻结名（报表层处理）；旧账号编号不映射员工。</li>
  * </ol>
  */
 @Component
@@ -108,6 +108,63 @@ public class EmployeeNameResolver {
                 "SELECT e.full_name || '(' || e.code || ')' FROM users u"
                         + " JOIN employees e ON e.id = u.employee_id WHERE u.id = :id", id);
         return viaUser != null ? viaUser.toString() : null;
+    }
+
+    /** B_Worker roles only. Account actors and current ownership have no legacy fallback here. */
+    public enum HistoricalWorkerRole {
+        PURCHASE_REQUEST_APPLICANT("purchase_requests", "applicant_id", "applicant_legacy_id"),
+        PURCHASE_ORDER_PURCHASER("purchase_orders", "purchaser_id", "purchaser_legacy_id"),
+        PURCHASE_RECEIPT_SENDER("purchase_receipts", "sender_id", "sender_legacy_id"),
+        PURCHASE_RECEIPT_RECEIVER("purchase_receipts", "receiver_id", "receiver_legacy_id"),
+        PURCHASE_RECEIPT_PURCHASER("purchase_receipts", "purchaser_id", "purchaser_legacy_id"),
+        SUBCONTRACT_RECEIPT_RECEIVER("subcontract_receipts", "sender_id", "receiver_legacy_id"),
+        SUBCONTRACT_MATERIAL_ISSUE_OPERATOR("subcontract_material_issues", "worker_id", "operator_legacy_id"),
+        SUBCONTRACT_MATERIAL_RETURN_OPERATOR("subcontract_material_returns", "worker_id", "operator_legacy_id"),
+        SALES_ORDER_SELLER("sales_orders", "seller_id", "seller_legacy_id"),
+        SALES_SHIPMENT_SELLER("sales_shipments", "seller_id", "seller_legacy_id"),
+        SALES_SHIPMENT_SENDER("sales_shipments", "sender_id", "sender_legacy_id"),
+        SALES_OTHER_SHIPMENT_SELLER("sales_other_shipments", "seller_id", "seller_legacy_id"),
+        SALES_OTHER_SHIPMENT_SENDER("sales_other_shipments", "sender_id", "sender_legacy_id"),
+        SALES_RETURN_SELLER("sales_returns", "seller_id", "seller_legacy_id");
+
+        private final String table;
+        private final String employeeColumn;
+        private final String legacyColumn;
+
+        HistoricalWorkerRole(String table, String employeeColumn, String legacyColumn) {
+            this.table = table;
+            this.employeeColumn = employeeColumn;
+            this.legacyColumn = legacyColumn;
+        }
+    }
+
+    /**
+     * Read projection for a previously authorized historical document. A non-null UUID remains
+     * authoritative, including when its name is unknown. Only a positive legacy document id,
+     * the exact document UUID and an explicitly supported B_Worker role permit the fallback.
+     * The role's UUID must also be null in the stored row. Old employee ids are read from that
+     * row, never inferred from a name, a new employee code, Sys_Operator or a current owner.
+     * Resigned/deleted historical identities remain readable; nothing is written or cached.
+     */
+    @Transactional(readOnly = true)
+    public String historicalWorkerNameWithCodeOf(UUID employeeId, UUID documentId,
+                                                Integer documentLegacyId, HistoricalWorkerRole role) {
+        if (employeeId != null) return nameWithCodeOf(employeeId);
+        if (documentId == null || documentLegacyId == null || documentLegacyId <= 0 || role == null) return null;
+        // All identifiers are fixed enum constants; only values enter query parameters.
+        String sql = """
+                SELECT employee.full_name || '(' || employee.code || ')'
+                FROM %s document
+                JOIN employees employee ON employee.legacy_id = NULLIF(document.%s, 0)
+                WHERE document.id = :documentId AND document.legacy_id = :documentLegacyId
+                  AND document.%s IS NULL
+                """.formatted(role.table, role.legacyColumn, role.employeeColumn);
+        List<?> rows = em.createNativeQuery(sql)
+                .setParameter("documentId", documentId)
+                .setParameter("documentLegacyId", documentLegacyId)
+                .setMaxResults(2)
+                .getResultList();
+        return rows.size() == 1 && rows.getFirst() != null ? rows.getFirst().toString() : null;
     }
 
     /**

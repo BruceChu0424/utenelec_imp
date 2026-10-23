@@ -5,6 +5,14 @@ part of 'production_material_analysis_page.dart';
 int debugMaterialTableEligibilityEvaluations = 0;
 @visibleForTesting
 int debugMaterialIdentityTextMeasures = 0;
+@visibleForTesting
+int debugMaterialProjectionSteps = 0;
+@visibleForTesting
+int debugMaterialProjectionPublications = 0;
+@visibleForTesting
+int debugMaterialEligibilityScopeReads = 0;
+@visibleForTesting
+void Function()? debugMaterialProjectionStepObserver;
 
 enum _MaterialTableRowKind {
   product,
@@ -215,6 +223,7 @@ abstract class _MaterialAnalysisMaterialTableState
   @override
   bool get _busy =>
       super._busy ||
+      _retainingMaterialPresentation ||
       _aggregateTable.saving ||
       _aggregateTable.submission.running;
   @override
@@ -388,6 +397,252 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 视图按聚合行聚合）；始终从「未套表头筛选」的行集算出。
   Map<String, List<MasterFacetBucket>> _materialRowsFacetsCache = const {};
 
+  int _materialPresentationEpoch = 0;
+  String? _materialPresentationRequestedKey;
+  ProductionMaterialAnalysisView? _materialPresentationRequestedAnalysis;
+  Object? _materialPresentationRequestedScope;
+  Future<void>? _materialPresentationWork;
+  ProductionMaterialAnalysisView? _materialPresentedAnalysis;
+  Object? _materialPresentedScope;
+  String? _materialPresentedKey;
+  List<_MaterialTableRow> _materialPresentedRows = const [];
+  Widget? _materialPresentedTableWidget;
+  bool? _materialPresentedTablePrimary;
+  Map<String, List<MasterFacetBucket>> _materialPresentedFacets = const {};
+  bool _materialFilterPruneRequested = false;
+  final _materialPreparedViews = <bool, _MaterialReadPresentation>{};
+
+  @override
+  List<_MaterialAggregate> _displayedMaterialAggregates(
+    ProductionMaterialAnalysisView analysis,
+  ) =>
+      identical(_materialPresentedAnalysis, analysis) &&
+          _materialPresentedScope == _sessionScopeKey()
+      ? _materialPreparedViews[true]?.aggregates ?? const []
+      : const [];
+  (ProductionMaterialAnalysisView, String, Object?)?
+  _materialPresentationFailure;
+
+  bool get _retainingMaterialPresentation =>
+      _materialPresentedTableWidget != null &&
+      _materialPresentationFailure == null &&
+      _analysis != null &&
+      _materialPresentedAnalysis != null &&
+      !identical(_materialPresentedAnalysis, _analysis) &&
+      _materialPresentedAnalysis!.analysisId == _analysis!.analysisId &&
+      _materialPresentedScope == _sessionScopeKey();
+
+  String _materialPresentationKey() {
+    final aggregate = _requestedAggregateLayout;
+    return [
+      _bomViewMode.name,
+      _bomKeyword,
+      aggregate.toString(),
+      (_collapsedBomProducts.toList()..sort()).join(','),
+      (_collapsedBomBranches.toList()..sort()).join(','),
+      (_expandedMaterialAggregates.toList()..sort()).join(','),
+      _materialTableProjectionSignature(aggregate),
+    ].join('|');
+  }
+
+  bool get _requestedAggregateLayout =>
+      _bomLayoutIntentScope == _sessionScopeKey()
+      ? _bomLayoutPending.value ?? _bomAggregateByMaterial
+      : _bomAggregateByMaterial;
+
+  /// Build only consumes a completed presentation. The old snapshot remains
+  /// scrollable while a new filter/layout is prepared outside the build phase.
+  /// A different analysis never inherits the previous analysis's rows.
+  List<_MaterialTableRow> _materialPresentationRows(
+    ProductionMaterialAnalysisView analysis,
+  ) {
+    final key = _materialPresentationKey();
+    final scope = _sessionScopeKey();
+    if (_materialPresentationFailure != (analysis, key, scope) &&
+        (!identical(_materialPresentedAnalysis, analysis) ||
+            _materialPresentedScope != scope ||
+            _materialPresentedKey != key ||
+            _materialFilterPruneRequested)) {
+      unawaited(_requestMaterialPresentation(analysis));
+    }
+    return (identical(_materialPresentedAnalysis, analysis) ||
+                _retainingMaterialPresentation) &&
+            _materialPresentedScope == scope
+        ? _materialPresentedRows
+        : const [];
+  }
+
+  @override
+  Future<void> _requestMaterialPresentation(
+    ProductionMaterialAnalysisView analysis,
+  ) {
+    final key = _materialPresentationKey();
+    final scope = _sessionScopeKey();
+    if (identical(_materialPresentationRequestedAnalysis, analysis) &&
+        _materialPresentationRequestedScope == scope &&
+        _materialPresentationRequestedKey == key &&
+        _materialPresentationWork != null) {
+      return _materialPresentationWork!;
+    }
+    final epoch = ++_materialPresentationEpoch;
+    final aggregate = _requestedAggregateLayout;
+    _materialPresentationRequestedAnalysis = analysis;
+    _materialPresentationRequestedScope = scope;
+    _materialPresentationRequestedKey = key;
+    bool current() =>
+        mounted &&
+        epoch == _materialPresentationEpoch &&
+        identical(_analysis, analysis) &&
+        _sessionScopeKey() == scope;
+    // A real event turn: never notify listeners or compute projections in build.
+    final work = Future<void>(() async {
+      if (!current()) return;
+      _materialProjectionPending.value = true;
+      final budget = UiWorkBudget(
+        isCurrent: current,
+        debugLabel: 'material-projection',
+      );
+      Future<void> consume(Iterable<void> steps) async {
+        final iterator = steps.iterator;
+        while (true) {
+          budget.ensureCurrent();
+          if (!iterator.moveNext()) break;
+          assert(() {
+            debugMaterialProjectionSteps++;
+            debugMaterialProjectionStepObserver?.call();
+            return true;
+          }());
+          await budget.checkpoint();
+        }
+      }
+
+      try {
+        late _BomFilterProjection projection;
+        late List<_MaterialTableRow> rows;
+        late Map<String, List<MasterFacetBucket>> facets;
+        List<_MaterialAggregate>? aggregates;
+        final cached = _materialPreparedViews[aggregate];
+        if (cached != null &&
+            identical(cached.analysis, analysis) &&
+            cached.scope == scope &&
+            cached.key == key) {
+          projection = cached.projection;
+          rows = cached.rows;
+          facets = cached.facets;
+          aggregates = cached.aggregates;
+        } else {
+          await consume(
+            _bomFilterProjectionWork(
+              analysis,
+              aggregate,
+              (value) => projection = value,
+            ),
+          );
+          facets = projection.facets;
+          if (aggregate) {
+            await consume(
+              _materialAggregatesWork(
+                analysis,
+                _analysisIndexes(analysis),
+                (value) => aggregates = value,
+              ),
+            );
+            await consume(
+              _aggregateTableRowsWork(analysis, aggregates!, (value, buckets) {
+                rows = value;
+                facets = buckets;
+              }),
+            );
+          } else {
+            await consume(
+              _productTableRowsWork(
+                analysis,
+                projection,
+                (value) => rows = value,
+              ),
+            );
+          }
+        }
+        budget.ensureCurrent();
+        // Local editors can change without replacing the analysis object.
+        // Recheck their exact presentation fingerprint before publishing.
+        if (key != _materialPresentationKey()) return;
+        if (_materialFilterPruneRequested) {
+          _materialFilterPruneRequested = false;
+          _materialTableFilters.removeWhere(
+            (name, value) =>
+                value == null ||
+                value.isEmpty ||
+                !(facets[name] ?? const <MasterFacetBucket>[]).any(
+                  (bucket) => bucket.value == value,
+                ),
+          );
+          if (key != _materialPresentationKey()) return;
+        }
+        setState(() {
+          _bomAggregateByMaterial = aggregate;
+          _bomProjectionAnalysis = analysis;
+          _bomProjectionScope = scope;
+          _bomProjectionKey = _bomProjectionCacheKey();
+          _bomProjectionCache = projection;
+          _materialRowsCacheAnalysis = analysis;
+          _materialRowsByView[aggregate] = (
+            key: key,
+            rows: rows,
+            facets: facets,
+          );
+          _materialRowsFacetsCache = facets;
+          if (aggregates != null) _publishAggregateRows(aggregates!);
+          _materialPresentedAnalysis = analysis;
+          _materialPresentedScope = scope;
+          _materialPresentationFailure = null;
+          _materialPresentedKey = key;
+          _materialPresentedRows = rows;
+          _materialPresentedFacets = facets;
+          _materialPreparedViews.removeWhere(
+            (_, value) =>
+                !identical(value.analysis, analysis) || value.scope != scope,
+          );
+          _materialPreparedViews[aggregate] = _MaterialReadPresentation(
+            analysis: analysis,
+            scope: scope,
+            key: key,
+            projection: projection,
+            rows: rows,
+            facets: facets,
+            aggregates: aggregates,
+          );
+          assert(() {
+            debugMaterialProjectionPublications++;
+            return true;
+          }());
+        });
+      } on UiWorkCancelled {
+        // Superseded filters, analysis, identity or disposal never publish.
+      } catch (error) {
+        if (current()) {
+          setState(() {
+            _materialPresentationFailure = (analysis, key, scope);
+            _error = productionErrorMessage(error, fallback: '物料视图加载失败，请刷新后重试');
+          });
+        }
+      } finally {
+        if (current()) {
+          _materialPresentationWork = null;
+          _materialProjectionPending.value = false;
+          // If local edits or pruning changed the fingerprint, build schedules
+          // the latest intent; this pass never publishes a partial row set.
+          if (_materialPresentationFailure == null &&
+              _materialPresentedKey != _materialPresentationKey()) {
+            setState(() {});
+          }
+        }
+      }
+    });
+    _materialPresentationWork = work;
+    return work;
+  }
+
   List<_MaterialTableRow> _materialTableRows(
     ProductionMaterialAnalysisView analysis,
   ) {
@@ -398,7 +653,7 @@ abstract class _MaterialAnalysisMaterialTableState
       (_collapsedBomProducts.toList()..sort()).join(','),
       (_collapsedBomBranches.toList()..sort()).join(','),
       (_expandedMaterialAggregates.toList()..sort()).join(','),
-      _materialTableProjectionSignature(),
+      _materialTableProjectionSignature(_bomAggregateByMaterial),
     ].join('|');
     if (!identical(_materialRowsCacheAnalysis, analysis)) {
       _materialRowsCacheAnalysis = analysis;
@@ -437,12 +692,24 @@ abstract class _MaterialAnalysisMaterialTableState
   List<_MaterialTableRow> _computeMaterialTableRows(
     ProductionMaterialAnalysisView analysis,
   ) {
-    if (_bomAggregateByMaterial) {
-      return _aggregateTableRows(analysis);
-    }
-    final indexes = _analysisIndexes(analysis);
+    if (_bomAggregateByMaterial) return _aggregateTableRows(analysis);
     final projection = _bomFilterProjection(analysis);
     _materialRowsFacetsCache = projection.facets;
+    late List<_MaterialTableRow> result;
+    for (final _ in _productTableRowsWork(
+      analysis,
+      projection,
+      (value) => result = value,
+    )) {}
+    return result;
+  }
+
+  Iterable<void> _productTableRowsWork(
+    ProductionMaterialAnalysisView analysis,
+    _BomFilterProjection projection,
+    void Function(List<_MaterialTableRow>) complete,
+  ) sync* {
+    final indexes = _analysisIndexes(analysis);
     final presentation = projection.presentation;
     final matchingProducts = [
       for (final product in analysis.products)
@@ -459,6 +726,7 @@ abstract class _MaterialAnalysisMaterialTableState
       productIndex < visibleProducts.length;
       productIndex++
     ) {
+      yield null;
       final product = visibleProducts[productIndex];
       final visibleNodes =
           projection.nodesByProduct[product.analysisLineId] ??
@@ -500,6 +768,7 @@ abstract class _MaterialAnalysisMaterialTableState
         nodes,
         parentIds: presentation.parentIdsByMaterial,
       )) {
+        yield null;
         final group = indexes.groupsByLine[material.materialLineId];
         if (group == null) continue;
         final childCount = childCounts[material.materialLineId];
@@ -567,6 +836,7 @@ abstract class _MaterialAnalysisMaterialTableState
         unassigned,
         parentIds: presentation.parentIdsByMaterial,
       )) {
+        yield null;
         final group = indexes.groupsByLine[material.materialLineId];
         if (group == null) continue;
         final childCount = childCounts[material.materialLineId];
@@ -594,7 +864,7 @@ abstract class _MaterialAnalysisMaterialTableState
         );
       }
     }
-    return _withSharedTreeProjection(result);
+    complete(_withSharedTreeProjection(result));
   }
 
   /// 统一套上共享树投影：连线的祖先链 / 末位标记一律由**最终渲染序**推导
@@ -620,12 +890,34 @@ abstract class _MaterialAnalysisMaterialTableState
   ) {
     final indexes = _analysisIndexes(analysis);
     final aggregates = _materialAggregates(analysis, indexes);
+    late List<_MaterialTableRow> rows;
+    for (final _ in _aggregateTableRowsWork(analysis, aggregates, (
+      value,
+      facets,
+    ) {
+      rows = value;
+      _materialRowsFacetsCache = facets;
+    })) {}
+    _publishAggregateRows(aggregates);
+    return rows;
+  }
+
+  void _publishAggregateRows(List<_MaterialAggregate> aggregates) {
     _aggregateByLineId
       ..clear()
       ..addAll({
         for (final aggregate in aggregates)
           for (final path in aggregate.paths) path.materialLineId: aggregate,
       });
+  }
+
+  Iterable<void> _aggregateTableRowsWork(
+    ProductionMaterialAnalysisView analysis,
+    List<_MaterialAggregate> aggregates,
+    void Function(List<_MaterialTableRow>, Map<String, List<MasterFacetBucket>>)
+    complete,
+  ) sync* {
+    final indexes = _analysisIndexes(analysis);
     final aggregateRows = <_MaterialTableRow>[
       for (var index = 0; index < aggregates.length; index++)
         _MaterialTableRow(
@@ -637,7 +929,8 @@ abstract class _MaterialAnalysisMaterialTableState
           hasChildren: _aggregateDisplayPaths(aggregates[index]).isNotEmpty,
         ),
     ];
-    _materialRowsFacetsCache = _materialTableFacetsOf(aggregateRows);
+    late Map<String, List<MasterFacetBucket>> facets;
+    yield* _materialTableFacetsWork(aggregateRows, (value) => facets = value);
     final filterActive = _hasActiveMaterialTableFilters;
     // 顶层产品行是汇总视图的一等可下单行（2026-10-07 用户口径）：挂根供给组、
     // 可勾选、数量/车间/负责人格照常编辑，提交时经按产品通道（issue-plans 的
@@ -665,6 +958,7 @@ abstract class _MaterialAnalysisMaterialTableState
         ),
     ];
     for (final aggregateRow in aggregateRows) {
+      yield null;
       if (filterActive && !_headerFilterMatchesRow(aggregateRow)) continue;
       final aggregate = aggregateRow.aggregate!;
       final prefix = aggregateRow.sequence;
@@ -672,6 +966,7 @@ abstract class _MaterialAnalysisMaterialTableState
       if (!_expandedMaterialAggregates.contains(aggregate.key)) continue;
       final displayPaths = _aggregateDisplayPaths(aggregate);
       for (var pathIndex = 0; pathIndex < displayPaths.length; pathIndex++) {
+        yield null;
         final material = displayPaths[pathIndex];
         final group = indexes.groupsByLine[material.materialLineId];
         if (group == null) continue;
@@ -687,7 +982,7 @@ abstract class _MaterialAnalysisMaterialTableState
         );
       }
     }
-    return _withSharedTreeProjection(result);
+    complete(_withSharedTreeProjection(result), facets);
   }
 
   /// Covered aggregate-tree context is still retained in command/coverage facts,
@@ -1054,7 +1349,14 @@ abstract class _MaterialAnalysisMaterialTableState
     // 2026-09-27 用户口径「不要分上下页，直接都在一页，不断下拉不断显示全」：
     // 整棵行集直接交给表体(ListView.builder 懒建，滚到哪建到哪)，客户端分页
     // 与翻页条退役——上百上千行也只有一条连续滚动。
-    final rows = _materialTableRows(analysis);
+    final rows = _materialPresentationRows(analysis);
+    if (_retainingMaterialPresentation &&
+        _materialPresentedTablePrimary == primary) {
+      // Keep the complete old Element tree until this same analysis's next
+      // projection publishes. In particular, a background refresh must not
+      // discard an editor's focused input or its issued-rate CAS baseline.
+      return _materialPresentedTableWidget!;
+    }
     final identityMaxDepth = rows.fold<int>(
       0,
       (depth, row) => math.max(depth, row.depth),
@@ -1065,7 +1367,13 @@ abstract class _MaterialAnalysisMaterialTableState
     // command handlers still evaluate their live guards directly.
     final eligibility = Map<_MaterialTableRow, List<_MaterialGroup>>.identity();
     Object? eligibilityScope;
+    Object? selectionCollectionScope;
+    bool? selectionCollectionAllowed;
     Object currentEligibilityScope() {
+      assert(() {
+        debugMaterialEligibilityScopeReads++;
+        return true;
+      }());
       final session = ref.read(sessionProvider);
       return (
         _analysis,
@@ -1087,16 +1395,33 @@ abstract class _MaterialAnalysisMaterialTableState
     }
 
     List<_MaterialGroup> selectableGroups(_MaterialTableRow row) {
-      final scope = currentEligibilityScope();
+      final scope = selectionCollectionScope ?? currentEligibilityScope();
       if (eligibilityScope != scope) {
         eligibilityScope = scope;
         eligibility.clear();
       }
-      if (!_canSelectMaterialRows) return const [];
+      if (!(selectionCollectionAllowed ?? _canSelectMaterialRows)) {
+        return const [];
+      }
       return eligibility.putIfAbsent(
         row,
         () => _materialRowSelectableGroups(row),
       );
+    }
+
+    R selectionReadScope<R>(R Function() read) {
+      final previous = selectionCollectionScope;
+      final previousAllowed = selectionCollectionAllowed;
+      selectionCollectionScope = currentEligibilityScope();
+      selectionCollectionAllowed = _canSelectMaterialRows;
+      try {
+        return read();
+      } finally {
+        // Only one synchronous metadata collection shares this snapshot.
+        // Independently invoked row callbacks must still observe live access.
+        selectionCollectionScope = previous;
+        selectionCollectionAllowed = previousAllowed;
+      }
     }
 
     bool? selectionState(_MaterialTableRow row) {
@@ -1112,7 +1437,7 @@ abstract class _MaterialAnalysisMaterialTableState
           : null;
     }
 
-    return KeyedSubtree(
+    final table = KeyedSubtree(
       key: const Key('material-analysis-material-table-region'),
       child: MasterDataTableView<_MaterialTableRow>(
         // 表头列序按 tableKey 记在每用户偏好里；2026-10-08「进度列放最前」
@@ -1123,7 +1448,11 @@ abstract class _MaterialAnalysisMaterialTableState
             'features.production.pages.material_analysis_material_table.MaterialAnalysisMaterialTableState._materialAnalysisTable.2',
         key: const Key('material-analysis-material-table'),
         dataCellVerticalPadding: _materialTableCellVerticalPadding,
-        bodyPresentationBuilder: _materialViewTransitionBody,
+        bodyPresentationBuilder: (context, body) => _materialViewTransitionBody(
+          context,
+          body,
+          blockPointer: () => _retainingMaterialPresentation,
+        ),
         columns: _materialTableColumns(
           theme,
           identityMaxDepth: identityMaxDepth,
@@ -1137,6 +1466,7 @@ abstract class _MaterialAnalysisMaterialTableState
             _preparationPlanResultsButton(),
         ],
         selectable: true,
+        selectionReadScope: selectionReadScope,
         preserveSelectionOnContextMenu: true,
         selectionStateOf: selectionState,
         // 只对具备下单/追加能力的原行或汇总行开放勾选。
@@ -1203,7 +1533,11 @@ abstract class _MaterialAnalysisMaterialTableState
         // 同款锚定弹窗；2026-09-10 F2a 改稳定键 + 投影级过滤）：bucket 从当前
         // BOM 视图全量行聚合（非当前页、不含表头筛选本身），过滤在节点投影层
         // 生效（保留祖先为只读上下文、箭头/子件数/chip 计数同步），与视图 chip 叠加。
-        facets: _materialRowsFacetsCache,
+        facets:
+            identical(_materialPresentedAnalysis, analysis) &&
+                _materialPresentedScope == _sessionScopeKey()
+            ? _materialPresentedFacets
+            : const {},
         nullCounts: const {},
         filters: _materialTableFilters,
         onFilterChanged: (key, value) => setState(() {
@@ -1260,6 +1594,9 @@ abstract class _MaterialAnalysisMaterialTableState
                     (row.aggregate != null || row.product != null)),
       ),
     );
+    _materialPresentedTableWidget = table;
+    _materialPresentedTablePrimary = primary;
+    return table;
   }
 
   // Controls retain their shared 32px desktop / 48px touch role; only the
@@ -1343,7 +1680,7 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 投影/行缓存键：表头筛选值、路线草稿/脏组、仓库覆盖及本地指派/追加
   /// 筛选事实代次。服务端数量快照另由 analysis 对象身份隔离。
   @override
-  String _materialTableProjectionSignature() {
+  String _materialTableProjectionSignature(bool aggregate) {
     final filters = [
       for (final entry in _materialTableFilters.entries)
         if (entry.value != null && entry.value!.isNotEmpty)
@@ -1361,7 +1698,7 @@ abstract class _MaterialAnalysisMaterialTableState
         '${entry.key}:${entry.value ?? ''}',
     ]..sort();
     return [
-      _bomAggregateByMaterial.toString(),
+      aggregate.toString(),
       filters.join(','),
       drafts.join(','),
       dirty.join(','),
@@ -1521,8 +1858,8 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 几百个值的下拉没有意义；以及 2026-09-22 用户口径「表头就只要那几个字」的
   /// 「物料办理 / 编号 / 需要数量 / 还缺数量 / 下单数量」——这五列不进这张表，
   /// 列头就没有桶、没有下拉(它们的 ⓘ 也一并撤了，见 [_materialTableColumns])。
-  Map<String, String? Function(_MaterialTableRow)>
-  get _materialTableGenericFacetExtractors => {
+  late final Map<String, String? Function(_MaterialTableRow)>
+  _materialTableGenericFacetExtractors = {
     'colorName': (row) => _blankFacet(_materialTableColorText(row)),
     // 「单位」筛选随单位列退役（2026-10-10 T9）：单位内联进数量列后，
     // 文本筛选口径里不再有独立的单位桶。
@@ -1549,14 +1886,25 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 进度/路线/所属仓库列的筛选桶：稳定键 + 中文标签 + 计数；空值行不进桶。
   /// 排序：路线按 自制/采购/委外/路线不一；进度按枚举表顺序，流程阶段键在后
   /// 按标签排；所属仓库按仓库名, 「未登记」沉底。
+
   @override
-  Map<String, List<MasterFacetBucket>> _materialTableFacetsOf(
+  Iterable<void> _materialTableFacetsWork(
     Iterable<_MaterialTableRow> rows,
-  ) {
+    void Function(Map<String, List<MasterFacetBucket>>) complete,
+  ) sync* {
     final routeCounts = <String, int>{};
     final statusCounts = <String, ({int count, String label})>{};
     final owningWarehouseCounts = <String, int>{};
+    final genericCounts = <String, Map<String, int>>{};
+    final extractors = _materialTableGenericFacetExtractors;
     for (final row in rows) {
+      yield null;
+      for (final entry in extractors.entries) {
+        final value = entry.value(row);
+        if (value == null) continue;
+        final counts = genericCounts.putIfAbsent(entry.key, () => {});
+        counts[value] = (counts[value] ?? 0) + 1;
+      }
       final routeKey = _materialTableRouteFacetKey(row);
       if (routeKey != null) {
         routeCounts[routeKey] = (routeCounts[routeKey] ?? 0) + 1;
@@ -1599,7 +1947,7 @@ abstract class _MaterialAnalysisMaterialTableState
         if (b == unsetLabel) return -1;
         return a.compareTo(b);
       });
-    return {
+    complete({
       'route': [
         for (final key in routeKeys)
           MasterFacetBucket(
@@ -1621,25 +1969,16 @@ abstract class _MaterialAnalysisMaterialTableState
         for (final key in owningWarehouseKeys)
           MasterFacetBucket(value: key, count: owningWarehouseCounts[key]!),
       ],
-      ..._materialTableGenericFacets(rows),
-    };
+      ..._materialTableGenericFacetsFromCounts(genericCounts),
+    });
   }
 
   /// 通用列的筛选桶：按 [_materialTableGenericFacetExtractors] 一次算完。
   /// 桶键即显示值，按名称排；「待指派」「未填追加」这类缺失态沉底。
-  Map<String, List<MasterFacetBucket>> _materialTableGenericFacets(
-    Iterable<_MaterialTableRow> rows,
+  Map<String, List<MasterFacetBucket>> _materialTableGenericFacetsFromCounts(
+    Map<String, Map<String, int>> counts,
   ) {
     const trailing = {'待指派', '未填追加'};
-    final counts = <String, Map<String, int>>{};
-    for (final row in rows) {
-      for (final entry in _materialTableGenericFacetExtractors.entries) {
-        final value = entry.value(row);
-        if (value == null) continue;
-        final bucket = counts.putIfAbsent(entry.key, () => <String, int>{});
-        bucket[value] = (bucket[value] ?? 0) + 1;
-      }
-    }
     return {
       for (final entry in counts.entries)
         entry.key: [
@@ -1665,14 +2004,8 @@ abstract class _MaterialAnalysisMaterialTableState
       _materialTableFilters.clear();
       return;
     }
-    _materialTableRows(analysis);
-    final facets = _materialRowsFacetsCache;
-    _materialTableFilters.removeWhere((key, value) {
-      if (value == null || value.isEmpty) return true;
-      return !(facets[key] ?? const <MasterFacetBucket>[]).any(
-        (bucket) => bucket.value == value,
-      );
-    });
+    _materialFilterPruneRequested = true;
+    unawaited(_requestMaterialPresentation(analysis));
   }
 
   List<ProductionSalesRequirement> _salesRequirementsForRow(
@@ -3589,6 +3922,29 @@ abstract class _MaterialAnalysisMaterialTableState
     if (analysis == null) return;
     var selectionChanged = false;
     _draftBudget.invalidate();
+    if (!autoSelect) {
+      // A server refresh only reseeds editors that already exist. Initial
+      // loading has none; walking the entire BOM (and constructing ownership
+      // geometry) cannot change a missing controller.
+      final keys = {
+        ..._tableOrderQtyControllers.keys,
+        ..._tableAppendQtyControllers.keys,
+      };
+      if (keys.isNotEmpty) {
+        final groups = _analysisIndexes(analysis).groupsByKey;
+        for (final key in keys) {
+          final group = groups[key];
+          if (group == null ||
+              _tableUserTypedQty[group.representative.materialLineId] != null) {
+            continue;
+          }
+          _reseedTableQtyCell(group, append: false);
+          _reseedTableQtyCell(group, append: true);
+        }
+      }
+      _draftBudget.invalidate();
+      return;
+    }
     final activeTyped = _selectedTableTypedOutputs();
     final presentation = _bomPresentation(analysis);
     final activeRoots = {
@@ -5800,6 +6156,8 @@ abstract class _MaterialAnalysisMaterialTableState
         child: Text(fallback.isEmpty ? '—' : '$fallback%'),
       );
     }
+    final scope = _sessionScopeKey();
+    final analysisId = _analysis!.analysisId;
     return _MaterialAnalysisIssuedRateField(
       key: ValueKey(key),
       scope: _sessionScopeKey(),
@@ -5809,6 +6167,13 @@ abstract class _MaterialAnalysisMaterialTableState
       repository: ref.read(productionPlanRepositoryProvider),
       fallbackText: fallback,
       enabled: _canGenerate && !_busy && !_tableSubmitting,
+      canCommit: () =>
+          mounted &&
+          _sessionScopeKey() == scope &&
+          _analysis?.analysisId == analysisId &&
+          !_busy &&
+          _canGenerate &&
+          !_tableSubmitting,
       onSynced: (rate) => _synchronizeIssuedRateInputs(groups, rate),
       onApplied: (rate) {
         if (!mounted) return;
@@ -7601,6 +7966,7 @@ abstract class _MaterialAnalysisMaterialTableState
   );
 
   Future<bool> _revokeRootOutput(String eventId) async {
+    final operationCurrent = captureReadOwner(ref);
     final analysis = _analysis;
     if (analysis == null || !_canRevokeRootOutput || _busy) return false;
     final sessionScope = _sessionScopeKey();
@@ -7609,7 +7975,7 @@ abstract class _MaterialAnalysisMaterialTableState
       confirmLabel: '确认撤回',
       dismissLabel: '暂不撤回',
     );
-    if (!mounted || reason == null) return false;
+    if ((!mounted || !operationCurrent()) || reason == null) return false;
     if (_busy ||
         !_canRevokeRootOutput ||
         !_sameAnalysisSnapshot(analysis, sessionScope)) {
@@ -7632,8 +7998,8 @@ abstract class _MaterialAnalysisMaterialTableState
             idempotencyKey: key,
             reason: reason,
           );
-      bucketActionBusyMessage.value = null;
-      if (!mounted) return false;
+      if (operationCurrent()) bucketActionBusyMessage.value = null;
+      if ((!mounted || !operationCurrent())) return false;
       if (!_sameAnalysisSnapshot(analysis, sessionScope)) {
         setState(() => _cancellingAction = false);
         return false;
@@ -7645,8 +8011,8 @@ abstract class _MaterialAnalysisMaterialTableState
       context.appSuccess(_l10n.materialRootOutputReversed);
       return true;
     } catch (error) {
-      bucketActionBusyMessage.value = null;
-      if (!mounted) return false;
+      if (operationCurrent()) bucketActionBusyMessage.value = null;
+      if ((!mounted || !operationCurrent())) return false;
       if (!_sameAnalysisSnapshot(analysis, sessionScope)) {
         setState(() => _cancellingAction = false);
         return false;
@@ -7655,10 +8021,12 @@ abstract class _MaterialAnalysisMaterialTableState
         error,
         operation: _l10n.materialRevokeRootStock,
       )) {
-        if (mounted) setState(() => _cancellingAction = false);
+        if (mounted && operationCurrent()) {
+          setState(() => _cancellingAction = false);
+        }
         return false;
       }
-      if (!mounted) return false;
+      if ((!mounted || !operationCurrent())) return false;
       setState(() => _cancellingAction = false);
       context.appError(
         productionErrorMessage(error, fallback: _l10n.materialRootRevokeFailed),
@@ -7906,6 +8274,7 @@ abstract class _MaterialAnalysisMaterialTableState
 
   @override
   Future<void> _claimSharedFuture(Set<String> groupKeys) async {
+    final operationCurrent = captureReadOwner(ref);
     final analysis = _analysis;
     if (analysis == null || !_canClaimSharedFuture || _busy) return;
     final eligibleGroups =
@@ -7932,7 +8301,7 @@ abstract class _MaterialAnalysisMaterialTableState
       return;
     }
     final draft = await _confirmSharedFutureClaim(eligibleGroups);
-    if (draft == null || !mounted) return;
+    if (draft == null || !mounted || !operationCurrent()) return;
     final byKey = {
       for (final quantity in draft.quantities)
         quantity.actionGroupKey: quantity,
@@ -7949,6 +8318,7 @@ abstract class _MaterialAnalysisMaterialTableState
     });
     try {
       for (final chunk in chunks) {
+        if (!operationCurrent()) return;
         final idempotencyKey = businessIdempotencyKey(
           'material-analysis-claim-shared-future',
           '${current.analysisId}|${current.version}|${current.fingerprint}|'
@@ -7964,9 +8334,11 @@ abstract class _MaterialAnalysisMaterialTableState
               allowLateSupply: draft.allowLateSupply,
             );
         completed += chunk.length;
-        if (mounted) setState(() => _bulkOperationCompleted = completed);
+        if (mounted && operationCurrent()) {
+          setState(() => _bulkOperationCompleted = completed);
+        }
       }
-      if (!mounted) return;
+      if (!mounted || !operationCurrent()) return;
       setState(() {
         _claimingSharedFuture = false;
         _clearBulkOperation();
@@ -7974,7 +8346,7 @@ abstract class _MaterialAnalysisMaterialTableState
       });
       context.appSuccess('已认领公共供给，尚需下达量已更新；实际合格入库前仍不计现货或可开工量');
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !operationCurrent()) return;
       setState(() {
         _claimingSharedFuture = false;
         _clearBulkOperation();
@@ -7988,7 +8360,7 @@ abstract class _MaterialAnalysisMaterialTableState
           return;
         }
       }
-      if (!mounted) return;
+      if (!mounted || !operationCurrent()) return;
       context.appError(
         completed > 0
             ? '已采用 $completed/${chosen.length} 项；余下项目未执行，请按最新结果重新选择。'
@@ -8087,6 +8459,7 @@ abstract class _MaterialAnalysisMaterialTableState
   );
 
   Future<void> _cancelCurrentAnalysis() async {
+    final operationCurrent = captureReadOwner(ref);
     final analysis = _analysis;
     if (analysis == null || !_canCancelAnalysis || _busy) return;
     final sessionScope = _sessionScopeKey();
@@ -8095,7 +8468,7 @@ abstract class _MaterialAnalysisMaterialTableState
       confirmLabel: '确认取消分析',
       dismissLabel: '暂不取消',
     );
-    if (reason == null || !mounted) return;
+    if (reason == null || (!mounted || !operationCurrent())) return;
     if (_busy ||
         !_canCancelAnalysis ||
         !_sameAnalysisSnapshot(analysis, sessionScope)) {
@@ -8119,8 +8492,8 @@ abstract class _MaterialAnalysisMaterialTableState
             idempotencyKey: idempotencyKey,
             reason: reason,
           );
-      bucketActionBusyMessage.value = null;
-      if (!mounted) return;
+      if (operationCurrent()) bucketActionBusyMessage.value = null;
+      if ((!mounted || !operationCurrent())) return;
       setState(() => _cancellingAnalysis = false);
       if (!_sameAnalysisSnapshot(analysis, sessionScope) ||
           !_canCancelAnalysis) {
@@ -8134,8 +8507,8 @@ abstract class _MaterialAnalysisMaterialTableState
       context.appSuccess('物料分析已取消');
       popOrBackTo(context, defaultPath: RouteName.productionSchedule);
     } catch (error) {
-      bucketActionBusyMessage.value = null;
-      if (!mounted) return;
+      if (operationCurrent()) bucketActionBusyMessage.value = null;
+      if ((!mounted || !operationCurrent())) return;
       if (!_sameAnalysisSnapshot(analysis, sessionScope)) {
         setState(() => _cancellingAnalysis = false);
         return;
@@ -8144,10 +8517,12 @@ abstract class _MaterialAnalysisMaterialTableState
         error,
         operation: '取消物料分析',
       )) {
-        if (mounted) setState(() => _cancellingAnalysis = false);
+        if (mounted && operationCurrent()) {
+          setState(() => _cancellingAnalysis = false);
+        }
         return;
       }
-      if (!mounted) return;
+      if ((!mounted || !operationCurrent())) return;
       setState(() => _cancellingAnalysis = false);
       context.appError(
         productionErrorMessage(error, fallback: '取消分析失败，请刷新后重试'),
@@ -8184,6 +8559,7 @@ abstract class _MaterialAnalysisMaterialTableState
   Future<bool> _withdrawIssuedAnalysisPlan(
     MaterialAnalysisPlanReference plan,
   ) async {
+    final operationCurrent = captureReadOwner(ref);
     final analysis = _analysis;
     if (analysis == null || _busy || !_canWithdrawIssuedAnalysisPlan(plan)) {
       return false;
@@ -8230,7 +8606,7 @@ abstract class _MaterialAnalysisMaterialTableState
     } finally {
       reasonController.dispose();
     }
-    if (!mounted || confirmed != true) return false;
+    if ((!mounted || !operationCurrent()) || confirmed != true) return false;
     if (reason.length < 2) {
       context.appWarning('撤回原因至少填写两个字');
       return false;
@@ -8256,7 +8632,8 @@ abstract class _MaterialAnalysisMaterialTableState
             idempotencyKey: idempotencyKey,
             reason: reason,
           );
-      if (!mounted || !_sameAnalysisSnapshot(analysis, sessionScope)) {
+      if ((!mounted || !operationCurrent()) ||
+          !_sameAnalysisSnapshot(analysis, sessionScope)) {
         return false;
       }
       setState(() => _applyAnalysis(current));
@@ -8264,19 +8641,24 @@ abstract class _MaterialAnalysisMaterialTableState
       context.appSuccess('生产计划已撤回，来源待安排数量已恢复');
       return true;
     } catch (error) {
-      if (mounted && _sameAnalysisSnapshot(analysis, sessionScope)) {
+      if (mounted &&
+          operationCurrent() &&
+          _sameAnalysisSnapshot(analysis, sessionScope)) {
         context.appWarning(
           productionErrorMessage(error, fallback: '撤回失败，请核对后重试'),
         );
       }
       return false;
     } finally {
-      bucketActionBusyMessage.value = null;
-      if (mounted) setState(() => _cancellingAction = false);
+      if (operationCurrent()) bucketActionBusyMessage.value = null;
+      if (mounted && operationCurrent()) {
+        setState(() => _cancellingAction = false);
+      }
     }
   }
 
   Future<bool> _cancelMaterialAction(String actionId) async {
+    final operationCurrent = captureReadOwner(ref);
     if (_supplyOperationType(actionId) == 'AGGREGATE_SUPPLY') {
       return _aggregateTable.cancelAction(actionId);
     }
@@ -8291,7 +8673,7 @@ abstract class _MaterialAnalysisMaterialTableState
       confirmLabel: '确认撤回',
       dismissLabel: '暂不撤回',
     );
-    if (reason == null || !mounted) return false;
+    if (reason == null || (!mounted || !operationCurrent())) return false;
     if (!_cancellationStillCurrent(analysis, actionId, sessionScope)) {
       return false;
     }
@@ -8311,8 +8693,8 @@ abstract class _MaterialAnalysisMaterialTableState
             idempotencyKey: idempotencyKey,
             reason: reason,
           );
-      bucketActionBusyMessage.value = null;
-      if (!mounted) return false;
+      if (operationCurrent()) bucketActionBusyMessage.value = null;
+      if ((!mounted || !operationCurrent())) return false;
       if (!_sameAnalysisSnapshot(analysis, sessionScope)) {
         setState(() => _cancellingAction = false);
         return false;
@@ -8326,8 +8708,8 @@ abstract class _MaterialAnalysisMaterialTableState
       );
       return true;
     } catch (error) {
-      bucketActionBusyMessage.value = null;
-      if (!mounted) return false;
+      if (operationCurrent()) bucketActionBusyMessage.value = null;
+      if ((!mounted || !operationCurrent())) return false;
       if (!_sameAnalysisSnapshot(analysis, sessionScope)) {
         setState(() => _cancellingAction = false);
         return false;
@@ -8336,10 +8718,12 @@ abstract class _MaterialAnalysisMaterialTableState
         error,
         operation: '撤回供给任务',
       )) {
-        if (mounted) setState(() => _cancellingAction = false);
+        if (mounted && operationCurrent()) {
+          setState(() => _cancellingAction = false);
+        }
         return false;
       }
-      if (!mounted) return false;
+      if ((!mounted || !operationCurrent())) return false;
       setState(() => _cancellingAction = false);
       context.appError(
         productionErrorMessage(error, fallback: '撤回任务失败，请刷新后重试'),
@@ -8362,6 +8746,7 @@ class _MaterialAnalysisIssuedRateField extends StatefulWidget {
     required this.repository,
     required this.fallbackText,
     required this.enabled,
+    required this.canCommit,
     required this.onApplied,
     required this.onSynced,
   });
@@ -8370,6 +8755,7 @@ class _MaterialAnalysisIssuedRateField extends StatefulWidget {
   final int revision;
   final ProductionPlanRepository repository;
   final bool enabled;
+  final bool Function() canCommit;
   final ValueChanged<double> onApplied;
   final ValueChanged<double> onSynced;
 
@@ -8414,6 +8800,13 @@ class _MaterialAnalysisIssuedRateFieldState
         !_focus.hasFocus &&
         !_saving) {
       unawaited(_read());
+    }
+    if (old.revision != widget.revision && _focus.hasFocus && !_saving) {
+      _debounce?.cancel();
+      _debounce = Timer(
+        const Duration(milliseconds: 600),
+        () => unawaited(_save()),
+      );
     }
   }
 
@@ -8481,6 +8874,7 @@ class _MaterialAnalysisIssuedRateFieldState
   Future<void> _save() async {
     final rate = parseProductionOverproductionPercent(_controller.text);
     if (!_editable ||
+        !widget.canCommit() ||
         rate == null ||
         _rates.every((row) => row.effectiveRate == rate)) {
       return;

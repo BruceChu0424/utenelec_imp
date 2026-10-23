@@ -59,7 +59,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @Import(StockInventoryScopePostgresTest.ProbeConfiguration.class)
 class StockInventoryScopePostgresTest {
     private static final PostgreSQLContainer POSTGRES=new PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("uten_inventory_scope").withUsername("uten").withPassword("uten");
+            .withDatabaseName("uten_inventory_scope").withUsername("fixture_admin").withPassword("uten");
     private static final ThreadLocal<List<String>> SQL=new ThreadLocal<>();
     @TestConfiguration static class ProbeConfiguration {
         @Bean HibernatePropertiesCustomizer inventoryScopeSqlProbe() {
@@ -139,12 +139,6 @@ class StockInventoryScopePostgresTest {
         JsonNode spec=read("/api/stock/instant-inventory",viewer,query,200);
         assertEquals(1,spec.path("total").asInt());assertEquals(dimension.toString(),spec.path("items").get(0).path("goodsId").asText());
         assertEquals("4*50",spec.path("items").get(0).path("spec").asText());
-        Map<String,String> hints=new HashMap<>();hints.put("keyword","螺丝");hints.put("warehouseId",warehouse.toString());hints.put("categoryRootIds",root.toString());
-        JsonNode locations=read("/api/stock/instant-inventory/search-category-ids",viewer,hints,200);
-        assertEquals(List.of(coated.toString()),strings(locations));
-        hints.put("includeRelated","true");assertEquals(List.of(coated.toString(),sockets.toString()),strings(read("/api/stock/instant-inventory/search-category-ids",viewer,hints,200)));
-        hints.put("colorId",red.toString());assertEquals(List.of(coated.toString()),strings(read("/api/stock/instant-inventory/search-category-ids",viewer,hints,200)));
-        hints.remove("colorId");hints.put("attention","NEGATIVE_BALANCE");assertTrue(read("/api/stock/instant-inventory/search-category-ids",viewer,hints,200).isEmpty());
         query.put("keyword","螺丝");query.put("categoryId",sockets.toString());
         JsonNode explicit=read("/api/stock/instant-inventory",viewer,query,200);
         assertEquals(1,explicit.path("total").asInt());assertEquals(feature.toString(),explicit.path("items").get(0).path("goodsId").asText());
@@ -178,7 +172,6 @@ class StockInventoryScopePostgresTest {
     private UUID category(UUID parent,String name) {
         UUID id=UUID.randomUUID();db.update("INSERT INTO material_categories(id,code,name,parent_id) VALUES(?,?,?,?)",id,"IS-"+id,name,parent);return id;
     }
-    private static List<String> strings(JsonNode values) { List<String> result=new ArrayList<>();values.forEach(value->result.add(value.asText()));return result; }
 
     @Test void parentScopeAllModesAndLeafExceptionsAgreeAcrossContextBalancesAndLedger() throws Exception {
         World w=world();

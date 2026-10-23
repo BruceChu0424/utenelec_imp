@@ -1,0 +1,3 @@
+# Optional trusted receipt verifier. Core enrollment/backup state remains stdlib.
+# Verified against official OSV API on 2026-10-23: no current matching advisories.
+cryptography==50.0.2

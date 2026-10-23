@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
+import 'dart:convert';
 
 import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -33,6 +34,7 @@ const _openActions = {
   'FINISHED_COUNT',
   'FINISHED_ARRIVAL_DETAIL',
   'STOCK_EDIT',
+  'STOCK_REVIEW',
   'STOCK_DETAIL',
   'HISTORY_DETAIL',
   'RETURN_RECEIVE',
@@ -41,6 +43,7 @@ const _openActions = {
   'PRODUCTION_DRAW',
   'MATERIAL_DISCOVERY',
   'FORM_DRAFT',
+  'WORKSHOP_REQUISITION',
 };
 
 bool warehouseTaskRecordCanOpen(WarehouseTaskCenterRecord row) =>
@@ -54,10 +57,11 @@ List<WarehouseTaskCenterRecord> warehouseTaskCommandTargets(
   for (final row in rows)
     '${row.sourceType}:${row.action}:${switch (row.action) {
           'FINISHED_REGISTER' => row.dataId('lotId') ?? row.rowKey,
-          'FINISHED_COUNT' => row.dataId('taskId') ?? row.targetId ?? row.id,
+          'FINISHED_COUNT' => row.line?.itemId ?? row.dataId('taskId') ?? row.targetId ?? row.id,
           'ARRIVAL_CONTINUE' => row.rowKey,
           'ARRIVAL_REGISTER' => row.dataId('expectationItemId') ?? row.line?.itemId ?? row.rowKey,
-          _ => row.targetId ?? row.id,
+          'MATERIAL_DISCOVERY' => row.rowKey,
+          _ => row.line?.itemId ?? row.targetId ?? row.id,
         }}':
         row,
 }.values.toList(growable: false);
@@ -70,6 +74,9 @@ String? warehouseTaskRecordBatchFamily(WarehouseTaskCenterRecord row) {
     'SALES_OUTBOUND' ||
     'SUBCONTRACT_OUTBOUND' ||
     'RETURN_RECEIVE' => row.action,
+    'WORKSHOP_REQUISITION' => row.action,
+    'QUALITY_RESULT' when row.dataIds('inspectionItemIds').isNotEmpty =>
+      row.action,
     'ARRIVAL_CONTINUE' when row.dataIds('draftReceiptIds').isNotEmpty =>
       row.action,
     'ARRIVAL_EXCEPTION' when (row.expectedVersion ?? 0) > 0 => row.action,
@@ -80,8 +87,12 @@ String? warehouseTaskRecordBatchFamily(WarehouseTaskCenterRecord row) {
     'PRODUCTION_DRAW' => 'DRAW',
     'MATERIAL_DISCOVERY' when row.actionData['materialsDefined'] == true =>
       'DRAW',
-    'STOCK_EDIT'
-        when {'OTHER_OUT', 'FINISHED_OUT'}.contains(row.dataId('docType')) =>
+    'STOCK_EDIT' || 'STOCK_REVIEW'
+        when {
+          'OTHER_OUT',
+          'FINISHED_OUT',
+          'OTHER_IN',
+        }.contains(row.dataId('docType')) =>
       'STOCK:${row.dataId('docType')}',
     // Final count input is read again from the original document detail.
     // A missing physical quantity never becomes a synthetic batch target.
@@ -89,14 +100,27 @@ String? warehouseTaskRecordBatchFamily(WarehouseTaskCenterRecord row) {
   };
 }
 
-String warehouseTaskRecordBatchLabel(String? family) => switch (family) {
+String warehouseTaskRecordBatchLabel(
+  String? family, {
+  Iterable<WarehouseTaskCenterRecord> rows = const [],
+}) => switch (family) {
   'ARRIVAL_EXCEPTION' => '按批准量处理',
   'ARRIVAL_CONTINUE' => '继续送检',
-  'SALES_OUTBOUND' || 'SUBCONTRACT_OUTBOUND' || 'DRAW' => '核对出库',
-  'RETURN_RECEIVE' => '确认收料',
-  'FINISHED_COUNT' => '核对最终点收',
-  final String value when value.startsWith('STOCK:') => '核对出库',
-  _ => '办理所选',
+  'SALES_OUTBOUND' || 'SUBCONTRACT_OUTBOUND' || 'DRAW' => '批量出库',
+  'RETURN_RECEIVE' => '批量收料',
+  'WORKSHOP_REQUISITION'
+      when rows.isNotEmpty &&
+          rows.every((row) => row.dataId('kind') == 'RETURN') =>
+    '批量入库',
+  'WORKSHOP_REQUISITION'
+      when rows.isNotEmpty &&
+          rows.every((row) => row.dataId('kind') == 'ISSUE') =>
+    '批量出库',
+  'QUALITY_RESULT' || 'STOCK:OTHER_IN' => '批量入库',
+  'FINISHED_COUNT' => '批量点收',
+  'ARRIVAL_REGISTER' || 'FINISHED_REGISTER' => '批量登记',
+  final String value when value.startsWith('STOCK:') => '批量出库',
+  _ => '批量办理',
 };
 
 Future<void> _openFinishedArrivalRegistration(
@@ -131,6 +155,20 @@ Future<void> openWarehouseTaskRecord(
   WarehouseTaskCenterRecord row,
 ) async {
   if (!warehouseTaskRecordCanOpen(row)) return;
+  if (row.line != null &&
+      row.canHandle &&
+      ({
+            'PRODUCTION_DRAW',
+            'SUBCONTRACT_OUTBOUND',
+            'SALES_OUTBOUND',
+            'RETURN_RECEIVE',
+            'FINISHED_COUNT',
+            'WORKSHOP_REQUISITION',
+          }.contains(row.action) ||
+          warehouseTaskRecordBatchFamily(row)?.startsWith('STOCK:') == true)) {
+    await openWarehouseTaskRecordBatch(context, ref, [row]);
+    return;
+  }
   final id = row.targetId ?? row.id;
   if (row.action == 'HISTORY_DETAIL' || row.actionData['retained'] == true) {
     await _openRetained(context, ref, row);
@@ -229,7 +267,7 @@ Future<void> openWarehouseTaskRecord(
       await context.push<void>(
         RoutePath.stockDocDetail(type, row.dataId('documentId') ?? id),
       );
-    case 'STOCK_EDIT':
+    case 'STOCK_EDIT' || 'STOCK_REVIEW':
       final type = row.dataId('docType');
       if (type == null || !row.canHandle) return;
       // Detail owns reviewed save, warehouse selection and the original capability gates.
@@ -252,6 +290,8 @@ Future<void> openWarehouseTaskRecord(
           '/warehouse/material-discovery/${Uri.encodeComponent(row.dataId('requestId') ?? id)}',
         );
       }
+    case 'WORKSHOP_REQUISITION':
+      await openWarehouseTaskRecordBatch(context, ref, [row]);
     case 'QUALITY_RESULT':
       final type = row.dataId('receiptType') ?? row.sourceType;
       final rawItems = row.actionData['inspectionItemIds'];
@@ -332,13 +372,53 @@ String _drawPath(List<WarehouseTaskCenterRecord> rows) {
           .toSet()
           .toList()
         ..sort();
+  final discoveryRows = rows
+      .where((row) => row.action == 'MATERIAL_DISCOVERY')
+      .toList();
+  final discoverySelection = <String, Map<String, dynamic>>{};
+  if (discoveryRows.any((row) => row.line != null)) {
+    for (final row in discoveryRows) {
+      final key = row.line?.key;
+      final version = row.expectedVersion;
+      if (key == null ||
+          !RegExp(r'^suggestion-[1-9][0-9]*$').hasMatch(key) ||
+          version == null) {
+        throw const FormatException('所选材料建议明细已变化，请刷新后重新选择');
+      }
+      final request = row.dataId('requestId') ?? row.targetId ?? row.id;
+      final selected = discoverySelection.putIfAbsent(
+        request,
+        () => {'expectedVersion': version, 'keys': <String>[]},
+      );
+      if (selected['expectedVersion'] != version) {
+        throw const FormatException('材料申请版本已变化，请刷新后重新选择');
+      }
+      (selected['keys'] as List<String>).add(key);
+    }
+  }
   return Uri(
     path: RouteName.warehouseProductionDrawBatchIssue,
     queryParameters: {
       if (documents.isNotEmpty) 'documentIds': documents.join(','),
       if (requests.isNotEmpty) 'discoveryRequestIds': requests.join(','),
+      if (discoverySelection.isNotEmpty)
+        'discoverySelection': jsonEncode(discoverySelection),
+      ..._itemScopeQuery(
+        rows.where((row) => row.action == 'PRODUCTION_DRAW').toList(),
+      ),
     },
   ).toString();
+}
+
+Map<String, String> _itemScopeQuery(List<WarehouseTaskCenterRecord> rows) {
+  if (rows.every((row) => row.line == null)) return const {};
+  if (rows.any((row) => row.line?.itemId?.trim().isNotEmpty != true)) {
+    throw const FormatException('所选明细标识已变化，请刷新后重新选择');
+  }
+  return {
+    'itemIds': (rows.map((row) => row.line!.itemId!).toSet().toList()..sort())
+        .join(','),
+  };
 }
 
 Future<void> openWarehouseTaskRecordBatch(
@@ -362,7 +442,7 @@ Future<void> openWarehouseTaskRecordBatch(
       : 100;
   final ids = rows.map((row) => row.targetId ?? row.id).toSet().toList()
     ..sort();
-  final commandCount = family == 'ARRIVAL_REGISTER' ? ids.length : rows.length;
+  final commandCount = ids.length;
   if (commandCount > max) {
     context.appWarning('本次最多办理 $max 张单据，请分批办理');
     return;
@@ -373,6 +453,42 @@ Future<void> openWarehouseTaskRecordBatch(
     return;
   }
   switch (family) {
+    case 'QUALITY_RESULT':
+      if (rows.any((row) {
+        final items = row.actionData['inspectionItemIds'];
+        return items is! List ||
+            items.isEmpty ||
+            items.any((item) => item is! String || item.trim().isEmpty);
+      })) {
+        throw const FormatException('所选品质放行明细已变化，请刷新后重新选择');
+      }
+      final receipts =
+          rows
+              .map(
+                (row) =>
+                    '${row.dataId('receiptType') ?? row.sourceType}:${row.dataId('receiptId') ?? row.targetId ?? row.id}',
+              )
+              .toSet()
+              .toList()
+            ..sort();
+      final inspectionItems =
+          rows
+              .expand((row) => row.dataIds('inspectionItemIds'))
+              .toSet()
+              .toList()
+            ..sort();
+      if (inspectionItems.isEmpty || inspectionItems.length > 100) {
+        throw const FormatException('所选品质放行明细无效或超过100项，请刷新后分批办理');
+      }
+      await context.push<void>(
+        Uri(
+          path: RouteName.warehouseQualityBatchStockIn,
+          queryParameters: {
+            'receipts': receipts.join(','),
+            'inspectionItemIds': inspectionItems.join(','),
+          },
+        ).toString(),
+      );
     case 'ARRIVAL_REGISTER':
       final items = rows
           .map((row) => row.dataId('expectationItemId') ?? row.line?.itemId)
@@ -424,48 +540,105 @@ Future<void> openWarehouseTaskRecordBatch(
         preStock: preStock,
       );
     case 'FINISHED_COUNT':
-      final targets = rows
-          .map(
-            (row) => ProductionFinishedInboundTask.fromJson({
+      final grouped = <String, List<WarehouseTaskCenterRecord>>{};
+      for (final row in rows) {
+        grouped
+            .putIfAbsent(
+              row.dataId('documentId') ?? row.targetId ?? row.id,
+              () => [],
+            )
+            .add(row);
+      }
+      final targets = grouped.values
+          .map((members) {
+            final row = members.first;
+            return ProductionFinishedInboundTask.fromJson({
               ...row.actionData,
               'taskStage': 'FINAL_COUNT',
               'taskId': row.dataId('taskId') ?? row.targetId ?? row.id,
               'documentId': row.dataId('documentId') ?? row.targetId ?? row.id,
               'documentNo': row.billNo,
               'documentDate': row.businessDate,
-              'lineCount': row.lineCount,
-            }),
-          )
+              'lineCount': members.every((row) => row.line != null)
+                  ? members.length
+                  : row.lineCount,
+              if (members.every((row) => row.line?.quantity != null))
+                'pendingQty': members.fold<num>(
+                  0,
+                  (sum, row) => sum + row.line!.quantity!,
+                ),
+              if (row.line != null)
+                'goodsSummary': members
+                    .map((row) => row.line?.goodsName ?? '')
+                    .where((name) => name.isNotEmpty)
+                    .join('、'),
+            });
+          })
           .toList(growable: false);
       await Navigator.push<void>(
         context,
         MaterialPageRoute(
-          builder: (_) => ProductionFinishedBatchStockInPage(targets: targets),
+          builder: (_) => ProductionFinishedBatchStockInPage(
+            targets: targets,
+            selectedItemIds: _itemScopeQuery(rows).containsKey('itemIds')
+                ? rows.map((row) => row.line!.itemId!).toList()
+                : null,
+            selectedItemDocuments: {
+              for (final row in rows)
+                if (row.line?.itemId != null)
+                  row.line!.itemId!:
+                      row.dataId('documentId') ?? row.targetId ?? row.id,
+            },
+          ),
         ),
       );
     case 'SALES_OUTBOUND':
       await context.push<void>(
         Uri(
           path: '/warehouse/sales-outbound/batch',
-          queryParameters: {'shipmentIds': ids.join(',')},
+          queryParameters: {
+            'shipmentIds': ids.join(','),
+            ..._itemScopeQuery(rows),
+          },
         ).toString(),
       );
     case 'SUBCONTRACT_OUTBOUND':
       await context.push<void>(
         Uri(
           path: '/warehouse/subcontract-outbound/batch',
-          queryParameters: {'issueIds': ids.join(',')},
+          queryParameters: {
+            'issueIds': ids.join(','),
+            ..._itemScopeQuery(rows),
+          },
         ).toString(),
       );
     case 'RETURN_RECEIVE':
       await context.push<void>(
         Uri(
           path: '/warehouse/material-returns/batch-receive',
-          queryParameters: {'documentIds': ids.join(',')},
+          queryParameters: {
+            'documentIds': ids.join(','),
+            ..._itemScopeQuery(rows),
+          },
         ).toString(),
       );
     case 'DRAW':
       await context.push<void>(_drawPath(rows));
+    case 'WORKSHOP_REQUISITION':
+      final selections = <String, List<String>>{};
+      for (final row in rows) {
+        final requisition =
+            row.dataId('requisitionId') ?? row.targetId ?? row.id;
+        final line = row.dataId('lineId') ?? row.line?.itemId;
+        if (line == null) throw const FormatException('所选领料明细已变化，请刷新后重新选择');
+        selections.putIfAbsent(requisition, () => []).add(line);
+      }
+      await context.push<void>(
+        Uri(
+          path: '/workshop-material/issue/batch',
+          queryParameters: {'selections': jsonEncode(selections)},
+        ).toString(),
+      );
     default:
       if (!family.startsWith('STOCK:')) return;
       final type = StockDocType.values
@@ -475,8 +648,13 @@ Future<void> openWarehouseTaskRecordBatch(
       await Navigator.push<void>(
         context,
         MaterialPageRoute(
-          builder: (_) =>
-              WarehouseStockBatchOutboundPage(docType: type, documentIds: ids),
+          builder: (_) => WarehouseStockBatchOutboundPage(
+            docType: type,
+            documentIds: ids,
+            selectedItemIds: _itemScopeQuery(rows).containsKey('itemIds')
+                ? rows.map((row) => row.line!.itemId!).toList()
+                : null,
+          ),
         ),
       );
   }

@@ -4,6 +4,7 @@
 // quantities. These models intentionally parse returned facts only; the
 // Flutter client never derives availability from inventory fields.
 
+import '../../../core/performance/ui_work_budget.dart';
 import '../../../shared/models/progress_ratio.dart';
 import 'material_analysis_projection.dart';
 import 'material_preparation_supply_slice.dart';
@@ -496,35 +497,106 @@ class ProductionMaterialAnalysisView {
       .every((item) => item.routeConfirmed && item.confirmedRoute != null);
 
   factory ProductionMaterialAnalysisView.fromJson(Map<String, dynamic> json) {
-    final shared = _sharedWarehouseStocks(json);
-    final defaults = json['projection'] == materialAnalysisProjectionVersion
-        ? MaterialAnalysisMaterialDefaults(json['materialDefaults'])
-        : null;
-    final rawMaterials = defaults == null
-        ? json['flatMaterials'] ?? json['materials']
-        : json['flatMaterials'];
-    if (shared != null &&
-        (rawMaterials is! List ||
-            rawMaterials.any(
-              (row) => row is! Map || row.keys.any((key) => key is! String),
-            ))) {
-      throw const FormatException('物料分析保存的数据不完整');
-    }
-    ProductionMaterialAnalysisMaterial material(Map<String, dynamic> row) {
-      if (defaults != null) row = defaults.hydrate(row);
-      if (shared == null) {
-        return ProductionMaterialAnalysisMaterial.fromJson(row);
-      }
-      final stocks = shared[row['materialKey']];
-      if (stocks == null) {
-        throw const FormatException('物料分析缺少对应的仓库数据');
-      }
-      return ProductionMaterialAnalysisMaterial.fromJson(
-        row,
-        warehouseStocks: stocks,
-      );
-    }
+    final reader = _analysisMaterialReader(json, _sharedWarehouseStocks(json));
+    return _fromDecodedRows(
+      json,
+      products: _mapList(
+        json['products'],
+        ProductionMaterialAnalysisProduct.fromJson,
+      ),
+      materials: _mapList(reader.raw, reader.parse),
+      warehouses: _mapList(
+        json['warehouses'],
+        ProductionMaterialAnalysisWarehouse.fromJson,
+      ),
+      supplyActions: _mapList(
+        json['supplyActions'],
+        MaterialAnalysisSupplyAction.fromJson,
+      ),
+      salesRequirements: _analysisSalesRequirements(json),
+    );
+  }
 
+  /// Network results retain the synchronous parser's exact facts, while large
+  /// row collections give input and animation events regular processing turns.
+  static Future<ProductionMaterialAnalysisView> fromJsonResponsive(
+    Map<String, dynamic> json, {
+    UiWorkBudget? budget,
+  }) async {
+    final work = budget ?? UiWorkBudget();
+    final shared = await _sharedWarehouseStocksResponsive(json, work);
+    final reader = _analysisMaterialReader(json, shared, validateRows: false);
+    // Keep the strict shared-stock protocol check ahead of product decoding,
+    // but do not scan the entire response in one UI event turn.
+    if (shared != null) {
+      final raw = reader.raw;
+      if (raw is! List) {
+        throw const FormatException('物料分析保存的数据不完整');
+      }
+      for (final row in raw) {
+        if (row is! Map) {
+          throw const FormatException('物料分析保存的数据不完整');
+        }
+        var checkedKeys = 0;
+        for (final key in row.keys) {
+          if (key is! String) {
+            throw const FormatException('物料分析保存的数据不完整');
+          }
+          // A key is much cheaper than a decoded business row. Check time on
+          // wide objects without charging every scalar as a complete row.
+          if (++checkedKeys % 256 == 0) await work.checkpoint(0);
+        }
+        await work.checkpoint();
+      }
+    }
+    final products = await _analysisRowsResponsive(
+      json['products'],
+      ProductionMaterialAnalysisProduct.fromJson,
+      work,
+    );
+    final materials = await _analysisRowsResponsive(
+      reader.raw,
+      reader.parse,
+      work,
+    );
+    final warehouses = await _analysisRowsResponsive(
+      json['warehouses'],
+      ProductionMaterialAnalysisWarehouse.fromJson,
+      work,
+    );
+    final supplyActions = await _analysisRowsResponsive(
+      json['supplyActions'],
+      MaterialAnalysisSupplyAction.fromJson,
+      work,
+    );
+    final salesRequirements = <String, List<ProductionSalesRequirement>>{};
+    if (json['salesRequirements']
+        case final Map<Object?, Object?> requirements) {
+      for (final entry in requirements.entries) {
+        salesRequirements[entry.key.toString()] =
+            ProductionSalesRequirement.parseList(entry.value);
+        await work.checkpoint();
+      }
+    }
+    work.ensureCurrent();
+    return _fromDecodedRows(
+      json,
+      products: products,
+      materials: materials,
+      warehouses: warehouses,
+      supplyActions: supplyActions,
+      salesRequirements: salesRequirements,
+    );
+  }
+
+  static ProductionMaterialAnalysisView _fromDecodedRows(
+    Map<String, dynamic> json, {
+    required List<ProductionMaterialAnalysisProduct> products,
+    required List<ProductionMaterialAnalysisMaterial> materials,
+    required List<ProductionMaterialAnalysisWarehouse> warehouses,
+    required List<MaterialAnalysisSupplyAction> supplyActions,
+    required Map<String, List<ProductionSalesRequirement>> salesRequirements,
+  }) {
     return ProductionMaterialAnalysisView(
       analysisId: _string(json['analysisId'] ?? json['id']) ?? '',
       status: _string(json['status']),
@@ -535,19 +607,10 @@ class ProductionMaterialAnalysisView {
       analyzedAt: _string(
         json['analyzedAt'] ?? json['calculatedAt'] ?? json['updatedAt'],
       ),
-      products: _mapList(
-        json['products'],
-        ProductionMaterialAnalysisProduct.fromJson,
-      ),
-      materials: _mapList(rawMaterials, material),
-      warehouses: _mapList(
-        json['warehouses'],
-        ProductionMaterialAnalysisWarehouse.fromJson,
-      ),
-      supplyActions: _mapList(
-        json['supplyActions'],
-        MaterialAnalysisSupplyAction.fromJson,
-      ),
+      products: products,
+      materials: materials,
+      warehouses: warehouses,
+      supplyActions: supplyActions,
       allowedActions: _stringList(json['allowedActions']).toSet(),
       fqcReplenishmentOnly: json['fqcReplenishmentOnly'] == true,
       fqcRecoveryAuthorizationId: _string(json['fqcRecoveryAuthorizationId']),
@@ -570,16 +633,104 @@ class ProductionMaterialAnalysisView {
               entry.key.toString(): reason,
       },
       analysisNo: _string(json['analysisNo']),
-      salesRequirements: {
-        if (json['salesRequirements']
-            case final Map<Object?, Object?> requirements)
-          for (final entry in requirements.entries)
-            entry.key.toString(): ProductionSalesRequirement.parseList(
-              entry.value,
-            ),
-      },
+      salesRequirements: salesRequirements,
     );
   }
+}
+
+({
+  Object? raw,
+  ProductionMaterialAnalysisMaterial Function(Map<String, dynamic>) parse,
+})
+_analysisMaterialReader(
+  Map<String, dynamic> json,
+  Map<String, List<MaterialWarehouseStock>>? shared, {
+  bool validateRows = true,
+}) {
+  final defaults = json['projection'] == materialAnalysisProjectionVersion
+      ? MaterialAnalysisMaterialDefaults(json['materialDefaults'])
+      : null;
+  final rawMaterials = defaults == null
+      ? json['flatMaterials'] ?? json['materials']
+      : json['flatMaterials'];
+  if (validateRows &&
+      shared != null &&
+      (rawMaterials is! List ||
+          rawMaterials.any(
+            (row) => row is! Map || row.keys.any((key) => key is! String),
+          ))) {
+    throw const FormatException('物料分析保存的数据不完整');
+  }
+  ProductionMaterialAnalysisMaterial material(Map<String, dynamic> row) {
+    if (defaults != null) row = defaults.hydrate(row);
+    if (shared == null) {
+      return ProductionMaterialAnalysisMaterial.fromJson(row);
+    }
+    final stocks = shared[row['materialKey']];
+    if (stocks == null) {
+      throw const FormatException('物料分析缺少对应的仓库数据');
+    }
+    return ProductionMaterialAnalysisMaterial.fromJson(
+      row,
+      warehouseStocks: stocks,
+    );
+  }
+
+  return (raw: rawMaterials, parse: material);
+}
+
+Map<String, List<ProductionSalesRequirement>> _analysisSalesRequirements(
+  Map<String, dynamic> json,
+) => {
+  if (json['salesRequirements'] case final Map<Object?, Object?> requirements)
+    for (final entry in requirements.entries)
+      entry.key.toString(): ProductionSalesRequirement.parseList(entry.value),
+};
+
+Future<List<T>> _analysisRowsResponsive<T>(
+  Object? raw,
+  T Function(Map<String, dynamic>) parse,
+  UiWorkBudget work,
+) async {
+  final rows = raw as List?;
+  if (rows == null) return const [];
+  final result = <T>[];
+  for (final row in rows) {
+    if (row is Map<Object?, Object?>) {
+      result.add(parse(row.cast<String, dynamic>()));
+    }
+    await work.checkpoint();
+  }
+  return result;
+}
+
+Future<Map<String, List<MaterialWarehouseStock>>?>
+_sharedWarehouseStocksResponsive(
+  Map<String, dynamic> json,
+  UiWorkBudget work,
+) async {
+  final raw = json['warehouseBreakdownsByMaterialKey'];
+  if (json['projection'] == null || raw is! Map) {
+    return _sharedWarehouseStocks(json);
+  }
+  // Reuse every version, identity and exact-quantity validation from the
+  // synchronous protocol decoder, one independent dimension at a time.
+  final result = _sharedWarehouseStocks({
+    ...json,
+    'warehouseBreakdownsByMaterialKey': const <String, Object?>{},
+  })!;
+  for (final entry in raw.entries) {
+    result.addAll(
+      _sharedWarehouseStocks({
+        'projection': json['projection'],
+        if (json.containsKey('materialDefaults'))
+          'materialDefaults': json['materialDefaults'],
+        'warehouseBreakdownsByMaterialKey': {entry.key: entry.value},
+      })!,
+    );
+    await work.checkpoint();
+  }
+  return result;
 }
 
 /// The optional wire format preserves all warehouse facts, including zero stock.
@@ -2425,6 +2576,22 @@ class ProductionMaterialGenerateResult {
 
   final ProductionMaterialAnalysisView analysis;
   final List<ProductionGeneratedPlanRef> plans;
+
+  static Future<ProductionMaterialGenerateResult> fromJsonResponsive(
+    Map<String, dynamic> json,
+  ) async {
+    final work = UiWorkBudget();
+    final analysis = await ProductionMaterialAnalysisView.fromJsonResponsive(
+      (json['analysis'] as Map?)?.cast<String, dynamic>() ?? const {},
+      budget: work,
+    );
+    final plans = await _analysisRowsResponsive(
+      json['plans'],
+      ProductionGeneratedPlanRef.fromJson,
+      work,
+    );
+    return ProductionMaterialGenerateResult(analysis: analysis, plans: plans);
+  }
 
   factory ProductionMaterialGenerateResult.fromJson(
     Map<String, dynamic> json,

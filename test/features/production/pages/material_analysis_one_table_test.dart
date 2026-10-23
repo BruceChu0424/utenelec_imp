@@ -21,6 +21,7 @@ import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
@@ -36,6 +37,7 @@ import 'package:uten_imp/features/production/widgets/material_preparation_status
 import 'package:uten_imp/features/production/widgets/material_preparation_route_card.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
@@ -7866,6 +7868,9 @@ Future<void> _pump(
             'replayed': false,
             'plans': <Object>[],
           };
+        } else if (request.path.endsWith('/allocation-priorities') &&
+            request.method == 'PUT') {
+          result = bumped();
         } else if (request.path.endsWith('/notify')) {
           if (await _rejectIfConfigured(request, handler, failOn, delayMs)) {
             return;

@@ -11,8 +11,8 @@
 --   （FK 链：costs.bill_item_id 经 plan_items.legacy_id 映射 -> 必须先迁 plan_items）。
 -- 重载：按 FK 逆序 DELETE 五张表；
 --   任何执行/物料分析/库存证据引用都会在导入前 fail-closed。
--- 人员字段（maker/approver/worker/seller）：employees 与 B_Worker 未对齐，留 NULL
---   + *_legacy_id INT 留底（同采购 migrate_purchase.sql 范式）。
+-- maker/approver 属于 Sys_Operator：历史 ID + 该命名空间冻结姓名；员工 UUID 留 NULL。
+-- worker/seller 仅保留旧计划原文本；不按同号 B_Worker 猜测制单/审核员工。
 -- status：老库 1=已审 / -1=红冲（无 0 草稿），直接照搬。
 -- 库存历史不在此迁（stock_movements/balances 归仓库模块）。
 -- 成本重算/触发器逻辑本期不做（design 24 §4.2，保数据只读）。
@@ -28,16 +28,26 @@ DELETE FROM production_plans;
 
 
 -- ======================== 1. staging ========================
--- 列顺序必须与 export_production_snippet.ps1 各 SELECT 一致（\copy 按位置匹配）。
+-- 列顺序必须与 All 的 export_legacy.ps1 各 SELECT 一致（\copy 按位置匹配）。
 
 CREATE TEMP TABLE plan_stage (
     legacy_id int, bill_no text, bill_date date, f_style text, delivery_date date,
     workshop_name text, worker_name text, seller_name text,
     maker_legacy int, approver_legacy int,
-    maker_name text, approver_name text,
     remark text, status smallint,
     fulfill_bit boolean, stop_bit boolean, cancel_bit boolean);
 \copy plan_stage FROM '/tmp/production_plans.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+
+-- All emits the original 15 columns. Descriptive names are a derived lookup,
+-- never extra raw CSV columns and never B_Worker/employee identities.
+CREATE TEMP TABLE production_operator_ref_stage (legacy_id int PRIMARY KEY, name text);
+\copy production_operator_ref_stage FROM '/tmp/legacy_operators_ref.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+ALTER TABLE plan_stage ADD COLUMN maker_name text, ADD COLUMN approver_name text;
+UPDATE plan_stage plan SET
+    maker_name=(SELECT NULLIF(operator.name,'') FROM production_operator_ref_stage operator
+                WHERE operator.legacy_id=plan.maker_legacy),
+    approver_name=(SELECT NULLIF(operator.name,'') FROM production_operator_ref_stage operator
+                   WHERE operator.legacy_id=plan.approver_legacy);
 
 CREATE TEMP TABLE item_stage (
     legacy_id int, plan_legacy_id int, product_no text,
@@ -169,10 +179,9 @@ SET category_id = COALESCE(suppliers.category_id, EXCLUDED.category_id);
 -- ======================== 3. production_plans ========================
 -- department_id 留 NULL：WorkShop varchar(250) 装数字/名字（样本 "37"/"38"），
 --   无 departments legacy_id 对齐，后续建 workshop_legacy_map 表回填。
--- maker_id/approver_id 留 NULL（同采购）：B_Worker 与 employees 无对齐。
--- maker_name/approver_name：冻结老库 Sys_Operator.fname / B_Worker.Emp_Name
---   （export 端双表 COALESCE 取名）。报表 COALESCE(em.full_name, maker_name)
---   —— employees.legacy_id 对齐后用真名，否则用冻结名（同委外 V66 范式）。
+-- maker_id/approver_id 留 NULL：Sys_Operator 不是 employees/B_Worker 命名空间。
+-- maker_name/approver_name 只按 Sys_Operator.ID 精确查冻结名；缺失保持 NULL，
+-- 不生成当前员工、账号、权限，也不按同号 B_Worker 或自由文本回填。
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 INSERT INTO production_plans (
     legacy_id, bill_no, bill_date, f_style, delivery_date,
@@ -194,7 +203,26 @@ FROM plan_stage s;
 --   S_OrderID 多为 0（直接计划生产），JOIN 率预期较低，无 FK 强约束。
 -- bill_date/bill_no 反冗余自 plan_stage（裁剪索引 + 报表免 JOIN 主表）。
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
+-- Exact first-bootstrap production counters use their own immutable source proof.
+-- Ordinary legal diagnostic/standalone INSERTs remain on the original guard path.
+CREATE TEMP TABLE production_counter_source_stage(
+    legacy_id integer PRIMARY KEY,target_id uuid NOT NULL,run_id uuid NOT NULL);
+DO $production_counter_sources$
+DECLARE run uuid:=NULLIF(current_setting('uten.bootstrap_run_id',true),'')::uuid;
+BEGIN
+    IF run IS NOT NULL THEN
+        INSERT INTO production_counter_source_stage(legacy_id,target_id,run_id)
+        SELECT s.legacy_id,public.fn_register_legacy_production_plan_counter_source(run,to_jsonb(s),
+            to_jsonb(p)-'maker_name'-'approver_name',
+            (ROW_NUMBER() OVER(PARTITION BY s.plan_legacy_id ORDER BY s.legacy_id))::integer),run
+        FROM item_stage s JOIN plan_stage p ON p.legacy_id=s.plan_legacy_id;
+    END IF;
+END $production_counter_sources$;
+ANALYZE production_counter_source_stage;
+ANALYZE public.legacy_production_plan_counter_import_sources;
+
 INSERT INTO production_plan_items (
+    id, legacy_production_import_run_id,
     legacy_id, bill_no, bill_date, plan_id, line_no, product_no,
     goods_id, color_id, mgoods_id, unit_id, unit_rate,
     sales_order_item_id, sales_order_no, client_name, client_no,
@@ -204,7 +232,8 @@ INSERT INTO production_plan_items (
     step_legacy_id, veil_legacy_id, ass_team_legacy_id, fittings,
     request_note, customer_model, discount, label_no, plan_app_no,
     source_doc_no, remark)
-SELECT s.legacy_id, p.bill_no, p.bill_date,
+SELECT COALESCE(source_proof.target_id,gen_random_uuid()), source_proof.run_id,
+       s.legacy_id, p.bill_no, p.bill_date,
        (SELECT id FROM production_plans WHERE legacy_id = s.plan_legacy_id),
        ROW_NUMBER() OVER (PARTITION BY s.plan_legacy_id ORDER BY s.legacy_id),
        s.product_no,
@@ -228,7 +257,8 @@ SELECT s.legacy_id, p.bill_no, p.bill_date,
                   CASE WHEN NULLIF(s.in_no,'')   IS NULL THEN NULL ELSE 'IN:'  || s.in_no  END,
                   CASE WHEN NULLIF(s.tran_no,'') IS NULL THEN NULL ELSE 'TRAN:' || s.tran_no END),
        NULLIF(s.remark,'')
-FROM item_stage s JOIN plan_stage p ON p.legacy_id = s.plan_legacy_id;
+FROM item_stage s JOIN plan_stage p ON p.legacy_id = s.plan_legacy_id
+LEFT JOIN production_counter_source_stage source_proof ON source_proof.legacy_id=s.legacy_id;
 
 
 -- ======================== 5. production_plan_costs（1.36M 行 · 按年分批 INSERT） ========================
@@ -394,7 +424,7 @@ FROM production_plan_costs
 GROUP BY 1
 ORDER BY 1;
 
--- 制单员/审核员冻结名命中（export 端 JOIN Sys_Operator/B_Worker 取名）
+-- 制单员/审核员冻结名命中（仅按 Sys_Operator.ID 的参考表取名）
 SELECT '!! 计划单头（应 = 7235）        ' || (SELECT count(*) FROM production_plans) AS r
 UNION ALL SELECT '   maker_name 命中（冻结名）   ' || (SELECT count(*) FROM production_plans WHERE maker_name IS NOT NULL)
 UNION ALL SELECT '   approver_name 命中（冻结名） ' || (SELECT count(*) FROM production_plans WHERE approver_name IS NOT NULL);

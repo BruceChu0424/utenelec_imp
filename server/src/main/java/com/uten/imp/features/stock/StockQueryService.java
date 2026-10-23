@@ -588,7 +588,7 @@ public class StockQueryService {
         String selectedColor = filter.goodsId() != null && filter.colorId() != null
                 ? "COALESCE(base.color_id, :colorId)" : "base.color_id";
         String relevanceProjection = KeywordSearch.terms(filter.keyword()).isEmpty() ? ""
-                : ", " + keyword.rank() + " AS search_rank,g.category_id AS search_category_id\n";
+                : ", " + keyword.rank() + " AS search_rank\n";
         String core = cte + """
                 SELECT g.id AS goods_id, base.color_id AS color_id, mc.name AS category_name,
                        g.model, g.c_number, g.name, g.spec,
@@ -797,54 +797,6 @@ public class StockQueryService {
             String key, String label) {
         return new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
                 key, label, com.uten.imp.common.report.ReportTotalsCalculator.TYPE_COUNT, null);
-    }
-
-    /**
-     * 即时库存统一搜索的轻量分类定位。
-     *
-     * <p>关键词只匹配右侧列表支持的 name/code/model/c_number，删除口径同样仅排除
-     * is_deleted；因此禁用或 autoCreated 货品不会出现“右侧能搜、左侧不能定位”的错位。
-     * categoryRootIds 是当前树的显式范围，空/过多根 fail-closed。
-     */
-    @Transactional(readOnly = true)
-    public List<UUID> instantInventoryMatchingCategoryIds(
-            String keyword, Set<UUID> categoryRootIds) {
-        return instantInventoryMatchingCategoryIds(keyword, categoryRootIds, null, false);
-    }
-
-    @Transactional(readOnly = true)
-    public List<UUID> instantInventoryMatchingCategoryIds(
-            String keyword, Set<UUID> categoryRootIds, UUID selectedCategory, boolean includeRelated) {
-        return instantInventoryMatchingCategoryIds(new InstantInventoryFilter(selectedCategory, null,
-                false, false, keyword, null, null, null, null, null,
-                null, null, false, true, includeRelated), categoryRootIds);
-    }
-
-    @Transactional(readOnly = true)
-    public List<UUID> instantInventoryMatchingCategoryIds(InstantInventoryFilter filter, Set<UUID> categoryRootIds) {
-        String keyword = filter.keyword();
-        if (KeywordSearch.terms(keyword).isEmpty()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写搜索关键词");
-        }
-        if (categoryRootIds == null || categoryRootIds.isEmpty() || categoryRootIds.size() > 32) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "categoryRootIds 必须包含 1-32 个分类");
-        }
-        InstantSql sql = instantSql(filter, null);
-        Query query = em.createNativeQuery("SELECT t.search_category_id FROM (" + sql.core() + ") t "
-                + "WHERE t.search_category_id IN (WITH RECURSIVE allowed_categories(id) AS ("
-                + "SELECT id FROM material_categories WHERE id IN (:categoryRootIds) AND NOT is_deleted "
-                + "UNION SELECT child.id FROM material_categories child JOIN allowed_categories parent ON child.parent_id=parent.id WHERE NOT child.is_deleted) "
-                + "SELECT id FROM allowed_categories) GROUP BY t.search_category_id ORDER BY MIN(t.search_rank),t.search_category_id");
-        query.setParameter("categoryRootIds", categoryRootIds);
-        sql.bindAll(query);
-        @SuppressWarnings("unchecked")
-        List<Object> rawIds = query.getResultList();
-        return rawIds.stream()
-                .filter(java.util.Objects::nonNull)
-                .map(value -> value instanceof UUID id ? id : UUID.fromString(value.toString()))
-                .toList();
     }
 
     private GoodsSearchPolicy.NativeSearch inventoryKeyword(String keyword, UUID categoryId, boolean includeRelated) {

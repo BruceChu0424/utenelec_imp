@@ -139,7 +139,10 @@ class DioVisitorRepository implements VisitorRepository {
       ApiEndpoints.visitorApplicationsMine,
       query: query,
     );
-    return PagedResult.fromJson(response, VisitorApplication.fromJson);
+    return PagedResult.fromJsonResponsive(
+      response,
+      VisitorApplication.fromJson,
+    );
   }
 
   @override

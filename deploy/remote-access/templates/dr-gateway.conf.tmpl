@@ -1,0 +1,77 @@
+# DR is a separate control plane. This listener never terminates employee TLS.
+http {
+    server_tokens off;
+    client_body_temp_path /var/cache/uten-remote/body;
+    proxy_temp_path /var/cache/uten-remote/proxy;
+    fastcgi_temp_path /var/cache/uten-remote/fastcgi;
+    uwsgi_temp_path /var/cache/uten-remote/uwsgi;
+    scgi_temp_path /var/cache/uten-remote/scgi;
+    log_format dr_gateway '$time_iso8601 request_id=$request_id method=$request_method status=$status bytes=$body_bytes_sent request_s=$request_time';
+    access_log /var/log/uten-remote/dr-http.log dr_gateway;
+    # Dispatcher intentionally supplies no client identity. Shared budgets plus
+    # backend account lockouts remain effective without trusting public headers.
+    limit_req_zone $server_name zone=dr_total:1m rate=10r/s;
+    limit_req_zone $server_name zone=dr_login:1m rate=1r/s;
+    limit_conn_zone $server_name zone=dr_global_connections:1m;
+    server {
+        listen 127.0.0.1:19443 ssl http2;
+        server_name @@DR_PUBLIC_DOMAIN@@;
+        if ($host != "@@DR_PUBLIC_DOMAIN@@") { return 444; }
+        ssl_certificate /etc/uten-remote/tls/dr-fullchain.crt;
+        ssl_certificate_key /etc/uten-remote/tls/dr.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_session_tickets off;
+        client_max_body_size 128k;
+        client_body_timeout 15s;
+        client_header_timeout 10s;
+        client_header_buffer_size 4k;
+        large_client_header_buffers 2 8k;
+        keepalive_timeout 30s;
+        send_timeout 30s;
+        limit_req zone=dr_total burst=20 nodelay;
+        limit_req_status 429;
+        limit_conn dr_global_connections 4;
+        limit_conn_status 429;
+        proxy_http_version 1.1;
+        proxy_set_header Host "@@DR_PUBLIC_DOMAIN@@";
+        proxy_set_header Connection "";
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host "@@DR_PUBLIC_DOMAIN@@";
+        proxy_set_header X-Forwarded-Port 443;
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Real-IP "";
+        proxy_set_header Forwarded "";
+        proxy_set_header Cookie "";
+        proxy_set_header Proxy "";
+        proxy_set_header X-Request-Id $request_id;
+        proxy_hide_header Server;
+        proxy_hide_header X-Powered-By;
+        proxy_cache off;
+        proxy_store off;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_max_temp_file_size 0;
+        proxy_next_upstream off;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 30s;
+        proxy_send_timeout 30s;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header Referrer-Policy no-referrer always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options DENY always;
+        add_header Cache-Control "private, no-store" always;
+        # Preserve the application's per-response nonce CSP; do not add a second policy.
+        location ~ "^/v1/(?:broker|agent)(?:[;/]|$)" { return 404; }
+        location = /v1/broker { return 404; }
+        location ^~ /v1/broker/ { return 404; }
+        location = /v1/agent { return 404; }
+        location ^~ /v1/agent/ { return 404; }
+        location ~ /\. { return 404; }
+        location ~ "^/v1/(?:auth|enrollments)(?:/|$)" {
+            limit_req zone=dr_total burst=20 nodelay;
+            limit_req zone=dr_login burst=2 nodelay;
+            proxy_pass http://127.0.0.1:9087;
+        }
+        location / { proxy_pass http://127.0.0.1:9087; }
+    }
+}

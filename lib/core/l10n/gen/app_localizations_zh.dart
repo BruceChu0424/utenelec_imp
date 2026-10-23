@@ -9,6 +9,143 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get clientUpdateDetails => '查看详情';
+
+  @override
+  String get clientUpdateNewTitle => '发现新版本';
+
+  @override
+  String get clientUpdateSubtitle => '自动检查新版本，更新此设备上的软件';
+
+  @override
+  String get clientUpdateCurrent => '当前版本';
+
+  @override
+  String get clientUpdateLatest => '最新版本';
+
+  @override
+  String get clientUpdateNow => '立即更新';
+
+  @override
+  String get clientUpdateLater => '稍后';
+
+  @override
+  String get clientUpdateCheck => '检查更新';
+
+  @override
+  String get clientUpdateChecking => '正在检查更新';
+
+  @override
+  String get clientUpdateUpToDate => '当前已是最新版本';
+
+  @override
+  String get clientUpdateDownloading => '正在下载更新';
+
+  @override
+  String get clientUpdateInstalling => '正在安装更新';
+
+  @override
+  String get clientUpdateWindowsHint =>
+      '更新将自动下载，关闭并重新启动软件，保留本机设置和已保存的草稿。请先保存当前工作。';
+
+  @override
+  String get clientUpdateAndroidHint => '更新下载后会打开系统安装确认。如需允许安装来源，请授权后返回重试。';
+
+  @override
+  String get clientUpdateStoreHint => '将打开官方应用商店，请在商店中完成更新。';
+
+  @override
+  String get clientUpdateUnsupported => '当前系统暂不支持应用内更新。';
+
+  @override
+  String get clientUpdateFailed => '更新未完成，请检查网络和安装权限后重试。';
+
+  @override
+  String get clientUpdateInstallerOpened => '已打开系统安装确认，请按系统提示完成更新。';
+
+  @override
+  String get clientUpdateNotes => '更新内容';
+
+  @override
+  String get clientUpdateNoNotes => '此版本暂无更新说明。';
+
+  @override
+  String get clientUpdatePublishTitle => '发布客户端版本';
+
+  @override
+  String get clientUpdatePublishHint => '上传并发布各平台的新版本，员工的客户端会自动检查并提示更新。';
+
+  @override
+  String get clientUpdatePlatform => '平台';
+
+  @override
+  String get clientUpdateArchitecture => '设备架构';
+
+  @override
+  String get clientUpdateVersion => '版本号';
+
+  @override
+  String get clientUpdateBuild => '构建号';
+
+  @override
+  String get clientUpdateStoreUrl => '官方商店地址';
+
+  @override
+  String get clientUpdateChooseFile => '选择更新包';
+
+  @override
+  String get clientUpdatePublish => '上传并发布';
+
+  @override
+  String get clientUpdatePublishing => '正在上传并发布';
+
+  @override
+  String get clientUpdatePublished => '客户端新版本已发布';
+
+  @override
+  String get clientUpdatePublishInvalid =>
+      '请完整填写版本信息，构建号需高于已发布版本，并选择对应更新包或填写官方商店地址。';
+
+  @override
+  String get clientUpdatePackageHint =>
+      'Windows 选择专用更新 ZIP，Android 选择正式签名 APK。每次发布需增加构建号。';
+
+  @override
+  String get clientUpdateWithdraw => '撤回发布';
+
+  @override
+  String get clientUpdateWithdrawConfirm =>
+      '撤回后，其他设备将不再收到此版本。已经更新的设备不会降级。确定撤回吗？';
+
+  @override
+  String get clientUpdateReleaseList => '版本发布记录';
+
+  @override
+  String get clientUpdateClose => '关闭';
+
+  @override
+  String get clientUpdateRetry => '重试';
+
+  @override
+  String get clientUpdateTitle => '软件更新';
+
+  @override
+  String get masterStatusDisableTitle => '确认停用';
+
+  @override
+  String get masterStatusEnableTitle => '确认启用';
+
+  @override
+  String masterStatusDisableBody(String label, int count) {
+    return '确定停用「$label」共 $count 项吗？停用后不能再用于新增业务，已有单据与修改历史保留。';
+  }
+
+  @override
+  String masterStatusEnableBody(String label, int count) {
+    return '确定启用「$label」共 $count 项吗？启用后可再次用于新增业务。';
+  }
+
+  @override
   String get websiteInquirySeries => '产品系列';
 
   @override
@@ -11634,4 +11771,165 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get goodsBatchPasteAutoCode => '新货品编号由系统自动生成';
+
+  @override
+  String get importReviewSourceRow => '文件行';
+
+  @override
+  String get importReviewIdentity => '货品';
+
+  @override
+  String get importReviewMatchReason => '匹配依据';
+
+  @override
+  String get importReviewAction => '操作';
+
+  @override
+  String get importReviewEmptyValue => '未填写';
+
+  @override
+  String get importReviewOldValue => '原值';
+
+  @override
+  String get importReviewNewValue => '导入值';
+
+  @override
+  String get importReviewLegend => '红色删除线为原值，绿色为导入值。仅勾选的冲突会替换；空白不会清空已有值。';
+
+  @override
+  String get importReviewFillLegend => '缺失值会自动补齐，已有值保持不变。确认后开始新增并补齐资料。';
+
+  @override
+  String importReviewReplaceSelected(int count) {
+    return '批量替换 ($count)';
+  }
+
+  @override
+  String get importReviewIgnoreAll => '全部忽略';
+
+  @override
+  String get importReviewIgnoreExplanation => '忽略仅跳过冲突，新增货品和空值补齐仍会继续。';
+
+  @override
+  String get importReviewIgnoreRow => '忽略此行';
+
+  @override
+  String get importReviewRestoreRow => '恢复核对';
+
+  @override
+  String get importReviewAutomaticFill => '自动补齐';
+
+  @override
+  String get importReviewIgnored => '已忽略冲突';
+
+  @override
+  String get importReviewPending => '待核对';
+
+  @override
+  String get importReviewSelected => '将替换';
+
+  @override
+  String get importReviewConfirmFill => '确认补齐并导入';
+
+  @override
+  String get importReviewNoRows => '没有需要核对的差异';
+
+  @override
+  String get importReviewSelectAll => '选择全部冲突';
+
+  @override
+  String get goodsImportReviewTitle => '核对货品导入差异';
+
+  @override
+  String get bomImportReviewTitle => '核对组件导入差异';
+
+  @override
+  String get importReviewOpen => '核对差异并导入';
+
+  @override
+  String get importMatchCode => '编号匹配';
+
+  @override
+  String get importMatchUuid => '系统标识匹配';
+
+  @override
+  String get importMatchPathName => '同分类同名称';
+
+  @override
+  String importReviewSummary(
+    int added,
+    int filled,
+    int conflicts,
+    int unchanged,
+  ) {
+    return '新增 $added，补齐 $filled，冲突 $conflicts，相同 $unchanged';
+  }
+
+  @override
+  String importResultSummary(
+    int created,
+    int filled,
+    int updated,
+    int ignored,
+    int unchanged,
+  ) {
+    return '新增 $created，补齐 $filled，替换 $updated，忽略 $ignored，相同 $unchanged';
+  }
+
+  @override
+  String get bomImportMergeLabel => '合并核对(保留文件外的组件)';
+
+  @override
+  String get importReviewUnchanged => '无变化';
+
+  @override
+  String get goodsImportTemplateHint =>
+      '可使用「导出货品」文件作为新增或更新模板；必填列为类别(用 - 拼分类路径)和货品名称，编号可留空。更新时保留系统标识；新增行不要沿用旧货品的系统标识。曾被复用的编号必须通过系统标识确认当前货品。';
+
+  @override
+  String get goodsImportMergeHint =>
+      '新货品正常新增；已有货品按编号或同分类同名称匹配。空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值，同名歧义须修正后重传。同编号已删除货品按清单内容恢复。';
+
+  @override
+  String get importRedetectCurrent => '重新检测当前文件';
+
+  @override
+  String get importRedetectRequired => '请重新检测当前文件后再提交';
+
+  @override
+  String get importRetryPrevious => '重试上次提交';
+
+  @override
+  String get importFilesTransactionNote =>
+      '可一次选择多个文件，按顺序检测并导入。每个文件独立保存，后续失败或关闭不会撤销已成功的文件。';
+
+  @override
+  String importFilesCompleted(int completed, int total) {
+    return '已完成 $completed/$total 个文件';
+  }
+
+  @override
+  String importFilesCurrent(int position, int total, String filename) {
+    return '文件 $position/$total: $filename';
+  }
+
+  @override
+  String get importFilesPaused => '已暂停当前文件，可继续核对；后续文件尚未处理。';
+
+  @override
+  String get importFilesFailed => '当前文件未完成，队列已暂停。请重新检测或重新选择文件。';
+
+  @override
+  String get importFilesCloseNote => '关闭会放弃未处理的文件，已成功导入的文件会保留。重新选择只替换未处理部分。';
+
+  @override
+  String importFilesOutcome(String filename, String summary) {
+    return '已完成 $filename: $summary';
+  }
+
+  @override
+  String get importFilesContinue => '继续处理当前文件';
+
+  @override
+  String get importFilesFinished => '所选文件已全部处理完成';
 }

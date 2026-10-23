@@ -9,6 +9,7 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,9 +25,8 @@ import java.util.UUID;
  *
  * <p>清空业务数据是破坏性测试操作，五重门禁缺一不可：</p>
  * <ol>
- *   <li>运行开关 {@code uten.features.business-data-reset-enabled}——dev / internal-test profile 开启;
- *       公司内网服务器 (prod profile) 按 2026-09-12 用户测试期决定也开启, 启动时告警提示;
- *       云端站点无论开关如何一律拒绝 (见 {@link BusinessDataResetFeatureGate})；</li>
+ *   <li>仅 dev profile 注册接口，所有服务器环境均下架；同时运行开关、回环监听与本地数据库
+ *       目标必须通过 {@link BusinessDataResetFeatureGate}，数据库另需本地测试执行授权；</li>
  *   <li>数据库确认的超级管理员本人，且持目录码 {@code system:business_data_reset}
  *       (SUPERADMIN_ONLY，管理页可见、任何入口都授不出去；ADR-109)；模拟他人身份时不能清空，也不能预览；</li>
  *   <li>再认证: 本次重新输入登录密码换取一次性凭证 ({@link RequiresStepUp}, ADR-110)，
@@ -36,6 +36,7 @@ import java.util.UUID;
  * </ol>
  */
 @RestController
+@Profile("dev & !prod & !cloud & !internal-test")
 @RequestMapping("/api/system-test")
 @RequiredArgsConstructor
 @PreAuthorize("principal.superAdmin")

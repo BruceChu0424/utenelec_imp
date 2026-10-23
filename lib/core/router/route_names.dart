@@ -68,6 +68,7 @@ abstract final class RouteName {
   static const String notFound = '/not-found';
   static const String profile = '/profile';
   static const String settings = '/settings';
+  static const String disasterRecovery = '/operations/recovery';
   static const String remoteMfa = '/settings/remote-mfa';
   static const String deviceAuditReceipts = '/settings/device-receipts';
   static const String changePassword = '/change-password';

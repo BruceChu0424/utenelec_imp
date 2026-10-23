@@ -23,7 +23,7 @@ class InternalTestRuntimeSafetyGateTest {
     @Test
     void acceptsAStrongOptionalSecretCipherKeyAndRequiresOutboundAiToStayClosed() {
         MockEnvironment withKey = safeEnvironment();
-        withKey.setProperty("uten.crypto.secret-cipher-key", "s".repeat(64));
+        withKey.setProperty("uten.crypto.secret-cipher-key", RuntimeSecretTestValues.forPurpose("cipher"));
         assertDoesNotThrow(() -> gate(withKey).validate());
 
         MockEnvironment withoutAiSwitch = safeEnvironment();
@@ -114,6 +114,10 @@ class InternalTestRuntimeSafetyGateTest {
                 Arguments.of("uten.bootstrap.admin-login", "bad account"),
                 Arguments.of("springdoc.api-docs.enabled", "true"),
                 Arguments.of("uten.jwt.secret", "short"),
+                Arguments.of("uten.jwt.secret", "replace-with-a-strong-random-secret-at-least-32-bytes-long"),
+                Arguments.of("uten.crypto.hmac-key", "0123456701234567012345670123456701234567"),
+                Arguments.of("uten.crypto.pgp-master-key", "p".repeat(48)),
+                Arguments.of("spring.datasource.password", "d".repeat(32)),
                 Arguments.of("uten.crypto.pgp-master-key", "short"),
                 Arguments.of("uten.crypto.secret-cipher-key", "short"),
                 Arguments.of("uten.crypto.secret-cipher-key", "REPLACE_GENERATED_SECRET_CIPHER_KEY_0123456789"),
@@ -145,7 +149,7 @@ class InternalTestRuntimeSafetyGateTest {
         environment.setProperty("spring.datasource.url",
                 "jdbc:postgresql://127.0.0.1:5432/uten_imp");
         environment.setProperty("spring.datasource.username", "uten");
-        environment.setProperty("spring.datasource.password", "d".repeat(32));
+        environment.setProperty("spring.datasource.password", RuntimeSecretTestValues.forPurpose("database"));
         environment.setProperty("uten.deployment.site", "local");
         environment.setProperty("uten.deployment.local-allowed-cidrs",
                 "127.0.0.0/8,192.168.0.0/23");
@@ -156,10 +160,10 @@ class InternalTestRuntimeSafetyGateTest {
         environment.setProperty("uten.bootstrap.admin-login", "bootstrap-admin-test");
         environment.setProperty("springdoc.api-docs.enabled", "false");
         environment.setProperty("springdoc.swagger-ui.enabled", "false");
-        environment.setProperty("uten.jwt.secret", "j".repeat(32));
+        environment.setProperty("uten.jwt.secret", RuntimeSecretTestValues.forPurpose("jwt"));
         environment.setProperty("uten.jwt.issuer", "uten-imp-internal-test");
-        environment.setProperty("uten.crypto.pgp-master-key", "p".repeat(32));
-        environment.setProperty("uten.crypto.hmac-key", "h".repeat(32));
+        environment.setProperty("uten.crypto.pgp-master-key", RuntimeSecretTestValues.forPurpose("pgp"));
+        environment.setProperty("uten.crypto.hmac-key", RuntimeSecretTestValues.forPurpose("hmac"));
         environment.setProperty("uten.sms.provider", "disabled");
         environment.setProperty("uten.sms.expose-code", "false");
         environment.setProperty("uten.ai.outbound-enabled", "false");

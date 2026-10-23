@@ -31,6 +31,7 @@ import '../../features/admin/pages/server_storage_page.dart';
 import '../../features/admin/widgets/server_update_popup_gate.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
 import '../../features/auth/pages/login_page.dart';
+import '../../features/disaster_recovery/disaster_recovery_page.dart';
 import '../../features/basic_data/pages/basic_data_hub_page.dart';
 import '../../features/basic_data/pages/client_category_page.dart';
 import '../../features/basic_data/pages/color_page.dart';
@@ -342,6 +343,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     // 访客门户前端同步下线（后端能力保留，将来另做独立入口）。
     initialLocation: RouteName.login,
     redirect: (context, state) {
+      // Independent rescue must remain reachable without the business session/API.
+      if (state.matchedLocation == RouteName.disasterRecovery) return null;
       final session = ref.read(sessionProvider);
       final loc = state.matchedLocation;
       final isEntry = loc == RouteName.entry;
@@ -396,6 +399,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
     },
     routes: [
+      GoRoute(path: RouteName.disasterRecovery,
+          builder: (_, _) => const DisasterRecoveryPage()),
       DraftAwareGoRoute(
         path: RouteName.login,
         name: 'login',

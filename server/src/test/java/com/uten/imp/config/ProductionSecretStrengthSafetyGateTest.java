@@ -3,6 +3,7 @@ package com.uten.imp.config;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.env.MockEnvironment;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -66,7 +67,7 @@ class ProductionSecretStrengthSafetyGateTest {
         assertDoesNotThrow(() -> gate(disabled).validate());
 
         MockEnvironment strong = safeEnvironment("prod");
-        strong.setProperty("uten.website.inquiry-ingest-token", "w".repeat(40));
+        strong.setProperty("uten.website.inquiry-ingest-token", RuntimeSecretTestValues.forPurpose("website"));
         assertDoesNotThrow(() -> gate(strong).validate());
 
         MockEnvironment weak = safeEnvironment("cloud");
@@ -89,6 +90,25 @@ class ProductionSecretStrengthSafetyGateTest {
         assertDoesNotThrow(() -> gate(environment).validate());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "replace-with-a-strong-random-secret-at-least-32-bytes-long",
+            "change-me-before-starting-this-production-service",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "0123456701234567012345670123456701234567"
+    })
+    void everyProductionSecretRejectsCopiedExamplesAndPredictableValues(String value) {
+        for (String profile : new String[]{"prod", "cloud"}) {
+            for (String key : new String[]{"uten.jwt.secret", "uten.crypto.pgp-master-key",
+                    "uten.crypto.hmac-key", "uten.crypto.secret-cipher-key",
+                    "uten.website.inquiry-ingest-token"}) {
+                MockEnvironment environment = safeEnvironment(profile);
+                environment.setProperty(key, value);
+                assertThrows(IllegalStateException.class, () -> gate(environment).validate(), key);
+            }
+        }
+    }
+
     private static ProductionSecretStrengthSafetyGate gate(MockEnvironment environment) {
         return new ProductionSecretStrengthSafetyGate(environment);
     }
@@ -96,9 +116,9 @@ class ProductionSecretStrengthSafetyGateTest {
     private static MockEnvironment safeEnvironment(String profile) {
         MockEnvironment environment = new MockEnvironment();
         environment.setActiveProfiles(profile);
-        environment.setProperty("uten.jwt.secret", "j".repeat(48));
-        environment.setProperty("uten.crypto.pgp-master-key", "p".repeat(48));
-        environment.setProperty("uten.crypto.hmac-key", "h".repeat(48));
+        environment.setProperty("uten.jwt.secret", RuntimeSecretTestValues.forPurpose("jwt"));
+        environment.setProperty("uten.crypto.pgp-master-key", RuntimeSecretTestValues.forPurpose("pgp"));
+        environment.setProperty("uten.crypto.hmac-key", RuntimeSecretTestValues.forPurpose("hmac"));
         return environment;
     }
 }

@@ -1,5 +1,7 @@
 # 开发环境：宽松、详细日志、不强制 HTTPS
 server:
+  # 测试数据清空只允许本机开发；改成非回环监听时门禁自动关闭。
+  address: ${SERVER_ADDRESS:127.0.0.1}
   ssl:
     enabled: false
 

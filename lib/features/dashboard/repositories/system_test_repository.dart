@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/network/api_client.dart';
@@ -9,11 +10,11 @@ import '../../../shared/auth/session_epoch_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../models/business_data_reset_attempt.dart';
 import '../providers/business_data_reset_journal.dart';
+import '../providers/local_system_test_policy.dart';
 
 /// 清空请求的接收超时：服务端受理后 5 分钟内完成文件阶段——检查(≤60s)→排水(≤45s)
-/// →加锁删除测试文件，共用一个截止点；之后清库。网关对该路径放宽到 600s
-/// (deploy/nginx/*.conf 的 `location = /api/system-test/business-data/reset`)，
-/// 前端接收超时取 10 分钟与之对齐。
+/// →加锁删除测试文件，共用一个截止点；之后清库。本地开发接收超时取 10 分钟，
+/// 所有服务器网关均拒绝测试路径。
 const businessDataResetReceiveTimeout = Duration(minutes: 10);
 
 /// 工作台「系统测试 · 清空业务数据」结果摘要(与后端 Result 一一对应)。
@@ -391,8 +392,18 @@ class ApiSystemTestRepository implements SystemTestRepository {
   final DateTime Function() _now;
   bool _inFlight = false;
 
+  void _requireLocalTarget() {
+    final actual = Uri.base.resolve(_api.baseUrl).toString();
+    if (!permitsLocalSystemTests(server, debugBuild: kDebugMode) ||
+        !permitsLocalSystemTests(actual, debugBuild: kDebugMode) ||
+        actual != server) {
+      throw ApiException('FORBIDDEN', '服务器已下架业务数据清空，仅本地开发测试可用');
+    }
+  }
+
   @override
   Future<BusinessDataResetAttempt?> pendingBusinessDataReset() async {
+    _requireLocalTarget();
     final operator = operatorId;
     if (operator == null || operator.isEmpty) return null;
     try {
@@ -406,13 +417,16 @@ class ApiSystemTestRepository implements SystemTestRepository {
   }
 
   @override
-  Future<BusinessDataResetPreview> previewBusinessDataReset() async =>
-      BusinessDataResetPreview.fromJson(
-        await _api.get(ApiEndpoints.systemTestBusinessDataPreview),
-      );
+  Future<BusinessDataResetPreview> previewBusinessDataReset() async {
+    _requireLocalTarget();
+    return BusinessDataResetPreview.fromJson(
+      await _api.get(ApiEndpoints.systemTestBusinessDataPreview),
+    );
+  }
 
   @override
   Future<BusinessDataResetResult> resetBusinessData() async {
+    _requireLocalTarget();
     if (_inFlight) throw BusinessDataResetPendingException();
     final operator = operatorId;
     if (operator == null || operator.isEmpty) {

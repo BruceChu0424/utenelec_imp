@@ -77,10 +77,9 @@ class GoodsBomBatchMaintenanceEndToEndTest {
         assertEquals(result,batches.commit(confirm(preview)));assertEquals(after,state());assertEquals(afterOutbox,count("business_outbox"));
     }
 
-    @Test void removeOnlyTouchesSelectedDirectRelationsAndAllowsDisabledComponentCleanup(){
+    @Test void removeOnlyTouchesSelectedDirectRelationsAndAlreadyRetiredDisabledComponentsAreANoOp(){
         UUID a=goods("a"),b=goods("b"),sub=goods("shared-sub"),outer=goods("outer"),c=goods("old");
         UUID direct=edge(a,c,"2",1),nested=edge(sub,c,"3",1);edge(a,sub,"1",2);edge(b,sub,"1",1);edge(outer,a,"1",1);
-        db.update("UPDATE goods SET status='禁用' WHERE id=?",c);
         login(Set.of("goods:view","goods:bom:edit","goods:bom:delete"),session);
         route("preview");var preview=batches.preview(new BomBatchMaintenanceRequest(REMOVE,List.of(a,b),null,List.of(c)));
         assertEquals(1,preview.removed());assertEquals(1,preview.skipped());assertEquals(1,preview.otherUsageCount());
@@ -88,42 +87,63 @@ class GoodsBomBatchMaintenanceEndToEndTest {
         assertFalse(deleted(direct));assertFalse(deleted(nested));
         route("commit");batches.commit(confirm(preview));
         assertTrue(deleted(direct));assertFalse(deleted(nested));assertEquals(1,bom.list(sub).size());
-        assertEquals("禁用",db.queryForObject("SELECT status FROM goods WHERE id=?",String.class,c));
         assertEquals("goods:bom:delete,goods:bom:edit",lastRequiredPermissions());
+        db.update("UPDATE goods SET status='禁用' WHERE id=?",c);
+        assertRetired(nested);
+        assertNull(db.queryForObject("SELECT retirement_reason FROM goods_bom_items WHERE id=?",String.class,direct),
+                "Disabling a component must not rewrite an earlier manual deletion");
+        String retiredState=state();long history=count("goods_operation_history"),events=count("business_outbox");
+        route("preview");var retired=batches.preview(new BomBatchMaintenanceRequest(REMOVE,List.of(a,b),null,List.of(c)));
+        assertEquals(0,retired.removed());assertEquals(2,retired.skipped());assertEquals(0,retired.changedTargetCount());
+        route("commit");batches.commit(confirm(retired));
+        assertEquals(retiredState,state());assertEquals(history,count("goods_operation_history"));assertEquals(events,count("business_outbox"));
+        assertTrue(bom.list(sub).isEmpty());
     }
 
-    @Test void disabledComponentCannotBeNewlySelectedOrForgedButAnUnchangedVisibleSourceCanBeCopied(){
+    @Test void activeVisibleSourcesCanBeCopiedButDisabledComponentsCannotBeRevivedOrForged(){
         UUID source=goods("copy-source"),target=goods("copy-target"),other=goods("copy-other"),component=goods("disabled");
         UUID original=edge(source,component,"0.11",1);
-        db.update("UPDATE goods SET status='禁用' WHERE id=?",component);
-        String before=state();
-        assertThrows(ApiException.class,()->bom.create(target,line(component,"0.11")));
-        assertThrows(ApiException.class,()->batches.preview(add(List.of(target),line(component,"0.11"))));
-        assertThrows(ApiException.class,()->paste.paste(new BomPasteRequest(BomPasteRequest.Mode.APPEND,
-                List.of(new BomPasteRequest.Target(target,null)),List.of(line(component,"0.11")))));
-        var invented=line(component,"0.11");invented.setCopiedFromBomItemId(UUID.randomUUID());
-        assertThrows(ApiException.class,()->paste.paste(new BomPasteRequest(BomPasteRequest.Mode.APPEND,
-                List.of(new BomPasteRequest.Target(target,null)),List.of(invented))));
-        assertEquals(before,state());
         var copy=line(component,"0.11");copy.setCopiedFromBomItemId(original);
         paste.paste(new BomPasteRequest(BomPasteRequest.Mode.APPEND,
                 List.of(new BomPasteRequest.Target(target,null)),List.of(copy)));
-        assertEquals(0,new BigDecimal("0.11").compareTo(bom.list(target).getFirst().getQty()));
+        var copied=bom.list(target).getFirst();
+        assertEquals(0,new BigDecimal("0.11").compareTo(copied.getQty()));
         db.update("UPDATE goods_bom_items SET qty=.12 WHERE id=?",original);
+        assertEquals(0,new BigDecimal("0.12").compareTo(bom.list(source).getFirst().getQty()));
+        assertEquals(0,new BigDecimal("0.11").compareTo(bom.list(target).getFirst().getQty()),
+                "A copied active recipe retains its own quantity after the source changes");
+        db.update("UPDATE goods SET status='禁用' WHERE id=?",component);
+        assertRetired(original);assertRetired(copied.getId());
+        String before=state();
+        assertThrows(ApiException.class,()->bom.create(other,line(component,"0.11")));
+        assertThrows(ApiException.class,()->batches.preview(add(List.of(other),line(component,"0.11"))));
         assertThrows(ApiException.class,()->paste.paste(new BomPasteRequest(BomPasteRequest.Mode.APPEND,
-                List.of(new BomPasteRequest.Target(other,null)),List.of(copy))));
+                List.of(new BomPasteRequest.Target(other,null)),List.of(line(component,"0.11")))));
+        var invented=line(component,"0.11");invented.setCopiedFromBomItemId(UUID.randomUUID());
+        assertThrows(ApiException.class,()->paste.paste(new BomPasteRequest(BomPasteRequest.Mode.APPEND,
+                List.of(new BomPasteRequest.Target(other,null)),List.of(invented))));
+        var retiredCopy=line(component,"0.12");retiredCopy.setCopiedFromBomItemId(original);
+        assertThrows(ApiException.class,()->paste.paste(new BomPasteRequest(BomPasteRequest.Mode.APPEND,
+                List.of(new BomPasteRequest.Target(other,null)),List.of(retiredCopy))));
+        assertEquals(before,state());
+        assertTrue(bom.list(source).isEmpty());assertTrue(bom.list(target).isEmpty());
         assertTrue(bom.list(other).isEmpty());
     }
 
-    @Test void overwriteRetainsAnExistingDisabledComponentWithoutCreatingANewEdge(){
-        UUID target=goods("disabled-retain"),component=goods("disabled-retained-component");
-        UUID original=edge(target,component,"7",1);
+    @Test void overwritePreservesActiveIdentityButCannotReviveAnAutomaticallyRetiredComponent(){
+        UUID target=goods("disabled-retain"),component=goods("disabled-retained-component"),active=goods("active-retained-component");
+        UUID original=edge(target,component,"7",2),retained=edge(target,active,"3",1);
         db.update("UPDATE goods SET status='禁用' WHERE id=?",component);
-        var preview=batches.preview(new BomBatchMaintenanceRequest(OVERWRITE,List.of(target),List.of(line(component,"7")),null));
-        assertEquals(0,preview.added());
+        assertRetired(original);assertFalse(deleted(retained));
+        String before=state();long history=count("goods_operation_history"),events=count("business_outbox");
+        assertThrows(ApiException.class,()->batches.preview(new BomBatchMaintenanceRequest(OVERWRITE,List.of(target),
+                List.of(line(active,"3"),line(component,"7")),null)));
+        assertEquals(before,state());assertEquals(history,count("goods_operation_history"));assertEquals(events,count("business_outbox"));
+        var preview=batches.preview(new BomBatchMaintenanceRequest(OVERWRITE,List.of(target),List.of(line(active,"3")),null));
+        assertEquals(0,preview.added());assertEquals(0,preview.updated());assertEquals(0,preview.removed());assertEquals(1,preview.skipped());
         batches.commit(confirm(preview));
-        assertEquals(original,bom.list(target).getFirst().getId());
-        assertFalse(deleted(original));
+        assertEquals(retained,bom.list(target).getFirst().getId());assertEquals(1,bom.list(target).size());
+        assertFalse(deleted(retained));assertRetired(original);assertEquals(before,state());
     }
 
     @Test void overwriteIsSingleTargetPreservesUnchangedIdentityAndReportsActualDifferences(){
@@ -212,6 +232,13 @@ class GoodsBomBatchMaintenanceEndToEndTest {
     private UUID goods(String tag){UUID id=UUID.randomUUID();db.update("INSERT INTO goods(id,code,name,model,code_sequence,unit_id) VALUES(?,?,?,'',(SELECT COALESCE(max(code_sequence),0)+1 FROM goods),?)",id,"BM-"+tag+"-"+id,"批量组装"+tag,unit);return id;}
     private UUID edge(UUID parent,UUID component,String qty,int sort){UUID id=UUID.randomUUID();db.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty,sort_order) VALUES(?,?,?,?,?)",id,parent,component,new BigDecimal(qty),sort);return id;}
     private boolean deleted(UUID id){return Boolean.TRUE.equals(db.queryForObject("SELECT is_deleted FROM goods_bom_items WHERE id=?",Boolean.class,id));}
+    private void assertRetired(UUID id){
+        assertEquals(1,db.queryForObject("""
+                SELECT count(*) FROM goods_bom_items WHERE id=? AND is_deleted
+                  AND deleted_at IS NOT NULL AND learning_released_at IS NOT NULL
+                  AND retirement_reason='COMPONENT_DISABLED'
+                """,Integer.class,id),"The original edge and retirement evidence must remain available");
+    }
     private void route(String suffix){RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest("POST","/api/master/goods/bom/batch-maintenance/"+suffix)));}
     private String state(){return db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(b) ORDER BY id),'[]'::jsonb)::text FROM goods_bom_items b",String.class);}
     private long count(String table){return db.queryForObject("SELECT count(*) FROM "+table,Long.class);}

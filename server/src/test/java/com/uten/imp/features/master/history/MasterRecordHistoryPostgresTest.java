@@ -1178,6 +1178,107 @@ class MasterRecordHistoryPostgresTest {
   }
 
   @Test
+  void bomVersionRestoreKeepsReadEditAndDeleteAuthoritiesSeparate() {
+    UUID parent = goods("permission parent"), component = goods("permission component");
+    UUID edge = UUID.randomUUID();
+    inTx(
+        () -> {
+          provenance();
+          em.createNativeQuery(
+                  "INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty)"
+                      + " VALUES(:id,:parent,:component,1)")
+              .setParameter("id", edge)
+              .setParameter("parent", parent)
+              .setParameter("component", component)
+              .executeUpdate();
+          return null;
+        });
+    var creation = detail("goods", service.list("goods", parent, null, null).entries().getFirst());
+    long creationId = historyNumber(creation.id());
+
+    for (Set<String> permissions :
+        List.of(
+            Set.of("goods:view"),
+            Set.of("goods:view", "goods:edit", "goods:delete"),
+            Set.of("goods:view", "goods:edit", "goods:bom:delete"),
+            Set.of("goods:view", "goods:edit", "goods:bom:edit"))) {
+      login(permissions, false);
+      var denied = service.detail("goods", creationId);
+      assertFalse(denied.canRestoreBefore(), permissions.toString());
+      assertThrows(
+          ApiException.class,
+          () ->
+              inTx(
+                  () -> {
+                    service.restore("goods", creationId, denied.expectedHead(), true);
+                    return null;
+                  }));
+      assertEquals(
+          "false", value("SELECT is_deleted::text FROM goods_bom_items WHERE id=:id", edge));
+    }
+
+    login(Set.of("goods:view", "goods:bom:edit", "goods:bom:delete"), false);
+    var nativeDenied = service.detail("goods", creationId);
+    assertFalse(nativeDenied.canRestoreBefore());
+    assertTrue(nativeDenied.blockedReason().contains("goods:edit"));
+    ApiException nativeError =
+        assertThrows(
+            ApiException.class,
+            () ->
+                inTx(
+                    () -> {
+                      service.restore("goods", creationId, nativeDenied.expectedHead(), true);
+                      return null;
+                    }));
+    assertTrue(nativeError.getMessage().contains("goods:edit"));
+    assertEquals("false", value("SELECT is_deleted::text FROM goods_bom_items WHERE id=:id", edge));
+
+    login(Set.of("goods:view", "goods:edit", "goods:bom:edit", "goods:bom:delete"), false);
+    var deletion = service.detail("goods", creationId);
+    assertTrue(deletion.canRestoreBefore(), deletion.blockedReason());
+    inTx(
+        () -> {
+          service.restore("goods", creationId, deletion.expectedHead(), true);
+          return null;
+        });
+    assertEquals("true", value("SELECT is_deleted::text FROM goods_bom_items WHERE id=:id", edge));
+
+    login(Set.of(), true);
+    var admin = service.detail("goods", creationId);
+    assertTrue(admin.canRestoreAfter(), admin.blockedReason());
+    inTx(
+        () -> {
+          service.restore("goods", creationId, admin.expectedHead(), false);
+          return null;
+        });
+    assertEquals("false", value("SELECT is_deleted::text FROM goods_bom_items WHERE id=:id", edge));
+    inTx(
+        () -> {
+          provenance();
+          em.createNativeQuery("UPDATE goods_bom_items SET qty=2 WHERE id=:id")
+              .setParameter("id", edge)
+              .executeUpdate();
+          return null;
+        });
+    var change = detail("goods", service.list("goods", parent, null, null).entries().getFirst());
+    long changeId = historyNumber(change.id());
+    login(Set.of("goods:view", "goods:edit"), false);
+    assertFalse(service.detail("goods", changeId).canRestoreBefore());
+    login(Set.of("goods:view", "goods:edit", "goods:bom:edit"), false);
+    var editable = service.detail("goods", changeId);
+    assertTrue(editable.canRestoreBefore(), editable.blockedReason());
+    inTx(
+        () -> {
+          service.restore("goods", changeId, editable.expectedHead(), true);
+          return null;
+        });
+    assertEquals(
+        0,
+        decimal("1")
+            .compareTo(decimal(value("SELECT qty::text FROM goods_bom_items WHERE id=:id", edge))));
+  }
+
+  @Test
   void restoringABomRejectsDisabledComponentsAndAChangedGraphWithoutPartialWrites() {
     UUID parent = goods("parent"), component = goods("component"), edge = UUID.randomUUID();
     inTx(

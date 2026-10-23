@@ -2,6 +2,7 @@ package com.uten.imp.migration;
 
 import com.uten.imp.support.MigratedSchemaBaseline;
 import com.uten.imp.testsupport.TestFlyway;
+import org.flywaydb.core.api.exception.FlywayValidateException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -75,6 +76,17 @@ class MasterRecordCaptureForwardMigrationPostgresTest {
         }
     }
 
+    @Test void validatingThe899BoundaryStillRejectsAnAlteredAppliedChecksum() throws Exception {
+        try (var ignored = MigratedSchemaBaseline.cloneConnection(TEMPLATE, "master_record_899_checksum")) {
+            String url = MigratedSchemaBaseline.jdbcUrlFor(TEMPLATE, "master_record_899_checksum");
+            JdbcTemplate db = database(url);
+            migrate(url, "899");
+            assertEquals(1, db.update("UPDATE flyway_schema_history SET checksum=checksum+1 WHERE version='898'"));
+            assertThrows(FlywayValidateException.class, () -> validate(url),
+                    "The targeted upgrade boundary must still validate every already applied migration");
+        }
+    }
+
     private static void requireNewFunction(JdbcTemplate db) {
         String function = db.queryForObject("SELECT pg_get_functiondef('fn_capture_master_record_version()'::regprocedure)", String.class);
         assertNotNull(function);
@@ -101,7 +113,9 @@ class MasterRecordCaptureForwardMigrationPostgresTest {
     }
 
     private static void validate(String url) {
+        assertEquals(899, database(url).queryForObject("SELECT max(version::integer) FROM flyway_schema_history", Integer.class));
+        // This regression stops at V899; later forward migrations deliberately remain pending.
         TestFlyway.configure().dataSource(url, TEMPLATE.getUsername(), TEMPLATE.getPassword())
-                .locations(MIGRATIONS).load().validate();
+                .locations(MIGRATIONS).target("899").load().validate();
     }
 }

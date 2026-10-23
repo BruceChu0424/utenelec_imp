@@ -87,7 +87,7 @@ jobs:
           UTEN_RUN_DB_TESTS: "true"
         run: python3 .github/scripts/backend_test_shards.py plan --output server/target-ci-plan --shards 4 --history .github/test-timings/backend.json
       - name: Preserve exact test plan
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: backend-test-plan
           path: server/target-ci-plan/
@@ -130,7 +130,7 @@ jobs:
         run: python3 .github/scripts/backend_test_shards.py run --plan server/target-ci-plan/plan.json --shard ${{ matrix.shard }} --output server/target-ci-reports
       - name: Preserve test results and timings even after failure
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: backend-test-results-${{ matrix.shard }}
           path: |
@@ -182,7 +182,7 @@ jobs:
         run: python3 .github/scripts/backend_test_shards.py baseline --plan server/target-ci-plan/plan.json --output server/target-ci-reference
       - name: Preserve unfiltered reference even after failure
         if: always() && env.RUN_REFERENCE == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: backend-unfiltered-reference
           path: |
@@ -254,7 +254,7 @@ jobs:
           test "$REFERENCE_RESULT" = success
       - name: Preserve complete-suite reconciliation and future scheduling hints
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: backend-test-summary
           path: |

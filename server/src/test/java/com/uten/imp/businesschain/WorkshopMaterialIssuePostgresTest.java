@@ -118,6 +118,7 @@ class WorkshopMaterialIssuePostgresTest {
     @Autowired WorkshopMaterialRequisitionService requisitions;
     @Autowired com.uten.imp.features.warehouse.taskcenter.WarehouseOutboundTaskCenterQueryService outboundTasks;
     @Autowired com.uten.imp.features.warehouse.taskcenter.WarehouseInboundTaskCenterQueryService inboundTasks;
+    @Autowired com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes;
     @Autowired com.uten.imp.features.warehouse.materialbin.WorkshopMaterialTaskStatusController taskStatus;
     @Autowired WorkshopMaterialOtherIssueService otherIssues;
     @Autowired WorkshopMaterialPeriodService periods;
@@ -273,19 +274,21 @@ class WorkshopMaterialIssuePostgresTest {
                     partial.rowVersion(), selected.lines(), null, key("selected-repeat-" + kind))));
             var filter = new com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Filter(
                     kind.equals("ISSUE") ? "DRAW" : "RETURN", null, request.requestNo(), null, null, null,
-                    null, 1, 20);
+                    shop.leafA(), 1, 20);
             var pending = kind.equals("ISSUE") ? outboundTasks.list(filter) : inboundTasks.list(filter);
             assertEquals(1, pending.total());
             assertEquals(request.lines().getLast().id(), pending.items().getFirst().line().itemId());
-            var badges = positions.badgeCounts(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+            var badges = positions.badgeCounts(warehouseScopes.current(shop.leafA()));
             assertEquals(1, kind.equals("ISSUE") ? badges.pendingIssue() : badges.pendingReturn());
             RequisitionView finished = requisitions.fulfil(request.id(), new FulfilRequest(partial.rowVersion(),
                     List.of(new FulfilLine(request.lines().getLast().id(), shop.leafA(), quantity)), null,
                     key("selected-last-" + kind)));
             assertEquals("DONE", finished.status());
             assertEquals(0, (kind.equals("ISSUE") ? outboundTasks.list(filter) : inboundTasks.list(filter)).total());
+            var finishedBadges = positions.badgeCounts(warehouseScopes.current(shop.leafA()));
+            assertEquals(0, kind.equals("ISSUE") ? finishedBadges.pendingIssue() : finishedBadges.pendingReturn());
             var historyFilter = new com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Filter(
-                    filter.source(), null, request.requestNo(), null, null, null, null, 1, 20, null, null,
+                    filter.source(), null, request.requestNo(), null, null, null, shop.leafA(), 1, 20, null, null,
                     com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.TaskView.HISTORY);
             assertEquals(2, (kind.equals("ISSUE") ? outboundTasks.list(historyFilter) : inboundTasks.list(historyFilter)).total());
         }

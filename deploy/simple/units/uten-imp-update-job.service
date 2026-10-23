@@ -1,6 +1,6 @@
 [Unit]
 Description=Explicitly authorized Uten IMP update job
-After=network-online.target postgresql@16-main.service
+After=network-online.target postgresql@16-main.service systemd-tmpfiles-setup.service
 Wants=network-online.target
 OnFailure=uten-alert@%n.service
 

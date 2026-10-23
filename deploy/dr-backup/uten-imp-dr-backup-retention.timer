@@ -9,4 +9,3 @@ Unit=uten-imp-dr-backup-retention.service
 
 [Install]
 WantedBy=timers.target
-

@@ -301,10 +301,23 @@ public class GoodsOperationHistoryService {
     }
     private static ApiException busy(){return conflict("货品资料正在由其他操作更新，本次未作任何修改；请稍后刷新后重试");}
 
+    /** Pure native authority check shared by history availability and its locked writer. */
+    public String versionRestorePermissionReason(List<com.uten.imp.features.master.history.MasterVersionRow> versions) {
+        return permissionReason(versionRestoreOperation(),versionRestoreRows(versions));
+    }
+
+    private static List<Row> versionRestoreRows(List<com.uten.imp.features.master.history.MasterVersionRow> versions) {
+        return versions.stream().map(v->new Row(v.table(),v.id(),v.target(),v.current(),v.current())).toList();
+    }
+
+    private static Operation versionRestoreOperation() {
+        return new Operation(UUID.randomUUID(),"GOODS_EDIT","恢复资料版本",OffsetDateTime.now(),"APPLIED",0,false,null,Set.of());
+    }
+
     /** Called by the immutable object-version history after locking its scope. */
     public void validateVersionRestore(List<com.uten.imp.features.master.history.MasterVersionRow> versions) {
         AuthUser user=requireHistoryPrincipal(true);
-        List<Row> rows=versions.stream().map(v->new Row(v.table(),v.id(),v.target(),v.current(),v.current())).toList();
+        List<Row> rows=versionRestoreRows(versions);
         Set<String> needed=new LinkedHashSet<>();
         for(Row row:rows) {
             String prefix=switch(row.table()) {case "goods"->"goods";case "goods_bom_items"->"goods:bom";case "material_categories"->"material_category";default->throw conflict("不支持的货品版本资料");};
@@ -318,7 +331,9 @@ public class GoodsOperationHistoryService {
                 throw conflict("此版本涉及分类层级或编号前缀，请通过分类维护流程处理");
         }
         if(!user.isSuperAdmin()&&!user.getPermissions().containsAll(needed))throw conflict("当前没有恢复此版本所需的编辑或删除权限");
-        Operation operation=new Operation(UUID.randomUUID(),"GOODS_EDIT","恢复资料版本",OffsetDateTime.now(),"APPLIED",0,false,null,Set.of());
+        String permission=versionRestorePermissionReason(versions);
+        if(permission!=null)throw conflict(permission);
+        Operation operation=versionRestoreOperation();
         String blocked=reason(operation,rows,true,null,facts(rows),true);
         if(blocked!=null)throw conflict(blocked);
         requireDeletionReferences(rows,true);

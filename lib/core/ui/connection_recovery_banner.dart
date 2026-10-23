@@ -67,14 +67,24 @@ class ConnectionRecoveryBanner extends ConsumerWidget {
           progress:
               state.phase == ConnectionRecoveryPhase.reconnecting ||
               state.phase == ConnectionRecoveryPhase.disconnected,
-          content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(message, style: theme.textTheme.bodyLarge?.copyWith(
-                color: foreground, fontWeight: FontWeight.w600)),
-            if (state.phase == ConnectionRecoveryPhase.disconnected)
-              TextButton(key: const ValueKey('connection-disaster-recovery'),
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                message,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: foreground,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (state.phase == ConnectionRecoveryPhase.disconnected)
+                TextButton(
+                  key: const ValueKey('connection-disaster-recovery'),
                   onPressed: () => context.push(RouteName.disasterRecovery),
-                  child: Text(recoveryText(context, '运行与灾备'))),
-          ]),
+                  child: Text(recoveryText(context, '运行与灾备')),
+                ),
+            ],
+          ),
           trailing: state.phase == ConnectionRecoveryPhase.disconnected
               ? OutlinedButton(
                   key: const ValueKey('connection-recovery-retry'),

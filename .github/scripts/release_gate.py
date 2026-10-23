@@ -14,6 +14,8 @@ import urllib.request
 WORKFLOWS = ("quality.yml", "codeql.yml", "osv-scanner.yml", "material-forecast.yml")
 PAGE_SIZE = 100
 MAX_RUNS = 1000
+MAX_JOBS = 1000
+MAX_ANNOTATIONS = 1000
 
 
 class GateError(Exception):
@@ -38,6 +40,12 @@ class GitHubApi:
         self.opener = urllib.request.build_opener(NoRedirect)
 
     def get(self, path):
+        return self._get(path, dict)
+
+    def get_array(self, path):
+        return self._get(path, list)
+
+    def _get(self, path, expected_type):
         request = urllib.request.Request(self.base + path, headers={
             "Authorization": "Bearer " + self.token,
             "Accept": "application/vnd.github+json",
@@ -52,8 +60,8 @@ class GitHubApi:
                 if len(body) > 10_000_000:
                     raise GateError("GitHub API response exceeded the release-gate limit.")
                 result = json.loads(body)
-                if not isinstance(result, dict):
-                    raise GateError("GitHub API returned an invalid object.")
+                if not isinstance(result, expected_type):
+                    raise GateError("GitHub API returned an invalid response shape.")
                 return result
         except urllib.error.HTTPError as failure:
             # Error bodies and request headers can contain sensitive details; never log them.
@@ -89,6 +97,76 @@ def validate_run(run, workflow_id, path, sha, repository):
     return (positive_integer(run.get("run_number"), "run number"),
             positive_integer(run.get("id"), "run ID"),
             positive_integer(run.get("run_attempt"), "run attempt"))
+
+
+def require_clean_job_annotations(api, repository, current, path, sha, pending=False):
+    """A successful workflow can still carry warning/error annotations."""
+    run_id = current["id"]
+    attempt = current["run_attempt"]
+    suite_id = positive_integer(current.get("check_suite_id"), "check suite ID")
+    prefix = f"/repos/{repository}"
+    jobs = []
+    total = None
+    for page in range(1, MAX_JOBS // PAGE_SIZE + 1):
+        payload = api.get(f"{prefix}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page={PAGE_SIZE}&page={page}")
+        count, batch = payload.get("total_count"), payload.get("jobs")
+        if (type(count) is not int or count < 0 or count > MAX_JOBS
+                or not isinstance(batch, list) or len(batch) > PAGE_SIZE
+                or (total is not None and total != count)):
+            raise GateError(f"Invalid or changing job inventory for {path}.")
+        total = count
+        jobs.extend(batch)
+        if len(jobs) >= total:
+            break
+        if not batch:
+            raise GateError(f"Incomplete job inventory for {path}.")
+    if len(jobs) != total or (not pending and not jobs):
+        raise GateError(f"Incomplete job inventory for {path}.")
+    job_ids = set()
+    for job in jobs:
+        if not isinstance(job, dict):
+            raise GateError(f"Invalid job evidence for {path}.")
+        job_id = positive_integer(job.get("id"), "job ID")
+        if (job_id in job_ids or job.get("run_id") != run_id
+                or job.get("run_attempt") != attempt or job.get("head_sha") != sha):
+            raise GateError(f"Job identity/attempt mismatch for {path}.")
+        job_ids.add(job_id)
+        if (job.get("conclusion") not in ((None, "success") if pending else ("success",))
+                or (not pending and job.get("status") != "completed")):
+            raise GateError(f"A job has not succeeded for {path}.")
+        check_url = job.get("check_run_url")
+        check_path = urllib.parse.urlsplit(check_url).path if isinstance(check_url, str) else ""
+        match = re.fullmatch(re.escape(prefix) + r"/check-runs/([1-9][0-9]*)", check_path)
+        if not match:
+            raise GateError(f"Missing or invalid check-run identity for {path}.")
+        check_id = int(match.group(1))
+        # Only use the validated repository-relative route, never an API-provided origin.
+        check_route = f"{prefix}/check-runs/{check_id}"
+        check = api.get(check_route)
+        suite = check.get("check_suite")
+        output = check.get("output")
+        if (check.get("id") != check_id or check.get("head_sha") != sha
+                or not isinstance(suite, dict) or suite.get("id") != suite_id
+                or not isinstance(output, dict)):
+            raise GateError(f"Check-run SHA/suite mismatch for {path}.")
+        count = output.get("annotations_count")
+        if type(count) is not int or count < 0 or count > MAX_ANNOTATIONS:
+            raise GateError(f"Invalid annotation count for {path}.")
+        annotations = []
+        for page in range(1, max(1, (count + PAGE_SIZE - 1) // PAGE_SIZE) + 1):
+            batch = api.get_array(f"{check_route}/annotations?per_page={PAGE_SIZE}&page={page}")
+            if not isinstance(batch, list) or len(batch) > PAGE_SIZE:
+                raise GateError(f"Invalid annotation listing for {path}.")
+            annotations.extend(batch)
+        if len(annotations) != count:
+            raise GateError(f"Incomplete annotation listing for {path}.")
+        for annotation in annotations:
+            level = annotation.get("annotation_level") if isinstance(annotation, dict) else None
+            if level not in {"notice", "warning", "failure"}:
+                raise GateError(f"Invalid annotation evidence for {path}.")
+            if level != "notice":
+                # Annotation messages may contain source data or credentials; report only identity/level.
+                raise GateError(f"Check run {check_id} for {path} contains a {level} annotation; fix its root cause and rerun CI.")
 
 
 def require_release_gates(api, repository, sha, allow_running=False):
@@ -138,13 +216,7 @@ def require_release_gates(api, repository, sha, allow_running=False):
             raise GateError(f"Latest run/attempt evidence changed inconsistently for {path}.")
         pending = current.get("status") in {"queued", "in_progress", "waiting", "pending", "requested"}
         if allow_running and pending and current.get("conclusion") is None:
-            jobs = api.get(f"{prefix}/runs/{current_key[1]}/attempts/{current_key[2]}/jobs?per_page=100")
-            batch = jobs.get("jobs")
-            count = jobs.get("total_count")
-            if type(count) is not int or not isinstance(batch, list) or count != len(batch) or count > 100:
-                raise GateError(f"Incomplete job evidence for pending workflow {path}.")
-            if any(not isinstance(job, dict) or job.get("conclusion") not in (None, "success") for job in batch):
-                raise GateError(f"A job has already failed or did not succeed in pending workflow {path}.")
+            require_clean_job_annotations(api, repository, current, path, sha, pending=True)
             evidence.append(f"{filename}: run {current_key[1]} attempt {current_key[2]} is still running for {sha}; explicitly authorized manual release, CI not yet passed")
             continue
         if current.get("status") != "completed" or current.get("conclusion") != "success":
@@ -156,7 +228,12 @@ def require_release_gates(api, repository, sha, allow_running=False):
             conclusion = current.get("conclusion")
             conclusion = conclusion if isinstance(conclusion, str) and conclusion in known else "not-success"
             raise GateError(f"Latest run {current_key[1]} attempt {current_key[2]} for {path} is {status}/{conclusion}; wait for or fix it, then rerun release manually.")
-        evidence.append(f"{filename}: run {current_key[1]} attempt {current_key[2]} completed successfully for {sha}")
+        require_clean_job_annotations(api, repository, current, path, sha)
+        refreshed = api.get(f"{prefix}/runs/{current_key[1]}")
+        if (validate_run(refreshed, workflow_id, path, sha, repository) != current_key
+                or refreshed.get("status") != "completed" or refreshed.get("conclusion") != "success"):
+            raise GateError(f"Run attempt changed during annotation verification for {path}; rerun release.")
+        evidence.append(f"{filename}: run {current_key[1]} attempt {current_key[2]} completed successfully with zero warning/failure annotations for {sha}")
     return evidence
 
 

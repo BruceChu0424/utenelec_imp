@@ -6,17 +6,23 @@ umask 077
 SRC=${1:?Usage: sudo bash install-server-operations.sh /reviewed/deploy/simple}
 [ "$(id -u)" -eq 0 ] || { echo 'Root is required' >&2; exit 1; }
 for f in host_operations.py operations_storage.py update_schedule.py uten-imp-updater.sh \
-  units/uten-imp-operations.service units/uten-imp-update-job.service operations.example.json; do
+  units/uten-imp-operations.service units/uten-imp-update-job.service \
+  host/uten-imp-updater.tmpfiles.conf operations.example.json; do
   [ -f "$SRC/$f" ] && [ ! -L "$SRC/$f" ] || { echo "Missing reviewed source: $f" >&2; exit 1; }
 done
 PAIRED_SOURCE="$SRC/../postgres/backup/paired_internal_backup.py"
 MARKET_BACKUP_SOURCE="$SRC/../postgres/backup/market_state_backup.py"
+CLIENT_BACKUP_SOURCE="$SRC/../postgres/backup/client_release_state_backup.py"
 [ -f "$PAIRED_SOURCE" ] && [ ! -L "$PAIRED_SOURCE" ] || {
   echo 'Missing reviewed paired backup helper from the same source checkout' >&2; exit 1
 }
 [ -f "$MARKET_BACKUP_SOURCE" ] && [ ! -L "$MARKET_BACKUP_SOURCE" ] || {
   echo 'Missing reviewed market-state backup helper from the same source checkout' >&2; exit 1
 }
+[ -f "$CLIENT_BACKUP_SOURCE" ] && [ ! -L "$CLIENT_BACKUP_SOURCE" ] || {
+  echo 'Missing reviewed client-release backup helper from the same source checkout' >&2; exit 1
+}
+command -v systemd-tmpfiles >/dev/null
 getent passwd uten-imp >/dev/null
 getent group uten-imp >/dev/null
 safe_lock_file() {
@@ -111,6 +117,8 @@ for f in /usr/local/sbin/uten-imp-updater /etc/systemd/system/uten-imp-updater.s
   /usr/local/lib/uten-imp/update_schedule.py \
   /usr/local/lib/uten-imp/paired_internal_backup.py \
   /usr/local/lib/uten-imp/market_state_backup.py \
+  /usr/local/lib/uten-imp/client_release_state_backup.py \
+  /etc/tmpfiles.d/uten-imp-updater.conf \
   /etc/systemd/system/uten-imp-updater.timer /etc/systemd/system/uten-imp-operations.service \
   /etc/systemd/system/uten-imp-update-job.service; do
   [ ! -f "$f" ] || cp -a -- "$f" "$backup_dir/"
@@ -161,11 +169,18 @@ for helper in host_operations.py operations_storage.py update_schedule.py; do
   atomic_install "$SRC/$helper" "/usr/local/lib/uten-imp/$helper" 0644
 done
 atomic_install "$MARKET_BACKUP_SOURCE" /usr/local/lib/uten-imp/market_state_backup.py 0644
+atomic_install "$CLIENT_BACKUP_SOURCE" /usr/local/lib/uten-imp/client_release_state_backup.py 0644
 atomic_install "$PAIRED_SOURCE" /usr/local/lib/uten-imp/paired_internal_backup.py 0644
 atomic_install "$SRC/uten-imp-updater.sh" /usr/local/sbin/uten-imp-updater 0755
 for unit in uten-imp-operations.service uten-imp-update-job.service; do
   atomic_install "$SRC/units/$unit" "/etc/systemd/system/$unit" 0644
 done
+# The shared lock directory must exist before either unit's mount namespace is
+# assembled. ExecStartPre runs too late after a reboot clears /run, and assigning
+# it to one unit's RuntimeDirectory would remove it while the other still uses it.
+install -d -o root -g root -m 0755 /etc/tmpfiles.d
+atomic_install "$SRC/host/uten-imp-updater.tmpfiles.conf" /etc/tmpfiles.d/uten-imp-updater.conf 0644
+systemd-tmpfiles --create /etc/tmpfiles.d/uten-imp-updater.conf
 systemctl daemon-reload
 systemctl enable uten-imp-operations.service
 systemctl restart uten-imp-operations.service

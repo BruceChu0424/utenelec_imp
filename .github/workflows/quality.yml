@@ -284,6 +284,8 @@ jobs:
         run: dart format --output=none --set-exit-if-changed lib test
       - run: flutter analyze --no-pub
       - run: flutter test --no-pub
+      - name: Verify browser update and stale-bundle behavior before release
+        run: node --test web/update_check.test.cjs
       - name: Verify browser draft reset, receipts, and exact material quantities
         run: >-
           flutter test --no-pub --platform chrome
@@ -315,6 +317,53 @@ jobs:
           ))
           print(f"Verified actual Flutter metadata and {source.release_version} release stamping")
           PY
+
+  native-windows:
+    name: Flutter / Windows native update contracts
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: 3.44.2
+          channel: stable
+          cache: true
+      - name: Verify package identity and real updater success, rejection, and rollback
+        shell: pwsh
+        run: |
+          python -m unittest discover -s deploy/client -p 'test*.py' -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File deploy/client/test_windows_updater.ps1 -Python (Get-Command python).Source
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - run: flutter pub get --enforce-lockfile
+      - name: Compile Windows application and native update channel
+        run: flutter build windows --release --no-pub
+
+  native-android:
+    name: Flutter / Android native update compile
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: 3.44.2
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      # Compile Kotlin, the FileProvider manifest, and Dart with the local debug
+      # identity. This job never receives release signing material or publishes.
+      - name: Compile Android application and native package installer bridge
+        run: flutter build apk --debug --no-pub --target-platform android-arm64
 
   website:
     name: Website / Node 22
@@ -356,6 +405,15 @@ jobs:
           python3 -m unittest discover -s deploy/monitoring -p "test*.py" -v
           python3 -m unittest discover -s deploy/aliyun-oidc -p "test*.py" -v
           python3 -m unittest discover -s deploy/remote-access -p "test*.py" -v
+          python3 -m unittest discover -s deploy/client -p "test*.py" -v
+      - name: Verify complete disaster recovery and backup contracts in isolated Linux
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build -t uten-dr-contract:ci -f deploy/disaster-recovery/tests/Dockerfile deploy/disaster-recovery
+          docker run --rm --network none --cap-add SYS_ADMIN \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace,readonly" \
+            uten-dr-contract:ci
       - name: Verify remote TLS and compromised-cloud isolation in disposable containers
         shell: bash
         run: |
@@ -368,6 +426,9 @@ jobs:
             --sysctl net.ipv4.ip_forward=1 \
             --mount "type=bind,source=$GITHUB_WORKSPACE/deploy/remote-access,target=/src,readonly" \
             uten-remote-contract:ci python3 tests/network_isolation_linux.py
+          docker run --rm --network none \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace,readonly" \
+            uten-remote-contract:ci python3 /workspace/deploy/client/nginx_client_updates_integration.py
       - name: Test OCR transport and image limits without downloading models
         shell: bash
         run: |

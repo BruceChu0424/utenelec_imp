@@ -97,6 +97,7 @@ def render(source, directory, remote):
         "__OSS_PUBLIC_HOST__": "objects.example.test",
         "@@COMPANY_WIREGUARD_IPV4@@": "127.0.0.1", "@@CLOUD_WIREGUARD_IPV4@@": "127.0.0.1",
         "@@PUBLIC_DOMAIN@@": "erp.example.test", "@@REMOTE_BACKEND_PORT@@": "18082",
+        "@@STREAM_MODULE_DIRECTIVE@@": "load_module /usr/lib/nginx/modules/ngx_stream_module.so;",
         "/etc/ssl/certs/uten-imp-lan.crt": str(directory / "fixture.crt"),
         "/etc/ssl/private/uten-imp-lan.key": str(directory / "fixture.key"),
         "/etc/uten-remote/tls": str(directory / "tls"),
@@ -192,6 +193,7 @@ def main():
                     process.wait(timeout=5)
     finally:
         backend.shutdown()
+        backend.server_close()
     print(json.dumps({"templates": outcomes, "upload_over_2m": True, "oversize_rejected": True,
                       "ordinary_json_stays_2m": True, "authorization_forwarded": True,
                       "withdrawal_not_cached": True, "security_headers_preserved": True}))

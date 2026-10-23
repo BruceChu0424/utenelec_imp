@@ -1,6 +1,6 @@
 [Unit]
 Description=Authorized local Uten IMP server operations bridge
-After=local-fs.target
+After=local-fs.target systemd-tmpfiles-setup.service
 
 [Service]
 Type=simple

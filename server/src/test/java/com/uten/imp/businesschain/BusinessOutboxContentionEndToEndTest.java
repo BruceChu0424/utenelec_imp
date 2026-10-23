@@ -85,7 +85,7 @@ class BusinessOutboxContentionEndToEndTest {
     @Autowired JdbcTemplate db;
     @Autowired PlatformTransactionManager transactionManager;
     @Autowired BusinessOutboxProcessor processor;
-    @Autowired BusinessOutboxFailureRecorder recorder;
+    @MockitoSpyBean BusinessOutboxFailureRecorder recorder;
     @Autowired BusinessOutboxScheduler applicationScheduler;
     @Autowired BusinessOutboxPublisher publisher;
     @Autowired ProcurementInspectionService inspections;
@@ -135,6 +135,15 @@ class BusinessOutboxContentionEndToEndTest {
 
     @Test
     void anActualCommittedSiblingInspectionInvalidatesThePreReadThenProjectsExactlyOnce() throws Exception {
+        committedSiblingInspectionInvalidatesPreRead(false);
+    }
+
+    @Test
+    void aSecondWorkerCanFinishAfterSourceChangeRollbackBeforeFailureRecording() throws Exception {
+        committedSiblingInspectionInvalidatesPreRead(true);
+    }
+
+    private void committedSiblingInspectionInvalidatesPreRead(boolean anotherWorkerFinishes) throws Exception {
         var scenario = new WarehouseIqcMultiLineFixture(beans,db).prepare(2,2,"outbox-iqc-"+UUID.randomUUID().toString().substring(0,8));
         var fixture = new FullChainEndToEndTest(); beans.autowireBean(fixture);
         UUID recipient = fixture.createUserWithPerms(scenario.world(),"outbox-return-"+UUID.randomUUID().toString().substring(0,8),
@@ -150,17 +159,44 @@ class BusinessOutboxContentionEndToEndTest {
         postponeOthers(event);
         var discovered = new CountDownLatch(1); var changed = new CountDownLatch(1);
         var pauseOnce = new AtomicBoolean(true);
+        var failedTransaction = new java.util.concurrent.atomic.AtomicReference<Long>();
+        var competingTransaction = new java.util.concurrent.atomic.AtomicReference<Long>();
         ProcurementMutationFootprint targetSpy = org.springframework.test.util.AopTestUtils.getUltimateTargetObject(footprints);
         doAnswer(invocation -> {
             Object plan = invocation.callRealMethod();
             Collection<ProcurementMutationFootprint.ReceiptRef> refs = invocation.getArgument(0);
             if (Thread.currentThread().getName().equals("business-outbox-dispatch")
                     && refs.stream().anyMatch(ref -> ref.id().equals(failed.id())) && pauseOnce.compareAndSet(true,false)) {
+                failedTransaction.set(db.queryForObject("SELECT txid_current()",Long.class));
                 discovered.countDown();
                 if (!changed.await(15,TimeUnit.SECONDS)) { throw new AssertionError("The real sibling command must commit after discovery"); }
             }
+            if (Thread.currentThread().getName().equals("main")
+                    && refs.stream().anyMatch(ref -> ref.id().equals(failed.id()))) {
+                competingTransaction.set(db.queryForObject("SELECT txid_current()",Long.class));
+            }
             return plan;
         }).when(targetSpy).receipts(anyCollection());
+        var recordingStarted = new CountDownLatch(1);
+        var recordingReleased = new CountDownLatch(1);
+        var recordingFinished = new CountDownLatch(1);
+        var recordingTransaction = new java.util.concurrent.atomic.AtomicReference<Long>();
+        if (anotherWorkerFinishes) {
+            BusinessOutboxFailureRecorder recorderTarget = org.springframework.test.util.AopTestUtils.getUltimateTargetObject(recorder);
+            doAnswer(invocation -> {
+                if (event.equals(invocation.getArgument(0))) {
+                    recordingTransaction.set(db.queryForObject("SELECT txid_current()", Long.class));
+                    recordingStarted.countDown();
+                    assertThat(recordingReleased.await(15, TimeUnit.SECONDS)).isTrue();
+                    try { return invocation.callRealMethod(); }
+                    finally { recordingFinished.countDown(); }
+                }
+                return invocation.callRealMethod();
+            }).when(recorderTarget).record(org.mockito.ArgumentMatchers.eq(event), org.mockito.ArgumentMatchers.any());
+        }
+        var schedulerLogger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(BusinessOutboxScheduler.class);
+        var schedulerLogs = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        schedulerLogs.start(); schedulerLogger.addAppender(schedulerLogs);
         var meters = new SimpleMeterRegistry();
         try (var worker = worker(meters)) {
             worker.drain();
@@ -170,10 +206,31 @@ class BusinessOutboxContentionEndToEndTest {
                 inspections.decideBatch("PURCHASE",sibling.id(),decision(sibling.inspectionId(),"1.25","0"));
                 postponeOthers(event);
             } finally { changed.countDown(); }
-            await(() -> count(meters,"DEFERRED","SOURCE_CHANGED")==1);
-            assertDeferred(event,"SOURCE_CHANGED","expected=");
-            assertThat(db.queryForObject("SELECT count(*) FROM procurement_iqc_rejection_cases WHERE inspection_item_id=?",Long.class,failed.inspectionId())).isZero();
-            eligible(event); worker.drain(); awaitDelivered(event);
+            if (anotherWorkerFinishes) {
+                try {
+                    assertThat(recordingStarted.await(10, TimeUnit.SECONDS)).isTrue();
+                    assertThat(db.queryForObject("SELECT status FROM business_outbox WHERE id=?", Integer.class,event)).isZero();
+                    assertThat(db.queryForObject("SELECT count(*) FROM procurement_iqc_rejection_cases WHERE inspection_item_id=?",Long.class,failed.inspectionId())).isZero();
+                    assertThat(processor.processNext()).isTrue();
+                    assertThat(competingTransaction.get()).isNotNull().isNotEqualTo(recordingTransaction.get()).isNotEqualTo(failedTransaction.get());
+                    assertThat(recordingTransaction.get()).isNotEqualTo(failedTransaction.get());
+                    assertThat(db.queryForObject("SELECT status FROM business_outbox WHERE id=?",Integer.class,event)).isEqualTo(1);
+                    assertThat(db.queryForObject("SELECT processed_at FROM business_outbox WHERE id=?",java.time.OffsetDateTime.class,event)).isNotNull();
+                } finally { recordingReleased.countDown(); }
+                assertThat(recordingFinished.await(10,TimeUnit.SECONDS)).isTrue();
+                awaitQuiescent(worker);
+                assertThat(count(meters,"ALREADY_DELIVERED","SOURCE_CHANGED")).isEqualTo(1);
+                assertThat(count(meters,"NOT_RECORDED","SOURCE_CHANGED")).isZero();
+                assertThat(count(meters,"DEFERRED","SOURCE_CHANGED")).isZero();
+                assertThat(schedulerLogs.list).noneSatisfy(log -> assertThat(log.getLevel().isGreaterOrEqual(ch.qos.logback.classic.Level.WARN)).isTrue());
+                assertThat(db.queryForObject("SELECT attempts FROM business_outbox WHERE id=?",Integer.class,event)).isZero();
+                assertThat(db.queryForObject("SELECT last_error FROM business_outbox WHERE id=?",String.class,event)).isNull();
+            } else {
+                await(() -> count(meters,"DEFERRED","SOURCE_CHANGED")==1);
+                assertDeferred(event,"SOURCE_CHANGED","expected=");
+                assertThat(db.queryForObject("SELECT count(*) FROM procurement_iqc_rejection_cases WHERE inspection_item_id=?",Long.class,failed.inspectionId())).isZero();
+                eligible(event); worker.drain(); awaitDelivered(event);
+            }
             UUID rejection = db.queryForObject("SELECT id FROM procurement_iqc_rejection_cases WHERE inspection_item_id=?",UUID.class,failed.inspectionId());
             await(() -> db.queryForObject("SELECT count(*) FROM business_outbox WHERE aggregate_id=? AND event_type='PROCUREMENT_IQC_REJECTION_OPENED' AND status=1",Long.class,rejection)==1L);
             assertThat(db.queryForObject("SELECT count(*) FROM procurement_iqc_rejection_events WHERE source_inspection_event_id=? AND event_type='FAIL_PROJECTED'",Long.class,qualityEvent)).isEqualTo(1);
@@ -181,7 +238,10 @@ class BusinessOutboxContentionEndToEndTest {
             worker.drain(); awaitQuiescent(worker);
             assertThat(db.queryForObject("SELECT row_version FROM procurement_iqc_rejection_cases WHERE id=?",Long.class,rejection)).isEqualTo(1);
             assertThat(db.queryForObject("SELECT count(*) FROM notices WHERE aggregate_kind='IQC_REJECTION_CASE' AND aggregate_id=? AND audience_user_id=? AND source_event='PROCUREMENT_IQC_REJECTION_OPENED'",Long.class,rejection,recipient)).isEqualTo(1);
-        } finally { meters.close(); }
+        } finally {
+            recordingReleased.countDown();
+            schedulerLogger.detachAppender(schedulerLogs); schedulerLogs.stop(); meters.close();
+        }
     }
 
     @Test

@@ -61,7 +61,7 @@ function Stop-OwnedClient([string]$Directory) {
     }
 }
 
-function Run-Case([string]$Name, [bool]$Crash, [bool]$AddTraversal = $false, [bool]$TamperHash = $false) {
+function Run-Case([string]$Name, [bool]$Crash, [bool]$AddTraversal = $false, [bool]$TamperHash = $false, [bool]$HoldImageReader = $false) {
     $install = Join-Path $testRoot "$Name\installed"
     $bundle = Join-Path $testRoot "$Name\bundle"
     $job = Join-Path $jobRoot $Name
@@ -100,15 +100,29 @@ function Run-Case([string]$Name, [bool]$Crash, [bool]$AddTraversal = $false, [bo
     # A restarted client inherits the helper's standard handles. Reading a
     # redirected pipe to EOF can hang after the helper exits while that client
     # correctly remains alive; durable result JSON carries the failure details.
+    $caseLogPath = Join-Path $stagingRoot 'last-update.log'
+    $caseLogLength = if ([IO.File]::Exists($caseLogPath)) { [IO.File]::ReadAllText($caseLogPath).Length } else { 0 }
     $helper = [Diagnostics.Process]::Start($start)
     $ownedProcesses.Add($helper)
+    $imageReader = $null
     try {
         if (-not $ready.WaitOne(15000)) { throw 'Updater did not become ready within 15 seconds.' }
         if ([IO.File]::ReadAllText((Join-Path $install 'data\app.so')) -ne 'fixture-1') {
             throw 'Updater changed program files while its parent was alive.'
         }
+        if ($HoldImageReader) {
+            # Keep a real read handle after parent exit to reproduce scanners or
+            # other image readers delaying Windows executable replacement.
+            $imageReader = [IO.File]::Open((Join-Path $install 'uten_imp.exe'),
+                [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        }
         $parent.Kill()
         $parent.WaitForExit(5000) | Out-Null
+        if ($null -ne $imageReader) {
+            Start-Sleep -Milliseconds 2000
+            $imageReader.Dispose()
+            $imageReader = $null
+        }
         if (-not $helper.WaitForExit(45000)) { throw 'Updater did not finish.' }
         $result = Get-Content -LiteralPath (Join-Path $stagingRoot 'last-update-result.json') -Raw | ConvertFrom-Json
         $shouldFail = $Crash -or $AddTraversal -or $TamperHash
@@ -116,6 +130,9 @@ function Run-Case([string]$Name, [bool]$Crash, [bool]$AddTraversal = $false, [bo
         $expectedBuild = if ($shouldFail) { 1 } else { 2 }
         if ($result.status -ne $expectedStatus) {
             throw "Unexpected updater result: $($result | ConvertTo-Json -Compress)."
+        }
+        if ($HoldImageReader -and -not [IO.File]::ReadAllText($caseLogPath).Substring($caseLogLength).Contains('Waiting for an exited client image file lock:')) {
+            throw 'The delayed image-reader fixture did not exercise the sharing-violation recovery.'
         }
         if ($shouldFail -and -not $result.rollbackComplete) { throw 'The old version did not recover completely.' }
         $actualBuild = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $install 'uten_imp.exe')).FilePrivatePart
@@ -129,6 +146,7 @@ function Run-Case([string]$Name, [bool]$Crash, [bool]$AddTraversal = $false, [bo
         }
         Write-Output "PASS $Name (build $expectedBuild, settings preserved, replacement waited for parent exit)"
     } finally {
+        if ($null -ne $imageReader) { $imageReader.Dispose() }
         Stop-OwnedClient $install
         $ready.Dispose()
     }
@@ -136,6 +154,7 @@ function Run-Case([string]$Name, [bool]$Crash, [bool]$AddTraversal = $false, [bo
 
 try {
     Run-Case 'automatic-replacement' $false
+    Run-Case 'exited-image-reader-release' $false $false $false $true
     Run-Case 'startup-failure-rollback' $true
     Run-Case 'zip-traversal-rejected' $false $true
     Run-Case 'package-hash-rejected' $false $false $true

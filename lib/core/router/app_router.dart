@@ -464,8 +464,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
     },
     routes: [
-      GoRoute(path: RouteName.disasterRecovery,
-          builder: (_, _) => const DisasterRecoveryPage()),
+      GoRoute(
+        path: RouteName.disasterRecovery,
+        builder: (_, _) => const DisasterRecoveryPage(),
+      ),
       DraftAwareGoRoute(
         path: RouteName.login,
         name: 'login',

@@ -806,6 +806,7 @@ public class MasterRecordHistoryService {
     String denied = restoreAccess(user, domain, facts);
     if (denied != null) return denied;
     boolean changed = false;
+    List<MasterVersionRow> nativeRows = new ArrayList<>();
     Set<UUID> bomParents = bomParents(facts);
     for (Fact fact : facts) {
       if (fact.table().equals("platform_record_fields")) {
@@ -867,12 +868,11 @@ public class MasterRecordHistoryService {
       }
       if (Objects.equals(content(actual), content(target))) continue;
       changed = true;
-      String permission = factPermission(domain, fact);
-      if (target.path("is_deleted").asBoolean() && !has(user, permission + ":delete"))
+      if (target.path("is_deleted").asBoolean() && !hasFactPermission(user, domain, fact, "delete"))
         return "恢复到此状态需要当前删除权限";
       if (actual != null
           && !Objects.equals(actual.get("status"), target.get("status"))
-          && !has(user, permission + ":status")) return "此版本包含无权修改的使用状态";
+          && !hasFactPermission(user, domain, fact, "status")) return "此版本包含无权修改的使用状态";
       MasterVersionRow row = new MasterVersionRow(fact.table(), fact.rowId(), actual, target);
       String fieldPermission = restoreFieldAccess(user, row);
       if (fieldPermission != null) return fieldPermission;
@@ -891,6 +891,11 @@ public class MasterRecordHistoryService {
       } catch (ApiException blocked) {
         return blocked.getMessage();
       }
+      nativeRows.add(row);
+    }
+    if (domain.table().equals("goods") && !nativeRows.isEmpty()) {
+      String nativePermission = goodsHistory.versionRestorePermissionReason(nativeRows);
+      if (nativePermission != null) return nativePermission;
     }
     return changed ? null : "当前资料已经与此版本一致";
   }
@@ -1272,8 +1277,7 @@ public class MasterRecordHistoryService {
             : null;
     for (Fact fact : facts) {
       if (DEDICATED.contains(fact.table())) return "此记录涉及授权、责任、计量规则或追加业务证据，请通过原维护流程新增调整记录";
-      String permission = factPermission(domain, fact);
-      if (!has(user, permission + ":edit")) return "恢复版本需要当前的编辑权限";
+      if (!hasFactPermission(user, domain, fact, "edit")) return "恢复版本需要当前的编辑权限";
       if (!isCategory(fact) && checked.add(fact.recordId()) && domain.table().equals("clients")) {
         JsonNode actual = snapshot("clients", fact.recordId());
         UUID owner = uuidField(actual, "owner_employee_id");
@@ -1315,11 +1319,7 @@ public class MasterRecordHistoryService {
   }
 
   private boolean readable(AuthUser user, Domain domain, Fact selected, List<Fact> facts) {
-    for (Fact f : facts)
-      if (!has(
-          user,
-          (f.table().equals("goods_bom_items") ? "goods" : factPermission(domain, f)) + ":view"))
-        return false;
+    for (Fact f : facts) if (!hasFactPermission(user, domain, f, "view")) return false;
     if (facts.stream().anyMatch(f -> f.table().equals("client_visibility_grants"))
         && !has(user, "client:assign")) return false;
     Set<UUID> checked = new HashSet<>();
@@ -2006,7 +2006,6 @@ public class MasterRecordHistoryService {
   }
 
   private static String permission(Domain d, String table) {
-    if (table.equals("goods_bom_items")) return "goods:bom";
     if (table.equals("material_categories")) return "material_category";
     return table.endsWith("_categories")
         ? table.substring(0, table.length() - 11) + "_category"
@@ -2022,6 +2021,19 @@ public class MasterRecordHistoryService {
     return fact.table().equals("platform_record_fields")
         ? fact.sourceKey().substring("master_".length())
         : permission(domain, fact.table());
+  }
+
+  private static boolean hasFactPermission(AuthUser user, Domain domain, Fact fact, String action) {
+    if (fact.table().equals("goods_bom_items")) {
+      // A BOM history fact uses the native full authority; its resource prefix is not a code.
+      return switch (action) {
+        case "view" -> has(user, "goods:view");
+        case "edit" -> has(user, "goods:bom:edit");
+        case "delete" -> has(user, "goods:bom:delete");
+        default -> user.isSuperAdmin();
+      };
+    }
+    return has(user, factPermission(domain, fact) + ":" + action);
   }
 
   private static boolean has(AuthUser user, String permission) {

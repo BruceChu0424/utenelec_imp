@@ -9,4 +9,3 @@ Unit=uten-imp-dr-backup-publisher.service
 
 [Install]
 WantedBy=timers.target
-

@@ -143,6 +143,44 @@ class BusinessOutboxPostgresTest {
     }
 
     @Test
+    void recordingObservesACommittedCompetitorWithoutChangingItsCompletedEvidence() {
+        var worker = new ManualOutboxExecutor();
+        recordSuccessfulDeliveries();
+        try (var context = springContext(worker)) {
+            UUID event = context.getBean(BusinessOutboxPublisher.class).publishOnce(
+                    "TEST_EVENT", "TEST", UUID.randomUUID(), Map.of(), "record-completed");
+            assertTrue(context.getBean(BusinessOutboxProcessor.class).processNext());
+            var before = jdbc.queryForMap("SELECT status, attempts, available_at, processed_at, last_error FROM business_outbox WHERE id=?", event);
+            var result = context.getBean(BusinessOutboxFailureRecorder.class)
+                    .record(event, new IllegalStateException("obsolete failed attempt")).orElseThrow();
+            assertTrue(result.alreadyDelivered());
+            assertTrue(!result.recorded());
+            assertTrue(!result.deferred());
+            assertEquals(before, jdbc.queryForMap("SELECT status, attempts, available_at, processed_at, last_error FROM business_outbox WHERE id=?", event));
+            assertEquals(1L, deliveries());
+        }
+    }
+
+    @Test
+    void recordingCannotOverwriteADeadLetterOrInventEvidenceForAMissingEvent() {
+        var worker = new ManualOutboxExecutor();
+        try (var context = springContext(worker)) {
+            UUID event = context.getBean(BusinessOutboxPublisher.class).publishOnce(
+                    "TEST_EVENT", "TEST", UUID.randomUUID(), Map.of(), "record-dead");
+            jdbc.update("UPDATE business_outbox SET status=2, attempts=8, last_error='retained terminal evidence' WHERE id=?", event);
+            var before = jdbc.queryForMap("SELECT status, attempts, available_at, processed_at, last_error FROM business_outbox WHERE id=?", event);
+            var recorder = context.getBean(BusinessOutboxFailureRecorder.class);
+            var result = recorder.record(event, new IllegalStateException("late failed attempt")).orElseThrow();
+            assertTrue(result.exhausted());
+            assertTrue(!result.recorded());
+            assertTrue(!result.alreadyDelivered());
+            assertEquals(before, jdbc.queryForMap("SELECT status, attempts, available_at, processed_at, last_error FROM business_outbox WHERE id=?", event));
+            assertTrue(recorder.record(UUID.randomUUID(), new IllegalStateException("missing event")).isEmpty());
+            assertEquals(0L, deliveries());
+        }
+    }
+
+    @Test
     void deterministicDedupeKeyCreatesOneEvent() {
         UUID aggregateId = UUID.randomUUID();
         UUID first = transactions.execute(status -> publisher.publishOnce(

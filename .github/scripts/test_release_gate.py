@@ -31,7 +31,15 @@ ROOT = Path(__file__).resolve().parents[2]
 def run(workflow_id, filename, run_id, number=1, attempt=1, status="completed", conclusion="success"):
     return {"id": run_id, "workflow_id": workflow_id, "path": ".github/workflows/" + filename + "@main",
             "head_sha": SHA, "run_number": number, "run_attempt": attempt,
+            "check_suite_id": run_id + 10000,
             "status": status, "conclusion": conclusion, "repository": {"full_name": REPOSITORY}}
+
+
+def job(run_id=1000, attempt=1, slot=0, conclusion="success"):
+    check_id = run_id * 1000 + slot
+    return {"id": check_id, "run_id": run_id, "run_attempt": attempt, "head_sha": SHA,
+            "status": "completed" if conclusion else "in_progress", "conclusion": conclusion,
+            "check_run_url": f"https://api.github.com/repos/{REPOSITORY}/check-runs/{check_id}"}
 
 
 class FixtureApi:
@@ -40,16 +48,31 @@ class FixtureApi:
                           for i, name in enumerate(gate.WORKFLOWS)}
         self.runs = {name: [run(100 + i, name, 1000 + i)] for i, name in enumerate(gate.WORKFLOWS)}
         self.details = {}
+        self.jobs = {}
+        self.checks = {}
+        self.annotations = {}
         self.calls = []
+
+    def current(self, run_id):
+        return self.details.get(run_id) or next(r for runs in self.runs.values() for r in runs if r["id"] == run_id)
 
     def get(self, path):
         self.calls.append(path)
+        if "/check-runs/" in path:
+            check_id = int(path.rsplit("/", 1)[1])
+            current = self.current(check_id // 1000)
+            return copy.deepcopy(self.checks.get(check_id, {
+                "id": check_id, "head_sha": SHA, "check_suite": {"id": current["check_suite_id"]},
+                "output": {"annotations_count": len(self.annotations.get(check_id, []))}}))
         route = path.split("/actions/", 1)[1]
         if route.startswith("runs/"):
             run_id = int(route.split("/")[1])
-            current = self.details.get(run_id)
-            if current is None:
-                current = next(r for runs in self.runs.values() for r in runs if r["id"] == run_id)
+            current = self.current(run_id)
+            if "/jobs?" in path:
+                query = urllib.parse.parse_qs(urllib.parse.urlsplit(path).query)
+                page = int(query["page"][0])
+                jobs = self.jobs.get(run_id, [job(run_id, current["run_attempt"])])
+                return {"total_count": len(jobs), "jobs": copy.deepcopy(jobs[(page - 1) * gate.PAGE_SIZE:page * gate.PAGE_SIZE])}
             return copy.deepcopy(current)
         workflow = route.split("/")[1]
         if workflow in self.workflows:
@@ -62,6 +85,12 @@ class FixtureApi:
         return {"total_count": len(self.runs[name]),
                 "workflow_runs": copy.deepcopy(self.runs[name][(page - 1) * gate.PAGE_SIZE:page * gate.PAGE_SIZE])}
 
+    def get_array(self, path):
+        self.calls.append(path)
+        check_id = int(path.split("/check-runs/", 1)[1].split("/")[0])
+        page = int(urllib.parse.parse_qs(urllib.parse.urlsplit(path).query)["page"][0])
+        return copy.deepcopy(self.annotations.get(check_id, [])[(page - 1) * gate.PAGE_SIZE:page * gate.PAGE_SIZE])
+
 
 class ReleaseGateTest(unittest.TestCase):
     def test_all_four_exact_commit_workflows_must_pass(self):
@@ -69,7 +98,71 @@ class ReleaseGateTest(unittest.TestCase):
         evidence = gate.require_release_gates(api, REPOSITORY, SHA)
         self.assertEqual(4, len(evidence))
         self.assertTrue(all(SHA in item for item in evidence))
-        self.assertEqual(12, len(api.calls))
+        self.assertTrue(all("zero warning/failure" in item for item in evidence))
+        self.assertEqual(4, sum("/annotations?" in call for call in api.calls))
+
+    def test_successful_workflow_with_warning_or_failure_annotation_is_rejected_without_logging_message(self):
+        for level in ("warning", "failure"):
+            with self.subTest(level=level):
+                api = FixtureApi()
+                api.annotations[1000000] = [{"annotation_level": level, "message": "sensitive-source-sentinel"}]
+                with self.assertRaisesRegex(gate.GateError, f"contains a {level}") as raised:
+                    gate.require_release_gates(api, REPOSITORY, SHA)
+                self.assertNotIn("sensitive-source-sentinel", str(raised.exception))
+
+    def test_warning_after_first_annotation_page_cannot_be_hidden_by_notices(self):
+        api = FixtureApi()
+        api.annotations[1000000] = [{"annotation_level": "notice"}] * 100 + [{"annotation_level": "warning"}]
+        with self.assertRaisesRegex(gate.GateError, "warning annotation"):
+            gate.require_release_gates(api, REPOSITORY, SHA)
+        self.assertTrue(any("/annotations?per_page=100&page=2" in call for call in api.calls))
+
+    def test_notice_annotations_are_allowed_but_missing_truncated_or_unknown_evidence_is_rejected(self):
+        api = FixtureApi()
+        api.annotations[1000000] = [{"annotation_level": "notice"}]
+        self.assertEqual(4, len(gate.require_release_gates(api, REPOSITORY, SHA)))
+        for count, annotations in ((1, []), (0, [{"annotation_level": "notice"}]),
+                                   (1, [{"annotation_level": "unknown"}]), (1, ["invalid"]),
+                                   (-1, []), (True, []), (1001, [])):
+            with self.subTest(count=count, annotations=annotations):
+                api = FixtureApi()
+                api.annotations[1000000] = annotations
+                api.checks[1000000] = {"id": 1000000, "head_sha": SHA, "check_suite": {"id": 11000},
+                                       "output": {"annotations_count": count}}
+                with self.assertRaises(gate.GateError):
+                    gate.require_release_gates(api, REPOSITORY, SHA)
+
+    def test_check_run_from_another_sha_or_suite_is_rejected(self):
+        for head_sha, suite in (("b" * 40, 11000), (SHA, 999)):
+            api = FixtureApi()
+            api.checks[1000000] = {"id": 1000000, "head_sha": head_sha, "check_suite": {"id": suite},
+                                   "output": {"annotations_count": 0}}
+            with self.subTest(head_sha=head_sha, suite=suite), self.assertRaisesRegex(gate.GateError, "SHA/suite"):
+                gate.require_release_gates(api, REPOSITORY, SHA)
+
+    def test_every_job_page_is_checked_and_duplicate_wrong_attempt_or_empty_inventory_rejects(self):
+        api = FixtureApi()
+        api.jobs[1000] = [job(slot=i) for i in range(101)]
+        api.annotations[1000100] = [{"annotation_level": "warning"}]
+        with self.assertRaisesRegex(gate.GateError, "warning annotation"):
+            gate.require_release_gates(api, REPOSITORY, SHA)
+        self.assertTrue(any("/jobs?per_page=100&page=2" in call for call in api.calls))
+        for jobs in ([], [job(), job()], [job(attempt=2)], [dict(job(), head_sha="b" * 40)],
+                     [dict(job(), check_run_url="https://api.github.com/repos/another/repository/check-runs/1")]):
+            api = FixtureApi()
+            api.jobs[1000] = jobs
+            with self.subTest(jobs=jobs), self.assertRaises(gate.GateError):
+                gate.require_release_gates(api, REPOSITORY, SHA)
+
+    def test_new_attempt_started_during_annotation_read_cannot_inherit_old_green_evidence(self):
+        api = FixtureApi()
+        original_array = api.get_array
+        def rerun_during_read(path):
+            result = original_array(path)
+            api.details[1000] = run(100, "quality.yml", 1000, attempt=2, status="in_progress", conclusion=None)
+            return result
+        with patch.object(api, "get_array", side_effect=rerun_during_read), self.assertRaisesRegex(gate.GateError, "changed"):
+            gate.require_release_gates(api, REPOSITORY, SHA)
 
     def test_forecast_missing_failed_or_pending_cannot_be_bypassed_by_other_green_gates(self):
         for state in ("missing", "failure", "in_progress"):
@@ -123,11 +216,8 @@ class ReleaseGateTest(unittest.TestCase):
     def test_explicit_manual_mode_accepts_running_without_failed_jobs(self):
         api = FixtureApi()
         api.details[1000] = run(100, "quality.yml", 1000, status="in_progress", conclusion=None)
-        original_get = api.get
-        with patch.object(api, "get", side_effect=lambda path: (
-                {"total_count": 2, "jobs": [{"conclusion": "success"}, {"conclusion": None}]}
-                if "/jobs?" in path else original_get(path))):
-            evidence = gate.require_release_gates(api, REPOSITORY, SHA, allow_running=True)
+        api.jobs[1000] = [job(), job(slot=1, conclusion=None)]
+        evidence = gate.require_release_gates(api, REPOSITORY, SHA, allow_running=True)
         self.assertIn("CI not yet passed", evidence[0])
 
     def test_manual_mode_never_accepts_failed_or_incomplete_jobs(self):
@@ -254,26 +344,31 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         versions = []
         for name, source in workflows.items():
             with self.subTest(workflow=name):
-                versions.append(re.findall(r"^\s+flutter-version: (\S+)$", source, re.MULTILINE))
-                resolves = re.findall(r"^\s*(?:- run:\s*)?(flutter pub [^\n]+)$", source, re.MULTILINE)
-                self.assertEqual(["flutter pub get --enforce-lockfile"], resolves)
-                strict_position = source.index(resolves[0])
-                consumers = list(re.finditer(
-                    r"^\s*(?:- run:\s*)?(flutter (?:analyze|test|build web)\b[^\n]*)",
-                    source, re.MULTILINE))
-                self.assertTrue(consumers)
-                for command in consumers:
-                    self.assertGreater(command.start(1), strict_position)
-                    self.assertIn("--no-pub", command.group(1).split())
-                strict_step = next(block for block in source.split("      - ")
-                                   if "flutter pub get --enforce-lockfile" in block)
-                self.assertNotIn("continue-on-error", strict_step)
-                self.assertNotIn("||", strict_step)
-                self.assertNotIn("--dry-run", strict_step)
+                versions.extend(re.findall(r"^\s+flutter-version: (\S+)$", source, re.MULTILINE))
+                consumer_jobs = []
+                for job_source in re.split(r"(?m)^  [a-zA-Z0-9_-]+:\n", source):
+                    consumers = list(re.finditer(
+                        r"^\s*(?:- run:\s*)?(flutter (?:analyze|test|build (?:web|windows|apk))\b[^\n]*)",
+                        job_source, re.MULTILINE))
+                    if not consumers:
+                        continue
+                    consumer_jobs.append(job_source)
+                    resolves = re.findall(r"^\s*(?:- run:\s*)?(flutter pub [^\n]+)$", job_source, re.MULTILINE)
+                    self.assertEqual(["flutter pub get --enforce-lockfile"], resolves)
+                    strict_position = job_source.index(resolves[0])
+                    for command in consumers:
+                        self.assertGreater(command.start(1), strict_position)
+                        self.assertIn("--no-pub", command.group(1).split())
+                    strict_step = next(block for block in job_source.split("      - ")
+                                       if "flutter pub get --enforce-lockfile" in block)
+                    self.assertNotIn("continue-on-error", strict_step)
+                    self.assertNotIn("||", strict_step)
+                    self.assertNotIn("--dry-run", strict_step)
+                self.assertTrue(consumer_jobs)
                 if name in ("quality.yml", "simple-release.yml"):
                     self.assertIn("-p 'test_release_gate.py' -v", source)
-        self.assertEqual(1, len(versions[0]))
-        self.assertTrue(all(version == versions[0] for version in versions[1:]))
+        self.assertTrue(versions)
+        self.assertEqual(1, len(set(versions)))
 
     def test_security_scan_and_build_share_the_canonical_hashed_checkout_lock(self):
         lock = (ROOT / "pubspec.lock").read_text(encoding="utf-8")
@@ -351,6 +446,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertLess(workflow.rindex(guard), workflow.index("${{ secrets.OSS_ACCESS_KEY_ID }}"))
         self.assertEqual(2, workflow.count('test "$CHECKOUT_SHA" = "$GITHUB_SHA"'))
         self.assertIn("  actions: read", workflow)
+        self.assertIn("  checks: read", workflow)
         self.assertNotIn("actions: write", workflow)
         self.assertIn("test_release_gate.py", workflow)
         for block in workflow.split("      - name:"):

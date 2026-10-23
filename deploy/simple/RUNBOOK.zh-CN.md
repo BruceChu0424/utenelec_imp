@@ -179,9 +179,10 @@ Windows 本地 `server/dev.ps1` 自动发现已安装的 PythonCore 3.12 并构�
 系统设置可读取真实准备/运行状态；仅存在历史 health 文件不表示当前 worker 已运行或设置已应用。
 SHFE 历史回放预测属于 `RESEARCH_ONLY`，不产生主动采购信号，PC 本轮没有同等内置来源。
 
-已有服务器首次换装本功能时还需从同一受审源码安装 `paired_internal_backup.py` 和
-`market_state_backup.py` 到 `/usr/local/lib/uten-imp/`（root:root，0644）；
-`install-server-operations.sh` 已将两者作为同组受审组件原子安装。
+已有服务器首次换装本功能时还需从同一受审源码安装 `paired_internal_backup.py`、
+`market_state_backup.py` 和 `client_release_state_backup.py` 到 `/usr/local/lib/uten-imp/`
+（root:root，0644）；`install-server-operations.sh` 持有配套备份锁，先安装两个依赖模块，
+最后切换配套备份入口，避免定时备份与更新作业读到半套组件。
 这属于一次主机组件升级，不由应用账号或发行 payload 执行 root 操作。
 后续配套备份自动收集 Storage 根下的 `material-forecast/`，不再另填备份路径；
 换机恢复与 health 复位见[配套备份手册](../postgres/backup/PAIRED_INTERNAL_BACKUP.zh-CN.md#原材料行情状态与换机恢复)。
@@ -325,6 +326,11 @@ systemctl is-active uten-imp-operations.service
 旧 timer 必须 disabled/inactive，operations bridge 必须 active。安装器私有备份旧助手及单元，
 配置来源保存在 root `/etc/uten-imp-updater/source.env`，已有 legacy env 复制后保留，后续由超管页面修改。
 安装不访问 OSS、不启动更新、不改数据库。应用保持无 sudo/特权，通过固定 Unix socket 操作主机。
+
+安装器还将 `host/uten-imp-updater.tmpfiles.conf` 安装到 `/etc/tmpfiles.d/uten-imp-updater.conf`
+并立即创建 root:root、0700 的 `/run/uten-imp-updater`。两个运维单元都在开机 tmpfiles 初始化之后启动，
+确保建立文件系统沙箱时共享锁目录已经存在；仅在 `ExecStartPre` 创建会在重启后先报 `226/NAMESPACE`。
+该目录由系统开机初始化维护，不随任一运维单元停止删除，避免影响仍在运行的另一个作业。
 回退主机组件时保留当前备份与作业证据，**不要重新开启自动拉取 timer**。
 
 主机路径由 `/etc/uten-imp/operations.json` 配置，改路径同步 systemd 可写范围。

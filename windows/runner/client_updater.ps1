@@ -134,8 +134,35 @@ function Restart-Client {
     $started = [Diagnostics.Process]::Start($start)
     if ($null -eq $started) { throw 'Client restart did not create a process.' }
     # Detect immediate loader/crash failures while the old version is recoverable.
-    if ($started.WaitForExit(8000)) { throw 'Updated client exited during startup.' }
-    $started.Dispose()
+    try {
+        if ($started.WaitForExit(8000)) { throw 'Updated client exited during startup.' }
+    } finally { $started.Dispose() }
+}
+
+function Copy-WhenReleased([string]$Source, [string]$Target) {
+    # A signaled parent process does not prove that all executable image readers
+    # (including security scanners) released their file handles. Retry only the
+    # actual Windows sharing/lock violations, with a bounded wait; permission,
+    # disk, integrity, and all other failures still trigger the normal rollback.
+    $waiting = [Diagnostics.Stopwatch]::StartNew()
+    $logged = $false
+    while ($true) {
+        try {
+            [IO.File]::Copy($Source, $Target, $true)
+            return
+        } catch {
+            $cause = $_.Exception
+            while ($null -ne $cause.InnerException) { $cause = $cause.InnerException }
+            $nativeError = $cause.HResult -band 65535
+            if ($cause -isnot [IO.IOException] -or $nativeError -notin @(32, 33) -or
+                $waiting.ElapsedMilliseconds -ge 8000) { throw }
+            if (-not $logged) {
+                Write-Log ('Waiting for an exited client image file lock: {0}' -f [IO.Path]::GetFileName($Target))
+                $logged = $true
+            }
+            Start-Sleep -Milliseconds 100
+        }
+    }
 }
 
 try {
@@ -173,6 +200,10 @@ try {
         throw 'Client is still open; no program files were changed.'
     }
     $parentExited = $true
+    # The identity-bound wait is finished. Release the native process/module
+    # bookkeeping before touching the executable image it used to own.
+    $parentProcess.Dispose()
+    $parentProcess = $null
 
     # Hold the exact ZIP open with no write/delete sharing across hash and extraction.
     $packageStream = [IO.File]::Open($package, [IO.FileMode]::Open,
@@ -275,10 +306,10 @@ try {
         $target = Join-Path $installRoot ($relative.Replace('/', '\'))
         Assert-NoReparse $target
         [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target)) | Out-Null
-        [IO.File]::Copy((Join-Path $extractRoot ($relative.Replace('/', '\'))), $target, $true)
+        Copy-WhenReleased (Join-Path $extractRoot ($relative.Replace('/', '\'))) $target
     }
     foreach ($relative in $obsolete) { [IO.File]::Delete((Join-Path $installRoot ($relative.Replace('/', '\')))) }
-    [IO.File]::Copy((Join-Path $extractRoot $manifestName), $oldManifestPath, $true)
+    Copy-WhenReleased (Join-Path $extractRoot $manifestName) $oldManifestPath
     Write-Log 'Program files replaced; restarting the client.'
     Restart-Client
     $clientRestarted = $true
@@ -308,7 +339,7 @@ try {
             try {
                 Assert-Within $item.Target $installRoot
                 Assert-NoReparse $item.Target
-                if ($item.Existed) { [IO.File]::Copy($item.Backup, $item.Target, $true) }
+                if ($item.Existed) { Copy-WhenReleased $item.Backup $item.Target }
                 else { [IO.File]::Delete($item.Target) }
             } catch {
                 $rollbackComplete = $false

@@ -25,4 +25,3 @@ RestrictNamespaces=yes
 LockPersonality=yes
 LimitCORE=0
 ReadWritePaths=/srv/uten-imp-dr/continuous /var/lib/uten-imp-dr-backup
-

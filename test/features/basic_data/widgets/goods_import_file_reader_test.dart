@@ -12,7 +12,7 @@ void main() {
         final bytes = Uint8List(10 * 1024 * 1024 + 1);
         final file = PlatformFile(name: 'bom.xlsx', size: 1, bytes: bytes);
         await expectLater(
-          readGoodsImportFile(file, maxBytes: 10 * 1024 * 1024),
+          readGoodsImportFile(file),
           throwsA(
             isA<GoodsImportFileException>().having(
               (error) => error.message,

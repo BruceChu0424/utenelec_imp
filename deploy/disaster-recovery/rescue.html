@@ -46,4 +46,3 @@ $('reconcilePromotion').addEventListener('click',e=>action(e.target,async()=>{co
 api('/healthz').then(r=>{if(r.setupRequired&&!enrollToken)notice('尚未绑定救援超管。请在公司内网由超管重新认证，并在运维开放的短期窗口绑定。');}).catch(()=>notice('暂时无法确认独立控制服务状态。'));
 const fragment=new URLSearchParams(location.hash.slice(1));if(fragment.has('enrollment')){enrollToken=fragment.get('enrollment');history.replaceState(null,'',location.pathname);$('login').hidden=true;api('/v1/enrollments/claim','POST',{token:enrollToken}).then(r=>{$('enrollment').hidden=false;$('totpSecret').textContent=r.totpSecret;$('account').value=r.account;}).catch(e=>notice(e.message));}
 </script></html>
-

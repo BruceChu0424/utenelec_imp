@@ -2,6 +2,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import unittest
 from unittest.mock import patch
@@ -80,9 +81,9 @@ class CandidateGuardsTest(unittest.TestCase):
 
 class CipherRewrapTest(unittest.TestCase):
     def test_real_crypto_rebinds_issuer_and_preserves_plaintext_without_exposing_it(self):
-        node=Path('/mnt/d/Software/Node/node.exe')
-        if not node.exists():self.skipTest('Management Windows Node runtime unavailable')
-        bridge=subprocess.check_output(['wslpath','-w',str(Path(__file__).with_name('credential_rewrap.cjs'))]).decode().strip()
+        node=shutil.which('node')
+        self.assertIsNotNone(node, 'Node runtime is required for the real credential rewrap contract')
+        bridge=str(Path(__file__).with_name('credential_rewrap.cjs').resolve())
         script="""const c=require(process.argv[1]);const id='00000000-0000-0000-0000-000000000001';
 const old='synthetic-legacy',current='synthetic-current-key-'.repeat(3);const plain=Buffer.from('synthetic-token');
 const key=c.derive(old);const stored=c.seal(plain,'old-test',id,key);key.fill(0);

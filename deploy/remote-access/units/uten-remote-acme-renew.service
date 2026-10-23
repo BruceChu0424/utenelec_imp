@@ -27,4 +27,3 @@ InaccessiblePaths=-/etc/uten-imp -/etc/uten-imp-postgres -/etc/uten-imp-migrator
 InaccessiblePaths=-/etc/uten-remote-ca/transport-server-ca.key -/etc/uten-remote-ca/cloud-client-ca.key -/etc/uten-remote-ca/employee-commissioning-ca.key
 ReadWritePaths=/etc/uten-remote-ca /etc/uten-remote/tls /var/lib/uten-remote-acme /var/log/uten-remote-acme
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-

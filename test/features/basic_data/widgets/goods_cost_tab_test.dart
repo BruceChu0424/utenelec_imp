@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -300,10 +299,7 @@ class _MultiFileCosts extends _Costs {
     final previous = costText(extra['adoptedFiles']);
     input['extraFields'] = {
       ...extra,
-      'adoptedFiles': [
-        if (previous != null) previous,
-        request['importId'],
-      ].join(','),
+      'adoptedFiles': [?previous, request['importId']].join(','),
     };
     final calculation = _calculation();
     calculation['lines'] = [

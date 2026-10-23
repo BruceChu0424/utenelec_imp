@@ -174,5 +174,15 @@ class GoodsClientGoodsNamePostgresTest {
         }
     }
 
-    private long number(String sql, Object... args) throws SQLException { return Long.parseLong(text(sql, args)); }
+    private long number(String sql, Object... args) throws SQLException {
+        try (var statement = db.prepareStatement(sql)) {
+            for (int i = 0; i < args.length; i++) statement.setObject(i + 1, args[i]);
+            try (var result = statement.executeQuery()) {
+                assertTrue(result.next(), "Expected a numeric result row");
+                long value = result.getLong(1);
+                assertFalse(result.wasNull(), "Expected a non-null numeric result");
+                return value;
+            }
+        }
+    }
 }

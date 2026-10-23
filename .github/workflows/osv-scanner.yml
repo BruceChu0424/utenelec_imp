@@ -25,7 +25,10 @@ jobs:
       - name: Verify OSV process and output gate
         run: |
           python3 -m unittest discover -s .github/scripts -p test_osv_scan_gate.py -v
+          python3 -m unittest discover -s .github/scripts -p test_vendor_pub_audit.py -v
           python3 -m unittest discover -s services/material_forecast/tests -p test_ci_contract.py -v
+      - name: Verify vendor sources and recover exact upstream Pub identities for security scanning
+        run: python3 .github/scripts/vendor_pub_audit.py --output .local-artifacts/vendor-pub-audit
 
       - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
@@ -41,9 +44,12 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: osv-inputs
+          include-hidden-files: true
           path: |
             server/target/classes/META-INF/sbom/application.cdx.json
             pubspec.lock
+            .local-artifacts/vendor-pub-audit/pubspec.lock
+            .local-artifacts/vendor-pub-audit/evidence.json
             services/material_forecast/requirements.txt
             osv-scanner.toml
           if-no-files-found: error
@@ -69,6 +75,8 @@ jobs:
             ./server/target/classes/META-INF/sbom/application.cdx.json
             --lockfile
             ./pubspec.lock
+            --lockfile
+            ./.local-artifacts/vendor-pub-audit/pubspec.lock
             --lockfile
             ./services/material_forecast/requirements.txt
 

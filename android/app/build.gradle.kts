@@ -30,7 +30,7 @@ if (isReleaseBuild && missingReleaseSigningKeys.isNotEmpty()) {
 
 android {
     namespace = "com.uten.uten_imp"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = rootProject.extra["utenCompileSdk"] as Int
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

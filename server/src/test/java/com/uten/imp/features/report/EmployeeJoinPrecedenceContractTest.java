@@ -28,10 +28,11 @@ class EmployeeJoinPrecedenceContractTest {
                 "purchase/report/PurchaseReportService.java");
         assertJoin(purchase, "em_app", "o.applicant_id",
                 "o.applicant_legacy_id", 2);
-        assertJoin(purchase, "em_mk", "o.maker_id",
-                "o.maker_legacy_id", 4);
-        assertJoin(purchase, "em_ap", "o.approver_id",
-                "o.approver_legacy_id", 2);
+        assertUuidOnlyJoin(purchase, "em_mk", "o.maker_id", 4);
+        assertUuidOnlyJoin(purchase, "em_ap", "o.approver_id", 2);
+        assertThat(purchase).doesNotContain("em_mk.legacy_id", "em_ap.legacy_id");
+        assertThat(purchase).contains("COALESCE(em_mk.full_name, o.maker_name)",
+                "COALESCE(em_ap.full_name, o.approver_name)");
         assertJoin(purchase, "em_pur", "o.purchaser_id",
                 "o.purchaser_legacy_id", 2);
         assertJoin(purchase, "em_pur", "po.purchaser_id",
@@ -58,10 +59,11 @@ class EmployeeJoinPrecedenceContractTest {
                 "finance/report/FinanceReportService.java");
         assertJoin(finance, "em_op", "t.operator_id",
                 "t.operator_legacy_id", 7);
-        assertJoin(finance, "em_mk", "t.maker_id",
-                "t.maker_legacy_id", 3);
-        assertJoin(finance, "em_ap", "t.approver_id",
-                "t.approver_legacy_id", 3);
+        assertUuidOnlyJoin(finance, "em_mk", "t.maker_id", 3);
+        assertUuidOnlyJoin(finance, "em_ap", "t.approver_id", 3);
+        assertThat(finance).doesNotContain("em_mk.legacy_id", "em_ap.legacy_id");
+        assertThat(finance).contains("COALESCE(em_mk.full_name, t.maker_name,'')",
+                "COALESCE(em_ap.full_name, t.approver_name,'')");
 
         String subcontract = source(
                 "subcontract/report/SubcontractReportService.java");
@@ -72,10 +74,11 @@ class EmployeeJoinPrecedenceContractTest {
 
         String production = source(
                 "production/report/ProductionReportService.java");
-        assertJoin(production, "em_mk", "p.maker_id",
-                "p.maker_legacy_id", 1);
-        assertJoin(production, "em_ap", "p.approver_id",
-                "p.approver_legacy_id", 1);
+        assertUuidOnlyJoin(production, "em_mk", "p.maker_id", 1);
+        assertUuidOnlyJoin(production, "em_ap", "p.approver_id", 1);
+        assertThat(production).doesNotContain("em_mk.legacy_id", "em_ap.legacy_id");
+        assertThat(production).contains("COALESCE(em_mk.full_name, p.maker_name)",
+                "COALESCE(em_ap.full_name, p.approver_name)");
 
         for (String report : List.of(
                 purchase, stock, sales, finance, subcontract, production)) {

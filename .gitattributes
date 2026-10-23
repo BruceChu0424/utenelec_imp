@@ -1,6 +1,9 @@
 * text=auto
+third_party/desktop_drop/** text eol=lf
+third_party/device_info_plus/** text eol=lf
 
 /.gitattributes text eol=lf
+/pubspec.lock text eol=lf
 server/.mvn/maven.config text eol=lf
 
 # Flutter rewrites native plugin registrants with LF on every platform.

@@ -36,10 +36,11 @@ class GlReportSourceSemanticsTest {
             if (grouped.contains(method.getName())) {
                 found++;
                 assertThat(java.lang.reflect.Modifier.isPublic(method.getModifiers())).isTrue();
-                assertThat(tx).isNotNull();
-                assertThat(tx.readOnly()).isTrue();
-                assertThat(tx.isolation()).isEqualTo(Isolation.REPEATABLE_READ);
-                assertThat(tx.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
+                Transactional snapshot = java.util.Objects.requireNonNull(
+                        tx, "Missing @Transactional on grouped report " + method.getName());
+                assertThat(snapshot.readOnly()).isTrue();
+                assertThat(snapshot.isolation()).isEqualTo(Isolation.REPEATABLE_READ);
+                assertThat(snapshot.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
             } else if (tx != null) {
                 assertThat(tx.isolation()).isEqualTo(Isolation.DEFAULT);
                 assertThat(tx.propagation()).isEqualTo(Propagation.REQUIRED);

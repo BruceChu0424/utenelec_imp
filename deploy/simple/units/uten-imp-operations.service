@@ -1,6 +1,7 @@
 [Unit]
 Description=Authorized local Uten IMP server operations bridge
 After=local-fs.target systemd-tmpfiles-setup.service
+Requires=systemd-tmpfiles-setup.service
 
 [Service]
 Type=simple
@@ -11,7 +12,6 @@ RuntimeDirectory=uten-imp-operations
 RuntimeDirectoryMode=0750
 StateDirectory=uten-imp-operations
 StateDirectoryMode=0700
-ExecStartPre=+/usr/bin/install -d -o root -g root -m 0700 /run/uten-imp-updater
 ExecStart=/usr/bin/python3 -I /usr/local/lib/uten-imp/host_operations.py serve
 Restart=on-failure
 RestartSec=3

@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- 本地开发后端可使用 http://localhost；release 主清单仍强制禁用明文。 -->
-    <application android:usesCleartextTraffic="true"/>
+    <application android:usesCleartextTraffic="true" tools:replace="android:usesCleartextTraffic"/>
 </manifest>

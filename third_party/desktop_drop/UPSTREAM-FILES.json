@@ -1,0 +1,41 @@
+{
+  "name": "desktop_drop",
+  "version": "0.8.4",
+  "archiveSha256": "47ded09c85909edfed644fd4cbb5051b040d0aed5c79e7e062ea4b3b7156dbe4",
+  "modifiedFiles": [
+    "android/build.gradle",
+    "pubspec.yaml"
+  ],
+  "files": {
+    "CHANGELOG.md": "fa00cbb240f32b2bce98c1a7ef6f3182fc832d58116f24f3b7404b6a7ad68e72",
+    "LICENSE": "54bb187c3c4d8d9e74475f69b63a70798fb80581c334b2da487d1c4c70f68155",
+    "README.md": "4d050d29fca1e4e558c1983d48b1648567acdc2c58e4b8805eecdd97ba2b6da4",
+    "android/build.gradle": "bab02db0fb811878bc007a6df1e59bb5217fbfe26f9a75123f7ceabe5e1cc324",
+    "android/settings.gradle": "771622d213186e99ec875e0a269aa8c30b0d310221bd33fbdd9d31c51e9a6a0b",
+    "android/src/main/AndroidManifest.xml": "571f2735faf5e857752ee057ac8ef63425576a721616c60b86ee5d4c0a2d682f",
+    "android/src/main/kotlin/one/mixin/desktop/drop/DesktopDropPlugin.kt": "013bf0c1dc2796d033126808948bd5d6d2a207d2a5215037567f61395a7b996b",
+    "lib/desktop_drop.dart": "fd09ff010d8490a75b5441cbde73c3f0c56de1e092c9127c4dbabdc342a362d1",
+    "lib/desktop_drop_web.dart": "4b247c50867be79f8fe861d1b2d80d3998cc504e3dd0800684fbdc2240b3c760",
+    "lib/src/channel.dart": "a5ed9ab3e05c215697519a587353f70eab05b7ba49c667bae0bf7bdd90f17f14",
+    "lib/src/drop_item.dart": "86d5d28348bbec44e7545ff02ae7b2a127ccd0d67b40bf9139f54b785ba6f51c",
+    "lib/src/drop_target.dart": "b2e24e7edf2baadd33bffe3a0e9c1eaaf50d4aa600c5e2c11d91164105c1ced5",
+    "lib/src/events.dart": "57d6b04eb45db7095982a428d0d4244b7c9fe099dd464038a971780cac2473aa",
+    "lib/src/web_drop_item.dart": "8f956bdd8a0f7bb2f7e284516ef423bad5bb6de297be594b6436f1d7e56159e4",
+    "linux/CMakeLists.txt": "40324866fb072dd5307674932015289549752ee05f8d6fbc995637a028efb073",
+    "linux/desktop_drop_plugin.cc": "4873bd632649d2e03e23cd45ec9daa1402eae3f9efd21fb8016e039b5e5f0f44",
+    "linux/include/desktop_drop/desktop_drop_plugin.h": "7ed947d2c6475fb8983f22bcb8e2512071ae433ba7c603f16566e34a6531b515",
+    "macos/desktop_drop.podspec": "3d3692eda67f86fc2205c2e1ffa5c3fa19421f05c8fc249fcc3b066b92122751",
+    "macos/desktop_drop/Package.swift": "9ecea01bd180791e5f25ad39b043ec7654537479b8664c683618f1ecc77d19ce",
+    "macos/desktop_drop/Sources/desktop_drop/DesktopDropPlugin.swift": "939f69297b726fe3496cb30d479eb73a947808692366003c37101a2f7110c053",
+    "macos/desktop_drop/Sources/desktop_drop/PrivacyInfo.xcprivacy": "204d035a88eab2281b3d914f46c796766ae78e3cb82537711928dca9e28dbbb8",
+    "pubspec.yaml": "6a21bde1699efeeb4dc227fe16c1282706bc7181be123d7ab74449da6e3ffd3b",
+    "windows/CMakeLists.txt": "dbfab72ac038f3e55fdb380e194ec061110ffb194ec2839607ae815a4f8fd6ee",
+    "windows/desktop_drop_plugin.cpp": "3c30e832a5a17ca182d085ea5322ffab6290dc0c56a0d166c0c5c6b225691f89",
+    "windows/include/desktop_drop/desktop_drop_plugin.h": "b2d23cdd5b5351dbf7588e112a08c29ce58b52288f75173d31df5698aecfa6c4"
+  },
+  "hygieneSha256": {
+    "CHANGELOG.md": "31a9c3de22fe96d197868e31799b7fd32492cec1fd5dddcafb91f50b234b4d8c",
+    "android/src/main/kotlin/one/mixin/desktop/drop/DesktopDropPlugin.kt": "f9b65ff2476b48a8469fa5e5dcf4b8f5d4e11effd75b3d51b4c39236ceadc9dd",
+    "macos/desktop_drop/Sources/desktop_drop/DesktopDropPlugin.swift": "5449ad2623f039615bd6cefe40ca83cfe1b13d110b120abf5f8f1f11d7b213b9"
+  }
+}

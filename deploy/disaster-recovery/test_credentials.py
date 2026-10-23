@@ -38,7 +38,10 @@ class CredentialTest(unittest.TestCase):
         result = subprocess.run(["mount", "-t", "tmpfs", "-o", "size=64k,mode=0550", "tmpfs", str(credential)],
                                 capture_output=True)
         if result.returncode:
-            self.skipTest("fixture needs CAP_SYS_ADMIN; live systemd255 mount is separately verified")
+            message = "credential tmpfs fixture mount failed: " + result.stderr.decode(errors="replace").strip()
+            if os.environ.get("UTEN_REQUIRE_DR_CONTRACTS") == "true":
+                self.fail(message)
+            self.skipTest(message)
         try:
             master = credential / "totp-master"
             master.write_text("cd" * 32)

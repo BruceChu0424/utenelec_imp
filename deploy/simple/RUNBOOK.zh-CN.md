@@ -327,7 +327,7 @@ systemctl is-active uten-imp-operations.service
 配置来源保存在 root `/etc/uten-imp-updater/source.env`，已有 legacy env 复制后保留，后续由超管页面修改。
 安装不访问 OSS、不启动更新、不改数据库。应用保持无 sudo/特权，通过固定 Unix socket 操作主机。
 
-安装器还将 `host/uten-imp-updater.tmpfiles.conf` 安装到 `/etc/tmpfiles.d/uten-imp-updater.conf`
+安装器还将 `uten-imp-updater.tmpfiles.conf` 安装到 `/etc/tmpfiles.d/uten-imp-updater.conf`
 并立即创建 root:root、0700 的 `/run/uten-imp-updater`。两个运维单元都在开机 tmpfiles 初始化之后启动，
 确保建立文件系统沙箱时共享锁目录已经存在；仅在 `ExecStartPre` 创建会在重启后先报 `226/NAMESPACE`。
 该目录由系统开机初始化维护，不随任一运维单元停止删除，避免影响仍在运行的另一个作业。

@@ -64,18 +64,17 @@ class ClientSupplierOwnerEmployeeUuidContractTest {
     }
 
     @Test
-    void legacyMasterReimportKeepsEmpSnapshotAndWritesUuidByUniqueNumericLegacyId() throws IOException {
+    void legacyMasterReimportKeepsEmpSnapshotAndUsesTheSharedCurrentOwnerResolver() throws IOException {
         for (String file : new String[]{"migrate_client_data.sql", "migrate_supplier_data.sql"}) {
             String sql = source("legacy_migration/" + file);
             String normalized = sql.replaceAll("\\s+", " ").toLowerCase();
 
             assertTrue(normalized.contains("emp_id, owner_employee_id"), file);
-            assertTrue(normalized.contains("from employees"), file);
-            assertTrue(normalized.contains("group by legacy_id having count(*) = 1"), file);
-            assertTrue(normalized.contains("~ '^[0-9]{1,9}$'"), file);
-            assertTrue(normalized.contains("nullif(btrim("), file);
-            assertTrue(normalized.contains(".emp_id, employee_owner.employee_id"), file);
-            assertTrue(normalized.contains("employee_owner.legacy_id = case"), file);
+            assertTrue(normalized.contains(".emp_id, employee_owner.owner_id"), file);
+            assertTrue(normalized.contains("pg_temp.legacy_owner_resolution("), file);
+            assertTrue(normalized.contains(".emp_id) employee_owner on true"), file);
+            assertTrue(normalized.contains("insert into pg_temp.legacy_owner_custody"), file);
+            assertTrue(normalized.contains("resolution.original_employee_id"), file);
             assertFalse(normalized.contains("lower("), file);
             assertFalse(normalized.contains("employee_owner.full_name"), file);
             assertFalse(normalized.contains("set emp_id"), file);
@@ -89,16 +88,33 @@ class ClientSupplierOwnerEmployeeUuidContractTest {
 
         assertTrue(normalized.contains("update clients c set owner_employee_id"));
         assertTrue(normalized.contains("update suppliers s set owner_employee_id"));
-        assertTrue(normalized.contains("where c.owner_employee_id is null"));
-        assertTrue(normalized.contains("where s.owner_employee_id is null"));
-        assertEquals(2, count(normalized, "having count(*) = 1"));
-        assertEquals(2, count(normalized, "employee_owner.legacy_id = case"));
-        assertTrue(count(normalized, "~ '^[0-9]{1,9}$'") >= 2);
+        assertTrue(normalized.contains("where c.owner_employee_id is null or not exists"));
+        assertTrue(normalized.contains("where s.owner_employee_id is null or not exists"));
+        assertEquals(2, count(normalized, "and not e.is_deleted and e.status in ('active','probation','onleave')"));
+        assertTrue(normalized.contains("pg_temp.legacy_owner_resolution(source.source_reference)"));
+        assertTrue(normalized.contains("c.owner_employee_id is distinct from r.owner_id"));
+        assertTrue(normalized.contains("s.owner_employee_id is distinct from r.owner_id"));
+        assertTrue(normalized.contains("insert into pg_temp.legacy_owner_custody"));
         assertFalse(normalized.contains("update clients set owner_employee_id = null"));
         assertFalse(normalized.contains("update suppliers set owner_employee_id = null"));
         assertFalse(normalized.contains("owner_employee_id = null"));
         assertFalse(normalized.contains("set emp_id"));
         assertFalse(normalized.contains("lower("));
+    }
+
+    @Test
+    void sharedResolverRequiresOneExactCurrentEmployeeAndKeepsCustodyEvidence() throws IOException {
+        String resolver = source("legacy_migration/migrate_owner_custody.sql")
+                .replaceAll("\\s+", " ").toLowerCase();
+        assertTrue(resolver.contains("source_value ~ '^[0-9]{1,10}$'"));
+        assertTrue(resolver.contains("source_id between 1 and 2147483647"));
+        assertTrue(resolver.contains("where e.legacy_id=source_id"));
+        assertTrue(resolver.contains("if cardinality(matches)=1 then"));
+        assertTrue(resolver.contains("old_deleted=false and old_status in ('active','probation','onleave')"));
+        assertTrue(resolver.contains("source_employee_ambiguous"));
+        assertTrue(resolver.contains("source_employee_not_current"));
+        assertTrue(resolver.contains("owner_id:=pg_temp.legacy_custodian_employee()"));
+        assertFalse(resolver.contains("where e.full_name="));
     }
 
     @Test

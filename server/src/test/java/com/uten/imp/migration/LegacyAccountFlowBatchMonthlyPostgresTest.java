@@ -34,8 +34,12 @@ class LegacyAccountFlowBatchMonthlyPostgresTest {
         admin.execute("CREATE ROLE uten LOGIN NOSUPERUSER; CREATE ROLE uten_migrator LOGIN NOSUPERUSER");
         TestFlyway.configure().dataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()).load().migrate();
         LegacyFinanceImportFixture.seed(admin);
-        admin.execute("GRANT USAGE ON SCHEMA public TO uten; GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO uten;"
-                +"GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO uten; REVOKE ALL ON FUNCTION pg_catalog.pg_control_system() FROM PUBLIC,uten");
+        admin.execute("""
+                GRANT USAGE ON SCHEMA public TO uten;
+                GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO uten;
+                GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO uten;
+                REVOKE ALL ON FUNCTION pg_catalog.pg_control_system() FROM PUBLIC,uten;
+                """);
     }
     @AfterAll static void stop(){PG.stop();}
 
@@ -132,7 +136,9 @@ class LegacyAccountFlowBatchMonthlyPostgresTest {
             var futures=new java.util.ArrayList<java.util.concurrent.Future<?>>();
             for(int i=0;i<2;i++){final int index=i;futures.add(executor.submit(()->{
                 try(Connection c=DriverManager.getConnection(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword())) {
-                    c.setAutoCommit(false);c.createStatement().execute("SET LOCAL ROLE uten");modern(c,"SYN-CONCURRENT-"+index);c.commit();
+                    c.setAutoCommit(false);
+                    try(var role=c.createStatement()){role.execute("SET LOCAL ROLE uten");}
+                    modern(c,"SYN-CONCURRENT-"+index);c.commit();
                 }catch(Exception error){throw new IllegalStateException(error);}
             }));}
             for(var future:futures)future.get();

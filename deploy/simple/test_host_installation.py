@@ -11,7 +11,7 @@ import unittest
 
 SIMPLE = Path(__file__).resolve().parent
 BACKUP = SIMPLE.parent / "postgres/backup"
-TMPFILES = SIMPLE / "host/uten-imp-updater.tmpfiles.conf"
+TMPFILES = SIMPLE / "uten-imp-updater.tmpfiles.conf"
 INSTALLER = SIMPLE / "install-server-operations.sh"
 
 
@@ -25,14 +25,19 @@ class HostInstallationContractTest(unittest.TestCase):
             after = " ".join(line.split("=", 1)[1] for line in unit.splitlines()
                              if line.startswith("After="))
             self.assertIn("systemd-tmpfiles-setup.service", after.split(), name)
+            requires = " ".join(line.split("=", 1)[1] for line in unit.splitlines()
+                                if line.startswith("Requires="))
+            self.assertIn("systemd-tmpfiles-setup.service", requires.split(), name)
+            self.assertNotIn("ExecStartPre=+/usr/bin/install", unit, name)
             # This shared lock must survive either service stopping or restarting.
             runtime = " ".join(line.split("=", 1)[1] for line in unit.splitlines()
                                if line.startswith("RuntimeDirectory="))
             self.assertNotIn("uten-imp-updater", runtime.split(), name)
         installer = INSTALLER.read_text()
-        self.assertIn('atomic_install "$SRC/host/uten-imp-updater.tmpfiles.conf" '
+        self.assertIn('atomic_install "$SRC/uten-imp-updater.tmpfiles.conf" '
                       '/etc/tmpfiles.d/uten-imp-updater.conf 0644', installer)
-        create = installer.index("systemd-tmpfiles --create /etc/tmpfiles.d/uten-imp-updater.conf")
+        self.assertIn('safe_lock_file /etc/tmpfiles.d/uten-imp-updater.conf', installer)
+        create = installer.index("/usr/bin/systemd-tmpfiles --create /etc/tmpfiles.d/uten-imp-updater.conf")
         self.assertLess(create, installer.index("systemctl restart uten-imp-operations.service"))
 
     def test_installed_backup_dependency_closure_loads_all_three_reviewed_helpers(self):

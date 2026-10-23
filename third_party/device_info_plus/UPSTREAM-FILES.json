@@ -1,0 +1,50 @@
+{
+  "name": "device_info_plus",
+  "version": "11.5.0",
+  "archiveSha256": "98f28b42168cc509abc92f88518882fd58061ea372d7999aecc424345c7bff6a",
+  "modifiedFiles": [
+    "android/build.gradle",
+    "pubspec.yaml"
+  ],
+  "files": {
+    "CHANGELOG.md": "179f3ce81b306973f773d214fb46445a71fce078946ba8564ca3b714f1a425fa",
+    "LICENSE": "3b38d48befd0af70b892e13d10c9e34679416c24a9277f962629951c64d71f4c",
+    "README.md": "52dc72ab68d566b4aa31884eefd449d68f9af3d2ac80ea9ad574a6d517fcb9e4",
+    "android/build.gradle": "918016d5abdf6ce59098442b90247dc207cf18a057bbc2b24dbb77a7c2f5d58a",
+    "android/gradle.properties": "034fd3f15ac7a699cf7393150e318cd3e0afb51826b0decc69a548db53fa1116",
+    "android/gradle/wrapper/gradle-wrapper.properties": "0bb54ba7e58a9fbb012d10c5df2a63439a14e6291ed372e2a28c74d8b9e7129b",
+    "android/settings.gradle": "26e94e4f9e41a9c22f0e4b5fad6483f901cc5cb343de0c4a8c99bc671b98166c",
+    "android/src/main/AndroidManifest.xml": "3eb7c97a650161469eb5e1e4060e828d42a053c43afa7726912c0f216e7b5c04",
+    "android/src/main/kotlin/dev/fluttercommunity/plus/device_info/DeviceInfoPlusPlugin.kt": "fc51e8adc58094691370be45f9b1e472b1a57bbc93eda12080799ed81afb9197",
+    "android/src/main/kotlin/dev/fluttercommunity/plus/device_info/MethodCallHandlerImpl.kt": "b62101f7fc53d4283a04495e83849cf3480eb3d56bb0962629b96d9bf7512474",
+    "ios/device_info_plus.podspec": "6d2ea5f7f1558a876c183e3ac5bb65fc70922f61ea61c8abfe5b6fd28d7f4be6",
+    "ios/device_info_plus/Package.swift": "1bb82d1f6297bcdb8bab846ead02435a5c915ed75dcc8cd55d20c0dd54b54232",
+    "ios/device_info_plus/Sources/device_info_plus/DeviceIdentifiers.m": "e8f10a7f1cf7e9fd9a306fcda96f804c11dcec91138e66b7e4c77184f289568b",
+    "ios/device_info_plus/Sources/device_info_plus/FPPDeviceInfoPlusPlugin.m": "e17465833ee26e2c2a3213c7563423bc9a3efed526ab51953761e592e4b3d7fc",
+    "ios/device_info_plus/Sources/device_info_plus/PrivacyInfo.xcprivacy": "6d2da0d8d930227d428c1d9363b0ad6e3a12e2c9b68c5ce297158a7412fc8c31",
+    "ios/device_info_plus/Sources/device_info_plus/include/device_info_plus/DeviceIdentifiers.h": "a921b295f443b7d730322015bf2e1397f6d7db0decb71b1ae01192b653180e3a",
+    "ios/device_info_plus/Sources/device_info_plus/include/device_info_plus/FPPDeviceInfoPlusPlugin.h": "e0f726f8fbef1a450d202fa6bb13709700e7db87e6959bc6ee447ef6c31d1e1b",
+    "lib/device_info_plus.dart": "d837cdf7eca7da666790d31fb7901f94681bfe9a3a8e3a7d8ae11bb5c9b47eae",
+    "lib/src/device_info_plus_linux.dart": "ac4c6966c0be4838b94ef2cc4c148b69ff5b2aa11ea0000a0dbcd809127c3044",
+    "lib/src/device_info_plus_macos.dart": "3fca6f7585a6487be4b6844b14a18471c58befd473cc607d0cd983a28780de77",
+    "lib/src/device_info_plus_web.dart": "abf741ec3e5082af38f89c3f8e562093e60c93d74026e852fb8c21f2e647bd9e",
+    "lib/src/device_info_plus_windows.dart": "0971b76e603d289aba52cdb08e088aab6e9b4714f329e2765f7bdca6e8e67396",
+    "lib/src/model/android_device_info.dart": "e4fd9e88510e2d08500c740b02e9e693a1a5c1dca51b3608a06826c3b048fce4",
+    "lib/src/model/ios_device_info.dart": "25a3b2ce2a1e2d846454132e315578b7619ec51640445604edf673bb5a16a282",
+    "lib/src/model/linux_device_info.dart": "ed01e5c0d4a75e7a02f5bf6416108500d0fbc57f4d33aec9ed2b3fb8e5c0ee9c",
+    "lib/src/model/macos_device_info.dart": "50485205d9ee9730ed750f46f74791a08387c6340db429959f747ad5befdf0af",
+    "lib/src/model/web_browser_info.dart": "bd270fb447c31b7b41df25204d0a05e414b53e1e1d8c5999401d3e3c89db8f58",
+    "lib/src/model/windows_device_info.dart": "4d5117937ef4f3e33548253b3cc6b91ce9420f2fcda352abdbf130b09f00373d",
+    "macos/device_info_plus.podspec": "6a4a8e0d09ed1b7ff5ac63a38283db237810cca542fb03da0c82584fab2a1a7a",
+    "macos/device_info_plus/Package.swift": "83a643deaa9da9d32314f2921f2791fdd63d074035b1771e7536e0a047e04d1c",
+    "macos/device_info_plus/Sources/device_info_plus/CwlSysctl.swift": "d0dce87394337d4330894b760976af7db144f346edb98c0927f54cd718766350",
+    "macos/device_info_plus/Sources/device_info_plus/DeviceIdentifiers.swift": "7e350596f66a43427acb54a0908bdd03360c73a6404c25e373b0c95c544cf133",
+    "macos/device_info_plus/Sources/device_info_plus/DeviceInfoPlusMacosPlugin.swift": "820760396f10e9dc70a29bab3a98886e6c7e714cda5c8d1112ef0db27994ac05",
+    "macos/device_info_plus/Sources/device_info_plus/PrivacyInfo.xcprivacy": "204d035a88eab2281b3d914f46c796766ae78e3cb82537711928dca9e28dbbb8",
+    "macos/device_info_plus/Sources/device_info_plus/SystemUUID.swift": "5134806c029eb2f41c0febbc5abc05196abb75122f5c0a3259fc514e5c210e92",
+    "pubspec.yaml": "d0374313fc276d06b5e3ff4a9692f9ef4c84576fdf852b21fc4fa5c616a2f39d"
+  },
+  "hygieneSha256": {
+    "ios/device_info_plus.podspec": "3dab0c85dcb516032db9e77331216fa0614564150a954f09851b19caac70ad92"
+  }
+}

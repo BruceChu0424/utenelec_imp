@@ -176,7 +176,17 @@ class GoodsMaterialIdentityEvidencePostgresTest {
             try (var result = statement.executeQuery()) { assertTrue(result.next()); return result.getString(1); }
         }
     }
-    private long number(String command, Object... args) throws SQLException { return Long.parseLong(text(command, args)); }
+    private long number(String command, Object... args) throws SQLException {
+        try (var statement = db.prepareStatement(command)) {
+            for (int i = 0; i < args.length; i++) statement.setObject(i + 1, args[i]);
+            try (var result = statement.executeQuery()) {
+                assertTrue(result.next(), "Expected a numeric result row");
+                long value = result.getLong(1);
+                assertFalse(result.wasNull(), "Expected a non-null numeric result");
+                return value;
+            }
+        }
+    }
     private boolean bool(String command, Object... args) throws SQLException {
         String value = text(command, args);
         return "t".equals(value) || "true".equalsIgnoreCase(value);

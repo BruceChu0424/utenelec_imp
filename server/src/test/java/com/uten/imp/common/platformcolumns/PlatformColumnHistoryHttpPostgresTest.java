@@ -8,6 +8,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.flyway.autoconfigure.FlywayDataSource;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -22,19 +23,30 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 class PlatformColumnHistoryHttpPostgresTest extends AiPlatformPostgresTestSupport {
     private static final AtomicInteger NUMBER=new AtomicInteger(870000);
     private static final UUID LEGACY_ORDER=UUID.randomUUID(),LEGACY_ITEM=UUID.randomUUID();
+    private static final String RUNTIME_PASSWORD=UUID.randomUUID().toString();
 
     private static final PostgreSQLContainer LEGACY_DATABASE = new PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("platform_history_legacy").withUsername("uten").withPassword("uten");
+            .withDatabaseName("platform_history_legacy").withUsername("fixture_admin").withPassword("uten");
 
     @TestConfiguration(proxyBeanMethods=false)
     static class LegacyDataSource {
-        @Bean(destroyMethod="close") @Primary @FlywayDataSource
-        DataSource legacyHistoryDataSource() {
+        @Bean(destroyMethod="close") @FlywayDataSource
+        DataSource legacyHistoryMigrationDataSource() {
             genuinePreRetentionRow();
+            return pool(LEGACY_DATABASE.getUsername(),LEGACY_DATABASE.getPassword());
+        }
+
+        @Bean(destroyMethod="close") @Primary
+        @DependsOn("legacyHistoryMigrationDataSource")
+        DataSource legacyHistoryDataSource() {
+            return pool("uten",RUNTIME_PASSWORD);
+        }
+
+        private DataSource pool(String username,String password) {
             var configuration=new com.zaxxer.hikari.HikariConfig();
             configuration.setJdbcUrl(LEGACY_DATABASE.getJdbcUrl());
-            configuration.setUsername(LEGACY_DATABASE.getUsername());
-            configuration.setPassword(LEGACY_DATABASE.getPassword());
+            configuration.setUsername(username);
+            configuration.setPassword(password);
             configuration.setMaximumPoolSize(4);configuration.setMinimumIdle(0);
             return new com.zaxxer.hikari.HikariDataSource(configuration);
         }
@@ -44,8 +56,9 @@ class PlatformColumnHistoryHttpPostgresTest extends AiPlatformPostgresTestSuppor
         // The inherited AI container may already be at the current head in a full
         // suite. A dedicated primary/Flyway datasource makes this legacy premise real.
         LEGACY_DATABASE.start();
-        com.uten.imp.testsupport.TestFlyway.configure().dataSource(LEGACY_DATABASE.getJdbcUrl(),LEGACY_DATABASE.getUsername(),LEGACY_DATABASE.getPassword()).target("774").load().migrate();
         var sql=new JdbcTemplate(new DriverManagerDataSource(LEGACY_DATABASE.getJdbcUrl(),LEGACY_DATABASE.getUsername(),LEGACY_DATABASE.getPassword()));
+        sql.execute("CREATE ROLE uten LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '"+RUNTIME_PASSWORD+"'");
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(LEGACY_DATABASE.getJdbcUrl(),LEGACY_DATABASE.getUsername(),LEGACY_DATABASE.getPassword()).target("774").load().migrate();
         assertThat(sql.queryForObject("SELECT max(version::integer) FROM flyway_schema_history WHERE success",Integer.class)).isEqualTo(774);
         UUID employee=UUID.randomUUID(),actor=UUID.randomUUID(),client=UUID.randomUUID(),unit=UUID.randomUUID(),goods=UUID.randomUUID();
         sql.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,?,'旧字段测试归属','其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_HR'",employee,"EMP-LEGACY-"+employee);
@@ -54,7 +67,23 @@ class PlatformColumnHistoryHttpPostgresTest extends AiPlatformPostgresTestSuppor
         sql.update("INSERT INTO units(id,code,name,status) VALUES(?,'U-LEGACY-FH','旧字段单位','使用')",unit);
         sql.update("INSERT INTO goods(id,code,name,model,source_type,status,unit_id,price,code_sequence) VALUES(?,'G-LEGACY-FH','旧字段货品','LEGACY-FH','自制','使用',?,10,(SELECT coalesce(max(code_sequence),0)+1 FROM goods))",goods,unit);
         insertShipment(sql,LEGACY_ORDER,LEGACY_ITEM,client,employee,goods,unit,"G-LEGACY-FH",879999);
-        // Spring then applies the immutable V775..V779 forward chain. No trigger is disabled.
+        sql.execute("""
+                GRANT USAGE ON SCHEMA public TO uten;
+                GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO uten;
+                GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO uten;
+                ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT,INSERT,UPDATE,DELETE ON TABLES TO uten;
+                ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE,SELECT ON SEQUENCES TO uten;
+                """);
+        // Spring applies V775 onward using the separate migration owner. Later
+        // runtime revocations, including V915 and V917, remain authoritative.
+    }
+
+    @Test void migrationOwnerAndOrdinaryRuntimeRemainSeparateAfterTheForwardChain() {
+        assertThat(jdbc.queryForObject("SELECT current_user",String.class)).isEqualTo("uten");
+        assertThat(jdbc.queryForObject("SELECT rolsuper FROM pg_roles WHERE rolname=current_user",Boolean.class)).isFalse();
+        assertThat(jdbc.queryForObject("SELECT pg_has_role(current_user,'fixture_admin','MEMBER')",Boolean.class)).isFalse();
+        assertThat(jdbc.queryForObject("SELECT pg_get_userbyid(proowner)::text FROM pg_proc WHERE oid='public.business_data_reset()'::regprocedure",String.class)).isEqualTo("fixture_admin");
+        assertThat(jdbc.queryForObject("SELECT has_function_privilege(current_user,'public.business_data_reset()','EXECUTE')",Boolean.class)).isFalse();
     }
 
     @Test void existingUnregisteredAndRetiredItemsRemainReadableAfterParentLogicalDeletion() throws Exception {

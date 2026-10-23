@@ -53,10 +53,9 @@ try {
   run(process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit']);
   npm(['run', 'test:all']);
   npm(['run', 'test:prisma-migrations']);
-  // Installation mirrors need not implement npm's vulnerability API.
-  // --omit=dev: braces(GHSA-vfj7-8cjw-p6xm, stack-exhaustion in file watchers)
-  // 是 tailwindcss→chokidar 的构建链传递依赖，生产依赖树为零（npm ls --omit=dev
-  // 为空），上游尚无修复版本。运行时漏洞仍会红（audit 默认包含 prod）。
+  // Installation mirrors need not implement npm's vulnerability API. Check the
+  // build toolchain as well as the separately scoped production dependency tree.
+  npm(['audit', '--audit-level=low', '--registry=https://registry.npmjs.org']);
   npm(['audit', '--audit-level=low', '--omit=dev', '--registry=https://registry.npmjs.org']);
   // Do not let a future test that writes the validation DB seed production build output.
   const buildDatabase = path.join(temporaryRoot, 'empty-build.db');

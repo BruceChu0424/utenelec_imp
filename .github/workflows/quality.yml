@@ -350,10 +350,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Verify Android overlay policy and vendored runtime provenance
+        run: python3 -m unittest discover -s .github/scripts -p test_android_build_contract.py -v
       - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "17"
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: 3.44.2
@@ -411,7 +413,12 @@ jobs:
         run: |
           set -euo pipefail
           docker build -t uten-dr-contract:ci -f deploy/disaster-recovery/tests/Dockerfile deploy/disaster-recovery
+          # Record the default LSM/mount decision before the required fixture.
+          # SYS_ADMIN alone does not override Docker's host AppArmor profile.
           docker run --rm --network none --cap-add SYS_ADMIN \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace,readonly" \
+            uten-dr-contract:ci python deploy/disaster-recovery/tests/run_contracts.py --probe-mount
+          docker run --rm --network none --cap-add SYS_ADMIN --security-opt apparmor=unconfined \
             --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace,readonly" \
             uten-dr-contract:ci
       - name: Verify remote TLS and compromised-cloud isolation in disposable containers

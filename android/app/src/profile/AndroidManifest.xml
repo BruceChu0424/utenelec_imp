@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Profile 性能调试沿用本地 HTTP；正式 release 不允许明文。 -->
-    <application android:usesCleartextTraffic="true"/>
+    <application android:usesCleartextTraffic="true" tools:replace="android:usesCleartextTraffic"/>
 </manifest>

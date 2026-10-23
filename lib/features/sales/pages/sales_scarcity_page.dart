@@ -11,6 +11,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/network/latest_request_guard.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -50,6 +51,16 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      _loadRequests.begin();
+      setState(() {
+        _rows = null;
+        _goodsId = null;
+        _goodsName = null;
+        _loadError = null;
+        _loading = false;
+      });
+    });
     _goodsId = widget.initialGoodsId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(salesMasterNameServiceProvider).ensureLoaded();

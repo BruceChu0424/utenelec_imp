@@ -45,6 +45,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/auth/sensitive_write.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
@@ -215,6 +216,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, inlineClearView);
     final navigation =
         widget.initialNavigation ??
         (widget.initialScope == null
@@ -248,6 +250,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
   }
 
   Future<void> _refresh() async {
+    final ownerCurrent = captureReadOwner(ref);
     final generation = _searchRequests.begin();
     _searchDebounce?.cancel();
     _acceptPendingSearch = false;
@@ -256,7 +259,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
       ref.read(masterNameServiceProvider).ensureCommonLoaded(),
       _loadTree(),
     ]);
-    if (!mounted || !_searchRequests.isCurrent(generation)) return;
+    if (!ownerCurrent() || !_searchRequests.isCurrent(generation)) return;
     await _applySearch(_searchQuery);
   }
 
@@ -267,21 +270,22 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
   }
 
   Future<void> _loadTree() async {
+    final ownerCurrent = captureReadOwner(ref);
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     try {
       final tree = await ref
           .read(productCategoryRepositoryProvider)
           .treeWithGoodsCounts();
-      if (!inlineAcceptsRead(boundary)) return;
+      if (!ownerCurrent() || !inlineAcceptsRead(boundary)) return;
       setState(() {
         _tree = tree;
         _treeError = null;
       });
     } on ApiException catch (e) {
-      if (!inlineAcceptsRead(boundary)) return;
+      if (!ownerCurrent() || !inlineAcceptsRead(boundary)) return;
       setState(() => _treeError = e.message);
     } catch (_) {
-      if (!inlineAcceptsRead(boundary)) return;
+      if (!ownerCurrent() || !inlineAcceptsRead(boundary)) return;
       setState(() => _treeError = '加载分类失败'); // TODO(l10n): 补 arb
     }
   }

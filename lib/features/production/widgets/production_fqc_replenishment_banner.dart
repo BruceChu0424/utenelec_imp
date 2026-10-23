@@ -7,6 +7,9 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_paged_picker_list.dart';
 import '../../../core/network/latest_request_guard.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../core/network/server_config.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -40,7 +43,22 @@ class _ProductionFqcReplenishmentBannerState
   final _taskRows =
       MasterDataTableRowsController<ProductionFqcReplenishmentMaterialTask>();
   final Set<String> _busyAuthorizations = {};
-  final Map<String, String> _confirmationKeys = {};
+  // Unknown command outcomes keep their original key when the reader changes.
+  // A different server or actor must not borrow that command's recovery key.
+  final _confirmationKeysByOwner =
+      <(String, String?, String?, int), Map<String, String>>{};
+  Map<String, String> get _confirmationKeys {
+    final scope = ref.read(authenticatedScopeProvider);
+    final owner = (
+      ref.read(apiBaseUrlProvider),
+      scope?.userId,
+      scope?.actorId,
+      scope?.businessResetGeneration ?? 0,
+    );
+    return _confirmationKeysByOwner.putIfAbsent(owner, () => {});
+  }
+
+  VoidCallback? _invalidateTaskSheet;
 
   Set<String> get _permissions => ref.read(currentPermissionsProvider);
   bool get _canView =>
@@ -58,6 +76,17 @@ class _ProductionFqcReplenishmentBannerState
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      _requests.begin();
+      setState(() {
+        _result = null;
+        _pendingCount = 0;
+        _error = null;
+        _loading = false;
+        _busyAuthorizations.clear();
+      });
+      _invalidateTaskSheet?.call();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -87,6 +116,7 @@ class _ProductionFqcReplenishmentBannerState
     try {
       final repository = ref.read(productionFqcReplenishmentRepositoryProvider);
       final result = await repository.materialTasks(page: targetPage);
+      if (!mounted || !_requests.isCurrent(generation)) return;
       var pendingCount = result.items.where((item) => !item.isTerminal).length;
       try {
         pendingCount = await repository.materialTaskCount();
@@ -161,6 +191,7 @@ class _ProductionFqcReplenishmentBannerState
     BuildContext sheetContext,
     VoidCallback refreshSheet,
   ) async {
+    final ownerCurrent = captureReadOwner(ref);
     if (!_canCreateAnalysis ||
         _busyAuthorizations.contains(task.authorizationId)) {
       return;
@@ -185,14 +216,14 @@ class _ProductionFqcReplenishmentBannerState
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !ownerCurrent()) return;
     setState(() => _busyAuthorizations.add(task.authorizationId));
     refreshSheet();
     try {
       final analysis = await ref
           .read(productionFqcReplenishmentRepositoryProvider)
           .createMaterialAnalysis(task.authorizationId);
-      if (!mounted) return;
+      if (!mounted || !ownerCurrent()) return;
       context.appSuccess('补产 BOM 分析已建立；请核对后返回待办确认用料');
       if (sheetContext.mounted &&
           analysis.materialAnalysisId?.isNotEmpty == true) {
@@ -204,11 +235,15 @@ class _ProductionFqcReplenishmentBannerState
         await _load();
       }
     } on ApiException catch (error) {
-      if (mounted) context.appError(error.message, force: true);
+      if (mounted && ownerCurrent()) {
+        context.appError(error.message, force: true);
+      }
     } catch (_) {
-      if (mounted) context.appError('建立 FQC 补产物料分析失败，请重试', force: true);
+      if (mounted && ownerCurrent()) {
+        context.appError('建立 FQC 补产物料分析失败，请重试', force: true);
+      }
     } finally {
-      if (mounted) {
+      if (mounted && ownerCurrent()) {
         setState(() => _busyAuthorizations.remove(task.authorizationId));
         if (sheetContext.mounted) refreshSheet();
       }
@@ -220,6 +255,7 @@ class _ProductionFqcReplenishmentBannerState
     BuildContext sheetContext,
     VoidCallback refreshSheet,
   ) async {
+    final ownerCurrent = captureReadOwner(ref);
     if (!_canConfirm || _busyAuthorizations.contains(task.authorizationId)) {
       return;
     }
@@ -245,7 +281,7 @@ class _ProductionFqcReplenishmentBannerState
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !ownerCurrent()) return;
     setState(() => _busyAuthorizations.add(task.authorizationId));
     refreshSheet();
     try {
@@ -255,7 +291,7 @@ class _ProductionFqcReplenishmentBannerState
             authorizationId: task.authorizationId,
             idempotencyKey: _confirmationKey(task.authorizationId),
           );
-      if (!mounted) return;
+      if (!mounted || !ownerCurrent()) return;
       _replaceTask(updated);
       _confirmationKeys.remove(task.authorizationId);
       switch (updated.status) {
@@ -270,13 +306,17 @@ class _ProductionFqcReplenishmentBannerState
       }
       await _load(page: _page);
     } on ApiException catch (error) {
-      if (mounted) context.appError(error.message, force: true);
+      if (mounted && ownerCurrent()) {
+        context.appError(error.message, force: true);
+      }
       // Keep the same key: the response may have been lost after commit.
     } catch (_) {
-      if (mounted) context.appError('补产物料确认失败，请使用同一待办重试', force: true);
+      if (mounted && ownerCurrent()) {
+        context.appError('补产物料确认失败，请使用同一待办重试', force: true);
+      }
       // Keep the same key: the response may have been lost after commit.
     } finally {
-      if (mounted) {
+      if (mounted && ownerCurrent()) {
         setState(() => _busyAuthorizations.remove(task.authorizationId));
         if (sheetContext.mounted) refreshSheet();
       }
@@ -305,6 +345,7 @@ class _ProductionFqcReplenishmentBannerState
   }
 
   Future<void> _showTasks() {
+    final sheetOwner = captureReadOwner(ref);
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -312,7 +353,17 @@ class _ProductionFqcReplenishmentBannerState
       showDragHandle: true,
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, refreshSheet) {
+          _invalidateTaskSheet = () {
+            if (sheetContext.mounted) refreshSheet(() {});
+          };
+          if (!sheetOwner()) {
+            return const Padding(
+              padding: EdgeInsets.all(UtenSpacing.s16),
+              child: Text('读取身份已变化，请关闭后重新打开任务'),
+            );
+          }
           Future<void> loadPage(int page) async {
+            if (!sheetOwner()) return;
             final request = _load(page: page);
             refreshSheet(() {});
             await request;
@@ -382,6 +433,7 @@ class _ProductionFqcReplenishmentBannerState
                               task.authorizationId,
                             ),
                             onCreateAnalysis: () async {
+                              if (!sheetOwner()) return;
                               final operation = _createAndOpenAnalysis(
                                 task,
                                 sheetContext,
@@ -398,6 +450,7 @@ class _ProductionFqcReplenishmentBannerState
                                   )
                                 : null,
                             onConfirm: () async {
+                              if (!sheetOwner()) return;
                               final operation = _confirmMaterial(
                                 task,
                                 sheetContext,
@@ -417,7 +470,7 @@ class _ProductionFqcReplenishmentBannerState
           );
         },
       ),
-    );
+    ).whenComplete(() => _invalidateTaskSheet = null);
   }
 
   @override

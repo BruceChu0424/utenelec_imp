@@ -127,6 +127,7 @@ class _HarnessState extends State<_Harness>
   bool _sampling = false;
   bool _busy = false;
   bool _material = true;
+  int _materialGeneration = 0;
   String _status = '500 产品 / 2000 物料，固定两秒只读接口延迟';
   final _decoder = ResponsiveJsonDecoder();
   Timer? _finish;
@@ -172,8 +173,106 @@ class _HarnessState extends State<_Harness>
         Future<void>.delayed(const Duration(seconds: 3), _pdfScenario);
       } else if (Uri.base.queryParameters['auto'] == 'csv') {
         Future<void>.delayed(const Duration(seconds: 3), _csvScenario);
+      } else if (Uri.base.queryParameters['auto'] == 'material-actions') {
+        Future<void>.delayed(const Duration(seconds: 6), _materialInteractions);
       }
     });
+  }
+
+  void _visitMaterial(void Function(Element) action) {
+    void visit(Element element) {
+      action(element);
+      element.visitChildren(visit);
+    }
+
+    _materialHost.currentContext?.visitChildElements(visit);
+  }
+
+  Future<void> _materialInteractions() async {
+    _beginMetrics();
+    var searches = 0;
+    var scrolls = 0;
+    var lastMaterialFound = false;
+    var emptyQueryHasRows = true;
+    var furthestOffset = 0.0;
+    for (final query in ['验证物料499-3', '', 'B0-no-matching-material', '']) {
+      TextField? input;
+      _visitMaterial((element) {
+        if (element.widget case final TextField field) {
+          if (field.decoration?.hintText == '查找产品或物料') input = field;
+        }
+      });
+      if (input?.controller == null || input?.onChanged == null) {
+        await _report(
+          'material-search-scroll',
+          extra: {'error': 'search-control-missing'},
+        );
+        return;
+      }
+      input!.controller!.text = query;
+      input!.onChanged!(query);
+      searches++;
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+      if (query == '验证物料499-3') {
+        _visitMaterial((element) {
+          if (element.widget case Text(data: '验证物料499-3')) {
+            lastMaterialFound = true;
+          }
+        });
+      }
+      if (query == 'B0-no-matching-material') {
+        emptyQueryHasRows = false;
+        _visitMaterial((element) {
+          if (element.widget case Text(data: final text?)) {
+            if (text.startsWith('验证产品') || text.startsWith('验证物料')) {
+              emptyQueryHasRows = true;
+            }
+          }
+        });
+      }
+    }
+    ScrollPosition? vertical;
+    _visitMaterial((element) {
+      if (element case StatefulElement(state: final ScrollableState state)) {
+        final position = state.position;
+        if (axisDirectionToAxis(position.axisDirection) == Axis.vertical &&
+            position.hasContentDimensions &&
+            position.maxScrollExtent > (vertical?.maxScrollExtent ?? 0)) {
+          vertical = position;
+        }
+      }
+    });
+    if (vertical != null) {
+      final target = vertical!.maxScrollExtent.clamp(0.0, 12000.0);
+      for (var step = 1; step <= 8; step++) {
+        await vertical!.animateTo(
+          target * step / 8,
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.linear,
+        );
+        scrolls++;
+        if (vertical!.pixels > furthestOffset) {
+          furthestOffset = vertical!.pixels;
+        }
+      }
+      await vertical!.animateTo(
+        0,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.linear,
+      );
+    }
+    await _report(
+      'material-search-scroll',
+      extra: {
+        'searches': searches,
+        'scrollSteps': scrolls,
+        'furthestOffset': furthestOffset,
+        'lastMaterialFound': lastMaterialFound,
+        'emptyQueryHasRows': emptyQueryHasRows,
+        'automation':
+            'real TextField callbacks and ScrollPosition; pointer/keyboard checked separately',
+      },
+    );
   }
 
   Future<void> _quietMaterial() async {
@@ -461,6 +560,13 @@ class _HarnessState extends State<_Harness>
                       onPressed: () => setState(() => _material = true),
                       child: const Text('物料页面'),
                     ),
+                    TextButton(
+                      onPressed: () => setState(() {
+                        _material = true;
+                        _materialGeneration++;
+                      }),
+                      child: const Text('重载'),
+                    ),
                   ],
                 ),
                 SelectableText(_status, key: const Key('b0-visible-results')),
@@ -471,8 +577,9 @@ class _HarnessState extends State<_Harness>
             child: _material
                 ? RepaintBoundary(
                     key: _materialHost,
-                    child: const ProductionMaterialAnalysisPage(
-                      seed: ProductionMaterialAnalysisSeed(
+                    child: ProductionMaterialAnalysisPage(
+                      key: ValueKey(_materialGeneration),
+                      seed: const ProductionMaterialAnalysisSeed(
                         analysisId: 'b0-analysis',
                         warehouseId: 'b0-warehouse',
                       ),

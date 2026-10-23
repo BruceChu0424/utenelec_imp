@@ -17,6 +17,8 @@ analyzer:
     - "output/**"
     - ".local-artifacts/**"
     - ".claude/**"
+    # Upstream MIT runtime keeps its own lint conventions; app regressions cover the backport.
+    - "third_party/riverpod/**"
   language:
     strict-casts: true
     strict-inference: true

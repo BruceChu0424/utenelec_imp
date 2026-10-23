@@ -1,5 +1,8 @@
 package com.uten.imp.features.admin.materialforecast;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.config.props.MaterialForecastProperties;
 import com.uten.imp.config.props.StorageProperties;
@@ -7,8 +10,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -114,8 +121,72 @@ class MaterialForecastDevelopmentPayloadTest {
         assertThatThrownBy(()->resolver.resolve(home,()->false)).isInstanceOf(MaterialForecastProcessLauncher.Failure.class);
     }
 
+    @Test void rejectedBuilderWithoutJsonReportsItsActualExitOnceInsteadOfAPathDiscoveryFailure()throws Exception {
+        List<String> logs=failedPreparationLogs(1,new ByteArrayInputStream(new byte[0]),"PREPARATION_FAILED");
+        assertThat(logs).singleElement().satisfies(message->assertThat(message)
+                .contains("source=DEVELOPMENT_PAYLOAD", "stage=PROCESS_WAIT", "reason=HELPER_NONZERO_EXIT",
+                        "exitCode=1", "stdoutBytes=0", "readerAlive=false", "readerFailed=false")
+                .doesNotContain("PATH_DISCOVERY_FAILED"));
+    }
+
+    @Test void successfulExitWithInvalidJsonReportsProtocolFailureWithoutEchoingChildOutput()throws Exception {
+        String raw="arbitrary private path or credential from a broken helper";
+        List<String> logs=failedPreparationLogs(0,new ByteArrayInputStream(raw.getBytes(StandardCharsets.UTF_8)),"PREPARATION_FAILED");
+        assertThat(logs).singleElement().satisfies(message->assertThat(message)
+                .contains("source=DEVELOPMENT_PAYLOAD", "stage=JSON_PROTOCOL", "reason=INVALID_JSON",
+                        "exitCode=0", "stdoutBytes="+raw.length(), "readerAlive=false", "readerFailed=false")
+                .doesNotContain(raw,"PATH_DISCOVERY_FAILED"));
+    }
+
+    @Test void failedBuilderRetainsItsAllowlistedErrorCodeAndReaderFailuresRemainDistinct()throws Exception {
+        byte[] receipt=json.writeValueAsBytes(Map.of("schemaVersion",1,"state","ERROR","errorCode","BASE_PYTHON_UNAVAILABLE"));
+        assertThat(failedPreparationLogs(1,new ByteArrayInputStream(receipt),"BASE_PYTHON_UNAVAILABLE"))
+                .singleElement().asString().contains("reason=HELPER_NONZERO_EXIT","exitCode=1");
+        InputStream broken=new InputStream() {
+            @Override public int read()throws IOException {throw new IOException("private child output failure");}
+        };
+        assertThat(failedPreparationLogs(0,broken,"PREPARATION_FAILED"))
+                .singleElement().asString().contains("stage=OUTPUT_READ","reason=OUTPUT_READ_FAILED","readerFailed=true")
+                .doesNotContain("private child output failure");
+    }
+
+    @Test void interruptedDevelopmentPreparationPreservesCancellationAndTheThreadInterrupt()throws Exception {
+        Path repository=repository();Path home=Files.createDirectories(repository.resolve("server/target/classes"));
+        var resolver=spy(new MaterialForecastDevelopmentPayload(new MaterialForecastProperties(),json));
+        Process child=mock(Process.class);
+        when(child.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[0]));
+        when(child.waitFor(anyLong(),eq(TimeUnit.MILLISECONDS))).thenThrow(new InterruptedException());
+        doReturn(child).when(resolver).start(anyList(),eq(repository));
+        try {
+            assertThatThrownBy(()->resolver.resolve(home,()->false))
+                    .isInstanceOf(MaterialForecastProcessLauncher.Failure.class).hasMessage("CONFIGURATION_PENDING");
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally { Thread.interrupted(); }
+    }
+
+    private List<String> failedPreparationLogs(int exit,InputStream output,String expectedCode)throws Exception {
+        Path repository=repository();Path home=Files.createDirectories(repository.resolve("server/target/classes"));
+        var properties=new MaterialForecastProperties();
+        var resolver=spy(new MaterialForecastDevelopmentPayload(properties,json));
+        Process child=mock(Process.class);
+        when(child.waitFor(anyLong(),eq(TimeUnit.MILLISECONDS))).thenReturn(true);
+        when(child.exitValue()).thenReturn(exit);
+        when(child.getInputStream()).thenReturn(output);
+        doReturn(child).when(resolver).start(anyList(),eq(repository));
+        var paths=mock(MaterialForecastHostPaths.class);
+        when(paths.payloadDirectory(any())).thenAnswer(invocation->resolver.resolve(home,invocation.getArgument(0)));
+        var captured=new ListAppender<ILoggingEvent>();captured.start();
+        var logger=(Logger)org.slf4j.LoggerFactory.getLogger(MaterialForecastProcessLauncher.class);
+        logger.addAppender(captured);
+        try {
+            assertThatThrownBy(()->new MaterialForecastProcessLauncher(paths,properties,json).prepare(()->false))
+                    .isInstanceOf(MaterialForecastProcessLauncher.Failure.class).hasMessage(expectedCode);
+            return captured.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+        } finally {logger.detachAppender(captured);captured.stop();}
+    }
+
     private Path repository()throws Exception {
-        Path repository=Files.createDirectory(directory.resolve("checkout"));
+        Path repository=Files.createTempDirectory(directory,"checkout-");
         Files.createFile(repository.resolve(".git"));
         Files.createDirectories(repository.resolve("server"));Files.createFile(repository.resolve("server/pom.xml"));
         Files.createDirectories(repository.resolve("services/material_forecast"));

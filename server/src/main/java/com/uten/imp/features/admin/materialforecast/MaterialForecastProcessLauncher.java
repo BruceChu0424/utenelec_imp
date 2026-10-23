@@ -18,13 +18,15 @@ import java.util.function.BooleanSupplier;
 @RequiredArgsConstructor
 public class MaterialForecastProcessLauncher {
     private static final org.slf4j.Logger LOG=org.slf4j.LoggerFactory.getLogger(MaterialForecastProcessLauncher.class);
-    private enum PreparationStage { PRECHECK, COMMAND_SETUP, PROCESS_START, PROCESS_WAIT, OUTPUT_READ, JSON_PROTOCOL, RECEIPT_VALIDATION, PATH_VALIDATION }
-    private enum PreparationReason { PATH_DISCOVERY_FAILED, PAYLOAD_MISSING, PAYLOAD_REAL_PATH_FAILED, HELPER_MISSING, CACHE_SETUP_FAILED,
+    enum PreparationSource { RUNTIME, DEVELOPMENT_PAYLOAD }
+    enum PreparationStage { PRECHECK, COMMAND_SETUP, PROCESS_START, PROCESS_WAIT, OUTPUT_READ, JSON_PROTOCOL, RECEIPT_VALIDATION, PATH_VALIDATION }
+    enum PreparationReason { PATH_DISCOVERY_FAILED, PAYLOAD_MISSING, PAYLOAD_REAL_PATH_FAILED, HELPER_MISSING, CACHE_SETUP_FAILED,
         COMMAND_SETUP_FAILED, BASE_PYTHON_UNAVAILABLE, CONFIGURATION_CHANGED, PROCESS_START_FAILED, PROCESS_WAIT_FAILED, DEADLINE_EXCEEDED,
         OUTPUT_READ_FAILED, OUTPUT_READER_NOT_FINISHED, INVALID_JSON, HELPER_NONZERO_EXIT, RECEIPT_SHAPE_INVALID, RECEIPT_FIELD_TYPE_INVALID,
         RECEIPT_PATH_INVALID, PYTHON_OUTSIDE_CACHE, FIXED_SCRIPT_MISMATCH, RECEIPT_FILE_INVALID, RECEIPT_METADATA_INVALID, INTERRUPTED }
-    private static final class PreparationDiagnostic {
+    static final class PreparationDiagnostic {
         final long started=System.nanoTime();
+        PreparationSource source=PreparationSource.RUNTIME;
         PreparationStage stage=PreparationStage.PRECHECK;
         PreparationReason reason=PreparationReason.PATH_DISCOVERY_FAILED;
         Integer exitCode;
@@ -32,15 +34,17 @@ public class MaterialForecastProcessLauncher {
         boolean readerAlive,readerFailed;
         Boolean pythonWithinCache,workerMatchesFixed,catalogMatchesFixed,regularFilesValid;
         void warn() {
-            LOG.warn("Material forecast preparation failed: stage={}, reason={}, elapsedMs={}, exitCode={}, stdoutBytes={}, readerAlive={}, readerFailed={}, pythonWithinCache={}, workerMatchesFixed={}, catalogMatchesFixed={}, regularFilesValid={}",
-                    stage,reason,TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started),exitCode,stdoutBytes,readerAlive,readerFailed,
+            LOG.warn("Material forecast preparation failed: source={}, stage={}, reason={}, elapsedMs={}, exitCode={}, stdoutBytes={}, readerAlive={}, readerFailed={}, pythonWithinCache={}, workerMatchesFixed={}, catalogMatchesFixed={}, regularFilesValid={}",
+                    source,stage,reason,TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started),exitCode,stdoutBytes,readerAlive,readerFailed,
                     pythonWithinCache,workerMatchesFixed,catalogMatchesFixed,regularFilesValid);
         }
     }
     public record Prepared(Path python,Path worker,Path catalog,String lockDigest,String workerVersion) {}
     public static class Failure extends RuntimeException {
         private final String code;
-        Failure(String code){super(code);this.code=code;}
+        private final PreparationDiagnostic diagnostic;
+        Failure(String code){this(code,null);}
+        Failure(String code,PreparationDiagnostic diagnostic){super(code);this.code=code;this.diagnostic=diagnostic;}
         public String code(){return code;}
     }
     private final MaterialForecastHostPaths paths;
@@ -108,7 +112,7 @@ public class MaterialForecastProcessLauncher {
             if(!diagnostic.regularFilesValid){diagnostic.reason=PreparationReason.RECEIPT_FILE_INVALID;throw new Failure("PREPARATION_FAILED");}
             if(!digest.matches("[0-9a-f]{64}")||version.isBlank()||version.length()>128){diagnostic.reason=PreparationReason.RECEIPT_METADATA_INVALID;throw new Failure("PREPARATION_FAILED");}
             return new Prepared(python,worker,catalog,digest,version);
-        }catch(Failure known){diagnostic.warn();throw known;}catch(InterruptedException interrupted){diagnostic.reason=PreparationReason.INTERRUPTED;diagnostic.warn();Thread.currentThread().interrupt();throw new Failure("CONFIGURATION_PENDING");}
+        }catch(Failure known){(known.diagnostic==null?diagnostic:known.diagnostic).warn();throw known;}catch(InterruptedException interrupted){diagnostic.reason=PreparationReason.INTERRUPTED;diagnostic.warn();Thread.currentThread().interrupt();throw new Failure("CONFIGURATION_PENDING");}
         catch(Exception invalid){diagnostic.warn();throw new Failure("PREPARATION_FAILED");}
         finally{Process process=preparation;preparation=null;if(process!=null&&process.isAlive())terminate(process);}
     }

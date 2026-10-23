@@ -335,7 +335,10 @@ def require_checkout(repo: Path, version: str, commit: str, development: bool = 
             "repo root is not the checkout root")
     require(_git(repo, "rev-parse", "HEAD").decode().strip() == commit, "checkout is not the requested commit")
     if development:
-        for path in (*SOURCE_FILES, *DERIVED_FILES, SCRIPT_PATH, FACADE_PATH, "pubspec.yaml"):
+        # Flutter's working manifest is not a Python runtime input. Development
+        # may change its version/dependencies while the payload still uses the
+        # requested commit's application version and source identity below.
+        for path in (*SOURCE_FILES, *DERIVED_FILES, SCRIPT_PATH, FACADE_PATH):
             source = repo / path
             no_symlink_ancestors(source)
             require(source.is_file() and source.stat().st_nlink == 1, "runtime source needs an independent regular file")

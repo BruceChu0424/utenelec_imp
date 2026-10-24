@@ -45,6 +45,8 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/api_client.dart' show apiClientProvider;
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -124,6 +126,10 @@ class _WarehouseSubcontractOutboundEditPageState
   bool _loading = true;
   bool _saving = false;
   bool _confirming = false;
+  bool _preparingCommand = false;
+  int _capabilityEpoch = 0;
+  AuthenticatedRequestScope? _commandScope;
+  ProviderSubscription<Set<String>>? _capabilityChanges;
   bool _requiresReload = false;
   bool _requestUncertain = false;
   bool _writeStarted = false;
@@ -136,6 +142,8 @@ class _WarehouseSubcontractOutboundEditPageState
   bool _gone = false;
   List<SubcontractOutboundLineDraft> _lines = const [];
 
+  @override
+  bool get formDraftTracksPermissionChanges => false;
   @override
   bool get formDraftBusy => _saving || _confirming;
   @override
@@ -282,11 +290,24 @@ class _WarehouseSubcontractOutboundEditPageState
   void initState() {
     super.initState();
     startFormDraftIdentityGuard();
+    // Capability refresh keeps the owner-bound picking input, but invalidates
+    // any command already awaiting a dialog, source read or durable checkpoint.
+    _capabilityChanges = ref.listenManual(currentPermissionsProvider, (
+      before,
+      after,
+    ) {
+      if (before == null ||
+          before.length != after.length ||
+          !before.containsAll(after)) {
+        _capabilityEpoch++;
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
   void dispose() {
+    _capabilityChanges?.close();
     _remark.dispose();
     for (final line in _lines) {
       line.dispose();
@@ -543,6 +564,7 @@ class _WarehouseSubcontractOutboundEditPageState
     );
     final fresh = await repo.detail(document.id);
     if (!mounted || !formDraftIdentityIsCurrent) return false;
+    _commandScope!.checkCurrent();
     if (subcontractOutboundDraftFingerprint(fresh) !=
         subcontractOutboundDraftFingerprint(document)) {
       _requiresReload = true;
@@ -551,6 +573,7 @@ class _WarehouseSubcontractOutboundEditPageState
     _requestUncertain = true;
     await saveFormDraftNow();
     if (!mounted || !formDraftIdentityIsCurrent) return false;
+    _commandScope!.checkCurrent();
     _writeStarted = true;
     _document = await repo.update(document.id, body);
     if (!mounted || !formDraftIdentityIsCurrent) return false;
@@ -560,7 +583,40 @@ class _WarehouseSubcontractOutboundEditPageState
     return true;
   }
 
-  Future<void> _onSave() async {
+  Future<void> _runCommand(
+    bool Function(_PickGate gate) allowed,
+    Future<void> Function() command,
+  ) async {
+    if (_preparingCommand || _saving || _confirming || _requiresReload) return;
+    bool canSend() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        allowed(_PickGate.of(_lines, ref.read(currentPermissionsProvider)));
+    if (!canSend()) return;
+    _preparingCommand = true;
+    final epoch = _capabilityEpoch;
+    AuthenticatedRequestScope? scope;
+    try {
+      final identity = await captureFormDraftRequestScope();
+      scope = await ref
+          .read(apiClientProvider)
+          .captureRequestScope(
+            isCurrent: () =>
+                identity.isCurrent && _capabilityEpoch == epoch && canSend(),
+          );
+      _commandScope = scope;
+      await scope.run(command);
+    } on ApiException catch (error) {
+      if (mounted) context.appError(error.message);
+    } finally {
+      if (identical(_commandScope, scope)) _commandScope = null;
+      _preparingCommand = false;
+    }
+  }
+
+  Future<void> _onSave() => _runCommand((gate) => gate.canEdit, _saveCommand);
+
+  Future<void> _saveCommand() async {
     if (_saving || _confirming || _requiresReload) return;
     _writeStarted = false;
     setState(() => _saving = true);
@@ -577,7 +633,9 @@ class _WarehouseSubcontractOutboundEditPageState
         _requiresReload = true;
         _requestUncertain =
             _writeStarted &&
-            (error.httpStatus == null || error.httpStatus! >= 500);
+            (isSessionBoundaryError(error) ||
+                error.httpStatus == null ||
+                error.httpStatus! >= 500);
         context.appError(error.message);
       }
     } catch (_) {
@@ -591,7 +649,10 @@ class _WarehouseSubcontractOutboundEditPageState
     }
   }
 
-  Future<void> _onApprove() async {
+  Future<void> _onApprove() =>
+      _runCommand((gate) => gate.canApprove, _approveCommand);
+
+  Future<void> _approveCommand() async {
     if (_saving || _confirming || _requiresReload) return;
     _writeStarted = false;
     setState(() => _confirming = true);
@@ -623,6 +684,7 @@ class _WarehouseSubcontractOutboundEditPageState
       final document = _document!;
       final fresh = await repo.detail(document.id);
       if (!mounted || !formDraftIdentityIsCurrent) return;
+      _commandScope!.checkCurrent();
       if (subcontractOutboundDraftFingerprint(fresh) !=
           subcontractOutboundDraftFingerprint(document)) {
         throw ApiException(
@@ -634,6 +696,7 @@ class _WarehouseSubcontractOutboundEditPageState
       _requestUncertain = true;
       await saveFormDraftNow();
       if (!mounted || !formDraftIdentityIsCurrent) return;
+      _commandScope!.checkCurrent();
       _writeStarted = true;
       final approved = await repo.approve(document.id);
       if (approved.status != 1) {
@@ -654,7 +717,9 @@ class _WarehouseSubcontractOutboundEditPageState
         _requiresReload = true;
         _requestUncertain =
             _writeStarted &&
-            (error.httpStatus == null || error.httpStatus! >= 500);
+            (isSessionBoundaryError(error) ||
+                error.httpStatus == null ||
+                error.httpStatus! >= 500);
         context.appError(error.message);
       }
     } catch (_) {
@@ -670,7 +735,10 @@ class _WarehouseSubcontractOutboundEditPageState
 
   /// 整单不发：填原因后把这张领料单退回委外(服务端作废领料单、退回占用的库存并
   /// 通知提交领料的委外人员)。原因弹窗在跑批遮罩亮起之前弹，遮罩不会盖住它。
-  Future<void> _onReturnToDraw() async {
+  Future<void> _onReturnToDraw() =>
+      _runCommand((gate) => gate.canReturn, _returnToDrawCommand);
+
+  Future<void> _returnToDrawCommand() async {
     if (_saving || _confirming || _requiresReload) return;
     final detail = _detail;
     if (detail == null) return;
@@ -696,6 +764,7 @@ class _WarehouseSubcontractOutboundEditPageState
       _requestUncertain = true;
       await saveFormDraftNow();
       if (!mounted || !formDraftIdentityIsCurrent) return;
+      _commandScope!.checkCurrent();
       returnWriteStarted = true;
       await ref
           .read(warehouseSubcontractOutboundRepositoryProvider)
@@ -715,7 +784,8 @@ class _WarehouseSubcontractOutboundEditPageState
       setState(() {
         _saving = false;
         _requestUncertain =
-            returnWriteStarted && (status == null || status >= 500);
+            returnWriteStarted &&
+            (isSessionBoundaryError(error) || status == null || status >= 500);
         // 领料单已被撤回 / 已出仓 / 被改过，或回执没收到：先刷新核对再处理。
         if (status == null || status == 404 || status == 409 || status >= 500) {
           _requiresReload = true;

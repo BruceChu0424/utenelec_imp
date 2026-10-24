@@ -771,7 +771,9 @@ void main() {
     await tester.pump();
     await _toggleSelectAll(tester);
     _pressSubmit(tester, key: _stockInSubmitKey);
-    await tester.pump();
+    // The scope and durable draft checkpoint finish before the command's
+    // finally block clears its busy overlay. Wait before interacting again.
+    await tester.pumpAndSettle();
     expect(api.lastPostPath, isNull);
     expect(find.byType(InboundConfirmPoints), findsNothing);
     expect(

@@ -71,7 +71,10 @@ Future<void> _wheel(
     pointer.hover(at ?? tester.getCenter(find.text('ROW-5'))),
   );
   await tester.sendEventToBinding(pointer.scroll(Offset(0, distance)));
-  await tester.pumpAndSettle();
+  // Deferred column measurement spans several frames. A 100ms test frame can
+  // expire the 350ms gesture hold while those frames settle; keep the physical
+  // gesture interval short, independently of the number of layout frames.
+  await tester.pumpAndSettle(const Duration(milliseconds: 10));
 }
 
 ScrollPosition _tableVerticalPosition(WidgetTester tester) {
@@ -130,7 +133,13 @@ void main() {
       final inner = _tableVerticalPosition(tester);
 
       // 跨过交接点的一格只收头部；超出头部高度的余量不会带走第一行。
+      final gestureStarted = tester.binding.clock.now();
       await _wheel(tester, distance: 1000);
+      expect(
+        tester.binding.clock.now().difference(gestureStarted),
+        lessThan(const Duration(milliseconds: 350)),
+        reason: 'The next wheel must still belong to the same gesture hold',
+      );
       expect(outer.offset, closeTo(outer.position.maxScrollExtent, 0.01));
       expect(inner.pixels, 0);
       // 停顿窗（2026-09-25）：截停后的同一滚势被整格吞掉。

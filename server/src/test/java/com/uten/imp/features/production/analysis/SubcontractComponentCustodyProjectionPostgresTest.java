@@ -79,7 +79,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                     order_item_id uuid, application_item_id uuid, alloc_qty numeric, line_no int);
                 CREATE TABLE subcontract_receipts(id uuid PRIMARY KEY, status int, is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_receipt_items(id uuid PRIMARY KEY, receipt_id uuid, order_item_id uuid,
-                    qty numeric, unit_rate numeric, is_deleted boolean DEFAULT false, finance_approval_case_id uuid);
+                    qty numeric, unit_rate numeric, is_deleted boolean DEFAULT false, finance_approval_case_id uuid, order_item_legacy_id integer);
                 CREATE TABLE procurement_inspection_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                     receipt_type text, receipt_item_id uuid, status text, warehouse_stocked_base_qty numeric,
                     quantity_tranche text NOT NULL DEFAULT 'LEGACY' CHECK(quantity_tranche IN('LEGACY','CHARGED','GIFT')));

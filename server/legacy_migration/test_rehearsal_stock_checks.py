@@ -2,13 +2,13 @@
 
 Every business table name is shadowed by a TEMP table before any fixture DML.
 The stock-check SQL cannot alter the real application's data in these tests.
-Requires the local uten-imp-postgres container; no packages or credentials read.
+Requires the coordinator's explicit private Testcontainers destination.
 """
 from pathlib import Path
-import subprocess
 import unittest
 
 import compose_bootstrap
+from legacy_test_postgres import fixture_psql
 
 
 SQL_FILE = Path(__file__).with_name("migrate_rehearsal_stock_checks.sql")
@@ -77,10 +77,7 @@ DO $$ DECLARE summary jsonb; BEGIN
 END; $$;
 ROLLBACK;
 """
-        result = subprocess.run(["docker", "exec", "-i", "uten-imp-postgres", "psql", "-X", "-q",
-                                 "-v", "ON_ERROR_STOP=1", "-U", "uten", "-d", "uten_imp"],
-                                input=(FIXTURE + mutation + CHECK_SQL + assertions).encode("utf-8"),
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = fixture_psql(FIXTURE + mutation + CHECK_SQL + assertions)
         error = result.stderr.decode("utf-8", errors="replace")
         if expected_error is None:
             self.assertEqual(result.returncode, 0, error)

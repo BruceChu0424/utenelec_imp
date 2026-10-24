@@ -329,6 +329,16 @@ void main() {
       );
       await tester.tap(find.text('打开'));
       await tester.pumpAndSettle();
+      // At 200% zoom the wrapping header can initially occupy the whole
+      // viewport. The paper is lazy: reveal it with the same drag a user makes.
+      for (
+        var attempt = 0;
+        attempt < 8 && find.text('完整物料名称').evaluate().isEmpty;
+        attempt++
+      ) {
+        await tester.drag(find.byType(NestedScrollView), const Offset(0, -120));
+        await tester.pumpAndSettle();
+      }
       expect(find.text('完整物料名称'), findsOneWidget);
       expect(find.text('12345'), findsOneWidget);
       expect(tester.takeException(), isNull);

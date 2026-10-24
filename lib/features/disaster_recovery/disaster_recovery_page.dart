@@ -15,7 +15,7 @@ import '../../core/router/route_names.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../shared/providers/session_provider.dart';
 import '../../shared/widgets/server_switch_dialog.dart';
-import 'disaster_recovery_text.dart';
+import '../../core/l10n/disaster_recovery_text.dart';
 
 const _configuredRescueUrl = String.fromEnvironment(
   'DR_CONTROL_PLANE_URL',

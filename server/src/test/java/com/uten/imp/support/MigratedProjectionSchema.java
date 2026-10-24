@@ -68,6 +68,13 @@ public final class MigratedProjectionSchema {
         createTables(target, CURRENT, tables);
     }
 
+    /** Source column shapes for ambiguity/corruption oracles with test-owned keys.
+     * Does not import production PRIMARY/UNIQUE constraints: deliberately duplicate
+     * source identities must remain representable. Never use for full-chain tests. */
+    public static void createCurrentColumns(JdbcTemplate target, String... tables) {
+        createTables(target, CURRENT, false, tables);
+    }
+
     /** Copies real current definitions into the same isolated projection fixture, in dependency order. */
     public static void createCurrentFunctions(JdbcTemplate target, String... names) {
         Catalog catalog = CATALOGS.computeIfAbsent(CURRENT, MigratedProjectionSchema::readCatalog);
@@ -79,6 +86,10 @@ public final class MigratedProjectionSchema {
     }
 
     public static void createTables(JdbcTemplate target, String version, String... tables) {
+        createTables(target, version, true, tables);
+    }
+
+    private static void createTables(JdbcTemplate target, String version, boolean includeKeys, String... tables) {
         if (!CURRENT.equals(version) && !version.matches("[1-9][0-9]*")) {
             throw new IllegalArgumentException("Explicit migration version required");
         }
@@ -87,7 +98,7 @@ public final class MigratedProjectionSchema {
             Shape shape = catalog.get(table);
             if (shape == null) throw new IllegalArgumentException("No migrated relation at V" + version + ": " + table);
             List<String> declarations = new ArrayList<>(shape.columns());
-            declarations.addAll(shape.keys());
+            if (includeKeys) declarations.addAll(shape.keys());
             target.execute("CREATE TABLE " + identifier(table) + " (" + String.join(",", declarations) + ")");
         }
     }

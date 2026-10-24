@@ -43,7 +43,8 @@ def main():
         if result.returncode:raise ValueError('Owned synthetic PostgreSQL startup failed')
         created=True
         for _ in range(60):
-            if command(['docker','exec',name,'pg_isready','-U','uten','-d','verifier']).returncode==0:break
+            # Only the final server listens on TCP; the initialization server is socket-only.
+            if command(['docker','exec',name,'pg_isready','-h','127.0.0.1','-U','uten','-d','verifier']).returncode==0:break
             time.sleep(.15)
         else:raise ValueError('Owned synthetic PostgreSQL did not become ready')
         meta=json.loads(command(['docker','inspect',name]).stdout)[0]

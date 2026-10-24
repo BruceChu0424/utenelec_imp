@@ -95,6 +95,7 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
     appBar: UtenAppBar(
       title: _l.costImport,
       leading: UtenBackButton(onPressed: () => Navigator.pop(context)),

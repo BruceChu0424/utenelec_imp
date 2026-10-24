@@ -35,15 +35,18 @@ class LegacyOwnerResolutionPostgresTest {
         PG.start();
         connection = DriverManager.getConnection(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword());
         connection.setAutoCommit(false);
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentColumns(
+                new org.springframework.jdbc.core.JdbcTemplate(
+                        new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true)),
+                "employees","users");
         String resolver = Files.readString(Path.of("legacy_migration/migrate_owner_custody.sql"));
         var login = Pattern.compile("u\\.login_account='([^']+)'").matcher(resolver);
         if (!login.find()) throw new IllegalStateException("The resolver must bind one reviewed custodian login");
         try (var statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE employees(id uuid PRIMARY KEY, legacy_id integer, code text, status text, is_deleted boolean)");
-            statement.execute("CREATE TABLE users(employee_id uuid, login_account text, is_super_admin boolean, status text, is_deleted boolean)");
+            statement.execute("ALTER TABLE employees ADD PRIMARY KEY(id)");
             statement.execute(resolver);
         }
-        try (var statement = connection.prepareStatement("INSERT INTO employees VALUES (?,?,?,?,?)")) {
+        try (var statement = connection.prepareStatement("INSERT INTO employees(id,legacy_id,code,status,is_deleted) VALUES (?,?,?,?,?)")) {
             Object[][] rows = {
                     {1L, null, "ADMIN", "active", false},
                     {2L, 501, "UT2", "active", false},
@@ -61,7 +64,7 @@ class LegacyOwnerResolutionPostgresTest {
                 statement.executeUpdate();
             }
         }
-        try (var statement = connection.prepareStatement("INSERT INTO users VALUES (?,?,true,'active',false)")) {
+        try (var statement = connection.prepareStatement("INSERT INTO users(employee_id,login_account,is_super_admin,status,is_deleted) VALUES (?,?,true,'active',false)")) {
             statement.setObject(1, id(1));
             statement.setString(2, login.group(1));
             statement.executeUpdate();

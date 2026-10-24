@@ -43,6 +43,10 @@ mixin ReviewTaskDraftMixin<T extends ConsumerStatefulWidget>
 
   @override
   bool get formDraftEnabled => _reviewDraftActive;
+  // Claims and permissions are refreshed capabilities, never restored inputs.
+  // submitReviewCommand rechecks both after the durable checkpoint.
+  @override
+  bool get formDraftTracksPermissionChanges => false;
   @override
   FormDraftSpec get formDraftSpec =>
       reviewDraftDescriptor.spec(route: reviewDraftRoute);

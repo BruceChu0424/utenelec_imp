@@ -46,10 +46,10 @@ class BusinessTaskNoticeStatePostgresTest {
                     customer_accepted_revision int,review_revision int);
                 CREATE TABLE sales_order_items(id uuid,order_id uuid,goods_id uuid,qty numeric,shipped_qty numeric DEFAULT 0,
                     returned_qty numeric DEFAULT 0,flag_qty numeric DEFAULT 0,reserved_qty numeric DEFAULT 0,
-                    planned_qty numeric DEFAULT 0,produced_qty numeric DEFAULT 0,is_deleted boolean DEFAULT FALSE);
-                CREATE TABLE goods(id uuid,is_deleted boolean DEFAULT FALSE);
+                    planned_qty numeric DEFAULT 0,produced_qty numeric DEFAULT 0,is_deleted boolean DEFAULT FALSE, legacy_counter_import_run_id uuid);
+                CREATE TABLE goods(id uuid,is_deleted boolean DEFAULT FALSE, client_goods_name text);
                 CREATE TABLE production_material_analysis_items(sales_order_item_id uuid,source_type text);
-                CREATE TABLE production_plan_items(id uuid,plan_id uuid,sales_order_item_id uuid,qty numeric,is_deleted boolean DEFAULT FALSE);
+                CREATE TABLE production_plan_items(id uuid,plan_id uuid,sales_order_item_id uuid,qty numeric,is_deleted boolean DEFAULT FALSE, legacy_production_import_run_id uuid);
                 CREATE TABLE production_material_analysis_plan_links(id uuid,plan_id uuid,analysis_id uuid,analysis_item_id uuid,submitted_qty numeric);
                 """);
         db.execute(Files.readString(Path.of("src/main/resources/db/migration/V876__business_task_notice_scope.sql")));

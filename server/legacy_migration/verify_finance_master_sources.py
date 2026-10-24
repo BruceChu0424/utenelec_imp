@@ -227,7 +227,8 @@ def typed_source_facts(source,baseline=None):
     try:
         result=command(['docker','run','-d','--name',name,'--network','none','-e','POSTGRES_HOST_AUTH_METHOD=trust','postgres:16-alpine']);check(result.returncode==0);created=True
         for _ in range(80):
-            if command(['docker','exec',name,'pg_isready','-U','postgres']).returncode==0:break
+            # Only the final server listens on TCP; the initialization server is socket-only.
+            if command(['docker','exec',name,'pg_isready','-h','127.0.0.1','-U','postgres']).returncode==0:break
             time.sleep(.15)
         else:check(False)
         result=command(['docker','inspect',name]);check(result.returncode==0);meta=json.loads(result.stdout)[0]

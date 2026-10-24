@@ -69,7 +69,8 @@ with tempfile.TemporaryDirectory(prefix='finance-monthly-synthetic-') as tempora
         cmd(['run','--pull=never','-d','--name',name,'--network','none','--mount','type=tmpfs,destination=/var/lib/postgresql/data','-e','POSTGRES_HOST_AUTH_METHOD=trust','postgres:16.15-alpine','-c','log_min_error_statement=panic','-c','log_min_messages=panic']);created=True
         import subprocess
         for _ in range(80):
-            r=subprocess.run(['docker','--context',context,'exec',name,'pg_isready','-U','postgres'],capture_output=True)
+            # Only the final server listens on TCP; the initialization server is socket-only.
+            r=subprocess.run(['docker','--context',context,'exec',name,'pg_isready','-h','127.0.0.1','-U','postgres'],capture_output=True)
             if r.returncode==0:break
             time.sleep(.15)
         else:raise RuntimeError('OWN_FIXTURE_NOT_READY')

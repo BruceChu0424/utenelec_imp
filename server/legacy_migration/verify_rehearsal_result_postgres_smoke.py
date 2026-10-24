@@ -24,7 +24,8 @@ def main():
                             check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.decode().strip()
     try:
         for _ in range(60):
-            ready = real_run(['docker', 'exec', container_id, 'pg_isready', '-U', 'uten', '-d', 'verifier'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # Only the final server listens on TCP; the initialization server is socket-only.
+            ready = real_run(['docker', 'exec', container_id, 'pg_isready', '-h', '127.0.0.1', '-U', 'uten', '-d', 'verifier'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if ready.returncode == 0:
                 break
             time.sleep(0.25)

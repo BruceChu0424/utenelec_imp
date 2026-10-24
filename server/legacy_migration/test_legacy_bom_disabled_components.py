@@ -5,10 +5,10 @@ every fixture table shadows its application namesake, and all DML rolls back.
 """
 from pathlib import Path
 import re
-import subprocess
 import unittest
 
 import compose_bootstrap
+from legacy_test_postgres import fixture_psql
 
 
 HERE = Path(__file__).resolve().parent
@@ -74,9 +74,7 @@ END; $$;
 ROLLBACK;
 """
         trigger = "CREATE TRIGGER temp_v903_guard BEFORE INSERT OR UPDATE ON goods_bom_items FOR EACH ROW EXECUTE FUNCTION pg_temp.guard_goods_bom_operational_goods();"
-        result = subprocess.run(["docker", "exec", "-i", "uten-imp-postgres", "psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-U", "uten", "-d", "uten_imp"],
-                                input=(FIXTURE + GUARD + trigger + loader + assertions).encode("utf-8"),
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = fixture_psql(FIXTURE + GUARD + trigger + loader + assertions)
         diagnostics = result.stderr.decode("utf-8", errors="replace")
         if error:
             self.assertNotEqual(result.returncode, 0)

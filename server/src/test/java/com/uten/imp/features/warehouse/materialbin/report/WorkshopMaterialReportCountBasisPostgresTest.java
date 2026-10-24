@@ -58,7 +58,7 @@ class WorkshopMaterialReportCountBasisPostgresTest {
                 CREATE TABLE workshop_material_period_lines(id uuid DEFAULT gen_random_uuid(), period_id uuid,
                     goods_id uuid, color_id uuid);
                 CREATE TABLE workshop_material_count_adjustment_postings(period_id uuid, goods_id uuid, color_id uuid, kind text);
-                CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text);
+                CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, client_goods_name text);
                 CREATE TABLE colors(id uuid PRIMARY KEY, name text, remark text);
                 CREATE TABLE units(id uuid PRIMARY KEY, name text);
                 CREATE TABLE unit_measurement_profiles(unit_id uuid PRIMARY KEY, measurement_dimension text, mass_unit_code text);

@@ -65,22 +65,20 @@ class HistoricalWorkerNameProjectionPostgresTest {
     @BeforeAll static void start() {
         PG.start();var source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         db=new JdbcTemplate(source);named=new NamedParameterJdbcTemplate(source);
-        db.execute("CREATE TABLE employees(id uuid PRIMARY KEY,legacy_id integer,full_name text,code text,status text,is_deleted boolean)");
-        db.execute("CREATE TABLE users(id uuid PRIMARY KEY,employee_id uuid)");
-        Map<String,Set<String>> tables=new LinkedHashMap<>();
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentColumns(db,"employees","users");
+        db.execute("ALTER TABLE employees ADD PRIMARY KEY(id); ALTER TABLE users ADD PRIMARY KEY(id)");
+        Set<String> tables=new LinkedHashSet<>();
         for(var key:HistoricalWorkerRole.values()) {
-            Role r=role(key);tables.computeIfAbsent(r.table(),ignored->new LinkedHashSet<>()).add(r.actor()+" uuid");
-            tables.get(r.table()).add(r.legacy()+" integer");
+            tables.add(role(key).table());
         }
-        tables.forEach((table,columns)->db.execute("CREATE TABLE "+table+
-                "(id uuid PRIMARY KEY,legacy_id integer,maker_legacy_id integer,approver_legacy_id integer,owner_employee_id uuid,"
-                +String.join(",",columns)+")"));
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentColumns(db,tables.toArray(String[]::new));
+        tables.forEach(table->db.execute("ALTER TABLE "+table+" ADD PRIMARY KEY(id)"));
     }
     @AfterAll static void stop(){PG.stop();}
     @BeforeEach void reset() {
         var tables=new LinkedHashSet<String>();for(var key:HistoricalWorkerRole.values())tables.add(role(key).table());
         db.execute("TRUNCATE employees,users,"+String.join(",",tables));
-        db.update("INSERT INTO employees VALUES (?,409,'Same name','UT0004','active',false),(?,546,'Same name','UT0192','resigned',false)",CURRENT,HISTORY);
+        db.update("INSERT INTO employees(id,legacy_id,full_name,code,status,is_deleted) VALUES (?,409,'Same name','UT0004','active',false),(?,546,'Same name','UT0192','resigned',false)",CURRENT,HISTORY);
         statements=new ArrayList<>();EntityManager em=mock(EntityManager.class);
         when(em.createNativeQuery(anyString())).thenAnswer(call->{
             String sql=call.getArgument(0);statements.add(sql);Map<String,Object> parameters=new HashMap<>();
@@ -94,8 +92,20 @@ class HistoricalWorkerNameProjectionPostgresTest {
     }
     private void document(HistoricalWorkerRole key,Integer employeeLegacy,UUID employeeId) {
         Role r=role(key);
-        db.update("INSERT INTO "+r.table()+"(id,legacy_id,maker_legacy_id,approver_legacy_id,owner_employee_id,"
-                +r.actor()+","+r.legacy()+") VALUES (?,42,409,409,?,?,?)",DOCUMENT,CURRENT,employeeId,employeeLegacy);
+        Set<String> realColumns=new HashSet<>(db.queryForList(
+                "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=?",
+                String.class,r.table()));
+        Map<String,Object> row=new LinkedHashMap<>();
+        row.put("id",DOCUMENT);row.put("legacy_id",42);
+        // Conflicting current owner/operator facts use only genuine source
+        // columns; a query oracle must not invent the same owner field on every document.
+        for(String column:List.of("maker_legacy_id","approver_legacy_id"))
+            if(realColumns.contains(column))row.put(column,409);
+        for(String column:List.of("maker_id","approver_id","owner_employee_id"))
+            if(realColumns.contains(column))row.put(column,CURRENT);
+        row.put(r.actor(),employeeId);row.put(r.legacy(),employeeLegacy);
+        db.update("INSERT INTO "+r.table()+"("+String.join(",",row.keySet())+") VALUES ("
+                +String.join(",",Collections.nCopies(row.size(),"?"))+")",row.values().toArray());
     }
     @ParameterizedTest @EnumSource(HistoricalWorkerRole.class)
     void exactLegacyIdentityWinsOverSameNameCanonicalAliasAndCurrentOwner(HistoricalWorkerRole key) {
@@ -144,7 +154,7 @@ class HistoricalWorkerNameProjectionPostgresTest {
     }
     @Test void ambiguousLegacyIdentityDoesNotChooseAnArbitraryEmployee() {
         document(HistoricalWorkerRole.PURCHASE_ORDER_PURCHASER,546,null);
-        db.update("INSERT INTO employees VALUES (?,546,'Other','UT1234','resigned',false)",UUID.randomUUID());
+        db.update("INSERT INTO employees(id,legacy_id,full_name,code,status,is_deleted) VALUES (?,546,'Other','UT1234','resigned',false)",UUID.randomUUID());
         assertThat(names.historicalWorkerNameWithCodeOf(null,DOCUMENT,42,HistoricalWorkerRole.PURCHASE_ORDER_PURCHASER)).isNull();
     }
     @ParameterizedTest @ValueSource(strings={"request","order","purchaseReceipt","subcontractReceipt","issue","materialReturn"})

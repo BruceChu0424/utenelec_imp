@@ -30,7 +30,7 @@ class WorkshopMaterialRequestBeforeSetupPostgresTest {
         db.execute("""
                 CREATE TABLE units(id uuid PRIMARY KEY,status text,is_deleted boolean DEFAULT FALSE);
                 CREATE TABLE unit_measurement_profiles(unit_id uuid PRIMARY KEY,measurement_dimension text);
-                CREATE TABLE goods(id uuid PRIMARY KEY,unit_id uuid,issue_method text,status text,is_deleted boolean DEFAULT FALSE);
+                CREATE TABLE goods(id uuid PRIMARY KEY,unit_id uuid,issue_method text,status text,is_deleted boolean DEFAULT FALSE, client_goods_name text);
                 CREATE TABLE workshop_material_requisitions(id uuid PRIMARY KEY,kind text,origin text,status text);
                 CREATE TABLE workshop_material_requisition_lines(id uuid PRIMARY KEY,requisition_id uuid,
                     goods_id uuid,unit_id uuid,requested_qty numeric,fulfilled_qty numeric DEFAULT 0);

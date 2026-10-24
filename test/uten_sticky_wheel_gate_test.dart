@@ -244,8 +244,15 @@ void main() {
     await tester.pumpAndSettle();
 
     final pointer = TestPointer(5, PointerDeviceKind.mouse);
+    final gestureStarted = tester.binding.clock.now();
     await _wheelOverTable(tester, pointer, 1000);
-    await tester.pumpAndSettle();
+    // Deferred grid layout needs multiple frames; 100ms test frames would
+    // advance the fake clock past the actual 350ms gesture hold.
+    await tester.pumpAndSettle(const Duration(milliseconds: 10));
+    expect(
+      tester.binding.clock.now().difference(gestureStarted),
+      lessThan(const Duration(milliseconds: 350)),
+    );
 
     expect(
       _pagePosition(tester).pixels,

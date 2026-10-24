@@ -363,7 +363,10 @@ def rpc(config, header, base, payload=None, maximum=4 * 1024 * 1024):
         if process.wait(timeout=60) or len(raw) > maximum:raise ValueError("Chunk receiver did not acknowledge")
         return base.decode_json(raw)
     finally:
-        if process.poll() is None:process.kill();process.wait(timeout=10)
+        try:
+            if process.poll() is None:process.kill();process.wait(timeout=10)
+        finally:
+            base.close_transfer_pipes(process)
 
 
 def encrypt_bytes(raw, destination, public_fd, home, sealed):

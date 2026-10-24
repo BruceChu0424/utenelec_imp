@@ -52,7 +52,7 @@ class SubcontractApplicationKitPostgresTest {
                 CREATE TABLE warehouses(id uuid PRIMARY KEY, is_deleted boolean DEFAULT false,
                     is_defective boolean DEFAULT false, is_line_side boolean DEFAULT false);
                 CREATE TABLE goods(id uuid PRIMARY KEY, color_id uuid, is_deleted boolean DEFAULT false,
-                    auto_created boolean DEFAULT false, issue_method text DEFAULT 'PER_ORDER');
+                    auto_created boolean DEFAULT false, issue_method text DEFAULT 'PER_ORDER', client_goods_name text);
                 CREATE TABLE goods_bom_items(id uuid PRIMARY KEY, goods_id uuid, component_goods_id uuid, color_id uuid,
                     qty numeric(18,6), is_deleted boolean DEFAULT false, consumption_basis text DEFAULT 'PER_UNIT',
                     control_stage text DEFAULT 'START', sort_order integer DEFAULT 1,

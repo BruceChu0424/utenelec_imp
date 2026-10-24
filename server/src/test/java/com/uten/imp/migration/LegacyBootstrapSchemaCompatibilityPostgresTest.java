@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -64,7 +65,7 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
     }
 
     @BeforeEach
-    void resetDatabase() {
+    void resetDatabase() throws SQLException {
         Flyway flyway = com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
@@ -72,17 +73,6 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
                 .load();
         flyway.clean();
         flyway.migrate();
-    }
-
-    @AfterAll
-    static void stopDatabase() {
-        POSTGRES.stop();
-    }
-
-    @Test
-    void bootstrapSqlStillExecutesAgainstTheCurrentSchema() throws Exception {
-        List<String> scripts = bootstrapSqlScripts();
-        assertFalse(scripts.isEmpty(), "bootstrap-all must resolve at least one SQL script");
 
         // 真实 migrate.sh 在执行任何 bootstrap SQL 前先登记 manifest 绑定的
         // RUNNING 运行（record_run_start）；来源证明注册等守卫要求该运行存在
@@ -95,16 +85,34 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
                     export_manifest_sha256, checksum_manifest_sha256,
                     source_backup_sha256, export_approval_reference,
                     migration_repository_commit, migration_script_sha256,
-                    mapping_version)
+                    mapping_version, reconciliation_summary)
                 VALUES (
                     '77777777-7777-4777-8777-777777777777',
                     '--bootstrap-all', 'RUNNING', 'BOOTSTRAP',
                     repeat('a1', 32), repeat('b2', 32),
                     repeat('c3', 32), 'legacy-schema-compat-approval',
-                    'legacy-schema-compat-commit', repeat('d4', 32),
-                    'bootstrap-schema-compatibility-test')
+                    repeat('e', 40), repeat('d4', 32),
+                    'bootstrap-v15',
+                    jsonb_build_object('targetDatabase', current_database(),
+                        'targetSystemIdentifier', (SELECT system_identifier::text FROM pg_control_system()),
+                        'targetApprovalReference', 'synthetic-schema-compatibility',
+                        'importAtomicity', 'single-transaction-v1'))
                 RETURNING run_id
                 """);
+
+    }
+
+    @AfterAll
+    static void stopDatabase() {
+        POSTGRES.stop();
+    }
+
+    @Test
+    void bootstrapSqlStillExecutesAgainstTheCurrentSchema() throws Exception {
+        String preservedAdministrator = seedPreservedAdministratorLogin();
+        List<String> scripts = bootstrapSqlScripts();
+        assertFalse(scripts.isEmpty(), "bootstrap-all must resolve at least one SQL script");
+
 
         for (String filename : scripts) {
             if ("migrate_currency.sql".equals(filename)) {
@@ -120,9 +128,40 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
                 executeScript(filename);
             }
         }
+        assertEquals(preservedAdministrator, scalar("""
+                SELECT employee.id::text FROM employees employee
+                JOIN users account ON account.employee_id=employee.id
+                WHERE employee.code='ADMIN' AND employee.status='active' AND NOT employee.is_deleted
+                  AND account.is_super_admin AND account.status='active' AND NOT account.is_deleted
+                """), "the reviewed current administrator must remain preserved through all modules");
         try (Connection connection = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
             assertFlywayHead(connection);
+        }
+    }
+
+    private static String seedPreservedAdministratorLogin() throws Exception {
+        // V08 preserves the ADMIN employee; the real application's BootstrapRunner,
+        // rather than Flyway, creates its login. This SQL-only fixture needs that
+        // same current custodian identity before the official owner modules run.
+        var login = Pattern.compile("u\\.login_account='([^']+)'").matcher(
+                Files.readString(LEGACY_ROOT.resolve("migrate_owner_custody.sql"), StandardCharsets.UTF_8));
+        if (!login.find()) fail("The reviewed custody resolver must bind its preserved administrator login");
+        try (Connection connection = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.prepareStatement("""
+                     INSERT INTO users(employee_id,login_account,password_hash,is_super_admin,status,is_deleted)
+                     SELECT id,?,'!synthetic-schema-fixture-no-login',true,'active',false
+                     FROM employees WHERE code='ADMIN' AND status='active' AND NOT is_deleted
+                     RETURNING employee_id::text
+                     """)) {
+            statement.setString(1, login.group(1));
+            try (ResultSet rows = statement.executeQuery()) {
+                if (!rows.next()) fail("Flyway must preserve the current ADMIN employee before bootstrap");
+                String employee = rows.getString(1);
+                assertFalse(rows.next(), "the preserved administrator fixture must be unique");
+                return employee;
+            }
         }
     }
 
@@ -219,6 +258,14 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
                   AND mould.legacy_id = 11 AND client.legacy_id = 12
                   AND supplier.legacy_id = 13 AND supplier2.legacy_id = 13
                 """));
+        assertEquals("0|0", scalar("""
+                SELECT (reconciliation_summary #>>
+                         '{currentOwnerCustody,migrate_client_data.sql,pendingHandoverCount}')
+                       || '|' || (reconciliation_summary #>>
+                         '{currentOwnerCustody,migrate_supplier_data.sql,pendingHandoverCount}')
+                FROM legacy_migration_runs
+                WHERE run_id = '77777777-7777-4777-8777-777777777777'
+                """), "the production composer must flush both owner-module custody ledgers");
         assertEquals("27300000-0000-4000-8100-000000000001", scalar("""
                 SELECT default_settlement_method_id
                 FROM clients WHERE legacy_id = 12
@@ -366,11 +413,22 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
             throws Exception {
         Path path = LEGACY_ROOT.resolve(filename);
         StringBuilder jdbcSql = new StringBuilder();
-        for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+        StringBuilder syntheticSources = new StringBuilder();
+        for (String line : composedScriptLines(path)) {
             String trimmed = line.stripLeading();
             if (trimmed.startsWith("\\copy ")) {
                 String target = trimmed.substring("\\copy ".length()).split("[\\s(]", 2)[0];
+                Matcher source = Pattern.compile("FROM '/tmp/([a-z0-9_]+[.]csv)'").matcher(trimmed);
+                if (!source.find()) fail("Bootstrap COPY does not name a reviewed CSV: " + trimmed);
+                // COPY HEADER accepts a header-only synthetic CSV as zero rows.
+                // Bind that actual empty fixture payload instead of bypassing the
+                // real claim/source-file provenance guards for finance modules.
                 String injection = copyInjections.get(target);
+                if (injection == null) {
+                    syntheticSources.append("INSERT INTO legacy_migration_run_files(run_id,file_name,sha256,byte_size) VALUES('")
+                            .append("77777777-7777-4777-8777-777777777777','").append(source.group(1))
+                            .append("',encode(digest(E'synthetic_fixture\\n','sha256'),'hex'),18) ON CONFLICT DO NOTHING;\n");
+                }
                 if (injection != null) {
                     jdbcSql.append(injection).append('\n');
                 }
@@ -383,7 +441,13 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
         }
         String sql = "BEGIN;\nSET LOCAL uten.bootstrap_run_id = '77777777-7777-4777-8777-777777777777';\n"
                 // 与 migrate.sh 引导会话同口径: app.legacy_import='on'(V673 起 production_plan_costs 只允许导入会话写入)。
-                + "SET LOCAL app.legacy_import = 'on';\n" + jdbcSql.toString()
+                + "SET LOCAL app.legacy_import = 'on';\n"
+                + "SET LOCAL uten.bootstrap_mapping_version = 'bootstrap-v15';\n"
+                + "SET LOCAL uten.bootstrap_repository_commit = '" + "e".repeat(40) + "';\n"
+                + "SET LOCAL uten.bootstrap_manifest_sha = '" + "a1".repeat(32) + "';\n"
+                + syntheticSources
+                + Files.readString(LEGACY_ROOT.resolve("migrate_execution_guard.sql"), StandardCharsets.UTF_8) + "\n"
+                + jdbcSql.toString()
                 .replace(":'pgp_key'", "'legacy-schema-test-key'")
                 .replace(":'pgp_ver'", "'test-v1'")
                 .replace(":'hmac_key'", "'legacy-schema-test-hmac-key'") + "\nCOMMIT;\n";
@@ -397,6 +461,35 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
         if (result.getExitCode() != 0) {
             fail(filename + " is incompatible with the current Flyway schema:\n"
                     + result.getStderr());
+        }
+    }
+
+    private static List<String> composedScriptLines(Path loader) throws Exception {
+        // Both supported entry points compose the reviewed module before psql:
+        // rehearse_local_import.py and migrate.sh run_sql. Exercise that exact
+        // dependency/flush/cleanup contract, then replace only synthetic COPY input.
+        String python = System.getProperty("uten.test.python",
+                System.getProperty("os.name").startsWith("Windows") ? "python" : "python3");
+        Path output = Files.createTempFile("uten-bootstrap-composition-", ".sql");
+        Process process = null;
+        try {
+            process = new ProcessBuilder(python, "-I",
+                    LEGACY_ROOT.resolve("compose_bootstrap.py").toAbsolutePath().toString(),
+                    loader.toAbsolutePath().toString())
+                    .redirectErrorStream(true).redirectOutput(output.toFile()).start();
+            process.getOutputStream().close();
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                process.destroyForcibly().waitFor();
+                fail("Official bootstrap composer timed out for " + loader.getFileName());
+            }
+            if (process.exitValue() != 0) {
+                fail("Official bootstrap composer rejected " + loader.getFileName() + ":\n"
+                        + Files.readString(output, StandardCharsets.UTF_8));
+            }
+            return Files.readAllLines(output, StandardCharsets.UTF_8);
+        } finally {
+            if (process != null && process.isAlive()) process.destroyForcibly().waitFor();
+            Files.deleteIfExists(output);
         }
     }
 

@@ -36,7 +36,7 @@ import '../../../shared/providers/session_provider.dart';
 import '../../../shared/repositories/account_history_store.dart';
 import '../widgets/account_field.dart';
 import '../remote_access_text.dart';
-import '../../disaster_recovery/disaster_recovery_text.dart';
+import '../../../core/l10n/disaster_recovery_text.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key, this.returnTo});

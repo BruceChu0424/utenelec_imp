@@ -51,7 +51,7 @@ class SalesOrderChainSqlPostgresTest {
                         updated_at timestamptz NOT NULL DEFAULT now(),
                         client_goods_name VARCHAR(500),
                         client_price NUMERIC, extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb,
-                        goods_name_en_snapshot varchar(255))
+                        goods_name_en_snapshot varchar(255), legacy_counter_import_run_id uuid)
                     """);
             st.execute("""
                     CREATE TABLE plan_order_item_links (

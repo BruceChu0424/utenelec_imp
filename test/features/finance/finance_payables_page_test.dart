@@ -455,7 +455,7 @@ void main() {
 
     await tester.sendEventToBinding(pointer.hover(tableCenter));
     await tester.sendEventToBinding(pointer.scroll(const Offset(0, 80)));
-    await tester.pumpAndSettle();
+    await tester.pumpAndSettle(const Duration(milliseconds: 10));
 
     expect(tester.getTopLeft(summaryFinder).dy, lessThan(summaryTopBefore));
     expect(nestedState.innerController.offset, closeTo(0, 0.5));
@@ -463,38 +463,45 @@ void main() {
     final outer = nestedState.outerController;
     final remainingHeader =
         outer.position.maxScrollExtent - outer.position.pixels;
+    final gestureStarted = tester.binding.clock.now();
     await tester.sendEventToBinding(pointer.scroll(Offset(0, remainingHeader)));
-    await tester.pumpAndSettle();
+    // Deferred table layout can span several frames. Keep the simulated wheel
+    // gesture inside the actual 350ms hold instead of advancing 100ms per frame.
+    await tester.pumpAndSettle(const Duration(milliseconds: 10));
 
     expect(outer.position.pixels, closeTo(outer.position.maxScrollExtent, 0.5));
     expect(nestedState.innerController.offset, closeTo(0, 0.5));
 
     // 停顿窗（2026-09-25）：置顶截停后的同一滚势被整格吞掉；停住后再滚才进表内。
     await tester.sendEventToBinding(pointer.scroll(const Offset(0, 120)));
-    await tester.pumpAndSettle();
+    await tester.pumpAndSettle(const Duration(milliseconds: 10));
+    expect(
+      tester.binding.clock.now().difference(gestureStarted),
+      lessThan(const Duration(milliseconds: 350)),
+    );
     expect(nestedState.innerController.offset, closeTo(0, 0.5));
     await tester.pump(const Duration(milliseconds: 400));
 
     await tester.sendEventToBinding(pointer.scroll(const Offset(0, 120)));
-    await tester.pumpAndSettle();
+    await tester.pumpAndSettle(const Duration(milliseconds: 10));
 
     expect(nestedState.innerController.offset, greaterThan(0));
     final innerOffset = nestedState.innerController.offset;
 
     await tester.sendEventToBinding(pointer.scroll(Offset(0, -innerOffset)));
-    await tester.pumpAndSettle();
+    await tester.pumpAndSettle(const Duration(milliseconds: 10));
 
     expect(nestedState.innerController.offset, closeTo(0, 0.5));
     expect(outer.position.pixels, closeTo(outer.position.maxScrollExtent, 0.5));
 
     // 回顶截停同样有停顿窗：窗内被吞；停住后头部才放出。
     await tester.sendEventToBinding(pointer.scroll(const Offset(0, -80)));
-    await tester.pumpAndSettle();
+    await tester.pumpAndSettle(const Duration(milliseconds: 10));
     expect(outer.position.pixels, closeTo(outer.position.maxScrollExtent, 0.5));
     await tester.pump(const Duration(milliseconds: 400));
 
     await tester.sendEventToBinding(pointer.scroll(const Offset(0, -80)));
-    await tester.pumpAndSettle();
+    await tester.pumpAndSettle(const Duration(milliseconds: 10));
 
     expect(outer.position.pixels, lessThan(outer.position.maxScrollExtent));
     expect(summaryFinder, findsOneWidget);

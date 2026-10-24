@@ -80,10 +80,13 @@ class ServerRuntimeFlywayIT {
     private Process start(PostgreSQLContainer postgres, Path output, List<String> overrides) throws Exception {
         Path jar = applicationJar();
         assertThat(jar).isRegularFile();
+        // This JAR/Flyway smoke neither exercises reset nor ships a forecast runtime payload.
         List<String> command = new ArrayList<>(List.of(
                 Path.of(System.getProperty("java.home"), "bin", "java").toString(),
                 "-Xmx512m", "-Dfile.encoding=UTF-8", "-jar", jar.toString(),
                 "--spring.profiles.active=dev", "--server.address=127.0.0.1", "--server.port=0",
+                "--uten.features.business-data-reset-enabled=false",
+                "--uten.material-forecast.manage-runtime=false",
                 "--spring.datasource.url=" + postgres.getJdbcUrl(),
                 "--spring.datasource.username=" + postgres.getUsername(),
                 "--spring.datasource.password=" + postgres.getPassword(),

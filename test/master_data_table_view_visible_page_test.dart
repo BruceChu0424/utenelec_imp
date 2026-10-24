@@ -203,19 +203,20 @@ Future<void> _lookAtPage(
   // Use a row within the page rather than its boundary: a partly visible final
   // row of the preceding page must not make the expected visible page ambiguous.
   final anchor = find.byKey(ValueKey('anchor-A-page-$page-row-2'));
-  final scrollable = find
-      .byWidgetPredicate(
-        (widget) =>
-            widget is Scrollable &&
-            axisDirectionToAxis(widget.axisDirection) == Axis.vertical,
-      )
-      .first;
-  await tester.scrollUntilVisible(
-    anchor,
-    forward ? 180 : -180,
-    scrollable: scrollable,
-    maxScrolls: 60,
+  // Toolbar and short-canvas chrome have their own vertical scrollables. Bind
+  // to the business row viewport's element; its State survives widget rebuilds
+  // while the visible-page indicator changes during the drag.
+  final rowViewport = _vertical(tester);
+  final scrollable = find.byElementPredicate(
+    (element) => identical(element, rowViewport.context),
   );
+  // Row admission is spread over frames. Settle each real gesture before the
+  // next one so a target is not scrolled past while its mount is still queued.
+  for (var attempt = 0; anchor.evaluate().isEmpty && attempt < 60; attempt++) {
+    await tester.drag(scrollable, Offset(0, forward ? -180 : 180));
+    await tester.pumpAndSettle();
+  }
+  expect(anchor, findsOneWidget, reason: 'cached page $page must be reachable');
   await Scrollable.ensureVisible(tester.element(anchor));
   await tester.pumpAndSettle();
   await _wheel(tester, 1);

@@ -323,7 +323,9 @@ class _FakeClientCategoryRepository implements ClientCategoryRepository {
   int detailCalls(String id) => _detailCalls[id] ?? 0;
 
   @override
-  Future<List<ProductCategoryNode>> tree() async => _tree;
+  // HTTP tree responses are immutable snapshots; preserve the old snapshot
+  // while update replaces the repository's current nodes.
+  Future<List<ProductCategoryNode>> tree() async => List.unmodifiable(_tree);
 
   @override
   Future<ProductCategoryDetail> detail(String id) async {

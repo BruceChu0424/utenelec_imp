@@ -150,7 +150,9 @@ class _FakeDepartmentRepository implements DepartmentRepository {
       .firstWhere((candidate) => candidate.id == id);
 
   @override
-  Future<List<DepartmentNode>> tree() async => _tree;
+  // Match a new decoded HTTP snapshot instead of mutating the mounted tree's
+  // cached input list in place when the fake server changes a department.
+  Future<List<DepartmentNode>> tree() async => List.unmodifiable(_tree);
 
   @override
   Future<DepartmentInfo> detail(String id) async {

@@ -320,9 +320,18 @@ public class GoodsOperationHistoryService {
         List<Row> rows=versionRestoreRows(versions);
         Set<String> needed=new LinkedHashSet<>();
         for(Row row:rows) {
-            String prefix=switch(row.table()) {case "goods"->"goods";case "goods_bom_items"->"goods:bom";case "material_categories"->"material_category";default->throw conflict("不支持的货品版本资料");};
-            needed.add(prefix+":edit");
-            if(row.deleting(true))needed.add(prefix+":delete");
+            needed.add(switch(row.table()) {
+                case "goods" -> "goods:edit";
+                case "goods_bom_items" -> "goods:bom:edit";
+                case "material_categories" -> "material_category:edit";
+                default -> throw conflict("不支持的货品版本资料");
+            });
+            if(row.deleting(true))needed.add(switch(row.table()) {
+                case "goods" -> "goods:delete";
+                case "goods_bom_items" -> "goods:bom:delete";
+                case "material_categories" -> "material_category:delete";
+                default -> throw conflict("不支持的货品版本资料");
+            });
             if(row.table().equals("goods_bom_items")&&changed(row.before(),row.after(),"price","total"))needed.add("goods:cost:view");
             if(row.table().equals("goods_bom_items")&&changed(row.before(),row.after(),"audited_at","audited_by"))needed.add("goods:bom:audit");
             if(row.table().equals("goods")&&changed(row.before(),row.after(),"category_id","owner_employee_id","owning_warehouse_id","owning_workshop_department_id","owning_responsible_employee_id"))

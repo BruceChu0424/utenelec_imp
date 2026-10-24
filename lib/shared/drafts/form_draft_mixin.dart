@@ -33,6 +33,11 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   bool get formDraftBusy => false;
   bool get formDraftUsesRouterGuard => true;
   bool get formDraftUseCurrentRoute => true;
+
+  /// Ordinary editors keep a sticky fence for permission changes. A task that
+  /// refreshes live capabilities and rechecks authority before every command
+  /// may retain its owner-bound input while those capabilities change.
+  bool get formDraftTracksPermissionChanges => true;
   String? get formDraftResumeId => null;
   ValueKey<String>? get formDraftRouterPageKey => null;
 
@@ -133,7 +138,9 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// Permission changes belong to the same sticky boundary from the earliest
   /// source read, including an ABA change before draft initialization finishes.
   void startFormDraftIdentityGuard({bool includePermissions = true}) {
-    if (includePermissions && _draftReadBoundarySubscription == null) {
+    if (includePermissions &&
+        formDraftTracksPermissionChanges &&
+        _draftReadBoundarySubscription == null) {
       final original = ref.read(sensitiveReadBoundaryProvider);
       _draftReadBoundarySubscription = ref.listenManual(
         sensitiveReadBoundaryProvider,

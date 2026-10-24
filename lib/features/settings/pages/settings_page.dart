@@ -36,7 +36,7 @@ import '../widgets/settings_section.dart';
 import '../widgets/app_version_tile.dart';
 import '../../../shared/widgets/settings_about_extensions.dart';
 import '../../../core/l10n/remote_access_text.dart';
-import '../../disaster_recovery/disaster_recovery_text.dart';
+import '../../../core/l10n/disaster_recovery_text.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});

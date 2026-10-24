@@ -39,6 +39,35 @@ class _ReleaseNotesDialog extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final normalized = version.startsWith('v') ? version.substring(1) : version;
     final notes = switch (normalized) {
+      '2.5.29' => switch (Localizations.localeOf(context).languageCode) {
+        'en' => const [
+          'Master data includes customer product names and models, editable notes, and clearer change history and restoration.',
+          'Disabled goods leave the active assembly list while their historical references remain available.',
+          'Warehouse and workshop batches have stronger source checks, selection handling, and draft recovery.',
+          'Large tables, attachment processing, and printing stay responsive; old pages cannot submit after account or permission changes.',
+          'The software update page shows package details and checks downloads before installation.',
+          'Remote access verification and the operations and recovery entry follow existing permissions.',
+          'Server updates include complete backups, migration permission checks, and health verification.',
+        ],
+        'ko' => const [
+          '기초 자료에 고객 품명과 모델, 수정 가능한 메모, 변경 이력과 복원 기능을 보완했습니다.',
+          '사용 중지된 품목은 현재 조립 목록에서 제외되며 과거 참조는 계속 확인할 수 있습니다.',
+          '창고와 작업장 일괄 처리의 원본 확인, 선택 관리 및 초안 복구를 개선했습니다.',
+          '큰 표, 첨부 처리와 인쇄의 응답성을 개선하고 계정이나 권한이 바뀌면 이전 페이지의 제출을 차단합니다.',
+          '소프트웨어 업데이트 페이지에서 패키지 정보를 보고 설치 전에 다운로드를 검증합니다.',
+          '원격 접속 인증과 운영 및 복구 메뉴는 기존 권한에 따라 사용할 수 있습니다.',
+          '서버 업데이트 시 전체 백업, 마이그레이션 권한 확인 및 상태 점검을 수행합니다.',
+        ],
+        _ => const [
+          '基础资料增加客户货品名称与型号、可编辑备注，并完善变更历史与版本恢复。',
+          '停用货品自动退出当前组装清单，历史引用仍可核对。',
+          '完善仓库和内料仓批量操作的来源校验、选择管理与草稿恢复。',
+          '优化大表、附件处理和打印响应；账号或权限变化后，旧页面不能继续提交。',
+          '新增软件更新专页，展示安装包详情，并在安装前校验下载内容。',
+          '整合远程身份验证与运行及灾备入口，继续按现有权限提供操作。',
+          '服务器更新包含完整备份、迁移权限核对和健康检查。',
+        ],
+      },
       '2.5.3' => [
         l10n.release253Hr,
         l10n.release253Permissions,

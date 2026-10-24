@@ -45,7 +45,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Actual HTTP/authorization/JPA/Flyway/queue flow; native fsync is proved separately on Linux. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={
-        "spring.profiles.active=dev","uten.storage.provider=local","uten.storage.uploads-enabled=true",
+        "spring.profiles.active=dev","server.address=127.0.0.1","uten.deployment.site=local",
+        "uten.features.business-data-reset-enabled=true","uten.storage.provider=local","uten.storage.uploads-enabled=true",
         "uten.storage.malware-scan.provider=test-only","uten.storage.outbox.poll-delay-millis=60000",
         "uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
         "uten.features.goods-owner-scope-enabled=false",
@@ -63,11 +64,28 @@ class InternalAttachmentLifecyclePostgresTest {
     private static final PostgreSQLContainer POSTGRES=new PostgreSQLContainer("postgres:16-alpine");
     private static final Path ROOT=temporaryRoot();
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
-        POSTGRES.start();registry.add("spring.datasource.url",POSTGRES::getJdbcUrl);
+        POSTGRES.start();registry.add("spring.datasource.url",InternalAttachmentLifecyclePostgresTest::loopbackJdbcUrl);
         registry.add("spring.datasource.username",POSTGRES::getUsername);registry.add("spring.datasource.password",POSTGRES::getPassword);
         registry.add("uten.storage.local-dir",()->ROOT.resolve("development-local").toString());
         registry.add("uten.storage.internal.root",()->ROOT.toString());registry.add("uten.storage.internal.min-free-bytes",()->0);
     }
+    // Testcontainers appends loggerLevel=OFF to getJdbcUrl(). Reset's local-only
+    // gate deliberately rejects all JDBC query overrides; retain that production
+    // rule and construct this isolated test database target from checked parts.
+    private static String loopbackJdbcUrl() {
+        String host=POSTGRES.getHost();
+        if (!Set.of("127.0.0.1","localhost","::1","[::1]").contains(host)) {
+            throw new IllegalStateException("The destructive reset fixture requires a loopback database host");
+        }
+        int port=POSTGRES.getMappedPort(5432);
+        String database=POSTGRES.getDatabaseName();
+        if (port<1 || port>65535 || !database.matches("[A-Za-z0-9_]+")) {
+            throw new IllegalStateException("The reset fixture requires a bounded port and canonical database name");
+        }
+        String authority=host.contains(":") && !host.startsWith("[") ? "["+host+"]" : host;
+        return "jdbc:postgresql://"+authority+":"+port+"/"+database;
+    }
+
     @TestConfiguration(proxyBeanMethods=false)
     static class StoreConfiguration {
         @Bean @Primary InternalStorageService testInternalStorage(StorageProperties properties) {

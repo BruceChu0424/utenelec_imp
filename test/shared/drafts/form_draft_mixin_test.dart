@@ -120,6 +120,7 @@ class TestEditor extends ConsumerStatefulWidget {
     this.withGrid = false,
     this.withAttachment = false,
     this.autoInitialize = true,
+    this.trackPermissionChanges = true,
     this.failRestore = false,
     this.failReload = false,
     this.reloadGate,
@@ -128,6 +129,7 @@ class TestEditor extends ConsumerStatefulWidget {
   final bool withGrid;
   final bool withAttachment;
   final bool autoInitialize;
+  final bool trackPermissionChanges;
   final bool failRestore;
   final bool failReload;
   final Future<void>? reloadGate;
@@ -144,6 +146,8 @@ class TestEditorState extends ConsumerState<TestEditor>
   String choice = 'default';
   bool busy = false;
   bool canReplay = false;
+  @override
+  bool get formDraftTracksPermissionChanges => widget.trackPermissionChanges;
   @override
   bool get formDraftCanReplaySubmission => canReplay;
   @override
@@ -248,6 +252,7 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
   bool withGrid = false,
   bool withAttachment = false,
   bool autoInitialize = true,
+  bool trackPermissionChanges = true,
   bool failRestore = false,
   bool failReload = false,
   Future<void>? reloadGate,
@@ -273,6 +278,7 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
           withGrid: withGrid,
           withAttachment: withAttachment,
           autoInitialize: autoInitialize,
+          trackPermissionChanges: trackPermissionChanges,
           failRestore: failRestore,
           failReload: failReload,
           reloadGate: reloadGate,
@@ -300,6 +306,94 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
 }
 
 void main() {
+  testWidgets(
+    'live capability editor retains owner input through permission ABA and repeated initialization guards',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      final env = await pumpEditor(
+        tester,
+        storage,
+        autoInitialize: false,
+        trackPermissionChanges: false,
+      );
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      editor.startFormDraftIdentityGuard();
+      env.container.read(_testPermissions.notifier).state = {};
+      env.container.read(sensitiveReadBoundaryProvider);
+      env.container.read(_testPermissions.notifier).state = {'test:create'};
+      env.container.read(sensitiveReadBoundaryProvider);
+      // Automatic source capture and initialization may start the guard again.
+      editor.startFormDraftIdentityGuard();
+      await editor.initializeFormDraft();
+      await tester.pumpAndSettle();
+      editor.text.text = 'original owner input';
+      await editor.saveFormDraftNow();
+      final saved = Map<String, String>.of(storage.records);
+      env.container.read(_testPermissions.notifier).state = {};
+      env.container.read(sensitiveReadBoundaryProvider);
+      editor.startFormDraftIdentityGuard();
+      await tester.pumpAndSettle();
+      expect(editor.formDraftIdentityIsCurrent, isTrue);
+      expect(editor.text.text, 'original owner input');
+      final savedEnvelope =
+          jsonDecode(saved.values.single) as Map<String, Object?>;
+      final savedData = savedEnvelope['data']! as Map<String, Object?>;
+      expect(savedData['text'], 'original owner input');
+      expect(storage.records, saved);
+      // Revoking visibility may hide the task-center entry; owner evidence stays.
+      expect(env.container.read(formDraftsProvider), isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+  for (final change in ['account', 'server', 'session epoch']) {
+    testWidgets(
+      'live capability editor keeps sticky $change ABA identity fence',
+      (tester) async {
+        final storage = MemoryDraftStorage();
+        final env = await pumpEditor(
+          tester,
+          storage,
+          trackPermissionChanges: false,
+        );
+        final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+        editor.text.text = 'retained only for the original owner';
+        await editor.saveFormDraftNow();
+        final before = Map<String, String>.of(storage.records);
+        final owner = env.container.read(_testScope);
+        final server = env.container.read(_testServer);
+        if (change == 'account') {
+          env.container.read(_testScope.notifier).state =
+              const AuthenticatedScope(userId: 'other');
+        } else if (change == 'session epoch') {
+          env.container.read(_testScope.notifier).state = AuthenticatedScope(
+            userId: owner!.userId,
+            epoch: owner.epoch + 1,
+          );
+        } else {
+          env.container.read(_testServer.notifier).state =
+              'https://other.example/api';
+        }
+        await tester.pump();
+        if (change == 'account' || change == 'session epoch') {
+          env.container.read(_testScope.notifier).state = owner;
+        } else {
+          env.container.read(_testServer.notifier).state = server;
+        }
+        await tester.pumpAndSettle();
+        editor.startFormDraftIdentityGuard();
+        expect(editor.formDraftIdentityIsCurrent, isFalse);
+        await expectLater(editor.saveFormDraftNow(), throwsStateError);
+        expect(storage.records, before);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        env.router.dispose();
+        env.container.dispose();
+      },
+    );
+  }
   testWidgets(
     'default early source guard preserves permission ABA before draft initialization',
     (tester) async {

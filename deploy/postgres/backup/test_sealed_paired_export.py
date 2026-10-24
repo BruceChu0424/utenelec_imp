@@ -1,5 +1,6 @@
 """Synthetic-file export tests, including real GPG encrypt/decrypt; no production access."""
 import hashlib
+import gc
 import io
 import json
 import os
@@ -10,6 +11,7 @@ import tarfile
 import tempfile
 import unittest
 import uuid
+import warnings
 from unittest.mock import patch
 
 import sealed_paired_export as sealed
@@ -209,13 +211,29 @@ class SealedPairedExportTest(unittest.TestCase):
 
     def test_encryption_process_failure_has_no_success_or_partial(self):
         original = subprocess.Popen
+        encryption_processes = []
         def fail_encryption(arguments, *args, **kwargs):
-            if "--encrypt" in arguments:
-                arguments = ["/usr/bin/false"]
-            return original(arguments, *args, **kwargs)
-        with patch.object(sealed.subprocess, "Popen", side_effect=fail_encryption):
-            with self.assertRaises((ValueError, BrokenPipeError)):
-                self.run_export()
+            encryption = "--encrypt" in arguments
+            if encryption:
+                # Fail the real GPG executable before it consumes the tar pipe.
+                arguments = list(arguments)
+                arguments[arguments.index("--cipher-algo") + 1] = "UTEN_TEST_INVALID_CIPHER"
+            child = original(arguments, *args, **kwargs)
+            if encryption:
+                encryption_processes.append(child)
+            return child
+        with warnings.catch_warnings(record=True) as emitted:
+            warnings.simplefilter("always", ResourceWarning)
+            with patch.object(sealed.subprocess, "Popen", side_effect=fail_encryption):
+                with self.assertRaises((ValueError, BrokenPipeError)):
+                    self.run_export()
+            self.assertEqual(1, len(encryption_processes))
+            self.assertEqual(sealed.GPG, encryption_processes[0].args[0])
+            self.assertTrue(encryption_processes[0].stdin.closed)
+            self.assertIsNotNone(encryption_processes[0].poll())
+            self.assertNotEqual(0, encryption_processes[0].returncode)
+            gc.collect()
+        self.assertEqual([], [warning for warning in emitted if issubclass(warning.category, ResourceWarning)])
         self.assert_no_published_export()
 
     def test_successive_exports_preserve_previous_ciphertext(self):

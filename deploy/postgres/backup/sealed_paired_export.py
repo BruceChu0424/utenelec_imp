@@ -403,6 +403,15 @@ def export(root: Path, output: Path, public_key: bytes, fingerprint: str,
             shutil.rmtree(stage)
         raise
     finally:
+        if process is not None and process.stdin is not None and not process.stdin.closed:
+            # tarfile does not own a caller-provided fileobj. A failed GPG
+            # consumer can interrupt the tar write before the normal close.
+            # Preserve the original export failure if flushing the dead pipe
+            # also fails, while still releasing its descriptor.
+            try:
+                process.stdin.close()
+            except OSError:
+                pass
         if key_fd is not None:
             os.close(key_fd)
 

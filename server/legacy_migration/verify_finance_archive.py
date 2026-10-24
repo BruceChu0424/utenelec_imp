@@ -145,7 +145,8 @@ def extract_typed_source(directory,timezone,output):
                  IMAGE,'postgres','-c','log_min_messages=panic','-c','log_min_error_statement=panic',
                  '-c','log_statement=none','-c','log_parameter_max_length=0','-c','log_parameter_max_length_on_error=0'])
         for _ in range(60):
-            if invoke(['docker','exec',name,'pg_isready','-U','postgres']).returncode==0:break
+            # Only the final server listens on TCP; the initialization server is socket-only.
+            if invoke(['docker','exec',name,'pg_isready','-h','127.0.0.1','-U','postgres']).returncode==0:break
             time.sleep(.5)
         else:raise ValueError('isolated source verifier did not become ready')
         info=json.loads(checked(['docker','inspect',name]))[0]

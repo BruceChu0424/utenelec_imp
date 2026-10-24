@@ -287,11 +287,17 @@ jobs:
       - name: Verify browser update and stale-bundle behavior before release
         run: node --test web/update_check.test.cjs
       - name: Verify browser draft reset, receipts, and exact material quantities
-        run: >-
-          flutter test --no-pub --platform chrome
-          test/shared/drafts/form_draft_storage_browser_test.dart
-          test/shared/drafts/form_draft_history_browser_test.dart
-          test/device_audit_receipt_storage_web_test.dart
+        run: |
+          worker=test/.uten-ci-codec-worker.js
+          test ! -e "$worker"
+          trap 'rm -f -- "$worker"' EXIT
+          cp -- web/uten_data_codec_worker.js "$worker"
+          cmp -- web/uten_data_codec_worker.js "$worker"
+          flutter test --no-pub --platform chrome \
+          --dart-define=UTEN_DATA_CODEC_WORKER_PATH=/.uten-ci-codec-worker.js \
+          test/shared/drafts/form_draft_storage_browser_test.dart \
+          test/shared/drafts/form_draft_history_browser_test.dart \
+          test/device_audit_receipt_storage_web_test.dart \
           test/features/production/models/material_quantity_apportionment_test.dart
       - name: Verify version-pinned local font assets
         shell: pwsh

@@ -58,7 +58,7 @@ class StockCountCandidateCategoriesPostgresTest {
                   code_sequence bigint NOT NULL CHECK(code_sequence>0),
                   version bigint DEFAULT 2,issue_method text DEFAULT 'ORDER',status text DEFAULT '使用',
                   is_deleted boolean DEFAULT false,auto_created boolean DEFAULT false,
-                  stock_place text,model text,spec text,c_number text,series text,material text,name_en text,owning_warehouse_id uuid);
+                  stock_place text,model text,spec text,c_number text,series text,material text,name_en text,owning_warehouse_id uuid, client_goods_name text);
                 CREATE TABLE stock_balances(warehouse_id uuid,goods_id uuid,color_id uuid,qty numeric(18,4),
                   weight numeric(18,4),weight_estimated boolean DEFAULT false);
                 CREATE FUNCTION fn_weight_unit_kg_factor(text) RETURNS numeric LANGUAGE sql IMMUTABLE

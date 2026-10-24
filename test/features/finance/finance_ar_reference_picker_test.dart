@@ -119,6 +119,8 @@ void main() {
         find.byKey(const ValueKey('ar-ap-select-ledger-51')),
         findsOneWidget,
       );
+      _ledgerVerticalPosition(tester).jumpTo(0);
+      await tester.pumpAndSettle();
       expect(
         tester
             .widget<Checkbox>(
@@ -138,8 +140,6 @@ void main() {
       );
       expect(find.text('已选 1 行'), findsOneWidget);
 
-      _ledgerVerticalPosition(tester).jumpTo(0);
-      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('ar-ap-confirm')));
       await tester.pumpAndSettle();
       expect(applied, hasLength(1));
@@ -165,6 +165,8 @@ void main() {
         find.byKey(const ValueKey('ar-ap-select-ledger-51')),
         findsNothing,
       );
+      _ledgerVerticalPosition(tester).jumpTo(0);
+      await tester.pumpAndSettle();
       expect(
         tester
             .widget<Checkbox>(
@@ -341,8 +343,15 @@ Future<void> _wheelAtLedgerBottom(
 ) async {
   final beforeWheel = List<int>.of(api.pages);
   final position = _ledgerVerticalPosition(tester);
-  position.jumpTo(position.maxScrollExtent);
-  await tester.pumpAndSettle();
+  // Row admission replaces estimated extents over several frames. Reaching the
+  // old estimate is not necessarily the settled end of the same cached page.
+  for (var admission = 0; admission < 10; admission++) {
+    final oldMaximum = position.maxScrollExtent;
+    position.jumpTo(oldMaximum);
+    await tester.pumpAndSettle();
+    if (position.extentAfter <= 0.5) break;
+  }
+  expect(position.extentAfter, lessThanOrEqualTo(0.5));
   expect(
     api.pages,
     beforeWheel,

@@ -298,7 +298,8 @@ class InjectionMaterialSqlPostgresTest(unittest.TestCase):
             raise RuntimeError("isolated PostgreSQL test container could not start")
         cls.addClassCleanup(lambda:subprocess.run(["docker","rm","-f","-v",cls.container],capture_output=True))
         for _ in range(60):
-            ready=subprocess.run(["docker","exec",cls.container,"pg_isready","-U","postgres"],capture_output=True)
+            # Only the final server listens on TCP; the initialization server is socket-only.
+            ready=subprocess.run(["docker","exec",cls.container,"pg_isready","-h","127.0.0.1","-U","postgres"],capture_output=True)
             if ready.returncode==0:
                 return
             time.sleep(0.5)

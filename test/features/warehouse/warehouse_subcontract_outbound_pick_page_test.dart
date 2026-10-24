@@ -150,7 +150,13 @@ void main() {
     expect(find.text('不再出仓'), findsNothing);
     expect(find.text('生成草稿并核对'), findsNothing);
 
-    // 只有执行+编辑权限: 审核隐藏, 保存拣货仍在。
+    await tester.enterText(
+      find.byKey(const ValueKey('subcontract-outbound-issue-item-1-quantity')),
+      '80',
+    );
+    await tester.pumpAndSettle();
+
+    // 只有执行+编辑权限: 审核隐藏, 保存拣货仍在，原拣货输入保留。
     final container = ProviderScope.containerOf(
       tester.element(find.byType(WarehouseSubcontractOutboundEditPage)),
       listen: false,
@@ -162,6 +168,7 @@ void main() {
       Perm.subcontractMaterialIssueEdit,
     };
     await tester.pumpAndSettle();
+    expect(quantity.controller?.text, '80');
     expect(
       find.byKey(const Key('warehouse-subcontract-outbound-action-save')),
       findsOneWidget,
@@ -202,6 +209,44 @@ void main() {
       findsNothing,
     );
     expect(api.updates, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('保存重读期间撤权后再授权不复活旧命令，原拣货输入保留且不发送写请求', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(3000, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _DelayedFreshDetailApi();
+    final permissions = StateProvider<Set<String>>(
+      (_) => subcontractOutboundPermissions,
+    );
+    await _pumpRouted(tester, api, permissions: permissions);
+    final quantity = find.byKey(
+      const ValueKey('subcontract-outbound-issue-item-1-quantity'),
+    );
+    await tester.enterText(quantity, '80');
+    api.delayFresh = true;
+    await tester.tap(
+      find.byKey(const Key('warehouse-subcontract-outbound-action-save')),
+    );
+    // The source read is deliberately unresolved, so its busy spinner must
+    // keep ticking. Pump bounded real frames instead of waiting for it to stop.
+    for (var frame = 0; frame < 20 && api.pendingResponse == null; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(api.pendingResponse, isNotNull, reason: '真正进入命令的来源重读等待');
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(WarehouseSubcontractOutboundEditPage)),
+    );
+    container.read(permissions.notifier).state = {Perm.subcontractOutboundView};
+    await tester.pump();
+    container.read(permissions.notifier).state = subcontractOutboundPermissions;
+    await tester.pump();
+    api.freshRead.complete(api.pendingResponse!);
+    await tester.pumpAndSettle();
+    expect(api.updates, isEmpty);
+    expect(api.approvals, isEmpty);
+    expect(api.returns, isEmpty);
+    expect(tester.widget<TextField>(quantity).controller?.text, '80');
     expect(tester.takeException(), isNull);
   });
 
@@ -485,8 +530,9 @@ void main() {
 
 Future<GoRouter> _pumpRouted(
   WidgetTester tester,
-  SubcontractOutboundFakeApi api,
-) async {
+  SubcontractOutboundFakeApi api, {
+  StateProvider<Set<String>>? permissions,
+}) async {
   final router = GoRouter(
     routes: [
       GoRoute(
@@ -512,9 +558,14 @@ Future<GoRouter> _pumpRouted(
         fakeWeightRepositoryOverride(),
         apiClientProvider.overrideWithValue(api),
         masterNameServiceProvider.overrideWithValue(OutboundNames(api)),
-        currentPermissionsProvider.overrideWithValue(
-          subcontractOutboundPermissions,
-        ),
+        if (permissions == null)
+          currentPermissionsProvider.overrideWithValue(
+            subcontractOutboundPermissions,
+          )
+        else
+          currentPermissionsProvider.overrideWith(
+            (ref) => ref.watch(permissions),
+          ),
         sharedPreferencesProvider.overrideWithValue(_preferences),
       ],
       child: MaterialApp.router(routerConfig: router),
@@ -523,4 +574,24 @@ Future<GoRouter> _pumpRouted(
   unawaited(router.push<void>('/warehouse/subcontract-outbound/issue-1'));
   await tester.pumpAndSettle();
   return router;
+}
+
+class _DelayedFreshDetailApi extends SubcontractOutboundFakeApi {
+  _DelayedFreshDetailApi() : super(issues: 1);
+  bool delayFresh = false;
+  Map<String, dynamic>? pendingResponse;
+  final freshRead = Completer<Map<String, dynamic>>();
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    final response = await super.get(path, query: query);
+    if (delayFresh && path == '/subcontract/material-issues/issue-1') {
+      pendingResponse = response;
+      return freshRead.future;
+    }
+    return response;
+  }
 }

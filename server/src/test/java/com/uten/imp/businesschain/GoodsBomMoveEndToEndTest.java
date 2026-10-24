@@ -16,7 +16,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -52,7 +51,6 @@ class GoodsBomMoveEndToEndTest {
     @Autowired JdbcTemplate db;
     @Autowired GoodsBomService bom;
     FullChainEndToEndTest fixture;
-    final List<UUID> created = new ArrayList<>();
 
     @BeforeEach void before() {
         fixture = new FullChainEndToEndTest();
@@ -77,11 +75,9 @@ class GoodsBomMoveEndToEndTest {
 
     @AfterEach void after() {
         SecurityContextHolder.clearContext();
-        for (UUID goodsId : created) {
-            // business_record_history 不可变（触发器拦截增删改），留痕随一次性测试容器销毁。
-            db.update("DELETE FROM goods_bom_items WHERE goods_id=? OR component_goods_id=?", goodsId, goodsId);
-            db.update("DELETE FROM goods WHERE id=?", goodsId);
-        }
+        // Scenario UUIDs/codes are unique. V911 lifecycle/use facts and V775
+        // history retain these goods/BOM identities; keep the complete fixture
+        // graph until the disposable FullChain Testcontainers database is destroyed.
     }
 
     UUID goods(String tag) {
@@ -90,7 +86,6 @@ class GoodsBomMoveEndToEndTest {
                 INSERT INTO goods(id, code, name, model, code_sequence)
                 VALUES (?, ?, '移动测试', '', (SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))
                 """, id, "MV-" + tag + "-" + UUID.randomUUID().toString().substring(0, 8));
-        created.add(id);
         return id;
     }
 

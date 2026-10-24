@@ -689,6 +689,9 @@ class _ProductionFqcSheetHandlingPageState
   String _draftReason = '';
   final _sheetChromeKey = GlobalKey();
   final _sheetBodyKey = GlobalKey();
+  // Decision capability refresh preserves quantities; every send rechecks it.
+  @override
+  bool get formDraftTracksPermissionChanges => false;
   @override
   bool get formDraftBusy => _confirming || _submitting || _loading;
   @override
@@ -1612,6 +1615,9 @@ class _ProductionFqcInspectionPageState
     extends ConsumerState<ProductionFqcInspectionPage>
     with FormDraftMixin<ProductionFqcInspectionPage> {
   String _draftReason = '';
+  // Decision capability refresh preserves quantities; every send rechecks it.
+  @override
+  bool get formDraftTracksPermissionChanges => false;
   @override
   bool get formDraftBusy => _confirming || _saving || _loading;
   @override

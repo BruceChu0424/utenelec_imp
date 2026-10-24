@@ -377,9 +377,24 @@ def upload(config, directory, source_snapshot):
             raise ValueError("Receiver receipt binding failed")
         return result
     finally:
-        if process.poll() is None:
-            process.kill()
-            process.wait(timeout=10)
+        try:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=10)
+        finally:
+            close_transfer_pipes(process)
+
+
+def close_transfer_pipes(process):
+    # Reaping the child does not close our pipe descriptors. A failed transfer
+    # may bypass the normal closes; flushing its dead stdin can fail again.
+    # Keep the original transfer/input exception and release both descriptors.
+    for stream in (process.stdin, process.stdout):
+        if stream is not None and not stream.closed:
+            try:
+                stream.close()
+            except OSError:
+                pass
 
 
 def run_source(config):

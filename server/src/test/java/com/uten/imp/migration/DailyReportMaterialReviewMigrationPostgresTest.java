@@ -39,6 +39,56 @@ class DailyReportMaterialReviewMigrationPostgresTest {
             Map.entry("subcontract_selected_outbound_comm_actor_id_idempotency_key_key","CREATE UNIQUE INDEX subcontract_selected_outbound_comm_actor_id_idempotency_key_key ON public.subcontract_selected_outbound_commands USING btree (actor_id, idempotency_key)"),
             Map.entry("subcontract_selected_outbound_items_pkey","CREATE UNIQUE INDEX subcontract_selected_outbound_items_pkey ON public.subcontract_selected_outbound_items USING btree (source_item_id)"),
             Map.entry("subcontract_selected_outbound_items_execution_item_id_key","CREATE UNIQUE INDEX subcontract_selected_outbound_items_execution_item_id_key ON public.subcontract_selected_outbound_items USING btree (execution_item_id)"));
+    // Reviewed V904/V908/V911/V913 source adds only retained master/import evidence tables.
+    private static final List<String> V904_TO_V913_PRESERVED_TABLES=List.of(
+            "goods_material_identity_evidence",
+            "legacy_quantity_counter_import_sources",
+            "goods_code_lifecycles",
+            "goods_code_usage_facts",
+            "goods_code_reuse_releases",
+            "legacy_production_plan_counter_import_contexts",
+            "legacy_production_plan_counter_import_sources");
+    private static final Map<String,String> V904_TO_V913_INDEX_ADDITIONS=Map.ofEntries(
+            // V904__goods_material_identity_evidence.sql
+            Map.entry("goods_material_identity_evidence_pkey","CREATE UNIQUE INDEX goods_material_identity_evidence_pkey ON public.goods_material_identity_evidence USING btree (id)"),
+            Map.entry("idx_goods_material_identity_color","CREATE INDEX idx_goods_material_identity_color ON public.goods_material_identity_evidence USING btree (material_color_id) WHERE (material_color_id IS NOT NULL)"),
+            Map.entry("idx_goods_material_identity_material","CREATE INDEX idx_goods_material_identity_material ON public.goods_material_identity_evidence USING btree (material_goods_id)"),
+            Map.entry("idx_goods_material_identity_product","CREATE INDEX idx_goods_material_identity_product ON public.goods_material_identity_evidence USING btree (product_goods_id)"),
+            Map.entry("idx_goods_material_identity_run","CREATE INDEX idx_goods_material_identity_run ON public.goods_material_identity_evidence USING btree (import_run_id) WHERE (import_run_id IS NOT NULL)"),
+            Map.entry("uq_goods_material_identity_active","CREATE UNIQUE INDEX uq_goods_material_identity_active ON public.goods_material_identity_evidence USING btree (product_goods_id, material_goods_id, material_color_id) NULLS NOT DISTINCT WHERE (NOT is_deleted)"),
+            // V905__batch_disabled_bom_retirement_resolution.sql
+            Map.entry("idx_goods_bom_retirement_pending","CREATE INDEX idx_goods_bom_retirement_pending ON public.goods_bom_items USING btree (goods_id) WHERE (is_deleted AND (retirement_reason = 'COMPONENT_DISABLED'::text) AND (retirement_resolved_at IS NULL))"),
+            // V908__legacy_initial_quantity_counter_provenance.sql
+            Map.entry("legacy_quantity_counter_impor_run_id_source_kind_source_leg_key","CREATE UNIQUE INDEX legacy_quantity_counter_impor_run_id_source_kind_source_leg_key ON public.legacy_quantity_counter_import_sources USING btree (run_id, source_kind, source_legacy_id)"),
+            Map.entry("legacy_quantity_counter_import_sources_pkey","CREATE UNIQUE INDEX legacy_quantity_counter_import_sources_pkey ON public.legacy_quantity_counter_import_sources USING btree (id)"),
+            Map.entry("legacy_quantity_counter_import_sources_run_id_target_id_key","CREATE UNIQUE INDEX legacy_quantity_counter_import_sources_run_id_target_id_key ON public.legacy_quantity_counter_import_sources USING btree (run_id, target_id)"),
+            Map.entry("legacy_quantity_counter_import_sources_target_id_key","CREATE UNIQUE INDEX legacy_quantity_counter_import_sources_target_id_key ON public.legacy_quantity_counter_import_sources USING btree (target_id)"),
+            // V909__legacy_receipt_optional_order_reference_snapshot.sql
+            Map.entry("ix_purchase_receipt_original_order_gap","CREATE INDEX ix_purchase_receipt_original_order_gap ON public.purchase_receipt_items USING btree (legacy_import_run_id, order_item_legacy_id) WHERE ((order_item_legacy_id IS NOT NULL) AND (order_item_id IS NULL))"),
+            Map.entry("ix_subcontract_receipt_original_order_gap","CREATE INDEX ix_subcontract_receipt_original_order_gap ON public.subcontract_receipt_items USING btree (legacy_import_run_id, order_item_legacy_id) WHERE ((order_item_legacy_id IS NOT NULL) AND (order_item_id IS NULL))"),
+            // V910__goods_import_operation_binding.sql
+            Map.entry("idx_goods_import_batches_operation","CREATE UNIQUE INDEX idx_goods_import_batches_operation ON public.goods_import_batches USING btree (operation_id) WHERE (operation_id IS NOT NULL)"),
+            // V911__unused_deleted_goods_code_reuse.sql
+            Map.entry("goods_code_lifecycles_pkey","CREATE UNIQUE INDEX goods_code_lifecycles_pkey ON public.goods_code_lifecycles USING btree (goods_id)"),
+            Map.entry("goods_code_reuse_releases_normalized_code_old_goods_id_key","CREATE UNIQUE INDEX goods_code_reuse_releases_normalized_code_old_goods_id_key ON public.goods_code_reuse_releases USING btree (normalized_code, old_goods_id)"),
+            Map.entry("goods_code_reuse_releases_pkey","CREATE UNIQUE INDEX goods_code_reuse_releases_pkey ON public.goods_code_reuse_releases USING btree (id)"),
+            Map.entry("goods_code_usage_facts_pkey","CREATE UNIQUE INDEX goods_code_usage_facts_pkey ON public.goods_code_usage_facts USING btree (goods_id)"),
+            Map.entry("idx_goods_code_reuse_new_owner","CREATE INDEX idx_goods_code_reuse_new_owner ON public.goods_code_reuse_releases USING btree (new_goods_id, normalized_code)"),
+            // V912__legacy_receipt_other_fee_style_snapshot.sql
+            Map.entry("ix_finance_receipt_original_other_fee_style_gap","CREATE INDEX ix_finance_receipt_original_other_fee_style_gap ON public.finance_receipts USING btree (legacy_import_run_id, other_fee_style_legacy_id) WHERE ((other_fee_style_legacy_id IS NOT NULL) AND (other_fee_style_id IS NULL))"),
+            // V913__legacy_production_plan_counter_provenance.sql
+            Map.entry("idx_legacy_production_context_issued_txid","CREATE INDEX idx_legacy_production_context_issued_txid ON public.legacy_production_plan_counter_import_contexts USING btree (issued_txid)"),
+            Map.entry("idx_legacy_production_source_color","CREATE INDEX idx_legacy_production_source_color ON public.legacy_production_plan_counter_import_sources USING btree (run_id, ((source_reference_legacy_ids ->> 'color_legacy_id'::text)))"),
+            Map.entry("idx_legacy_production_source_goods","CREATE INDEX idx_legacy_production_source_goods ON public.legacy_production_plan_counter_import_sources USING btree (run_id, ((source_reference_legacy_ids ->> 'goods_legacy_id'::text)))"),
+            Map.entry("idx_legacy_production_source_mgoods","CREATE INDEX idx_legacy_production_source_mgoods ON public.legacy_production_plan_counter_import_sources USING btree (run_id, ((source_reference_legacy_ids ->> 'mgoods_legacy_id'::text)))"),
+            Map.entry("idx_legacy_production_source_parent","CREATE INDEX idx_legacy_production_source_parent ON public.legacy_production_plan_counter_import_sources USING btree (run_id, target_plan_id)"),
+            Map.entry("idx_legacy_production_source_unit","CREATE INDEX idx_legacy_production_source_unit ON public.legacy_production_plan_counter_import_sources USING btree (run_id, ((source_reference_legacy_ids ->> 'unit_legacy_id'::text)))"),
+            Map.entry("idx_legacy_production_source_upstream","CREATE INDEX idx_legacy_production_source_upstream ON public.legacy_production_plan_counter_import_sources USING btree (run_id, ((source_reference_legacy_ids ->> 's_order_item_legacy'::text)))"),
+            Map.entry("legacy_production_plan_counter_impo_run_id_source_legacy_id_key","CREATE UNIQUE INDEX legacy_production_plan_counter_impo_run_id_source_legacy_id_key ON public.legacy_production_plan_counter_import_sources USING btree (run_id, source_legacy_id)"),
+            Map.entry("legacy_production_plan_counter_import_contexts_pkey","CREATE UNIQUE INDEX legacy_production_plan_counter_import_contexts_pkey ON public.legacy_production_plan_counter_import_contexts USING btree (run_id)"),
+            Map.entry("legacy_production_plan_counter_import_sour_run_id_target_id_key","CREATE UNIQUE INDEX legacy_production_plan_counter_import_sour_run_id_target_id_key ON public.legacy_production_plan_counter_import_sources USING btree (run_id, target_id)"),
+            Map.entry("legacy_production_plan_counter_import_sources_pkey","CREATE UNIQUE INDEX legacy_production_plan_counter_import_sources_pkey ON public.legacy_production_plan_counter_import_sources USING btree (id)"),
+            Map.entry("legacy_production_plan_counter_import_sources_target_id_key","CREATE UNIQUE INDEX legacy_production_plan_counter_import_sources_target_id_key ON public.legacy_production_plan_counter_import_sources USING btree (target_id)"));
     private static final Map<String,String> V885_INDEX_ADDITIONS=Map.ofEntries(
             Map.entry("master_operation_history_pkey","CREATE UNIQUE INDEX master_operation_history_pkey ON public.master_operation_history USING btree (id)"),
             Map.entry("master_operation_history_actor_id_request_id_transaction_id_key","CREATE UNIQUE INDEX master_operation_history_actor_id_request_id_transaction_id_key ON public.master_operation_history USING btree (actor_id, request_id, transaction_id)"),
@@ -122,6 +172,7 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertTrue(expectedTables.add("master_record_versions"));
         assertTrue(expectedTables.add("subcontract_selected_outbound_commands"));
         assertTrue(expectedTables.add("subcontract_selected_outbound_items"));
+        V904_TO_V913_PRESERVED_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         V885_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         assertEquals(expectedTables.stream().toList(),tables());
@@ -171,6 +222,8 @@ class DailyReportMaterialReviewMigrationPostgresTest {
                 "An object version index must not replace an existing index: "+name));
         V900_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
                 "A selected outbound index must not replace an existing index: "+name));
+        V904_TO_V913_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
+                "A declared evidence/index delta must not replace an existing index: "+name));
         assertEquals(expectedIndexes,catalogMap(indexes()));
         TreeMap<String,String> expectedPolicy=catalogMap(resetPolicyAfterV840);
         assertNull(expectedPolicy.put("document_unapprovals","CLEAR"));
@@ -193,6 +246,7 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertNull(expectedPolicy.put("master_record_versions","PRESERVE"));
         assertNull(expectedPolicy.put("subcontract_selected_outbound_commands","CLEAR"));
         assertNull(expectedPolicy.put("subcontract_selected_outbound_items","CLEAR"));
+        V904_TO_V913_PRESERVED_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
         V871_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
         V885_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
         assertEquals(expectedPolicy,catalogMap(resetPolicy()));

@@ -67,7 +67,11 @@ HTTP 上传层可能使用受控临时文件，不宣称整个传输过程完全
 本轮真实模型准备发现：PaddleX 3.7.2的OCR依赖检查要求 `opencv-contrib-python` 发行包，
 仅安装headless变体即使 `import cv2` 成功，仍会在创建OCR pipeline时报 `DependencyError`。
 因此固定上游指定的4.10.0.84，安装脚本先清理其他OpenCV wheel，再安装并强制重装contrib以恢复共享文件。
-Linux补齐 `libgomp1`、`libgl1` 和发行版对应的 `libglib2.0-0t64` 或 `libglib2.0-0` 运行库即可，
+Linux补齐 `libgomp1`、`libgl1`、发行版对应的 `libglib2.0-0t64` 或 `libglib2.0-0` 运行库，
+以及 Paddle SDK 扩展探测会检查的原生 `ccache`；本项目安装该工具以保留检查并实现无警告部署。
+仅安装预编译 wheel 仍会进行该探测；工具缺失会产生真实 `UserWarning`，不能屏蔽警告代替安装。
+CPU/OpenBLAS 部署将 `OMP_NUM_THREADS`、`OPENBLAS_NUM_THREADS` 和 `MKL_NUM_THREADS` 固定为 `1`，
+避免 SDK 对不兼容多线程设置的警告；CPU/内存配额及固定模型不变。
 不要求安装桌面环境，不伪造包元数据或跳过依赖检查。失败与修正验证均保留在本地OCR实测日志中。
 
 ### 模型选择证据

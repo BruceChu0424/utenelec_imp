@@ -42,8 +42,6 @@ class GoodsBomWhereUsedReplacementEndToEndTest {
     @Autowired JdbcTemplate db;
     @Autowired GoodsBomWhereUsedReplacementService service;
     @Autowired WhereUsedExportService exports;
-    final List<UUID> created = new ArrayList<>();
-    final List<UUID> createdUnits = new ArrayList<>();
     UUID unit;
     AuthUser admin;
     UUID session;
@@ -60,9 +58,9 @@ class GoodsBomWhereUsedReplacementEndToEndTest {
 
     @AfterEach void after() {
         SecurityContextHolder.clearContext();
-        for (UUID id : created) db.update("DELETE FROM goods_bom_items WHERE goods_id=? OR component_goods_id=?", id, id);
-        for (UUID id : created) db.update("DELETE FROM goods WHERE id=?", id);
-        for (UUID id : createdUnits) db.update("DELETE FROM units WHERE id=?", id);
+        // Scenario UUID/code namespaces are unique. Retain the complete BOM,
+        // goods/unit graph and immutable lifecycle/use/history evidence until
+        // the disposable FullChain Testcontainers database is destroyed.
     }
 
     @Test void nestedReplacementPreviewsAllSharedParentsRollsBackThenCommitsCanonicalEdgeOnce() {
@@ -143,12 +141,12 @@ class GoodsBomWhereUsedReplacementEndToEndTest {
                 INSERT INTO goods(id,code,name,unit_id,issue_method,status,auto_created,code_sequence)
                 VALUES(?,?,?,?,'ORDER','使用',false,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))
                 """, id, "WR-" + tag + "-" + id, tag, unit);
-        created.add(id); return id;
+        return id;
     }
     private UUID unit() {
         UUID id = UUID.randomUUID();
         db.update("INSERT INTO units(id,code,name,status) VALUES(?,?,?,'使用')", id, "WRU-" + id, "WR-unit-" + id);
-        createdUnits.add(id); return id;
+        return id;
     }
     private UUID edge(UUID parent, UUID component) {
         UUID id = UUID.randomUUID();

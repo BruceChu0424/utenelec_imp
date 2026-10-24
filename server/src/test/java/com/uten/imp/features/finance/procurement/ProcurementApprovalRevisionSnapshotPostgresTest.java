@@ -33,7 +33,7 @@ class ProcurementApprovalRevisionSnapshotPostgresTest {
             jdbc.execute("""
                     CREATE TABLE procurement_order_approval_cases (
                         id uuid, order_type text, order_id uuid, attempt integer, submission_snapshot jsonb, display_snapshot jsonb, finance_tax_rate numeric(7,4));
-                    CREATE TABLE goods (id uuid, code text, name text, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8));
+                    CREATE TABLE goods (id uuid, code text, name text, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8), client_goods_name text);
                     CREATE TABLE colors (id uuid, name text, remark text);
                     CREATE TABLE units (id uuid, name text);
                     CREATE TABLE currencies (id uuid, name text);

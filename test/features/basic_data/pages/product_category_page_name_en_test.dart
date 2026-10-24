@@ -1,6 +1,6 @@
 import 'dart:async';
-// ADR-134 goods list: the 英文名称 column sits right after 货品名称 and the
-// search hint tells users the keyword also matches English names.
+// ADR-134/V906 goods list: 客户品名 stays adjacent to 货品名称, followed by
+// 英文名称. The search hint still includes the learned English name.
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,7 +26,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('英文名称 column follows 货品名称 and shows the learned value', (
+  testWidgets('货品名称、客户品名、英文名称 stay adjacent and show the learned value', (
     tester,
   ) async {
     final goods = _FakeGoodsRepository();
@@ -39,7 +39,12 @@ void main() {
       find.byType(MasterDataTableView<GoodsListItem>),
     );
     final keys = table.columns.map((c) => c.key).toList();
-    expect(keys.indexOf('nameEn'), keys.indexOf('name') + 1);
+    expect(keys.indexOf('clientGoodsName'), keys.indexOf('name') + 1);
+    expect(keys.indexOf('nameEn'), keys.indexOf('clientGoodsName') + 1);
+    expect(
+      table.columns.firstWhere((c) => c.key == 'clientGoodsName').label,
+      '客户货品名称',
+    );
     final column = table.columns.firstWhere((c) => c.key == 'nameEn');
     expect(column.label, '英文名称');
     expect(column.info, contains('自动记住'));

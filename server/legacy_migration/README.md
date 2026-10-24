@@ -125,7 +125,7 @@ GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO uten_migrator;
 
 ## PostgreSQL 前向升级演练
 
-本目录的 SQL Server 首次导入与既有 PostgreSQL 的 Flyway 前向升级是两条不同链路。`V238ToCurrentSyntheticMigrationPostgresTest` 从历史 schema 建合成非空库，再升级到从正式资源自动发现的当前目录；`LegacyBootstrapSchemaCompatibilityPostgresTest` 只证明 SQL 结构兼容和部分主档关系；`LegacyBootstrapCoordinatorPostgresTest` 在独立测试容器运行真实 Shell、Docker CLI、CSV COPY、来源/目标门禁、非空多模块导入与重放/失败回滚。合成来源与批准均明确标为测试数据，不代表真实旧库已经导入或通过业务对账。
+本目录的 SQL Server 首次导入与既有 PostgreSQL 的 Flyway 前向升级是两条不同链路。`V238ToCurrentSyntheticMigrationPostgresTest` 从历史 schema 建合成非空库，再升级到从正式资源自动发现的当前目录；`LegacyBootstrapSchemaCompatibilityPostgresTest` 只证明 SQL 结构兼容和部分主档关系；`LegacyBootstrapCoordinatorPostgresTest` 在独立测试容器保留真实 Python 子合同，并验证当前 v18 的 Shell All 三别名在 Docker/claim 前拒绝、完整业务/claims/sequence 指纹不变；私有降级 v15 的非空 production/finance 来源由当前 V913 正确拒绝，业务写入全部回滚且只保留真实 FAILED 尝试证据。旧 v15 正向导入、成功重放和晚 finance 注入在当前协议下不可达，已退出此测试合同。该安全回归不代表当前 v18 完整真实数据导入、业务对账或 UAT；正式流程仍以本目录开头的 Python 入口与主 SOP 为准。
 
 公司数据只能在独立、可丢弃且可恢复的克隆上运行 `CurrentHeadNonEmptyCloneRehearsalTest`。除 `UTEN_RUN_REHEARSAL_DB_TESTS=true` 外，执行者必须通过私有环境显式提供：
 

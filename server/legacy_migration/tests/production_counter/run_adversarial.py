@@ -97,7 +97,8 @@ class OwnedPg:
         r=self.command(['docker','run','-d','--name',self.name,'--network','none','-e','POSTGRES_HOST_AUTH_METHOD=trust','postgres:16-alpine'])
         assert r.returncode==0;self.created=True
         for _ in range(75):
-            if self.command(['docker','exec',self.name,'pg_isready','-U','postgres']).returncode==0:break
+            # Only the final server listens on TCP; the initialization server is socket-only.
+            if self.command(['docker','exec',self.name,'pg_isready','-h','127.0.0.1','-U','postgres']).returncode==0:break
             time.sleep(.15)
         else:raise RuntimeError('Owned PostgreSQL did not become ready')
         meta=json.loads(self.command(['docker','inspect',self.name]).stdout)[0]

@@ -158,14 +158,21 @@ ScrollableState _scrollable(WidgetTester tester) {
 Future<void> _edge(WidgetTester tester, {required bool top}) async {
   final position = _scrollable(tester).position;
   position.jumpTo(top ? position.minScrollExtent : position.maxScrollExtent);
-  await tester.pump();
+  // Bounded tables admit offscreen business rows over successive frames.
+  await tester.pumpAndSettle();
 }
 
 Future<void> _wheel(WidgetTester tester, double dy) async {
   final position = _scrollable(tester);
   final pointer = TestPointer(1, PointerDeviceKind.mouse);
   await tester.sendEventToBinding(
-    pointer.hover(tester.getCenter(find.byWidget(position.widget))),
+    pointer.hover(
+      tester.getCenter(
+        find.byElementPredicate(
+          (element) => identical(element, position.context),
+        ),
+      ),
+    ),
   );
   await tester.sendEventToBinding(pointer.scroll(Offset(0, dy)));
   await tester.pump();

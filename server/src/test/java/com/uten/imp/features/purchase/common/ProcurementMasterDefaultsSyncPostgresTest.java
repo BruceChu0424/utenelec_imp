@@ -1,6 +1,5 @@
 package com.uten.imp.features.purchase.common;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -149,17 +148,10 @@ class ProcurementMasterDefaultsSyncPostgresTest {
     @Autowired
     private PlatformTransactionManager txm;
 
-    @BeforeEach
-    void clean() {
-        jdbc.update("DELETE FROM purchase_order_items");
-        jdbc.update("DELETE FROM purchase_orders");
-        jdbc.update("DELETE FROM subcontract_order_items");
-        jdbc.update("DELETE FROM subcontract_orders");
-        jdbc.update("DELETE FROM goods WHERE code LIKE 'G-SYNC-%'");
-        jdbc.update("DELETE FROM suppliers WHERE code LIKE 'SUP-SYNC-%'");
-        jdbc.update("DELETE FROM settlement_methods WHERE code LIKE 'STM-SYNC-%'");
-        jdbc.update("DELETE FROM currencies WHERE code LIKE 'CUR-SYNC-%'");
-    }
+    // Each case uses distinct master codes/UUIDs and monotonic bill/legacy IDs
+    // in this class's disposable PostgreSQL container. Keep its complete order,
+    // master and V911 lifecycle/use evidence until that container is destroyed;
+    // deleting a referenced goods UUID between methods violates permanent identity.
 
     @Test
     void purchaseOrderLearnsGoodsSupplierPriceAndSupplierTermsThroughTheTrigger() {

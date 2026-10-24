@@ -668,7 +668,7 @@ public class GoodsService {
         List<ExportColumn> cols = new ArrayList<>();
         cols.add(new ExportColumn("name", "货品名称", ExportColumn.TEXT));
         cols.add(new ExportColumn("clientGoodsName", "客户货品名称", ExportColumn.TEXT));
-        // 英文名称(ADR-134): 紧跟货品名称, 与表格列序一致; 导入同名表头可直接导回。
+        // 名称组与表格一致：货品名称、客户货品名称、英文名称；同名表头支持导回。
         cols.add(new ExportColumn("nameEn", "英文名称", ExportColumn.TEXT));
         cols.add(new ExportColumn("code", "编号", ExportColumn.TEXT));
         cols.add(new ExportColumn("goodsId", "系统标识", ExportColumn.TEXT));

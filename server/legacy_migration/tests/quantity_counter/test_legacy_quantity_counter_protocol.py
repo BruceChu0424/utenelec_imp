@@ -70,7 +70,8 @@ def main():
         assert result.returncode == 0, 'Own synthetic PostgreSQL could not start'
         created = True
         for _ in range(50):
-            result = call(['docker', 'exec', name, 'pg_isready', '-U', 'postgres', '-d', DATABASE], timeout=10)
+            # Only the final server listens on TCP; the initialization server is socket-only.
+            result = call(['docker', 'exec', name, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres', '-d', DATABASE], timeout=10)
             if result.returncode == 0:
                 break
             time.sleep(.2)

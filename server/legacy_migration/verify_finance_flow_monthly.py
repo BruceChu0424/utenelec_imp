@@ -126,7 +126,8 @@ def typed_source_facts(source):
         check(command(['image','inspect','postgres:16.15-alpine']).returncode==0)
         result=command(['run','--pull=never','-d','--name',name,'--network','none','--mount','type=tmpfs,destination=/var/lib/postgresql/data','-e','POSTGRES_HOST_AUTH_METHOD=trust','postgres:16.15-alpine','-c','log_min_error_statement=panic','-c','log_min_messages=panic']);check(result.returncode==0);created=True
         for _ in range(80):
-            if command(['exec',name,'pg_isready','-U','postgres']).returncode==0:break
+            # Only the final server listens on TCP; the initialization server is socket-only.
+            if command(['exec',name,'pg_isready','-h','127.0.0.1','-U','postgres']).returncode==0:break
             time.sleep(.15)
         else:check(False)
         meta=command(['inspect',name]);check(meta.returncode==0);info=json.loads(meta.stdout)[0]

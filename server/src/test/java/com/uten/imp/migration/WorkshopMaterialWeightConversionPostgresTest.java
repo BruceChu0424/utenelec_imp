@@ -32,7 +32,7 @@ class WorkshopMaterialWeightConversionPostgresTest {
         db = new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword()));
         db.execute("""
                 CREATE TABLE unit_measurement_profiles(unit_id uuid PRIMARY KEY, measurement_dimension text, mass_unit_code text);
-                CREATE TABLE goods(id uuid PRIMARY KEY, issue_method text DEFAULT 'PERIODIC', color_id uuid);
+                CREATE TABLE goods(id uuid PRIMARY KEY, issue_method text DEFAULT 'PERIODIC', color_id uuid, client_goods_name text);
                 CREATE TABLE goods_bom_items(id uuid PRIMARY KEY, goods_id uuid, component_goods_id uuid,
                     color_id uuid, qty numeric, is_deleted boolean DEFAULT FALSE,
                     retirement_reason text, retirement_resolved_at timestamptz);

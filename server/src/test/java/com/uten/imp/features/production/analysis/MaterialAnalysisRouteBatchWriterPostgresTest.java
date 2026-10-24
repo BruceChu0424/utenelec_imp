@@ -53,7 +53,7 @@ class MaterialAnalysisRouteBatchWriterPostgresTest {
         var source=new SingleConnectionDataSource(connection,true);db=new JdbcTemplate(source);named=new NamedParameterJdbcTemplate(source);
         db.execute("CREATE SCHEMA route_test");db.execute("SET LOCAL search_path=route_test");
         db.execute("""
-                CREATE TABLE goods(id uuid PRIMARY KEY,source_type varchar,is_deleted boolean DEFAULT false,version bigint DEFAULT 0,updated_at timestamptz,updated_by uuid);
+                CREATE TABLE goods(id uuid PRIMARY KEY,source_type varchar,is_deleted boolean DEFAULT false,version bigint DEFAULT 0,updated_at timestamptz,updated_by uuid, client_goods_name text);
                 CREATE FUNCTION fn_goods_has_order_bom(uuid) RETURNS boolean LANGUAGE SQL AS 'SELECT false';
                 CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY,analysis_id uuid NOT NULL,analysis_item_id uuid NOT NULL,
                     node_role varchar DEFAULT 'BOM_COMPONENT',active boolean DEFAULT true,confirmed_route varchar,source_suggestion varchar,

@@ -41,8 +41,9 @@ class LegacyOperatorNamespaceReportPostgresTest {
     @BeforeAll static void start() {
         PG.start();
         db = new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword()));
-        db.execute("CREATE TABLE employees(id uuid PRIMARY KEY, legacy_id integer, full_name text)");
-        db.update("INSERT INTO employees VALUES (?::uuid,25,'Employee with operator number'),"
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentColumns(db,"employees");
+        db.execute("ALTER TABLE employees ADD PRIMARY KEY(id)");
+        db.update("INSERT INTO employees(id,legacy_id,full_name) VALUES (?::uuid,25,'Employee with operator number'),"
                 + "(?::uuid,26,'Employee with approver number'),(?::uuid,999,'Modern employee')",
                 UUID.randomUUID(), UUID.randomUUID(), MODERN);
         db.execute("""

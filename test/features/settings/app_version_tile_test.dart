@@ -116,6 +116,7 @@ void main() {
     '2.5.21',
     '2.5.22',
     '2.5.23',
+    '2.5.29',
   ]) {
     for (final language in ['zh', 'en', 'ko']) {
       testWidgets(
@@ -130,7 +131,14 @@ void main() {
               tester,
               version: release,
               locale: Locale(language),
-              scale: {'2.5.20', '2.5.21', '2.5.22', '2.5.23'}.contains(release)
+              scale:
+                  {
+                    '2.5.20',
+                    '2.5.21',
+                    '2.5.22',
+                    '2.5.23',
+                    '2.5.29',
+                  }.contains(release)
                   ? 2
                   : 1.6,
               brightness: brightness,
@@ -176,6 +184,27 @@ void main() {
             };
             for (final note in historicalNotes) {
               expect(find.textContaining(note), findsOneWidget);
+            }
+            final release2529 = switch (language) {
+              'en' => 'Master data includes customer product names and models',
+              'ko' => '기초 자료에 고객 품명과 모델',
+              _ => '基础资料增加客户货品名称与型号',
+            };
+            expect(
+              find.textContaining(release2529),
+              release == '2.5.29' ? findsOneWidget : findsNothing,
+            );
+            if (release == '2.5.29') {
+              expect(find.text(l10n.releaseNotesUnavailable), findsNothing);
+              expect(
+                tester.widgetList<Text>(
+                  find.descendant(
+                    of: find.byType(SingleChildScrollView),
+                    matching: find.byType(Text),
+                  ),
+                ),
+                hasLength(7),
+              );
             }
             if (release == '2.5.21' || release == '2.5.22') {
               expect(

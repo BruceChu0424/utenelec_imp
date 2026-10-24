@@ -20,7 +20,8 @@ def main():
     cases = []
     try:
         for _ in range(60):
-            if real_run(['docker', 'exec', owned, 'pg_isready', '-U', 'uten', '-d', 'verifier'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0: break
+            # Only the final server listens on TCP; the initialization server is socket-only.
+            if real_run(['docker', 'exec', owned, 'pg_isready', '-h', '127.0.0.1', '-U', 'uten', '-d', 'verifier'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0: break
             time.sleep(.25)
         else: raise RuntimeError('Disposable PostgreSQL was not ready')
 

@@ -197,7 +197,15 @@ class FixtureSchemaDriftGuardPostgresTest {
             "com/uten/imp/migration/PermanentRecordHistoryPostgresTest.java#history_race_parent",
             "com/uten/imp/migration/PermanentRecordHistoryPostgresTest.java#history_race_child",
             // Only this V868 publication oracle's private shown-card sink; not a business table.
-            "com/uten/imp/features/subcontract/kit/SubcontractKitBatchAuthorityPostgresTest.java#fixture_cards");
+            "com/uten/imp/features/subcontract/kit/SubcontractKitBatchAuthorityPostgresTest.java#fixture_cards",
+            // Private report actor adapter for frozen operator versus real employee namespaces.
+            "com/uten/imp/migration/LegacyOperatorNamespaceReportPostgresTest.java#legacy_actor_fixture",
+            // V918's private ordinary-DML/import-function sinks and denied/future DDL probes;
+            // these names never exempt a production relation or another test class.
+            "com/uten/imp/migration/RuntimeDdlAndFlywayHistoryPrivilegesPostgresTest.java#ordinary_business",
+            "com/uten/imp/migration/RuntimeDdlAndFlywayHistoryPrivilegesPostgresTest.java#controlled_import_provenance",
+            "com/uten/imp/migration/RuntimeDdlAndFlywayHistoryPrivilegesPostgresTest.java#unapproved_ddl",
+            "com/uten/imp/migration/RuntimeDdlAndFlywayHistoryPrivilegesPostgresTest.java#next_maintenance");
     private static final Set<String> CLASS_SCOPED_FIXTURE_COLUMNS = Set.of(
             // Exact V783 miniature source view: original task fact marker and trusted/unknown owner classification.
             "com/uten/imp/features/attachment/MasterStagingProtectionForwardPostgresTest.java#attachment_object_outbox.history_note",

@@ -164,7 +164,29 @@ void main() {
         },
       ];
       saved['selected'] = [0];
-      await state.restoreFormDraft(saved);
+      // Restoration intentionally yields between attachment/grid preparation
+      // slices. Keep the widget clock advancing instead of awaiting a fake-zone
+      // timer while preventing the pumps that complete that timer.
+      final restoring = state.restoreFormDraft(saved);
+      var restored = false;
+      Object? restoreError;
+      StackTrace? restoreStack;
+      final observed = restoring.then<void>(
+        (_) => restored = true,
+        onError: (Object error, StackTrace stack) {
+          restoreError = error;
+          restoreStack = stack;
+          restored = true;
+        },
+      );
+      for (var frame = 0; frame < 500 && !restored; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(restored, isTrue, reason: 'Responsive restoration must finish');
+      await observed;
+      if (restoreError != null) {
+        Error.throwWithStackTrace(restoreError!, restoreStack!);
+      }
       await tester.pumpAndSettle();
       final roundTrip = state.captureFormDraft();
       final row = (roundTrip['rows'] as List).single as Map;

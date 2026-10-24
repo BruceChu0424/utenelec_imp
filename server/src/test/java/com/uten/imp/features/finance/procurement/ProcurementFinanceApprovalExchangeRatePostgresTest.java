@@ -399,7 +399,7 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
                 CREATE TABLE currencies(id uuid,name text,is_base_currency boolean DEFAULT FALSE,is_deleted boolean DEFAULT FALSE,status text DEFAULT '使用');
                 CREATE TABLE settlement_methods(id uuid,name text);
                 CREATE TABLE employees(id uuid,full_name text);
-                CREATE TABLE goods(id uuid,code text,name text, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8));
+                CREATE TABLE goods(id uuid,code text,name text, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8), client_goods_name text);
                 CREATE TABLE colors(id uuid,name text,remark text);
                 CREATE TABLE units(id uuid,name text);
                 """);

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.features.ai.AiPlatformPostgresTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.flyway.autoconfigure.FlywayDataSource;
@@ -57,7 +58,24 @@ class PlatformColumnHistoryHttpPostgresTest extends AiPlatformPostgresTestSuppor
         // suite. A dedicated primary/Flyway datasource makes this legacy premise real.
         LEGACY_DATABASE.start();
         var sql=new JdbcTemplate(new DriverManagerDataSource(LEGACY_DATABASE.getJdbcUrl(),LEGACY_DATABASE.getUsername(),LEGACY_DATABASE.getPassword()));
-        sql.execute("CREATE ROLE uten LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '"+RUNTIME_PASSWORD+"'");
+        sql.execute((ConnectionCallback<Void>) connection -> {
+            try (var password = connection.prepareStatement(
+                    "SELECT set_config('test.runtime_password', ?, false)")) {
+                password.setString(1, RUNTIME_PASSWORD);
+                try (var result = password.executeQuery()) {
+                    if (!result.next()) throw new IllegalStateException("Test runtime credential was not bound");
+                }
+            }
+            try (var role = connection.createStatement()) {
+                role.execute("""
+                        DO $fixture_role$ BEGIN
+                          EXECUTE format('CREATE ROLE uten LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L',
+                                         current_setting('test.runtime_password'));
+                        END $fixture_role$;
+                        """);
+            }
+            return null;
+        });
         com.uten.imp.testsupport.TestFlyway.configure().dataSource(LEGACY_DATABASE.getJdbcUrl(),LEGACY_DATABASE.getUsername(),LEGACY_DATABASE.getPassword()).target("774").load().migrate();
         assertThat(sql.queryForObject("SELECT max(version::integer) FROM flyway_schema_history WHERE success",Integer.class)).isEqualTo(774);
         UUID employee=UUID.randomUUID(),actor=UUID.randomUUID(),client=UUID.randomUUID(),unit=UUID.randomUUID(),goods=UUID.randomUUID();

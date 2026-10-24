@@ -76,6 +76,8 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
             assertThat(db.queryForObject("SELECT pg_get_functiondef('fn_guard_root_output_event()'::regprocedure)",String.class))
                     .contains("a.warehouse_id=NEW.warehouse_id");
             var before=businessFacts(fixture);
+            assertThat(db.queryForObject("SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='purchase_receipt_items' AND column_name='order_item_legacy_id'",Integer.class)).isZero();
+            var beforeCurrent=businessFacts(fixture,true);
             var history=db.queryForList("SELECT row_to_json(history)::text FROM flyway_schema_history history WHERE version::integer<=854 ORDER BY installed_rank",String.class);
             var migration=com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
                     .locations("classpath:db/migration").target("855").load();
@@ -111,7 +113,12 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
             historical.assertCurrentComponentsRestored();
             assertThat(db.queryForObject("SELECT to_regprocedure('public.fn_preplan_make_public_supply_sources(uuid,uuid,uuid[])') IS NOT NULL",Boolean.class))
                     .isTrue();
-            assertThat(businessFacts(fixture)).containsExactlyElementsOf(before);
+            // V909 adds one nullable legacy-reference field without backfilling
+            // native historical receipts. Compare every original field and
+            // independently require the precise new column to remain NULL.
+            assertThat(db.queryForObject("SELECT data_type='integer' AND is_nullable='YES' AND column_default IS NULL FROM information_schema.columns WHERE table_schema='public' AND table_name='purchase_receipt_items' AND column_name='order_item_legacy_id'",Boolean.class)).isTrue();
+            assertThat(db.queryForObject("SELECT count(*) FROM purchase_receipt_items WHERE receipt_id=? AND order_item_legacy_id IS NOT NULL",Integer.class,fixture.receipt())).isZero();
+            assertThat(businessFacts(fixture,true)).containsExactlyElementsOf(beforeCurrent);
             assertThat(db.queryForList("SELECT row_to_json(history)::text FROM flyway_schema_history history WHERE version::integer<=855 ORDER BY installed_rank",String.class))
                     .containsExactlyElementsOf(historyThrough855);
             var originalFulfillments=db.queryForList("SELECT row_to_json(output)::text FROM preplan_root_output_events output WHERE analysis_id=? AND event_kind='FULFILL' ORDER BY id",String.class,fixture.analysis());
@@ -157,6 +164,10 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
     }
 
     private List<String> businessFacts(RootSupplyActualWarehouseEndToEndTest.Fixture fixture) {
+        return businessFacts(fixture,false);
+    }
+
+    private List<String> businessFacts(RootSupplyActualWarehouseEndToEndTest.Fixture fixture,boolean projectV909NullableColumn) {
         java.util.ArrayList<String> facts=new java.util.ArrayList<>();
         facts.addAll(db.queryForList("SELECT row_to_json(analysis)::text FROM production_material_analyses analysis WHERE id=?",String.class,fixture.analysis()));
         facts.addAll(db.queryForList("SELECT row_to_json(material)::text FROM production_material_analysis_materials material WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
@@ -165,7 +176,9 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
         facts.addAll(db.queryForList("SELECT row_to_json(request)::text FROM purchase_requests request WHERE id IN(SELECT external_document_id FROM preplan_supply_actions WHERE analysis_id=? AND external_document_type='PURCHASE_REQUEST') ORDER BY id",String.class,fixture.analysis()));
         facts.addAll(db.queryForList("SELECT row_to_json(item)::text FROM purchase_request_items item WHERE id IN(SELECT external_item_id FROM preplan_supply_action_allocations WHERE analysis_id=?) ORDER BY id",String.class,fixture.analysis()));
         facts.addAll(db.queryForList("SELECT row_to_json(receipt)::text FROM purchase_receipts receipt WHERE id=?",String.class,fixture.receipt()));
-        facts.addAll(db.queryForList("SELECT row_to_json(item)::text FROM purchase_receipt_items item WHERE receipt_id=? ORDER BY id",String.class,fixture.receipt()));
+        facts.addAll(db.queryForList(projectV909NullableColumn
+                ? "SELECT (to_jsonb(item)-'order_item_legacy_id')::text FROM purchase_receipt_items item WHERE receipt_id=? ORDER BY id"
+                : "SELECT row_to_json(item)::text FROM purchase_receipt_items item WHERE receipt_id=? ORDER BY id",String.class,fixture.receipt()));
         facts.addAll(db.queryForList("SELECT row_to_json(output)::text FROM preplan_root_output_events output WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
         facts.addAll(db.queryForList("SELECT row_to_json(item)::text FROM production_material_analysis_items item WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
         facts.addAll(db.queryForList("SELECT row_to_json(reservation)::text FROM stock_reservations reservation WHERE source_doc_id=? ORDER BY id",String.class,fixture.receipt()));

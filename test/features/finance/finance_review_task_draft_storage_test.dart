@@ -649,6 +649,38 @@ Future<void> _waitForState(
   }
 }
 
+Future<void> _waitForNativeDraftOperation(
+  WidgetTester tester,
+  Future<void> operation, {
+  required String phase,
+  required String Function() diagnostics,
+}) async {
+  var finished = false;
+  Object? failure;
+  StackTrace? failureStack;
+  unawaited(
+    operation.then<void>(
+      (_) => finished = true,
+      onError: (Object error, StackTrace stack) {
+        failure = error;
+        failureStack = stack;
+        finished = true;
+      },
+    ),
+  );
+  // An edit may already have queued a writer in the widget fake zone. Native
+  // storage does real file I/O, while that writer's continuations need pumps.
+  // Awaiting the shared writer inside runAsync prevents those pumps forever.
+  await _waitForState(
+    tester,
+    () => finished,
+    phase: phase,
+    diagnostics: diagnostics,
+  );
+  if (failure != null) Error.throwWithStackTrace(failure!, failureStack!);
+  await operation;
+}
+
 void main() {
   testWidgets(
     'quote return-only decision waits for native durability and recovers after write authority is revoked',
@@ -901,11 +933,14 @@ void main() {
         addTearDown(() => tester.runAsync(fixture.removeStorage));
         final container = await fixture.mount(tester);
         final field = await fixture.inputField(tester);
-        await tester.runAsync(() async {
-          field.controller!.text = '7.';
-          field.onChanged?.call('7.');
-          await fixture.editor(tester).saveFormDraftNow();
-        });
+        field.controller!.text = '7.';
+        field.onChanged?.call('7.');
+        await _waitForNativeDraftOperation(
+          tester,
+          fixture.editor(tester).saveFormDraftNow(),
+          phase: 'the native checkpoint of the exact raw review input',
+          diagnostics: () => fixture.submissionDiagnostics(container),
+        );
         final draft = container.read(formDraftsProvider).single;
         expect(reviewTaskDraftsFor([draft], fixture.descriptor, fixture.id), [
           draft,
@@ -934,11 +969,14 @@ void main() {
         addTearDown(() => tester.runAsync(fixture.removeStorage));
         final container = await fixture.mount(tester);
         final field = await fixture.inputField(tester);
-        await tester.runAsync(() async {
-          field.controller!.text = '7.';
-          field.onChanged?.call('7.');
-          await fixture.editor(tester).saveFormDraftNow();
-        });
+        field.controller!.text = '7.';
+        field.onChanged?.call('7.');
+        await _waitForNativeDraftOperation(
+          tester,
+          fixture.editor(tester).saveFormDraftNow(),
+          phase: 'the original native checkpoint before its source changes',
+          diagnostics: () => fixture.submissionDiagnostics(container),
+        );
         final draft = container.read(formDraftsProvider).single;
         await tester.pumpWidget(const SizedBox.shrink());
         await _settle(tester);

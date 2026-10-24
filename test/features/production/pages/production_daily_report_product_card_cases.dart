@@ -75,8 +75,19 @@ void registerDailyReportProductCardTests() {
       expect(await showFirst, isTrue);
       expect(card, findsNothing);
 
+      expect(material.materialInvalid, isTrue);
+      expect(material.materialEditable, isTrue);
+      final validationStarted = tester.binding.clock.now();
       await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
-      await tester.pumpAndSettle();
+      // Revealing an offscreen card now admits its rows across layout frames.
+      // 100ms test frames advanced 5.1s and expired the real error banner before
+      // inspection; use a gesture-sized frame cadence without extending it.
+      await tester.pumpAndSettle(const Duration(milliseconds: 10));
+      expect(
+        tester.binding.clock.now().difference(validationStarted),
+        lessThan(const Duration(milliseconds: 2500)),
+        reason: 'Inspect the validation while its normal error banner is alive',
+      );
 
       expect(find.textContaining('项用料需要先改正'), findsOneWidget);
       expect(card.hitTestable(), findsOneWidget);

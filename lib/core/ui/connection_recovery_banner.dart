@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../l10n/gen/app_localizations.dart';
 import '../network/connection_recovery.dart';
 import '../router/route_names.dart';
-import '../../features/disaster_recovery/disaster_recovery_text.dart';
+import '../l10n/disaster_recovery_text.dart';
 import 'uten_top_banner_card.dart';
 
 /// One app-wide connection message with a single recovery action.

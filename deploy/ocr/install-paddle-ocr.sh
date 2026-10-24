@@ -65,7 +65,10 @@ fi
 # OpenCV 的动态库依赖不要求桌面或显示器；PaddleX 按包名检查 contrib wheel。
 GLIB_PACKAGE=libglib2.0-0
 if apt-cache show libglib2.0-0t64 >/dev/null 2>&1; then GLIB_PACKAGE=libglib2.0-0t64; fi
-apt-get install -y -q --no-install-recommends libgomp1 libgl1 "$GLIB_PACKAGE"
+# Paddle SDK imports native extension metadata even with prebuilt CPU wheels.
+# Provide real ccache and supported single-thread BLAS instead of hiding SDK warnings.
+apt-get install -y -q --no-install-recommends libgomp1 libgl1 "$GLIB_PACKAGE" ccache
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 ./venv/bin/pip install --upgrade pip >/dev/null
 log "安装依赖（paddlepaddle CPU 版约 500MB，paddleocr 会另拉模型到 models/）…"
 # 清理共享 cv2 命名空间的其它 wheel 后完整重装受支持的 contrib wheel。

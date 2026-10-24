@@ -2925,10 +2925,23 @@ void main() {
       await tester.pumpAndSettle();
       expect(nested.innerController.offset, greaterThan(0));
       expect(tester.getTopLeft(find.text('货品名称')).dy, closeTo(headerTop, .5));
-      nested.innerController.jumpTo(
-        nested.innerController.position.maxScrollExtent,
-      );
-      await tester.pumpAndSettle();
+      // Sliver extent is estimated until deferred rows are admitted. Reach the
+      // updated tail after each real layout, rather than stopping at the old
+      // estimate while asserting that the final material was reached.
+      for (var attempt = 0; attempt < 6; attempt++) {
+        nested.innerController.jumpTo(
+          nested.innerController.position.maxScrollExtent,
+        );
+        await tester.pumpAndSettle();
+        if (find.text('待核材料 30').evaluate().isNotEmpty &&
+            (nested.innerController.position.maxScrollExtent -
+                        nested.innerController.offset)
+                    .abs() <
+                .5) {
+          break;
+        }
+      }
+      expect(find.text('待核材料 30'), findsOneWidget);
       expect(
         tester.getBottomLeft(find.text('待核材料 30')).dy,
         lessThan(tester.getTopLeft(find.byKey(const Key('cost-save'))).dy),

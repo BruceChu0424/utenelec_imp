@@ -88,12 +88,22 @@ class CleanMasterDataTest(unittest.TestCase):
             self.assertEqual(report["fact_qty_null_fallbacks"], 1)
 
     def test_crosswalk_has_one_hardware_warehouse_separate_workshop(self):
-        actual, codes = subject.warehouse_crosswalk(Path(__file__).with_name("warehouse_crosswalk.csv"))
+        # A unit fixture must not consume either the company's changing reviewed
+        # crosswalk or the coordinator's deliberately different synthetic map.
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "warehouse_crosswalk.csv"
+            subject.write_csv(path, ["legacy_id", "action", "target_code", "target_name"], [
+                {"legacy_id": "1", "action": "SPLIT", "target_code": "MAIN", "target_name": "仓库（14年版）"},
+                {"legacy_id": "2", "action": "KEEP", "target_code": "HARDWARE", "target_name": "五金仓库"},
+                {"legacy_id": "3", "action": "MERGE", "target_code": "HARDWARE", "target_name": "五金仓库"},
+                {"legacy_id": "4", "action": "KEEP", "target_code": "WORKSHOP", "target_name": "五金车间"},
+            ])
+            actual, codes = subject.warehouse_crosswalk(path)
         self.assertEqual(next(row["target_code"] for row in actual if row["action"] == "SPLIT"), "WH000001")
         self.assertEqual(next(row["target_name"] for row in actual if row["action"] == "SPLIT"), "主仓库")
         self.assertNotEqual(next(row["target_code"] for row in actual if row["target_name"] == "五金仓库"),
                             next(row["target_code"] for row in actual if row["target_name"] == "五金车间"))
-        self.assertEqual(len(codes), 9)
+        self.assertEqual(codes, {"MAIN": "WH000001", "HARDWARE": "WH000002", "WORKSHOP": "WH000003"})
 
 
 if __name__ == "__main__":

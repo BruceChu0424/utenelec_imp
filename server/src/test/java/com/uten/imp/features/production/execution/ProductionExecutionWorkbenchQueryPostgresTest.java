@@ -100,7 +100,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                     cancelled_by uuid, cancelled_at timestamptz, cancellation_reason text,
                     is_deleted boolean DEFAULT FALSE, deleted_at timestamptz,
                     participating_warehouse_ids uuid[], analysis_no text);
-                CREATE TABLE sales_order_items(id uuid, order_id uuid, is_deleted boolean, client_goods_name VARCHAR(500), client_price NUMERIC, extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb, goods_name_en_snapshot varchar(255));
+                CREATE TABLE sales_order_items(id uuid, order_id uuid, is_deleted boolean, client_goods_name VARCHAR(500), client_price NUMERIC, extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb, goods_name_en_snapshot varchar(255), legacy_counter_import_run_id uuid);
                 CREATE TABLE sales_orders(id uuid, client_id uuid, bill_no text, is_deleted boolean, client_file_currency VARCHAR(8), requoted_to_id uuid, requoted_at timestamptz, requoted_by uuid);
                 CREATE TABLE clients(id uuid, name text, name_en VARCHAR(255));
                 CREATE TABLE v_production_execution_workbench_segments(

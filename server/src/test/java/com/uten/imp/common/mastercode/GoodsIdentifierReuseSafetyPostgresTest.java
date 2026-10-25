@@ -214,7 +214,7 @@ class GoodsIdentifierReuseSafetyPostgresTest {
     }
 
     @Test
-    void hardDeletedBusinessKeepsUsageAndAuditProtectionAndResetPreserveAllThreeLedgers() throws Exception {
+    void hardDeletedBusinessKeepsUsageAndAuditProtectionAcrossAllThreeLedgers() throws Exception {
         String usedCode = code();
         UUID used = createGoods(usedCode);
         try (Connection c = connection()) {
@@ -234,10 +234,7 @@ class GoodsIdentifierReuseSafetyPostgresTest {
         UUID next = reuse(reusedCode);
         try (Connection c = connection()) {
             assertNull(reusable(c, usedCode));
-            for (String table : List.of("goods_code_lifecycles", "goods_code_usage_facts", "goods_code_reuse_releases")) {
-                assertEquals(1, number(c, "SELECT count(*) FROM fn_business_reset_table_policy() WHERE table_name=? AND disposition='PRESERVE'", table));
-            }
-            update(c, "SELECT * FROM business_data_reset()");
+            assertEquals(0, number(c, "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='business_data_reset'"));
             assertEquals(1, number(c, "SELECT count(*) FROM goods_code_usage_facts WHERE goods_id=?", used));
             assertEquals(1, number(c, "SELECT count(*) FROM goods_code_reuse_releases WHERE old_goods_id=? AND new_goods_id=?", old, next));
             assertEquals(3, number(c, "SELECT count(*) FROM goods_code_lifecycles WHERE goods_id IN (?,?,?)", used, old, next));

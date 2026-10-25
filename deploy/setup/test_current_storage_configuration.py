@@ -24,7 +24,7 @@ class CurrentStorageConfigurationTest(unittest.TestCase):
                     "BOOTSTRAP_ADMIN_PASSWORD", "UTEN_CORS_ORIGINS", "SPRING_FLYWAY_ENABLED"}
         self.assertTrue(required.issubset(values))
         self.assertEqual("prod", values["UTEN_PROFILE"])
-        self.assertEqual("false", values["UTEN_BUSINESS_DATA_RESET_ENABLED"])
+        self.assertNotIn("UTEN_BUSINESS_DATA_RESET_ENABLED", values)
         self.assertEqual("internal", values["UTEN_STORAGE_PROVIDER"])
         self.assertEqual("clamav", values["UTEN_ATTACHMENT_SCANNER_PROVIDER"])
         self.assertEqual("/run/clamav/clamd.ctl", values["UTEN_CLAMAV_UNIX_SOCKET"])
@@ -90,48 +90,42 @@ die() { printf '%s\\n' 'Invalid synthetic environment syntax' >&2; exit 7; }
                 self.assertEqual({"= /api/system-test", "^~ /api/system-test/", '~ "^/api/system-test(?:[;/]|$)"'}, set(test_locations))
                 self.assertTrue(all(body == "return 404;" for body in test_locations.values()))
 
-    def validate_reset_policy(self, values):
+    def validate_server_profile(self, values):
         source = (ROOT / "deploy/setup/validate-server-env.sh").read_text(encoding="utf-8")
         # Run the actual parser helpers and runtime policy, never privileged host preflights.
         helpers = source[source.index("\ndie() {"):source.index("\nvalidate_pgp_configuration() {")]
         start = source.index("expect_exact UTEN_PROFILE prod")
         policy = source[start:source.index("expect_exact SERVER_ADDRESS", start)]
         with tempfile.TemporaryDirectory() as directory:
-            env = Path(directory) / "reset-policy.env"
+            env = Path(directory) / "profile-policy.env"
             env.write_text("".join(f"{key}={value}\n" for key, value in values), encoding="utf-8")
             # Passing multiline Bash via -c is re-quoted by Windows subprocess;
             # run a real script so failures cannot be swallowed by altered quoting.
-            script = Path(directory) / "reset-policy.sh"
+            script = Path(directory) / "profile-policy.sh"
             script.write_text('set -euo pipefail\nENV_FILE="$1"\n' + helpers + policy,
                               encoding="utf-8", newline="\n")
             return subprocess.run([shutil.which("bash") or "bash", script.as_posix(), env.as_posix()],
                                   capture_output=True, text=True)
 
-    def test_reset_is_permanently_disabled_on_prod_local(self):
-        for enabled in ("false",):
-            with self.subTest(enabled=enabled):
-                result = self.validate_reset_policy([
-                    ("UTEN_PROFILE", "prod"), ("UTEN_DEPLOYMENT_SITE", "local"),
-                    ("UTEN_BUSINESS_DATA_RESET_ENABLED", enabled)])
-                self.assertEqual(0, result.returncode, result.stderr)
-        for site, enabled in (("local", "true"), ("cloud", "true"), ("cloud", "false"), ("", "true"),
-                              ("local", "yes"), ("local", "TRUE"), ("local", "")):
-            with self.subTest(site=site, enabled=enabled):
-                result = self.validate_reset_policy([
-                    ("UTEN_PROFILE", "prod"), ("UTEN_DEPLOYMENT_SITE", site),
-                    ("UTEN_BUSINESS_DATA_RESET_ENABLED", enabled)])
-                self.assertNotEqual(0, result.returncode)
-                self.assertNotIn("UTEN_DB_PASSWORD", result.stdout + result.stderr)
+    def test_production_profile_does_not_require_a_retired_feature_switch(self):
+        result = self.validate_server_profile([
+            ("UTEN_PROFILE", "prod"), ("UTEN_DEPLOYMENT_SITE", "local")])
+        self.assertEqual(0, result.returncode, result.stderr)
         for profile in ("dev", "internal-test", "cloud", ""):
             with self.subTest(profile=profile):
-                self.assertNotEqual(0, self.validate_reset_policy([
-                    ("UTEN_PROFILE", profile), ("UTEN_DEPLOYMENT_SITE", "local"),
-                    ("UTEN_BUSINESS_DATA_RESET_ENABLED", "true")]).returncode)
-        for fields in ([('UTEN_PROFILE', 'prod'), ('UTEN_DEPLOYMENT_SITE', 'local')],
-                       [('UTEN_PROFILE', 'prod'), ('UTEN_DEPLOYMENT_SITE', 'local'),
-                        ('UTEN_BUSINESS_DATA_RESET_ENABLED', 'false'), ('UTEN_BUSINESS_DATA_RESET_ENABLED', 'true')]):
-            with self.subTest(missing_or_duplicate=fields):
-                self.assertNotEqual(0, self.validate_reset_policy(fields).returncode)
+                self.assertNotEqual(0, self.validate_server_profile([
+                    ("UTEN_PROFILE", profile), ("UTEN_DEPLOYMENT_SITE", "local")]).returncode)
+        for site in ("cloud", ""):
+            with self.subTest(site=site):
+                self.assertNotEqual(0, self.validate_server_profile([
+                    ("UTEN_PROFILE", "prod"), ("UTEN_DEPLOYMENT_SITE", site)]).returncode)
+
+    def test_reset_has_no_configuration_switch_in_any_profile(self):
+        for path in (ROOT / "server/src/main/resources").glob("application*.yml"):
+            with self.subTest(profile=path.name):
+                source = path.read_text(encoding="utf-8")
+                self.assertNotIn("business-data-reset-enabled", source)
+                self.assertNotIn("UTEN_BUSINESS_DATA_RESET_ENABLED", source)
 
     def validate(self, **changes):
         values = {

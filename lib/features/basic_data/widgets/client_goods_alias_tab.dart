@@ -172,10 +172,11 @@ class _ClientGoodsAliasTabState extends ConsumerState<ClientGoodsAliasTab> {
     final list = ListView(
       key: const ValueKey('client-goods-alias-list'),
       physics: const AlwaysScrollableScrollPhysics(),
+      // 水平贴 0：与客户详情页签栏、其他页签共用左缘（2026-10-24 口径）。
       padding: const EdgeInsets.fromLTRB(
+        0,
         UtenSpacing.s16,
-        UtenSpacing.s16,
-        UtenSpacing.s16,
+        0,
         UtenFloatingActionGroup.scrollClearance,
       ),
       children: [

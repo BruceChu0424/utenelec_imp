@@ -16,17 +16,7 @@ import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * 工作台「系统测试 · 清空业务数据」两处事实的同步锁(ADR-155)：
- * <ol>
- *   <li>迁移函数 business_data_reset() 是 CLEAR/PRESERVE 分类唯一的家(V464 为最后一次整函数重发，
- *       此后的迁移只按锚点补丁增删分类行，登记在下面几张表里)。{@link #expectedCurrentPolicy()}
- *       由冻结的 V464 加登记的变化独立推导，是评审用的神谕；安装后的函数与它逐表相等由
- *       BusinessDataResetCatalogPostgresTest 在真实库里核对；</li>
- *   <li>BusinessDataResetService 只做编排(检查、删除测试文件、绑定 actor、调函数)，不内联清空 SQL。</li>
- * </ol>
- * 迁移新增表后必须在这里登记，否则神谕与安装后的函数不一致；运行时未分类的表同样拒绝清空。
- */
+/** Historical SQL migration contracts through V918; V919 removes the installed capability. */
 public class BusinessDataResetSqlContractTest {
 
     private static final Pattern POLICY_ROW = Pattern.compile(
@@ -345,7 +335,6 @@ public class BusinessDataResetSqlContractTest {
             Map.entry("business_test_object_cleanup_intents", 808));
 
     private String migrationSql;
-    private String serviceSource;
     private String extensionSql;
 
     @BeforeEach
@@ -355,11 +344,6 @@ public class BusinessDataResetSqlContractTest {
                         "V464__reset_twin_order_item_sources.sql"),
                 Path.of("server", "src", "main", "resources", "db", "migration",
                         "V464__reset_twin_order_item_sources.sql"));
-        serviceSource = read(
-                Path.of("src", "main", "java", "com", "uten", "imp", "features", "admin",
-                        "systemtest", "BusinessDataResetService.java"),
-                Path.of("server", "src", "main", "java", "com", "uten", "imp", "features",
-                        "admin", "systemtest", "BusinessDataResetService.java"));
         // The reviewed table/version registry is also the source-file manifest.
         // A new registration must never be silently omitted from a second hand-maintained list.
         var versions = new java.util.TreeSet<Integer>();
@@ -378,18 +362,8 @@ public class BusinessDataResetSqlContractTest {
         for (String table : List.of("platform_column_definition_deletions", "business_column_deletions")) {
             assertThat(PRESERVE_RESET_EXTENSIONS).containsEntry(table, 888);
             assertThat(migration).contains("(''" + table + "'', ''PRESERVE'')");
-            assertThat(expectedCurrentPolicy()).containsEntry(table, "PRESERVE");
+            assertThat(expectedPreRetirementPolicy()).containsEntry(table, "PRESERVE");
         }
-    }
-
-    @Test
-    void serviceOnlyOrchestratesTheSingleObjectRule() {
-        assertThat(serviceSource).doesNotContain("requirePermanentRecordsPreserved()", "PERMANENT_RECORD_REFUSAL")
-                .contains("featureGate.requireEnabled()", "files.check(", "files.purge(",
-                        "set_config('app.business_test_reset_objects', ?, true)");
-        assertThat(RUNTIME_RESET_EXTENSIONS)
-                .containsEntry("preplan_root_output_events", 478)
-                .containsEntry("sales_order_qty_change_logs", 484);
     }
 
     /** V808 patches business_data_reset() by anchors and replaces two small functions after a byte check. */
@@ -481,7 +455,7 @@ public class BusinessDataResetSqlContractTest {
         for (String table : List.of("goods_operation_history", "goods_operation_history_rows", "goods_operation_history_events")) {
             assertThat(PRESERVE_RESET_EXTENSIONS).containsEntry(table, 871);
             assertThat(migration).contains("(''" + table + "'', ''PRESERVE'')");
-            assertThat(expectedCurrentPolicy()).containsEntry(table, "PRESERVE");
+            assertThat(expectedPreRetirementPolicy()).containsEntry(table, "PRESERVE");
         }
     }
 
@@ -491,13 +465,13 @@ public class BusinessDataResetSqlContractTest {
         for(String table:List.of("master_operation_history","master_operation_history_rows","master_operation_history_events")) {
             assertThat(PRESERVE_RESET_EXTENSIONS).containsEntry(table,885);
             assertThat(migration).contains("(''"+table+"'', ''PRESERVE'')");
-            assertThat(expectedCurrentPolicy()).containsEntry(table,"PRESERVE");
+            assertThat(expectedPreRetirementPolicy()).containsEntry(table,"PRESERVE");
         }
     }
 
     @Test
     void currentResetPreservesAuthorityAndSecurityConfiguration() throws IOException {
-        Map<String, String> expected = expectedCurrentPolicy();
+        Map<String, String> expected = expectedPreRetirementPolicy();
         for (String table : List.of("users", "employees", "departments", "employee_secondary_departments", "permissions",
                 "department_permissions", "user_permission_overrides", "manager_permission_delegations", "user_data_scopes",
                 "auth_step_up_states", "permission_templates")) {
@@ -552,25 +526,6 @@ public class BusinessDataResetSqlContractTest {
                 .contains("authorization_epoch_after BIGINT");
     }
 
-    @Test
-    void serviceOrchestratesOnlyAndBindsActorParameters() {
-        // 服务层只编排：调用函数、绑定 actor（? 参数）、设置事务级超时；
-        // 清空 SQL 全部在迁移函数里（安全写入门不允许 Java 内联此类 SQL）。
-        assertThat(serviceSource)
-                .contains("FROM business_data_reset()")
-                .contains("SELECT set_config('app.actor_id', ?, true)")
-                .contains("SELECT set_config('lock_timeout', ?, true)")
-                .contains("SET LOCAL statement_timeout = '30min'")
-                .contains("SET LOCAL idle_in_transaction_session_timeout = '30min'")
-                .doesNotContain("TRUNCATE TABLE")
-                .doesNotContain("DO $$");
-        // 编排门禁与排水
-        assertThat(serviceSource)
-                .contains("featureGate.requireEnabled()")
-                .contains("drainGate.beginDrain")
-                .contains("drainGate.endReset()");
-    }
-
     /**
      * <b>迁移头一动，要人工同步的只剩 docs/数据迁移/README.md 的头行。</b>
      *
@@ -620,7 +575,7 @@ public class BusinessDataResetSqlContractTest {
 
     @Test
     void colorRemarkAndPaymentStyleHistoryExtensionsKeepExistingResetClassification() throws IOException {
-        assertThat(expectedCurrentPolicy()).containsEntry("colors", "PRESERVE").containsEntry("payment_styles", "PRESERVE");
+        assertThat(expectedPreRetirementPolicy()).containsEntry("colors", "PRESERVE").containsEntry("payment_styles", "PRESERVE");
         assertThat(extensionSql(901)).contains("ALTER TABLE colors ADD COLUMN remark text")
                 .doesNotContain("CREATE TABLE", "business_data_reset");
         assertThat(extensionSql(902)).contains("fn_master_history_entity")
@@ -634,7 +589,7 @@ public class BusinessDataResetSqlContractTest {
                 .map(Map.Entry::getKey).collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
-    public static Map<String, String> expectedCurrentPolicy() throws IOException {
+    public static Map<String, String> expectedPreRetirementPolicy() throws IOException {
         Map<String, String> expected = policy(extensionSql(464));
         RUNTIME_RESET_EXTENSIONS.forEach((table, version) -> {
             assertThat(expected.putIfAbsent(table, "CLEAR"))

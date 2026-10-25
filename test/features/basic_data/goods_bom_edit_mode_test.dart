@@ -10,6 +10,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_picker_icon_button.dart';
+import 'package:uten_imp/components/inputs/uten_reference_picker_field.dart';
+import 'package:uten_imp/components/data_display/uten_table_row_drag.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
@@ -17,6 +20,9 @@ import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
+import 'package:uten_imp/features/basic_data/models/goods_node.dart';
+import 'package:uten_imp/features/basic_data/models/color_node.dart';
+import 'package:uten_imp/features/basic_data/providers/color_unit_dict.dart';
 import 'package:uten_imp/features/basic_data/providers/goods_clipboard.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
@@ -73,6 +79,7 @@ class _Api extends ApiClient {
   Completer<void>? pendingPreview;
   Completer<void>? pendingCommit;
   ApiException? commitFailure;
+  bool masterWritable = false;
   final pendingCanonical = <String, Completer<List<GoodsBomItem>>>{};
   final canonicalCalls = <String>[];
   final tree = <String, List<Map<String, dynamic>>>{
@@ -94,7 +101,19 @@ class _Api extends ApiClient {
       onSnapshotRead?.call();
       final pending = pendingSnapshots[goodsId];
       if (pending != null) return pending.future;
-      return {'items': tree[goodsId] ?? [], 'fingerprint': 'fp-$goodsId'};
+      return {
+        'items': tree[goodsId] ?? [],
+        'fingerprint': 'fp-$goodsId',
+        'goods': {
+          'id': goodsId,
+          'version': 4,
+          'model': '旧型号',
+          'spec': '旧规格',
+          'material': '旧材质',
+          'sourceType': '采购',
+          'componentGoodsWritable': masterWritable,
+        },
+      };
     }
     final id = path.split('/').last;
     return {
@@ -185,6 +204,10 @@ Future<_Fixture> _pump(
   ValueChanged<bool>? onInteractionChanged,
   ValueChanged<bool>? onEditModeChanged,
   VoidCallback? onDataChanged,
+  Future<List<GoodsListItem>> Function()? chooseComponents,
+  Future<GoodsListItem?> Function()? replaceComponent,
+  Future<List<GoodsListItem>> Function(String)? suggestComponents,
+  bool canEditGoods = false,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -195,9 +218,26 @@ Future<_Fixture> _pump(
       localServerReachableProvider.overrideWith(
         (ref) => LocalServerReachabilityNotifier(null, web: true),
       ),
+      if (suggestComponents != null)
+        bomComponentSuggestionsProvider.overrideWithValue(
+          (ref, query) => suggestComponents(query),
+        ),
       apiClientProvider.overrideWithValue(api),
+      colorDictProvider.overrideWith(
+        (ref) async => const [ColorListItem(id: 'color-red', name: '红色')],
+      ),
       goodsBomRepositoryProvider.overrideWithValue(_Repository(api)),
-      currentPermissionsProvider.overrideWith((ref) => ref.watch(_permissions)),
+      if (chooseComponents != null)
+        bomComponentPickerProvider.overrideWithValue(
+          (_, _) => chooseComponents(),
+        ),
+      if (replaceComponent != null)
+        bomComponentSinglePickerProvider.overrideWithValue(
+          (_, _) => replaceComponent(),
+        ),
+      currentPermissionsProvider.overrideWith(
+        (ref) => {...ref.watch(_permissions), if (canEditGoods) Perm.goodsEdit},
+      ),
       isSuperAdminProvider.overrideWithValue(false),
       sensitiveReadBoundaryProvider.overrideWith(
         (ref) => SensitiveReadBoundary(
@@ -287,13 +327,16 @@ Future<void> _stageFrameDeletion(WidgetTester tester) async {
 }
 
 Future<void> _capture(WidgetTester tester, String name) async {
+  if (!const bool.fromEnvironment('UTEN_CAPTURE_BOM_TABLE')) return;
   final boundary = tester.renderObject<RenderRepaintBoundary>(
     find.byKey(const Key('bom-test-render')),
   );
   await tester.runAsync(() async {
     final image = await boundary.toImage();
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
-    final file = File('build/task-visual-checks/$name.png');
+    final file = File(
+      'build/task-visual-checks/screenshot-fixes-20261025-$name.png',
+    );
     await file.parent.create(recursive: true);
     await file.writeAsBytes(data!.buffer.asUint8List());
     image.dispose();
@@ -301,6 +344,746 @@ Future<void> _capture(WidgetTester tester, String name) async {
 }
 
 void main() {
+  testWidgets(
+    'independent new row queries do not block choosing another component',
+    (tester) async {
+      final fixture = await _pump(
+        tester,
+        suggestComponents: (_) async => const [],
+      );
+      await _edit(tester);
+      final first = find.byKey(const ValueKey('goods-bom-name-new:0'));
+      final second = find.byKey(const ValueKey('goods-bom-name-new:1'));
+      await tester.enterText(
+        find.descendant(of: first, matching: find.byType(TextField)),
+        '螺母',
+      );
+      await tester.enterText(
+        find.descendant(of: second, matching: find.byType(TextField)),
+        '垫片',
+      );
+      tester
+          .widget<UtenReferencePickerField<GoodsListItem>>(second)
+          .onSelected(
+            const GoodsListItem(id: 'washer', name: '垫片', unitName: '个'),
+          );
+      await tester.pumpAndSettle();
+      expect(find.text('垫片'), findsOneWidget);
+      expect(
+        tester
+            .widget<UtenReferencePickerField<GoodsListItem>>(first)
+            .controller
+            .text,
+        '螺母',
+      );
+      tester
+          .widget<UtenReferencePickerField<GoodsListItem>>(first)
+          .onSelected(
+            const GoodsListItem(id: 'nut', name: '螺母', unitName: '个'),
+          );
+      await tester.pumpAndSettle();
+      await _edit(tester);
+      final operations = (fixture.api.commands.single.$2['operations'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(
+        operations.map(
+          (operation) =>
+              (operation['body'] as Map<String, dynamic>)['componentGoodsId'],
+        ),
+        ['washer', 'nut'],
+      );
+    },
+  );
+
+  testWidgets(
+    'a pending old master read cannot block a replacement product edit session',
+    (tester) async {
+      final pending = Completer<Map<String, dynamic>>();
+      final fixture = await _pump(
+        tester,
+        canEditGoods: true,
+        configure: (api) {
+          api.masterWritable = true;
+          api.pendingSnapshots['frame'] = pending;
+        },
+      );
+      await _edit(tester);
+      expect(fixture.api.snapshotCalls, contains('frame'));
+      fixture.goodsId.value = 'target';
+      await tester.pumpAndSettle();
+      await _edit(tester);
+      expect(pending.isCompleted, isFalse);
+      expect(fixture.api.snapshotCalls, contains('nut'));
+      final model = find.byKey(
+        const ValueKey('goods-bom-master-model-target/row-nut'),
+      );
+      expect(model, findsOneWidget);
+      pending.complete({
+        'items': <Object>[],
+        'fingerprint': 'late',
+        'goods': {
+          'id': 'frame',
+          'version': 1,
+          'model': '旧会话回执',
+          'componentGoodsWritable': true,
+        },
+      });
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(model).controller!.text, '旧型号');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('shared relation shown in two expanded paths moves only once', (
+    tester,
+  ) async {
+    final fixture = await _pump(
+      tester,
+      configure: (api) {
+        api.tree['source'] = [
+          {..._row('frame-path', 'frame', '组件甲'), 'hasChildren': true},
+          {..._row('nested-path', 'nested', '组件乙'), 'hasChildren': true},
+        ];
+        api.tree['frame'] = [
+          {..._row('shared-a', 'shared', '共用子件'), 'hasChildren': true},
+        ];
+        api.tree['nested'] = [
+          {..._row('shared-b', 'shared', '共用子件'), 'hasChildren': true},
+        ];
+        api.tree['shared'] = [_row('bolt-edge', 'bolt', '共用螺栓')];
+      },
+    );
+    await _edit(tester);
+    for (final id in ['frame-path', 'nested-path', 'shared-a', 'shared-b']) {
+      await tester.tap(find.byKey(ValueKey('goods-bom-tree-toggle-$id')));
+      await tester.pumpAndSettle();
+    }
+    var table = tester.widget<MasterDataTableView<dynamic>>(
+      find.byWidgetPredicate((widget) => widget is MasterDataTableView).first,
+    );
+    table.onSelectedIdsChanged!({'shared|bolt-edge'});
+    await tester.pumpAndSettle();
+    table = tester.widget<MasterDataTableView<dynamic>>(
+      find.byWidgetPredicate((widget) => widget is MasterDataTableView).first,
+    );
+    // Feature-private row identity is accessed only through the public table callbacks.
+    // ignore: avoid_dynamic_calls
+    final aliases = table.items
+        .where((row) => (table as dynamic).idOf(row) == 'shared|bolt-edge')
+        .toList();
+    expect(aliases, hasLength(2));
+    // ignore: avoid_dynamic_calls
+    final payload =
+        (table.rowDrag as dynamic).dragRowsOf(aliases.first) as List<dynamic>;
+    expect(payload, hasLength(1));
+    // ignore: avoid_dynamic_calls
+    final dropped =
+        (table.rowDrag as dynamic).onDrop(
+              payload,
+              table.items.first,
+              UtenTableRowDropMode.into,
+            )
+            as Future<void>;
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    await dropped;
+    await _edit(tester);
+    final operation =
+        (fixture.api.commands.single.$2['operations'] as List).single
+            as Map<String, dynamic>;
+    expect(operation['type'], 'MOVE');
+    expect(operation['moves'], hasLength(1));
+    expect(
+      (operation['moves'] as List).single,
+      containsPair('itemId', 'bolt-edge'),
+    );
+  });
+
+  testWidgets(
+    'uncertain commit locks mutation fields and retries the same reviewed receipt',
+    (tester) async {
+      final fixture = await _pump(
+        tester,
+        canEditGoods: true,
+        configure: (api) => api.masterWritable = true,
+      );
+      await _edit(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+        '5',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('goods-bom-master-model-source/row-frame')),
+        '新型号',
+      );
+      fixture.api.commitFailure = ApiException('NETWORK_TIMEOUT', '请求超时');
+      await _edit(tester);
+      await tester.tap(find.byKey(const Key('goods-bom-save-confirm')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('继续保留草稿'));
+      await tester.pumpAndSettle();
+      final qty = tester.widget<TextField>(
+        find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+      );
+      final model = tester.widget<TextField>(
+        find.byKey(const ValueKey('goods-bom-master-model-source/row-frame')),
+      );
+      expect(qty.enabled, isFalse);
+      expect(model.enabled, isFalse);
+      expect(find.byKey(const Key('goods-bom-add-component')), findsNothing);
+      final table = tester.widget<MasterDataTableView<dynamic>>(
+        find.byWidgetPredicate((widget) => widget is MasterDataTableView).first,
+      );
+      expect(table.rowDrag, isNull);
+      qty.onChanged!('999');
+      model.onChanged!('不应接受');
+      final reviewed = fixture.api.commands.last.$2;
+      fixture.api.commitFailure = null;
+      await _edit(tester);
+      expect(
+        fixture.api.commands.where(
+          (command) => command.$1.endsWith('/preview'),
+        ),
+        hasLength(1),
+      );
+      await tester.tap(find.byKey(const Key('goods-bom-save-confirm')));
+      await tester.pumpAndSettle();
+      final retries = fixture.api.commands
+          .where((command) => command.$1.endsWith('/commit'))
+          .toList();
+      expect(retries, hasLength(2));
+      expect(
+        retries.last.$2,
+        reviewed,
+        reason: 'receipt recovery replays the same idempotent reviewed command',
+      );
+      expect(
+        tester
+            .state<GoodsBomTabState>(find.byType(GoodsBomTab))
+            .hasEditingSession,
+        isFalse,
+      );
+    },
+  );
+
+  testWidgets('component master cells share the reviewed atomic BOM save', (
+    tester,
+  ) async {
+    await loadAuditScreenshotFonts(tester);
+    final fixture = await _pump(
+      tester,
+      canEditGoods: true,
+      configure: (api) => api.masterWritable = true,
+    );
+    await _edit(tester);
+    await _capture(tester, 'bom-master-edit-1440');
+    final model = find.byKey(
+      const ValueKey('goods-bom-master-model-source/row-frame'),
+    );
+    expect(model, findsOneWidget);
+    await tester.enterText(model, '新型号');
+    await tester.enterText(
+      find.byKey(const ValueKey('goods-bom-master-spec-source/row-frame')),
+      '新规格',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+      '5',
+    );
+    expect(fixture.api.commands, isEmpty);
+    await _edit(tester);
+    final operations = (fixture.api.commands.single.$2['operations'] as List)
+        .cast<Map<String, dynamic>>();
+    final master = operations.singleWhere(
+      (operation) => operation['type'] == 'UPDATE_GOODS',
+    );
+    expect(master['goodsId'], 'frame');
+    expect(master['goodsVersion'], 4);
+    expect(master['goodsChanges'], {'model': '新型号', 'spec': '新规格'});
+    expect(
+      operations.singleWhere(
+        (operation) => operation['type'] == 'UPDATE',
+      )['goodsId'],
+      'source',
+    );
+    await tester.tap(find.byKey(const Key('goods-bom-discard-and-exit')));
+    await tester.pumpAndSettle();
+    expect(
+      fixture.api.commands.where((command) => command.$1.endsWith('/commit')),
+      isEmpty,
+    );
+    expect(fixture.api.tree['source']!.first['qty'], 2);
+  });
+
+  testWidgets('master cells remain read only without object write capability', (
+    tester,
+  ) async {
+    await _pump(tester, canEditGoods: true);
+    await _edit(tester);
+    expect(
+      find.byKey(const ValueKey('goods-bom-master-model-source/row-frame')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('inline values survive replacing a component before save', (
+    tester,
+  ) async {
+    final fixture = await _pump(
+      tester,
+      replaceComponent: () async =>
+          const GoodsListItem(id: 'washer', name: '垫片', unitName: '个'),
+    );
+    await _edit(tester);
+    await tester.enterText(
+      find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+      '7',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('goods-bom-inline-summary-source/row-frame')),
+      '新备注',
+    );
+    final picker = tester.widget<UtenPickerIconButton>(
+      find.byKey(const ValueKey('goods-bom-replace-source/row-frame')),
+    );
+    await picker.onPressed!();
+    await tester.pumpAndSettle();
+    expect(find.text('垫片'), findsOneWidget);
+    await _edit(tester);
+    final operations = (fixture.api.commands.single.$2['operations'] as List)
+        .cast<Map<String, dynamic>>();
+    expect((operations.last['body'] as Map)['qty'], 7);
+    expect((operations.last['body'] as Map)['summary'], '新备注');
+    expect((operations.last['body'] as Map)['componentGoodsId'], 'washer');
+  });
+
+  testWidgets('inline values flush before cross-parent drag', (tester) async {
+    final fixture = await _pump(tester);
+    await _edit(tester);
+    await tester.enterText(
+      find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+      '7',
+    );
+    final table = tester.widget<MasterDataTableView<dynamic>>(
+      find.byWidgetPredicate((widget) => widget is MasterDataTableView).first,
+    );
+    // Keep the feature-private row list's runtime type at this integration seam.
+    // Pointer mechanics are covered by goods_bom_row_drag_move_test.dart.
+    // ignore: avoid_dynamic_calls
+    final dropped =
+        (table.rowDrag as dynamic).onDrop(
+              table.items.sublist(0, 1),
+              table.items.last,
+              UtenTableRowDropMode.into,
+            )
+            as Future<void>;
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    await dropped;
+    await _edit(tester);
+    final operations = (fixture.api.commands.single.$2['operations'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(operations.map((operation) => operation['type']), [
+      'UPDATE',
+      'MOVE',
+    ]);
+    expect((operations.first['body'] as Map)['qty'], 7);
+    expect(
+      ((operations.last['moves'] as List).single
+          as Map<String, dynamic>)['targetParentGoodsId'],
+      'screw',
+    );
+  });
+
+  testWidgets(
+    'dialog editing starts from flushed values and refreshes inline editors',
+    (tester) async {
+      final fixture = await _pump(tester);
+      await _edit(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+        '7',
+      );
+      await _menu(tester, '铁架');
+      await tester.tap(find.text('编辑').last);
+      await tester.pumpAndSettle();
+      final field = find.byKey(const Key('goods-bom-edit-qty'));
+      expect(
+        find.descendant(of: field, matching: find.text('7')),
+        findsOneWidget,
+      );
+      await tester.enterText(field, '8');
+      await tester.tap(find.text('保存').last);
+      await tester.pumpAndSettle();
+      final inline = tester.widget<TextField>(
+        find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+      );
+      expect(inline.controller!.text, '8');
+      await _edit(tester);
+      final operations = (fixture.api.commands.single.$2['operations'] as List)
+          .cast<Map<String, dynamic>>();
+      expect((operations.last['body'] as Map)['qty'], 8);
+    },
+  );
+
+  testWidgets(
+    'typed append lookup ranks exact matches and stages selected identity',
+    (tester) async {
+      final queries = <String>[];
+      final fixture = await _pump(
+        tester,
+        suggestComponents: (query) async {
+          queries.add(query);
+          return const [
+            GoodsListItem(id: 'nut-other', name: '螺母配套', unitName: '个'),
+            GoodsListItem(id: 'nut', name: '螺母', unitName: '个'),
+          ];
+        },
+      );
+      await _edit(tester);
+      final name = find.descendant(
+        of: find.byKey(const ValueKey('goods-bom-name-new:0')),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(name, '螺母');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pump();
+      expect(queries, ['螺母']);
+      final options = find.byType(ListTile);
+      expect(
+        tester.widget<ListTile>(options.first).title,
+        isA<Text>().having((text) => text.data, 'closest name', '螺母'),
+      );
+      await tester.tap(find.widgetWithText(ListTile, '螺母'));
+      await tester.pumpAndSettle();
+      expect(fixture.api.commands, isEmpty);
+      await _edit(tester);
+      final operation =
+          (fixture.api.commands.single.$2['operations'] as List).single as Map;
+      expect(operation['goodsId'], 'source');
+      expect((operation['body'] as Map)['componentGoodsId'], 'nut');
+    },
+  );
+
+  testWidgets(
+    'editing a nested quantity survives collapsing its parent before save',
+    (tester) async {
+      final fixture = await _pump(
+        tester,
+        configure: (api) {
+          api.tree['source']!.first['hasChildren'] = true;
+          api.tree['frame'] = [_row('row-washer', 'washer', '垫片')];
+        },
+      );
+      await _edit(tester);
+      await tester.tap(
+        find.byKey(const ValueKey('goods-bom-tree-toggle-row-frame')),
+      );
+      await tester.pumpAndSettle();
+      final qty = find.byKey(
+        const ValueKey('goods-bom-inline-qty-source/row-frame/row-washer'),
+      );
+      await tester.enterText(qty, '7.25');
+      await tester.tap(
+        find.byKey(const ValueKey('goods-bom-tree-toggle-row-frame')),
+      );
+      await tester.pumpAndSettle();
+      expect(qty, findsNothing);
+      await _edit(tester);
+      final operation =
+          (fixture.api.commands.single.$2['operations'] as List).single as Map;
+      expect(operation['goodsId'], 'frame');
+      expect(operation['itemId'], 'row-washer');
+      expect((operation['body'] as Map)['qty'], 7.25);
+      expect((operation['body'] as Map).containsKey('price'), isFalse);
+    },
+  );
+
+  testWidgets('unselected typed new component keeps editing session open', (
+    tester,
+  ) async {
+    final fixture = await _pump(
+      tester,
+      suggestComponents: (_) async => const [],
+    );
+    await _edit(tester);
+    final name = find.descendant(
+      of: find.byKey(const ValueKey('goods-bom-name-new:0')),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(name, '尚未选定');
+    await _edit(tester);
+    expect(fixture.api.commands, isEmpty);
+    expect(
+      tester
+          .state<GoodsBomTabState>(find.byType(GoodsBomTab))
+          .hasEditingSession,
+      isTrue,
+    );
+  });
+
+  testWidgets(
+    'table append rows multi-select components into one reviewed draft',
+    (tester) async {
+      await loadAuditScreenshotFonts(tester);
+      final fixture = await _pump(
+        tester,
+        chooseComponents: () async => const [
+          GoodsListItem(id: 'nut', name: '螺母', unitName: '个'),
+          GoodsListItem(id: 'washer', name: '垫片', unitName: '个'),
+        ],
+      );
+      expect(
+        find.byKey(const ValueKey('goods-bom-choose-new-0')),
+        findsNothing,
+      );
+      await _edit(tester);
+      final table = tester.widget<MasterDataTableView<dynamic>>(
+        find.byWidgetPredicate((widget) => widget is MasterDataTableView).first,
+      );
+      expect(table.appendRows, hasLength(3));
+      expect(find.byTooltip('替换组件'), findsNWidgets(2));
+      expect(find.byKey(const Key('goods-bom-add-child-header')), findsNothing);
+      expect(find.byTooltip('添加下级组件'), findsNWidgets(2));
+      await tester.tap(find.byKey(const ValueKey('goods-bom-choose-new-0')));
+      await tester.pumpAndSettle();
+      expect(find.text('螺母'), findsOneWidget);
+      expect(find.text('垫片'), findsOneWidget);
+      expect(fixture.api.tree['source'], hasLength(2));
+      expect(fixture.api.commands, isEmpty);
+      expect(
+        tester
+            .widget<MasterDataTableView<dynamic>>(
+              find
+                  .byWidgetPredicate((widget) => widget is MasterDataTableView)
+                  .first,
+            )
+            .appendRows,
+        hasLength(3),
+      );
+      await _capture(tester, 'bom-table-entry-1440');
+      await _edit(tester);
+      final operations = (fixture.api.commands.single.$2['operations'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(operations.map((op) => op['type']), ['CREATE', 'CREATE']);
+      expect(operations.map((op) => op['goodsId']), everyElement('source'));
+      expect(
+        operations.map((op) => (op['body'] as Map)['qty']),
+        everyElement(1),
+      );
+      expect(
+        operations.every((op) => !(op['body'] as Map).containsKey('price')),
+        isTrue,
+      );
+      await tester.tap(find.byKey(const Key('goods-bom-save-confirm')));
+      await tester.pumpAndSettle();
+      expect(fixture.api.commands.last.$1, endsWith('/commit'));
+    },
+  );
+
+  testWidgets('cancelling table multi-picker adds no rows or edit commands', (
+    tester,
+  ) async {
+    final fixture = await _pump(tester, chooseComponents: () async => []);
+    await _edit(tester);
+    await tester.tap(find.byKey(const ValueKey('goods-bom-choose-new-0')));
+    await tester.pumpAndSettle();
+    await _edit(tester);
+    expect(fixture.api.commands, isEmpty);
+    expect(find.text('编辑模式'), findsOneWidget);
+  });
+
+  testWidgets(
+    'existing component picker replaces only the draft relation and discard restores it',
+    (tester) async {
+      final fixture = await _pump(
+        tester,
+        replaceComponent: () async => const GoodsListItem(
+          id: 'washer',
+          name: '垫片',
+          unitName: '个',
+          material: 'PA',
+        ),
+      );
+      await _edit(tester);
+      await tester.tap(find.byTooltip('替换组件').first);
+      await tester.pumpAndSettle();
+      expect(find.text('垫片'), findsOneWidget);
+      expect(find.text('铁架'), findsNothing);
+      expect(fixture.api.commands, isEmpty);
+      expect(fixture.api.tree['source']!.first['componentGoodsId'], 'frame');
+      await _edit(tester);
+      final operation =
+          (fixture.api.commands.single.$2['operations'] as List).single as Map;
+      expect(operation['type'], 'UPDATE');
+      expect(operation['goodsId'], 'source');
+      expect(operation['itemId'], 'row-frame');
+      final body = operation['body'] as Map;
+      expect(body['componentGoodsId'], 'washer');
+      expect(body['qty'], 2);
+      expect(body['consumptionBasis'], 'PER_PACKAGE');
+      expect(body['basisOutputQty'], 10);
+      expect(body.containsKey('price'), isFalse);
+      await tester.tap(find.byKey(const Key('goods-bom-discard-and-exit')));
+      await tester.pumpAndSettle();
+      expect(find.text('铁架'), findsOneWidget);
+      expect(
+        fixture.api.commands.where((call) => call.$1.endsWith('/commit')),
+        isEmpty,
+      );
+    },
+  );
+
+  testWidgets(
+    'leaf action creates a blank child then stages it under the correct component',
+    (tester) async {
+      final fixture = await _pump(
+        tester,
+        chooseComponents: () async => const [
+          GoodsListItem(id: 'washer', name: '垫片', unitName: '个'),
+        ],
+      );
+      await _edit(tester);
+      await tester.tap(find.byTooltip('添加下级组件').first);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('goods-bom-name-child:frame')),
+        findsOneWidget,
+      );
+      await _capture(tester, 'bom-leaf-new-child-1440');
+      final childInput = find.descendant(
+        of: find.byKey(const ValueKey('goods-bom-name-child:frame')),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(childInput, '垫');
+      await tester.tap(
+        find.byKey(const ValueKey('goods-bom-tree-toggle-row-frame')),
+      );
+      await tester.pumpAndSettle();
+      expect(childInput, findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey('goods-bom-tree-toggle-row-frame')),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(childInput).controller!.text, '垫');
+      expect(fixture.api.commands, isEmpty);
+      final cell = tester.widget<Widget>(
+        find.byKey(const ValueKey('goods-bom-tree-cell-row-frame')),
+      );
+      expect(cell, isNotNull);
+      await tester.tap(
+        find.byKey(const ValueKey('goods-bom-choose-child:frame')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('垫片'), findsOneWidget);
+      await _edit(tester);
+      final operation =
+          (fixture.api.commands.single.$2['operations'] as List).single as Map;
+      expect(operation['goodsId'], 'frame');
+      expect((operation['body'] as Map)['componentGoodsId'], 'washer');
+      await tester.tap(find.text('继续编辑'));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'periodic table picks require reviewed grams before staging the complete selection',
+    (tester) async {
+      final fixture = await _pump(
+        tester,
+        chooseComponents: () async => const [
+          GoodsListItem(
+            id: 'resin',
+            name: '塑料',
+            unitName: '千克',
+            issueMethod: GoodsIssueMethod.periodic,
+            periodicCostBasis: GoodsPeriodicCostBasis.own,
+          ),
+        ],
+      );
+      await _edit(tester);
+      await tester.tap(find.byKey(const ValueKey('goods-bom-choose-new-0')));
+      // The originating picker remains busy while this quantity dialog awaits
+      // user input; its intentional spinner must not be awaited to settle.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const Key('goods-bom-edit-qty')), findsOneWidget);
+      expect(fixture.api.commands, isEmpty);
+      await tester.enterText(
+        find.byKey(const Key('goods-bom-edit-qty')),
+        '2.5',
+      );
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      expect(find.text('塑料'), findsOneWidget);
+      expect(fixture.api.commands, isEmpty);
+      await _edit(tester);
+      final operation =
+          (fixture.api.commands.single.$2['operations'] as List).single as Map;
+      expect((operation['body'] as Map)['unitWeightGrams'], 2.5);
+      expect((operation['body'] as Map).containsKey('price'), isFalse);
+      await tester.tap(find.text('继续编辑'));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'table picker controls remain reachable at 390 width and 2x text',
+    (tester) async {
+      await loadAuditScreenshotFonts(tester);
+      await _pump(
+        tester,
+        size: const Size(390, 844),
+        textScale: 2,
+        chooseComponents: () async => [],
+      );
+      await _edit(tester);
+      final picker = find.byKey(const ValueKey('goods-bom-choose-new-0'));
+      await tester.ensureVisible(picker);
+      await tester.pumpAndSettle();
+      expect(picker.hitTestable(), findsOneWidget);
+      final exit = find.byKey(const Key('goods-bom-edit-mode'));
+      await tester.ensureVisible(exit);
+      await tester.pumpAndSettle();
+      final exitRect = tester.getRect(exit);
+      expect(exitRect.left, greaterThanOrEqualTo(0));
+      expect(exitRect.right, lessThanOrEqualTo(390));
+      expect(exitRect.bottom, lessThanOrEqualTo(844));
+      expect(exit.hitTestable(), findsOneWidget);
+      await tester.tap(exit);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .state<GoodsBomTabState>(find.byType(GoodsBomTab))
+            .hasEditingSession,
+        isFalse,
+      );
+      await tester.ensureVisible(exit);
+      await _edit(tester);
+      if (const bool.fromEnvironment('UTEN_CAPTURE_BOM_TABLE')) {
+        // ensureVisible targets the picker at the end of the name column.
+        // Restore the ordinary leftmost table view for the screenshot.
+        for (final scroll in tester.stateList<ScrollableState>(
+          find.byType(Scrollable),
+        )) {
+          if (axisDirectionToAxis(scroll.axisDirection) == Axis.horizontal &&
+              scroll.position.hasPixels) {
+            scroll.position.jumpTo(0);
+          }
+        }
+        await tester.pumpAndSettle();
+      }
+      await _capture(tester, 'bom-table-entry-390-2x');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'discard and exit restores canonical assembly without saving and releases navigation',
     (tester) async {

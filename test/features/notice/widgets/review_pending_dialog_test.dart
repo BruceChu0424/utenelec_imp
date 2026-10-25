@@ -628,6 +628,28 @@ void main() {
     expect(find.text('全部稍后再看'), findsOneWidget);
   });
 
+  testWidgets('ending approval withdraws resolved finance and draw cards while qualified physical stock-in remains actionable', (tester) async {
+    final repo = _FakeNoticeRepository();
+    await pumpDialog(tester, repo: repo, pending: [
+      noticeOf('closure', title: '结束待财务审批', sourceEvent: 'PROCUREMENT_FINANCE_SUBMITTED', actionRoute: '/finance/procurement-approvals'),
+      noticeOf('draw', title: '原订单可领料', sourceEvent: 'SUBCONTRACT_DRAW_AVAILABLE', actionRoute: '/operations/workbench/subcontract?segment=draw&orderId=old-order'),
+      noticeOf('stock-in', title: '原单品质合格待入库', sourceEvent: 'PROCUREMENT_IQC_STOCK_IN_PENDING', actionRoute: '/warehouse/quality-results/PURCHASE/receipt-1'),
+    ]);
+    repo.statusResult = [
+      const PendingReviewStatus(noticeId: 'closure', resolved: true),
+      const PendingReviewStatus(noticeId: 'draw', resolved: true),
+      const PendingReviewStatus(noticeId: 'stock-in', resolved: false),
+    ];
+    await tester.pump(const Duration(seconds: 31));
+    await tester.pumpAndSettle();
+    expect(find.text('结束待财务审批'), findsNothing);
+    expect(find.text('原订单可领料'), findsNothing);
+    expect(find.text('原单品质合格待入库'), findsOneWidget);
+    expect(find.text('有 1 项事务等待你处理'), findsOneWidget);
+    expect(repo.snoozedIds, isEmpty);
+    expect(repo.readIds, isEmpty);
+  });
+
   testWidgets('snooze all only snoozes every item (no markRead) and closes', (
     tester,
   ) async {

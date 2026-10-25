@@ -9,9 +9,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/router/page_resume_provider.dart';
+import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/core/router/route_transition_tracker.dart';
 import 'package:uten_imp/features/hr_task/models/hr_task_summary.dart';
 import 'package:uten_imp/features/hr_task/pages/hr_workbench_page.dart';
+import 'package:uten_imp/features/hr_task/pages/hr_task_list_page.dart';
+import 'package:uten_imp/features/hr_task/widgets/hr_task_widgets.dart';
 import 'package:uten_imp/features/hr_task/providers/hr_task_summary_provider.dart';
 import 'package:uten_imp/features/hr_task/repositories/hr_task_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -19,8 +25,10 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../support/memory_cas_storage.dart';
 
 class _Repository extends Fake implements HrTaskRepository {
   final requests = <Completer<HrTaskSummary>>[];
@@ -375,4 +383,159 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  for (final reportFailure in [false, true]) {
+    test(
+      'silent failure keeps accepted tasks and exposes retry feedback reportFailure=$reportFailure',
+      () async {
+        final repository = _Repository();
+        final container = ProviderContainer(
+          overrides: [
+            hrTaskRepositoryProvider.overrideWithValue(repository),
+            masterDataSessionKeyProvider.overrideWithValue('A'),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'A'),
+            ),
+            fixedBadgeSummaryOverride(),
+          ],
+        );
+        addTearDown(container.dispose);
+        final subscription = container.listen(hrTaskSummaryProvider, (_, _) {});
+        addTearDown(subscription.close);
+        repository.requests[0].complete(_summary('accepted tasks'));
+        await container.read(hrTaskSummaryProvider.future);
+        final notifier = container.read(hrTaskSummaryProvider.notifier);
+        final failing = notifier.reloadSilently(reportFailure: reportFailure);
+        final failure = NetworkException('Summary unavailable');
+        final observed = reportFailure
+            ? expectLater(failing, throwsA(same(failure)))
+            : expectLater(failing, completes);
+        repository.requests[1].completeError(failure);
+        await observed;
+        expect(
+          container.read(hrTaskSummaryProvider).requireValue.generatedAt,
+          'accepted tasks',
+        );
+        expect(container.read(hrTaskSummaryProvider).hasError, isFalse);
+        expect(container.read(hrTaskRefreshStatusProvider), (
+          refreshing: false,
+          error: 'Summary unavailable',
+        ));
+
+        final retry = notifier.reloadSilently(reportFailure: true);
+        expect(container.read(hrTaskRefreshStatusProvider), (
+          refreshing: true,
+          error: null,
+        ));
+        repository.requests[2].complete(_summary('fresh tasks'));
+        await retry;
+        expect(
+          container.read(hrTaskSummaryProvider).requireValue.generatedAt,
+          'fresh tasks',
+        );
+        expect(container.read(hrTaskRefreshStatusProvider), (
+          refreshing: false,
+          error: null,
+        ));
+      },
+    );
+  }
+
+  for (final workbench in [true, false]) {
+    testWidgets(
+      '${workbench ? 'HR workbench' : 'HR task list'} return revalidates without removing accepted tasks and labels failed updates',
+      (tester) async {
+        RouteTransitionTracker.instance.reset();
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final repository = _Repository();
+        final container = ProviderContainer(
+          overrides: [
+            hrTaskRepositoryProvider.overrideWithValue(repository),
+            masterDataSessionKeyProvider.overrideWithValue('A'),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'A'),
+            ),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.employeeView,
+              Perm.employeePiiEdit,
+            }),
+            isSuperAdminProvider.overrideWithValue(false),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            apiBaseUrlProvider.overrideWithValue('https://hr-test.invalid/api'),
+            formDraftStorageProvider.overrideWithValue(MemoryCasStorage()),
+            fixedBadgeSummaryOverride(),
+          ],
+        );
+        addTearDown(container.dispose);
+        final location = workbench
+            ? RouteName.hrTaskCenter
+            : RouteName.hrTaskList('identity');
+        final router = GoRouter(
+          initialLocation: location,
+          routes: [
+            GoRoute(
+              path: location,
+              builder: (_, _) => workbench
+                  ? const HrWorkbenchPage()
+                  : const HrTaskListPage(type: HrTaskType.identity),
+            ),
+            GoRoute(
+              path: '/child',
+              builder: (_, _) => const Scaffold(body: Text('Child page')),
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        addTearDown(
+          attachPageResume(router, container.read(pageResumeProvider.notifier)),
+        );
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp.router(
+              routerConfig: router,
+              locale: const Locale('zh'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+            ),
+          ),
+        );
+        repository.requests[0].complete(_summary('Accepted employee'));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Accepted employee'), findsWidgets);
+        final feedback = tester.element(find.byType(HrTaskRefreshFeedback));
+        router.push<void>('/child');
+        await tester.pumpAndSettle();
+        router.pop();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pump();
+        expect(repository.requests, hasLength(2));
+        expect(find.textContaining('Accepted employee'), findsWidgets);
+        expect(
+          tester.element(find.byType(HrTaskRefreshFeedback)),
+          same(feedback),
+        );
+        repository.requests[1].completeError(
+          NetworkException('Summary unavailable'),
+        );
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Accepted employee'), findsWidgets);
+        expect(find.text('更新失败，当前显示上次内容'), findsOneWidget);
+        expect(find.text('Summary unavailable'), findsOneWidget);
+        await tester.tap(find.text('重新更新'));
+        await tester.pump();
+        expect(repository.requests, hasLength(3));
+        expect(find.textContaining('Accepted employee'), findsWidgets);
+        repository.requests[2].complete(_summary('Current employee'));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Current employee'), findsWidgets);
+        expect(find.textContaining('Accepted employee'), findsNothing);
+        expect(find.text('更新失败，当前显示上次内容'), findsNothing);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
 }

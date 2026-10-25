@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../core/print/pdf_printer.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -493,7 +494,7 @@ class _DepartmentOrgChartDialogState
             pw.SizedBox(height: 4),
             pw.Center(
               child: pw.Text(
-                '打印日期：${DateTime.now().toString().substring(0, 10)}',
+                '打印日期：${ChinaDateTime.formatDate(ChinaDateTime.today())}(北京)',
                 style: pw.TextStyle(font: font, fontSize: 9),
               ),
             ),

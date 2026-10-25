@@ -252,6 +252,31 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO uten;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC, uten;
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO uten;
 REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
+-- Trusted extensions may retain bootstrap-owned functions even when Flyway
+-- runs as the non-superuser database owner. Revoking PUBLIC EXECUTE therefore
+-- also removes the migrator's crypto/trigram access: ownership of ordinary
+-- application functions does not supply extension-function privileges.
+-- Grant only actual pgcrypto/pg_trgm extension members, without changing
+-- extension ownership, unrelated administrator functions, or runtime grants.
+DO $local_migrator_extension_execute$
+DECLARE routine record;
+BEGIN
+    FOR routine IN SELECT p.oid, n.nspname, p.proname,
+                          pg_get_function_identity_arguments(p.oid) AS args
+                   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   JOIN pg_depend d ON d.classid = 'pg_proc'::regclass AND d.objid = p.oid
+                       AND d.refclassid = 'pg_extension'::regclass AND d.deptype = 'e'
+                   JOIN pg_extension e ON e.oid = d.refobjid
+                   WHERE n.nspname = 'public' AND p.prokind = 'f'
+                     AND e.extname IN ('pgcrypto', 'pg_trgm') LOOP
+        EXECUTE format('GRANT EXECUTE ON FUNCTION %I.%I(%s) TO uten_migrator',
+                       routine.nspname, routine.proname, routine.args);
+        IF NOT has_function_privilege('uten_migrator', routine.oid, 'EXECUTE') THEN
+            RAISE EXCEPTION 'Refused: migrator lacks trusted extension function execution';
+        END IF;
+    END LOOP;
+END;
+$local_migrator_extension_execute$;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM uten;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO uten;
 REVOKE EXECUTE ON FUNCTION pg_catalog.pg_control_system() FROM PUBLIC, uten;
@@ -306,7 +331,7 @@ BEGIN
     FOR routine IN SELECT p.oid, p.proname, pg_get_function_identity_arguments(p.oid) AS args
                    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
                    WHERE n.nspname = 'public' AND p.prokind = 'f' AND (
-                       p.proname IN ('business_data_reset', 'fn_require_runtime_maintenance',
+                       p.proname IN ('business_data_reset', 'fn_require_runtime_maintenance', 'fn_require_runtime_refresh',
                            'fn_business_test_reset_verify_purged', 'fn_clear_business_test_object_metadata',
                            'fn_audit_track_table', 'fn_audit_seal_privileges', 'fn_migrate_financial_amount_columns')
                        OR p.proname LIKE 'fn\_register\_legacy\_%' ESCAPE '\'

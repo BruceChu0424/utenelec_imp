@@ -6,7 +6,8 @@ umask 077
 SRC=${1:?Usage: sudo bash install-server-operations.sh /reviewed/deploy/simple}
 [ "$(id -u)" -eq 0 ] || { echo 'Root is required' >&2; exit 1; }
 for f in host_operations.py operations_storage.py update_schedule.py uten-imp-updater.sh \
-  units/uten-imp-operations.service units/uten-imp-update-job.service operations.example.json; do
+  units/uten-imp-operations.service units/uten-imp-update-job.service operations.example.json \
+  uten-imp-updater.tmpfiles.conf; do
   [ -f "$SRC/$f" ] && [ ! -L "$SRC/$f" ] || { echo "Missing reviewed source: $f" >&2; exit 1; }
 done
 PAIRED_SOURCE="$SRC/../postgres/backup/paired_internal_backup.py"
@@ -17,6 +18,7 @@ MARKET_BACKUP_SOURCE="$SRC/../postgres/backup/market_state_backup.py"
 [ -f "$MARKET_BACKUP_SOURCE" ] && [ ! -L "$MARKET_BACKUP_SOURCE" ] || {
   echo 'Missing reviewed market-state backup helper from the same source checkout' >&2; exit 1
 }
+[ -x /usr/bin/systemd-tmpfiles ] || { echo 'systemd-tmpfiles is required' >&2; exit 1; }
 getent passwd uten-imp >/dev/null
 getent group uten-imp >/dev/null
 safe_lock_file() {
@@ -46,7 +48,7 @@ for directory in /var/lib/uten-imp-operations /run/uten-imp-updater /etc/uten-im
   fi
   install -d -o root -g root -m 0700 "$directory"
 done
-for directory in /usr/local/lib/uten-imp /etc/uten-imp; do
+for directory in /usr/local/lib/uten-imp /etc/uten-imp /etc/tmpfiles.d; do
   [ ! -L "$directory" ] || { echo 'Unsafe deployment directory' >&2; exit 1; }
   if [ -e "$directory" ]; then
     [ -d "$directory" ] && [ "$(stat -c %u "$directory")" = 0 ] \
@@ -64,6 +66,9 @@ for private_file in /etc/uten-imp-updater/source.env /etc/uten-imp/operations.js
 done
 # Hold both fixed new locks while replacing helpers. Also exclude an old CLI
 # updater which started before this installation and still owns the legacy lock.
+if [ -e /etc/tmpfiles.d/uten-imp-updater.conf ] || [ -L /etc/tmpfiles.d/uten-imp-updater.conf ]; then
+  safe_lock_file /etc/tmpfiles.d/uten-imp-updater.conf
+fi
 safe_lock_file /run/uten-imp-updater/updater.lock
 exec 8>/run/uten-imp-updater/updater.lock
 flock -n 8 || { echo 'An updater is running' >&2; exit 1; }
@@ -112,7 +117,7 @@ for f in /usr/local/sbin/uten-imp-updater /etc/systemd/system/uten-imp-updater.s
   /usr/local/lib/uten-imp/paired_internal_backup.py \
   /usr/local/lib/uten-imp/market_state_backup.py \
   /etc/systemd/system/uten-imp-updater.timer /etc/systemd/system/uten-imp-operations.service \
-  /etc/systemd/system/uten-imp-update-job.service; do
+  /etc/systemd/system/uten-imp-update-job.service /etc/tmpfiles.d/uten-imp-updater.conf; do
   [ ! -f "$f" ] || cp -a -- "$f" "$backup_dir/"
 done
 timer_definition=$(systemctl list-unit-files --type=timer --no-legend --plain uten-imp-updater.timer)
@@ -166,6 +171,9 @@ atomic_install "$SRC/uten-imp-updater.sh" /usr/local/sbin/uten-imp-updater 0755
 for unit in uten-imp-operations.service uten-imp-update-job.service; do
   atomic_install "$SRC/units/$unit" "/etc/systemd/system/$unit" 0644
 done
+# Persistent boot ownership: d/- never deletes a live shared lock inode on service stop.
+atomic_install "$SRC/uten-imp-updater.tmpfiles.conf" /etc/tmpfiles.d/uten-imp-updater.conf 0644
+/usr/bin/systemd-tmpfiles --create /etc/tmpfiles.d/uten-imp-updater.conf
 systemctl daemon-reload
 systemctl enable uten-imp-operations.service
 systemctl restart uten-imp-operations.service

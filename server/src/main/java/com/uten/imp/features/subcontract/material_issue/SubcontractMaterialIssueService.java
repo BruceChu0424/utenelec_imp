@@ -508,7 +508,7 @@ public class SubcontractMaterialIssueService {
                 .map(SubcontractMaterialIssueItem::getOrderItemId).distinct().toList();
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
-                        SELECT soi.id, so.supplier_id, so.status, soi.goods_id
+                        SELECT soi.id, so.supplier_id, so.status, soi.goods_id, so.termination_case_id
                         FROM subcontract_order_items soi
                         JOIN subcontract_orders so ON so.id = soi.order_id
                         WHERE soi.id IN (:ids)
@@ -528,6 +528,9 @@ public class SubcontractMaterialIssueService {
             }
             if (source[2] == null || ((Number) source[2]).intValue() != 1) {
                 throw new ApiException(ErrorCode.BUSINESS, "委外发料只能关联已财务批准(status=1)的委外订货明细");
+            }
+            if (source[4] != null) {
+                throw new ApiException(ErrorCode.CONFLICT, "委外订货单已结束，不能继续发料；在外材料请通过原单办理退料或损耗");
             }
             if (!java.util.Objects.equals((UUID) source[1], issue.getSupplierId())) {
                 throw new ApiException(ErrorCode.BUSINESS, "发料单委外商与来源订货单委外商不一致");

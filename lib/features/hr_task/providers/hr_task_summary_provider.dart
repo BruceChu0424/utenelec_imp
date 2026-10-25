@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/hr_task_summary.dart';
 import '../repositories/hr_task_repository.dart';
 import '../../../core/network/data_write_revision.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/master_name_provider.dart'
@@ -15,7 +16,38 @@ import '../../../shared/providers/master_name_provider.dart'
 final hrTaskSummaryProvider =
     AsyncNotifierProvider<HrTaskSummaryNotifier, HrTaskSummary>(
       HrTaskSummaryNotifier.new,
+      dependencies: [
+        hrTaskRepositoryProvider,
+        masterDataSessionKeyProvider,
+        authenticatedScopeProvider,
+        lastDataWriteProvider,
+        badgeSummaryProvider,
+        hrTaskRefreshStatusProvider,
+      ],
     );
+
+typedef HrTaskRefreshStatus = ({bool refreshing, String? error});
+
+/// Read feedback has the same owner/permission scope as the accepted summary.
+/// Keeping it separate preserves AsyncValue's existing hide-on-identity-reload
+/// behavior and does not turn a failed post-write GET into a failed write.
+final hrTaskRefreshStatusProvider =
+    NotifierProvider<HrTaskRefreshStatusNotifier, HrTaskRefreshStatus>(
+      HrTaskRefreshStatusNotifier.new,
+      dependencies: [masterDataSessionKeyProvider, authenticatedScopeProvider],
+    );
+
+class HrTaskRefreshStatusNotifier extends Notifier<HrTaskRefreshStatus> {
+  @override
+  HrTaskRefreshStatus build() {
+    ref.watch(masterDataSessionKeyProvider);
+    ref.watch(authenticatedScopeProvider);
+    return (refreshing: false, error: null);
+  }
+
+  void start() => state = (refreshing: true, error: null);
+  void finish([String? error]) => state = (refreshing: false, error: error);
+}
 
 class HrTaskSummaryNotifier extends AsyncNotifier<HrTaskSummary> {
   int _requestGeneration = 0;
@@ -122,22 +154,44 @@ class HrTaskSummaryNotifier extends AsyncNotifier<HrTaskSummary> {
   Future<void> refresh() async {
     final generation = ++_requestGeneration;
     final repository = ref.read(hrTaskRepositoryProvider);
+    final feedback = ref.read(hrTaskRefreshStatusProvider.notifier);
+    feedback.start();
     state = const AsyncLoading();
     final next = await AsyncValue.guard(() => _startRead(repository));
     if (generation != _requestGeneration) return;
     state = next;
+    feedback.finish();
     await ref.read(badgeSummaryProvider.notifier).refresh();
   }
 
   /// 静默重取（保操作后不打断页面结构）。
-  Future<void> reloadSilently() async {
+  Future<void> reloadSilently({bool reportFailure = false}) async {
     final generation = ++_requestGeneration;
     final repository = ref.read(hrTaskRepositoryProvider);
+    final feedback = ref.read(hrTaskRefreshStatusProvider.notifier);
+    feedback.start();
     final next = await AsyncValue.guard(
       () => _startRead(repository, silent: true),
     );
     if (generation != _requestGeneration) return;
+    if (next.hasError) {
+      final error = next.error!;
+      // Confirmed access denial cannot retain the previous private summary.
+      if (error is ApiException &&
+          (error.httpStatus == 401 ||
+              error.httpStatus == 403 ||
+              error.code == 'UNAUTHORIZED' ||
+              error.code == 'FORBIDDEN')) {
+        state = next;
+      }
+      feedback.finish(error is ApiException ? error.message : '任务数据更新失败，请重试');
+      if (reportFailure) {
+        Error.throwWithStackTrace(error, next.stackTrace!);
+      }
+      return;
+    }
     if (next.hasValue) state = next;
+    feedback.finish();
     await ref.read(badgeSummaryProvider.notifier).refresh();
   }
 }

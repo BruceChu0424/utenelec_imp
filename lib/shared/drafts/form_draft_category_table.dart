@@ -125,6 +125,9 @@ class _FormDraftCategoryTableState<T>
     extends ConsumerState<FormDraftCategoryTable<T>> {
   final _localSelected = <String>{};
   static const _prefix = 'form-draft:';
+  Map<int, List<T>>? _windowSource;
+  Map<String, FormDraft> _windowRecovery = const {};
+  Map<int, List<FormDraftCategoryRow<T>>> _windowRows = const {};
   @override
   void didUpdateWidget(covariant FormDraftCategoryTable<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -259,12 +262,32 @@ class _FormDraftCategoryTableState<T>
           ),
         );
 
+    if (!identical(_windowSource, table.refreshedPages) ||
+        _windowRecovery.length != recovering.length ||
+        recovering.entries.any(
+          (entry) => _windowRecovery[entry.key] != entry.value,
+        )) {
+      _windowSource = table.refreshedPages;
+      _windowRecovery = Map.of(recovering);
+      _windowRows = {
+        for (final entry in table.refreshedPages.entries)
+          entry.key: [
+            for (final item in entry.value)
+              FormDraftCategoryRow<T>(
+                record: item,
+                draft: recovering[_id(item)],
+              ),
+          ],
+      };
+    }
     return MasterDataTableView<FormDraftCategoryRow<T>>(
       rowVisible: table.rowVisible == null
           ? null
           : (row) => row.isLocal || table.rowVisible!(row.record as T),
       paginationScope: (widget.scope, widget.search, table.paginationScope),
       paginationRevision: table.paginationRevision,
+      refreshedPages: _windowRows,
+      onRetainedPagesChanged: table.onRetainedPagesChanged,
       rowsController: table.rowsController?.adapt<FormDraftCategoryRow<T>>(
         (rows) =>
             rows.where((row) => !row.isLocal).map((row) => row.record as T),
@@ -612,6 +635,8 @@ class _FormDraftCategoryTableState<T>
       onSortChange: table.onSortChange,
       isLoading: table.isLoading && rows.isEmpty && local.isEmpty,
       loadingMore: table.loadingMore,
+      isRefreshing: table.isRefreshing,
+      refreshError: table.refreshError,
       onLoadMore: table.onLoadMore,
       error: paginated || local.isEmpty ? table.error : null,
       onRetry: table.onRetry,

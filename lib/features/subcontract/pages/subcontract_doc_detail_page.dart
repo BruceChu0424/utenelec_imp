@@ -16,6 +16,7 @@ import '../../../shared/business_columns/business_columns_table.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/widgets/legacy_continuation_notice.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
@@ -69,6 +70,8 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../../shared/auth/session_snapshot_provider.dart';
+import '../../../shared/widgets/procurement_order_closure_dialog.dart';
+import '../../../shared/widgets/procurement_order_closure_status.dart';
 
 class SubcontractDocDetailPage extends ConsumerStatefulWidget {
   const SubcontractDocDetailPage({
@@ -145,7 +148,12 @@ class _SubcontractDocDetailPageState
   bool get _canEdit => _ordinaryWritable && _hasPermission(_cfg.editPerm);
   bool get _canDelete => _ordinaryWritable && _hasPermission(_cfg.deletePerm);
   bool get _canApprove => _ordinaryWritable && _hasPermission(_cfg.approvePerm);
-  bool get _canReverse => _ordinaryWritable && _hasPermission(_cfg.reversePerm);
+  bool get _canReverse =>
+      _ordinaryWritable &&
+      _hasPermission(_cfg.reversePerm) &&
+      !(widget.docType == SubcontractDocType.order &&
+          (_detail?.closureRequest?.isPending == true ||
+              _detail?.closureRequest?.isApproved == true));
 
   bool get _financeReviewOnly =>
       widget.docType == SubcontractDocType.order &&
@@ -159,7 +167,34 @@ class _SubcontractDocDetailPageState
       widget.docType == SubcontractDocType.order &&
       _detail?.status == kSubcontractStatusApproved &&
       _detail?.financeApproval?.isPending != true &&
+      _detail?.closureRequest?.isPending != true &&
+      _detail?.closureRequest?.isApproved != true &&
       _hasPermission(Perm.subcontractOrderChangeQty);
+
+  String? get _closureUnavailableReason {
+    final l10n = _closureWords;
+    if (_busy) return l10n.orderClosureBusy;
+    if (_detail?.closed == true ||
+        _detail?.closureRequest?.isApproved == true) {
+      return l10n.orderClosureAlreadyEnded;
+    }
+    if (_detail?.financeApproval?.isPending == true ||
+        _detail?.closureRequest?.isPending == true) {
+      return l10n.orderClosureAlreadyPending;
+    }
+    if (_detail?.status != kSubcontractStatusApproved) {
+      return l10n.orderClosureUnavailable;
+    }
+    if (!_hasPermission(Perm.subcontractOrderSubmitFinance)) {
+      return l10n.orderClosureMissingPermission;
+    }
+    if (!_ordinaryWritable) return l10n.orderClosureReadOnly;
+    return null;
+  }
+
+  AppLocalizations get _closureWords =>
+      Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+      lookupAppLocalizations(const Locale('zh'));
 
   /// 回厂短交待委外判定：详情页据此锁住改量并显示锁定横幅(服务端同样拦截)。
   bool get _shortDeliveryLocked => _detail?.shortDeliveryHold != null;
@@ -193,10 +228,11 @@ class _SubcontractDocDetailPageState
   @override
   Future<void> nativeReadReload() => _load();
 
-  Future<void> _load() async {
+  Future<void> _load({bool background = false}) async {
     final acceptsRead = captureNativeRead(
       '${widget.docType.name}/${widget.id}',
       () => '${widget.docType.name}/${widget.id}',
+      retainAccepted: background && _detail != null,
     );
     if (!acceptsRead()) return;
     if (widget.docType != SubcontractDocType.application) {}
@@ -220,14 +256,19 @@ class _SubcontractDocDetailPageState
       });
     } on ApiException catch (e) {
       if (!acceptsRead()) return;
+      final retained = failNativeRead(e, message: e.message);
       setState(() {
-        _error = e.message;
+        _error = retained ? null : e.message;
+        if (nativeReadAccessDenied(e) || nativeReadResourceRetired(e)) {
+          _detail = null;
+        }
         _loading = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!acceptsRead()) return;
+      final retained = failNativeRead(error, message: '加载详情失败');
       setState(() {
-        _error = '加载详情失败';
+        _error = retained ? null : '加载详情失败';
         _loading = false;
       });
     }
@@ -302,6 +343,22 @@ class _SubcontractDocDetailPageState
     '已提交财务审核组，等待财务审核',
     busyTitle: '正在提交财务审核，请稍候',
   );
+
+  Future<void> _requestClosure() async {
+    if (_busy || !_ordinaryWritable) return;
+    final ownsNative = captureNativeOwnership();
+    final submitted = await showProcurementOrderClosureDialog(
+      context,
+      orderType: 'SUBCONTRACT',
+      orderId: widget.id,
+      stillCurrent: () => mounted && ownsNative() && _ordinaryWritable,
+      wrapDialog: trackNativeReadDialog,
+    );
+    if (mounted && ownsNative()) {
+      if (submitted == true) bumpListRefresh(ref, _cfg.refreshKey);
+      await _load();
+    }
+  }
 
   Future<void> _reverse() async => _doAction(
     documentUnapprovalConfirmation,
@@ -599,7 +656,11 @@ class _SubcontractDocDetailPageState
       context,
       SubcontractRoute.detail(_cfg.pathSegment, widget.id),
     );
-    ref.onPageResume(_myLocation!, _load);
+    ref.onPageResume(_myLocation!, () async {
+      await _load(background: true);
+      final error = _error ?? nativeReadRefreshError;
+      if (error != null) throw StateError(error);
+    });
     final canViewOrderProgress = ref
         .watch(currentPermissionsProvider)
         .contains(Perm.subcontractOrderView);
@@ -623,7 +684,7 @@ class _SubcontractDocDetailPageState
         child: Stack(
           children: [
             UtenContentContainer(
-              child: _loading
+              child: _loading && !nativeReadAccessConfirmed
                   ? Semantics(
                       label: AppLocalizations.of(context).commonLoading,
                       liveRegion: true,
@@ -681,6 +742,27 @@ class _SubcontractDocDetailPageState
                               widget.id,
                             ),
                             _headerCard(theme),
+                            if (_detail!.closureRequest case final closure?)
+                              ProcurementOrderClosureStatus(
+                                request: closure,
+                                orderType: 'SUBCONTRACT',
+                                canOpenReplacement: _hasPermission(
+                                  Perm.subcontractOrderView,
+                                ),
+                                canEditReplacement:
+                                    _ordinaryWritable &&
+                                    _hasPermission(Perm.subcontractOrderEdit),
+                                canOpenReview: _hasPermission(
+                                  Perm.financeOrderApprovalView,
+                                ),
+                              ),
+                            if (_detail!.legacyImported &&
+                                _detail!.status == kSubcontractStatusApproved &&
+                                !_detail!.closed)
+                              const LegacyContinuationNotice(
+                                description:
+                                    '本单完成状态和来源关联需核对；继续办理前，请核对实际收发退及损耗记录。',
+                              ),
                             if (_cfg.approvalBlockedReason != null) ...[
                               const SizedBox(height: UtenSpacing.s12),
                               _materialIssueSafetyBanner(theme),
@@ -757,6 +839,7 @@ class _SubcontractDocDetailPageState
                       ),
                     ),
             ),
+            nativeReadRefreshFeedback(onRetry: () => _load(background: true)),
             // 处理中屏幕中央加载遮罩（对齐销售单据详情 UtenBusyOverlay 口径）：
             // 只跟随网络等待段，结果提示展示期间已撤下；按钮禁用逻辑不变。
             if (_busy)
@@ -773,6 +856,7 @@ class _SubcontractDocDetailPageState
               _detail == null ||
               _busy ||
               _loading ||
+              nativeReadRefreshError != null ||
               _error != null ||
               widget.forceReadOnly
           ? null
@@ -1688,6 +1772,24 @@ class _SubcontractDocDetailPageState
       children.add(action);
     }
 
+    final closureIssue = _closureUnavailableReason;
+    addAction(
+      Tooltip(
+        message: closureIssue ?? _closureWords.orderClosureWholeOrderHint,
+        child: UtenButton(
+          key: const Key('subcontract-order-request-close'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          icon: Icons.stop_circle_outlined,
+          onPressed: closureIssue == null ? _requestClosure : null,
+          onDisabledTap: () => context.appInfo(
+            closureIssue ?? _closureWords.orderClosureUnavailable,
+          ),
+          child: Text(_closureWords.orderClosureAction),
+        ),
+      ),
+    );
+
     if (d.status == kSubcontractStatusDraft) {
       final pending = approval?.isPending == true;
       if (!pending && _canDelete && d.canDelete) {
@@ -1763,7 +1865,7 @@ class _SubcontractDocDetailPageState
       }
     }
 
-    if (children.isEmpty) {
+    if (children.length == 1) {
       addAction(
         UtenButton(
           type: UtenButtonType.secondary,

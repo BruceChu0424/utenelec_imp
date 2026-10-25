@@ -21,6 +21,30 @@ class MasterDetailRow {
   final String? value;
 }
 
+/// Shared read-only value geometry for master inspectors and goods details.
+class MasterDetailValue extends StatelessWidget {
+  const MasterDetailValue({super.key, required this.value});
+
+  final String? value;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasValue = value?.trim().isNotEmpty == true;
+    final text = hasValue ? value! : '—';
+    return Tooltip(
+      message: hasValue ? value! : '',
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+      ),
+    );
+  }
+}
+
 class MasterDetailAction {
   const MasterDetailAction({
     required this.label,
@@ -187,6 +211,8 @@ class _MasterDetailBody extends StatelessWidget {
           Expanded(
             child: Text(
               title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -214,7 +240,6 @@ class _MasterDetailBody extends StatelessWidget {
   }
 
   Widget _cell(ThemeData theme, MasterDetailRow r) {
-    final hasValue = r.value != null && r.value!.isNotEmpty;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(
@@ -236,12 +261,7 @@ class _MasterDetailBody extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 2),
-          Text(
-            hasValue ? r.value! : '—',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+          MasterDetailValue(value: r.value),
         ],
       ),
     );

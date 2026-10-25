@@ -57,7 +57,12 @@ void main() {
     final field = tester.getRect(find.byKey(_fieldKey));
     final menu = tester.getRect(find.byKey(_optionKey));
     expect(menu.top, moreOrLessEquals(before.top + 40));
-    expect(menu.top, moreOrLessEquals(field.bottom + 2));
+    final surface = tester.getRect(
+      find
+          .ancestor(of: find.byKey(_optionKey), matching: find.byType(Material))
+          .first,
+    );
+    expect(surface.top, moreOrLessEquals(field.bottom + 2));
     expect(menu.left, moreOrLessEquals(before.left));
     expect(menu.left, greaterThanOrEqualTo(field.left));
     expect(menu.width, moreOrLessEquals(field.width));

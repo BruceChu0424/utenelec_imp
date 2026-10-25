@@ -427,6 +427,7 @@ public class SubcontractDrawCommandService {
                 FROM subcontract_order_items oi
                 JOIN subcontract_orders o ON o.id = oi.order_id
                 WHERE oi.id IN (:ids) AND NOT oi.is_deleted AND o.status = 1 AND NOT o.is_deleted
+                  AND o.termination_case_id IS NULL
                   AND EXISTS (SELECT 1 FROM subcontract_material_plans plan
                               WHERE plan.order_id = o.id AND NOT plan.is_deleted)
                 """, itemIds);

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -511,13 +512,8 @@ class _CopyFact extends StatelessWidget {
   }
 }
 
-String _time(String? value) {
-  final parsed = value == null ? null : DateTime.tryParse(value)?.toLocal();
-  if (parsed == null) return '—';
-  String two(int number) => number.toString().padLeft(2, '0');
-  return '${parsed.year}-${two(parsed.month)}-${two(parsed.day)} '
-      '${two(parsed.hour)}:${two(parsed.minute)}:${two(parsed.second)}';
-}
+String _time(String? value) =>
+    ChinaDateTime.formatIsoInstant(value, fallback: '—', seconds: true);
 
 final _uuidPattern = RegExp(
   r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',

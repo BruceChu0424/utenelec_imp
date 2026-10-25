@@ -166,6 +166,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
     @Autowired
     private CommercialPriceVisibility commercialPriceVisibility;
+    @Autowired
+    private com.uten.imp.application.port.ProcurementOrderClosureReadPort closureRequests;
     /** ADR-143 §二.3 委外件缺 BOM 转研发(研发任务模块实现)；单测手工构造时为空，只跳过登记。 */
     @Autowired(required = false)
     private com.uten.imp.application.port.RdBomGapPort rdBomGaps;
@@ -738,6 +740,53 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         return snapshot(order, itemRepo.findByOrderIdOrderByLineNoAsc(id));
     }
 
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public UUID createRemainingDraft(UUID id, List<RemainingLine> remaining, UUID makerEmployeeId) {
+        SubcontractOrder original = requireOrderForUpdate(id);
+        OrderSaveRequest request = new OrderSaveRequest();
+        request.setBillDate(com.uten.imp.common.time.BusinessTime.today()); request.setSupplierId(null);
+        request.setWarehouseId(original.getWarehouseId());
+        request.setCurrencyId(original.getCurrencyId()); request.setExchangeRate(original.getExchangeRate());
+        request.setTaxRate(original.getTaxRate()); request.setSettlementMethodId(original.getSettlementMethodId());
+        request.setPurchaserId(original.getPurchaserId()); request.setDeliverDate(original.getDeliverDate());
+        request.setRemark("由 " + original.getBillNo() + " 提前结束后生成，确认委外商和商业条款后重新提交财务审批");
+        Map<UUID, SubcontractOrderItem> oldItems = itemRepo.findByOrderIdOrderByLineNoAsc(id).stream()
+                .collect(java.util.stream.Collectors.toMap(SubcontractOrderItem::getId, java.util.function.Function.identity()));
+        List<OrderItemLine> lines = new ArrayList<>();
+        for (RemainingLine remainder : remaining) {
+            if (remainder.remainingQty().signum() == 0) continue;
+            SubcontractOrderItem old = oldItems.get(remainder.orderItemId());
+            if (old == null) throw new ApiException(ErrorCode.CONFLICT, "剩余明细已变化");
+            OrderItemLine line = new OrderItemLine();
+            line.setLineNo(old.getLineNo()); line.setGoodsId(old.getGoodsId()); line.setColorId(old.getColorId());
+            line.setUnitId(old.getUnitId()); line.setUnitRate(old.getUnitRate()); line.setQty(remainder.remainingQty());
+            line.setPrice(old.getPrice()); line.setAllowedLossPct(old.getAllowedLossPct());
+            line.setDeliverDate(old.getDeliverDate()); line.setRemark(old.getRemark()); line.setSourceDocNo(old.getSourceDocNo()); lines.add(line);
+        }
+        request.setItems(lines);
+        var guard=lockOrderRequest(null,request); guard.verifyUnchanged();
+        SubcontractOrder replacement = new SubcontractOrder();
+        replacement.setBillNo(docNumberService.nextNumber(DocNumberPrefix.SUB_ORDER));
+        replacement.setBillDate(request.getBillDate()); replacement.setCurrencyId(original.getCurrencyId());
+        replacement.setWarehouseId(original.getWarehouseId());
+        replacement.setExchangeRate(original.getExchangeRate()); replacement.setTaxRate(original.getTaxRate());
+        replacement.setSettlementMethodId(original.getSettlementMethodId()); replacement.setPurchaserId(original.getPurchaserId());
+        replacement.setMakerId(makerEmployeeId); replacement.setDeliverDate(original.getDeliverDate());
+        replacement.setRemark(request.getRemark()); replacement.setStatus(STATUS_DRAFT);
+        mutationLocks.expectCreatedOrder(orderType(),replacement.getId());
+        orderRepo.saveAndFlush(replacement); mutationLocks.registerCreatedOrder(orderType(),replacement.getId());
+        applyTotals(replacement,saveItems(replacement,lines)); orderRepo.saveAndFlush(replacement);
+        return replacement.getId();
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void cancelUnfulfilledWorkForTermination(UUID id) {
+        materialPlanService.cancelForOrderTermination(id);
+        shortDeliveryHook(hooks -> hooks.cancelOpenCasesForOrder(id,"ORDER_FINANCE_TERMINATED"));
+    }
+
     /**
      * V486 财务批准后受控改量（对齐销售 V482）：立即生效 + 自动开财务复核 case
      * + 逐行 old→new 事实账。最低量来自真实回厂与委外商处物料结存折算的套数；
@@ -799,6 +848,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         tx.bind();
         var mutationGuard=mutationLocks.order(orderType(),id);
         SubcontractOrder order = requireOrderForUpdate(id);
+        if (order.getTerminationCaseId()!=null) throw new ApiException(ErrorCode.CONFLICT,"订单已通过财务审批结束，不能改量");
         if (!systemInitiated) {
             access.requireWritable(order.getMakerId(), "只能操作本人负责的委外订货单");
         }
@@ -1112,6 +1162,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     private void requireOrderReversalInputs(UUID id,List<SubcontractOrderItem> items) {
+        if (requireOrder(id).getTerminationCaseId()!=null) throw new ApiException(ErrorCode.CONFLICT,"订单已通过财务审批结束，不能反审或红冲");
         if(items.stream().anyMatch(it->positive(it.getReceivedQty()) || positive(it.getReturnedQty())))
             throw new ApiException(ErrorCode.CONFLICT,"订货单已有收货或退货，请先撤销下游单据");
         if(hasApprovedMaterialActivity(items.stream().map(SubcontractOrderItem::getId).toList()))
@@ -1346,7 +1397,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             }
             UUID sourceSupplier = (UUID) source[1];
             if (sourceSupplier != null
-                    && !sourceSupplier.equals(order.getSupplierId())) {
+                    && !sourceSupplier.equals(order.getSupplierId())
+                    && !isFinanceApprovedReplacementSource(order.getId(),ref.applicationItemId())) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
                         "委外商与来源申请单不一致");
@@ -1363,6 +1415,15 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         // 2026-09 起订货允许超过申请剩余量（超委外备货是业务口径）：不再校验
         // ordered + 待审 + 本次 <= 申请量；ordered_qty 超出时剩余量为负、申请照常结案。
         // 来源锁定（FOR UPDATE）与已下达/委外商一致/维度一致校验保留。
+    }
+
+    private boolean isFinanceApprovedReplacementSource(UUID orderId,UUID sourceItemId) {
+        return Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM procurement_order_approval_cases c
+                    JOIN procurement_order_termination_sources s ON s.case_id=c.id
+                    WHERE c.order_type='SUBCONTRACT' AND c.request_type='CLOSE_AND_REORDER'
+                      AND c.status='APPROVED' AND c.replacement_order_id=:orderId AND s.source_item_id=:sourceItemId)
+                """).setParameter("orderId",orderId).setParameter("sourceItemId",sourceItemId).getSingleResult());
     }
 
     private void requireActiveSettlementMethod(UUID settlementMethodId, String subject) {
@@ -1785,8 +1846,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                             WHERE so.status = 0
                               AND so.is_deleted = FALSE
                               AND oi.is_deleted = FALSE
-                              AND fn_procurement_order_latest_approval_status('SUBCONTRACT', so.id)
-                                    IN ('PENDING', 'REJECTED')
+                              AND fn_procurement_order_reserves_source('SUBCONTRACT', so.id)
                               AND src.application_item_id IN (:ids)
                             GROUP BY src.application_item_id
                         ) pending ON pending.application_item_id = item.id
@@ -2009,7 +2069,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 order.getSourceDocNo(), safeItems,
                 nameResolver.nameWithCodeOf(order.getMakerId()), order.getCreatedAt(),
                 productionLinked, canEdit, canEdit,
-                order.getStatus() == STATUS_APPROVED,
+                order.getStatus() == STATUS_APPROVED && order.getTerminationCaseId()==null,
                 restrictionReason(pending),
                 approval,
                 sourceApplication == null ? null : sourceApplication.id(),
@@ -2017,7 +2077,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 priceMasked,
                 shortDeliveryHold,
                 priceMasked || order.getStatus()!=STATUS_APPROVED || order.getExchangeRate()==null || order.getExchangeRate().signum()<=0 ? null :
-                com.uten.imp.common.finance.ProcurementApprovedExchangeRate.read(em,"SUBCONTRACT",order.getId(),order.getExchangeRate()).rate());
+                com.uten.imp.common.finance.ProcurementApprovedExchangeRate.read(em,"SUBCONTRACT",order.getId(),order.getExchangeRate()).rate(),
+                closureRequests == null ? null : closureRequests.latest("SUBCONTRACT", order.getId()));
     }
 
     /** ADR-143 §二.3：草稿上缺 BOM 的委外件逐行标出(提交财务会被拒并通知研发完善)。 */

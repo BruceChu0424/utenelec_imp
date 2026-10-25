@@ -24,6 +24,7 @@ import sys
 import uuid
 
 import compose_bootstrap
+import scoped_bootstrap
 import prepare_hr_keys
 import prepare_source_authority
 import validate_source_table_coverage
@@ -31,11 +32,12 @@ import validate_source_completeness
 import reconcile_modules
 import verify_candidate
 import validate_loader_csv_contract
+import default_settlement_source_policy
+import finance_cash_source_policy as cash_policy
 from verify_finance_master_sources import load_seed_baseline, sealed_seed_baseline, BASELINE_FILE
 
-PGOPTIONS = ('-c log_min_messages=panic -c log_min_error_statement=panic '
-             '-c log_statement=none -c log_parameter_max_length=0 '
-             '-c log_parameter_max_length_on_error=0 -c client_encoding=UTF8')
+PGOPTIONS = '-c client_encoding=UTF8 -c jit=off -c DateStyle=ISO,YMD -c TimeZone=Asia/Shanghai'
+
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 IDENTIFIER = re.compile(r'[a-z_][a-z0-9_]{0,62}')
@@ -56,22 +58,30 @@ AUXILIARY_SQL = frozenset(('goods_excel_attributes.sql','goods_legacy_semantics.
     'goods_material_identity.sql','goods_bom_topology.sql','goods_legacy_media.sql'))
 
 
-def executable_modules(directory: Path):
+def executable_modules(directory: Path, scope: str="full"):
     for name in MODULES:
+        if scope==scoped_bootstrap.SCOPE and name=="migrate_finance.sql":continue
         path=directory/name if name in AUXILIARY_SQL else HERE/name
         if not path.is_file():
             raise ValueError('Required executable migration layer is missing: '+name)
         content=path.read_bytes()
+        if name=='migrate_finance.sql' and int(read_mapping_version().split('-v')[1])>=21:
+            content=cash_policy.render_sql(directory).encode('utf-8')+content
+        if scope==scoped_bootstrap.SCOPE and name=='migrate_production.sql':
+            content=scoped_bootstrap.production(content)
         if name=='migrate_stock_docs.sql':
             content+=b'\n'+(HERE/'migrate_rehearsal_stock_checks.sql').read_bytes()
             content+=b'\n'+(HERE/'migrate_rehearsal_stock_movement_checks.sql').read_bytes()
+        # Capture only source identity/default before compose drops each stage.
+        # Keep full stage names free for later owner and business modules.
+        content+=default_settlement_source_policy.render_source_capture(name).encode('utf-8')
         yield name,content
 
 
-def validate_execution_inputs(directory: Path):
+def validate_execution_inputs(directory: Path, scope: str="full"):
     # Static COPY contracts are checked before a claim or any business write.
     # A CSV can be internally valid yet belong to a different loader revision.
-    return validate_loader_csv_contract.validate_modules(list(executable_modules(directory)),directory)
+    return validate_loader_csv_contract.validate_modules(list(executable_modules(directory,scope)),directory)
 
 
 def digest(path: Path) -> str:
@@ -91,6 +101,11 @@ def literal(value) -> str:
 
 
 def verify_frozen_source() -> str:
+    local_manifest=os.environ.get('UTEN_LOCAL_IMPORT_SOURCE_MANIFEST')
+    local_digest=os.environ.get('UTEN_LOCAL_IMPORT_SOURCE_SHA256')
+    if local_manifest or local_digest:
+        from local_source_freeze import verify
+        return verify(ROOT,local_manifest or '',local_digest)['gitParent']
     controlled=[*HERE.glob('*.py'),*HERE.glob('migrate_*.sql'),HERE/'mapping-version.txt',HERE/'migrate.sh',HERE/'export_legacy.ps1',
                 HERE/'export_rehearsal_reference_audit.ps1',HERE/'warehouse_crosswalk.csv',
                 HERE/'export_legacy_goods_media.ps1',HERE/'source_schema_contract.json',
@@ -271,6 +286,16 @@ class Database:
         return result.stdout.decode('utf-8').strip()
 
 
+class IsolatedCanonicalDatabase(Database):
+    def __init__(self,container,name,user,expected_system_identifier,expected_database_oid):
+        if container!=scoped_bootstrap.CONTAINER or name!='uten_imp':
+            raise ValueError('Only the explicitly approved isolated canonical target is allowed')
+        self.container,self.name,self.user=container,name,user
+        self.expected_system_identifier,self.expected_database_oid=expected_system_identifier,expected_database_oid
+    def verify_local(self):
+        scoped_bootstrap.verify_transport(self)
+
+
 def output_sql(function, *args) -> str:
     stream = io.StringIO()
     with contextlib.redirect_stdout(stream):
@@ -302,7 +327,7 @@ def reconcile_sql(manifest_path: Path, run_id: str) -> str:
         sys.argv = original
 
 
-def prepare_inputs(raw: Path, clean: Path, overlay: Path, hr: Path, output: Path, excel: Path, reference: Path, hr_xls: Path, masters: Path, semantics: Path | None=None, injection: Path | None=None, topology: Path | None=None, source_backup: Path | None=None, media: Path | None=None, completeness_audit: Path | None=None, finance_seed_baseline: Path | None=None, finance_seed_baseline_sha256: str | None=None) -> dict:
+def prepare_inputs(raw: Path, clean: Path, overlay: Path, hr: Path, output: Path, excel: Path, reference: Path, hr_xls: Path, masters: Path, semantics: Path | None=None, injection: Path | None=None, topology: Path | None=None, source_backup: Path | None=None, media: Path | None=None, completeness_audit: Path | None=None, finance_seed_baseline: Path | None=None, finance_seed_baseline_sha256: str | None=None, scope: str="full", finance_cash_source_policy: Path | None=None) -> dict:
     importer_commit=verify_frozen_source()
     raw_manifest = verify_raw(raw)
     if source_backup is not None and digest(source_backup)!=raw_manifest['sourceBackupSha256']:
@@ -384,7 +409,12 @@ def prepare_inputs(raw: Path, clean: Path, overlay: Path, hr: Path, output: Path
         required_files.update(('goods_legacy_media.csv','goods_legacy_media.sql'))
     if any(not (output/name).is_file() for name in required_files):
         raise ValueError('The prepared import is missing a required executable layer input')
-    loader_contracts=validate_execution_inputs(output)
+    cash_policy_provenance=None
+    if scope=='full' and int(read_mapping_version().split('-v')[1])>=21:
+        if finance_cash_source_policy is None:
+            raise ValueError('V21 full prepare requires an explicit reviewed --finance-cash-source-policy package')
+        cash_policy_provenance=cash_policy.copy_package(finance_cash_source_policy,output,raw/'export_manifest.json')
+    loader_contracts=validate_execution_inputs(output,scope)
     scripts = {p.name: digest(p) for p in HERE.glob('*.py')}
     scripts.update({p.name: digest(p) for p in HERE.glob('migrate_*.sql')})
     scripts.update({name:digest(HERE/name) for name in ('export_legacy.ps1','export_rehearsal_reference_audit.ps1','mapping-version.txt','migrate.sh')})
@@ -393,7 +423,7 @@ def prepare_inputs(raw: Path, clean: Path, overlay: Path, hr: Path, output: Path
         scripts[name]=digest(HERE/name)
     scripts['export_source_completeness_audit.ps1']=digest(HERE/'export_source_completeness_audit.ps1')
     scripts.update({str(path.relative_to(HERE).as_posix()):digest(path) for path in (HERE/'java').glob('*.java')})
-    provenance = {'inputKind': 'derived-local-rehearsal-v1', 'rawManifestSha256': digest(raw / 'export_manifest.json'),
+    provenance = {'executionScope':scope,'inputKind': 'derived-local-rehearsal-v1', 'rawManifestSha256': digest(raw / 'export_manifest.json'),
                   'importerRepositoryCommit':importer_commit,
                   'rawDirectory': str(raw.resolve()), 'rawSourceBackupSha256': raw_manifest['sourceBackupSha256'],
                   'loaderCsvContracts':loader_contracts,
@@ -414,9 +444,14 @@ def prepare_inputs(raw: Path, clean: Path, overlay: Path, hr: Path, output: Path
                   'extraInputs': {name: digest(output / name) for name in
                                   ('warehouse_crosswalk.csv','goods_owning_warehouse.csv','goods_excel_attributes.sql',
                                    'goods_legacy_semantics.sql','goods_material_identity.sql','goods_bom_topology.sql',
-                                   'goods_legacy_media.sql') if (output/name).is_file()},
+                                   'goods_legacy_media.sql',*cash_policy.PACKAGE_FILES) if (output/name).is_file()},
                   'layers': {str(directory): {p.name: digest(p) for p in sorted(directory.glob('*.json'))}
                              for directory in (clean, masters, overlay, hr)}}
+    if cash_policy_provenance is not None:
+        provenance['financeCashSourcePolicy']=cash_policy_provenance
+    if os.environ.get('UTEN_LOCAL_IMPORT_SOURCE_MANIFEST'):
+        from local_source_freeze import verify
+        provenance['localSourceFreeze']=verify(ROOT,os.environ['UTEN_LOCAL_IMPORT_SOURCE_MANIFEST'],os.environ.get('UTEN_LOCAL_IMPORT_SOURCE_SHA256'))
     if finance_baseline is not None:
         provenance.update(financeSeedBaselineFile=BASELINE_FILE,
                           financeSeedBaselineSha256=finance_baseline['sha256'])
@@ -429,7 +464,7 @@ def prepare_inputs(raw: Path, clean: Path, overlay: Path, hr: Path, output: Path
     return manifest
 
 
-def apply(db: Database, directory: Path, env: Path, log: Path, confirmation: str, approval: str):
+def apply(db: Database, directory: Path, env: Path, log: Path, confirmation: str, approval: str, scope: str="full"):
     if confirmation != 'RESET_' + db.name:
         raise ValueError('Explicit exact rehearsal target confirmation is required')
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:-]{2,127}',approval):
@@ -442,6 +477,13 @@ def apply(db: Database, directory: Path, env: Path, log: Path, confirmation: str
     finance_baseline=None
     if int(read_mapping_version().split('-v')[1])>=18:
         finance_baseline=sealed_seed_baseline(directory,manifest['provenance'])
+    if scope=='full' and int(read_mapping_version().split('-v')[1])>=21:
+        policy=manifest['provenance'].get('financeCashSourcePolicy',{})
+        if policy.get('format')!=cash_policy.FORMAT or policy.get('file')!=cash_policy.POLICY_FILE or digest(directory/cash_policy.POLICY_FILE)!=policy.get('sha256'):
+            raise ValueError('V21 requires its exact prepared finance cash source policy')
+        actual_policy=cash_policy.load_policy(directory,{record['file']:record for record in manifest['files']})
+        if actual_policy['files']!=policy.get('evidence_files') or actual_policy['policy']['raw_manifest_sha256']!=manifest['provenance']['rawManifestSha256'] or actual_policy['policy']['source_backup_sha256']!=manifest['provenance']['rawSourceBackupSha256']:
+            raise ValueError('Prepared cash source policy/evidence/raw source binding differs')
     backup_path=manifest['provenance'].get('sourceBackupPath')
     if not backup_path or digest(Path(backup_path))!=manifest['provenance']['rawSourceBackupSha256']:
         raise ValueError('The actual selected backup changed or is unavailable; do not reuse an old export')
@@ -452,6 +494,12 @@ def apply(db: Database, directory: Path, env: Path, log: Path, confirmation: str
             raise ValueError('The full rehearsal requires every executable semantic/material/topology layer: '+name)
     if verify_frozen_source()!=manifest['provenance']['importerRepositoryCommit']:
         raise ValueError('Prepared importer commit changed')
+    local_freeze=manifest['provenance'].get('localSourceFreeze')
+    if local_freeze is not None or os.environ.get('UTEN_LOCAL_IMPORT_SOURCE_MANIFEST'):
+        from local_source_freeze import verify
+        actual=verify(ROOT,os.environ.get('UTEN_LOCAL_IMPORT_SOURCE_MANIFEST',''),os.environ.get('UTEN_LOCAL_IMPORT_SOURCE_SHA256'))
+        if actual!=local_freeze:
+            raise ValueError('Prepared and executing local source freezes differ')
     raw = Path(manifest['provenance']['rawDirectory'])
     raw_manifest = verify_raw(raw)
     if digest(raw / 'export_manifest.json') != manifest['provenance']['rawManifestSha256']:
@@ -499,7 +547,8 @@ def apply(db: Database, directory: Path, env: Path, log: Path, confirmation: str
         checked=verify_auxiliary(directory_path,record['manifest'],record['generator'],required)
         if record['manifest']=='bom_topology_manifest.json' and checked.get('valid') is not True:
             raise ValueError('Prepared BOM graph validation is invalid')
-    validate_execution_inputs(directory)
+    if manifest["provenance"].get("executionScope","full")!=scope:raise ValueError("Prepared scope differs from execution")
+    validate_execution_inputs(directory,scope)
     migration_records = sorted((int(p.name.split('__')[0][1:]), p.name,
                                 verify_candidate.flyway_checksum(p.read_bytes()))
                                for p in (ROOT / 'server/src/main/resources/db/migration').glob('V*__*.sql'))
@@ -522,21 +571,30 @@ def apply(db: Database, directory: Path, env: Path, log: Path, confirmation: str
     if not re.fullmatch(r'[0-9a-f-]{36}',actor):
         raise ValueError('Exactly the preserved enabled administrator is required as rehearsal actor')
     log.parent.mkdir(parents=True,exist_ok=True)
+    # Fail before claiming or loading business rows, rather than discovering an
+    # invalid default after production/finance's expensive full-source loops.
+    # Source identities live in a private file, not the hot RUNNING JSON.
+    settlement_audit_path=log.parent/'default-settlement-source-audit.json'
+    settlement_audit=default_settlement_source_policy.preflight(
+        directory,json.loads(db.sql(default_settlement_source_policy.METHODS_SQL)),
+        manifest_sha,settlement_audit_path)
     crypto = prepare_hr_keys.render(prepare_hr_keys.read_crypto(env, dict(os.environ)))
-    settings = ("SET LOCAL app.legacy_import='on';\nSET LOCAL standard_conforming_strings=on;\n"
+    settings = ("SET LOCAL jit=off;\nSET LOCAL uten.bootstrap_defer_owner_custody='on';\nSET LOCAL app.legacy_import='on';\nSET LOCAL standard_conforming_strings=on;\n"
                 +f"SET LOCAL app.actor_id={literal(actor)};\nSET LOCAL app.actor_account='ops:legacy_rehearsal';\n"
                 + ''.join(f'SET LOCAL uten.{key}={literal(value)};\n' for key, value in {
                     'bootstrap_run_id': run_id, 'bootstrap_mapping_version': mapping,
                     'bootstrap_repository_commit': candidate, 'bootstrap_manifest_sha': manifest_sha,
                     'rehearsal_actor_user_id':actor,
                     'legacy_unassigned_warehouse_code': ''}.items()))
-    summary = dict(targetDatabase=db.name, targetSystemIdentifier=identity,
+    summary = dict(executionScope=scope,fullBootstrap=(scope=="full"),targetDatabase=db.name, targetSystemIdentifier=identity,
                    targetApprovalReference=approval,
                    importAtomicity='single-transaction-v1', inputKind='derived-local-rehearsal-v1',
                    rawManifestSha256=manifest['provenance']['rawManifestSha256'],
                    sourceSnapshotAsOfUtc=manifest['sourceSnapshotAsOfUtc'], productionAcceptance=False)
     if finance_baseline is not None:
         summary['financeSeedBaselineSha256']=finance_baseline['sha256']
+    if local_freeze is not None:
+        summary['localSourceFreeze']=local_freeze
     claim = ('BEGIN;\n' + settings + (HERE / 'migrate_claim_guard.sql').read_text(encoding='utf-8')
              + (HERE / 'migrate_bootstrap_target_guard.sql').read_text(encoding='utf-8')
              + f'''INSERT INTO legacy_migration_runs(run_id,target,status,migration_mode,
@@ -561,6 +619,8 @@ COMMIT;\n''')
         sql += source_authority(manifest_path)
         audit_files = [*directory.glob('*.csv'),*directory.glob('*.sql'), manifest_path, *HERE.glob('migrate_*.sql'), Path(__file__)]
         if finance_baseline is not None:audit_files.append(directory/BASELINE_FILE)
+        if scope=='full' and int(read_mapping_version().split('-v')[1])>=21:
+            audit_files.extend(directory/name for name in cash_policy.PACKAGE_FILES)
         for path in audit_files:
             sql += f'''INSERT INTO legacy_migration_run_files(run_id,file_name,sha256,byte_size)
 VALUES ({literal(run_id)}::uuid,{literal(path.name)},{literal(digest(path))},{path.stat().st_size})
@@ -572,57 +632,76 @@ ON CONFLICT(run_id,file_name) DO NOTHING;\n'''
         sql+=f'''INSERT INTO legacy_migration_run_files(run_id,file_name,sha256,byte_size)
 VALUES ({literal(run_id)}::uuid,'source-completeness-audit-manifest.json',
 {literal(digest(completeness_manifest))},{completeness_manifest.stat().st_size});\n'''
-        for name,content in executable_modules(directory):
+        for name,content in executable_modules(directory,scope):
             sql += '\n' + compose_bootstrap.compose(content, name).decode('utf-8')
             if name in ('migrate_mould_data.sql','migrate_client_data.sql','migrate_supplier_data.sql','migrate_goods_data.sql'):
                 # Planner statistics from an empty target otherwise remain stale
                 # while guarded master domains grow. Keep every normal guard.
                 sql += '\nANALYZE master_code_reservation_members;\nANALYZE master_code_reservations;\n'
+            sql += scoped_bootstrap.analyze_targets_sql(name)
             sql += 'SELECT '+literal(name)+',clock_timestamp() AS module_finished_at;\n'
+        # Bind compact source-zero evidence only after all V626 hot loops, and
+        # recheck both families against their preserved minimal source/UUIDs.
+        sql+='\n'+default_settlement_source_policy.render_late_audit(
+            settlement_audit,run_id,settlement_audit_path)
         # The small operator/doc-actor source archive is built from sealed files
         # only after every V626/V913 registration has finished. It never creates
         # a login/employee, guesses an actor UUID, or adds a loader COPY.
         from personnel_source_archive import render_personnel_source_archive_sql
         sql += '\n'+render_personnel_source_archive_sql(inputs=directory,run_id=run_id,
             manifest_sha256=manifest_sha,frozen_commit=candidate,mapping_version=mapping)+'\n'
+        sql+='\nSELECT pg_temp.flush_bootstrap_owner_custody_pending();\n'
         counts = {r['file']: r['rows'] for r in manifest['files']}
-        for label, name in zip(('material_categories','mould_categories','client_categories','supplier_categories',
-                                 'colors','units','currencies','warehouses','moulds','clients','suppliers','goods'),
-                                ('goods_categories.csv','mould_categories.csv','client_categories.csv',
-                                 'supplier_categories.csv','color.csv','unit.csv','currency.csv','warehouse.csv',
-                                 'mould.csv','client.csv','supplier.csv','goods.csv')):
-            sql += f'\\set expected_{label} {counts[name]}\n'
-        sql += f'\\set expected_csv_files {len(counts)}\n'
-        sql += compose_bootstrap.compose((HERE / 'migrate_reconciliation.sql').read_bytes(), 'migrate_reconciliation.sql').decode()
-        sql += reconcile_sql(manifest_path, run_id)
-        sql += f'''DO $$ BEGIN
-IF (SELECT count(*) FROM legacy_migration_reconciliation_items WHERE run_id={literal(run_id)}::uuid)<>23
-OR EXISTS(SELECT 1 FROM legacy_migration_reconciliation_items WHERE run_id={literal(run_id)}::uuid AND NOT passed)
-THEN RAISE EXCEPTION 'Rehearsal structural reconciliation failed'; END IF;
-END; $$;
-UPDATE legacy_migration_runs SET status='SUCCESS',reconciliation_status='PASSED',exit_code=0,
-finished_at=now(),reconciliation_summary=reconciliation_summary || '{{"automatedCheckCount":23,"productionAcceptance":false}}'::jsonb
-WHERE run_id={literal(run_id)}::uuid;\n'''
-        # This SUCCESS is still private to the single uncommitted transaction.
-        # V916 completion must see the final status when deferred constraints
-        # resolve. A failed check rolls back this marker and every business row;
-        # only audit/report writes follow the strict finalization boundary.
-        sql += compose_bootstrap.compose((HERE / 'migrate_finalize_checks.sql').read_bytes(), 'migrate_finalize_checks.sql').decode()
-        sql += compose_bootstrap.compose((HERE / 'migrate_audit_summary.sql').read_bytes(), 'migrate_audit_summary.sql').decode()
+        if scope==scoped_bootstrap.SCOPE:
+            sql += scoped_bootstrap.finish_sql(directory,manifest,run_id,finance_baseline,approval)
+        else:
+            for label, name in zip(('material_categories','mould_categories','client_categories','supplier_categories',
+                                     'colors','units','currencies','warehouses','moulds','clients','suppliers','goods'),
+                                    ('goods_categories.csv','mould_categories.csv','client_categories.csv',
+                                     'supplier_categories.csv','color.csv','unit.csv','currency.csv','warehouse.csv',
+                                     'mould.csv','client.csv','supplier.csv','goods.csv')):
+                sql += f'\\set expected_{label} {counts[name]}\n'
+            sql += f'\\set expected_csv_files {len(counts)}\n'
+            sql += compose_bootstrap.compose((HERE / 'migrate_reconciliation.sql').read_bytes(), 'migrate_reconciliation.sql').decode()
+            sql += reconcile_sql(manifest_path, run_id)
+            # Emit only controlled metric names and aggregate counts before a
+            # rejection. SQLSTATE-only logging otherwise hides which of the
+            # full gates failed and wastes a complete retry for diagnosis.
+            sql += f'''SELECT 'STRUCTURAL_RECONCILIATION_FAILED_METRIC',source_entity,target_entity,metric,
+    expected_value,actual_value,passed
+    FROM legacy_migration_reconciliation_items
+    WHERE run_id={literal(run_id)}::uuid AND NOT passed
+    ORDER BY source_entity,target_entity,metric;
+    SELECT 'STRUCTURAL_RECONCILIATION_COUNT',count(*)
+    FROM legacy_migration_reconciliation_items WHERE run_id={literal(run_id)}::uuid;\n'''
+            sql += f'''DO $$ BEGIN
+    IF (SELECT count(*) FROM legacy_migration_reconciliation_items WHERE run_id={literal(run_id)}::uuid)<>23
+    OR EXISTS(SELECT 1 FROM legacy_migration_reconciliation_items WHERE run_id={literal(run_id)}::uuid AND NOT passed)
+    THEN RAISE EXCEPTION 'Rehearsal structural reconciliation failed'; END IF;
+    END; $$;
+    UPDATE legacy_migration_runs SET status='SUCCESS',reconciliation_status='PASSED',exit_code=0,
+    finished_at=now(),reconciliation_summary=reconciliation_summary || '{{"automatedCheckCount":23,"productionAcceptance":false}}'::jsonb
+    WHERE run_id={literal(run_id)}::uuid;\n'''
+            # This SUCCESS is still private to the single uncommitted transaction.
+            # V916 completion must see the final status when deferred constraints
+            # resolve. A failed check rolls back this marker and every business row;
+            # only audit/report writes follow the strict finalization boundary.
+            sql += compose_bootstrap.compose((HERE / 'migrate_finalize_checks.sql').read_bytes(), 'migrate_finalize_checks.sql').decode()
+            sql += compose_bootstrap.compose((HERE / 'migrate_audit_summary.sql').read_bytes(), 'migrate_audit_summary.sql').decode()
         sql += 'COMMIT;\n'
         # Each attempt owns its CSV namespace, including concurrent imports to
         # other local databases. Only already-validated static COPY paths move.
         sql=re.sub(r"(?m)^(\\copy[^\n]+FROM )'/tmp/([A-Za-z0-9][A-Za-z0-9_.-]*[.]csv)'",
                    lambda m:m[1]+literal(remote_directory+'/'+m[2]),sql)
         compiled = log.parent / 'compiled-bootstrap.sql'
-        compiled.write_text(sql, encoding='utf-8')
+        compiled.write_text(sql, encoding='utf-8',newline='\n')
         if verify_frozen_source()!=candidate:
             raise ValueError('Frozen importer changed during SQL assembly')
         db.sql(f'''INSERT INTO legacy_migration_run_files(run_id,file_name,sha256,byte_size)
 VALUES ({literal(run_id)}::uuid,'compiled-bootstrap.sql',{literal(digest(compiled))},{compiled.stat().st_size});''')
         with log.open('wb') as stream:
-            db.sql(sql, output=stream)
-        print('REHEARSAL_IMPORT_SUCCESS run_id=' + run_id)
+            db.sql("\\set scoped_execution_template_sha256 "+digest(compiled)+"\n"+sql, output=stream)
+        print(('SCOPED_IMPORT_COMMITTED' if scope==scoped_bootstrap.SCOPE else 'REHEARSAL_IMPORT_SUCCESS')+' run_id='+run_id)
     except BaseException:
         db.sql(f"UPDATE legacy_migration_runs SET status='FAILED',exit_code=1,finished_at=now() WHERE run_id={literal(run_id)}::uuid AND status='RUNNING';")
         raise
@@ -642,23 +721,28 @@ def main():
     prepare = sub.add_parser('prepare')
     for name in ('raw','clean','overlay','hr','output','excel','reference','hr-xls','masters','semantics','injection','topology','source-backup','media','completeness-audit'):
         prepare.add_argument('--' + name, type=Path, required=True)
+    prepare.add_argument('--scope',choices=('full',scoped_bootstrap.SCOPE),default='full')
+    prepare.add_argument('--finance-cash-source-policy',type=Path)
     prepare.add_argument('--finance-seed-baseline',type=Path,required=True)
     prepare.add_argument('--finance-seed-baseline-sha256',required=True)
     execute = sub.add_parser('apply')
     execute.add_argument('--input', type=Path, required=True)
     execute.add_argument('--database', required=True)
-    execute.add_argument('--container', default='uten-imp-postgres')
-    execute.add_argument('--user', default='uten')
+    execute.add_argument('--scope',choices=('full',scoped_bootstrap.SCOPE),default='full')
+    execute.add_argument('--expected-system-identifier',required=True)
+    execute.add_argument('--expected-database-oid',type=int,required=True)
+    execute.add_argument('--container', default=scoped_bootstrap.CONTAINER)
+    execute.add_argument('--user', default='uten_migrator')
     execute.add_argument('--env-file', type=Path, required=True)
     execute.add_argument('--log', type=Path, required=True)
     execute.add_argument('--confirm', required=True)
     execute.add_argument('--approval-reference', required=True)
     args = parser.parse_args()
     if args.command == 'prepare':
-        result = prepare_inputs(args.raw,args.clean,args.overlay,args.hr,args.output,args.excel,args.reference,args.hr_xls,args.masters,args.semantics,args.injection,args.topology,args.source_backup,args.media,args.completeness_audit,args.finance_seed_baseline,args.finance_seed_baseline_sha256)
+        result = prepare_inputs(args.raw,args.clean,args.overlay,args.hr,args.output,args.excel,args.reference,args.hr_xls,args.masters,args.semantics,args.injection,args.topology,args.source_backup,args.media,args.completeness_audit,args.finance_seed_baseline,args.finance_seed_baseline_sha256,args.scope,args.finance_cash_source_policy)
         print(json.dumps({'preparedCsvFiles':len(result['files']), 'output':str(args.output)}))
     else:
-        apply(Database(args.container,args.database,args.user),args.input,args.env_file,args.log,args.confirm,args.approval_reference)
+        apply(IsolatedCanonicalDatabase(args.container,args.database,args.user,args.expected_system_identifier,args.expected_database_oid),args.input,args.env_file,args.log,args.confirm,args.approval_reference,args.scope)
 
 
 if __name__ == '__main__':

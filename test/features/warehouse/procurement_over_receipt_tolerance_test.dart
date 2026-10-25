@@ -10,8 +10,10 @@ import 'package:flutter/material.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/arrival_form_draft_codec.dart';
 import 'package:uten_imp/features/warehouse/pages/finance_arrival_exception_pages.dart';
@@ -20,6 +22,7 @@ import 'package:uten_imp/features/warehouse/repositories/procurement_inbound_rep
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
+import '../../support/page_resume_test_bridge.dart';
 
 Map<String, dynamic> _expectationJson({
   String orderType = 'PURCHASE',
@@ -265,6 +268,65 @@ void main() {
       );
     });
   });
+
+  testWidgets(
+    'finance arrival detail return refreshes its legal list route once',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _FinanceStageRepository();
+      final router = GoRouter(
+        initialLocation: RouteName.financeArrivalExceptions,
+        routes: [
+          GoRoute(
+            path: RouteName.financeArrivalExceptions,
+            builder: (_, _) => const FinanceArrivalExceptionTasksPage(),
+          ),
+          GoRoute(
+            path: '${RouteName.financeArrivalExceptions}/:id',
+            builder: (context, state) => Scaffold(
+              body: TextButton(
+                onPressed: () => context.pop(),
+                child: Text('Return ${state.pathParameters['id']}'),
+              ),
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            procurementInboundRepositoryProvider.overrideWithValue(repository),
+          ],
+          child: PageResumeTestBridge(
+            router: router,
+            child: MaterialApp.router(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              routerConfig: router,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(repository.statuses, ['PENDING_FINANCE']);
+      await tester.tap(
+        find.byKey(const Key('finance-arrival-task-exception-1')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Return exception-1'), findsOneWidget);
+      expect(repository.statuses, ['PENDING_FINANCE']);
+      await tester.tap(find.text('Return exception-1'));
+      await tester.pumpAndSettle();
+      expect(repository.statuses, ['PENDING_FINANCE', 'PENDING_FINANCE']);
+      expect(
+        find.byKey(const Key('finance-arrival-task-exception-1')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('财务超量审批已处理分类保留原异常入口', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 900));

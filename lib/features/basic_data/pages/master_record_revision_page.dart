@@ -53,10 +53,9 @@ class _RevisionPageState extends State<MasterRecordRevisionPage> {
   Widget build(BuildContext context) => Scaffold(
     appBar: UtenAppBar(
       title: masterEditText(context, '修改版本详情', 'Revision details', '변경 버전 상세'),
-      leading: AbsorbPointer(
-        absorbing: _busy,
-        child: UtenBackButton(onPressed: _back),
-      ),
+      // 忙时空回调挡住返回（传 null 会回落默认返回行为）；不包 AbsorbPointer，
+      // 让 UtenAppBar 认出 UtenBackButton 以收紧 leading 槽。
+      leading: UtenBackButton(onPressed: _busy ? () {} : _back),
     ),
     body: SafeArea(
       child: UtenContentContainer.wide(

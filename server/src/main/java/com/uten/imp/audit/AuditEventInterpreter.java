@@ -272,6 +272,8 @@ public class AuditEventInterpreter {
     }
 
     private String actionLabel(String action, String path, String httpMethod) {
+        String companyFileLabel = companyFileActionLabel(action);
+        if (companyFileLabel != null) return companyFileLabel;
         String reconcileLabel = RECONCILE_ACTION_LABELS.get(action);
         if (reconcileLabel != null) return reconcileLabel;
         String aiLabel = AI_ACTION_LABELS.get(action);
@@ -375,6 +377,25 @@ public class AuditEventInterpreter {
      * 语义写事件「资源.方法」的中文动作: 关键动作用集中登记的名称, 其余先按路径里的动作段,
      * 再按请求方式给通用名称。
      */
+    private static String companyFileActionLabel(String action) {
+        return switch (action) {
+            case "company_file_create", "company_file.create_folder" -> "新建公司文件夹";
+            case "company_file_upload_reserve", "company_file.reserve_file" -> "开始上传公司文件";
+            case "company_file_upload_complete", "company_file.complete" -> "完成公司文件上传";
+            case "company_file_edit", "company_file.edit" -> "编辑公司资料信息";
+            case "company_file_move", "company_file.move" -> "移动公司资料";
+            case "company_file_reorder", "company_file.reorder" -> "调整公司资料顺序";
+            case "company_file_recycle", "company_file.delete" -> "移入公司资料回收站";
+            case "company_file_restore", "company_file.restore" -> "还原公司资料";
+            case "company_file_permissions_set", "company_file.set_permissions" -> "设置公司目录权限";
+            case "company_file_password_set", "company_file.set_password" -> "设置公司目录密码";
+            case "company_file_password_clear" -> "清除公司目录密码";
+            case "company_file_unlock", "company_file.unlock" -> "解锁公司目录";
+            case "company_file_lock", "company_file.lock" -> "重新锁定公司目录";
+            default -> null;
+        };
+    }
+
     private String semanticActionLabel(String verb, String path, String httpMethod) {
         String registered = AuditActionNames.verbLabel(verb);
         if (registered != null) return registered;
@@ -965,6 +986,7 @@ public class AuditEventInterpreter {
         values.put("/api/website-inquiries", "官网询价");
         values.put("/api/rd/tasks", "研发任务");
         values.put("/api/attachments", "附件");
+        values.put("/api/company-files", "工作台 · 公司资料库");
         return Collections.unmodifiableMap(new LinkedHashMap<>(values));
     }
 
@@ -1074,6 +1096,8 @@ public class AuditEventInterpreter {
         values.put("business_prefix_reservation_members", "业务前缀预留成员");
         values.put("business_outbox", "业务事件发件箱");
         values.put("attachments", "附件");
+        values.put("company_file_nodes", "公司资料");
+        values.put("company_file_acl", "公司目录权限");
         values.put("attachment_upload_sessions", "附件上传会话");
         values.put("attachment_object_outbox", "附件事件发件箱");
         values.put("attachment_reconciliation_findings", "附件对账差异");
@@ -1654,6 +1678,15 @@ public class AuditEventInterpreter {
         reconcileApplies.put("started_at", "开始时间");
         reconcileApplies.put("finished_at", "结束时间");
         Map<String, Map<String, String>> values = new LinkedHashMap<>();
+        values.put("company_file_nodes", Map.ofEntries(
+                Map.entry("parent_id", "上级文件夹"), Map.entry("kind", "资料类型"),
+                Map.entry("position", "排列位置"), Map.entry("inherit_permissions", "继承上级权限"),
+                Map.entry("password_hash", "目录密码"), Map.entry("password_revision", "密码版本"),
+                Map.entry("attachment_id", "文件原件"), Map.entry("pending", "上传未完成"),
+                Map.entry("deletion_batch", "回收批次")));
+        values.put("company_file_acl", Map.of(
+                "node_id", "文件夹", "subject_type", "授权对象类型", "subject_id", "授权对象",
+                "effect", "允许或拒绝", "actions", "操作权限"));
         values.put("document_unapprovals", Map.ofEntries(
                 Map.entry("family", "单据类别"), Map.entry("original_id", "反审前单据"),
                 Map.entry("draft_id", "后续单据"), Map.entry("draft_bill_no", "后续单号"),

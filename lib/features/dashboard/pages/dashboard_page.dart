@@ -32,7 +32,6 @@ import '../../../features/notice/widgets/celebration_popup_gate.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../widgets/dashboard_overview_sections.dart';
-import '../widgets/system_test_area.dart';
 import '../widgets/workbench_module_area.dart';
 
 class DashboardPage extends ConsumerWidget {
@@ -55,9 +54,6 @@ class DashboardPage extends ConsumerWidget {
         const SizedBox(height: UtenSpacing.s24),
         // 功能模块区：原侧边栏全部分组迁入，按权限点显隐（各组可折叠）
         const WorkbenchModuleArea(),
-        const SizedBox(height: UtenSpacing.s24),
-        // 系统测试区（仅 Debug 连接本机后端的超管可见）。
-        const SystemTestArea(),
         // 登录庆典弹窗触发器（每日一次；不可见）。
         const CelebrationPopupGate(),
       ],

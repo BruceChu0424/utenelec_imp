@@ -13,7 +13,9 @@ public final class TestFlyway {
     private TestFlyway() { }
 
     public static FluentConfiguration configure() {
-        return Flyway.configure().initSql(MIGRATION_INIT_SQL);
+        return Flyway.configure().initSql(MIGRATION_INIT_SQL)
+                .callbacks(new com.uten.imp.migration.AppliedMigrationCompatibilityCallback(),
+                        new com.uten.imp.migration.AuditFreshStartGuardCallback());
     }
 
     /** Retains fixture-specific connection settings after the shared migration policy. */

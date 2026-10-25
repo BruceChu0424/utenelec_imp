@@ -398,6 +398,9 @@ String subcontractShortDeliveryEventLabel(String code) =>
 /// 只够做一部分时为「可部分下单」(ADR-156)。
 String subcontractProgressStatusLabel(String code) =>
     switch (code.toUpperCase()) {
+      'ORDER_CLOSE_PENDING' => '结束待财务审批',
+      'ORDER_CLOSE_REJECTED' => '结束申请已退回',
+      'ORDER_CLOSED' => '已提前结束',
       'ORDER_PENDING_APPROVAL' => '等待财务审核',
       'FINANCE_REJECTED' => '财务已退回',
       'FINANCE_REVIEW_PENDING' => '改量待财务复核',

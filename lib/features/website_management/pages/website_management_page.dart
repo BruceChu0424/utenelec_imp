@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -601,6 +600,5 @@ class _ConnectionEditorState extends State<_ConnectionEditor> {
   }
 }
 
-String _date(DateTime? value, AppLocalizations l) => value == null
-    ? l.websiteNoRecord
-    : DateFormat('yyyy-MM-dd HH:mm').format(ChinaDateTime.fromInstant(value));
+String _date(DateTime? value, AppLocalizations l) =>
+    value == null ? l.websiteNoRecord : ChinaDateTime.formatInstant(value);

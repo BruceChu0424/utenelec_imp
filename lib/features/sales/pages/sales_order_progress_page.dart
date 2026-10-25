@@ -155,8 +155,9 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   /// 当前主工作阶段内的状态表头筛选；清除时回到主阶段全部记录。
   String? _stageFilter;
 
-  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
+  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
+  /// 最近三个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
 
   String _keyword = '';
   int _requestVersion = 0;
@@ -323,7 +324,10 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     setState(() {
       _seg = seg;
       _stageFilter = null;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
+      // 进历史段重新按默认近三个月加载；非历史段不消费时间门控，回 all() 占位。
+      _historyTime = seg.history
+          ? UtenHistoryTimeValue.lastThreeMonths()
+          : const UtenHistoryTimeValue.all();
     });
     if (!seg.history || !_historyTime.isNone) _load(1);
   }
@@ -404,10 +408,6 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   /// （2026-10-18 进度详情整页退役：产品进度与「去发货」都在订货单详情页。）
   Future<void> _ship(SalesOrderProgressRow row) async {
     await context.push(RoutePath.salesDocDetail('orders', row.orderId));
-    if (mounted) {
-      await _load(_page);
-      _loadStageCounts();
-    }
   }
 
   /// 行菜单条目（右击/长按弹出）。可用性按权限 + 行状态实时决定。
@@ -549,9 +549,8 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     // 返回即刷新：从详情/编辑页回到本页时重拉当前页与计数，不再看到老数据。
     // 嵌入态（任务中心「订货进度」大类）无独立路由落点时回退到进度页路径。
     _myLocation ??= currentLocationOr(context, RouteName.salesOrderProgress);
-    ref.onPageResume(_myLocation!, () {
-      _load(_page);
-      _loadStageCounts();
+    ref.onPageResume(_myLocation!, () async {
+      await Future.wait([_load(_page), _loadStageCounts()]);
     });
     // 主阶段 + 表格：独立页与任务中心嵌入态共用一份。
     // 嵌入态由宿主页提供容器，避免双重边距；头部空行程只在独立页留。

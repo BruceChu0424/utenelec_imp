@@ -148,6 +148,8 @@ class ReceiptReferenceTests(unittest.TestCase):
         for kind in self.sources:
             for field in receipt.COMMON_FIELDS + receipt.EXTRA_FIELDS[kind]: self.assertIn("'" + field + "'", sql)
         self.assertIn('IS DISTINCT FROM', sql)
+        self.assertIn('ORDER BY field COLLATE "C"', sql)
+        self.assertIn('unnest(p.target_fields)', sql)
         self.assertIn('targets_without_exact_proof', sql)
 
     def test_aggregate_result_is_safe_and_retains_pending_counts(self):

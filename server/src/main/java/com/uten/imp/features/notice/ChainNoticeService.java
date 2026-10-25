@@ -47,7 +47,8 @@ import java.util.UUID;
  * sanity check（见 {@link NoticeService#publishForUser} 6 参重载）。
  */
 @Service
-public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.imp.application.port.ProductionDrawInstructionNoticePort {
+public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.imp.application.port.ProductionDrawInstructionNoticePort,
+        com.uten.imp.application.port.ProcurementClosureNoticePort {
     @org.springframework.beans.factory.annotation.Autowired
     private ReviewNoticeAudience reviewAudience;
 
@@ -5079,6 +5080,14 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                            approval_case.amount_snapshot,
                            approval_case.order_type,
                            approval_case.order_id,
+                           approval_case.request_type,
+                           approval_case.status AS approval_status,
+                           approval_case.replacement_order_id,
+                           approval_case.submission_snapshot #>> '{closureRequest,reason}' AS closure_reason,
+                           CASE WHEN approval_case.order_type='PURCHASE' THEN
+                               (SELECT termination_case_id IS NOT NULL FROM purchase_orders WHERE id=approval_case.order_id)
+                               ELSE (SELECT termination_case_id IS NOT NULL FROM subcontract_orders WHERE id=approval_case.order_id)
+                           END AS is_terminated,
                            approval_case.assignee_user_id,
                            approval_case.submitted_by_user_id,
                            approval_case.rejection_reason,
@@ -5103,6 +5112,35 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     str(approval.get("order_type")))
                     ? "委外订货单"
                     : "采购订货单";
+            boolean closure = Set.of("CLOSE","CLOSE_AND_REORDER").contains(str(approval.get("request_type")));
+            if (closure) {
+                UUID orderId = (UUID) approval.get("order_id");
+                boolean subcontract = "SUBCONTRACT".equals(str(approval.get("order_type")));
+                String orderRoute = (subcontract ? "/subcontract/orders/" : "/purchase/orders/") + orderId;
+                if (EVENT_PROCUREMENT_FINANCE_SUBMITTED.equals(eventType)) {
+                    if (approval.get("approval_status")!=null && !"PENDING".equals(str(approval.get("approval_status")))) return;
+                    String mode = "CLOSE_AND_REORDER".equals(str(approval.get("request_type"))) ? "结束并按剩余量重建订单" : "直接结束";
+                    for (UUID reviewer : financeReviewerUserIds()) {
+                        sendToUser(reviewer,TYPE_APPROVAL,"结束待财务审批："+billNo,
+                                orderLabel+" "+billNo+" 申请"+mode+"。原因："+str(approval.get("closure_reason"))
+                                        +"。审批通过前继续按原订单办理，审批时会再次核对实际收退货和物料事实。",
+                                "/finance/procurement-approvals",EVENT_PROCUREMENT_FINANCE_SUBMITTED,null,approvalCaseId);
+                    }
+                } else if (EVENT_PROCUREMENT_FINANCE_REJECTED.equals(eventType)) {
+                    notifyUser((UUID)approval.get("submitted_by_user_id"),TYPE_URGENT,"结束申请被财务退回："+billNo,
+                            orderLabel+" "+billNo+" 的结束申请未通过。原因："+str(approval.get("rejection_reason"))
+                                    +"。原订单继续履行；核对原因后可重新申请结束。",orderRoute);
+                } else if (EVENT_PROCUREMENT_FINANCE_APPROVED.equals(eventType)) {
+                    UUID replacement=(UUID)approval.get("replacement_order_id");
+                    notifyUser((UUID)approval.get("submitted_by_user_id"),TYPE_WORKFLOW,"订单已结束："+billNo,
+                            orderLabel+" "+billNo+" 的结束申请已获财务批准，仓库不再跟进原单剩余到货。"
+                                    +"已合格待入库的实物可继续入库，账务及在外材料责任保留；已核定实收的更正须另行核对。"
+                                    +(replacement==null?"":"剩余量已生成新订单草稿，请选择新供应商、确认条款后重新提交财务审批。"),
+                            replacement==null?orderRoute:(subcontract?"/subcontract/orders/":"/purchase/orders/")+replacement);
+                }
+                return;
+            }
+            if (EVENT_PROCUREMENT_FINANCE_APPROVED.equals(eventType) && Boolean.TRUE.equals(approval.get("is_terminated"))) return;
             if (EVENT_PROCUREMENT_FINANCE_SUBMITTED.equals(eventType)) {
                 String title = "待财务审核：" + billNo;
                 String content = orderLabel + " " + billNo + " 已提交财务审核，金额 "

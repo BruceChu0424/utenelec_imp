@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 
 import '../../../components/cards/uten_card.dart';
@@ -262,5 +263,4 @@ class _InquiryCard extends StatelessWidget {
   }
 }
 
-String _fmt(DateTime value) =>
-    '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+String _fmt(DateTime value) => '${ChinaDateTime.formatDate(value)}(北京)';

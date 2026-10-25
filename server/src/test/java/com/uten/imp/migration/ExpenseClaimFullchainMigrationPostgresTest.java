@@ -256,8 +256,6 @@ class ExpenseClaimFullchainMigrationPostgresTest {
                     WHERE t.tgrelid=?::regclass AND NOT t.tgisinternal
                       AND p.proname='fn_audit' AND t.tgenabled='A'
                     """, table)).isEqualTo(!threeLists ? 1 : "expense_claim_invoices".equals(table) ? 2 : 0);
-            assertThat(text(connection, "SELECT pg_get_functiondef('business_data_reset()'::regprocedure)"))
-                    .contains("('" + table + "', 'CLEAR')");
         }
     }
 

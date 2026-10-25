@@ -109,8 +109,9 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
   /// 页级搜索关键字（300ms 防抖后的值，下发给当前分段）。
   String _keyword = '';
 
-  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
+  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
+  /// 最近三个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
 
   @override
   void initState() {
@@ -219,9 +220,10 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                         selected: segment == null ? const {} : {segment},
                         onSelectionChanged: (value) => setState(() {
                           _segment = value;
-                          if (value != 'history') {
-                            _historyTime = const UtenHistoryTimeValue.all();
-                          }
+                          // 进历史段重新按默认近三个月加载；非历史段回 all() 占位。
+                          _historyTime = value == 'history'
+                              ? UtenHistoryTimeValue.lastThreeMonths()
+                              : const UtenHistoryTimeValue.all();
                         }),
                         searchHint: '搜索订单号 / 计划单号 / 客户 / 货品',
                         onSearchChanged: (v) =>

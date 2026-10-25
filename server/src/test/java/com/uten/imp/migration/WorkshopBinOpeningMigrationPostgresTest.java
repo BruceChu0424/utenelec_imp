@@ -149,10 +149,7 @@ class WorkshopBinOpeningMigrationPostgresTest {
                     Integer.class)).isLessThan(jdbc.queryForObject(
                     "SELECT fn_workshop_direct_reason_rank('RECEIVER_STATUS')", Integer.class));
 
-            // 业务清空: 开通记录随仓库主档保留; 整批领料设置照旧清空。
-            String reset = jdbc.queryForObject("SELECT pg_get_functiondef('business_data_reset()'::regprocedure)",
-                    String.class);
-            assertThat(reset).contains("('workshop_bins', 'PRESERVE')", "('workshop_material_settings', 'CLEAR')");
+            assertThat(jdbc.queryForObject("SELECT to_regprocedure('public.business_data_reset()')::text",String.class)).isNull();
         }
     }
 

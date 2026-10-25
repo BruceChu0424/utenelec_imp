@@ -104,7 +104,7 @@ public class GoodsCostSourceReader {
                 LEFT JOIN currencies c ON c.id=o.currency_id LEFT JOIN units u ON u.id=i.unit_id
                 LEFT JOIN LATERAL (
                     SELECT a.* FROM procurement_order_approval_cases a
-                    WHERE a.order_type=UPPER('%1$s') AND a.order_id=o.id AND a.status='APPROVED'
+                    WHERE a.order_type=UPPER('%1$s') AND a.order_id=o.id AND a.status='APPROVED' AND a.request_type='ORDER'
                     ORDER BY a.attempt DESC LIMIT 1
                 ) approval ON true
                 WHERE o.status=1 AND NOT o.is_deleted AND NOT i.is_deleted

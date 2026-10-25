@@ -26,7 +26,7 @@
 -- department_id: SystemItem.ItemID <-> departments has no legacy_id mapping
 --             (V02 table has no legacy_id column), leave NULL (open item
 --             design doc 26 sec 9-8).
--- status: legacy 1->1 (approved), -1->-1 (red reversal), direct copy
+-- status: proved posted sources retain1; the exact reviewed historical unapproved sources remain archive-only, never modern reversals or drafts
 --         (legacy has no draft state).
 -- Money: float -> numeric(18,4); exchange rate -> numeric(18,6).
 -- =====================================================================
@@ -634,13 +634,220 @@ WHERE w.legacy_id IS NOT NULL AND w.legacy_id <> 0 AND NULLIF(w.name,'') IS NOT 
 -- =====================================================================
 -- (4) finance_receipts (M_Get) + finance_payments (M_Paid)
 -- =====================================================================
+-- V21 source-specific historical unapproved cash headers remain complete
+-- source archives. A source -1 is not a modern reversal or a current draft.
+-- The portable policy is rendered by the reviewed coordinator, before this
+-- module's original typed stages are loaded. No user identity is impersonated.
+CREATE TEMP TABLE bootstrap_finance_cash_archive ON COMMIT DROP AS
+SELECT policy.*,to_jsonb(source.*) AS typed_source,
+       encode(digest(to_jsonb(source.*)::text,'sha256'),'hex') AS actual_source_row_sha256
+FROM m_get_stage source JOIN bootstrap_finance_cash_policy policy
+ ON policy.source_file='m_get.csv' AND policy.source_kind='RECEIPT' AND policy.source_legacy_id=source.legacy_id
+UNION ALL
+SELECT policy.*,to_jsonb(source.*),encode(digest(to_jsonb(source.*)::text,'sha256'),'hex')
+FROM m_paid_stage source JOIN bootstrap_finance_cash_policy policy
+ ON policy.source_file='m_paid.csv' AND policy.source_kind='PAYMENT' AND policy.source_legacy_id=source.legacy_id;
+
+DO $cash_source_archive_guard$
+DECLARE meta jsonb;source_name text;source_count bigint;source_ids text;expected jsonb;
+BEGIN
+ SELECT payload INTO STRICT meta FROM bootstrap_finance_cash_policy_meta;
+ IF jsonb_typeof(meta) IS DISTINCT FROM 'object'
+    OR NOT (meta ?& ARRAY['format','policy_sha256','source_cutoff_utc','raw_manifest_sha256','source_backup_sha256',
+       'source_semantics_sha256','reviewed_dispositions_sha256','native_typed_source_sha256','derived_manifest_sha256',
+       'source_files','package_files','partitions'])
+    OR meta->>'format' IS DISTINCT FROM 'finance-cash-source-archive-policy-v1'
+    OR jsonb_typeof(meta->'source_files') IS DISTINCT FROM 'object'
+    OR jsonb_typeof(meta->'package_files') IS DISTINCT FROM 'object'
+    OR jsonb_typeof(meta->'partitions') IS DISTINCT FROM 'object'
+    OR jsonb_typeof(meta->'source_cutoff_utc') IS DISTINCT FROM 'string'
+ THEN RAISE EXCEPTION 'cash policy mandatory metadata is absent or malformed';END IF;
+ IF (SELECT array_agg(key ORDER BY key) FROM jsonb_object_keys(meta->'package_files') key)
+       IS DISTINCT FROM ARRAY['finance_cash_reviewed_dispositions.json','finance_cash_source_policy.json','finance_cash_source_semantics.json','finance_cash_typed_source_receipt.json']::text[]
+    OR (SELECT array_agg(key ORDER BY key) FROM jsonb_object_keys(meta->'source_files') key)
+       IS DISTINCT FROM ARRAY['m_allcheck.csv','m_dpaid.csv','m_get.csv','m_in.csv','m_oget.csv','m_out.csv','m_paid.csv']::text[]
+    OR (SELECT array_agg(key ORDER BY key) FROM jsonb_object_keys(meta->'partitions') key)
+       IS DISTINCT FROM ARRAY['m_dpaid.csv','m_get.csv','m_oget.csv','m_paid.csv']::text[]
+ THEN RAISE EXCEPTION 'cash policy package/source/partition key population differs';END IF;
+ FOREACH source_name IN ARRAY ARRAY['policy_sha256','raw_manifest_sha256','source_backup_sha256','source_semantics_sha256',
+       'reviewed_dispositions_sha256','native_typed_source_sha256','derived_manifest_sha256'] LOOP
+  IF COALESCE((meta->>source_name)~'^[0-9a-f]{64}$',FALSE) IS NOT TRUE
+  THEN RAISE EXCEPTION 'cash policy required fingerprint is absent or malformed';END IF;
+ END LOOP;
+ FOR source_name IN SELECT jsonb_object_keys(meta->'package_files') LOOP
+  expected:=meta#>ARRAY['package_files',source_name];
+  IF jsonb_typeof(expected) IS DISTINCT FROM 'object' OR NOT(expected ?& ARRAY['sha256','bytes'])
+      OR COALESCE((expected->>'sha256')~'^[0-9a-f]{64}$',FALSE) IS NOT TRUE
+      OR jsonb_typeof(expected->'bytes') IS DISTINCT FROM 'number' OR (expected->>'bytes')::bigint<=0
+  THEN RAISE EXCEPTION 'cash policy package fingerprint/byte size is absent or malformed';END IF;
+ END LOOP;
+ FOR source_name IN SELECT jsonb_object_keys(meta->'source_files') LOOP
+  expected:=meta#>ARRAY['source_files',source_name];
+  IF jsonb_typeof(expected) IS DISTINCT FROM 'object' OR NOT(expected ?& ARRAY['sha256','rows'])
+      OR COALESCE((expected->>'sha256')~'^[0-9a-f]{64}$',FALSE) IS NOT TRUE
+      OR jsonb_typeof(expected->'rows') IS DISTINCT FROM 'number' OR (expected->>'rows')::bigint<0
+  THEN RAISE EXCEPTION 'cash policy complete source fingerprint/count is absent or malformed';END IF;
+ END LOOP;
+ FOR source_name IN SELECT jsonb_object_keys(meta->'partitions') LOOP
+  expected:=meta#>ARRAY['partitions',source_name];
+  IF jsonb_typeof(expected) IS DISTINCT FROM 'object' OR NOT(expected ?& ARRAY['source_rows','active_rows','archive_rows','source_ids_sha256','active_ids_sha256','archive_ids_sha256'])
+     OR jsonb_typeof(expected->'source_rows') IS DISTINCT FROM 'number'
+     OR jsonb_typeof(expected->'active_rows') IS DISTINCT FROM 'number'
+     OR jsonb_typeof(expected->'archive_rows') IS DISTINCT FROM 'number'
+     OR (expected->>'source_rows')::bigint<0 OR (expected->>'active_rows')::bigint<0 OR (expected->>'archive_rows')::bigint<0
+     OR (expected->>'source_rows')::bigint IS DISTINCT FROM (expected->>'active_rows')::bigint+(expected->>'archive_rows')::bigint
+     OR COALESCE((expected->>'source_ids_sha256')~'^[0-9a-f]{64}$',FALSE) IS NOT TRUE
+     OR COALESCE((expected->>'active_ids_sha256')~'^[0-9a-f]{64}$',FALSE) IS NOT TRUE
+     OR COALESCE((expected->>'archive_ids_sha256')~'^[0-9a-f]{64}$',FALSE) IS NOT TRUE
+  THEN RAISE EXCEPTION 'cash policy exact partition count/fingerprint is absent or malformed';END IF;
+ END LOOP;
+ IF current_setting('TimeZone') IS DISTINCT FROM 'Asia/Shanghai' OR meta->>'format' IS DISTINCT FROM 'finance-cash-source-archive-policy-v1'
+ OR NOT EXISTS(SELECT 1 FROM legacy_migration_runs run WHERE run.run_id=current_setting('uten.bootstrap_run_id')::uuid
+     AND run.status='RUNNING' AND run.target='--bootstrap-all' AND run.migration_mode='BOOTSTRAP'
+     AND run.export_manifest_sha256::text=meta->>'derived_manifest_sha256'
+     AND run.checksum_manifest_sha256::text=meta->>'derived_manifest_sha256'
+     AND run.source_backup_sha256::text=meta->>'source_backup_sha256'
+     AND run.reconciliation_summary->>'rawManifestSha256'=meta->>'raw_manifest_sha256'
+     AND (run.reconciliation_summary->>'sourceSnapshotAsOfUtc')::timestamptz=(meta->>'source_cutoff_utc')::timestamptz)
+ THEN RAISE EXCEPTION 'cash source archive policy does not bind this exact initializing source run';END IF;
+ FOR source_name IN SELECT jsonb_object_keys(meta->'package_files') LOOP
+  IF NOT EXISTS(SELECT 1 FROM legacy_migration_run_files file WHERE file.run_id=current_setting('uten.bootstrap_run_id')::uuid
+      AND file.file_name=source_name AND file.sha256::text=meta#>>ARRAY['package_files',source_name,'sha256']
+      AND file.byte_size=(meta#>>ARRAY['package_files',source_name,'bytes'])::bigint)
+  THEN RAISE EXCEPTION 'cash policy package file is not registered with its exact SHA and bytes';END IF;
+ END LOOP;
+ FOR source_name IN SELECT jsonb_object_keys(meta->'source_files') LOOP
+  IF NOT EXISTS(SELECT 1 FROM legacy_migration_run_files file
+       WHERE file.run_id=current_setting('uten.bootstrap_run_id')::uuid AND file.file_name=source_name
+         AND file.sha256::text=meta#>>ARRAY['source_files',source_name,'sha256'])
+  THEN RAISE EXCEPTION 'cash archive original or related source file differs';END IF;
+  EXECUTE format('SELECT count(*) FROM %I',replace(source_name,'.csv','_stage')) INTO source_count;
+  IF source_count IS DISTINCT FROM (meta#>>ARRAY['source_files',source_name,'rows'])::bigint
+  THEN RAISE EXCEPTION 'cash archive complete typed source stage row count differs';END IF;
+ END LOOP;
+ IF (SELECT count(*) FROM bootstrap_finance_cash_archive)<>(SELECT count(*) FROM bootstrap_finance_cash_policy)
+    OR EXISTS(SELECT 1 FROM bootstrap_finance_cash_archive GROUP BY source_file,source_legacy_id HAVING count(*)<>1)
+    OR EXISTS(SELECT 1 FROM bootstrap_finance_cash_archive a WHERE
+       a.actual_source_row_sha256 IS DISTINCT FROM a.source_row_sha256
+       OR a.typed_source::text IS DISTINCT FROM a.typed_source_jsonb_text
+       OR encode(digest(a.typed_source_jsonb_text,'sha256'),'hex') IS DISTINCT FROM a.source_row_sha256
+       OR a.typed_source->>'status' IS DISTINCT FROM '-1' OR a.typed_source->>'status2' IS DISTINCT FROM '-1'
+       OR (a.typed_source->>'cancel')::boolean IS DISTINCT FROM FALSE
+       OR COALESCE((a.typed_source->>'approver_id')::int,0)<>0 OR NULLIF(a.typed_source->>'approver_name','') IS NOT NULL)
+ THEN RAISE EXCEPTION 'cash archive lost or changed an exact reviewed complete typed source identity';END IF;
+ IF EXISTS(SELECT 1 FROM bootstrap_finance_cash_archive a WHERE
+      a.source_row_number IS NULL OR a.source_row_number<2 OR a.activity_age_days IS NULL OR a.activity_age_days<=0
+      OR a.source_file_sha256 IS DISTINCT FROM meta#>>ARRAY['source_files',a.source_file,'sha256']
+      OR COALESCE(a.raw_source_file_sha256~'^[0-9a-f]{64}$',FALSE) IS NOT TRUE
+      OR jsonb_typeof(a.reason_codes) IS DISTINCT FROM 'array' OR jsonb_typeof(a.lifecycle) IS DISTINCT FROM 'object'
+      OR (SELECT array_agg(reason ORDER BY reason) FROM jsonb_array_elements_text(a.reason_codes) reason)
+           IS DISTINCT FROM ARRAY['EXACT_HISTORICAL_SOURCE_ROW_REVIEWED_AS_OF_CUTOFF','NO_PROVEN_MODERN_GL_POSTING_OR_REVERSAL','NO_SOURCE_ALLOCATION_ROWS','NO_SOURCE_APPROVER','NO_SOURCE_CASH_OR_AR_AP_EFFECT','ONLY_CREATION_IN_AVAILABLE_SOURCE_LOGS','SOURCE_DEFAULT_AND_DICTIONARY_UNAPPROVED','SOURCE_STATUS_EQUALS_STATUS2_MINUS_ONE']::text[]
+      OR NOT(a.lifecycle ?& ARRAY['LogsID','source_beijing_time','EContext'])
+      OR COALESCE((a.lifecycle->>'LogsID')::bigint,0)<=0
+      OR COALESCE(strpos(a.lifecycle->>'EContext',a.typed_source->>'bill_no'),0)<=0
+      OR COALESCE(strpos(a.lifecycle->>'EContext','增加'),0)<=0
+      OR COALESCE((a.lifecycle->>'EContext')~'(审核|反审|修改|删除|撤销)',FALSE)
+      OR (((meta->>'source_cutoff_utc')::timestamptz AT TIME ZONE 'Asia/Shanghai')::date-(a.lifecycle->>'source_beijing_time')::timestamp::date) IS DISTINCT FROM a.activity_age_days)
+ THEN RAISE EXCEPTION 'cash archive exact source file, reason, ordinal or historical lifecycle proof differs';END IF;
+
+ IF EXISTS(SELECT 1 FROM m_get_stage source WHERE
+       (source.status=1 AND source.status2=1 AND source.cancel IS FALSE AND COALESCE(source.approver_id,0)>0) IS NOT TRUE
+       AND NOT EXISTS(SELECT 1 FROM bootstrap_finance_cash_archive a WHERE a.source_file='m_get.csv' AND a.source_legacy_id=source.legacy_id))
+ OR EXISTS(SELECT 1 FROM m_paid_stage source WHERE
+       (source.status=1 AND source.status2=1 AND source.cancel IS FALSE AND COALESCE(source.approver_id,0)>0) IS NOT TRUE
+       AND NOT EXISTS(SELECT 1 FROM bootstrap_finance_cash_archive a WHERE a.source_file='m_paid.csv' AND a.source_legacy_id=source.legacy_id))
+ OR EXISTS(SELECT 1 FROM m_dpaid_stage WHERE (status=1 AND status2=1 AND cancel IS FALSE AND COALESCE(approver_id,0)>0) IS NOT TRUE)
+ OR EXISTS(SELECT 1 FROM m_oget_stage WHERE (status=1 AND status2=1 AND cancel IS FALSE AND COALESCE(approver_id,0)>0) IS NOT TRUE)
+ THEN RAISE EXCEPTION 'unknown nonposted cash source requires an independent early classification';END IF;
+ IF EXISTS(SELECT 1 FROM bootstrap_finance_cash_archive a JOIN m_allcheck_stage flow
+     ON flow.b_style=CASE a.source_file WHEN 'm_get.csv' THEN 20 ELSE 21 END AND flow.bill_id=a.source_legacy_id)
+ OR EXISTS(SELECT 1 FROM bootstrap_finance_cash_archive a JOIN m_in_stage ledger
+     ON a.source_file='m_get.csv' AND ledger.b_style=20 AND ledger.bill_legacy_id=a.source_legacy_id)
+ OR EXISTS(SELECT 1 FROM bootstrap_finance_cash_archive a JOIN m_out_stage ledger
+     ON a.source_file='m_paid.csv' AND ledger.b_style=21 AND ledger.bill_legacy_id=a.source_legacy_id)
+ THEN RAISE EXCEPTION 'reviewed unapproved cash header has an actual original cash or AR/AP effect';END IF;
+ FOR source_name IN SELECT jsonb_object_keys(meta->'partitions') LOOP
+  EXECUTE format('SELECT count(*),encode(digest(COALESCE(string_agg(legacy_id::text||chr(10),'''' ORDER BY legacy_id),''''),''sha256''),''hex'') FROM %I',
+    replace(source_name,'.csv','_stage')) INTO source_count,source_ids;
+  expected:=meta#>ARRAY['partitions',source_name];
+  IF source_count IS DISTINCT FROM (expected->>'source_rows')::bigint OR source_ids IS DISTINCT FROM expected->>'source_ids_sha256'
+  THEN RAISE EXCEPTION 'cash source full identity population differs from its prepared partition';END IF;
+ END LOOP;
+END;
+$cash_source_archive_guard$;
+
 SELECT fn_import_legacy_finance_source(
     current_setting('uten.bootstrap_run_id')::uuid, 'RECEIPT', to_jsonb(legacy_row.*))
-FROM m_get_stage legacy_row ORDER BY legacy_row.legacy_id;
+FROM m_get_stage legacy_row WHERE NOT EXISTS(SELECT 1 FROM bootstrap_finance_cash_archive a
+ WHERE a.source_file='m_get.csv' AND a.source_legacy_id=legacy_row.legacy_id) ORDER BY legacy_row.legacy_id;
 
 SELECT fn_import_legacy_finance_source(
     current_setting('uten.bootstrap_run_id')::uuid, 'PAYMENT', to_jsonb(legacy_row.*))
-FROM m_paid_stage legacy_row ORDER BY legacy_row.legacy_id;
+FROM m_paid_stage legacy_row WHERE NOT EXISTS(SELECT 1 FROM bootstrap_finance_cash_archive a
+ WHERE a.source_file='m_paid.csv' AND a.source_legacy_id=legacy_row.legacy_id) ORDER BY legacy_row.legacy_id;
+
+-- Conserve complete source identities: live legacy facts plus the separately
+-- reviewed immutable source archive. Archived headers have no modern target,
+-- V626 target proof, approval, settlement allocation, GL or workflow claim.
+DO $cash_source_archive_conservation$
+DECLARE meta jsonb;source_name text;target_name text;kind_name text;actual_count bigint;actual_ids text;expected jsonb;
+BEGIN
+ SELECT payload INTO STRICT meta FROM bootstrap_finance_cash_policy_meta;
+ FOR source_name,target_name,kind_name IN VALUES
+    ('m_get.csv','finance_receipts','RECEIPT'),('m_paid.csv','finance_payments','PAYMENT') LOOP
+  expected:=meta#>ARRAY['partitions',source_name];
+  EXECUTE format('SELECT count(*),encode(digest(COALESCE(string_agg(legacy_id::text||chr(10),'''' ORDER BY legacy_id),''''),''sha256''),''hex'') FROM %I WHERE legacy_id IS NOT NULL',target_name)
+    INTO actual_count,actual_ids;
+  IF actual_count IS DISTINCT FROM (expected->>'active_rows')::bigint OR actual_ids IS DISTINCT FROM expected->>'active_ids_sha256'
+  THEN RAISE EXCEPTION 'cash active targets do not exactly equal the reviewed original active source identities';END IF;
+  IF (SELECT count(*) FROM bootstrap_finance_cash_archive WHERE source_file=source_name)<>(expected->>'archive_rows')::bigint
+     OR (SELECT encode(digest(COALESCE(string_agg(source_legacy_id::text||chr(10),'' ORDER BY source_legacy_id),''),'sha256'),'hex')
+         FROM bootstrap_finance_cash_archive WHERE source_file=source_name)<>expected->>'archive_ids_sha256'
+  THEN RAISE EXCEPTION 'cash archive is missing, duplicated or contains an extra source identity';END IF;
+  IF EXISTS(SELECT 1 FROM legacy_finance_import_sources proof JOIN bootstrap_finance_cash_archive archived
+        ON archived.source_kind=proof.source_kind AND archived.source_legacy_id=proof.source_legacy_id
+        WHERE proof.run_id=current_setting('uten.bootstrap_run_id')::uuid)
+  THEN RAISE EXCEPTION 'archive-only cash source incorrectly acquired a live V626 target proof';END IF;
+ END LOOP;
+END;
+$cash_source_archive_conservation$;
+
+UPDATE legacy_migration_runs SET reconciliation_summary=reconciliation_summary||jsonb_build_object(
+ 'financeCashSourceArchive',jsonb_build_object('format','finance-cash-source-archive-only-v1',
+   'source_policy',(SELECT payload FROM bootstrap_finance_cash_policy_meta),
+   'session_timezone',current_setting('TimeZone'),
+   'entries',(SELECT COALESCE(jsonb_agg(to_jsonb(a)-ARRAY['actual_source_row_sha256','typed_source_jsonb_text']
+       ||jsonb_build_object('disposition','ARCHIVE_ONLY_UNAPPROVED_HISTORICAL_SOURCE') ORDER BY source_file,source_legacy_id),'[]'::jsonb)
+      FROM bootstrap_finance_cash_archive a)))
+WHERE run_id=current_setting('uten.bootstrap_run_id')::uuid;
+
+DO $cash_archive_ops_audit$
+DECLARE previous_actor text:=current_setting('app.actor_id',true);
+        previous_account text:=current_setting('app.actor_account',true);
+BEGIN
+ PERFORM set_config('app.actor_id','',true);
+ PERFORM set_config('app.actor_account','ops:legacy_finance_cash_archive',true);
+ INSERT INTO audit_log(actor_id,actor_account,action,target_type,target_id,"after",result,request_id,
+    event_source,risk_level,event_category,device_capture_status)
+ SELECT NULL,'ops:legacy_finance_cash_archive','legacy_finance_cash_source_archive','legacy_finance_source',
+     source_file||':'||source_legacy_id::text,
+     jsonb_build_object('run_id',current_setting('uten.bootstrap_run_id'),
+       'source_file',source_file,'source_legacy_id',source_legacy_id,'source_kind',source_kind,
+       'source_file_sha256',source_file_sha256,'raw_source_file_sha256',raw_source_file_sha256,
+       'source_row_sha256',source_row_sha256,'source_row_number',source_row_number,
+       'reason_codes',reason_codes,'disposition','ARCHIVE_ONLY_UNAPPROVED_HISTORICAL_SOURCE',
+       'source_policy_sha256',(SELECT payload->>'policy_sha256' FROM bootstrap_finance_cash_policy_meta),
+       'source_semantics_sha256',(SELECT payload->>'source_semantics_sha256' FROM bootstrap_finance_cash_policy_meta),
+       'raw_manifest_sha256',(SELECT payload->>'raw_manifest_sha256' FROM bootstrap_finance_cash_policy_meta),
+       'source_backup_sha256',(SELECT payload->>'source_backup_sha256' FROM bootstrap_finance_cash_policy_meta),
+       'database_current_user',current_user,'database_session_user',session_user,
+       'target_money_document_created',false,'target_GL_or_settlement_created',false,'workflow_claim_created',false),
+     'success',current_setting('uten.bootstrap_run_id')::uuid,'system','high','data_change','missing'
+ FROM bootstrap_finance_cash_archive;
+ PERFORM set_config('app.actor_id',COALESCE(previous_actor,''),true);
+ PERFORM set_config('app.actor_account',COALESCE(previous_account,''),true);
+END;
+$cash_archive_ops_audit$;
 
 -- Approved historical money facts are inserted with final UUID references.
 -- A later UPDATE would correctly be rejected by the modern immutability guard.
@@ -1059,13 +1266,13 @@ BEGIN
         RAISE EXCEPTION 'finance migration original other-fee identity or amount mismatches: %',broken_count;
     END IF;
 
-    IF (SELECT COUNT(*) FROM finance_receipts)
+    IF (SELECT COUNT(*) FROM finance_receipts)+(SELECT COUNT(*) FROM bootstrap_finance_cash_archive WHERE source_file='m_get.csv')
        <> (SELECT COUNT(*) FROM m_get_stage) THEN
-        RAISE EXCEPTION 'finance_receipts row count mismatch';
+        RAISE EXCEPTION 'finance_receipts active plus exact typed source archive row count mismatch';
     END IF;
-    IF (SELECT COUNT(*) FROM finance_payments)
+    IF (SELECT COUNT(*) FROM finance_payments)+(SELECT COUNT(*) FROM bootstrap_finance_cash_archive WHERE source_file='m_paid.csv')
        <> (SELECT COUNT(*) FROM m_paid_stage) THEN
-        RAISE EXCEPTION 'finance_payments row count mismatch';
+        RAISE EXCEPTION 'finance_payments active plus exact typed source archive row count mismatch';
     END IF;
     IF (SELECT COUNT(*) FROM finance_expenses)
        <> (SELECT COUNT(*) FROM m_dpaid_stage) THEN

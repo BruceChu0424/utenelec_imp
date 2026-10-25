@@ -336,8 +336,9 @@ class DatabaseTests(unittest.TestCase):
             self.verify()
 
     def test_real_query_adapter_has_readonly_repeatable_transaction_and_no_credentials_in_command(self):
-        completed = subprocess.CompletedProcess([], 0, b'{"ok":true}\n', b'')
-        with patch.object(verifier.subprocess, 'run', return_value=completed) as run:
+        completed = subprocess.CompletedProcess([], 0, b'{"database":"local_rehearsal","system_identifier":"123456","database_oid":42,"result":{"ok":true}}\n', b'')
+        with patch.object(verifier.ReadOnlyDatabase,'_pin_transport',return_value=['docker','exec','-i','uten-imp-postgres']), \
+             patch.object(verifier.subprocess, 'run', return_value=completed) as run:
             self.assertEqual(verifier.ReadOnlyDatabase('local_rehearsal').query('SELECT jsonb_build_object(\'ok\',true);'), {'ok': True})
         argv = run.call_args.args[0]
         self.assertEqual(argv[:4], ['docker', 'exec', '-i', 'uten-imp-postgres'])
@@ -348,7 +349,8 @@ class DatabaseTests(unittest.TestCase):
 
     def test_server_error_does_not_emit_raw_sql_or_private_stderr(self):
         completed = subprocess.CompletedProcess([], 1, b'', PRIVATE_HASH.encode())
-        with patch.object(verifier.subprocess, 'run', return_value=completed):
+        with patch.object(verifier.ReadOnlyDatabase,'_pin_transport',return_value=['docker','exec','-i','uten-imp-postgres']), \
+             patch.object(verifier.subprocess, 'run', return_value=completed):
             with self.assertRaises(verifier.VerificationError) as error:
                 verifier.ReadOnlyDatabase('local_rehearsal').query('SELECT secret;')
         self.assertNotIn(PRIVATE_HASH, str(error.exception))

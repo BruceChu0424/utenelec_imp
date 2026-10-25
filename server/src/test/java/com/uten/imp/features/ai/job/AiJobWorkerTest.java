@@ -5,7 +5,6 @@ import com.uten.imp.application.port.AiCompletionPort;
 import com.uten.imp.application.port.AiCompletionPort.AiCallException;
 import com.uten.imp.application.port.AiCompletionPort.AiErrorCategory;
 import com.uten.imp.application.port.AiJobHandler;
-import com.uten.imp.application.port.BusinessDataResetGatePort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.ai.AiProperties;
@@ -41,7 +40,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/** 后台处理: 主体重建、终态、取消、排水中止、0 行即停、认领令牌、AI 调用期间续租与 AI 调用次数(ADR-133)。 */
+/** 后台处理: 主体重建、终态、取消、0 行即停、认领令牌、AI 调用期间续租与 AI 调用次数(ADR-133)。 */
 class AiJobWorkerTest {
 
     /** 这次认领的令牌(attempts); 故意不是 1, 证明每次写入带的是认领返回的值。 */
@@ -54,35 +53,9 @@ class AiJobWorkerTest {
     private AiJobRepository repository;
     private SubmitterPrincipalRestorer restorer;
     private AiCompletionPort completion;
-    private FakeGate gate;
     private AiProperties properties;
     private AiJobWorker worker;
     private Function<AiJobHandler.AiJobContext, Map<String, Object>> behaviour;
-
-    /** 可切换状态的排水闸。 */
-    private static final class FakeGate implements BusinessDataResetGatePort {
-        volatile boolean blocking;
-        volatile int entered;
-
-        @Override
-        public synchronized boolean tryEnter() {
-            if (blocking) {
-                return false;
-            }
-            entered++;
-            return true;
-        }
-
-        @Override
-        public synchronized void leave() {
-            entered--;
-        }
-
-        @Override
-        public boolean blockingNewRequests() {
-            return blocking;
-        }
-    }
 
     private final class ScriptedHandler implements AiJobHandler {
         @Override
@@ -128,12 +101,11 @@ class AiJobWorkerTest {
         repository = mock(AiJobRepository.class);
         restorer = mock(SubmitterPrincipalRestorer.class);
         completion = mock(AiCompletionPort.class);
-        gate = new FakeGate();
         properties = new AiProperties();
         PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
         when(transactions.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         worker = new AiJobWorker(repository, new AiJobHandlerRegistry(List.of(new ScriptedHandler())), restorer,
-                completion, gate, properties, new ObjectMapper(), transactions, Executors.newSingleThreadExecutor());
+                completion, properties, new ObjectMapper(), transactions, Executors.newSingleThreadExecutor());
         when(restorer.restore(userId, 5, 2L)).thenReturn(principal(Set.of("ai:use")));
         when(repository.progress(eq(jobId), eq(ATTEMPT), any(), any(), anyInt())).thenReturn(Optional.of(false));
         when(repository.cancelRequested(jobId, ATTEMPT)).thenReturn(Optional.of(false));
@@ -178,7 +150,6 @@ class AiJobWorkerTest {
         ArgumentCaptor<String> json = ArgumentCaptor.forClass(String.class);
         verify(repository).finishSucceeded(eq(jobId), eq(ATTEMPT), json.capture());
         assertThat(new ObjectMapper().readTree(json.getValue()).path("lines").size()).isEqualTo(2);
-        assertThat(gate.entered).isZero();
     }
 
     @Test
@@ -415,22 +386,6 @@ class AiJobWorkerTest {
     }
 
     @Test
-    void businessDataResetDrainAbortsBetweenStages() {
-        behaviour = ctx -> {
-            gate.blocking = true;
-            ctx.progress("MATCHING", 40);
-            assertThat(ctx.cancelled()).isTrue();
-            gate.blocking = false;
-            return Map.of();
-        };
-
-        worker.process(claimed("TEST_KIND"));
-
-        verify(repository).finishFailed(jobId, ATTEMPT, "RESETTING", "系统正在重置数据, 请稍后重试");
-        verify(repository, never()).finishSucceeded(any(), anyInt(), any());
-    }
-
-    @Test
     void aiCallsNeedAiUseAreCappedAndCarryTheJobId() {
         when(repository.incrementAiCalls(jobId, ATTEMPT, 12, LEASE)).thenReturn(1, -2);
         AiCompletionPort.AiCompletionResult reply = new AiCompletionPort.AiCompletionResult("{}", "p", "m", 1, 1, 5);
@@ -479,14 +434,6 @@ class AiJobWorkerTest {
         verify(completion, never()).completeJson(any());
         verify(repository, never()).incrementAiCalls(any(), anyInt(), anyInt(), anyInt());
         verify(repository).finishSucceeded(eq(jobId), eq(ATTEMPT), anyString());
-    }
-
-    @Test
-    void claimsNothingWhileTheResetGateIsClosed() {
-        gate.blocking = true;
-
-        assertThat(worker.processNext()).isFalse();
-        verify(repository, never()).claimNext(anyInt());
     }
 
     @Test

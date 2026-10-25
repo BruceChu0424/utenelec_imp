@@ -41,6 +41,8 @@ import '../widgets/client_master_edit.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_inline_edit.dart';
+import '../widgets/master_inline_create_fields.dart';
+import '../repositories/currency_repository.dart';
 import '../repositories/master_inline_edit_repository.dart';
 import '../widgets/master_entity_detail_pane.dart';
 
@@ -242,6 +244,39 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
     final clients = ref.watch(clientRepositoryProvider);
     return MasterEntityPaneConfig<ClientListItem, ClientDetail>(
       noun: '客户', // TODO(l10n): 补 arb
+      inlineCreation: (pane) => MasterInlineCreateConfig(
+        namespace: 'clients.${pane.categoryId}',
+        fields: masterInlineCreateFields(
+          buildClientFields(const {}, const [], l10n: basicDataL10n(context)),
+          excluded: {if (!perms.contains(Perm.clientStatus)) 'status'},
+          options: {
+            'defaultSettlementMethodId': () async => [
+              for (final value
+                  in await ref
+                      .read(referenceMethodRepositoryProvider)
+                      .settlementMethods())
+                MasterSelectOption(value: value.id, label: value.name),
+            ],
+            'defaultCurrencyId': () async => [
+              for (final value
+                  in await ref.read(currencyRepositoryProvider).dict())
+                MasterSelectOption(
+                  value: value.id,
+                  label: value.name ?? value.code ?? value.id,
+                ),
+            ],
+          },
+        ),
+        defaults: {'status': '使用', 'categoryId': pane.categoryId},
+        canCreate: perms.contains(Perm.clientCreate),
+        onCreate: (_, values) async {
+          await ref.read(clientRepositoryProvider).create({
+            'status': '使用',
+            ...values,
+            'categoryId': pane.categoryId,
+          });
+        },
+      ),
       icon: Icons.people_outline,
       defaultCodePrefix: 'KH',
       columns: _visibleClientColumns(basicDataL10n(context)),

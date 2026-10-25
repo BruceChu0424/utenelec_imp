@@ -65,6 +65,28 @@ class FeeAcceptanceTests(unittest.TestCase):
         facts['receipt_fee_styles'] = valid_facts(self.source)
         return db
 
+    def test_v21_cannot_skip_the_actual_cash_source_partition_gate(self):
+        db=self.database(mapping='bootstrap-v21')
+        with self.assertRaisesRegex(verifier.VerificationError,r'V21 requires the exact reviewed live\+archive'):
+            verifier.verify_database(db,self.expected,json.loads(self.fixture.snapshot.read_text()),RUN,expected_schema=912)
+        self.assertEqual(len(db.queries),1)
+
+    def test_v21_rejects_a_cash_policy_not_sealed_in_the_input_manifest(self):
+        self.source['cash_source_policy']={'policy_sha256':'a'*64,'files':{'fixture.json':'b'*64}}
+        self.expected['finance_cash_source_policy_provenance']={'format':'finance-cash-source-archive-policy-v1','sha256':'c'*64,'evidence_files':{'fixture.json':'b'*64}}
+        db=self.database(mapping='bootstrap-v21')
+        with self.assertRaisesRegex(verifier.VerificationError,'V21 cash policy and portable evidence'):
+            verifier.verify_database(db,self.expected,json.loads(self.fixture.snapshot.read_text()),RUN,expected_schema=912)
+        self.assertEqual(len(db.queries),1)
+
+    def test_v21_policy_presence_cannot_replace_actual_schema_and_target_gate(self):
+        self.source['cash_source_policy']={'policy_sha256':'a'*64,'files':{'fixture.json':'b'*64}}
+        self.expected['finance_cash_source_policy_provenance']={'format':'finance-cash-source-archive-policy-v1','sha256':'a'*64,'evidence_files':{'fixture.json':'b'*64}}
+        db=self.database(mapping='bootstrap-v21',announce=False)
+        with self.assertRaisesRegex(verifier.VerificationError,'V21 cash source archive verification requires the actual complete finance schema'):
+            verifier.verify_database(db,self.expected,json.loads(self.fixture.snapshot.read_text()),RUN)
+        self.assertEqual(len(db.queries),1)
+
     def test_inventory_binds_all_ids_and_original_integer_pairs_without_hardcoded_live_counts(self):
         self.assertEqual(self.source['rows'], 5)
         self.assertEqual(self.source['source_ids_sha256'], hashlib.sha256(b'71\n72\n73\n74\n75\n').hexdigest())

@@ -308,7 +308,7 @@ public class SalesOrderTimelineService {
                 SELECT c.order_id, c.status, c.decided_at, c.decided_by_employee_id,
                        c.rejection_reason
                 FROM procurement_order_approval_cases c
-                WHERE c.order_type = :orderType AND c.order_id IN (:orderIds)
+                WHERE c.order_type = :orderType AND c.order_id IN (:orderIds) AND c.request_type='ORDER'
                 ORDER BY c.order_id, c.attempt DESC
                 """)
                 .setParameter("orderType", orderType)

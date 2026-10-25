@@ -2,9 +2,9 @@
 //
 // 2026-09-03 统一范式：仓库出库/入库任务中心各分段小类行末尾的「历史单据」段
 // 被选中后，内容区渲染本组件——时间行（UtenHistoryTimeFilter：时间段/全部）；
-// 2026-10-04 起默认值改为「全部」（用户口径：进历史段直接看全量列表），
-// 按 [UtenHistoryTimeValue.all] 构建列表子树（builder 收到当前时间值，
-// 自行转 dateFrom/dateTo 查询）；「时间段/全部」胶囊仍可随时切换。
+// 2026-10-24 起默认值改为近三个月（用户口径；2026-10-04 曾为「全部」），挂载即
+// 按最近三个月构建列表子树（builder 收到当前时间值，自行转 dateFrom/dateTo
+// 查询）；「时间段/全部」胶囊仍可随时切换。
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_history_time_filter.dart';
@@ -33,7 +33,7 @@ class WarehouseHistoryGate extends StatefulWidget {
 }
 
 class _WarehouseHistoryGateState extends State<WarehouseHistoryGate> {
-  UtenHistoryTimeValue _time = const UtenHistoryTimeValue.all();
+  UtenHistoryTimeValue _time = UtenHistoryTimeValue.lastThreeMonths();
 
   @override
   Widget build(BuildContext context) {

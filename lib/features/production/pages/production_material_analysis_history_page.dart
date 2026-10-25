@@ -122,7 +122,6 @@ class _ProductionMaterialAnalysisHistoryPageState
         warehouseId: item.warehouseId,
       ),
     );
-    if (mounted) await _load(page: _page?.page ?? 1);
   }
 
   @override
@@ -130,7 +129,7 @@ class _ProductionMaterialAnalysisHistoryPageState
     final theme = Theme.of(context);
     final compact = context.breakpoint.isCompact;
     // 返回即刷新：从本页 push 的分析页里取消分析/下单后返回，重拉当前页
-    // （push 返回链已有；这里兜住子页经 go/popOrBackTo 栈空分支离开再回来的路径）。
+    // 统一由返回调度重拉，避免 push Future 和路由返回各发一次请求。
     _myLocation ??= currentLocationOr(
       context,
       RouteName.productionMaterialAnalysis,

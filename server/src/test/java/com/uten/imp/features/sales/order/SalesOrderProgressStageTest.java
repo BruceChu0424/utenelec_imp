@@ -143,7 +143,7 @@ class SalesOrderProgressStageTest {
         String expression = SalesOrderService.progressStageExpr();
         org.junit.jupiter.api.Assertions.assertTrue(
                 expression.indexOf("finance_rejected")
-                        < expression.indexOf("shipped_qty"));
+                        < expression.indexOf("outstanding_qty"));
     }
 
     @Test
@@ -199,4 +199,29 @@ class SalesOrderProgressStageTest {
                 predicate.contains("NOT IN ('SHIPPED','CANCELED','CLOSED')"));
         org.junit.jupiter.api.Assertions.assertTrue(predicate.contains(") = :stage"));
     }
+    @Test
+    void progressUsesEachRowsPositiveOutstandingInsteadOfOffsettingSkus() {
+        // SKU A ordered10/shipped20; SKU B ordered10/shipped0.
+        // Raw totals look shipped20/ordered20, but SKU B still needs10.
+        assertEquals("PENDING", SalesOrderService.progressStageOf(
+                20, 0, 20, 0, 0, 10, false, false, false, 0, 0, 0, 0, false, 10));
+        // A real return restores outstanding even after original full delivery.
+        assertEquals("PENDING", SalesOrderService.progressStageOf(
+                10, 0, 10, 0, 0, 2, false, false, false, 0, 0, 0, 0, false, 2));
+        // Explicit row flag_qty settles the remaining two; raw counters stay unchanged.
+        assertEquals("SHIPPED", SalesOrderService.progressStageOf(
+                10, 0, 8, 0, 0, 0, false, false, false, 0, 0, 0, 0, false, 0));
+        assertEquals("CLOSED", SalesOrderService.progressStageOf(
+                20, 0, 20, 0, 0, 10, false, false, true, 0, 0, 0, 0, false, 10));
+        assertEquals("CANCELED", SalesOrderService.progressStageOf(
+                20, 0, 20, 0, 0, 10, false, true, false, 0, 0, 0, 0, false, 10));
+        String grouped = SalesOrderService.progressGroupedSql(
+                new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope("1=1", null, java.util.Set.of()));
+        org.junit.jupiter.api.Assertions.assertTrue(grouped.contains("AS outstanding_qty"));
+        org.junit.jupiter.api.Assertions.assertTrue(grouped.contains(
+                "SUM(GREATEST(" + com.uten.imp.common.saleschain.SalesOrderChainSql.outstandingSql("i")));
+        org.junit.jupiter.api.Assertions.assertTrue(SalesOrderService.progressStageExpr().contains(
+                "t.outstanding_qty <= 0.000001"));
+    }
+
 }

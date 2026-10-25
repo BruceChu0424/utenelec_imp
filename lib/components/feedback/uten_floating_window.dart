@@ -76,6 +76,8 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
   Rect _ballRect = Rect.zero;
   bool _ballPositioned = false;
   final GlobalKey _collapseButtonKey = GlobalKey();
+  final GlobalKey _headerSizeKey = GlobalKey();
+  final GlobalKey _actionsSizeKey = GlobalKey();
   late final AnimationController _morph = AnimationController(
     vsync: this,
     duration: _morphDuration,
@@ -175,6 +177,36 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
   /// 宿主要求展开（例如再次点击入口按钮时窗口还缩成球）。
   void expand() {
     if (_collapsed) _startMorph(expand: true);
+  }
+
+  /// Content-sized hosts may update height after their scrollable content lays
+  /// out. The visible rectangle, resize handles and collapse animation continue
+  /// to share exactly the same geometry.
+  void fitHeight(double height) {
+    if (!_positioned || !height.isFinite) return;
+    final next = height.clamp(widget.minSize.height, _maxHeight);
+    if ((next - _height).abs() < 1) return;
+    setState(() {
+      _height = next;
+      _top = _top.clamp(
+        0.0,
+        (_area.maxHeight - _height).clamp(0.0, double.infinity),
+      );
+    });
+  }
+
+  void fitBodyHeight(double bodyHeight) {
+    final header =
+        _headerSizeKey.currentContext?.findRenderObject() as RenderBox?;
+    final actions =
+        _actionsSizeKey.currentContext?.findRenderObject() as RenderBox?;
+    if (header?.hasSize != true) return;
+    fitHeight(
+      bodyHeight +
+          header!.size.height +
+          (actions?.hasSize == true ? actions!.size.height + 1 : 0) +
+          1,
+    );
   }
 
   void _collapseFromButton() {
@@ -511,12 +543,12 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
         // body 自己滚动。
         child: Column(
           children: [
-            _buildHeader(theme),
+            KeyedSubtree(key: _headerSizeKey, child: _buildHeader(theme)),
             const Divider(height: 1),
             Flexible(child: widget.body),
             if (widget.actions != null) ...[
               const Divider(height: 1),
-              widget.actions!,
+              KeyedSubtree(key: _actionsSizeKey, child: widget.actions!),
             ],
           ],
         ),

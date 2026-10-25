@@ -36,9 +36,7 @@ public class PurchaseOrderPrintService {
         OrderDetail detail = orders.detail(id);
         // The latest case governs the current revision, including quantity reconfirmation.
         // A historical effective status alone is not evidence of finance approval.
-        if (detail.getStatus() == null || detail.getStatus() != 1
-                || detail.getFinanceApproval() == null
-                || !"APPROVED".equals(detail.getFinanceApproval().status())) {
+        if (!commerciallyApproved(detail)) {
             throw new ApiException(ErrorCode.BUSINESS, "仅财务审核通过的采购单可导出单据");
         }
         Object[] header = (Object[]) em.createNativeQuery("""
@@ -78,7 +76,7 @@ public class PurchaseOrderPrintService {
                 masked ? "" : text(header[5]), masked ? "" : text(header[6]),
                 masked ? null : decimal(detail.getTotalOriginal()), masked,
                 text(detail.getRemark()), text(detail.getMakerName()), reviewerName,
-                status(detail), lines);
+                status(detail), lines, commerciallyApproved(detail));
     }
 
     private String approvedReviewer(OrderDetail detail) {
@@ -89,7 +87,7 @@ public class PurchaseOrderPrintService {
         List<Object[]> cases = em.createNativeQuery("""
                 SELECT status, decided_by_employee_id
                 FROM procurement_order_approval_cases
-                WHERE order_type = 'PURCHASE' AND order_id = :id
+                WHERE order_type = 'PURCHASE' AND order_id = :id AND request_type='ORDER'
                 ORDER BY attempt DESC LIMIT 1
                 """).setParameter("id", detail.getId()).getResultList();
         if (cases.isEmpty()) return ""; // Legacy audit identity is not evidence of a finance decision.
@@ -112,6 +110,7 @@ public class PurchaseOrderPrintService {
     static String status(OrderDetail detail) {
         if (detail.getStatus() != null && detail.getStatus() == 2) return "已取消";
         if (detail.getStatus() != null && detail.getStatus() == -1) return "已反审";
+        if(detail.getClosureRequest()!=null&&"APPROVED".equals(detail.getClosureRequest().status())) return "已结束(财务批准)";
         String finance = detail.getFinanceApproval() == null ? "" : detail.getFinanceApproval().status();
         return switch (finance) {
             case "PENDING" -> detail.getStatus() != null && detail.getStatus() == 1 ? "改量待财务复核" : "等待财务审核";
@@ -119,6 +118,11 @@ public class PurchaseOrderPrintService {
             case "APPROVED" -> "财务已通过";
             default -> detail.getStatus() != null && detail.getStatus() == 1 ? "历史已审" : "草稿";
         };
+    }
+
+    static boolean commerciallyApproved(OrderDetail detail) {
+        return detail.getStatus()!=null && detail.getStatus()==1 && detail.getFinanceApproval()!=null
+                && "APPROVED".equals(detail.getFinanceApproval().status());
     }
 
     private static String decimal(BigDecimal value) { return value == null ? null : value.toPlainString(); }
@@ -130,7 +134,7 @@ public class PurchaseOrderPrintService {
             String companyName, String companyPhone, String supplierName, String supplierContact,
             String supplierPhone, String deliveryPlace, String currencyName, String currencyCode,
             String settlementMethod, String totalOriginal, boolean priceMasked, String remark,
-            String makerName, String reviewerName, String statusLabel, List<PrintLine> lines) {}
+            String makerName, String reviewerName, String statusLabel, List<PrintLine> lines, boolean financeApproved) {}
 
     public record PrintLine(UUID id, Integer lineNo, String goodsCode, String goodsName,
             String model, String spec, String colorName, String unitName, String physicalQty,

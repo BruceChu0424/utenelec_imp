@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../core/utils/display_datetime.dart';
 import '../../shared/models/progress_timeline_event.dart';
 
 /// 快递式进度时间线。
@@ -63,14 +64,10 @@ class UtenProgressTimeline extends StatelessWidget {
     );
   }
 
-  /// ISO 时间 → 本地「yyyy-MM-dd HH:mm」；解析失败原样返回。
+  /// ISO 时间统一转为北京时间；解析失败保留原始追溯值。
   static String formatTime(String? iso) {
     if (iso == null || iso.isEmpty) return '';
-    final parsed = DateTime.tryParse(iso);
-    if (parsed == null) return iso;
-    final t = parsed.toLocal();
-    String two(int v) => v.toString().padLeft(2, '0');
-    return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
+    return DisplayDateTime.beijing(iso, fallback: iso);
   }
 }
 

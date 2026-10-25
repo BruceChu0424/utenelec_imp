@@ -1,13 +1,12 @@
 // 即时库存页（仓库管理 hub 入口，stock:view）。
 //
-// 全宽库存表；分类筛选按需打开侧滑面板，不常驻左侧分类栏。
+// 左侧分类树 + 右侧库存表，沿用货品资料的可调分栏与窄屏目录。
 // 编辑模式复用货品资料的草稿与编辑器，只修改主档库位号、归属仓库。
 // - 口径不变：分类「全部」= 不过滤，选任意层级 = 该分类子树聚合，零货品分类
 //   自动隐藏；仓库「全部」= 参与核算仓库聚合，选主仓 = 自身 + 全部子仓聚合；
-// - 右侧工具栏：当前分类 + 仓库字段 + 库存范围开关 + 共 N 项；
-// - 表格 = 统一 MasterDataTableView：所属类型 / 物料编码 / 物料系列 / 库位号 /
-//   型号 / 客户型号 / 货品名称 / 规格 / 颜色 / 单位 / 备注 / 库存数量 / 库存重量 /
-//   待检量 / 合格待入库 / 多排数量。库存台账金额列已从页面与预览打印移除
+// - 右侧工具栏：货品搜索 + 仓库字段 + 库存范围开关 + 共 N 项；
+// - 表格 = 统一 MasterDataTableView：货品识别、库存数量/重量与待处理量在前，
+//   主档位置及其他属性在后。库存台账金额列已从页面与预览打印移除
 //  （加密导出 Excel 仍由服务端按 goods:cost:view 独立裁列，口径不受本页影响）。
 //
 // 数据口径（后端 /api/stock/instant-inventory）：
@@ -30,12 +29,14 @@ import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/layout/uten_adaptive_hierarchy_pane.dart';
 import '../../../components/inputs/uten_filter_picker_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_split_view.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -47,6 +48,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/auth/sensitive_write.dart';
+import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/models/paged_result.dart';
@@ -61,6 +63,7 @@ import '../../basic_data/repositories/master_inline_edit_repository.dart';
 import '../../basic_data/repositories/product_category_repository.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/product_category_picker_panel.dart';
+import '../../basic_data/widgets/uten_category_tree_view.dart';
 import '../../basic_data/widgets/goods_related_search_control.dart';
 import '../../basic_data/widgets/master_inline_edit.dart';
 import '../../basic_data/widgets/master_inline_page_mixin.dart';
@@ -93,7 +96,11 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
   static const _minTwoPaneWidth = 840.0;
   bool get _compactActions =>
       MediaQuery.sizeOf(context).width < _minTwoPaneWidth;
-  // 分类仅在按需打开的筛选面板中显示。
+  bool get _canViewCategories =>
+      ref.read(isSuperAdminProvider) ||
+      ref.read(currentPermissionsProvider).contains(Perm.materialCategoryView);
+
+  // 分类树独立滚动，刷新及分类切换不重挂右侧库存表。
   List<ProductCategoryNode>? _tree;
   String? _treeError;
   Map<String, GoodsDetail> _locationSnapshots = const {};
@@ -272,6 +279,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
   }
 
   Future<void> _loadTree() async {
+    if (!_canViewCategories) return;
     final ownerCurrent = captureReadOwner(ref);
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     try {
@@ -280,7 +288,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
           .treeWithGoodsCounts();
       if (!ownerCurrent() || !inlineAcceptsRead(boundary)) return;
       setState(() {
-        _tree = tree;
+        _tree = pruneCategoriesWithoutGoods(tree);
         _treeError = null;
       });
     } on ApiException catch (e) {
@@ -362,10 +370,18 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
   bool get _resultsReady =>
       _page != null && !_summaryLoading && !_summaryHasError;
 
+  String get _categoryScopeLabel => _effectiveCategoryId == null
+      ? '全部分类'
+      : utenTreeSelectionPath<ProductCategoryNode>(
+              _tree ?? const [],
+              _effectiveCategoryId,
+            ) ??
+            '所选分类';
+
   String get _summaryScopeLabel {
     final names = ref.read(masterNameServiceProvider);
     final parts = <String>[
-      findCategoryName(_tree ?? const [], _effectiveCategoryId) ?? '全部分类',
+      _categoryScopeLabel,
       _warehouseId == null
           ? '全部仓库'
           : names.warehouseEntries[_warehouseId] ?? '所选仓库',
@@ -576,6 +592,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
   }
 
   void _selectCategory(String? id) {
+    if (id == _effectiveCategoryId) return;
     if (_searchQuery.isNotEmpty) {
       setState(() => _searchCategoryId = id);
       _restartSearch();
@@ -617,18 +634,79 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
     }
   }
 
-  Future<void> _pickCategory() async {
-    if (_tree == null) {
-      await _loadTree();
-      if (!mounted || _tree == null) return;
-    }
-    final result = await showUtenProductCategoryPickerPanel(
-      context,
-      tree: _tree!,
-      selectedId: _effectiveCategoryId,
+  Widget _buildCategoryPane() {
+    final theme = Theme.of(context);
+    return Builder(
+      builder: (paneContext) => ExcludeFocus(
+        excluding: inlineEdit.active,
+        child: IgnorePointer(
+          ignoring: inlineEdit.active,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ListTile(
+                key: const Key('instant-inventory-all-categories'),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: UtenSpacing.s12,
+                ),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: UtenRadius.controlAll,
+                ),
+                selected: _effectiveCategoryId == null,
+                selectedTileColor: theme.colorScheme.primaryContainer,
+                leading: const Icon(Icons.all_inbox_outlined),
+                title: const Text('全部分类'),
+                onTap: () {
+                  _selectCategory(null);
+                  UtenHierarchyPanelScope.maybeOf(
+                    paneContext,
+                  )?.onSelection?.call();
+                },
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              if (_treeError != null)
+                TextButton(
+                  onPressed: _loadTree,
+                  child: Text('$_treeError，重试分类'),
+                ),
+              if (_tree == null && _treeError == null)
+                const LinearProgressIndicator(),
+              Expanded(
+                child: UtenCategoryTreeView<ProductCategoryNode>(
+                  key: const Key('instant-inventory-category-tree'),
+                  nodes: _tree ?? const [],
+                  selectedIds: {?_effectiveCategoryId},
+                  flatLevelColors: true,
+                  expandOnRowTap: true,
+                  initiallyCollapsedNames: const {'未分类'},
+                  searchFieldKey: const Key(
+                    'instant-inventory-category-search',
+                  ),
+                  onNodeTap: (node) => _selectCategory(node.id),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
-    if (!mounted || result == null || result.id == _effectiveCategoryId) return;
-    _selectCategory(result.id);
+  }
+
+  Widget _buildInventoryLayout() {
+    if (!_canViewCategories) return _buildTablePane();
+    return UtenSplitView(
+      persistenceKey: 'stock.instantInventory',
+      initialLeadingWidth: 240,
+      minLeadingWidth: 200,
+      maxLeadingWidth: 400,
+      minTrailingWidth: 520,
+      minTwoPaneWidth: _minTwoPaneWidth,
+      selectedLeadingLabel: _categoryScopeLabel,
+      selectedLeadingKey: _effectiveCategoryId,
+      openLeadingButtonKey: const Key('instant-inventory-open-categories'),
+      leading: _buildCategoryPane(),
+      trailing: _buildTablePane(),
+    );
   }
 
   /// 仓库筛选 = 同一侧滑面板的查询口径（includeAll + allowParent）：
@@ -687,20 +765,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       UtenFilterPickerField(
-                        key: const Key('instant-inventory-category'),
-                        label: '分类',
-                        icon: Icons.category_outlined,
-                        value: findCategoryName(
-                          _tree ?? const [],
-                          _effectiveCategoryId,
-                        ),
-                        onTap: _pickCategory,
-                      ),
-                      UtenFilterPickerField(
                         key: const Key('instant-inventory-warehouse'),
                         label: '仓库', // TODO(l10n): 补 arb
                         icon: Icons.warehouse_outlined,
-                        width: 220,
                         value: _warehouseId == null
                             ? null
                             : names.warehouseEntries[_warehouseId],
@@ -767,11 +834,6 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
                       _restartSearch();
                     },
                   ),
-                if (_treeError != null)
-                  TextButton(
-                    onPressed: _loadTree,
-                    child: Text('$_treeError，重试分类'),
-                  ),
               ],
             ),
           ),
@@ -821,8 +883,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
             exportReport: 'instant-inventory',
             exportQuery: _exportQuery,
             exportFilename: '即时库存',
-            type: UtenButtonType.primary,
-            size: UtenButtonSize.large,
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.medium,
           ),
           UtenExportButton(
             key: ValueKey(('instant-inventory-export', _queryContextVersion)),
@@ -840,7 +902,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
             queryParams: _exportQuery,
             filename: '即时库存',
             type: UtenButtonType.primary,
-            size: UtenButtonSize.large,
+            size: UtenButtonSize.medium,
           ),
         ],
         // facet 桶/空值计数由服务端随列表下发（未应用归属筛选的同一口径聚合）。
@@ -942,6 +1004,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(isSuperAdminProvider);
     final canCount = ref
         .watch(currentPermissionsProvider)
         .contains(stockCountSubmitPermission);
@@ -1028,7 +1091,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
         body: SafeArea(
           child: UtenContentContainer.wide(
             padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
-            child: _buildTablePane(),
+            child: _buildInventoryLayout(),
           ),
         ),
       ),

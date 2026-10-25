@@ -50,6 +50,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @SpringBootTest(classes = com.uten.imp.UtenImpApplication.class, properties = {
         "spring.profiles.active=dev",
+        // DatabaseInitializer clones a schema already migrated by TestFlyway. Do not start a
+        // second migration connection using the developer host's separate migrator credentials.
+        "spring.flyway.enabled=false",
         "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.jwt.secret=auth-session-jwt-secret-0123456789-test-only",

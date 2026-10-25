@@ -11,6 +11,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/shared/documents/document_unapproval_action.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_doc_detail_page.dart';
@@ -20,8 +25,66 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
+import '../../support/audit_screenshot_support.dart';
 
 void main() {
+  testWidgets(
+    'legacy effective order keeps an explicit bottom-right cancel/end entry',
+    (tester) async {
+      const captureUi = bool.fromEnvironment('UTEN_CAPTURE_UI');
+      final capture = captureUi ? GlobalKey() : null;
+      if (captureUi) await loadAuditScreenshotFonts(tester);
+      await _pumpDetail(
+        tester,
+        permissions: const {
+          Perm.purchaseOrderView,
+          Perm.purchaseOrderSubmitFinance,
+        },
+        priceMasked: false,
+        legacyApproved: true,
+        capture: capture,
+      );
+      final action = find.byKey(const Key('purchase-order-request-close'));
+      expect(find.text('取消/结束订单'), findsOneWidget);
+      expect(tester.widget<UtenButton>(action).onPressed, isNotNull);
+      expect(
+        find.ancestor(
+          of: action,
+          matching: find.byType(UtenFloatingActionGroup),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.getRect(action).bottom, greaterThan(1200));
+      if (capture != null) {
+        await saveAuditScreenshot(
+          tester,
+          capture,
+          'purchase-order-cancel-end-detail',
+        );
+      }
+    },
+  );
+
+  for (final closureStatus in ['APPROVED', 'PENDING']) {
+    testWidgets(
+      'purchase $closureStatus closure hides original order unapproval',
+      (tester) async {
+        await _pumpDetail(
+          tester,
+          permissions: const {
+            Perm.purchaseOrderView,
+            Perm.purchaseOrderReverse,
+          },
+          priceMasked: true,
+          closureStatus: closureStatus,
+        );
+        expect(find.byType(DocumentUnapprovalAction), findsNothing);
+        expect(find.text('反审'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('按总金额计价显示完整参考单价及服务端真实总金额', (tester) async {
     await _pumpDetail(
       tester,
@@ -112,6 +175,9 @@ Future<void> _pumpDetail(
   bool totalPricing = false,
   String? purchaserId,
   String? purchaserName,
+  String? closureStatus,
+  bool legacyApproved = false,
+  GlobalKey? capture,
 }) async {
   tester.view.physicalSize = const Size(1400, 1600);
   tester.view.devicePixelRatio = 1;
@@ -125,6 +191,8 @@ Future<void> _pumpDetail(
     totalPricing: totalPricing,
     purchaserId: purchaserId,
     purchaserName: purchaserName,
+    closureStatus: closureStatus,
+    legacyApproved: legacyApproved,
   );
   await tester.pumpWidget(
     ProviderScope(
@@ -137,8 +205,15 @@ Future<void> _pumpDetail(
         ).overrideWithValue(PurchaseRepository(api, docType)),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
       ],
-      child: const MaterialApp(
-        home: PurchaseDocDetailPage(docType: docType, id: id),
+      child: MaterialApp(
+        theme: capture == null ? null : auditScreenshotTheme(buildLightTheme()),
+        builder: (_, child) => capture == null
+            ? child!
+            : RepaintBoundary(key: capture, child: child),
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: const PurchaseDocDetailPage(docType: docType, id: id),
       ),
     ),
   );
@@ -152,12 +227,16 @@ class _TestApi extends ApiClient {
     this.totalPricing = false,
     this.purchaserId,
     this.purchaserName,
+    this.closureStatus,
+    this.legacyApproved = false,
   }) : super(Dio());
 
   final bool priceMasked;
   final bool totalPricing;
   final String? purchaserId;
   final String? purchaserName;
+  final String? closureStatus;
+  final bool legacyApproved;
 
   @override
   Future<List<Map<String, dynamic>>> getList(
@@ -196,7 +275,20 @@ class _TestApi extends ApiClient {
         'supplierId': 'supplier-1',
         'currencyId': 'usd',
         'exchangeRate': 7,
-        'status': 0,
+        'status': closureStatus == null && !legacyApproved ? 0 : 1,
+        if (legacyApproved) ...{
+          'legacyId': 101,
+          'financeApproval': {'status': 'LEGACY_EFFECTIVE'},
+        },
+        if (closureStatus != null) ...{
+          'canReverse': true,
+          'financeApproval': {'status': 'APPROVED'},
+          'closureRequest': {
+            'caseId': 'closure-1',
+            'status': closureStatus,
+            'mode': 'CLOSE',
+          },
+        },
         'totalOriginal': 50,
         'totalLocal': 350,
         'priceMasked': priceMasked,

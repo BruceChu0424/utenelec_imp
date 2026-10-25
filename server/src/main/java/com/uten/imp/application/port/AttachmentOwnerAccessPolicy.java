@@ -18,6 +18,11 @@ public interface AttachmentOwnerAccessPolicy {
 
     void requireCanView(UUID ownerId, AuthUser user);
 
+    /** Separate content-read authorization; existing business owners preserve their view contract. */
+    default void requireCanDownload(UUID ownerId, AuthUser user) {
+        requireCanView(ownerId, user);
+    }
+
     /** Unredacted recognition inputs may contain prices; owning feature supplies its sensitive-read policy. */
     default void requireCanViewSensitiveOriginal(UUID ownerId,AuthUser user) {requireCanView(ownerId,user);}
 
@@ -33,6 +38,19 @@ public interface AttachmentOwnerAccessPolicy {
     }
 
     void requireCanManage(UUID ownerId, AuthUser user);
+
+    /** Upload and delete are distinct actions for owners such as the company file library. */
+    default void requireCanUpload(UUID ownerId, AuthUser user) {
+        requireCanManage(ownerId, user);
+    }
+
+    default void requireCanUploadForUpdate(UUID ownerId, AuthUser user) {
+        requireCanManageForUpdate(ownerId, user);
+    }
+
+    default void requireCanDeleteForUpdate(UUID ownerId, AuthUser user) {
+        requireCanManageForUpdate(ownerId, user);
+    }
 
     default void requireCanManageForUpdate(UUID ownerId, AuthUser user) {
         requireCanManage(ownerId, user);

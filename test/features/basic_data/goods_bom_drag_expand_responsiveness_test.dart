@@ -152,7 +152,11 @@ Future<GoodsBomEditTestApi> _pumpTab(
 
 Future<TestGesture> _pickUpSource(WidgetTester tester) async {
   final gesture = await tester.startGesture(
-    tester.getCenter(find.text('待移动组件')),
+    tester.getCenter(
+      find
+          .descendant(of: _slot('source'), matching: find.textContaining('组件 '))
+          .first,
+    ),
     pointer: 31,
     kind: PointerDeviceKind.mouse,
   );
@@ -254,7 +258,9 @@ void main() {
     await tester.pump();
     await gesture.up();
     await tester.pump();
-    await tester.tap(find.text('其他落点'));
+    await tester.tap(
+      find.descendant(of: _slot('safe'), matching: find.byType(Checkbox)).first,
+    );
     await tester.pump();
 
     expect(repository.childRead.isCompleted, isFalse);
@@ -283,7 +289,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_retainedSource, findsNothing, reason: '拖拽结束后释放临时保活，不能留下千条离屏行');
-    await tester.tap(find.text('子件 0'));
+    await tester.tap(
+      find
+          .descendant(
+            of: _slot('target/child-0'),
+            matching: find.byType(Checkbox),
+          )
+          .first,
+    );
     await tester.pump();
     expect(_table(tester).selectedIds, contains('assembly|child-0'));
     expect(find.byKey(const ValueKey('row-drag-indicator')), findsNothing);

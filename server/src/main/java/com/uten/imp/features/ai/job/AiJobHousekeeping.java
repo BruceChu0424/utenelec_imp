@@ -25,7 +25,6 @@ import org.springframework.transaction.support.TransactionTemplate;
  *   <li>用量日汇总(ADR-164): 把 ai_call_logs 按人按日归档进 ai_usage_daily(终日回填 + 昨天/今日重算,
  *       昨天重算并入跨天尾巴), 在调用记录归档之前跑, 支撑月/年视图。</li>
  * </ul>
- * 业务数据清空期间由排水调度器自动跳过本轮。
  */
 @Slf4j
 @Component

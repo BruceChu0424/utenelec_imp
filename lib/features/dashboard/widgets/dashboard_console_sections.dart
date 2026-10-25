@@ -4,6 +4,7 @@
 // 使用真实计数、截止时间与目标路由。
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/data_display/uten_animated_number.dart';
 import '../../../components/feedback/uten_live_pulse_dot.dart';
 import '../../../components/feedback/uten_notification_badge.dart';
@@ -734,7 +735,6 @@ class _DueCountdownChip extends StatelessWidget {
 
 /// 标题栏右上角的采样时刻（HH:mm），给「这是实时仪表」一个锚点。
 String _sampledAt(DateTime value) {
-  final local = value.toLocal();
-  return '${local.hour.toString().padLeft(2, '0')}:'
-      '${local.minute.toString().padLeft(2, '0')} 采样';
+  final wall = ChinaDateTime.fromInstant(value);
+  return '${ChinaDateTime.formatTime(wall)} 采样';
 }

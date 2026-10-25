@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_business_list_pages.dart';
@@ -147,7 +148,7 @@ void main() {
   });
 
   testWidgets(
-    'order history requires time and retains it when clearing status',
+    'order history defaults to last three months and retains it when clearing status',
     (tester) async {
       final api = await _mount(tester);
       await _tap(tester, '历史记录');
@@ -158,19 +159,27 @@ void main() {
       expect(find.text('已结案'), findsOneWidget);
       expect(find.text('已反审'), findsOneWidget);
       expect(find.text('执行中'), findsNothing);
-      // 2026-10-04 起历史门默认「全部」：选中历史记录即发一次全量查询（无状态）。
+      // 2026-10-24 起历史门默认近三个月：选中历史记录即按最近三个月查询（无状态）。
+      final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
       expect(api.queries, [
-        {'page': 1, 'size': 20},
+        {
+          'page': 1,
+          'size': 20,
+          'dateFrom': ChinaDateTime.formatDate(defaultRange.start),
+          'dateTo': ChinaDateTime.formatDate(defaultRange.end),
+        },
       ]);
 
       _table(tester).onFilterChanged('status', 'CLOSED');
       await tester.pumpAndSettle();
-      // 2026-10-04 起历史段默认「全部时间段」：进入即全量加载（不带日期）。
+      // 历史内换状态筛选保留默认时间段（ADR-180 历史保留原时间范围）。
       expect(api.lastQuery, {
         'page': 1,
         'size': 20,
         'status': 1,
         'closed': true,
+        'dateFrom': ChinaDateTime.formatDate(defaultRange.start),
+        'dateTo': ChinaDateTime.formatDate(defaultRange.end),
       });
       final range = DateTimeRange(
         start: DateTime.utc(2026, 8),
@@ -247,12 +256,28 @@ void main() {
         ]);
         expect(find.text('已审'), findsOneWidget);
         expect(find.text('已反审'), findsOneWidget);
-        // 2026-10-04 起历史门默认「全部」：选中历史记录即全量加载（不带状态）。
-        expect(api.lastQuery, {'page': 1, 'size': 20});
+        // 2026-10-24 起历史门默认近三个月：选中历史记录即按最近三个月查询
+        //（无状态）。
+        final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
+        expect(
+          api.lastQuery,
+          {
+            'page': 1,
+            'size': 20,
+            'dateFrom': ChinaDateTime.formatDate(defaultRange.start),
+            'dateTo': ChinaDateTime.formatDate(defaultRange.end),
+          },
+        );
         _table(tester).onFilterChanged('status', 'APPROVED');
         await tester.pumpAndSettle();
-        expect(api.lastQuery, {'page': 1, 'size': 20, 'status': 1});
-        // 时间胶囊「全部」默认已选中：再点不重复发请求。
+        expect(api.lastQuery, {
+          'page': 1,
+          'size': 20,
+          'status': 1,
+          'dateFrom': ChinaDateTime.formatDate(defaultRange.start),
+          'dateTo': ChinaDateTime.formatDate(defaultRange.end),
+        });
+        // 「全部」不再默认选中：点它切为不限时间重查（不带日期）。
         await _tap(tester, '全部');
         expect(api.lastQuery, {'page': 1, 'size': 20, 'status': 1});
         await _tap(tester, '已反审');

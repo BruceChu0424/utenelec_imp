@@ -11,6 +11,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class PermissionDependencyCatalogTest {
     @Test
+    void companyFilesAcquireOnlyTheirActualAttachmentReadOrUploadDependencies() {
+        var catalog=catalog(view("company_file:view"),action("company_file:upload"),action("company_file:download"),
+                view("attachment:view"),action("attachment:upload"),action("attachment:download"),action("attachment:delete"));
+        assertThat(catalog.requiredPermissions("company_file:upload",Set.of()))
+                .containsExactly("company_file:view","attachment:view","attachment:upload");
+        assertThat(catalog.requiredPermissions("company_file:download",Set.of()))
+                .containsExactly("company_file:view","attachment:view","attachment:download");
+        assertThat(catalog.usablePermissions(Set.of("company_file:view","company_file:upload","attachment:view")))
+                .doesNotContain("company_file:upload");
+        assertThat(catalog.requiredPermissions("company_file:download",Set.of())).doesNotContain("attachment:upload","attachment:delete");
+    }
+    @Test
     void materialEngineeringForwardRequiresItsActualAnalysisReadWithoutPlanOrGoodsWrites() {
         var catalog = catalog(view("production_material_analysis:view"),
                 action("production_material_analysis:forward_rd"), view("production_plan:view"),

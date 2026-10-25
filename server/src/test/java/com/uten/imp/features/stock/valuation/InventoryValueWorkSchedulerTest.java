@@ -4,8 +4,7 @@ import com.uten.imp.application.port.InventoryProductionCostPort;
 import com.uten.imp.application.port.InventoryValuationPort;
 import com.uten.imp.features.stock.InventoryMutationLock;
 import com.uten.imp.features.admin.serverstatus.ScheduledTaskRunRegistry;
-import com.uten.imp.features.admin.systemtest.BusinessDataResetDrainGate;
-import com.uten.imp.features.admin.systemtest.DrainAwareTaskScheduler;
+import com.uten.imp.features.admin.serverstatus.ObservedTaskScheduler;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -145,7 +144,7 @@ class InventoryValueWorkSchedulerTest {
     @TestConfiguration(proxyBeanMethods = false)
     @EnableScheduling
     @Import({InventoryValueWorkService.class, InventoryValueWorkScheduler.class,
-            DrainAwareTaskScheduler.class, BusinessDataResetDrainGate.class, ScheduledTaskRunRegistry.class})
+            ObservedTaskScheduler.class, ScheduledTaskRunRegistry.class})
     static class WorkerConfiguration {
     }
 }

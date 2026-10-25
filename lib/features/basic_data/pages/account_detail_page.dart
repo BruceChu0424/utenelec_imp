@@ -676,7 +676,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
       label: '日期',
       width: 150,
       type: 'date',
-      value: (row) => row.billDate?.replaceFirst('T', ' ').split('.').first,
+      value: (row) => _statementDateText(row.billDate),
     ),
     MasterColumnDef(
       key: 'billNo',
@@ -755,7 +755,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
       context: context,
       title: row.billNo?.isNotEmpty == true ? row.billNo! : '流水详情',
       rows: [
-        MasterDetailRow('日期', row.billDate?.replaceFirst('T', ' ')),
+        MasterDetailRow('日期', _statementDateText(row.billDate)),
         MasterDetailRow('单号', row.billNo),
         MasterDetailRow('业务类型', _flowSourceLabel(row.sourceDocType)),
         MasterDetailRow('摘要', row.summary),
@@ -765,7 +765,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
         MasterDetailRow('支出', _money(row.outAmountText)),
         MasterDetailRow('滚动余额', _money(row.balanceText)),
         MasterDetailRow('来源', row.source),
-        MasterDetailRow('核销日期', row.settledDate?.replaceFirst('T', ' ')),
+        MasterDetailRow('核销日期', _statementDateText(row.settledDate)),
       ],
     );
   }
@@ -1114,4 +1114,12 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
 class _WarningValue {
   const _WarningValue(this.value);
   final String? value;
+}
+
+// 账行可包含纯业务日期；只有时间戳才换算为北京时间，不改原日期字段。
+String? _statementDateText(String? value) {
+  final raw = value?.trim();
+  if (raw == null || raw.isEmpty) return raw;
+  if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(raw)) return raw;
+  return ChinaDateTime.formatIsoInstant(raw, fallback: raw, seconds: true);
 }

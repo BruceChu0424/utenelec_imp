@@ -195,6 +195,10 @@ public class PurchaseReturnService {
     public ReturnDetail create(ReturnSaveRequest req) {
         tx.bind();
         lockReturnRequest(null,req).verifyUnchanged();
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,"PURCHASE",
+                req.getItems().stream().map(ReturnItemLine::getOrderItemId).toList());
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireReceiptItemsMutable(em,"PURCHASE",
+                req.getItems().stream().map(ReturnItemLine::getReceiptItemId).toList());
         PurchaseReturn r = new PurchaseReturn();
         r.setQuantitySemantics(com.uten.imp.common.finance.ProcurementQuantities.EXTRA_GIFT);
         applyHeader(req, r, returnHeader(req));
@@ -277,6 +281,8 @@ public class PurchaseReturnService {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (r.getWarehouseId() == null) throw new ApiException(ErrorCode.BUSINESS, "退货单需指定仓库");
         List<PurchaseReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,"PURCHASE",
+                items.stream().map(PurchaseReturnItem::getOrderItemId).toList());
         if (items.isEmpty()) throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
@@ -350,6 +356,8 @@ public class PurchaseReturnService {
             com.uten.imp.common.finance.ProcurementUnapprovalPreflight.check("DOWNSTREAM_OR_COST_BLOCKED",()->requireReversibleBusiness(r)));
     }
     private void requireUnapprovalHeader(PurchaseReturn r){
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,"PURCHASE",
+                itemRepo.findByReturnIdOrderByLineNoAsc(r.getId()).stream().map(PurchaseReturnItem::getOrderItemId).toList());
         access.requireWritable(r.getMakerId(),"只能操作本人负责的采购退货单");
         com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         if(r.getStatus()==null||r.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");

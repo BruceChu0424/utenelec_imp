@@ -38,7 +38,6 @@ class MasterPlatformColumnAdapterTest {
         var access = adapter.authorize(Set.of(id), true).get(id);
         assertThat(access.canWrite()).isTrue();
         assertThat(access.facts()).containsEntry("qty", new BigDecimal("2.5")).doesNotContainKey("amount");
-        assertThat(adapter.preserveValuesOnReset()).isTrue();
     }
     @Test void priceFactsNeedTheirOwnPermissionAndMissingValuesAreNotZero() {
         authenticate(Set.of("client:view", "client:edit", "account:balance:view"), false);

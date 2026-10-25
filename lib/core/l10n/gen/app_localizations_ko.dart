@@ -442,10 +442,6 @@ class AppLocalizationsKo extends AppLocalizations {
       '최고 관리자가 회사 브랜드, 로고와 테마 색상을 설정할 수 있습니다. 업그레이드 시 기존 설정과 개인 환경설정을 보존합니다.';
 
   @override
-  String get businessResetAuditScope =>
-      '테스트 업무 데이터, 삭제 이력, 필드 버전과 업무 감사 기록을 삭제합니다. 로그인 인증, 권한, 보안, 시스템 감사와 초기화 확인 기록은 보존됩니다.';
-
-  @override
   String get serverAlertAcknowledge => '확인';
 
   @override
@@ -490,10 +486,6 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get release253Notices =>
       '추가 생산이 가능해지면 권한이 있는 작업장 책임자에게 자재 도착을 알립니다. 긴급, 할 일, 진행 상황 및 공지에 서로 다른 스타일을 적용했습니다.';
-
-  @override
-  String get release253Reset =>
-      '업무 데이터를 비우면 기존 임시 저장 자료가 무효화되고 업무 중량 측정 및 학습 기록도 삭제됩니다.';
 
   @override
   String get release253Maintenance =>
@@ -12194,11 +12186,64 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get goodsImportTemplateHint =>
-      '품목 내보내기 파일을 신규 또는 수정 템플릿으로 사용할 수 있습니다. 분류(경로를 -로 연결)와 품목명은 필수이며 코드는 비워둘 수 있습니다. 수정할 때는 시스템 식별자를 유지하고 새 행에는 기존 품목의 식별자를 복사하지 마세요. 재사용된 코드는 시스템 식별자로 현재 품목을 확인해야 합니다.';
+      '품목 내보내기 파일을 신규 또는 수정 템플릿으로 사용할 수 있습니다. 분류(경로를 -로 연결)와 품목명은 필수이며 코드는 비워둘 수 있습니다. 수정할 때는 시스템 식별자를 유지하세요. 코드를 비우면 기존 코드를 유지하고 미사용 새 코드는 차이 검토에 표시됩니다. 신규 행은 시스템 식별자를 비우고 새 코드를 입력할 수 있습니다. 재사용된 코드는 시스템 식별자로 현재 품목을 확인해야 합니다.';
 
   @override
   String get goodsImportMergeHint =>
-      '새 품목은 추가하고 기존 품목은 코드 또는 동일 분류와 이름으로 일치시킵니다. 누락 값은 자동 보완하며 나머지 차이는 전체 페이지에서 교체 또는 무시합니다. 빈 셀은 기존 값을 지우지 않습니다. 같은 이름의 모호한 항목은 수정 후 다시 업로드하세요. 동일 코드의 삭제 품목은 파일 내용으로 복원됩니다.';
+      '시스템 식별자로 기존 품목을 확인합니다. 식별자가 없으면 코드로 일치시키며 새 코드로 이름이 같고 색상이나 재질이 다른 품목을 추가할 수 있습니다. 식별자와 코드가 모두 비어 있을 때만 동일 분류와 이름의 유일한 품목을 찾습니다. 여러 품목이 일치하면 코드나 식별자가 필요합니다. 누락 값은 자동 보완하며 나머지 차이는 전체 페이지에서 교체 또는 무시합니다. 빈 셀은 기존 값을 지우지 않습니다. 동일 코드의 삭제 품목은 파일 내용으로 복원됩니다.';
+
+  @override
+  String get goodsImportUndoHint =>
+      '일반 자료 가져오기는 도구 모음의 실행 취소로 되돌릴 수 있습니다. 코드가 변경된 경우 변경 이력에서 버전을 선택하여 현재 코드 규칙에 따라 복원하세요.';
+
+  @override
+  String get dropdownMoveResizeHint => '여기를 끌어 이동하고 가장자리를 끌어 크기를 조절하세요';
+
+  @override
+  String get dropdownResetGeometry => '자동 크기와 위치 복원';
+
+  @override
+  String get dropdownResizeMenu => '드롭다운 크기 조절';
+
+  @override
+  String pickerChooseRecord(String label) {
+    return '$label 선택';
+  }
+
+  @override
+  String get bomChooseComponent => '구성품 선택';
+
+  @override
+  String get bomReplaceComponent => '구성품 교체';
+
+  @override
+  String get bomAddChildComponent => '하위 구성품 추가';
+
+  @override
+  String get bomSelectParentFirst => '먼저 상위로 사용할 구성품을 하나 선택하세요';
+
+  @override
+  String get bomNewComponentRow => '새 구성품';
+
+  @override
+  String get masterInlineOtherFields => '필수 항목 입력';
+
+  @override
+  String get masterInlineNewRecord => '새 자료 입력';
+
+  @override
+  String get masterInlineApplyDraft => '표에 적용';
+
+  @override
+  String get masterInlineCreateUncertain =>
+      '추가 결과가 아직 확인되지 않았습니다. 먼저 새로 고쳐 확인하세요. 중복 방지를 위해 이 행의 재전송을 중지했습니다.';
+
+  @override
+  String get masterInlineCreateNotAllowed =>
+      '추가 권한 또는 현재 분류가 변경되었습니다. 새로 고친 후 다시 입력하세요.';
+
+  @override
+  String get masterInlineNewRowHint => '새 자료';
 
   @override
   String get importRedetectCurrent => '현재 파일 다시 검사';
@@ -12245,4 +12290,503 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get importFilesFinished => '선택한 파일을 모두 처리했습니다';
+
+  @override
+  String get orderClosureUnverifiedQuantity =>
+      '이전 데이터의 수량이 검증되지 않았습니다. 종료 시 기존 수량과 기록을 유지하고 이후 이행만 중지합니다. 잔량을 계산하거나 재주문할 수 없습니다.';
+
+  @override
+  String get orderClosureHandleBlocker => '관련 작업으로 이동';
+
+  @override
+  String get orderClosureContactQuality =>
+      '권한이 있는 품질 담당자가 검사를 완료한 후 종료 요청을 다시 확인하세요.';
+
+  @override
+  String get orderClosureContactWarehouse =>
+      '권한이 있는 창고 담당자가 입고, 반품 또는 실물 처리를 완료한 후 종료 요청을 다시 확인하세요.';
+
+  @override
+  String get orderClosureContactSubcontract =>
+      '권한이 있는 외주 담당자가 자재 작업을 확인한 후 종료 요청을 다시 확인하세요.';
+
+  @override
+  String get orderClosureContactFinance =>
+      '권한이 있는 재무 담당자가 현재 승인을 처리한 후 종료 요청을 다시 확인하세요.';
+
+  @override
+  String get orderClosureQualityPreserved =>
+      '검사 중인 실물과 검사 작업은 유지됩니다. 종료 요청으로 검사가 취소되거나 미검사 실물이 처리 완료되지 않습니다.';
+
+  @override
+  String get orderClosureRejectHint =>
+      '이번 종료 요청만 거절되며 기존 주문은 승인된 조건으로 계속 이행됩니다. 신청자는 사유를 확인한 후 종료를 다시 요청할 수 있습니다.';
+
+  @override
+  String get orderClosureAction => '주문 취소/종료';
+
+  @override
+  String get orderClosureBatchAction => '선택 주문 일괄 취소/종료';
+
+  @override
+  String get orderClosureEligibilityChecking =>
+      '서버에서 선택한 주문의 처리 가능 여부를 확인 중입니다.';
+
+  @override
+  String get orderClosureEligibilityFailed =>
+      '처리 가능 여부를 확인하지 못했습니다. 새로 고침하거나 다시 선택하세요.';
+
+  @override
+  String get orderClosureNoEligibleOrders =>
+      '현재 선택한 주문을 처리할 수 없습니다. 진행 중인 작업을 완료한 후 다시 선택하세요.';
+
+  @override
+  String get orderClosureEligibleOrders => '처리 가능한 주문';
+
+  @override
+  String get orderClosureUnavailableOrders => '처리 불가 주문';
+
+  @override
+  String get orderClosureEligibleOnlyConfirm =>
+      '위의 처리 가능한 주문만 제출하며 처리 불가 항목은 변경하지 않음을 확인합니다';
+
+  @override
+  String get orderClosureUnsupportedRowReason =>
+      '종료 요청을 제출할 수 있는 주문이 아니므로 변경하지 않습니다.';
+
+  @override
+  String get orderClosureBusy => '처리 중입니다. 잠시 기다려 주세요.';
+
+  @override
+  String get orderClosureSelectOrders => '취소하거나 종료할 주문을 선택하세요.';
+
+  @override
+  String get orderClosureSelectionChanged =>
+      '선택한 작업이 변경되었습니다. 새로 고침 후 다시 선택하세요.';
+
+  @override
+  String get orderClosureOrdersOnly =>
+      '신청서 또는 다른 기록이 포함되어 있습니다. 종료할 주문만 선택하세요.';
+
+  @override
+  String get orderClosureBatchLimit => '한 번에 최대 50개 주문을 선택하세요.';
+
+  @override
+  String get orderClosureMissingPermission =>
+      '재무 승인 제출 권한이 필요합니다. 관리자에게 문의하세요.';
+
+  @override
+  String get orderClosureWholeOrderHint =>
+      '각 주문의 모든 명세가 종료 요청에 포함됩니다. 같은 주문의 여러 품목을 선택해도 요청은 한 번만 생성됩니다. 두 옵션 모두 재무 승인이 필요하며 기존 기록은 삭제되지 않습니다.';
+
+  @override
+  String get orderClosureAlreadyPending => '현재 재무 승인을 먼저 처리하세요.';
+
+  @override
+  String get orderClosureAlreadyEnded => '이미 종료된 주문은 다시 요청할 수 없습니다.';
+
+  @override
+  String get orderClosureReadOnly =>
+      '읽기 전용 문서입니다. 작성자 또는 해당 문서 쓰기 범위가 있는 사용자가 처리해야 합니다.';
+
+  @override
+  String get orderClosureApprovalHint =>
+      '두 옵션 모두 재무 승인 후 적용됩니다. 기존 입고, 재고 및 회계 기록은 보존되며 외주 자재 책임은 별도로 처리해야 합니다. 승인 대기 중 이행 내역이 변경되면 다시 확인해야 합니다.';
+
+  @override
+  String get orderClosureReceiptFinalityHint =>
+      '종료 전에 입고, 반품 및 품질 처리를 완료하세요. 승인 후 확정된 실입고 수량을 직접 변경할 수 없습니다.';
+
+  @override
+  String get orderClosureCloseHint => '승인 후 남은 이행과 입고 대기를 종료합니다.';
+
+  @override
+  String get orderClosureReorder => '종료 후 잔량 재주문';
+
+  @override
+  String get orderClosureReorderHint =>
+      '승인 후 이전 가격을 참고하여 잔량 초안을 생성합니다. 공급업체를 다시 선택하고 조건을 확인한 후 재무 승인을 요청하세요.';
+
+  @override
+  String get orderClosureReason => '종료 사유';
+
+  @override
+  String get orderClosureReasonHint => '예: 공급 중단 또는 이전 주문 실행 중지';
+
+  @override
+  String get orderClosureReasonRequired => '종료 사유를 입력하세요';
+
+  @override
+  String get orderClosureSubmit => '재무 승인 요청';
+
+  @override
+  String get orderClosureSubmitted => '종료 요청이 재무 승인에 제출되었습니다';
+
+  @override
+  String get orderClosureLoadFailed => '종료 정보를 불러올 수 없습니다';
+
+  @override
+  String get orderClosureUnavailable => '현재 주문을 종료할 수 없습니다. 새로 고침 후 상태를 확인하세요.';
+
+  @override
+  String get orderClosureRemaining => '남은 주문 수량';
+
+  @override
+  String get orderClosureRemainingGift => '남은 증정 수량';
+
+  @override
+  String get orderClosurePending => '종료 승인 대기';
+
+  @override
+  String get orderClosureApproved => '종료 승인됨';
+
+  @override
+  String get orderClosureRejected => '종료 거절됨';
+
+  @override
+  String get orderClosureApproveHint =>
+      '승인 후 기존 주문의 남은 이행을 종료합니다. 재주문 초안에는 이전 가격이 참고용으로 남습니다. 공급업체를 다시 선택하고 조건을 확인한 후 승인을 요청하세요.';
+
+  @override
+  String get orderClosureReviewTitle => '주문 종료 요청';
+
+  @override
+  String get orderClosureApprovedToast => '종료 요청이 승인되어 남은 이행이 종료되었습니다';
+
+  @override
+  String get orderClosureBatchHint => '선택에 종료 요청이 포함됩니다. 사유와 잔량을 각각 확인하세요.';
+
+  @override
+  String get companyFilesTitle => '회사 자료실';
+
+  @override
+  String get companyFilesLibrary => '전체 자료';
+
+  @override
+  String get companyFilesTrash => '휴지통';
+
+  @override
+  String get companyFilesNewFolder => '새 폴더';
+
+  @override
+  String get companyFilesUpload => '파일 업로드';
+
+  @override
+  String get companyFilesSearch => '현재 폴더 검색';
+
+  @override
+  String get companyFilesRefresh => '새로 고침';
+
+  @override
+  String get companyFilesSort => '정렬';
+
+  @override
+  String get companyFilesManual => '사용자 지정 순서';
+
+  @override
+  String get companyFilesName => '이름';
+
+  @override
+  String get companyFilesUpdated => '수정 시간';
+
+  @override
+  String get companyFilesSize => '크기';
+
+  @override
+  String get companyFilesAscending => '오름차순';
+
+  @override
+  String get companyFilesDescending => '내림차순';
+
+  @override
+  String get companyFilesIcons => '아이콘';
+
+  @override
+  String get companyFilesTiles => '타일';
+
+  @override
+  String get companyFilesDetails => '상세 정보';
+
+  @override
+  String get companyFilesOpen => '열기';
+
+  @override
+  String get companyFilesDownload => '원본 다운로드';
+
+  @override
+  String get companyFilesRename => '이름 바꾸기';
+
+  @override
+  String get companyFilesMove => '이동';
+
+  @override
+  String get companyFilesDelete => '휴지통으로 이동';
+
+  @override
+  String get companyFilesRestore => '복원';
+
+  @override
+  String get companyFilesAccess => '폴더 접근 권한';
+
+  @override
+  String get companyFilesPassword => '폴더 암호';
+
+  @override
+  String get companyFilesUnlock => '잠금 해제';
+
+  @override
+  String get companyFilesLock => '다시 잠그기';
+
+  @override
+  String get companyFilesClose => '닫기';
+
+  @override
+  String get companyFilesCancel => '취소';
+
+  @override
+  String get companyFilesSave => '저장';
+
+  @override
+  String get companyFilesConfirm => '확인';
+
+  @override
+  String get companyFilesRetry => '다시 시도';
+
+  @override
+  String get companyFilesEmpty => '이 폴더에 자료가 없습니다';
+
+  @override
+  String get companyFilesEmptyHint =>
+      '업로드 또는 생성 권한이 있으면 위 도구 모음에서 자료를 추가하거나 여기에 파일을 놓을 수 있습니다.';
+
+  @override
+  String get companyFilesNoResults => '일치하는 자료가 없습니다';
+
+  @override
+  String get companyFilesTrashEmpty => '휴지통이 비어 있습니다';
+
+  @override
+  String get companyFilesTrashHint => '삭제한 자료의 원본은 보관되며 권한이 있는 직원이 복원할 수 있습니다.';
+
+  @override
+  String get companyFilesLoading => '자료를 불러오는 중…';
+
+  @override
+  String get companyFilesLoadFailed => '자료를 불러오지 못했습니다';
+
+  @override
+  String get companyFilesChanged => '저장되었습니다';
+
+  @override
+  String get companyFilesDescription => '설명';
+
+  @override
+  String get companyFilesFolder => '폴더';
+
+  @override
+  String get companyFilesFile => '파일';
+
+  @override
+  String get companyFilesType => '유형';
+
+  @override
+  String get companyFilesCreatedBy => '생성자';
+
+  @override
+  String get companyFilesCreatedAt => '생성 시간';
+
+  @override
+  String get companyFilesUpdatedBy => '수정자';
+
+  @override
+  String get companyFilesDeletedAt => '삭제 시간';
+
+  @override
+  String get companyFilesPending => '업로드 미완료';
+
+  @override
+  String get companyFilesProtected => '암호로 보호됨';
+
+  @override
+  String get companyFilesLocked => '이 폴더에는 암호가 필요합니다';
+
+  @override
+  String get companyFilesLockedHint =>
+      '폴더 접근 권한은 계속 적용됩니다. 잠금 해제는 현재 로그인 세션에서만 일시적으로 유효합니다.';
+
+  @override
+  String get companyFilesDeleteHint =>
+      '폴더와 모든 하위 항목을 휴지통으로 이동합니다. 원본은 보관되며 복원 후에도 현재 권한이 적용됩니다.';
+
+  @override
+  String get companyFilesPasswordHint =>
+      '암호는 추가 보호 수단이며 사용자 권한을 대체하지 않습니다. 암호를 변경하면 모든 임시 잠금 해제가 만료됩니다.';
+
+  @override
+  String get companyFilesNewPassword => '새 암호';
+
+  @override
+  String get companyFilesRepeatPassword => '암호 다시 입력';
+
+  @override
+  String get companyFilesRemovePassword => '암호 해제';
+
+  @override
+  String get companyFilesPasswordMismatch => '입력한 암호가 일치하지 않습니다';
+
+  @override
+  String get companyFilesRequiredName => '이름을 입력하세요';
+
+  @override
+  String get companyFilesPasswordLength => '암호는 8자 이상이어야 합니다';
+
+  @override
+  String get companyFilesSelectFolder => '대상 폴더 선택';
+
+  @override
+  String get companyFilesMoveHere => '여기로 이동';
+
+  @override
+  String get companyFilesParent => '상위 폴더';
+
+  @override
+  String get companyFilesAccessHint =>
+      '작업에는 전체 권한과 폴더 규칙이 모두 적용됩니다. 거부 규칙이 우선하며 상속을 켜면 상위 규칙도 적용됩니다.';
+
+  @override
+  String get companyFilesInherit => '상위 폴더 권한 상속';
+
+  @override
+  String get companyFilesAddRule => '접근 규칙 추가';
+
+  @override
+  String get companyFilesAllow => '허용';
+
+  @override
+  String get companyFilesDeny => '거부';
+
+  @override
+  String get companyFilesUser => '직원';
+
+  @override
+  String get companyFilesDepartment => '부서';
+
+  @override
+  String get companyFilesPrincipalSearch => '이름, 사번 또는 부서 검색';
+
+  @override
+  String get companyFilesRead => '보기';
+
+  @override
+  String get companyFilesCreate => '폴더 생성';
+
+  @override
+  String get companyFilesEdit => '이름 및 설명 편집';
+
+  @override
+  String get companyFilesManage => '권한 및 암호 관리';
+
+  @override
+  String get companyFilesRemoveRule => '규칙 삭제';
+
+  @override
+  String get companyFilesQueue => '업로드 대기열';
+
+  @override
+  String get companyFilesWaiting => '업로드 대기 중';
+
+  @override
+  String get companyFilesUploading => '업로드 중';
+
+  @override
+  String get companyFilesVerifying => '검사 및 저장 중';
+
+  @override
+  String get companyFilesUploaded => '업로드 완료';
+
+  @override
+  String get companyFilesUploadFailed => '업로드 실패';
+
+  @override
+  String get companyFilesUnknown => '결과 확인 필요';
+
+  @override
+  String get companyFilesCheckResult => '결과 확인';
+
+  @override
+  String get companyFilesStopQueue => '현재 파일 완료 후 중지';
+
+  @override
+  String get companyFilesStopped => '중지됨';
+
+  @override
+  String get companyFilesQueueHint =>
+      '파일을 하나씩 업로드하고 검사합니다. 대기열을 닫아도 저장된 자료는 유지됩니다.';
+
+  @override
+  String get companyFilesUnsupported => '지원하지 않는 파일 형식입니다';
+
+  @override
+  String get companyFilesTooLarge => '파일이 업로드 크기 제한을 초과했습니다';
+
+  @override
+  String get companyFilesBatchTooLarge => '한 번에 선택하는 파일의 총 크기는 100 MB 이하여야 합니다';
+
+  @override
+  String get companyFilesUnreadable => '파일을 읽을 수 없습니다. 다시 선택하세요';
+
+  @override
+  String get companyFilesDropHint => '현재 폴더에 업로드하려면 놓으세요';
+
+  @override
+  String get companyFilesDragHint =>
+      '사용자 지정 순서에서는 길게 눌러 순서를 바꿀 수 있습니다. 다른 정렬에서는 폴더에 놓아 이동하세요.';
+
+  @override
+  String get companyFilesSavedTo => '파일이 저장되었습니다';
+
+  @override
+  String get companyFilesNoAccess => '사용 가능한 작업이 없습니다';
+
+  @override
+  String get companyFilesPermissionDenied => '접근 권한이 변경되었습니다. 새로 고친 후 다시 시도하세요';
+
+  @override
+  String get companyFilesUnknownHint =>
+      '요청이 이미 저장되었을 수 있습니다. 중복 업로드를 방지하려면 먼저 결과를 확인하세요.';
+
+  @override
+  String get companyFilesUp => '한 칸 앞으로 이동';
+
+  @override
+  String get companyFilesDown => '한 칸 뒤로 이동';
+
+  @override
+  String get companyFilesItems => '개 항목';
+
+  @override
+  String get companyFilesPage => '페이지';
+
+  @override
+  String get companyFilesPrevious => '이전 페이지';
+
+  @override
+  String get companyFilesNext => '다음 페이지';
+
+  @override
+  String get companyFilesDuplicateRule => '이 대상에는 이미 허용 규칙과 거부 규칙이 있습니다';
+
+  @override
+  String get companyFilesRuleActionsRequired => '각 규칙에 하나 이상의 작업을 선택하세요';
+
+  @override
+  String get companyFilesPreviewUnavailable =>
+      '미리 보기를 사용할 수 없습니다. 원본을 다운로드할 수 있습니다';
+
+  @override
+  String get companyFilesResumeName => '같은 이름의 미완료 업로드 계속하기';
+
+  @override
+  String get companyFilesKeepExtension =>
+      '이름을 바꿀 때 파일이 열리는 방식이 바뀌지 않도록 원래 확장자를 유지하세요.';
 }

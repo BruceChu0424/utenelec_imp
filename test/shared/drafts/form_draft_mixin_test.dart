@@ -814,7 +814,8 @@ void main() {
           ),
         );
         await tester.pump();
-        expect(find.textContaining('服务端未接受本次提交'), findsOneWidget);
+        // 本地检查点失败不再顶替服务端错误（页面自己展示 409 文案）；
+        // 预提交标记留在盘上是安全方向，底部状态条已退役。
         storage.failWrites = false;
         var calls = 0;
         await editor.runFormDraftSubmission(() async {
@@ -1142,7 +1143,6 @@ void main() {
       env.container.read(formDraftsProvider).single.data['text'],
       '恢复后补填，已取得单据编号',
     );
-    expect(find.textContaining('草稿尚未保存'), findsNothing);
     await tester.pumpWidget(const SizedBox());
     env.router.dispose();
     env.container.dispose();
@@ -1284,7 +1284,6 @@ void main() {
       expect(discarded.containsKey('data'), isFalse, reason: '不再保留输入事实');
       await tester.enterText(find.byKey(const Key('input')), '再改');
       await tester.pumpAndSettle();
-      expect(find.textContaining('草稿尚未保存'), findsNothing);
       final again = env.container.read(formDraftsProvider).single;
       expect(again.id, first.id);
       expect(again.data['text'], '再改');
@@ -1446,8 +1445,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存草稿'));
     await tester.pumpAndSettle();
+    // 退出保存失败：页面必须留在原地（错误经瞬时通知提示，底部状态条已退役）。
     expect(find.byKey(const Key('input')), findsOneWidget);
-    expect(find.textContaining('草稿尚未保存'), findsOneWidget);
     storage.failWrites = false;
     await tester.tap(find.text('离开'));
     await tester.pumpAndSettle();

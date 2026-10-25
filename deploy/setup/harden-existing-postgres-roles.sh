@@ -294,6 +294,8 @@ verify_runtime_role_contract() {
       NOT has_function_privilege('uten', 'public.fn_register_legacy_receipt_import_source(uuid,text,jsonb)', 'EXECUTE') END
     AND CASE WHEN to_regprocedure('public.fn_require_runtime_maintenance(boolean)') IS NULL THEN TRUE ELSE
       NOT has_function_privilege('uten', 'public.fn_require_runtime_maintenance(boolean)', 'EXECUTE') END
+    AND CASE WHEN to_regprocedure('public.fn_require_runtime_refresh()') IS NULL THEN TRUE ELSE
+      NOT has_function_privilege('uten', 'public.fn_require_runtime_refresh()', 'EXECUTE') END
     )::int;")"
   [[ "$import_acl" == 1 ]] || die "$phase runtime role can mutate or issue restricted legacy import evidence"
 }
@@ -670,6 +672,9 @@ BEGIN
   END IF;
   IF to_regprocedure('public.fn_require_runtime_maintenance(boolean)') IS NOT NULL THEN
     REVOKE ALL ON FUNCTION public.fn_require_runtime_maintenance(boolean) FROM PUBLIC, uten;
+  END IF;
+  IF to_regprocedure('public.fn_require_runtime_refresh()') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.fn_require_runtime_refresh() FROM PUBLIC, uten;
   END IF;
   -- ADR-155 (V808): only the reset function owner may verify the test file list and clear
   -- its metadata inside an explicit test reset; the blanket grant above must not expose them.

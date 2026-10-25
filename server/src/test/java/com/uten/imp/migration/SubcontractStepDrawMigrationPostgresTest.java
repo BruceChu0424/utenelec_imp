@@ -628,10 +628,6 @@ class SubcontractStepDrawMigrationPostgresTest {
                 """);
         assertNull(offending, "迁到头后仍有幸存对象引用被删的前置自制/唯一子件对象或取值: " + offending);
 
-        assertTrue(((Number) scalar("""
-                SELECT position('(''subcontract_draw_notice_marks'', ''CLEAR'')'
-                                IN pg_get_functiondef('business_data_reset()'::regprocedure))
-                """)).intValue() > 0, "显式测试清空必须清空可领提醒水位表");
         assertEquals(1, count("""
                 SELECT count(*) FROM fn_goods_quantity_reference_sources() WHERE relation_name = 'subcontract_material_plan_items'
                 """), "货品数量引用目录仍登记冻结计划行");

@@ -50,7 +50,7 @@ public final class ProcurementOrderClosurePolicy {
                 ? settledOrderQty + " * COALESCE(order_item.unit_rate,0)" : "";
         em.createNativeQuery("""
                 UPDATE %s order_doc
-                SET is_closed = (
+                SET is_closed = order_doc.termination_case_id IS NOT NULL OR (
                     SELECT COALESCE(bool_and(
                         CASE WHEN %s THEN
                             fn_purchase_order_tranche_stocked_qty(order_item.id,'CHARGED')

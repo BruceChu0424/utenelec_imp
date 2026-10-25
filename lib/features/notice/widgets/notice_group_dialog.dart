@@ -205,7 +205,7 @@ class _GroupNoticeRow extends StatelessWidget {
     if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
     if (diff.inHours < 24) return '${diff.inHours} 小时前';
     if (diff.inDays < 7) return '${diff.inDays} 天前';
-    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    return '${ChinaDateTime.formatDate(d)}(北京)';
   }
 
   @override

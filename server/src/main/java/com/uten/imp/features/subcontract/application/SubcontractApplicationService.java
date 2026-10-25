@@ -230,8 +230,7 @@ public class SubcontractApplicationService {
                                     WHERE oi.is_deleted = FALSE
                                       AND o.status = 0
                                       AND o.is_deleted = FALSE
-                                      AND fn_procurement_order_latest_approval_status('SUBCONTRACT', o.id)
-                                            IN ('PENDING', 'REJECTED')
+                                      AND fn_procurement_order_reserves_source('SUBCONTRACT', o.id)
                                     GROUP BY src.application_item_id
                                 ) pending ON pending.application_item_id = i.id
                                 WHERE i.id IN (:itemIds)

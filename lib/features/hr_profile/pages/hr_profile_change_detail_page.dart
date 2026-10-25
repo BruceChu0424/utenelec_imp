@@ -5,6 +5,7 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
@@ -418,7 +419,4 @@ class _HrProfileChangeDetailPageState
   }
 }
 
-String _formatTime(DateTime t) {
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
-}
+String _formatTime(DateTime t) => ChinaDateTime.formatDateTime(t);

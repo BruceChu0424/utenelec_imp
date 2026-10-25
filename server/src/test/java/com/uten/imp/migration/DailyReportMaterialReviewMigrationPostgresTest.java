@@ -172,30 +172,7 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         V900_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
                 "A selected outbound index must not replace an existing index: "+name));
         assertEquals(expectedIndexes,catalogMap(indexes()));
-        TreeMap<String,String> expectedPolicy=catalogMap(resetPolicyAfterV840);
-        assertNull(expectedPolicy.put("document_unapprovals","CLEAR"));
-        assertNull(expectedPolicy.put("purchase_request_qty_revisions","CLEAR"));
-        assertNull(expectedPolicy.put("sms_gateway_settings","PRESERVE"));
-        // V873/V874 (ADR-183): 凭据与外网策略在业务清空时保留(见 BusinessDataResetSqlContractTest 同步点)。
-        assertNull(expectedPolicy.put("staff_mfa","PRESERVE"));
-        assertNull(expectedPolicy.put("remote_access_policy","PRESERVE"));
-        // V879: 连接配置与桥接诊断保留, 询盘时间线随业务清空(同一同步点)。
-        assertNull(expectedPolicy.put("website_management_settings","PRESERVE"));
-        assertNull(expectedPolicy.put("website_bridge_status","PRESERVE"));
-        assertNull(expectedPolicy.put("website_inquiry_events","CLEAR"));
-        assertNull(expectedPolicy.put("platform_column_definition_deletions","PRESERVE"));
-        assertNull(expectedPolicy.put("business_column_deletions","PRESERVE"));
-        // V889 retains step-up lockout state without changing session cleanup;
-        // V890 retains the market binding, including its unlink/CAS tombstone.
-        assertEquals("CLEAR",expectedPolicy.put("auth_step_up_states","PRESERVE"));
-        assertNull(expectedPolicy.put("goods_market_reference_bindings","PRESERVE"));
-        assertNull(expectedPolicy.put("permission_templates","PRESERVE"));
-        assertNull(expectedPolicy.put("master_record_versions","PRESERVE"));
-        assertNull(expectedPolicy.put("subcontract_selected_outbound_commands","CLEAR"));
-        assertNull(expectedPolicy.put("subcontract_selected_outbound_items","CLEAR"));
-        V871_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
-        V885_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
-        assertEquals(expectedPolicy,catalogMap(resetPolicy()));
+        assertNull(db.queryForObject("SELECT to_regprocedure('public.business_data_reset()')::text",String.class));
         assertEquals(MigrationRehearsalSupport.CURRENT_HEAD_VERSION,
                 db.queryForObject("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",String.class));
     }
@@ -206,13 +183,13 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertThrows(Exception.class,()->insertV3(report,"{\"reportId\":\""+UUID.randomUUID()+"\",\"reportVersion\":0,\"fingerprint\":\""+"b".repeat(64)+"\",\"rows\":[]}","[]"));
         assertEquals(0,db.queryForObject("SELECT count(*) FROM production_daily_report_commands WHERE report_id=?",Integer.class,report));
     }
-    @Test void validV3EmptyMaterialSnapshotIsAppendOnlyAndUsesExistingResetPolicy() {
+    @Test void validV3EmptyMaterialSnapshotIsAppendOnly() {
         UUID report=newReport("SR20200101000003");
         insertV3(report,"{\"reportId\":\""+report+"\",\"reportVersion\":0,\"fingerprint\":\""+"b".repeat(64)+"\",\"rows\":[]}","[]");
         assertThrows(Exception.class,()->db.update("UPDATE production_daily_report_commands SET material_decisions='[]'::jsonb WHERE report_id=?",report));
         assertThrows(Exception.class,()->db.update("DELETE FROM production_daily_report_commands WHERE report_id=?",report));
         assertEquals(3,db.queryForObject("SELECT approval_protocol_version FROM production_daily_report_commands WHERE report_id=?",Integer.class,report));
-        assertTrue(resetPolicy().stream().anyMatch(row->row.startsWith("production_daily_report_commands|")));
+        assertNull(db.queryForObject("SELECT to_regprocedure('public.business_data_reset()')::text",String.class));
     }
     private static UUID newReport(String billNo){UUID report=UUID.randomUUID();UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,actor);db.update("INSERT INTO production_daily_reports(id,bill_no,bill_date,status,maker_id) VALUES(?,?,DATE '2020-01-01',0,?)",report,billNo,employee);return report;}
     private static Map<String,Object> oldCommand(){return db.queryForMap("SELECT report_id,request_hash,approval_protocol_version,reviewed_row_version,xmin::text row_xmin FROM production_daily_report_commands WHERE actor_user_id=?",actor);}

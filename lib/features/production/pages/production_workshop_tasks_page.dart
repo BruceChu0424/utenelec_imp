@@ -358,8 +358,9 @@ class _ProductionWorkshopTasksPageState
   String? _error;
   int _loadGeneration = 0;
 
-  /// 历史任务段的时间门控值（ADR-066 §1.3）：未选不请求、显示引导占位。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
+  /// 历史任务段的时间门控值（ADR-066 §1.3）：默认近三个月（2026-10-24 用户
+  /// 口径，进段即按最近三个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
 
   /// 当前分类是否「历史任务」（终态段：已完工/已取消/已红冲）。
   bool get _isHistory => _status == 'COMPLETED';
@@ -1959,9 +1960,7 @@ class _ProductionWorkshopTasksPageState
   static String _clock(DateTime instant) {
     final china = ChinaDateTime.fromInstant(instant);
     final today = ChinaDateTime.fromInstant(DateTime.now());
-    final hm =
-        '${china.hour.toString().padLeft(2, '0')}:'
-        '${china.minute.toString().padLeft(2, '0')}';
+    final hm = ChinaDateTime.formatTime(china);
     if (china.year == today.year &&
         china.month == today.month &&
         china.day == today.day) {
@@ -2919,10 +2918,10 @@ class _ProductionWorkshopTasksPageState
                       _sortAscending = true;
                       _page = 1;
                       _selected.clear();
-                      // 离开历史段时清掉时间门控值，下次进入重新选择。
-                      if (!_isHistory) {
-                        _historyTime = const UtenHistoryTimeValue.all();
-                      }
+                      // 进历史段重新按默认近三个月加载；非历史段回 all() 占位。
+                      _historyTime = _isHistory
+                          ? UtenHistoryTimeValue.lastThreeMonths()
+                          : const UtenHistoryTimeValue.all();
                     });
                     _load();
                   },
@@ -2934,7 +2933,7 @@ class _ProductionWorkshopTasksPageState
                   },
                 ),
                 if (_isHistory) ...[
-                  // 历史任务时间门控（ADR-066 §1.3）：时间段/全部，未选不加载。
+                  // 历史任务时间门控（ADR-066 §1.3，2026-10-24 起默认近三个月）。
                   Padding(
                     padding: const EdgeInsets.only(top: UtenSpacing.s8),
                     child: UtenHistoryTimeFilter(

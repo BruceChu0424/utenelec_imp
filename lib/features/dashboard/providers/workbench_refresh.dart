@@ -10,7 +10,7 @@ import '../../notice/providers/notice_providers.dart';
 import '../../../shared/auth/session_epoch_provider.dart';
 import 'dashboard_overview_provider.dart';
 
-/// 新会话建立（未登录→已登录，含清空业务数据后的重新登录）时的全局状态重建。
+/// 新会话建立（未登录→已登录）时的全局状态重建。
 ///
 /// 推进 [sessionEpochProvider]：徽章汇总、页面偏好快照等按会话作用域构造的 provider
 /// 从零重建并立即重拉——旧实例(含其定时器与迟到响应)随之作废，新会话永远看不到上个

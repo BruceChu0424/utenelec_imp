@@ -6,7 +6,7 @@ import '../../../features/stock/models/stock_query.dart';
 import '../../measurement/weight_unit.dart';
 import '../../models/paged_result.dart';
 
-/// Master data is displayed once, apart from warehouse × color balances.
+/// Balance-table footer for the selected warehouse and color scope.
 /// Quantities come only from the server's full scoped totals, never page sums.
 class GoodsStockInventoryOverview extends StatelessWidget {
   const GoodsStockInventoryOverview({
@@ -56,76 +56,42 @@ class GoodsStockInventoryOverview extends StatelessWidget {
       );
     }
     final page = data;
-    if (page == null || page.items.isEmpty) return const SizedBox.shrink();
-    final goods = page.items.first;
-    final facts = <(String, String?)>[
-      ('名称', goods.name),
-      ('编号', goods.goodsCode),
-      ('所属类型', goods.categoryName),
-      ('物料系列', goods.series),
-      ('型号', goods.model),
-      ('客户型号', goods.cNumber),
-      ('规格', goods.spec),
-      ('基本单位', goods.unitName),
-
-      ('货品备注', goods.remark),
-    ];
-    return Container(
-      key: const ValueKey('stock-inventory-context'),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: UtenRadius.mdAll,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            spacing: 24,
-            runSpacing: 8,
-            children: [
-              for (final (label, value) in facts)
-                if (value?.trim().isNotEmpty == true)
-                  Text(
-                    '$label：${value?.isNotEmpty == true ? value : '—'}',
-                    style: theme.textTheme.bodyMedium,
-                  ),
-            ],
+    if (page == null) return const SizedBox.shrink();
+    if (!showQuantities) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UtenTotalsSummaryBar(
+          key: const ValueKey('stock-scoped-totals'),
+          compact: true,
+          density: true,
+          entries: reportTotalEntries(
+            page.totals.where(
+              (t) => const {
+                'qty',
+                'weight',
+                'weight_unknown_rows',
+                'weight_estimated_rows',
+                'pending_qty',
+                'pending_stock_in_qty',
+              }.contains(t.key),
+            ),
+            weightDisplay: weightDisplay,
           ),
-          if (showQuantities) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            UtenTotalsSummaryBar(
-              key: const ValueKey('stock-scoped-totals'),
-              compact: true,
-              density: true,
-              entries: reportTotalEntries(
-                page.totals.where(
-                  (t) => const {
-                    'qty',
-                    'weight',
-                    'weight_unknown_rows',
-                    'weight_estimated_rows',
-                    'pending_qty',
-                    'pending_stock_in_qty',
-                  }.contains(t.key),
+        ),
+        Wrap(
+          alignment: WrapAlignment.end,
+          spacing: 16,
+          runSpacing: 4,
+          children: [
+            for (final row in page.items)
+              if ((row.moreQty ?? 0) != 0)
+                Text(
+                  '多排数量（全局生产计划·${row.colorName ?? '无颜色'}）：${row.moreQty?.toString() ?? '—'}（计划行单位）',
                 ),
-                weightDisplay: weightDisplay,
-              ),
-            ),
-            Wrap(
-              spacing: 16,
-              runSpacing: 4,
-              children: [
-                for (final row in page.items)
-                  if ((row.moreQty ?? 0) != 0)
-                    Text(
-                      '多排数量（全局生产计划·${row.colorName ?? '无颜色'}）：${row.moreQty?.toString() ?? '—'}（计划行单位）',
-                    ),
-              ],
-            ),
           ],
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

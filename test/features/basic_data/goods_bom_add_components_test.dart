@@ -5,6 +5,8 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../support/audit_screenshot_support.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:dio/dio.dart';
 import 'package:uten_imp/components/feedback/uten_floating_window.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -87,7 +89,7 @@ class _RecordingBomRepo implements GoodsBomRepository {
 
   @override
   Future<GoodsBomLearningSummary> learning(String goodsId) async =>
-      throw UnimplementedError();
+      const GoodsBomLearningSummary();
 
   @override
   Future<GoodsBomLearningSummary> relearn(
@@ -101,8 +103,16 @@ const _picked = [
   GoodsListItem(id: 'goods-y', code: 'S01', name: '螺丝', price: 0.2),
 ];
 
-Future<void> _openAddDialog(WidgetTester tester, _RecordingBomRepo repo) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 900));
+final _captureKey = GlobalKey();
+
+Future<void> _openAddDialog(
+  WidgetTester tester,
+  _RecordingBomRepo repo, {
+  bool pick = true,
+  Size size = const Size(1600, 900),
+  double textScale = 1,
+}) async {
+  await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     ProviderScope(
@@ -134,11 +144,18 @@ Future<void> _openAddDialog(WidgetTester tester, _RecordingBomRepo repo) async {
         }),
         isSuperAdminProvider.overrideWithValue(false),
       ],
-      child: const MaterialApp(
+      child: MaterialApp(
+        theme: buildLightTheme(),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: RepaintBoundary(key: _captureKey, child: child!),
+        ),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        locale: Locale('zh'),
-        home: Scaffold(
+        locale: const Locale('zh'),
+        home: const Scaffold(
           body: GoodsBomTab(
             goodsId: 'goods-a',
             canCreate: true,
@@ -151,15 +168,75 @@ Future<void> _openAddDialog(WidgetTester tester, _RecordingBomRepo repo) async {
   );
   await tester.pumpAndSettle();
   await enterBomEdit(tester);
+  await tester.ensureVisible(find.byKey(const Key('goods-bom-add-component')));
   await tester.tap(find.byKey(const Key('goods-bom-add-component')));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('选择组件'));
+  if (!pick) return;
+  await tester.tap(find.byKey(const ValueKey('uten-reference-open-picker')));
   await tester.pumpAndSettle();
   expect(find.textContaining('外壳'), findsOneWidget);
   expect(find.textContaining('螺丝'), findsOneWidget);
 }
 
 void main() {
+  testWidgets('add component window ends immediately below the save actions', (
+    tester,
+  ) async {
+    await loadAuditScreenshotFonts(tester);
+    await _openAddDialog(tester, _RecordingBomRepo(), pick: false);
+    final surface = find
+        .descendant(
+          of: find.byType(UtenFloatingWindow),
+          matching: find.byType(Material),
+        )
+        .first;
+    final save = find.text('保存');
+    final surfaceRect = tester.getRect(surface);
+    final saveRect = tester.getRect(save);
+    expect(surfaceRect.bottom - saveRect.bottom, lessThan(40));
+    expect(surfaceRect.height, lessThan(430));
+    expect(tester.takeException(), isNull);
+    if (const bool.fromEnvironment('UTEN_CAPTURE_BOM_TABLE')) {
+      await saveAuditScreenshot(
+        tester,
+        _captureKey,
+        'screenshot-fixes-20261025-bom-add-fit-1600',
+      );
+    }
+  });
+
+  testWidgets('add component window and save fit 390 width at 2x text', (
+    tester,
+  ) async {
+    await loadAuditScreenshotFonts(tester);
+    await _openAddDialog(
+      tester,
+      _RecordingBomRepo(),
+      pick: false,
+      size: const Size(390, 844),
+      textScale: 2,
+    );
+    final surface = find
+        .descendant(
+          of: find.byType(UtenFloatingWindow),
+          matching: find.byType(Material),
+        )
+        .first;
+    final rect = tester.getRect(surface);
+    expect(rect.left, greaterThanOrEqualTo(0));
+    expect(rect.right, lessThanOrEqualTo(390));
+    expect(rect.bottom, lessThanOrEqualTo(844));
+    expect(find.text('保存').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    if (const bool.fromEnvironment('UTEN_CAPTURE_BOM_TABLE')) {
+      await saveAuditScreenshot(
+        tester,
+        _captureKey,
+        'screenshot-fixes-20261025-bom-add-fit-390-2x',
+      );
+    }
+  });
+
   testWidgets('两个组件先整批暂存，服务端拒绝保留草稿，核对后重试一次提交', (tester) async {
     final repo = _RecordingBomRepo();
     await _openAddDialog(tester, repo);

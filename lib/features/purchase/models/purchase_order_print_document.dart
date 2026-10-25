@@ -30,9 +30,8 @@ class PurchaseOrderPrintDocument {
           : financeExactDecimal(json['totalOriginal']),
       remark = _text(json['remark']),
       makerName = _text(json['makerName']),
-      reviewerName = json['statusLabel'] == '财务已通过'
-          ? _text(json['reviewerName'])
-          : '',
+      reviewerName = _financeApproved(json) ? _text(json['reviewerName']) : '',
+      financeApproved = _financeApproved(json),
       statusLabel = _text(json['statusLabel']),
       lines = (json['lines'] as List)
           .map(
@@ -48,6 +47,7 @@ class PurchaseOrderPrintDocument {
   final String makerName, reviewerName, statusLabel;
   final String? totalOriginal;
   final bool priceMasked;
+  final bool financeApproved;
   final List<PurchaseOrderPrintLine> lines;
 
   String get signature => jsonEncode([
@@ -70,11 +70,11 @@ class PurchaseOrderPrintDocument {
     makerName,
     reviewerName,
     statusLabel,
+    financeApproved,
     lines.map((line) => line.id).toList(growable: false),
     rows,
   ]);
 
-  bool get financeApproved => statusLabel == '财务已通过';
   String get amountLabel => priceMasked
       ? '***'
       : '${financeExactMoneyDisplay(totalOriginal)} ${_shown(currencyName)}';
@@ -155,6 +155,10 @@ class PurchaseOrderPrintLine {
 }
 
 String _text(Object? value) => value?.toString().trim() ?? '';
+bool _financeApproved(Map<String, dynamic> json) =>
+    json.containsKey('financeApproved')
+    ? json['financeApproved'] == true
+    : json['statusLabel'] == '财务已通过';
 String _shown(String? value) => value == null || value.isEmpty ? '—' : value;
 
 /// Money stays decimal text; sub-cent amounts are never silently rounded.

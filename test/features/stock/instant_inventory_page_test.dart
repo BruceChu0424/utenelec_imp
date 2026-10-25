@@ -1,4 +1,4 @@
-// 即时库存使用全宽表格；分类筛选在按需打开的确认面板中进行。
+// 即时库存复用货品资料的分类分栏；点分类立即应用，窄屏选后返回正文。
 // 搜索默认跨分类平铺，清空后恢复原浏览分类。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/product_category_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -19,13 +21,25 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+import '../../support/audit_screenshot_support.dart';
+
+const _capture = bool.fromEnvironment('UTEN_CAPTURE_INVENTORY_LAYOUT');
+final _captureKey = GlobalKey();
+
 void main() {
   Future<void> pumpPage(
     WidgetTester tester, {
     required _RecordingStockRepository stock,
-    Set<String> permissions = const <String>{},
+    Set<String> permissions = const <String>{
+      Perm.stockView,
+      Perm.materialCategoryView,
+    },
     Size size = const Size(1600, 1000),
     _ProductCategoryRepo? categories,
+    double textScale = 1,
+    bool dark = false,
+    bool superAdmin = false,
+    bool capture = false,
   }) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
@@ -45,8 +59,28 @@ void main() {
           ),
           stockQueryRepositoryProvider.overrideWithValue(stock),
           currentPermissionsProvider.overrideWithValue(permissions),
+          isSuperAdminProvider.overrideWithValue(superAdmin),
         ],
-        child: const MaterialApp(home: InstantInventoryPage()),
+        child: RepaintBoundary(
+          key: _captureKey,
+          child: MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: capture
+                ? auditScreenshotTheme(
+                    dark ? buildDarkTheme() : buildLightTheme(),
+                  )
+                : dark
+                ? buildDarkTheme()
+                : buildLightTheme(),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(textScale)),
+              child: child!,
+            ),
+            home: const InstantInventoryPage(),
+          ),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -90,45 +124,103 @@ void main() {
   );
 
   testWidgets(
-    'full width inventory loads immediately without a category sidebar',
+    'desktop inventory loads beside the directly accessible category tree',
     (tester) async {
       final stock = _RecordingStockRepository();
       await pumpPage(tester, stock: stock);
       expect(stock.calls, 1);
       expect(stock.lastCategoryId, isNull);
       expect(stock.lastKeyword, isNull);
+      expect(find.byType(UtenSplitView), findsOneWidget);
+      expect(
+        find.byKey(const Key('instant-inventory-category-tree')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('instant-inventory-category')), findsNothing);
+      expect(_categoryText('原材料'), findsOneWidget);
+      expect(
+        find.byKey(const Key('instant-inventory-all-categories')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('instant-inventory-open-categories')),
+        findsNothing,
+      );
+      final tree = find.byKey(const Key('instant-inventory-category-tree'));
+      final table = find.byType(MasterDataTableView<InstantInventoryRow>);
+      expect(
+        tester.getTopRight(tree).dx,
+        lessThan(tester.getTopLeft(table).dx),
+      );
+    },
+  );
+
+  testWidgets(
+    'category selection and all categories immediately re-query without confirmation',
+    (tester) async {
+      final stock = _RecordingStockRepository();
+      await pumpPage(tester, stock: stock);
+      expect(_categoryText('原材料'), findsOneWidget);
+      await tester.tap(_categoryText('原材料'));
+      await tester.pumpAndSettle();
+      expect(stock.lastCategoryId, 'raw');
+      await tester.tap(_categoryText('成品'));
+      await tester.pumpAndSettle();
+      expect(stock.lastCategoryId, 'finished');
+      expect(find.text('确定'), findsNothing);
+      expect(find.text('取消'), findsNothing);
+      await tester.tap(
+        find.byKey(const Key('instant-inventory-all-categories')),
+      );
+      await tester.pumpAndSettle();
+      expect(stock.lastCategoryId, isNull);
+    },
+  );
+
+  testWidgets(
+    'inventory-only permission does not request or display categories',
+    (tester) async {
+      final categories = _ProductCategoryRepo();
+      final stock = _RecordingStockRepository();
+      await pumpPage(
+        tester,
+        stock: stock,
+        categories: categories,
+        permissions: const {Perm.stockView},
+      );
+      expect(stock.calls, 1);
+      expect(categories.treeCalls, 0);
       expect(find.byType(UtenSplitView), findsNothing);
       expect(
         find.byKey(const Key('instant-inventory-category-tree')),
         findsNothing,
       );
       expect(
-        find.byKey(const Key('instant-inventory-category')),
+        find.byKey(const Key('instant-inventory-open-categories')),
+        findsNothing,
+      );
+      expect(
+        find.byType(MasterDataTableView<InstantInventoryRow>),
         findsOneWidget,
       );
-      expect(_categoryText('原材料'), findsNothing);
+      expect(find.byKey(const Key('instant-inventory-search')), findsOneWidget);
     },
   );
 
   testWidgets(
-    'category panel stages the selection until confirmation and cancel is a no-op',
+    'superadmin can browse the category tree without explicit category permission',
     (tester) async {
-      final stock = _RecordingStockRepository();
-      await pumpPage(tester, stock: stock);
-      await tapInventoryHeader(tester, const Key('instant-inventory-category'));
+      final categories = _ProductCategoryRepo();
+      await pumpPage(
+        tester,
+        stock: _RecordingStockRepository(),
+        categories: categories,
+        permissions: const {},
+        superAdmin: true,
+      );
+      expect(categories.treeCalls, 1);
+      expect(find.byType(UtenSplitView), findsOneWidget);
       expect(_categoryText('原材料'), findsOneWidget);
-      await tester.tap(_categoryText('原材料'));
-      await tester.pumpAndSettle();
-      expect(stock.lastCategoryId, isNull);
-      await tester.tap(find.text('确定').last);
-      await tester.pumpAndSettle();
-      expect(stock.lastCategoryId, 'raw');
-      await tapInventoryHeader(tester, const Key('instant-inventory-category'));
-      await tester.tap(_categoryText('成品'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('取消').last);
-      await tester.pumpAndSettle();
-      expect(stock.lastCategoryId, 'raw');
     },
   );
 
@@ -214,10 +306,7 @@ void main() {
     (tester) async {
       final stock = _RecordingStockRepository();
       await pumpPage(tester, stock: stock);
-      await tapInventoryHeader(tester, const Key('instant-inventory-category'));
       await tester.tap(_categoryText('原材料'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('确定').last);
       await tester.pumpAndSettle();
       await tester.enterText(_searchEditable(), 'HV-001');
       await tester.pump(const Duration(milliseconds: 301));
@@ -237,22 +326,43 @@ void main() {
   );
 
   testWidgets(
-    'compact and large text layouts retain the full width table and category picker',
+    'compact category selection returns to the table including a repeated selection',
     (tester) async {
       final stock = _RecordingStockRepository();
       await pumpPage(tester, stock: stock, size: const Size(375, 812));
-      expect(find.byType(UtenSplitView), findsNothing);
+      expect(find.byType(UtenSplitView), findsOneWidget);
       expect(
         find.byType(MasterDataTableView<InstantInventoryRow>),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
-      await tapInventoryHeader(tester, const Key('instant-inventory-category'));
+      expect(_categoryText('原材料'), findsNothing);
+      await tapInventoryHeader(
+        tester,
+        const Key('instant-inventory-open-categories'),
+      );
       await tester.tap(_categoryText('原材料'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('确定').last);
-      await tester.pumpAndSettle();
       expect(stock.lastCategoryId, 'raw');
+      expect(_categoryText('原材料'), findsNothing);
+      expect(find.byKey(const Key('instant-inventory-search')), findsOneWidget);
+      await tapInventoryHeader(
+        tester,
+        const Key('instant-inventory-open-categories'),
+      );
+      await tester.tap(_categoryText('原材料'));
+      await tester.pumpAndSettle();
+      expect(_categoryText('原材料'), findsNothing);
+      await tapInventoryHeader(
+        tester,
+        const Key('instant-inventory-open-categories'),
+      );
+      await tester.tap(
+        find.byKey(const Key('instant-inventory-all-categories')),
+      );
+      await tester.pumpAndSettle();
+      expect(stock.lastCategoryId, isNull);
+      expect(find.byKey(const Key('instant-inventory-search')), findsOneWidget);
       tester.view.physicalSize = const Size(812, 375);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
@@ -264,6 +374,55 @@ void main() {
       );
     },
   );
+
+  for (final dark in [false, true]) {
+    testWidgets(
+      'large text and landscape keep category navigation usable: dark=$dark',
+      (tester) async {
+        final stock = _RecordingStockRepository();
+        await pumpPage(
+          tester,
+          stock: stock,
+          size: const Size(390, 900),
+          textScale: 2,
+          dark: dark,
+        );
+        await tapInventoryHeader(
+          tester,
+          const Key('instant-inventory-open-categories'),
+        );
+        await tester.tap(_categoryText('原材料'));
+        await tester.pumpAndSettle();
+        expect(stock.lastCategoryId, 'raw');
+        expect(
+          find.byKey(const Key('instant-inventory-search')),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+        tester.view.physicalSize = const Size(900, 390);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(
+          tester
+              .getSize(find.byType(MasterDataTableView<InstantInventoryRow>))
+              .height,
+          greaterThan(0),
+        );
+        await tapInventoryHeader(
+          tester,
+          const Key('instant-inventory-open-categories'),
+        );
+        await tester.tap(_categoryText('成品'));
+        await tester.pumpAndSettle();
+        expect(stock.lastCategoryId, 'finished');
+        expect(
+          find.byKey(const Key('instant-inventory-search')),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('cost column is removed for every account', (tester) async {
     final stock = _RecordingStockRepository();
@@ -292,7 +451,7 @@ void main() {
     await pumpPage(tester, stock: stock);
 
     expect(find.text('仓库'), findsOneWidget);
-    expect(find.byKey(const Key('instant-inventory-category')), findsOneWidget);
+    expect(find.byKey(const Key('instant-inventory-category')), findsNothing);
     expect(find.widgetWithText(FilterChip, '含不良品仓'), findsOneWidget);
     expect(find.textContaining(RegExp(r'^共 \d+ 项$')), findsOneWidget);
   });
@@ -321,16 +480,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(stock.lastUnitId, 'unit-1');
 
-    // 分类面板确认后改变范围，保留既有仓库和表头筛选。
+    // 左树直接改变分类范围，保留既有仓库和表头筛选。
     await tapInventoryHeader(tester, const Key('instant-inventory-warehouse'));
     await tester.tap(find.byKey(const Key('warehouse-picker-entry-w1')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
     await tester.pumpAndSettle();
-    await tapInventoryHeader(tester, const Key('instant-inventory-category'));
     await tester.tap(_categoryText('成品'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('确定').last);
     await tester.pumpAndSettle();
     expect(stock.lastCategoryId, 'finished');
     expect(stock.lastWarehouseId, 'w1');
@@ -398,6 +554,70 @@ void main() {
     // 偏好防抖推送计时器走完再结束 (未登录不推服务端)。
     await tester.pump(const Duration(seconds: 1));
   });
+
+  testWidgets(
+    'capture desktop inventory split and compact category navigation',
+    (tester) async {
+      await loadAuditScreenshotFonts(tester);
+      for (final compact in [false, true]) {
+        await pumpPage(
+          tester,
+          stock: _RecordingStockRepository(
+            rows: const [
+              InstantInventoryRow(
+                goodsId: 'g1',
+                goodsCode: 'V51113',
+                name: 'V5压线铜螺丝（加强型铜材）',
+                unitName: '个',
+                colorName: '镀镍',
+                qty: 5000,
+                weight: 11.55,
+                weightEstimated: true,
+                pendingQty: 200,
+              ),
+              InstantInventoryRow(
+                goodsId: 'g2',
+                goodsCode: 'V50051',
+                name: 'V5荧光条',
+                unitName: '个',
+                colorName: '灰色',
+                qty: 320,
+              ),
+            ],
+          ),
+          size: compact ? const Size(390, 900) : const Size(1600, 1000),
+          textScale: compact ? 2 : 1,
+          capture: true,
+        );
+        expect(tester.takeException(), isNull);
+        await saveAuditScreenshot(
+          tester,
+          _captureKey,
+          'instant-inventory-split-${compact ? 'compact' : 'desktop'}',
+        );
+        if (compact) {
+          await tapInventoryHeader(
+            tester,
+            const Key('instant-inventory-open-categories'),
+          );
+          await saveAuditScreenshot(
+            tester,
+            _captureKey,
+            'instant-inventory-split-compact-categories',
+          );
+          await tester.tap(_categoryText('原材料'));
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const Key('instant-inventory-search')),
+            findsOneWidget,
+          );
+        }
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      }
+    },
+    skip: !_capture,
+  );
 }
 
 Finder _searchBar() {
@@ -498,6 +718,7 @@ class _RecordingStockRepository extends StockQueryRepository {
 }
 
 class _ProductCategoryRepo implements ProductCategoryRepository {
+  int treeCalls = 0;
   @override
   Future<CategoryPrefixAvailability> prefixAvailability(
     String prefix, {
@@ -507,9 +728,10 @@ class _ProductCategoryRepo implements ProductCategoryRepository {
   @override
   Future<List<ProductCategoryNode>> tree() => treeWithGoodsCounts();
 
-  /// The picker retains the existing category hierarchy and hides empty roots.
+  /// The sidebar retains the existing category hierarchy and hides empty roots.
   @override
   Future<List<ProductCategoryNode>> treeWithGoodsCounts() async {
+    treeCalls++;
     return <ProductCategoryNode>[
       ProductCategoryNode(
         id: 'goods-root',

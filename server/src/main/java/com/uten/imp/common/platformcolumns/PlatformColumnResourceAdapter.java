@@ -25,9 +25,6 @@ public interface PlatformColumnResourceAdapter {
     /** Aggregated reports have no stable row identity and therefore store definitions only. */
     default boolean supportsValues() { return true; }
 
-    /** Only master-data adapters opt in; commercial annotations are cleared by a business reset. */
-    default boolean preserveValuesOnReset() { return false; }
-
     /** Aggregate/report formulas are private display settings, never a shared business dictionary. */
     default boolean personalDefinitions() { return false; }
 

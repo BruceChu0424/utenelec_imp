@@ -211,6 +211,8 @@ public class PurchaseReceiptService {
     public ReceiptDetail create(ReceiptSaveRequest req) {
         tx.bind();
         lockReceiptRequest(null,req).verifyUnchanged();
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,"PURCHASE",
+                req.getItems().stream().map(ReceiptItemLine::getOrderItemId).toList());
         PurchaseReceipt r = new PurchaseReceipt();
         r.setQuantitySemantics(com.uten.imp.common.finance.ProcurementQuantities.EXTRA_GIFT);
         applyHeader(req, r);
@@ -318,6 +320,8 @@ public class PurchaseReceiptService {
             warehouseScopes.require(r.getWarehouseId(), "入库仓库", WarehouseUse.GOOD_IN);
         }
         List<PurchaseReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,"PURCHASE",
+                items.stream().map(PurchaseReceiptItem::getOrderItemId).toList());
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
@@ -414,6 +418,8 @@ public class PurchaseReceiptService {
             com.uten.imp.common.finance.ProcurementUnapprovalPreflight.check("DOWNSTREAM_OR_COST_BLOCKED",()->requireReversibleBusiness(r)));
     }
     private void requireUnapprovalHeader(PurchaseReceipt r){
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,"PURCHASE",
+                itemRepo.findByReceiptIdOrderByLineNoAsc(r.getId()).stream().map(PurchaseReceiptItem::getOrderItemId).toList());
         access.requireWritable(r.getMakerId(),"只能操作本人负责的采购收货单");
         com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         if(r.getStatus()==null||r.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");

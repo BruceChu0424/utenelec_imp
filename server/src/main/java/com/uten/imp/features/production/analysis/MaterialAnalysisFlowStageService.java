@@ -326,7 +326,7 @@ public class MaterialAnalysisFlowStageService {
             for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                             SELECT approval.order_type, approval.order_id, approval.status
                             FROM procurement_order_approval_cases approval
-                            WHERE approval.order_id IN (:orderIds)
+                            WHERE approval.order_id IN (:orderIds) AND approval.request_type='ORDER'
                             """).setParameter("orderIds", List.copyOf(allOrderIds)))) {
                 approvalStatusByOrder
                         .computeIfAbsent(new OrderKey((String) row[0], (UUID) row[1]), ignored -> new ArrayList<>())

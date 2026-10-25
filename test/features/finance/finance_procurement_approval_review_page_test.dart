@@ -320,6 +320,58 @@ Future<GoRouter> _pumpReviewPage(
 }
 
 void main() {
+  for (final orderType in ['PURCHASE', 'SUBCONTRACT']) {
+    testWidgets('$orderType 结束财审展示理由与剩余量且不重新核税汇', (tester) async {
+      final json = _pendingReviewJson();
+      json['orderType'] = orderType;
+      json['taxRate'] = null;
+      json['headerSnapshot'] = {
+        'closureRequest': {
+          'mode': 'CLOSE_AND_REORDER',
+          'reason': '供应商停止供货',
+          'fingerprint': 'facts-reviewed',
+          'items': [
+            {
+              'orderItemId': 'order-item-1',
+              'goodsCode': 'G001',
+              'goodsName': '铜线',
+              'remainingQty': '60.0001',
+              'remainingGiftQty': '2',
+              'unitName': '公斤',
+            },
+          ],
+        },
+      };
+      final repository = _FakeWorkflowRepo(
+        FinanceProcurementApprovalReview.fromJson(json),
+      );
+      await _pumpReviewPage(tester, repository);
+      expect(
+        find.byKey(const Key('finance-order-closure-request')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('供应商停止供货'), findsOneWidget);
+      expect(find.textContaining('60.0001'), findsOneWidget);
+      expect(
+        find.byKey(const Key('finance-order-review-tax-field')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('finance-order-review-rate-field')),
+        findsNothing,
+      );
+      await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('批准后结束原单剩余履约'), findsWidgets);
+      await tester.tap(
+        find.byKey(const Key('finance-order-review-approve-submit')),
+      );
+      await tester.pumpAndSettle();
+      expect(repository.approved, hasLength(1));
+      expect(repository.approved.single.exchangeRate, isNull);
+    });
+  }
+
   testWidgets('订货财审实时授权与撤权刷新动作及认领，汇率税率和意见原样保留', (tester) async {
     final repository = _FakeWorkflowRepo(_pendingReview(allowedActions: {}));
     final claims = FinanceClaimFixture();

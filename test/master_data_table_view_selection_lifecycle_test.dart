@@ -7,6 +7,101 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/components/data_display/uten_selection_lifecycle.dart';
 
 void main() {
+  for (final fixedExtent in [false, true]) {
+    testWidgets(
+      'kept-alive selected text stays copyable while new text waits for row geometry (fixedExtent=$fixedExtent)',
+      (tester) async {
+        final scroll = ScrollController();
+        final revision = ValueNotifier(0);
+        final area = GlobalKey<SelectionAreaState>();
+        String? selected;
+        addTearDown(scroll.dispose);
+        addTearDown(revision.dispose);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: UtenSelectionArea(
+                selectionKey: area,
+                onSelectionChanged: (content) => selected = content?.plainText,
+                child: SizedBox(
+                  height: 120,
+                  child: ListView.builder(
+                    controller: scroll,
+                    scrollCacheExtent: const ScrollCacheExtent.pixels(0),
+                    itemExtent: fixedExtent ? 40 : null,
+                    itemCount: 30,
+                    itemBuilder: (context, index) => _KeptSelectionRow(
+                      keepAlive: index == 0,
+                      child: UtenSelectionLifecycleScope(
+                        child: SizedBox(
+                          height: 40,
+                          child: index == 0
+                              ? ValueListenableBuilder<int>(
+                                  valueListenable: revision,
+                                  builder: (_, value, _) => Text(
+                                    value == 0
+                                        ? 'KEPT-ORIGINAL'
+                                        : 'KEPT-UPDATED',
+                                    key: ValueKey(value),
+                                  ),
+                                )
+                              : Text('VISIBLE-$index'),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        area.currentState!.selectableRegion.selectAll(
+          SelectionChangedCause.keyboard,
+        );
+        await tester.pumpAndSettle();
+        expect(selected, contains('KEPT-ORIGINAL'));
+        scroll.jumpTo(400);
+        await tester.pumpAndSettle();
+        expect(selected, contains('KEPT-ORIGINAL'));
+
+        revision.value++;
+        await tester.pumpAndSettle();
+        final updated = find.text('KEPT-UPDATED', skipOffstage: false);
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.descendant(
+            of: updated,
+            matching: find.byType(RichText, skipOffstage: false),
+          ),
+        );
+        expect(
+          paragraph.hasSize,
+          fixedExtent,
+          reason:
+              'Only tight constraints permit an independent retained layout.',
+        );
+        area.currentState!.selectableRegion.selectAll(
+          SelectionChangedCause.keyboard,
+        );
+        await tester.pumpAndSettle();
+        expect(selected, isNot(contains('KEPT-ORIGINAL')));
+        expect(selected, isNot(contains('KEPT-UPDATED')));
+        expect(selected, contains('VISIBLE-10'));
+        expect(tester.takeException(), isNull);
+
+        scroll.jumpTo(0);
+        await tester.pumpAndSettle();
+        expect(paragraph.hasSize, isTrue);
+        area.currentState!.selectableRegion.selectAll(
+          SelectionChangedCause.keyboard,
+        );
+        await tester.pumpAndSettle();
+        expect(selected, contains('KEPT-UPDATED'));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'lifecycle region retains the default touch copy toolbar',
     (tester) async {
@@ -274,6 +369,27 @@ void main() {
     },
     variant: const TargetPlatformVariant({TargetPlatform.windows}),
   );
+}
+
+class _KeptSelectionRow extends StatefulWidget {
+  const _KeptSelectionRow({required this.keepAlive, required this.child});
+  final bool keepAlive;
+  final Widget child;
+
+  @override
+  State<_KeptSelectionRow> createState() => _KeptSelectionRowState();
+}
+
+class _KeptSelectionRowState extends State<_KeptSelectionRow>
+    with AutomaticKeepAliveClientMixin<_KeptSelectionRow> {
+  @override
+  bool get wantKeepAlive => widget.keepAlive;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
+  }
 }
 
 // Retain an element and its scroll offset while its render subtree is detached,

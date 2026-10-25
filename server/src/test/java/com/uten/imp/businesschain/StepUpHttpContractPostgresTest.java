@@ -84,6 +84,25 @@ class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
     }
 
     @Test
+    void retiredBusinessDataResetEndpointsAreUnmappedForSuperAdministrators() throws Exception {
+        String admin = adminToken();
+        long sessions = jdbc.queryForObject("SELECT count(*) FROM auth_sessions", Long.class);
+        long generation = jdbc.queryForObject(
+                "SELECT business_reset_generation FROM authorization_state WHERE singleton_id=1", Long.class);
+        for (MockHttpServletRequestBuilder call : List.of(
+                json(get("/api/system-test/business-data/preview"), null, admin),
+                json(get("/api/system-test/business-data/last-result"), null, admin),
+                json(post("/api/system-test/business-data/reset"),
+                        Map.of("confirm", "清空业务数据"), admin))) {
+            MvcResult result = mvc.perform(call).andReturn();
+            assertEquals(404, result.getResponse().getStatus(), body(result));
+        }
+        assertEquals(sessions, jdbc.queryForObject("SELECT count(*) FROM auth_sessions", Long.class));
+        assertEquals(generation, jdbc.queryForObject(
+                "SELECT business_reset_generation FROM authorization_state WHERE singleton_id=1", Long.class));
+    }
+
+    @Test
     void everyNamedEndpointRejectsCallsWithoutAFreshStepUp() throws Exception {
         String admin = adminToken();
         Employee target = newEmployee(admin);
@@ -102,7 +121,6 @@ class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
                 json(post("/api/admin/impersonation/enter"), Map.of(), admin),
                 json(put("/api/admin/system-settings"), Map.of("changes", List.of(
                         Map.of("key", "lockout_minutes", "value", "16", "expectedValue", "15"))), admin),
-                json(post("/api/system-test/business-data/reset"), Map.of("confirm", "清空业务数据"), admin),
                 // 补开账号同样把明文临时密码交给操作人 (评审补例): 不在 /api/admin 前缀下也要再认证
                 json(post("/api/org/employees/" + target.employeeId() + "/account"), Map.of(), admin),
                 json(post("/api/org/employees/" + target.employeeId() + "/account/reset-password"),
@@ -117,7 +135,7 @@ class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
             assertEquals(403, result.getResponse().getStatus(), body(result));
             assertEquals("REAUTH_REQUIRED", json(result).path("code").asText(), body(result));
         }
-        // 什么都没发生: 设置未改、目标不是超管、清库没跑
+        // 什么都没发生: 设置未改、目标不是超管
         assertEquals("15", jdbc.queryForObject(
                 "SELECT value FROM system_settings WHERE key = 'lockout_minutes'", String.class));
         assertEquals(Boolean.FALSE, jdbc.queryForObject(

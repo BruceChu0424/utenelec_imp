@@ -163,7 +163,7 @@ class _ProductionFqcInspectionsPageState
       _applyDecisionResult(decided);
     }
     refreshBadges(ref);
-    await _load(page: _result?.page ?? 1);
+    // The resume scheduler performs the authoritative read after transition.
   }
 
   /// 决定成功先本地落位（决定行保留为 PARTIAL 或移除 RESOLVED），刷新失败也不回滚。
@@ -232,13 +232,12 @@ class _ProductionFqcInspectionsPageState
       context.appWarning('所选任务状态已变化，请刷新后重新选择');
       return;
     }
-    final done = await context.push<bool>(
+    await context.push<bool>(
       RouteName.warehouseInspectionBatchApproval,
       extra: QualityBatchApprovalSelection(inspections: inspections),
     );
     if (!mounted) return;
     setState(() => _selectedIds.clear());
-    if (done == true) await _load(page: _result?.page ?? 1);
   }
 
   List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {

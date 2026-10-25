@@ -28,8 +28,52 @@ import java.util.UUID;
 public class ProcurementFinanceApprovalController {
 
     private final ProcurementFinanceApprovalService service;
+    @org.springframework.beans.factory.annotation.Autowired
+    private ProcurementOrderClosureService closures;
+    @org.springframework.beans.factory.annotation.Autowired
+    private ProcurementOrderClosureBatchService closureBatches;
+
+    @PostMapping("/order-closures/batch-preview")
+    @PreAuthorize("hasAnyAuthority('purchase_order:view','subcontract_order:view')")
+    public ProcurementOrderClosureBatchService.BatchPreview previewClosureBatch(
+            @Valid @RequestBody ProcurementOrderClosureBatchService.PreviewRequest request) {
+        return closureBatches.preview(request);
+    }
+
+    @PostMapping("/order-closures/batch-requests")
+    @PreAuthorize("hasAnyAuthority('purchase_order:submit_finance','subcontract_order:submit_finance')")
+    public ProcurementOrderClosureBatchService.BatchSubmission requestClosureBatch(
+            @Valid @RequestBody ProcurementOrderClosureBatchService.SubmissionRequest request) {
+        return closureBatches.submit(request);
+    }
+
+    @GetMapping("/orders/{orderType}/{orderId}/closure-preview")
+    @PreAuthorize("hasAnyAuthority('purchase_order:view','subcontract_order:view')")
+    public ProcurementOrderClosureService.ClosurePreview closurePreview(@PathVariable String orderType,@PathVariable UUID orderId) {
+        return closures.preview(orderType,orderId);
+    }
+
+    @PostMapping("/orders/{orderType}/{orderId}/closure-requests")
+    @PreAuthorize("hasAnyAuthority('purchase_order:submit_finance','subcontract_order:submit_finance')")
+    public ProcurementApprovalContracts.FinanceApproval requestClosure(@PathVariable String orderType,@PathVariable UUID orderId,
+            @Valid @RequestBody ProcurementOrderClosureService.ClosureRequest request) {
+        return closures.submit(orderType,orderId,request);
+    }
 
     @GetMapping("/tasks")
+    public PageResponse<ApprovalTask> filteredTasks(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "") String orderType,
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String billNo,
+            @RequestParam(defaultValue = "PENDING") String status) {
+        if ("PENDING".equalsIgnoreCase(status)) return tasks(page,size,orderType,keyword,sort,order,billNo);
+        return service.tasks(page,size,orderType,keyword,sort,order,billNo,status);
+    }
+
     public PageResponse<ApprovalTask> tasks(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,

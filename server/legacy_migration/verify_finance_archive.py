@@ -20,6 +20,7 @@ import uuid
 
 from finance_archive_rules import expected_archive,verify_archive_and_coverage
 from rehearse_local_import import Database
+from verify_rehearsal_result import ReadOnlyDatabase
 
 HERE=Path(__file__).resolve().parent
 IMAGE='postgres:16.15-alpine'
@@ -36,9 +37,11 @@ def checked(arguments,content=None):
     if result.returncode:raise ValueError('private PostgreSQL operation failed; raw output suppressed')
     return result.stdout
 
-def verify_local_cli_target(container,database,source_only):
-    if container!='uten-imp-postgres':
+def verify_local_cli_target(container,database,source_only,expected_system_identifier=None,expected_database_oid=None):
+    if container!='uten-imp-postgres' and not re.fullmatch(r'uten-imp-postgres-dev-[A-Za-z0-9_.-]+',container or ''):
         raise ValueError('archive verification CLI only permits the local development container')
+    if not source_only and container!='uten-imp-postgres' and (expected_system_identifier is None or expected_database_oid is None):
+        raise ValueError('a selected development container requires its explicit cluster and database identities')
     if not source_only and (not isinstance(database,str) or not IDENTIFIER.fullmatch(database)
             or (database!='uten_imp' and not re.fullmatch(r'uten_imp_rehearsal_[a-z0-9_]+',database))):
         raise ValueError('archive verification CLI only permits uten_imp or a named local rehearsal database')
@@ -90,13 +93,15 @@ def source_inventory(directory):
         result[name]={'sha256':record['sha256'],'rows':record['rows'],'ids':ids}
     return result
 
-def read_target(container,database,run_id,output):
+def read_target(container,database,run_id,output,user='uten',expected_system_identifier=None,expected_database_oid=None):
     if not IDENTIFIER.fullmatch(database) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,100}',container):
         raise ValueError('local target name is invalid')
     run=str(uuid.UUID(run_id))
+    target=ReadOnlyDatabase(database,container,user,expected_system_identifier,expected_database_oid)
+    transport=target._pin_transport()
     sql=f"""\\set VERBOSITY sqlstate
 \\set SHOW_CONTEXT never
-BEGIN READ ONLY;
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET LOCAL statement_timeout='60s';
 SELECT json_build_object('transaction_read_only',current_setting('transaction_read_only'),
 'system_identifier',(SELECT system_identifier::text FROM pg_control_system()),
@@ -115,10 +120,13 @@ WHERE run_id='{run}'::uuid AND source_kind='ACCOUNT_FLOW'),
 'all_account_count',(SELECT count(*) FROM accounts));
 COMMIT;
 """
-    raw=checked(['docker','exec','-i',container,'psql','-X','-qAt','-U','uten','-d',database,'-v','ON_ERROR_STOP=1'],sql.encode())
+    raw=checked([*transport,'psql','-X','-qAt','-U',user,'-d',database,'-v','ON_ERROR_STOP=1'],sql.encode())
     (output/'target-readonly-facts.private.json').write_bytes(raw)
     facts=json.loads(raw,parse_float=Decimal)
     if facts.get('transaction_read_only')!='on' or facts.get('database')!=database:raise ValueError('target facts were not read in the required read-only database transaction')
+    identity=(facts.get('system_identifier'),facts.get('database_oid'))
+    if target.expected_identity is not None and identity!=target.expected_identity:
+        raise ValueError('archive read-only physical database differs from the explicit target')
     run_data=facts.get('run')
     if not run_data or run_data['run_id']!=run or run_data['status']!='SUCCESS' or run_data['reconciliation_status']!='PASSED':
         raise ValueError('target has no exact successful reconciled requested migration run')
@@ -185,6 +193,9 @@ def main():
     parser.add_argument('--database')
     parser.add_argument('--expected-run-id')
     parser.add_argument('--container',default='uten-imp-postgres')
+    parser.add_argument('--user',default='uten')
+    parser.add_argument('--expected-system-identifier')
+    parser.add_argument('--expected-database-oid',type=int)
     parser.add_argument('--source-only',action='store_true')
     parser.add_argument('--source-timezone',default='Asia/Shanghai')
     args=parser.parse_args()
@@ -199,10 +210,11 @@ def main():
              'verifier_sha256':digest(__file__),'rules_sha256':digest(HERE/'finance_archive_rules.py'),
              'loader_sha256':digest(HERE/'migrate_finance.sql')}
     try:
-        verify_local_cli_target(args.container,args.database,args.source_only)
+        verify_local_cli_target(args.container,args.database,args.source_only,args.expected_system_identifier,args.expected_database_oid)
         manifest_identity=source_manifest_identity(directory)
         inventory=source_inventory(directory)
-        facts=None if args.source_only else read_target(args.container,args.database,args.expected_run_id,output)
+        facts=None if args.source_only else read_target(args.container,args.database,args.expected_run_id,output,
+            args.user,args.expected_system_identifier,args.expected_database_oid)
         target_identity=None if facts is None else verify_run_identity(facts,manifest_identity)
         timezone=args.source_timezone if facts is None else facts['run']['finance_archive']['session_timezone']
         rows=extract_typed_source(directory,timezone,output)

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_table_surface.dart';
 import '../../../core/network/api_exception.dart';
@@ -1281,13 +1282,8 @@ String _value(String? value) => _present(value) ? value!.trim() : '—';
 
 bool _present(String? value) => value != null && value.trim().isNotEmpty;
 
-String _timestamp(String? raw) {
-  final value = DateTime.tryParse(raw ?? '')?.toLocal();
-  if (value == null) return _value(raw);
-  String two(int number) => number.toString().padLeft(2, '0');
-  return '${value.year}-${two(value.month)}-${two(value.day)} '
-      '${two(value.hour)}:${two(value.minute)}';
-}
+String _timestamp(String? raw) =>
+    ChinaDateTime.formatIsoInstant(raw, fallback: _value(raw));
 
 String _shortId(String value) => value.length <= 12
     ? value

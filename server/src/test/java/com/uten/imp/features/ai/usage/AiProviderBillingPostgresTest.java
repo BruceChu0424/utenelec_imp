@@ -1,7 +1,6 @@
 package com.uten.imp.features.ai.usage;
 
 import com.uten.imp.audit.AuditService;
-import com.uten.imp.features.admin.systemtest.BusinessDataResetDrainGate;
 import com.uten.imp.features.ai.gateway.AiCallLogService;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -46,7 +45,7 @@ class AiProviderBillingPostgresTest {
         var manager = new DataSourceTransactionManager(dataSource);
         transaction = new TransactionTemplate(manager);
         billing = new AiProviderBillingService(named, new AiUsageAdminAccess(current), mock(AuditService.class));
-        logs = new AiCallLogService(named, manager, new BusinessDataResetDrainGate());
+        logs = new AiCallLogService(named, manager);
     }
     private AiUsageDtos.Billing save(long version, String input, String output) {
         return transaction.execute(status -> billing.save(provider,

@@ -42,7 +42,6 @@ class GoodsMarketReferencePostgresTest {
         run(()->{store.compareAndSet(goods,null,null,1,actor);return null;});assertThat(store.find(goods).seriesId()).isNull();assertThat(store.find(goods).version()).isEqualTo(2);
         assertThatThrownBy(()->run(()->{store.compareAndSet(goods,"copper","a".repeat(64),0,actor);return null;})).hasMessageContaining("刷新");
         run(()->{store.compareAndSet(goods,"silver","b".repeat(64),2,actor);return null;});assertThat(store.find(goods).version()).isEqualTo(3);
-        assertThat(db.queryForObject("SELECT disposition FROM fn_business_reset_table_policy() WHERE table_name='goods_market_reference_bindings'",String.class)).isEqualTo("PRESERVE");
         assertThat(db.queryForObject("SELECT count(*) FROM audit_log WHERE target_type='goods_market_reference_bindings'",Long.class)).isGreaterThanOrEqualTo(3);
     }
     @Test void databaseRejectsOneSidedIdentityAndDeletionOfTombstones(){

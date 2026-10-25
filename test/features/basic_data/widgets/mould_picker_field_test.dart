@@ -59,7 +59,7 @@ void main() {
         onChanged: changes.add,
       );
       await tester.enterText(find.byType(TextField), '5M开关');
-      await tester.tap(find.text('选择'));
+      await tester.tap(find.byKey(const ValueKey('uten-reference-open-picker')));
       await tester.pumpAndSettle();
       expect(repository.requests, [('5M开关', 1)]);
       expect(repository.hintRequests, isEmpty);
@@ -309,7 +309,9 @@ Future<void> _open(
       ),
     ),
   );
-  if (openPicker) await tester.tap(find.text('选择'));
+  if (openPicker) {
+    await tester.tap(find.byKey(const ValueKey('uten-reference-open-picker')));
+  }
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 300));
 }

@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -106,7 +107,11 @@ class _StockBalanceDetailSheet extends ConsumerWidget {
                 if (balance.lastMovementDate != null)
                   _info(
                     '最后变动',
-                    balance.lastMovementDate!.replaceFirst('T', ' '),
+                    ChinaDateTime.formatIsoInstant(
+                      balance.lastMovementDate,
+                      fallback: '—',
+                      seconds: true,
+                    ),
                   ),
                 const SizedBox(height: UtenSpacing.s16),
                 const Text('数量和重量变更由盘点审批处理。普通仓由财务审核，车间内料仓由仓库审核，批准前库存保持不变。'),

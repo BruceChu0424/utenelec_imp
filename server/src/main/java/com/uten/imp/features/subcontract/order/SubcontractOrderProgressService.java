@@ -68,7 +68,7 @@ public class SubcontractOrderProgressService {
         OffsetDateTime financeDecidedAt = null;
         List<Object[]> cases = query("""
                 SELECT status, decided_at FROM procurement_order_approval_cases
-                WHERE order_type = 'SUBCONTRACT' AND order_id = :id
+                WHERE order_type = 'SUBCONTRACT' AND order_id = :id AND request_type='ORDER'
                 ORDER BY attempt DESC LIMIT 1
                 """, orderId);
         if (!cases.isEmpty()) {

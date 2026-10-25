@@ -33,6 +33,8 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_client.dart';
+import '../../../components/data_display/paged_list_controller.dart';
+import '../../../shared/models/paged_result.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -79,6 +81,8 @@ class _WarehouseReportTablePageState
   String? _sortKey;
   bool _sortAsc = true;
 
+  final _reportPages = PagedListController<Map<String, dynamic>>();
+
   ReportData? _data;
   bool _loading = false;
   int _loadGeneration = 0;
@@ -96,12 +100,19 @@ class _WarehouseReportTablePageState
       : warehouseSummaryReportPrefsProvider;
 
   @override
+  void dispose() {
+    _reportPages.dispose();
+    super.dispose();
+  }
+
+  @override
   void initState() {
     super.initState();
     // Keep the monotonic reader epoch observed for this page's whole lifetime.
     ref.listenManual(exportContextEpochProvider, (previous, next) {
       if (!mounted || previous == next) return;
       setState(() {
+        _reportPages.invalidateReadOwner(notify: false);
         ++_loadGeneration;
         _data = null;
         _loading = false;
@@ -158,7 +169,7 @@ class _WarehouseReportTablePageState
     ref.read(_prefsProvider.notifier).update(_snapshot());
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool background = false}) async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
     final readEpoch = ref.read(exportContextEpochProvider);
@@ -167,16 +178,16 @@ class _WarehouseReportTablePageState
         generation == _loadGeneration &&
         readEpoch == ref.read(exportContextEpochProvider);
     final requestedPage = _page;
-    setState(() => _loading = true);
+    final reports = <int, ReportData>{};
     final api = ref.read(apiClientProvider);
-    try {
+    Future<PagedResult<Map<String, dynamic>>> fetchPage(int targetPage) async {
       final query = <String, dynamic>{
         'dateFrom': _fmt(_from),
         'dateTo': _fmt(_to),
         if (_keyword.isNotEmpty) 'keyword': _keyword,
         if (_docType == WarehouseReportDocType.draw && _departmentId != null)
           'departmentId': _departmentId,
-        'page': requestedPage,
+        'page': targetPage,
         'size': _size,
         for (final e in _filters.entries) 'f.${e.key}': e.value,
         ...sortQueryParams(_sortKey, _sortAsc),
@@ -185,22 +196,59 @@ class _WarehouseReportTablePageState
         '/stock/reports/${_docType.code}/${_kind.endpoint}',
         query: query,
       );
-      if (!mounted || !current()) return;
-      final decodedReport = await parseReportResponseResponsive(
+      if (!current()) throw StateError('Report query changed');
+      final report = await parseReportResponseResponsive(
         json,
-        requestedPage,
+        targetPage,
         isCurrent: current,
       );
-      if (!mounted || !current()) return;
-      setState(() {
-        _data = decodedReport;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted || !current()) return;
-      context.appError('加载报表失败');
-      setState(() => _loading = false);
+      if (!current()) throw StateError('Report query changed');
+      reports[report.page] = report;
+      return PagedResult(
+        items: report.rows,
+        page: report.page,
+        size: _size,
+        total: report.total,
+        totalPages: report.totalPages,
+        totals: report.totals,
+        facets: report.facets,
+      );
     }
+
+    final pending = _reportPages.load(
+      requestedPage,
+      silent: background && _data != null,
+      fetch: () => fetchPage(requestedPage),
+      fetchPage: fetchPage,
+      isCurrent: current,
+    );
+    setState(() {
+      _loading = _reportPages.loading;
+    });
+    await pending;
+    if (!mounted || !current()) return;
+    final failure = _reportPages.refreshError ?? _reportPages.error;
+    setState(() {
+      _loading = false;
+      if (_reportPages.page == null) {
+        _data = null;
+      } else if (failure == null && reports.isNotEmpty) {
+        final report = reports[_reportPages.currentPage] ?? reports.values.last;
+        final page = _reportPages.page!;
+        _data = ReportData(
+          columns: report.columns,
+          rows: page.items,
+          facets: report.facets,
+          page: page.page,
+          totalPages: page.totalPages,
+          total: page.total,
+          meta: report.meta,
+          totals: report.totals,
+        );
+        _page = _reportPages.pageNum;
+      }
+    });
+    if (failure != null && !background) context.appError(failure);
   }
 
   String _fmt(DateTime d) =>
@@ -305,7 +353,10 @@ class _WarehouseReportTablePageState
     });
     // 返回即刷新：行点击 push 的单据详情里做过出库/红冲后返回，重拉报表。
     _myLocation ??= currentLocationOr(context, RouteName.warehouse);
-    ref.onPageResume(_myLocation!, () => _load());
+    ref.onPageResume(
+      _myLocation!,
+      () => _reportPages.revalidate(_load(background: true)),
+    );
     return Scaffold(
       appBar: UtenAppBar(
         title: '$docLabel${_kind.shortLabel}报表',
@@ -450,7 +501,16 @@ class _WarehouseReportTablePageState
     }
     final data = _data;
     if (data == null) {
-      return const Center(child: Text('点击「查询」加载'));
+      final error = _reportPages.error;
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(error ?? '暂无报表数据'),
+            TextButton(onPressed: _load, child: const Text('重试')),
+          ],
+        ),
+      );
     }
     // 重量列 (type 'weight', 千克) 按用户显示单位换算; 估算行前缀「≈」, 没称留空。
     final weightDisplay = ref.watch(warehouseWeightUnitsPrefsProvider).display;
@@ -515,6 +575,13 @@ class _WarehouseReportTablePageState
       onSortChange: _onSortChange,
       onRowTap: _onRowTap,
       isLoading: _loading,
+      isRefreshing: _reportPages.refreshing,
+      refreshError: _reportPages.refreshError,
+      refreshedPages: _reportPages.refreshedPages,
+      onRetainedPagesChanged: _reportPages.retainPages,
+      paginationRevision: _reportPages.paginationRevision,
+      error: _reportPages.error,
+      onRetry: () => _load(background: _data != null),
       emptyMessage: _kind.isDetail ? '暂无明细数据' : '暂无汇总数据',
       // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
       // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。

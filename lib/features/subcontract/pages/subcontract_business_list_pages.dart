@@ -328,8 +328,9 @@ class _SubcontractBusinessListPageState
   /// 当前选中分段；null = 未选择引导态（不发请求）。
   _BizSeg? _seg;
 
-  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
+  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
+  /// 最近三个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
 
   /// 待处理段计数（中性括号 `(N)`）；null = 加载中（不渲染）。
   int? _actionableCount;
@@ -488,7 +489,7 @@ class _SubcontractBusinessListPageState
     _supplierIdFilter = null;
     _warehouseIdFilter = null;
     _apPostedFilter = null;
-    _historyTime = const UtenHistoryTimeValue.all();
+    _historyTime = UtenHistoryTimeValue.lastThreeMonths();
   }
 
   void _readerChanged() {
@@ -512,13 +513,13 @@ class _SubcontractBusinessListPageState
     super.dispose();
   }
 
-  Future<PagedResult<SubcontractDocListItem>> _fetch() {
+  Future<PagedResult<SubcontractDocListItem>> _fetch([int? requestedPage]) {
     final seg = _seg!;
     final range = seg.history ? _historyTime.range : null;
     return ref
         .read(subcontractRepositoryProvider(_p.type))
         .list(
-          page: _controller.pageNum,
+          page: requestedPage ?? _controller.pageNum,
           filter: SubcontractDocFilter(
             keyword: _controller.keyword.trim(),
             supplierId: _supplierIdFilter,
@@ -613,6 +614,7 @@ class _SubcontractBusinessListPageState
       page ?? _controller.pageNum,
       silent: silent,
       fetch: _fetch,
+      fetchPage: _fetch,
       isCurrent: captureReadOwner(ref),
     );
     if (!mounted ||
@@ -630,10 +632,17 @@ class _SubcontractBusinessListPageState
 
   void _selectSeg(_BizSeg seg) {
     if (seg == _seg) return;
+    final wasHistory = _seg?.history == true;
     clearDraftSelection();
     setState(() {
       _seg = seg;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
+      // 进历史段重新按默认近三个月加载；历史内换状态段保留已选时间
+      // （ADR-180 历史保留原时间范围）；非历史段回 all() 占位。
+      if (seg.history) {
+        if (!wasHistory) _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+      } else {
+        _historyTime = const UtenHistoryTimeValue.all();
+      }
     });
     _reload(1);
   }
@@ -827,8 +836,9 @@ class _SubcontractBusinessListPageState
         : pendingCount + rejectedCount + executingCount;
     _location ??= GoRouterState.of(context).matchedLocation;
     ref.onPageResume(_location!, () {
-      _reload(null, true);
-      _loadBadge();
+      return _controller.revalidate(
+        Future.wait([_reload(null, true), _loadBadge()]).then((_) {}),
+      );
     }, refreshKeys: [_cfg.refreshKey]);
     final names = ref.watch(mn.masterNameServiceProvider);
     final seg = _seg;
@@ -1047,14 +1057,19 @@ class _SubcontractBusinessListPageState
                               _controller.loading && _controller.page == null,
                           loadingMore:
                               _controller.loading && _controller.page != null,
+                          isRefreshing: _controller.refreshing,
+                          refreshError: _controller.refreshError,
                           error: _controller.error,
-                          onRetry: _reload,
+                          onRetry: () =>
+                              _reload(null, _controller.refreshError != null),
                           emptyMessage: seg.history
                               ? '该时间段内暂无记录'
                               : _p.emptyMessage,
                           currentPage: _controller.page?.page ?? 1,
                           totalPages: _controller.page?.totalPages ?? 1,
-                          paginationRevision: _controller.page,
+                          paginationRevision: _controller.paginationRevision,
+                          refreshedPages: _controller.refreshedPages,
+                          onRetainedPagesChanged: _controller.retainPages,
                           paginationScope: (
                             _readerGeneration,
                             _p.type,

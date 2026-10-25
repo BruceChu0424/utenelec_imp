@@ -408,6 +408,7 @@ public class SubcontractWasteService {
         return com.uten.imp.common.review.DocumentUnapprovalPreflight.evaluate("subcontractWaste",facts,()->{
             access.requireWritable(value.getMakerId(),"只能操作本人负责的委外损耗单");
             if(value.getStatus()==null||value.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+            com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireSettledLossMutable(em,id);
             lossClaimPort.requireWasteReversibleReadOnly(id);
             glPostingService.requireRemovableAutoProjection("SUBCONTRACT_ABNORMAL_LOSS","SUBCONTRACT_ABNORMAL_LOSS",id,value.getBillNo()+"-LOSS",value.getBillDate());
             if(value.isDeductPosted()) {
@@ -445,6 +446,7 @@ public class SubcontractWasteService {
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireSettledLossMutable(em,id);
         List<SubcontractWasteItem> items = itemRepo.findByWasteIdOrderByLineNoAsc(id);
         // 财务责任若已有抵销/履约，必须先按专用反向链处理，禁止破坏来源事实。
         lossClaimPort.beforeWasteReverse(id);

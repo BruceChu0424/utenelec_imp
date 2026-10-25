@@ -636,11 +636,14 @@ public class GoodsBomService {
         }
         BigDecimal qty = r.getQty();
         // 单价（goods:price:view，V570）：显式传入优先；null = 不可查看者的脱敏产物
-        // （前端隐藏单价，不提交）——新建回退组件货品价（保住「单价取自组件」与成本聚合
-        // sourceE 口径），编辑保留行原值，均不误清。金额随实际落库单价重算兜底。
+        // （前端隐藏单价，不提交）——新建或换件取当前组件货品价；同件编辑保留行原价。
+        // 换件不沿用旧组件价格，金额随当前落库单价重算兜底。
         BigDecimal price = req.getPrice();
         if (price == null) {
-            price = r.getPrice() != null ? r.getPrice() : component.getPrice();
+            boolean componentChanged = previousComponent != null
+                    && !previousComponent.getId().equals(component.getId());
+            price = componentChanged ? component.getPrice()
+                    : r.getPrice() != null ? r.getPrice() : component.getPrice();
         }
         r.setPrice(price);
         // 金额：显式传入优先，否则 qty*price 兜底（无单价则 null）
@@ -814,10 +817,13 @@ public class GoodsBomService {
     }
 
     private BomItemView toView(GoodsBomItem r, Goods component, List<String> warnings) {
-        boolean hasChildren = !withOperationalRows(Set.of(component.getId())).isEmpty();
-        LegacyNames legacy = legacyNames(List.of(r));
         // 原生查询前先落库：刚新建/改过的行也按库里的口径读回(学习边被人工接管由触发器改写)。
         BomItemUsage usage = usageOf(List.of(r.getId())).getOrDefault(r.getId(), BomItemUsage.NONE);
+        if (!access.visibleGoodsOwner().test(component.getOwnerEmployeeId())) {
+            return redactedView(r, component, usage);
+        }
+        boolean hasChildren = !withOperationalRows(Set.of(component.getId())).isEmpty();
+        LegacyNames legacy = legacyNames(List.of(r));
         BomItemView view = new BomItemView(
                 r.getId(), component.getId(), component.getCode(), component.getName(),
                 component.getModel(), component.getSpec(), component.getMaterial(),
@@ -835,7 +841,7 @@ public class GoodsBomService {
                 r.getAuditedAt(), usage,
                 component.getIssueMethod(), periodicUnitWeightGrams(r, component),
                 warnings == null ? List.of() : List.copyOf(warnings));
-        if (canViewStock() && access.visibleGoodsOwner().test(component.getOwnerEmployeeId())) {
+        if (canViewStock()) {
             view.setComponentStockQty(componentStockQuantities(Set.of(component.getId()), true)
                     .getOrDefault(component.getId(), BigDecimal.ZERO));
         }

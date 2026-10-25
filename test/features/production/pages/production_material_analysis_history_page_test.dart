@@ -11,6 +11,7 @@ import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_history_page.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
+import '../../../support/page_resume_test_bridge.dart';
 
 void main() {
   for (final scale in [1.0, 1.6]) {
@@ -60,13 +61,16 @@ void main() {
               ProductionPlanRepository(_api([], payload: payload)),
             ),
           ],
-          child: MaterialApp.router(
-            routerConfig: router,
-            builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(
-                context,
-              ).copyWith(textScaler: TextScaler.linear(scale)),
-              child: child!,
+          child: PageResumeTestBridge(
+            router: router,
+            child: MaterialApp.router(
+              routerConfig: router,
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!,
+              ),
             ),
           ),
         ),
@@ -117,6 +121,16 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       final requests = <RequestOptions>[];
+      final router = GoRouter(
+        initialLocation: RouteName.productionMaterialAnalysisHistory,
+        routes: [
+          GoRoute(
+            path: RouteName.productionMaterialAnalysisHistory,
+            builder: (_, _) => const ProductionMaterialAnalysisHistoryPage(),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
@@ -125,8 +139,9 @@ void main() {
               ProductionPlanRepository(_api(requests)),
             ),
           ],
-          child: const MaterialApp(
-            home: ProductionMaterialAnalysisHistoryPage(),
+          child: PageResumeTestBridge(
+            router: router,
+            child: MaterialApp.router(routerConfig: router),
           ),
         ),
       );
@@ -227,7 +242,10 @@ void main() {
               ProductionPlanRepository(api),
             ),
           ],
-          child: MaterialApp.router(routerConfig: router),
+          child: PageResumeTestBridge(
+            router: router,
+            child: MaterialApp.router(routerConfig: router),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -250,6 +268,11 @@ void main() {
       await tester.tap(find.textContaining('RW-20260808-001'));
       await tester.pumpAndSettle();
       expect(find.text('resume-analysis-1'), findsOneWidget);
+      final readsBeforeReturn = requests.length;
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(requests.length, readsBeforeReturn + 1);
+      expect(find.byKey(const Key('analysis-history-table')), findsOneWidget);
     },
   );
 }

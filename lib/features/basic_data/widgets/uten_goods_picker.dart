@@ -317,6 +317,7 @@ Future<GoodsListItem?> showUtenGoodsPicker(
   String title = '选择货品',
   SensitiveReadBoundary? readBoundary,
   String initialKeyword = '',
+  bool confirmOnDoubleTap = false,
 }) {
   return _presentSheet<GoodsListItem>(
     context,
@@ -327,6 +328,7 @@ Future<GoodsListItem?> showUtenGoodsPicker(
     title: title,
     readBoundary: readBoundary,
     initialKeyword: initialKeyword,
+    confirmOnDoubleTap: confirmOnDoubleTap,
   ).then((r) => r is GoodsListItem ? r : null);
 }
 
@@ -418,6 +420,7 @@ Future<T?> _presentSheet<T>(
   SensitiveReadBoundary? readBoundary,
   bool allowScopeExpansion = false,
   String initialKeyword = '',
+  bool confirmOnDoubleTap = false,
 }) async {
   // Capture invalidation before awaiting the tree as well as while the panel is
   // open. A revoke/regrant during that await must never reopen an old snapshot.
@@ -467,6 +470,7 @@ Future<T?> _presentSheet<T>(
       readBoundary: readBoundary,
       allTree: allTree,
       initialKeyword: initialKeyword,
+      confirmOnDoubleTap: confirmOnDoubleTap,
     );
     // 滑窗宽度口径 2026-10-17：比例优先（browse 档 75% 屏宽），720 只作小屏下限——
     // 旧口径 max(720, 50%) 在大屏上占比缩水，表格列挤成一团。
@@ -492,6 +496,7 @@ class _GoodsPickerSheet extends ConsumerStatefulWidget {
     this.readBoundary,
     this.allTree,
     this.initialKeyword = '',
+    this.confirmOnDoubleTap = false,
   });
   final List<ProductCategoryNode> tree;
   final List<ProductCategoryNode> scopeTree;
@@ -502,6 +507,7 @@ class _GoodsPickerSheet extends ConsumerStatefulWidget {
   final String title;
   final SensitiveReadBoundary? readBoundary;
   final String initialKeyword;
+  final bool confirmOnDoubleTap;
 
   @override
   ConsumerState<_GoodsPickerSheet> createState() => _GoodsPickerSheetState();
@@ -1599,6 +1605,14 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
                   ..[goods.id] = goods;
               });
             },
+      onRowDoubleTap: !widget.multiSelect && widget.confirmOnDoubleTap
+          ? (goods) {
+              if (!selectable(goods) || requestVersion != _requestVersion) {
+                return;
+              }
+              _confirm(goods, requestVersion: requestVersion);
+            }
+          : null,
       facets: _facets?.fields ?? const {},
       nullCounts: _facets?.nullCounts ?? const {},
       filters: _columnFilters,

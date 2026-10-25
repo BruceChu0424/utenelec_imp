@@ -84,7 +84,7 @@ class AppNotification {
 
 ## 四、视觉规范
 
-视觉外壳与「连接恢复横幅」共用 [`UtenTopBannerCard`](../../lib/core/ui/uten_top_banner_card.dart)（居中 / 最大宽 720 / 圆角 14 / elevation 4）。配色取柔和容器色：
+视觉外壳由 [`UtenTopBannerCard`](../../lib/core/ui/uten_top_banner_card.dart) 提供（居中 / 最大宽 720 / 圆角 14 / elevation 4）。连接恢复横幅不走此外壳——它占顶下推为通栏单行（见 `connection_recovery_banner.dart`）。配色取柔和容器色：
 
 | kind | 背景 | 文字 | 图标 |
 |---|---|---|---|
@@ -180,7 +180,7 @@ final cardId = UtenNotify.banner(
 - **自管生命**：通知进入队列后由 host 交给 `UtenNotificationStack`；挂载中的卡片由 banner 自己倒计时（悬停 / 后台暂停、重挂载按剩余时间），未挂载的由宿主按「到达时刻 + 停留时长」统一到期，最早的先走。
 - **去重策略**：比 `DateTime.now().millisecondsSinceEpoch` 简单判断；同 message 在 600ms 内合并；`force: true` 跳过此判定。
 - **可手动关闭**：IconButton + Dismissible（左滑 / 右滑），保证无障碍可达性。
-- **共享外壳**：`_AppNotificationBanner` 的视觉外壳（maxWidth 720 / Material / 圆角 14）由 [`lib/core/ui/uten_top_banner_card.dart`](../../lib/core/ui/uten_top_banner_card.dart) 的 `UtenTopBannerCard` 提供，与 `ConnectionRecoveryBanner` 同款；`AppNotificationHost` 统一处理 `SafeArea`、居中与叠放。
+- **共享外壳**：`_AppNotificationBanner` 的视觉外壳（maxWidth 720 / Material / 圆角 14）由 [`lib/core/ui/uten_top_banner_card.dart`](../../lib/core/ui/uten_top_banner_card.dart) 的 `UtenTopBannerCard` 提供；`AppNotificationHost` 统一处理 `SafeArea`、居中与叠放。`ConnectionRecoveryBanner` 已改为占顶下推通栏，不共用此外壳。
 
 ---
 

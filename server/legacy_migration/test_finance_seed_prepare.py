@@ -1,3 +1,4 @@
+import ast
 import copy
 import hashlib
 import json
@@ -93,9 +94,14 @@ class FinanceSeedPrepareTest(unittest.TestCase):
         self.assertNotIn(gate.BASELINE_FILE,{row['file'] for row in result['files']})
     def test_late_personnel_hook_follows_all_modules_before_reconciliation(self):
         source=Path(coordinator.__file__).read_text(encoding='utf-8')
-        loop=source.index('for name,content in executable_modules(directory):',source.index('def apply'))
-        hook=source.index('render_personnel_source_archive_sql(inputs=directory',loop)
-        reconciliation=source.index("counts = {r['file']",loop)
-        self.assertLess(loop,hook);self.assertLess(hook,reconciliation)
+        function=next(n for n in ast.parse(source).body if isinstance(n,ast.FunctionDef) and n.name=='apply')
+        loop=next(n for n in ast.walk(function) if isinstance(n,ast.For) and isinstance(n.iter,ast.Call)
+                  and isinstance(n.iter.func,ast.Name) and n.iter.func.id=='executable_modules')
+        hook=next(n for n in ast.walk(function) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name)
+                  and n.func.id=='render_personnel_source_archive_sql')
+        counts=next(n for n in ast.walk(function) if isinstance(n,ast.Assign)
+                    and any(isinstance(t,ast.Name) and t.id=='counts' for t in n.targets))
+        self.assertLess(loop.end_lineno,hook.lineno)
+        self.assertLess(hook.end_lineno,counts.lineno)
 
 if __name__=='__main__':unittest.main()

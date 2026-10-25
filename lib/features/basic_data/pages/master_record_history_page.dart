@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
+import '../../../components/feedback/uten_date_range_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
@@ -54,8 +55,11 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
   String? _categoryName;
   String? _action;
   String _keyword = '';
+  String _keywordColumn = 'recordLabel';
   String _actor = '';
-  UtenHistoryTimeValue _time = const UtenHistoryTimeValue.all();
+
+  /// 修改日期门控；默认近三个月（2026-10-24 用户口径，与全站历史段一致）。
+  UtenHistoryTimeValue _time = UtenHistoryTimeValue.lastThreeMonths();
   final Map<int, String?> _cursors = {1: null};
   List<MasterRecordRevision> _rows = const [];
   String? _nextCursor;
@@ -125,8 +129,9 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
       _categoryName = null;
       _action = null;
       _keyword = '';
+      _keywordColumn = 'recordLabel';
       _actor = '';
-      _time = const UtenHistoryTimeValue.all();
+      _time = UtenHistoryTimeValue.lastThreeMonths();
       invalidateNativeReadAccess();
       _clear();
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -220,7 +225,7 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
   Map<String, String?> get _filters => {
     if (_entity != 'all') 'entityType': _entity,
     if (_action != null) 'action': _action,
-    if (_keyword.isNotEmpty) 'search.recordLabel': _keyword,
+    if (_keyword.isNotEmpty) 'search.$_keywordColumn': _keyword,
     if (_actor.isNotEmpty) 'search.actorName': _actor,
   };
 
@@ -230,6 +235,7 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
       'entityType',
       'action',
       'search.recordLabel',
+      'search.recordCode',
       'search.actorName',
     }.contains(key)) {
       return;
@@ -253,6 +259,8 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
         case 'action':
           _action = value;
         case 'search.recordLabel':
+        case 'search.recordCode':
+          _keywordColumn = key.substring('search.'.length);
           _keyword = value?.trim() ?? '';
         case 'search.actorName':
           _actor = value?.trim() ?? '';
@@ -267,15 +275,14 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
     final owns = captureNativeOwnership();
     setState(() => _pickingDate = true);
     try {
-      final range = await showDateRangePicker(
+      final range = await showUtenDateRangePicker(
         context: context,
         firstDate: DateTime.utc(2020),
         lastDate: ChinaDateTime.today(),
         initialDateRange: _time.range,
         helpText: t('筛选修改日期', 'Filter change dates', '변경 날짜 필터'),
-        saveText: t('应用', 'Apply', '적용'),
-        builder: (context, child) =>
-            trackNativeReadDialog(context, child!, readOnly: true),
+        wrap: (context, child) =>
+            trackNativeReadDialog(context, child, readOnly: true),
       );
       if (!owns() || query != _query || range == null) return;
       setState(() => _time = UtenHistoryTimeValue.range(range));
@@ -364,61 +371,80 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
       _categoryName = null;
       _action = null;
       _keyword = '';
+      _keywordColumn = 'recordLabel';
       _actor = '';
-      _time = const UtenHistoryTimeValue.all();
+      _time = UtenHistoryTimeValue.lastThreeMonths();
     });
     _load(reset: true);
   }
 
+  MasterColumnDef<MasterRecordRevision> _historyColumn({
+    required String key,
+    required String label,
+    required double width,
+    required String Function(MasterRecordRevision) value,
+    bool columnSearchEnabled = false,
+    bool facetSearchEnabled = false,
+    String? info,
+    MasterHeaderFilterAction? headerFilterAction,
+    bool emphasized = false,
+  }) => MasterColumnDef(
+    key: key,
+    label: label,
+    width: width,
+    value: value,
+    columnSearchEnabled: columnSearchEnabled,
+    facetSearchEnabled: facetSearchEnabled,
+    info: info,
+    headerFilterAction: headerFilterAction,
+    cellBuilder: (context, row) {
+      final text = value(row);
+      return Text(
+        text.isEmpty ? '—' : text,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: MasterDataTableCellScope.maybeOf(context)?.foregroundColor,
+          fontWeight: emphasized ? FontWeight.w600 : null,
+        ),
+      );
+    },
+  );
+
   List<MasterColumnDef<MasterRecordRevision>> _columns() => [
-    MasterColumnDef(
-      key: 'recordLabel',
-      label: t('编号 / 名称', 'Code / name', '번호 / 이름'),
-      width: 260,
-      value: (row) =>
-          '${row.recordCode}\n${row.recordName.isNotEmpty ? row.recordName : row.recordLabel}',
+    _historyColumn(
+      key: 'recordCode',
+      label: t('编号', 'Code', '번호'),
+      width: 160,
+      value: (row) => row.recordCode,
       columnSearchEnabled: true,
       info: t(
         '搜索编号、名称或修改摘要',
         'Search code, name or change summary',
         '번호, 이름 또는 변경 요약 검색',
       ),
-      cellBuilder: (context, row) {
-        final theme = Theme.of(context);
-        final foreground = MasterDataTableCellScope.maybeOf(
-          context,
-        )?.foregroundColor;
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              row.recordCode.isEmpty ? '—' : row.recordCode,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: foreground ?? theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            Text(
-              row.recordName.isNotEmpty ? row.recordName : row.recordLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: foreground,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        );
-      },
     ),
-    MasterColumnDef(
+    _historyColumn(
+      // Keep the established name key for saved layouts and server searches.
+      key: 'recordLabel',
+      label: t('名称', 'Name', '이름'),
+      width: 260,
+      value: (row) =>
+          row.recordName.isNotEmpty ? row.recordName : row.recordLabel,
+      columnSearchEnabled: true,
+      emphasized: true,
+      info: t(
+        '搜索编号、名称或修改摘要',
+        'Search code, name or change summary',
+        '번호, 이름 또는 변경 요약 검색',
+      ),
+    ),
+    _historyColumn(
       key: 'recordedAt',
       label: t('修改时间', 'Time', '변경 시간'),
       width: 178,
       value: (row) => ChinaDateTime.formatIsoInstant(row.recordedAt),
-      columnSearchEnabled: false,
       headerFilterAction: MasterHeaderFilterAction(
         onTap: _pickDate,
         enabled: nativeReadAccessConfirmed && !_loading && !_pickingDate,
@@ -428,28 +454,25 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
                   '${ChinaDateTime.formatDate(_time.range!.end)}',
       ),
     ),
-    MasterColumnDef(
+    _historyColumn(
       key: 'entityType',
       label: t('资料类型', 'Record type', '자료 유형'),
       width: 130,
       value: (row) => masterHistoryEntityLabel(context, row.entityType),
-      columnSearchEnabled: false,
       facetSearchEnabled: true,
     ),
-    MasterColumnDef(
+    _historyColumn(
       key: 'action',
       label: t('操作', 'Action', '작업'),
       width: 100,
       value: (row) => masterHistoryActionLabel(context, row.action),
-      columnSearchEnabled: false,
       facetSearchEnabled: true,
     ),
-    MasterColumnDef(
+    _historyColumn(
       key: 'categoryName',
       label: t('分类', 'Category', '분류'),
       width: 165,
       value: (row) => row.categoryName,
-      columnSearchEnabled: false,
       info: _entity == 'all'
           ? t('先选择资料类型', 'Choose a record type first', '자료 유형 먼저 선택')
           : t(
@@ -465,26 +488,24 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
             : (_categoryName ?? t('当前分类', 'Current category', '현재 분류')),
       ),
     ),
-    MasterColumnDef(
+    _historyColumn(
       key: 'actorName',
       label: t('操作人', 'Operator', '작업자'),
       width: 155,
       value: (row) => row.actorName,
       columnSearchEnabled: true,
     ),
-    MasterColumnDef(
+    _historyColumn(
       key: 'sourceType',
       label: t('修改范围', 'Changed area', '변경 범위'),
       width: 120,
       value: (row) => masterHistorySourceLabel(context, row.sourceType),
-      columnSearchEnabled: false,
     ),
-    MasterColumnDef(
+    _historyColumn(
       key: 'summary',
       label: t('修改摘要', 'Change summary', '변경 요약'),
       width: 320,
       value: (row) => row.summary,
-      columnSearchEnabled: false,
     ),
   ];
 
@@ -519,7 +540,10 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
                   tableKey: 'master.record.history',
                   preserveQueryOnReturn: true,
                   columns: _columns(),
-                  requiredLeadingColumnKeys: const ['recordLabel'],
+                  requiredLeadingColumnKeys: const [
+                    'recordCode',
+                    'recordLabel',
+                  ],
                   items: hasAccess ? _rows : const [],
                   idOf: (row) => row.id,
                   facets: {

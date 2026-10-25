@@ -47,9 +47,12 @@ import '../../../core/utils/idempotency_key.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/auth/native_read_view_scope_mixin.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/widgets/legacy_continuation_notice.dart';
 import '../../../shared/measurement/exact_measurement_totals.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_execution_planning.dart';
@@ -88,6 +91,9 @@ class _ProductionPlanDetailPageState
     extends ConsumerState<ProductionPlanDetailPage> {
   ProductionPlanDetail? _detail;
   bool _loading = false;
+  bool _backgroundRefresh = false;
+  String? _refreshError;
+  int _detailReadGeneration = 0;
   bool _busy = false;
   String? _error;
   List<MrpSubplanRef>? _subplans;
@@ -107,8 +113,27 @@ class _ProductionPlanDetailPageState
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, _invalidateReadView);
     _focusedExecutionSegmentId = widget.initialExecutionSegmentId;
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  void _invalidateReadView() {
+    if (!mounted) return;
+    setState(() {
+      _detailReadGeneration++;
+      _relatedDocumentsGeneration++;
+      _detail = null;
+      _subplans = null;
+      _relatedDocuments = null;
+      _relatedDocumentsLoading = false;
+      _busy = false;
+      _executionBusy = false;
+      _loading = false;
+      _backgroundRefresh = false;
+      _refreshError = null;
+      _error = '登录身份、权限或服务器已变化，请重新读取这张计划单。';
+    });
   }
 
   @override
@@ -116,11 +141,18 @@ class _ProductionPlanDetailPageState
     super.didUpdateWidget(oldWidget);
     if (oldWidget.id != widget.id) {
       _detail = null;
+      _detailReadGeneration++;
+      _relatedDocumentsGeneration++;
+      _relatedDocuments = null;
+      _relatedDocumentsLoading = false;
+      _backgroundRefresh = false;
+      _refreshError = null;
       _error = null;
       _subplans = null;
       _subplanError = null;
       _focusedExecutionSegmentId = widget.initialExecutionSegmentId;
       _executionSegmentsRevision = 0;
+      _myLocation = null;
       WidgetsBinding.instance.addPostFrameCallback((_) => _load());
       return;
     }
@@ -132,10 +164,17 @@ class _ProductionPlanDetailPageState
     }
   }
 
-  bool get _ordinaryWritable => documentOwnerCanWrite(
-    ref.read(documentScopeCapabilityProvider(DocumentDataScope.productionPlan)),
-    _detail?.makerId,
-  );
+  bool get _currentCommandsReady =>
+      _detail != null && !_loading && _refreshError == null;
+
+  bool get _ordinaryWritable =>
+      _currentCommandsReady &&
+      documentOwnerCanWrite(
+        ref.read(
+          documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
+        ),
+        _detail?.makerId,
+      );
 
   bool get _canEdit =>
       _ordinaryWritable &&
@@ -176,6 +215,7 @@ class _ProductionPlanDetailPageState
           false);
 
   bool _serverAllowsPlanAction(String action) {
+    if (!_currentCommandsReady) return false;
     final actions = _detail?.allowedActions ?? const <String>[];
     return actions.contains(action);
   }
@@ -183,6 +223,7 @@ class _ProductionPlanDetailPageState
   bool get _commandBusy => _busy || _executionBusy;
 
   bool _hasPermission(String code) =>
+      _currentCommandsReady &&
       ref.read(currentPermissionsProvider).contains(code);
 
   bool get _canCancelPlanningPackage =>
@@ -205,7 +246,8 @@ class _ProductionPlanDetailPageState
   bool get _canStartExecution => _hasPermission(Perm.productionExecutionStart);
   bool get _canReport {
     final permissions = ref.read(currentPermissionsProvider);
-    return permissions.contains(Perm.productionDailyReportView) &&
+    return _currentCommandsReady &&
+        permissions.contains(Perm.productionDailyReportView) &&
         permissions.contains(Perm.productionDailyReportCreate);
   }
 
@@ -222,14 +264,23 @@ class _ProductionPlanDetailPageState
     }
     if (!mounted) return;
     setState(() => _executionSegmentsRevision++);
-    await _load();
+    await _load(background: true);
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool background = false}) async {
     if (!mounted) return;
     final planId = widget.id;
+    final generation = ++_detailReadGeneration;
+    final ownsRead = captureReadOwner(ref);
+    final retainAccepted = background && _detail != null;
+    bool current() =>
+        ownsRead() &&
+        widget.id == planId &&
+        generation == _detailReadGeneration;
     setState(() {
       _loading = true;
+      _backgroundRefresh = retainAccepted;
+      _refreshError = null;
       _error = null;
     });
     final names = ref.read(masterNameServiceProvider);
@@ -237,25 +288,37 @@ class _ProductionPlanDetailPageState
     final dictionaries = names.ensureLoaded();
     try {
       final d = await ref.read(productionPlanRepositoryProvider).detail(planId);
-      if (!mounted || widget.id != planId) return;
+      if (!current()) return;
       setState(() {
         _detail = d;
         _loading = false;
+        _backgroundRefresh = false;
       });
       unawaited(_resolveDisplayNames(names, d, dictionaries));
       unawaited(_loadRelatedDocuments(d.materialAnalysisId));
       await _loadSubplans(planId: planId);
     } on ApiException catch (e) {
-      if (!mounted || widget.id != planId) return;
+      if (!current()) return;
+      final retained =
+          retainAccepted &&
+          !nativeReadAccessDenied(e) &&
+          !nativeReadResourceRetired(e);
       setState(() {
-        _error = e.message;
+        _error = retained ? null : e.message;
+        _refreshError = retained ? e.message : null;
+        if (nativeReadAccessDenied(e) || nativeReadResourceRetired(e)) {
+          _detail = null;
+        }
         _loading = false;
+        _backgroundRefresh = false;
       });
     } catch (_) {
-      if (!mounted || widget.id != planId) return;
+      if (!current()) return;
       setState(() {
-        _error = '加载详情失败';
+        _error = retainAccepted ? null : '加载详情失败';
+        _refreshError = retainAccepted ? '加载详情失败' : null;
         _loading = false;
+        _backgroundRefresh = false;
       });
     }
   }
@@ -287,19 +350,20 @@ class _ProductionPlanDetailPageState
   Future<void> _loadRelatedDocuments(String? analysisId) async {
     if (analysisId == null || analysisId.isEmpty) return;
     final generation = ++_relatedDocumentsGeneration;
+    final ownsRead = captureReadOwner(ref);
     setState(() => _relatedDocumentsLoading = true);
     try {
       final docs = await ref
           .read(productionExecutionWorkbenchRepositoryProvider)
           .relatedDocuments(rootType: 'ANALYSIS', rootId: analysisId);
-      if (!mounted || generation != _relatedDocumentsGeneration) return;
+      if (!ownsRead() || generation != _relatedDocumentsGeneration) return;
       setState(() => _relatedDocuments = docs);
     } catch (_) {
-      if (mounted && generation == _relatedDocumentsGeneration) {
+      if (ownsRead() && generation == _relatedDocumentsGeneration) {
         setState(() => _relatedDocuments = null);
       }
     } finally {
-      if (mounted && generation == _relatedDocumentsGeneration) {
+      if (ownsRead() && generation == _relatedDocumentsGeneration) {
         setState(() => _relatedDocumentsLoading = false);
       }
     }
@@ -399,18 +463,28 @@ class _ProductionPlanDetailPageState
 
   Future<void> _loadSubplans({String? planId}) async {
     if (!mounted) return;
+    final ownsRead = captureReadOwner(ref);
+    final generation = _detailReadGeneration;
     final requestedPlanId = planId ?? widget.id;
     try {
       final subplans = await ref
           .read(productionPlanRepositoryProvider)
           .mrpSubplans(requestedPlanId);
-      if (!mounted || widget.id != requestedPlanId) return;
+      if (!ownsRead() ||
+          widget.id != requestedPlanId ||
+          generation != _detailReadGeneration) {
+        return;
+      }
       setState(() {
         _subplans = subplans;
         _subplanError = null;
       });
     } catch (error) {
-      if (!mounted || widget.id != requestedPlanId) return;
+      if (!ownsRead() ||
+          widget.id != requestedPlanId ||
+          generation != _detailReadGeneration) {
+        return;
+      }
       setState(() {
         _subplans = null;
         _subplanError = productionErrorMessage(error, fallback: '子计划列表加载失败');
@@ -1106,10 +1180,12 @@ class _ProductionPlanDetailPageState
   /// `_openLinkedPage` 里 await context.push 之后的收尾走不到(go_router 不完成
   /// 原 push 的 Future)，本页与执行段卡片停在老数据。回到本页就按同一套收尾
   /// 重拉：执行段卡片换代 + 重载计划(2026-09-20 用户反馈「返回没刷新」同款)。
-  void _refreshOnResume() {
+  Future<void> _refreshOnResume() async {
     if (!mounted || _commandBusy) return;
     setState(() => _executionSegmentsRevision++);
-    _load();
+    await _load(background: true);
+    final error = _error ?? _refreshError;
+    if (error != null) throw StateError(error);
   }
 
   @override
@@ -1141,7 +1217,7 @@ class _ProductionPlanDetailPageState
         child: UtenContentContainer(
           child: Stack(
             children: [
-              _loading
+              _loading && !_backgroundRefresh
                   ? Semantics(
                       label: AppLocalizations.of(context).commonLoading,
                       liveRegion: true,
@@ -1180,6 +1256,14 @@ class _ProductionPlanDetailPageState
                           widget.id,
                         ),
                         _summaryHeroCard(theme, names),
+                        if (_detail!.legacyId != null &&
+                            _detail!.status == kProductionStatusApproved &&
+                            !_detail!.closed &&
+                            !_detail!.stopped &&
+                            !_detail!.canceled)
+                          const LegacyContinuationNotice(
+                            description: '继续办理前，请先核对剩余生产量、历史完工入库及真实来源。',
+                          ),
                         if (_detail!.items.any(
                           (item) => item.salesRequirements.isNotEmpty,
                         )) ...[
@@ -1209,6 +1293,11 @@ class _ProductionPlanDetailPageState
                         ..._referenceSections(theme),
                       ],
                     ),
+              NativeReadRefreshFeedback(
+                refreshing: _backgroundRefresh,
+                error: _refreshError,
+                onRetry: () => _load(background: true),
+              ),
               // 审核/下达/反审等计划操作网络段的全屏加载遮罩；两个标志都只盖纯网络段，
               // 结果弹层（下达结果/打印预览/跳单据）之前一律先清位，否则弹层被盖住点不动。
               if (_busy || _executionBusy)
@@ -1224,7 +1313,8 @@ class _ProductionPlanDetailPageState
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _detail == null || _loading || _error != null
+      floatingActionButton:
+          _detail == null || _loading || _error != null || _refreshError != null
           ? null
           : _actions(theme),
     );

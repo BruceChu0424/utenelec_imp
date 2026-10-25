@@ -9,6 +9,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_access_policy.dart';
 import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/features/stock/models/instant_inventory_scope.dart';
 import 'package:uten_imp/features/stock/pages/instant_inventory_overview_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -31,6 +32,47 @@ const _scope = InstantInventoryScope(
 );
 
 void main() {
+  for (final fail in [false, true]) {
+    testWidgets(
+      'overview return keeps content during ${fail ? 'failed' : 'external'} update',
+      (tester) async {
+        final api = _api();
+        final router = await _pump(tester, api: api);
+        final state = tester.state(find.byType(InstantInventoryOverviewPage));
+        final before = api.inventoryRequests.length;
+        router.push<void>(RouteName.warehouseInsights);
+        await tester.pumpAndSettle();
+        final delayed = Completer<Map<String, dynamic>>();
+        api.onInventory = (query) async => query['attention'] == null
+            ? delayed.future
+            : _riskResponse('其他人新增的货品');
+        router.pop();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 450));
+        await tester.pump();
+        expect(api.inventoryRequests.length, before + 1);
+        expect(find.text('900'), findsOneWidget);
+        expect(
+          tester.state(find.byType(InstantInventoryOverviewPage)),
+          same(state),
+        );
+        if (fail) {
+          delayed.completeError(ApiException('NETWORK', '暂时离线'));
+        } else {
+          delayed.complete(api.response());
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('900'), findsOneWidget);
+        if (fail) {
+          expect(find.text('更新失败，显示上次数据'), findsOneWidget);
+        } else {
+          expect(find.text('其他人新增的货品'), findsOneWidget);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('总览直达和刷新重建全部筛选，风险明细使用相同范围', (tester) async {
     final api = _api();
     final router = await _pump(tester, api: api, scope: _scope);
@@ -351,5 +393,11 @@ Future<GoRouter> _pump(
     ),
   );
   await tester.pumpAndSettle();
+  final container = ProviderScope.containerOf(
+    tester.element(find.byType(InstantInventoryOverviewPage)),
+  );
+  addTearDown(
+    attachPageResume(router, container.read(pageResumeProvider.notifier)),
+  );
   return router;
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../components/buttons/uten_back_button.dart';
 import '../../components/buttons/uten_refresh_button.dart';
 import '../../core/ui/app_notification.dart';
 import '../../components/layout/uten_app_bar_action_scope.dart';
@@ -105,7 +106,9 @@ class _HistoryPageState extends ConsumerState<_FormDraftHistoryPage> {
     return Scaffold(
       appBar: UtenAppBar(
         title: '本机草稿历史',
-        leading: BackButton(onPressed: () => Navigator.of(context).pop()),
+        leading: UtenBackButton(
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         actions: [
           UtenRefreshButton(
             tooltip: '刷新历史',
@@ -246,7 +249,9 @@ class _HistoryDetail extends ConsumerWidget {
     return Scaffold(
       appBar: UtenAppBar(
         title: '草稿历史内容',
-        leading: BackButton(onPressed: () => Navigator.of(context).pop()),
+        leading: UtenBackButton(
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       body: SafeArea(
         child: UtenContentContainer(

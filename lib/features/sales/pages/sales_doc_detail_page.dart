@@ -73,6 +73,7 @@ import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/progress_timeline_event.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/widgets/source_doc_link.dart';
+import '../../../shared/widgets/legacy_continuation_notice.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/repositories/task_claim_repository.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -706,8 +707,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
   @override
   Future<void> nativeReadReload() => _load();
 
-  Future<void> _load() async {
-    final acceptsRead = captureNativeRead(_readKey, () => _readKey);
+  Future<void> _load({bool background = false}) async {
+    final acceptsRead = captureNativeRead(
+      _readKey,
+      () => _readKey,
+      retainAccepted: background && _detail != null,
+    );
     if (!acceptsRead()) return;
     if (widget.historyRead &&
         (widget.docType != SalesDocType.quote ||
@@ -733,13 +738,15 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     setState(() {
       _loading = true;
       _error = null;
-      _detail = null;
+      if (!background) _detail = null;
     });
     final names = ref.read(salesMasterNameServiceProvider);
     // 字典与详情并行，首屏只等详情(ADR-108)；名称在首屏之后补齐再重绘一次。
     final dictionaries = names.ensureLoaded();
     // 履约进度时间线：订货单才拉，与详情并行、独立报错（刷新随 _load 整页重读）。
-    if (widget.docType == SalesDocType.order) unawaited(_loadTimeline());
+    if (widget.docType == SalesDocType.order) {
+      unawaited(_loadTimeline(background: background));
+    }
     try {
       final repository = ref.read(salesRepositoryProvider(widget.docType));
       final d = widget.historyRead
@@ -767,14 +774,19 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       }
     } on ApiException catch (e) {
       if (!acceptsRead()) return;
+      final retained = failNativeRead(e, message: e.message);
       setState(() {
-        _error = e.message;
+        _error = retained ? null : e.message;
+        if (nativeReadAccessDenied(e) || nativeReadResourceRetired(e)) {
+          _detail = null;
+        }
         _loading = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!acceptsRead()) return;
+      final retained = failNativeRead(error, message: '详情加载失败，请稍后重试');
       setState(() {
-        _error = '详情加载失败，请稍后重试';
+        _error = retained ? null : '详情加载失败，请稍后重试';
         _loading = false;
       });
     }
@@ -782,21 +794,30 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
 
   /// 履约进度时间线（原订单进度详情页 ②段并入）：与详情并行、独立报错，
   /// 加载失败只影响本折叠卡，不阻塞页面其余部分。
-  Future<void> _loadTimeline() async {
+  int _timelineReadGeneration = 0;
+
+  Future<void> _loadTimeline({bool background = false}) async {
+    final generation = ++_timelineReadGeneration;
+    final ownsRead = captureNativeOwnership();
+    final readKey = _readKey;
+    bool current() =>
+        ownsRead() &&
+        readKey == _readKey &&
+        generation == _timelineReadGeneration;
     setState(() {
-      _timeline = null;
+      if (!background) _timeline = null;
       _timelineError = null;
     });
     try {
       final events = await ref
           .read(salesRepositoryProvider(SalesDocType.order))
           .progressTimeline(widget.id);
-      if (!mounted) return;
+      if (!current()) return;
       setState(() => _timeline = events);
     } on ApiException catch (e) {
-      if (mounted) setState(() => _timelineError = e.message);
+      if (current()) setState(() => _timelineError = e.message);
     } catch (_) {
-      if (mounted) setState(() => _timelineError = '加载失败，请稍后重试');
+      if (current()) setState(() => _timelineError = '加载失败，请稍后重试');
     }
   }
 
@@ -1366,7 +1387,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       context,
       SalesRoutePath.docDetail(_cfg.type.pathSegment, widget.id),
     );
-    ref.onPageResume(_myLocation!, _load);
+    ref.onPageResume(_myLocation!, () async {
+      await _load(background: true);
+      final error = _error ?? nativeReadRefreshError;
+      if (error != null) throw StateError(error);
+    });
     final permissions = ref.watch(currentPermissionsProvider);
     final canViewMoneySummary =
         nativeReadAccessConfirmed &&
@@ -1401,7 +1426,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
             // 2026-09-15 宽度口径（用户反馈）：详情页弃 narrow（1120 两侧大留白），
             // 改默认容器对齐新建销售订货单页。
             UtenContentContainer(
-              child: _loading
+              child: _loading && !nativeReadAccessConfirmed
                   ? Semantics(
                       label: AppLocalizations.of(context).commonLoading,
                       liveRegion: true,
@@ -1462,6 +1487,14 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                               names,
                               canViewMoneySummary: canViewMoneySummary,
                             ),
+                            if (_cfg.type == SalesDocType.order &&
+                                _detail!.legacyId != null &&
+                                _detail!.status == kSalesStatusApproved &&
+                                !_detail!.closed &&
+                                !_detail!.stopped)
+                              const LegacyContinuationNotice(
+                                description: '继续办理前，请先核对未交数量、历史已发及真实来源。',
+                              ),
                             // 履约进度（2026-10-18 原订单进度详情整页并入本页）：
                             // 快递式时间线放明细表上方，默认折叠只露「最新」状态，
                             // 点「展开查看全部进度」展开完整链路（责任人/时间/关联单跳转）。
@@ -1562,6 +1595,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                       ),
                     ),
             ),
+            nativeReadRefreshFeedback(onRetry: () => _load(background: true)),
             // 处理中屏幕中央加载动画（2026-09-12 口径：跟随网络段；按钮 isLoading
             // 同步转圈，不再用固定底栏占位）。
             if (_busy)
@@ -1578,6 +1612,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
               _detail == null ||
               _busy ||
               _loading ||
+              nativeReadRefreshError != null ||
               _error != null
           ? null
           : _actions(theme),

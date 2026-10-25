@@ -168,7 +168,7 @@ class SubcontractMakeBeforeOrderMigrationContractTest {
                 .containsEntry("preplan_subcontract_make_task_batches", "CLEAR")
                 .containsEntry("preplan_subcontract_make_tasks", "CLEAR");
 
-        assertThat(com.uten.imp.ops.BusinessDataResetSqlContractTest.expectedCurrentPolicy())
+        assertThat(com.uten.imp.ops.BusinessDataResetSqlContractTest.expectedPreRetirementPolicy())
                 .as("V798 retires both ledger tables from the reset policy")
                 .doesNotContainKey("preplan_subcontract_make_task_batches")
                 .doesNotContainKey("preplan_subcontract_make_tasks");

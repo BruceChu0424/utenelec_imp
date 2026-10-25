@@ -124,7 +124,9 @@ SELECT
     cs.bank, cs.bank_account, cs.tax_id,
     cs.credit, COALESCE(cs.credit, 0), cs.init_total, cs.init_total2,
     cs.exchange_rate, cs.tday, settlement_match.method_id,
-    cs.price_style,
+    -- Source DEFAULT(0), absent from B_PStyle, means no selected default.
+    -- Keep the raw zero in client_stage and the sealed source identity audit.
+    NULLIF(cs.price_style, 0),
     cs.zj_id, cs.region, cs.client_xz,
     cs.status, cs.remark, FALSE,
     reserved.last_seq - cs.allocation_count + cs.seq_ordinal
@@ -132,7 +134,7 @@ FROM numbered cs
 CROSS JOIN reserved
 LEFT JOIN LATERAL pg_temp.legacy_owner_resolution(cs.emp_id) employee_owner ON true
 LEFT JOIN settlement_matches settlement_match
-  ON settlement_match.legacy_id = cs.price_style;
+  ON settlement_match.legacy_id = NULLIF(cs.price_style, 0);
 
 INSERT INTO pg_temp.legacy_owner_custody
 SELECT 'clients',c.id,c.legacy_id,s.emp_id,resolution.original_employee_id,c.owner_employee_id,resolution.reason

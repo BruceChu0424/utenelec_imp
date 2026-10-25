@@ -8,7 +8,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
+import '../../../core/utils/display_datetime.dart';
 import '../../../core/l10n/remote_access_text.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -1426,9 +1426,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   Widget _accountSection() {
     final theme = Theme.of(context);
     final user = widget.user;
-    final expiry = user.tempPasswordExpiresAt == null
-        ? null
-        : DateTime.tryParse(user.tempPasswordExpiresAt!)?.toLocal();
+    final expiry = DisplayDateTime.instantOf(user.tempPasswordExpiresAt);
     final expiryExpired = expiry != null && expiry.isBefore(DateTime.now());
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1537,7 +1535,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                       ? '员工首次登录时需设置新密码'
                       : expiryExpired
                       ? '临时密码已过期，员工无法再用它登录，请重新设置'
-                      : '临时密码有效期至 ${DateFormat('yyyy-MM-dd HH:mm').format(expiry)}，逾期自动失效',
+                      : '临时密码有效期至 ${DisplayDateTime.beijing(expiry.toIso8601String())}，逾期自动失效',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

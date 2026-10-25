@@ -52,7 +52,7 @@ public final class PurchaseRequestQuantities {
               ) part
               JOIN purchase_orders o ON o.id=part.order_id
               WHERE o.status = 0 AND o.is_deleted = FALSE
-                AND fn_procurement_order_latest_approval_status('PURCHASE', o.id) IN ('PENDING', 'REJECTED')
+                AND fn_procurement_order_reserves_source('PURCHASE', o.id)
             ) pending ON TRUE
             """.formatted(alias,alias);
     }

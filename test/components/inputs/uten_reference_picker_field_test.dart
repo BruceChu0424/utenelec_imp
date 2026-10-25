@@ -200,7 +200,7 @@ void main() {
       ),
     );
     await tester.enterText(find.byType(TextField), '5M');
-    await tester.tap(find.text('选择'));
+    await tester.tap(find.byKey(const ValueKey('uten-reference-open-picker')));
     await tester.pumpAndSettle();
     expect(query, '5M');
     expect(requests, isEmpty);

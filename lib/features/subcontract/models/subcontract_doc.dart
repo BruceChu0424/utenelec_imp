@@ -1,3 +1,4 @@
+import '../../../shared/models/procurement_order_closure.dart';
 import '../../../shared/models/procurement_source_terms.dart';
 import '../../../shared/business_columns/business_column.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
@@ -426,6 +427,7 @@ class SubcontractDocDetail {
     this.restrictionReason,
     this.shortDeliveryHold,
     this.financeApproval,
+    this.closureRequest,
     this.priceAssessment,
     this.sourceApplicationId,
     this.sourceApplicationNo,
@@ -501,6 +503,7 @@ class SubcontractDocDetail {
   /// (分批到货还是接受损耗)，期间这批货先不入库、本单也不改量；判定完成自动解除。
   final SubcontractShortDeliveryHold? shortDeliveryHold;
   final ProcurementFinanceApproval? financeApproval;
+  final ProcurementOrderClosureRequest? closureRequest;
   final Map<String, dynamic>? priceAssessment;
 
   /// 来源委外申请（订货单全部明细同源时给出，供跳转；跨申请为 null）
@@ -578,6 +581,11 @@ class SubcontractDocDetail {
         deductPosted: json['deductPosted'] as bool?,
         priceAssessment: json['priceAssessment'] is Map<String, dynamic>
             ? json['priceAssessment'] as Map<String, dynamic>
+            : null,
+        closureRequest: json['closureRequest'] is Map
+            ? ProcurementOrderClosureRequest.fromJson(
+                (json['closureRequest'] as Map).cast<String, dynamic>(),
+              )
             : null,
         financeApproval: json['financeApproval'] is Map
             ? ProcurementFinanceApproval.fromJson(

@@ -2,6 +2,10 @@ package com.uten.imp.businesschain;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.master.goods.GoodsBomEditService;
+import com.uten.imp.features.master.goods.GoodsService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.test.util.ReflectionTestUtils;
 import com.uten.imp.features.master.goods.GoodsBomService;
 import com.uten.imp.features.master.goods.history.GoodsOperationHistoryService;
 import com.uten.imp.features.master.goods.dto.BomEditPreview;
@@ -51,6 +55,8 @@ class GoodsBomEditEndToEndTest {
         FullChainEndToEndTest.registerDataSource(registry);
     }
     @Autowired GoodsBomEditService edits;
+    @Autowired GoodsService goodsService;
+    @Autowired ObjectMapper mapper;
     @Autowired GoodsBomService bom;
     @Autowired GoodsOperationHistoryService history;
     @Autowired JdbcTemplate db;
@@ -70,6 +76,192 @@ class GoodsBomEditEndToEndTest {
         // Evidence and fixtures deliberately remain in this disposable container.
     }
 
+    @Test void masterCellsAndRecipePublishTogetherAfterRollbackOnlySharedPreviewAndHistoryRetainsGoodsEdit() {
+        login(Set.of("goods:view","goods:edit","goods:bom:edit"),session);
+        UUID root=editableGoods("master-root"), other=goods("master-other"), shared=editableGoods("master-shared");
+        UUID row=edge(root,shared); edge(other,shared);
+        db.update("UPDATE goods SET model='old-model',spec='old-spec',material='old-material',source_type='采购',price=37.1234,source_e=5.4321 WHERE id=?",shared);
+        var snapshot=edits.snapshot(shared);
+        assertTrue(snapshot.goods().componentGoodsWritable());
+        assertEquals(shared,snapshot.goods().id());
+        BomEditRequest request=draft(List.of(update(root,row,shared,"2.5"),
+                updateGoods(shared,snapshot.goods().version(),Map.of(
+                        "model",mapper.valueToTree("new-model"),"spec",mapper.valueToTree("new-spec"),
+                        "material",mapper.valueToTree("new-material"),"sourceType",mapper.valueToTree("委外")))),root,shared);
+        String before=masterState(shared), recipeBefore=canonicalState();
+        long historyBefore=count("goods_operation_history"), auditBefore=bomAuditCount();
+        route(root,"preview");
+        var preview=edits.preview(root,request);
+        assertEquals(1,preview.otherUsageCount());
+        assertTrue(preview.affectedParents().stream().anyMatch(parent->parent.goodsId().equals(shared)));
+        assertEquals(before,masterState(shared)); assertEquals(recipeBefore,canonicalState());
+        assertEquals(historyBefore,count("goods_operation_history")); assertEquals(auditBefore,bomAuditCount());
+        route(root,"commit");
+        var result=edits.commit(root,confirmed(request,preview));
+        assertEquals("new-model",db.queryForObject("SELECT model FROM goods WHERE id=?",String.class,shared));
+        assertEquals("new-spec",db.queryForObject("SELECT spec FROM goods WHERE id=?",String.class,shared));
+        assertEquals("new-material",db.queryForObject("SELECT material FROM goods WHERE id=?",String.class,shared));
+        assertEquals("委外",db.queryForObject("SELECT source_type FROM goods WHERE id=?",String.class,shared));
+        assertEquals(0,new BigDecimal("2.5").compareTo(bom.list(root).getFirst().getQty()));
+        assertEquals(0,new BigDecimal("37.1234").compareTo(db.queryForObject("SELECT price FROM goods WHERE id=?",BigDecimal.class,shared)));
+        assertEquals(0,new BigDecimal("5.4321").compareTo(db.queryForObject("SELECT source_e FROM goods WHERE id=?",BigDecimal.class,shared)));
+        assertEquals(historyBefore+1,count("goods_operation_history"));
+        String after=masterState(shared), recipeAfter=canonicalState();
+        assertEquals(result,edits.commit(root,confirmed(request,preview)));
+        assertEquals(after,masterState(shared)); assertEquals(recipeAfter,canonicalState());
+        var historyEntry=history.list().entries().getFirst();
+        assertEquals("goods:bom:edit,goods:edit",db.queryForObject(
+                "SELECT array_to_string(required_permissions,',') FROM goods_operation_history WHERE id=?",String.class,historyEntry.id()));
+        login(Set.of("goods:view","goods:bom:edit"),session);
+        var blocked=history.list().entries().stream().filter(entry->entry.id().equals(historyEntry.id())).findFirst().orElseThrow();
+        assertFalse(blocked.canUndo()); assertTrue(blocked.blockedReason().contains("goods:edit"));
+        login(Set.of("goods:view","goods:edit","goods:bom:edit"),session);
+        historyRoute(historyEntry.id(),"undo");
+        var undone=history.undo(historyEntry.id(),historyEntry.version()).entries().stream()
+                .filter(entry->entry.id().equals(historyEntry.id())).findFirst().orElseThrow();
+        assertEquals("old-model",db.queryForObject("SELECT model FROM goods WHERE id=?",String.class,shared));
+        assertEquals("old-spec",db.queryForObject("SELECT spec FROM goods WHERE id=?",String.class,shared));
+        assertEquals("old-material",db.queryForObject("SELECT material FROM goods WHERE id=?",String.class,shared));
+        assertEquals("采购",db.queryForObject("SELECT source_type FROM goods WHERE id=?",String.class,shared));
+        assertEquals(0,BigDecimal.ONE.compareTo(bom.list(root).getFirst().getQty()));
+        assertTrue(undone.canRedo(),undone.blockedReason());
+        historyRoute(historyEntry.id(),"redo"); history.redo(historyEntry.id(),undone.version());
+        assertEquals("new-model",db.queryForObject("SELECT model FROM goods WHERE id=?",String.class,shared));
+        assertEquals("new-spec",db.queryForObject("SELECT spec FROM goods WHERE id=?",String.class,shared));
+        assertEquals("new-material",db.queryForObject("SELECT material FROM goods WHERE id=?",String.class,shared));
+        assertEquals("委外",db.queryForObject("SELECT source_type FROM goods WHERE id=?",String.class,shared));
+        assertEquals(0,new BigDecimal("2.5").compareTo(bom.list(root).getFirst().getQty()));
+    }
+
+    @Test void masterOnlyEditHasSharedImpactWithoutInventingAnyRecipeOperations() {
+        login(Set.of("goods:view","goods:edit","goods:bom:edit"),session);
+        UUID root=editableGoods("master-only-root"),other=goods("master-only-other"),shared=editableGoods("master-only-shared");
+        edge(root,shared);edge(other,shared);
+        var snapshot=edits.snapshot(shared);
+        var request=draft(List.of(updateGoods(shared,snapshot.goods().version(),Map.of("model",mapper.valueToTree("master-only-new")))),root,shared);
+        String recipeBefore=canonicalState();
+        route(root,"preview");var preview=edits.preview(root,request);
+        assertEquals(1,preview.operationCount());assertEquals(1,preview.otherUsageCount());
+        assertEquals(List.of(shared),preview.affectedParents().stream().map(BomEditPreview.AffectedParent::goodsId).toList());
+        assertEquals("",db.queryForObject("SELECT model FROM goods WHERE id=?",String.class,shared));
+        route(root,"commit");edits.commit(root,confirmed(request,preview));
+        assertEquals(recipeBefore,canonicalState());
+        assertEquals("master-only-new",db.queryForObject("SELECT model FROM goods WHERE id=?",String.class,shared));
+    }
+
+    @Test void ownRecipeCostVersionAdvanceDoesNotInvalidateAnAlreadyProvedMasterBaseline() {
+        login(Set.of("goods:view","goods:edit","goods:bom:edit"),session);
+        UUID root=editableGoods("master-same-root"),shared=editableGoods("master-same-shared"),leaf=goods("master-same-leaf");
+        edge(root,shared);UUID row=edge(shared,leaf);
+        db.update("UPDATE goods SET price=3 WHERE id=?",leaf);
+        var snapshot=edits.snapshot(shared);
+        var request=draft(List.of(update(shared,row,leaf,"5"),updateGoods(shared,snapshot.goods().version(),
+                Map.of("spec",mapper.valueToTree("same-draft-spec")))),root,shared);
+        route(root,"preview");var preview=edits.preview(root,request);
+        assertEquals(0,BigDecimal.ONE.compareTo(bom.list(shared).getFirst().getQty()));
+        route(root,"commit");edits.commit(root,confirmed(request,preview));
+        assertEquals(0,new BigDecimal("5").compareTo(bom.list(shared).getFirst().getQty()));
+        assertEquals("same-draft-spec",db.queryForObject("SELECT spec FROM goods WHERE id=?",String.class,shared));
+    }
+    @Test void masterOnlyChangeRequiresGoodsEditAndRechecksItBeforeAnyMixedCommit() {
+        UUID root=editableGoods("master-auth-root"), shared=editableGoods("master-auth-shared");
+        UUID row=edge(root,shared);
+        assertFalse(edits.snapshot(shared).goods().componentGoodsWritable());
+        long version=edits.snapshot(shared).goods().version();
+        BomEditRequest request=draft(List.of(update(root,row,shared,"8"),
+                updateGoods(shared,version,Map.of("model",mapper.valueToTree("denied")))),root,shared);
+        String before=masterState(shared),recipeBefore=canonicalState();
+        route(root,"preview");
+        assertThrows(ApiException.class,()->edits.preview(root,request));
+        assertEquals(before,masterState(shared)); assertEquals(recipeBefore,canonicalState());
+        login(Set.of("goods:view","goods:edit","goods:bom:edit"),session);
+        var preview=edits.preview(root,request);
+        login(Set.of("goods:view","goods:bom:edit"),session);
+        route(root,"commit");
+        assertThrows(ApiException.class,()->edits.commit(root,confirmed(request,preview)));
+        assertEquals(before,masterState(shared)); assertEquals(recipeBefore,canonicalState());
+        login(Set.of("goods:bom:edit"),session);
+        assertNull(edits.snapshot(shared).goods(),"BOM permission alone does not disclose editable master snapshots");
+    }
+
+    @Test void masterVersionAndFingerprintRejectConcurrentChangesInsteadOfAdoptingTheCurrentVersion() {
+        login(Set.of("goods:view","goods:edit","goods:bom:edit"),session);
+        UUID root=editableGoods("master-stale-root"), shared=editableGoods("master-stale-shared"); edge(root,shared);
+        long version=edits.snapshot(shared).goods().version();
+        var operation=updateGoods(shared,version,Map.of("spec",mapper.valueToTree("draft-spec")));
+        db.update("UPDATE goods SET version=version+1 WHERE id=?",shared);
+        BomEditRequest staleVersion=draft(List.of(operation),root,shared);
+        assertThrows(ApiException.class,()->edits.preview(root,staleVersion),"even a new fingerprint cannot replace the original goods version");
+        long current=edits.snapshot(shared).goods().version();
+        BomEditRequest request=draft(List.of(updateGoods(shared,current,Map.of("spec",mapper.valueToTree("reviewed")))),root,shared);
+        var preview=edits.preview(root,request);
+        db.update("UPDATE goods SET model='concurrent-direct-model' WHERE id=?",shared);
+        assertThrows(ApiException.class,()->edits.commit(root,confirmed(request,preview)),"the fingerprint also binds fields modified by non-JPA writers");
+        assertEquals("concurrent-direct-model",db.queryForObject("SELECT model FROM goods WHERE id=?",String.class,shared));
+        assertNull(db.queryForObject("SELECT spec FROM goods WHERE id=?",String.class,shared));
+    }
+
+    @Test void unrelatedMasterCannotBeEditedBySupplyingItsSnapshotAndValidVersion() {
+        login(Set.of("goods:view","goods:edit","goods:bom:edit"),session);
+        UUID root=editableGoods("master-scope-root"), unrelated=editableGoods("master-unrelated");
+        var snapshot=edits.snapshot(unrelated);
+        BomEditRequest request=draft(List.of(updateGoods(unrelated,snapshot.goods().version(),
+                Map.of("model",mapper.valueToTree("must-not-write")))),root,unrelated);
+        String before=masterState(unrelated);
+        assertThrows(ApiException.class,()->edits.preview(root,request));
+        assertEquals(before,masterState(unrelated));
+    }
+
+    @Test void masterPatchRejectsUnknownFieldsMissingVersionsStructuredValuesAndDuplicateTargets() {
+        login(Set.of("goods:view","goods:edit","goods:bom:edit"),session);
+        UUID root=editableGoods("master-invalid-root"), shared=editableGoods("master-invalid-shared"); edge(root,shared);
+        long version=edits.snapshot(shared).goods().version();
+        String before=masterState(shared);
+        for(String field:List.of("code","stockQty","price","categoryId","colorId","version")) {
+            BomEditRequest request=draft(List.of(updateGoods(shared,version,Map.of(field,mapper.valueToTree("unexpected")))),root,shared);
+            assertThrows(ApiException.class,()->edits.preview(root,request),field);
+        }
+        BomEditRequest missing=draft(List.of(updateGoods(shared,null,Map.of("model",mapper.valueToTree("missing-version")))),root,shared);
+        assertThrows(ApiException.class,()->edits.preview(root,missing));
+        BomEditRequest structured=draft(List.of(updateGoods(shared,version,Map.of("spec",mapper.valueToTree(Map.of("nested","bad"))))),root,shared);
+        assertThrows(ApiException.class,()->edits.preview(root,structured));
+        var patch=updateGoods(shared,version,Map.of("model",mapper.valueToTree("duplicate")));
+        assertThrows(ApiException.class,()->edits.preview(root,draft(List.of(patch,patch),root,shared)));
+        assertEquals(before,masterState(shared));
+    }
+
+    @Test void viewOnlyOwnershipGrantNeverMakesTheMasterCellsWritable() {
+        login(Set.of("goods:view","goods:edit","goods:bom:edit"),session);
+        UUID root=editableGoods("master-owner-root"), shared=editableGoods("master-owner-shared"); edge(root,shared);
+        UUID owner=UUID.randomUUID();
+        UUID department=db.queryForObject("SELECT department_id FROM employees WHERE id=?",UUID.class,employee);
+        db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,CURRENT_DATE,'active','regular')",
+                owner,"BOM-OWNER-"+owner,"另一个货品负责人",department);
+        db.update("UPDATE goods SET owner_employee_id=? WHERE id=?",owner,shared);
+        db.update("INSERT INTO user_data_scopes(user_id,scope,owner_employee_id) VALUES(?,'goods',?)",actor,owner);
+        ReflectionTestUtils.setField(goodsService,"goodsOwnerScopeEnabled",true);
+        try {
+            var snapshot=edits.snapshot(shared);
+            assertFalse(snapshot.goods().componentGoodsWritable());
+            var request=draft(List.of(updateGoods(shared,snapshot.goods().version(),Map.of("model",mapper.valueToTree("read-only-owner")))),root,shared);
+            String before=masterState(shared);
+            assertThrows(ApiException.class,()->edits.preview(root,request));
+            assertEquals(before,masterState(shared));
+        } finally { ReflectionTestUtils.setField(goodsService,"goodsOwnerScopeEnabled",false); }
+    }
+
+    private UUID editableGoods(String tag) {
+        UUID id=goods(tag),category=UUID.randomUUID();
+        db.update("INSERT INTO material_categories(id,code,name) VALUES(?,?,?)",category,"BMC-"+category,"组装单元格测试分类");
+        db.update("UPDATE goods SET category_id=? WHERE id=?",category,id);
+        return id;
+    }
+    private BomEditRequest.Operation updateGoods(UUID goods,Long version,Map<String,JsonNode> changes) {
+        return new BomEditRequest.Operation(UPDATE_GOODS,goods,null,null,null,null,null,version,changes);
+    }
+    private String masterState(UUID goods) {
+        return db.queryForObject("SELECT to_jsonb(g)::text FROM goods g WHERE id=?",String.class,goods);
+    }
     @Test void previewRollsBackRecipeOutboxAuditAndHistoryThenNestedCommitIsSharedAndRetryIsInert() {
         UUID root=goods("root"), other=goods("other"), shared=goods("shared"), leaf=goods("leaf");
         edge(root,shared); edge(other,shared);
@@ -112,6 +304,37 @@ class GoodsBomEditEndToEndTest {
         assertNull(changed.getAuditedAt());
         assertNotNull(rows.stream().filter(row->row.getId().equals(untouched)).findFirst().orElseThrow().getAuditedAt());
         assertEquals(changing,db.queryForObject("SELECT id FROM goods_bom_items WHERE goods_id=? AND component_goods_id=? AND NOT is_deleted",UUID.class,shared,leaf));
+    }
+
+    @Test void componentReplacementKeepsRelationIdentityAndUsesNewDefaultPriceOnlyAfterCommit() {
+        UUID root=goods("replace-root"), other=goods("replace-other"), old=goods("replace-old"), next=goods("replace-new");
+        db.update("UPDATE goods SET price=5.5 WHERE id=?",next);
+        UUID changed=edge(root,old), retained=edge(other,old);
+        db.update("UPDATE goods_bom_items SET qty=3,price=99,total=297 WHERE id=?",changed);
+        bom.setAudited(root,changed,true,actor);
+        BomEditRequest request=draft(List.of(update(root,changed,next,"3")),root);
+        String before=canonicalState();
+        long historyBefore=count("goods_operation_history");
+        route(root,"preview");
+        var preview=edits.preview(root,request);
+        assertEquals(before,canonicalState(),"preview cannot replace the canonical component");
+        assertEquals(historyBefore,count("goods_operation_history"));
+
+        route(root,"commit");
+        edits.commit(root,confirmed(request,preview));
+
+        var view=bom.list(root).getFirst();
+        assertEquals(changed,view.getId());
+        assertEquals(next,view.getComponentGoodsId());
+        assertEquals(0,new BigDecimal("3").compareTo(view.getQty()));
+        assertNull(view.getAuditedAt());
+        assertNull(view.getPrice(),"a component picker cannot grant private-price access");
+        assertEquals(0,new BigDecimal("5.5").compareTo(db.queryForObject(
+                "SELECT price FROM goods_bom_items WHERE id=?",BigDecimal.class,changed)));
+        assertEquals(0,new BigDecimal("16.5").compareTo(db.queryForObject(
+                "SELECT total FROM goods_bom_items WHERE id=?",BigDecimal.class,changed)));
+        assertEquals(old,db.queryForObject("SELECT component_goods_id FROM goods_bom_items WHERE id=?",UUID.class,retained));
+        assertEquals(historyBefore+1,count("goods_operation_history"));
     }
 
     @Test void createsCanOpenANewSubtreeAndTemporaryIdsSurviveMoveAndFurtherUpdate() {

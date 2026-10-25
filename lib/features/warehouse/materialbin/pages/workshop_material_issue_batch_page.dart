@@ -862,10 +862,7 @@ class _WorkshopMaterialIssueBatchPageState
             .where((draft) => draft.id == formDraftRecoveryId)
             .firstOrNull;
         if (checkpoint != null && !checkpoint.hasUnknownSubmission) {
-          adoptFormDraftRecoveryCheckpoint(
-            checkpoint,
-            status: '原提交结果已核对，未办理明细仍保留在本机草稿',
-          );
+          adoptFormDraftRecoveryCheckpoint(checkpoint);
         }
         setState(() => _error = '原提交结果已核对；仍有申请已取消、变化或当前不可读取，相关明细本次未办理，草稿已保留。');
       }

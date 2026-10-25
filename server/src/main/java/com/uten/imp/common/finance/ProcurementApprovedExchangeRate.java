@@ -27,7 +27,7 @@ public final class ProcurementApprovedExchangeRate {
         @SuppressWarnings("unchecked") List<Object[]> rows = em.createNativeQuery("""
                 SELECT id,finance_exchange_rate,finance_total_local
                 FROM procurement_order_approval_cases
-                WHERE order_type=:kind AND order_id=:orderId AND status='APPROVED'
+                WHERE order_type=:kind AND order_id=:orderId AND status='APPROVED' AND request_type='ORDER'
                 ORDER BY attempt DESC LIMIT 1
                 """).setParameter("kind", kind).setParameter("orderId", orderId).getResultList();
         return terms(rows, contractRate);
@@ -37,7 +37,7 @@ public final class ProcurementApprovedExchangeRate {
         List<Object[]> rows = jdbc.query("""
                 SELECT id,finance_exchange_rate,finance_total_local
                 FROM procurement_order_approval_cases
-                WHERE order_type=? AND order_id=? AND status='APPROVED'
+                WHERE order_type=? AND order_id=? AND status='APPROVED' AND request_type='ORDER'
                 ORDER BY attempt DESC LIMIT 1
                 """, (rs,n) -> new Object[]{rs.getObject(1,UUID.class),rs.getBigDecimal(2),rs.getBigDecimal(3)},kind(kind),orderId);
         return terms(rows, contractRate);

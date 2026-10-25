@@ -21,7 +21,7 @@ public final class ProcurementApprovedTaxRate {
     public static BigDecimal read(JdbcTemplate jdbc, String kind, UUID order, BigDecimal fallback) {
         List<BigDecimal> rows = jdbc.query("""
                 SELECT finance_tax_rate FROM procurement_order_approval_cases
-                WHERE order_type=? AND order_id=? AND status='APPROVED'
+                WHERE order_type=? AND order_id=? AND status='APPROVED' AND request_type='ORDER'
                 ORDER BY attempt DESC LIMIT 1
                 """, (rs,n) -> rs.getBigDecimal(1), kind, order);
         return normalize(rows.isEmpty() || rows.getFirst() == null ? fallback : rows.getFirst());
@@ -29,7 +29,7 @@ public final class ProcurementApprovedTaxRate {
     public static BigDecimal read(EntityManager em, String kind, UUID order, BigDecimal fallback) {
         @SuppressWarnings("unchecked") List<BigDecimal> rows = em.createNativeQuery("""
                 SELECT finance_tax_rate FROM procurement_order_approval_cases
-                WHERE order_type=:kind AND order_id=:order AND status='APPROVED'
+                WHERE order_type=:kind AND order_id=:order AND status='APPROVED' AND request_type='ORDER'
                 ORDER BY attempt DESC LIMIT 1
                 """).setParameter("kind",kind).setParameter("order",order).getResultList();
         return normalize(rows.isEmpty() || rows.getFirst() == null ? fallback : rows.getFirst());

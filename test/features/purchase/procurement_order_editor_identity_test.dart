@@ -14,6 +14,9 @@ import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_order_edit_page.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_order_edit_page.dart';
+import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
+import 'package:uten_imp/features/subcontract/widgets/subcontract_grid_columns.dart';
+import 'package:uten_imp/shared/widgets/procurement_supplier_cell.dart';
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
@@ -27,6 +30,41 @@ final _reader = StateProvider<AuthenticatedScope?>(
 );
 
 void main() {
+  for (final subcontract in [false, true]) {
+    testWidgets(
+      '${subcontract ? 'subcontract' : 'purchase'} replacement draft opens with blank supplier and accepts a new supplier',
+      (tester) async {
+        final api = _Api(subcontract)..replacementDraft = true;
+        await _mount(tester, api, subcontract);
+        await tester.pumpAndSettle();
+        final supplier = find.byType(ProcurementSupplierCell).first;
+        expect(tester.widget<ProcurementSupplierCell>(supplier).value, isNull);
+        await tester.ensureVisible(supplier);
+        await tester.tap(supplier);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('新供应商'));
+        await tester.pump();
+        await tester.tap(find.text('确定'));
+        await tester.pumpAndSettle();
+        if (subcontract) {
+          final grid = tester.widget<UtenEditableGrid<SubcontractGridRow>>(
+            find.byType(UtenEditableGrid<SubcontractGridRow>),
+          );
+          expect(grid.controller.rows.single.supplierId, 'new-supplier');
+          expect(grid.controller.rows.single.qty.text, '4');
+        } else {
+          final grid = tester.widget<UtenEditableGrid<PurchaseGridRow>>(
+            find.byType(UtenEditableGrid<PurchaseGridRow>),
+          );
+          expect(grid.controller.rows.single.supplierId, 'new-supplier');
+          expect(grid.controller.rows.single.qty.text, '4');
+        }
+        expect(tester.takeException(), isNull);
+        expect(api.writes, isEmpty);
+      },
+    );
+  }
+
   for (final language in ['en', 'ko']) {
     testWidgets(
       '$language invalid editor shows localized notice and returns through its original back button',
@@ -342,6 +380,7 @@ class _Api extends ApiClient {
   Completer<Map<String, dynamic>>? updateGate;
   final writes = <String>[];
   int detailCalls = 0;
+  bool replacementDraft = false;
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -352,8 +391,32 @@ class _Api extends ApiClient {
         !path.substring(prefix.length).contains('/')) {
       detailCalls++;
       return detailGate == null
-          ? _detail(id: path.substring(prefix.length))
+          ? (_detail(id: path.substring(prefix.length))..addAll(
+              replacementDraft
+                  ? {
+                      'supplierId': null,
+                      'financeApproval': {'status': 'DRAFT'},
+                    }
+                  : {},
+            ))
           : detailGate!.future;
+    }
+    if (replacementDraft && path.startsWith('/master/suppliers')) {
+      return {
+        'items': [
+          {
+            'id': 'new-supplier',
+            'code': 'SUP-NEW',
+            'name': '新供应商',
+            'status': '使用',
+            'categoryId': 'supplier-category',
+          },
+        ],
+        'page': 1,
+        'size': 20,
+        'total': 1,
+        'totalPages': 1,
+      };
     }
     return {};
   }
@@ -363,6 +426,27 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (replacementDraft && path == '/master/supplier-categories/tree') {
+      return [
+        {
+          'id': 'supplier-category',
+          'code': 'SC',
+          'name': '供应商分类',
+          'level': 0,
+          'children': <Map<String, dynamic>>[],
+        },
+      ];
+    }
+    if (replacementDraft && path == '/master/suppliers/dict') {
+      return [
+        {
+          'id': 'new-supplier',
+          'code': 'SUP-NEW',
+          'name': '新供应商',
+          'status': '使用',
+        },
+      ];
+    }
     if (path.contains('reference-methods/settlement')) {
       return [
         {'id': 'settle-1', 'code': 'M30', 'name': 'Monthly'},

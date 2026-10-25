@@ -53,6 +53,7 @@ class FinanceProcurementApprovalTask {
     this.version,
     this.allowedActions = const <String>{},
     this.changeCount = 0,
+    this.requestType = 'ORDER',
   });
 
   final String caseId;
@@ -93,6 +94,9 @@ class FinanceProcurementApprovalTask {
   /// 批准后改量次数（末字段；旧后端未推时容错为 0）：>0 表示该单在财务批准
   /// 后被改过数量，正在等待财务按修改清单复核。
   final int changeCount;
+  final String requestType;
+  bool get isClosureRequest =>
+      requestType == 'CLOSE' || requestType == 'CLOSE_AND_REORDER';
 
   /// 允许超收/损耗% 摘要文案：单一值「5%」，多值区间「3%~5%」；未设置为 null。
   String? get toleranceText {
@@ -216,6 +220,7 @@ class FinanceProcurementApprovalTask {
       version: _firstInt([json['version']]),
       allowedActions: _stringSet(json['allowedActions']),
       changeCount: _firstInt([json['changeCount']]) ?? 0,
+      requestType: _string(json['requestType']) ?? 'ORDER',
     );
   }
 }
@@ -341,6 +346,12 @@ class FinanceProcurementApprovalReview {
   final List<FinanceProcurementReviewHistoryEntry> history;
 
   bool get isPending => status == null || status == 'PENDING';
+
+  Map<String, dynamic>? get closureRequest =>
+      _map(headerSnapshot['closureRequest']);
+  bool get isClosureRequest => closureRequest != null;
+  bool get reordersRemaining => closureRequest?['mode'] == 'CLOSE_AND_REORDER';
+  String? get closureReason => _string(closureRequest?['reason']);
 
   /// 订货币种显示名：主档名称优先，都没有时写「原币」。
   String get currencyLabel => financeCurrencyText(name: currencyName);

@@ -42,14 +42,13 @@ class AiUsageDashboardPostgresTest {
     private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
     private static final DateTimeFormatter HOUR_LABEL = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:00");
 
-    static MigratedSchemaBaseline.ScopedDatabase database;
-    static JdbcTemplate jdbc;
-    static NamedParameterJdbcTemplate named;
+    MigratedSchemaBaseline.ScopedDatabase database;
+    JdbcTemplate jdbc;
+    NamedParameterJdbcTemplate named;
     AiUsageDashboardService dashboard;
     AiUsageDailyService daily;
 
-    @BeforeAll
-    static void open() throws Exception {
+    void open() throws Exception {
         database = MigratedSchemaBaseline.openDatabase("ai_usage_dashboard");
         var dataSource = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(),
                 database.getPassword());
@@ -62,8 +61,8 @@ class AiUsageDashboardPostgresTest {
                 """, Integer.class)).isEqualTo(2);
     }
 
-    @AfterAll
-    static void close() throws Exception {
+    @org.junit.jupiter.api.AfterEach
+    void close() throws Exception {
         SecurityContextHolder.clearContext();
         if (database != null) {
             database.close();
@@ -71,12 +70,8 @@ class AiUsageDashboardPostgresTest {
     }
 
     @BeforeEach
-    void setUp() {
-        // call_logs 的 DELETE 被生命周期触发器改写成归档软删(V778), 行留在表里会串用例;
-        // 照 AiCallLogResetGenerationPostgresTest 先例走业务重置的 TRUNCATE 通道清账。
-        // ai_usage_daily 随重置 CLEAR; ai_user_limits 登记 PRESERVE, 需手动清。
-        jdbc.queryForList("SELECT * FROM business_data_reset()");
-        jdbc.update("DELETE FROM ai_user_limits");
+    void setUp() throws Exception {
+        open();
         loginAsSuperAdmin();
         dashboard = new AiUsageDashboardService(named, new AiUsageAdminAccess(new SecurityContextCurrentUser()),
                 mock(AuditService.class), new AiUserLimitsService(named, mock(AuditService.class)),

@@ -51,9 +51,12 @@ class HrWorkbenchPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.onPageResume(RouteName.hrTaskCenter, () {
-      ref.read(hrTaskSummaryProvider.notifier).reloadSilently();
-    });
+    ref.onPageResume(
+      RouteName.hrTaskCenter,
+      () => ref
+          .read(hrTaskSummaryProvider.notifier)
+          .reloadSilently(reportFailure: true),
+    );
     final async = ref.watch(hrTaskSummaryProvider);
     final l10n = AppLocalizations.of(context);
     final isSuperAdmin = ref.watch(isSuperAdminProvider);
@@ -107,6 +110,7 @@ class HrWorkbenchPage extends ConsumerWidget {
       ),
     );
     body = UtenContentContainer(child: body);
+    body = HrTaskRefreshFeedback(child: body);
 
     return Scaffold(
       appBar: UtenAppBar(

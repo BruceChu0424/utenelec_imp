@@ -35,16 +35,34 @@ class FinanceArchiveIdentityTest(unittest.TestCase):
         read_facts=deepcopy(facts)
         read_facts.update({'database':'postgres','transaction_read_only':'on'})
         read_facts['run'].update({'run_id':run_id,'status':'SUCCESS','reconciliation_status':'PASSED'})
-        with tempfile.TemporaryDirectory() as folder,patch.object(verifier,'checked',return_value=json.dumps(read_facts).encode()) as checked:
+        with tempfile.TemporaryDirectory() as folder,patch.object(verifier.ReadOnlyDatabase,'_pin_transport',return_value=['docker','exec','-i','isolated-fixture']),patch.object(verifier,'checked',return_value=json.dumps(read_facts).encode()) as checked:
             read_back=verifier.read_target('isolated-fixture','postgres',run_id,Path(folder))
             sql=checked.call_args.args[1].decode()
-            self.assertIn('BEGIN READ ONLY;',sql)
+            self.assertIn('REPEATABLE READ READ ONLY;',sql)
             self.assertIn('FROM pg_control_system()',sql)
             self.assertIn("'database_oid'",sql)
             self.assertIn("'export_manifest_sha256'",sql)
             self.assertIn("'checksum_manifest_sha256'",sql)
             self.assertIn("'migration_repository_commit'",sql)
             self.assertEqual(read_back['database_oid'],16384)
+    def test_explicit_development_target_requires_physical_anchor_and_uses_selected_role(self):
+        with patch('rehearse_local_import.subprocess.check_output',return_value='npipe:////./pipe/docker_engine\n'),patch.dict(os.environ,{},clear=True):
+            verifier.verify_local_cli_target('uten-imp-postgres-dev-5434-20261023','uten_imp',False,'123456',19699)
+        with self.assertRaisesRegex(ValueError,'explicit cluster'):
+            verifier.verify_local_cli_target('uten-imp-postgres-dev-5434-20261023','uten_imp',False)
+        run_id='00000000-0000-4000-8000-000000000001'
+        facts={'database':'uten_imp','transaction_read_only':'on','system_identifier':'123456','database_oid':19699,
+               'run':{'run_id':run_id,'status':'SUCCESS','reconciliation_status':'PASSED'}}
+        with tempfile.TemporaryDirectory() as folder,patch.object(verifier.ReadOnlyDatabase,'_pin_transport',return_value=['docker','--context','local','exec','-i','a'*64]),patch.object(verifier,'checked',return_value=json.dumps(facts).encode()) as checked:
+            verifier.read_target('uten-imp-postgres-dev-5434-20261023','uten_imp',run_id,Path(folder),'uten_migrator','123456',19699)
+            self.assertIn('uten_migrator',checked.call_args.args[0])
+            with self.assertRaisesRegex(ValueError,'explicit target'):
+                verifier.read_target('uten-imp-postgres-dev-5434-20261023','uten_imp',run_id,Path(folder),'uten_migrator','123456',19700)
+
+    def test_source_and_target_provenance_mismatch_still_fails(self):
+        manifest={'manifest_sha256':'a'*64,'importer_repository_commit':'b'*40}
+        facts={'database':'uten_imp_rehearsal_20261022_v2','system_identifier':'1234567890123456789','database_oid':16384,
+               'run':{'export_manifest_sha256':'a'*64,'checksum_manifest_sha256':'a'*64,'migration_repository_commit':'b'*40}}
         for key,value in [('export_manifest_sha256','c'*64),('checksum_manifest_sha256','c'*64),('migration_repository_commit','c'*40)]:
             bad=deepcopy(facts);bad['run'][key]=value
             with self.subTest(key=key),self.assertRaises(ValueError):verifier.verify_run_identity(bad,manifest)

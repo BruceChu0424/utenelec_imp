@@ -13,9 +13,9 @@ public final class PlatformRecordFieldForks {
         for(var record:records.entrySet()) {
             if(record.getKey().equals(record.getValue()))continue;
             em.createNativeQuery("""
-                    INSERT INTO platform_record_fields(scope,record_id,version,cells,retain_on_reset,
+                    INSERT INTO platform_record_fields(scope,record_id,version,cells,
                         source_document_id,source_line_index,source_fields_version,created_by,updated_by)
-                    SELECT scope,:draft,1,cells,retain_on_reset,source_document_id,source_line_index,
+                    SELECT scope,:draft,1,cells,source_document_id,source_line_index,
                         source_fields_version,created_by,:actor
                     FROM platform_record_fields WHERE record_id=:original
                     """).setParameter("draft",record.getValue()).setParameter("original",record.getKey())

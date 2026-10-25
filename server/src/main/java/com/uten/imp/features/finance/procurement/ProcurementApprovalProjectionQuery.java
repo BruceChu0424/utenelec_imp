@@ -53,6 +53,7 @@ public class ProcurementApprovalProjectionQuery {
                        assignee_name_snapshot, rejection_reason, submitted_at
                 FROM procurement_order_approval_cases
                 WHERE order_type = :orderType
+                  AND request_type='ORDER'
                   AND order_id IN (:orderIds)
                 ORDER BY order_id, attempt DESC
                 """,
@@ -93,6 +94,7 @@ public class ProcurementApprovalProjectionQuery {
                 FROM procurement_order_approval_cases
                 WHERE order_type = :orderType
                   AND status = 'PENDING'
+                  AND request_type='ORDER'
                 """,
                 new MapSqlParameterSource()
                         .addValue("orderType", requireOrderType(orderType)),
@@ -113,6 +115,7 @@ public class ProcurementApprovalProjectionQuery {
                     SELECT DISTINCT ON (order_id) order_id, status
                     FROM procurement_order_approval_cases
                     WHERE order_type = :orderType
+                      AND request_type='ORDER'
                     ORDER BY order_id, attempt DESC
                 ) latest
                 WHERE status = 'REJECTED'

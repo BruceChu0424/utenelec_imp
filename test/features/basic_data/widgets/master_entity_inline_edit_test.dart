@@ -219,6 +219,18 @@ void main() {
       await _pump(tester, save: (_, _, _) async {});
       await tester.tap(find.text('编辑模式'));
       await tester.pumpAndSettle();
+      final editingTable = tester.widget<MasterDataTableView<_Row>>(
+        find.byType(MasterDataTableView<_Row>),
+      );
+      expect(editingTable.temporaryLeadingColumnKeys, ['name']);
+      final nameHeader = editingTable.columns.singleWhere(
+        (column) => column.key == 'name',
+      );
+      expect(nameHeader.headerTrailingBuilder, isNotNull);
+      expect(
+        tester.getTopLeft(find.text('名称').first).dx,
+        lessThan(tester.getTopLeft(find.text('编号').first).dx),
+      );
       final previewWidth = _nameColumnWidth(tester);
       expect(previewWidth, greaterThanOrEqualTo(140));
       await _activateName(tester);
@@ -227,6 +239,13 @@ void main() {
       await tester.pumpAndSettle();
       final table = tester.widget<MasterDataTableView<_Row>>(
         find.byType(MasterDataTableView<_Row>),
+      );
+      expect(table.temporaryLeadingColumnKeys, isEmpty);
+      expect(
+        table.columns
+            .singleWhere((column) => column.key == 'name')
+            .headerTrailingBuilder,
+        isNull,
       );
       expect(
         table.columns

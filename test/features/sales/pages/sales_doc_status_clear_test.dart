@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_list_page.dart';
@@ -141,8 +143,23 @@ void main() {
           expect(api.queries.last.containsKey('bucket'), isFalse);
         }
         expect(api.queries.last.containsKey('stage'), isFalse);
-        expect(api.queries.last.containsKey('dateFrom'), isFalse);
-        expect(api.queries.last.containsKey('dateTo'), isFalse);
+        if (type == SalesDocType.quote) {
+          expect(api.queries.last['bucket'], 'ACTIVE');
+          expect(api.queries.last.containsKey('dateFrom'), isFalse);
+          expect(api.queries.last.containsKey('dateTo'), isFalse);
+        } else {
+          // returnDoc 清除状态后留在历史段：保留历史门默认的近三个月范围
+          //（2026-10-24 口径，ADR-180 历史保留原时间范围）。
+          final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
+          expect(
+            api.queries.last['dateFrom'],
+            ChinaDateTime.formatDate(defaultRange.start),
+          );
+          expect(
+            api.queries.last['dateTo'],
+            ChinaDateTime.formatDate(defaultRange.end),
+          );
+        }
         expect(
           find.byKey(Key('sales-doc-history-time-${type.pathSegment}')),
           type == SalesDocType.quote ? findsNothing : findsOneWidget,

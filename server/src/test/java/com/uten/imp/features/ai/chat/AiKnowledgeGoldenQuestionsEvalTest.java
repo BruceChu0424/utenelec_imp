@@ -241,8 +241,8 @@ class AiKnowledgeGoldenQuestionsEvalTest {
                     "03-页面/设置页", "00-项目准则/13-适老化UX基线"),
             q("T02", "系统设置", "SELF", "HOW", "登录密码怎么改",
                     "03-页面/我的页", "03-页面/设置页"),
-            q("T03", "系统设置", "ADMIN", "MEANING", "系统设置里的清空业务数据是干嘛的 会删掉客户资料吗",
-                    "ADR-155-"),
+            q("T03", "工作台", "ADMIN", "MEANING", "工作台还能清空业务数据吗",
+                    "03-页面/工作台首页"),
             // 数据问题 (answered by tools, never by documents)
             none("D01", "数据", "SELF", "DATA", "我还有几个待办",
                     "workbench_tasks / my_workbench tools (WorkbenchAiChatTool, DashboardAiChatTool)"),

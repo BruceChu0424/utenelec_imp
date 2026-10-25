@@ -99,8 +99,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
   /// DRAW「已审」下的出库进度表头筛选；null = 不附加过滤。
   int? _issueStatus;
 
-  /// 历史单据段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
+  /// 历史单据段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
+  /// 最近三个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
 
   /// 表头列筛选：仓库（warehouses/dict 桶）+ 领料车间（departments/tree 展平桶，
   /// 仅 DRAW 有该列）+ 调入仓（warehouses/dict 桶，仅 TRANSFER 有该列）；
@@ -176,7 +177,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
         ? const _StockDocSeg.stage(0)
         : null;
     _issueStatus = null;
-    _historyTime = const UtenHistoryTimeValue.all();
+    _historyTime = UtenHistoryTimeValue.lastThreeMonths();
     _warehouseIdFilter = null;
     _departmentIdFilter = null;
     _toWarehouseIdFilter = null;
@@ -203,14 +204,14 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
       );
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
-  Future<PagedResult<StockDocListItem>> _fetch() {
+  Future<PagedResult<StockDocListItem>> _fetch([int? requestedPage]) {
     final seg = _seg!;
     final range = seg.history ? _historyTime.range : null;
     final sort = _list.sortKey == 'total' ? null : _list.sortKey;
     return ref
         .read(stockDocRepositoryProvider(widget.docType))
         .list(
-          page: _list.pageNum,
+          page: requestedPage ?? _list.pageNum,
           filter: StockDocFilter(
             view: seg.history
                 ? WarehouseTaskView.history
@@ -292,6 +293,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
       page ?? _list.pageNum,
       silent: silent,
       fetch: _fetch,
+      fetchPage: _fetch,
       isCurrent: captureReadOwner(ref),
     );
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
@@ -315,7 +317,10 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
     setState(() {
       _seg = seg;
       _issueStatus = null;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
+      // 进历史段重新按默认近三个月加载；非历史段回 all() 占位。
+      _historyTime = seg.history
+          ? UtenHistoryTimeValue.lastThreeMonths()
+          : const UtenHistoryTimeValue.all();
     });
     _reload(1);
   }
@@ -487,8 +492,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
     // 被详情页盖着时只记下、返回再拉——此前 tick 与返回各拉一次, 一次保存重拉两遍。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
     ref.onPageResume(_myLocation!, () {
-      _reload(null, true);
+      final rows = _reload(null, true);
       _loadBadge();
+      return _list.revalidate(rows);
     }, refreshKeys: [widget.docType.refreshKey]);
     final seg = _seg;
     return Scaffold(
@@ -683,14 +689,19 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                             ),
                             isLoading: _list.isLoadingFirst,
                             loadingMore: _list.isLoadingMore,
+                            isRefreshing: _list.refreshing,
+                            refreshError: _list.refreshError,
                             error: _list.error,
-                            onRetry: () => _reload(),
+                            onRetry: () =>
+                                _reload(null, _list.refreshError != null),
                             emptyMessage: seg.history
                                 ? '该时间段内暂无${widget.docType.label}'
                                 : '暂无${widget.docType.label}', // TODO(l10n): 补 arb
                             currentPage: _list.currentPage,
                             totalPages: _list.totalPages,
-                            paginationRevision: _list.page,
+                            paginationRevision: _list.paginationRevision,
+                            refreshedPages: _list.refreshedPages,
+                            onRetainedPagesChanged: _list.retainPages,
                             paginationScope: (
                               widget.docType,
                               _list.normalizedKeyword,

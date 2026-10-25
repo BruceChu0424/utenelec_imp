@@ -437,7 +437,7 @@ public class ServerStatusProbe {
     }
 
     /**
-     * 全部 {@code @Scheduled} 任务共用 DrainAwareTaskScheduler 的单根调度线程: 有任务在跑时,
+     * 全部 {@code @Scheduled} 任务共用 ObservedTaskScheduler 的单根调度线程: 有任务在跑时,
      * 其余任务的「没执行」是排队而不是故障, 只把占线的那个任务当嫌疑 (它自己会按「疑似卡住」告警)。
      */
     List<JobReport> jobReports(Instant now) {

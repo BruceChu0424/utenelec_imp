@@ -99,6 +99,7 @@ void main() {
           name: '旧模具名称',
           status: '使用',
           place: 'UAT Shelf A-07',
+          remark: '[原始主档编号] {"code":"Q9-M04-B【E3-02】","mnumber":""}',
           departmentId: boundDepartment
               ? 'e71a67b8-cc50-4111-a19f-f5c01a328402'
               : null,
@@ -118,6 +119,13 @@ void main() {
       await tester.tap(find.text('旧模具名称'));
       await tester.pumpAndSettle();
       final dialog = find.byWidgetPredicate((widget) => widget is Dialog);
+      final readableRemark = find.descendant(
+        of: dialog,
+        matching: find.text('Original code: Q9-M04-B【E3-02】'),
+      );
+      expect(readableRemark, findsOneWidget);
+      expect(tester.widget<Text>(readableRemark).maxLines, 1);
+      expect(repository.record.remark, contains('"code"'));
       final workshop = find
           .descendant(of: dialog, matching: find.text('车间'))
           .last;

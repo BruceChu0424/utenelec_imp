@@ -880,12 +880,6 @@ abstract class AppLocalizations {
   /// **'新增平台设置，超级管理员可配置公司品牌、Logo和主题色；升级保留已有配置及个人偏好。'**
   String get release2511Platform;
 
-  /// No description provided for @businessResetAuditScope.
-  ///
-  /// In zh, this message translates to:
-  /// **'清空：全部测试业务、删除历史、字段版本和业务审计；保留登录认证、授权、安全、系统审计及清空核对凭据。'**
-  String get businessResetAuditScope;
-
   /// No description provided for @serverAlertAcknowledge.
   ///
   /// In zh, this message translates to:
@@ -963,12 +957,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'车间到料提醒按新增可生产数量发送给有权限的负责人；紧急、待办、进度与公告使用不同样式。'**
   String get release253Notices;
-
-  /// No description provided for @release253Reset.
-  ///
-  /// In zh, this message translates to:
-  /// **'清空业务数据同时作废旧草稿，并清除业务称重与重量学习记录。'**
-  String get release253Reset;
 
   /// No description provided for @release253Maintenance.
   ///
@@ -21797,14 +21785,110 @@ abstract class AppLocalizations {
   /// No description provided for @goodsImportTemplateHint.
   ///
   /// In zh, this message translates to:
-  /// **'可使用「导出货品」文件作为新增或更新模板；必填列为类别(用 - 拼分类路径)和货品名称，编号可留空。更新时保留系统标识；新增行不要沿用旧货品的系统标识。曾被复用的编号必须通过系统标识确认当前货品。'**
+  /// **'可使用「导出货品」文件作为新增或更新模板；必填列为类别(用 - 拼分类路径)和货品名称，编号可留空。更新时保留系统标识；编号留空保留原号，改为未占用的新编号会进入差异核对。新增行清空系统标识，可填写新编号；曾被复用的编号必须通过系统标识确认当前货品。'**
   String get goodsImportTemplateHint;
 
   /// No description provided for @goodsImportMergeHint.
   ///
   /// In zh, this message translates to:
-  /// **'新货品正常新增；已有货品按编号或同分类同名称匹配。空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值，同名歧义须修正后重传。同编号已删除货品按清单内容恢复。'**
+  /// **'系统标识确定原货品；没有系统标识时按编号匹配，新编号可新增同名、不同颜色或材质的货品。系统标识和编号都为空时，才按同分类同名称唯一匹配，多条同名须补充编号或系统标识。空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值。同编号已删除货品按清单内容恢复。'**
   String get goodsImportMergeHint;
+
+  /// No description provided for @goodsImportUndoHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'普通资料导入可从工具栏「撤回」撤销；涉及编号变更时，请从「修改历史」选择版本，按当前编号规则恢复。'**
+  String get goodsImportUndoHint;
+
+  /// No description provided for @dropdownMoveResizeHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'拖动此处移动，拖动边缘调整大小'**
+  String get dropdownMoveResizeHint;
+
+  /// No description provided for @dropdownResetGeometry.
+  ///
+  /// In zh, this message translates to:
+  /// **'恢复自动大小和位置'**
+  String get dropdownResetGeometry;
+
+  /// No description provided for @dropdownResizeMenu.
+  ///
+  /// In zh, this message translates to:
+  /// **'调整下拉框大小'**
+  String get dropdownResizeMenu;
+
+  /// No description provided for @pickerChooseRecord.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择{label}'**
+  String pickerChooseRecord(String label);
+
+  /// No description provided for @bomChooseComponent.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择组件'**
+  String get bomChooseComponent;
+
+  /// No description provided for @bomReplaceComponent.
+  ///
+  /// In zh, this message translates to:
+  /// **'替换组件'**
+  String get bomReplaceComponent;
+
+  /// No description provided for @bomAddChildComponent.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加下级组件'**
+  String get bomAddChildComponent;
+
+  /// No description provided for @bomSelectParentFirst.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先选择一个组件作为父级'**
+  String get bomSelectParentFirst;
+
+  /// No description provided for @bomNewComponentRow.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增组件'**
+  String get bomNewComponentRow;
+
+  /// No description provided for @masterInlineOtherFields.
+  ///
+  /// In zh, this message translates to:
+  /// **'补充必填字段'**
+  String get masterInlineOtherFields;
+
+  /// No description provided for @masterInlineNewRecord.
+  ///
+  /// In zh, this message translates to:
+  /// **'填写新资料'**
+  String get masterInlineNewRecord;
+
+  /// No description provided for @masterInlineApplyDraft.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用到表格'**
+  String get masterInlineApplyDraft;
+
+  /// No description provided for @masterInlineCreateUncertain.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增结果尚未确认，请先刷新核对；为避免重复，该行已暂停再次提交。'**
+  String get masterInlineCreateUncertain;
+
+  /// No description provided for @masterInlineCreateNotAllowed.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增权限或当前分类已变化，请刷新后再录入。'**
+  String get masterInlineCreateNotAllowed;
+
+  /// No description provided for @masterInlineNewRowHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增资料'**
+  String get masterInlineNewRowHint;
 
   /// No description provided for @importRedetectCurrent.
   ///
@@ -21877,6 +21961,942 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'所选文件已全部处理完成'**
   String get importFilesFinished;
+
+  /// No description provided for @orderClosureUnverifiedQuantity.
+  ///
+  /// In zh, this message translates to:
+  /// **'本单旧库计量未核验。直接结束只停止后续履约，保留原始数量与已发生记录，不推算剩余量，也不能按剩余量重建订单。'**
+  String get orderClosureUnverifiedQuantity;
+
+  /// No description provided for @orderClosureHandleBlocker.
+  ///
+  /// In zh, this message translates to:
+  /// **'前往对应任务处理'**
+  String get orderClosureHandleBlocker;
+
+  /// No description provided for @orderClosureContactQuality.
+  ///
+  /// In zh, this message translates to:
+  /// **'请由有权限的品质人员完成本单质检后，再重新核对结束申请。'**
+  String get orderClosureContactQuality;
+
+  /// No description provided for @orderClosureContactWarehouse.
+  ///
+  /// In zh, this message translates to:
+  /// **'请由有权限的仓库人员办清本单收退货或实物处置后，再重新核对结束申请。'**
+  String get orderClosureContactWarehouse;
+
+  /// No description provided for @orderClosureContactSubcontract.
+  ///
+  /// In zh, this message translates to:
+  /// **'请由有权限的委外人员核对本单领料任务后，再重新核对结束申请。'**
+  String get orderClosureContactSubcontract;
+
+  /// No description provided for @orderClosureContactFinance.
+  ///
+  /// In zh, this message translates to:
+  /// **'请由有权限的财务人员处理本单当前审批后，再重新核对结束申请。'**
+  String get orderClosureContactFinance;
+
+  /// No description provided for @orderClosureQualityPreserved.
+  ///
+  /// In zh, this message translates to:
+  /// **'质检中的实物和检验任务继续保留，申请结束不会取消质检，也不会把未检实物当作已处理。'**
+  String get orderClosureQualityPreserved;
+
+  /// No description provided for @orderClosureRejectHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'驳回的是本次结束申请，原订单继续按已批准条款履约。请申请人核对退回原因后重新申请结束。'**
+  String get orderClosureRejectHint;
+
+  /// No description provided for @orderClosureAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消/结束订单'**
+  String get orderClosureAction;
+
+  /// No description provided for @orderClosureBatchAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量取消/结束'**
+  String get orderClosureBatchAction;
+
+  /// No description provided for @orderClosureEligibilityChecking.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在向服务器核对所选订单是否可办理，请稍候。'**
+  String get orderClosureEligibilityChecking;
+
+  /// No description provided for @orderClosureEligibilityFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂时无法核对可办理订单，请刷新或重新选择。'**
+  String get orderClosureEligibilityFailed;
+
+  /// No description provided for @orderClosureNoEligibleOrders.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选订单当前均不可办理，请处理原单中的在办事项后重新选择。'**
+  String get orderClosureNoEligibleOrders;
+
+  /// No description provided for @orderClosureEligibleOrders.
+  ///
+  /// In zh, this message translates to:
+  /// **'可办理订单'**
+  String get orderClosureEligibleOrders;
+
+  /// No description provided for @orderClosureUnavailableOrders.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂不可办理'**
+  String get orderClosureUnavailableOrders;
+
+  /// No description provided for @orderClosureEligibleOnlyConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'已确认只提交上方可办理订单，不可办理项保留不变'**
+  String get orderClosureEligibleOnlyConfirm;
+
+  /// No description provided for @orderClosureUnsupportedRowReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'此记录不是可提交结束申请的订货单，保留不变。'**
+  String get orderClosureUnsupportedRowReason;
+
+  /// No description provided for @orderClosureBusy.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在处理，请稍候。'**
+  String get orderClosureBusy;
+
+  /// No description provided for @orderClosureSelectOrders.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先勾选要取消或结束的订货单。'**
+  String get orderClosureSelectOrders;
+
+  /// No description provided for @orderClosureSelectionChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选任务已变化，请刷新后重新选择。'**
+  String get orderClosureSelectionChanged;
+
+  /// No description provided for @orderClosureOrdersOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选内容包含申请单或其它记录，请仅选择要结束的订货单。'**
+  String get orderClosureOrdersOnly;
+
+  /// No description provided for @orderClosureBatchLimit.
+  ///
+  /// In zh, this message translates to:
+  /// **'一次最多处理50张订单，请分批选择。'**
+  String get orderClosureBatchLimit;
+
+  /// No description provided for @orderClosureMissingPermission.
+  ///
+  /// In zh, this message translates to:
+  /// **'缺少提交财务审批权限，请联系管理员授权。'**
+  String get orderClosureMissingPermission;
+
+  /// No description provided for @orderClosureWholeOrderHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次按整张订货单申请结束，包含订单全部明细；同一订单勾选多条货品只申请一次。两种方式都须财务批准，不会删除历史数据。'**
+  String get orderClosureWholeOrderHint;
+
+  /// No description provided for @orderClosureAlreadyPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'本单已有待处理财务审批，请先处理当前审批。'**
+  String get orderClosureAlreadyPending;
+
+  /// No description provided for @orderClosureAlreadyEnded.
+  ///
+  /// In zh, this message translates to:
+  /// **'本单已经结束，不能重复申请。'**
+  String get orderClosureAlreadyEnded;
+
+  /// No description provided for @orderClosureReadOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前单据只读，请由原制单人或有该单据写入范围的人员办理。'**
+  String get orderClosureReadOnly;
+
+  /// No description provided for @orderClosureApprovalHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'两种方式都须财务批准后才生效。已有收货、库存和账务记录保留，在外材料责任仍须处理；审批期间履约变化须重新核对申请。'**
+  String get orderClosureApprovalHint;
+
+  /// No description provided for @orderClosureReceiptFinalityHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'结束前请办清收退货和质检处置；批准后不能直接更改原单已核定实收。'**
+  String get orderClosureReceiptFinalityHint;
+
+  /// No description provided for @orderClosureCloseHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'批准后结束本单剩余履约，仓库不再等待剩余到货。'**
+  String get orderClosureCloseHint;
+
+  /// No description provided for @orderClosureReorder.
+  ///
+  /// In zh, this message translates to:
+  /// **'结束并重新生成剩余订单'**
+  String get orderClosureReorder;
+
+  /// No description provided for @orderClosureReorderHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'批准后按核定剩余量生成新草稿，保留原单关联与价格参考；请在新单重新选择供应商、核对条款，再提交正常财务审批。'**
+  String get orderClosureReorderHint;
+
+  /// No description provided for @orderClosureReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'结束原因'**
+  String get orderClosureReason;
+
+  /// No description provided for @orderClosureReasonHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'例如供应商停止供货、历史订单不再执行'**
+  String get orderClosureReasonHint;
+
+  /// No description provided for @orderClosureReasonRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写结束原因'**
+  String get orderClosureReasonRequired;
+
+  /// No description provided for @orderClosureSubmit.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交财务审批'**
+  String get orderClosureSubmit;
+
+  /// No description provided for @orderClosureSubmitted.
+  ///
+  /// In zh, this message translates to:
+  /// **'结束申请已提交财务审批，批准后生效'**
+  String get orderClosureSubmitted;
+
+  /// No description provided for @orderClosureLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'结束申请信息暂时读取失败'**
+  String get orderClosureLoadFailed;
+
+  /// No description provided for @orderClosureUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'本单当前不能申请结束，请刷新后核对状态'**
+  String get orderClosureUnavailable;
+
+  /// No description provided for @orderClosureRemaining.
+  ///
+  /// In zh, this message translates to:
+  /// **'剩余订货量'**
+  String get orderClosureRemaining;
+
+  /// No description provided for @orderClosureRemainingGift.
+  ///
+  /// In zh, this message translates to:
+  /// **'剩余赠品量'**
+  String get orderClosureRemainingGift;
+
+  /// No description provided for @orderClosurePending.
+  ///
+  /// In zh, this message translates to:
+  /// **'结束待审批'**
+  String get orderClosurePending;
+
+  /// No description provided for @orderClosureApproved.
+  ///
+  /// In zh, this message translates to:
+  /// **'结束已批准'**
+  String get orderClosureApproved;
+
+  /// No description provided for @orderClosureRejected.
+  ///
+  /// In zh, this message translates to:
+  /// **'结束已驳回'**
+  String get orderClosureRejected;
+
+  /// No description provided for @orderClosureApproveHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'批准后结束原单剩余履约，仓库不再等待未到货量。选择重建时生成关联草稿，保留价格参考；新单须重新选择供应商、核对条款后再送审。已有库存和账务记录保留，在外材料责任仍须处理。'**
+  String get orderClosureApproveHint;
+
+  /// No description provided for @orderClosureReviewTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'结束申请'**
+  String get orderClosureReviewTitle;
+
+  /// No description provided for @orderClosureApprovedToast.
+  ///
+  /// In zh, this message translates to:
+  /// **'结束申请已批准，原单剩余履约已结束'**
+  String get orderClosureApprovedToast;
+
+  /// No description provided for @orderClosureBatchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选内容含结束申请。批准后原单剩余履约结束，选择重建的订单生成新草稿；请逐单核对结束原因与剩余量。'**
+  String get orderClosureBatchHint;
+
+  /// No description provided for @companyFilesTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'公司资料库'**
+  String get companyFilesTitle;
+
+  /// No description provided for @companyFilesLibrary.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部资料'**
+  String get companyFilesLibrary;
+
+  /// No description provided for @companyFilesTrash.
+  ///
+  /// In zh, this message translates to:
+  /// **'回收站'**
+  String get companyFilesTrash;
+
+  /// No description provided for @companyFilesNewFolder.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建文件夹'**
+  String get companyFilesNewFolder;
+
+  /// No description provided for @companyFilesUpload.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传文件'**
+  String get companyFilesUpload;
+
+  /// No description provided for @companyFilesSearch.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索当前文件夹'**
+  String get companyFilesSearch;
+
+  /// No description provided for @companyFilesRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新'**
+  String get companyFilesRefresh;
+
+  /// No description provided for @companyFilesSort.
+  ///
+  /// In zh, this message translates to:
+  /// **'排序'**
+  String get companyFilesSort;
+
+  /// No description provided for @companyFilesManual.
+  ///
+  /// In zh, this message translates to:
+  /// **'手动排序'**
+  String get companyFilesManual;
+
+  /// No description provided for @companyFilesName.
+  ///
+  /// In zh, this message translates to:
+  /// **'名称'**
+  String get companyFilesName;
+
+  /// No description provided for @companyFilesUpdated.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改时间'**
+  String get companyFilesUpdated;
+
+  /// No description provided for @companyFilesSize.
+  ///
+  /// In zh, this message translates to:
+  /// **'大小'**
+  String get companyFilesSize;
+
+  /// No description provided for @companyFilesAscending.
+  ///
+  /// In zh, this message translates to:
+  /// **'升序'**
+  String get companyFilesAscending;
+
+  /// No description provided for @companyFilesDescending.
+  ///
+  /// In zh, this message translates to:
+  /// **'降序'**
+  String get companyFilesDescending;
+
+  /// No description provided for @companyFilesIcons.
+  ///
+  /// In zh, this message translates to:
+  /// **'图标'**
+  String get companyFilesIcons;
+
+  /// No description provided for @companyFilesTiles.
+  ///
+  /// In zh, this message translates to:
+  /// **'平铺'**
+  String get companyFilesTiles;
+
+  /// No description provided for @companyFilesDetails.
+  ///
+  /// In zh, this message translates to:
+  /// **'详情'**
+  String get companyFilesDetails;
+
+  /// No description provided for @companyFilesOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开'**
+  String get companyFilesOpen;
+
+  /// No description provided for @companyFilesDownload.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载原件'**
+  String get companyFilesDownload;
+
+  /// No description provided for @companyFilesRename.
+  ///
+  /// In zh, this message translates to:
+  /// **'重命名'**
+  String get companyFilesRename;
+
+  /// No description provided for @companyFilesMove.
+  ///
+  /// In zh, this message translates to:
+  /// **'移动到'**
+  String get companyFilesMove;
+
+  /// No description provided for @companyFilesDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'移到回收站'**
+  String get companyFilesDelete;
+
+  /// No description provided for @companyFilesRestore.
+  ///
+  /// In zh, this message translates to:
+  /// **'还原'**
+  String get companyFilesRestore;
+
+  /// No description provided for @companyFilesAccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件夹权限'**
+  String get companyFilesAccess;
+
+  /// No description provided for @companyFilesPassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件夹密码'**
+  String get companyFilesPassword;
+
+  /// No description provided for @companyFilesUnlock.
+  ///
+  /// In zh, this message translates to:
+  /// **'解锁'**
+  String get companyFilesUnlock;
+
+  /// No description provided for @companyFilesLock.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新锁定'**
+  String get companyFilesLock;
+
+  /// No description provided for @companyFilesClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get companyFilesClose;
+
+  /// No description provided for @companyFilesCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get companyFilesCancel;
+
+  /// No description provided for @companyFilesSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存'**
+  String get companyFilesSave;
+
+  /// No description provided for @companyFilesConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认'**
+  String get companyFilesConfirm;
+
+  /// No description provided for @companyFilesRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get companyFilesRetry;
+
+  /// No description provided for @companyFilesEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个文件夹还没有资料'**
+  String get companyFilesEmpty;
+
+  /// No description provided for @companyFilesEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'有上传或创建权限时，可以从上方添加资料，也可以将文件拖到这里。'**
+  String get companyFilesEmptyHint;
+
+  /// No description provided for @companyFilesNoResults.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有找到匹配的资料'**
+  String get companyFilesNoResults;
+
+  /// No description provided for @companyFilesTrashEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'回收站是空的'**
+  String get companyFilesTrashEmpty;
+
+  /// No description provided for @companyFilesTrashHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除的资料会保留原件，授权人员可以还原。'**
+  String get companyFilesTrashHint;
+
+  /// No description provided for @companyFilesLoading.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在读取资料…'**
+  String get companyFilesLoading;
+
+  /// No description provided for @companyFilesLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'资料没有加载出来'**
+  String get companyFilesLoadFailed;
+
+  /// No description provided for @companyFilesChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存'**
+  String get companyFilesChanged;
+
+  /// No description provided for @companyFilesDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'说明'**
+  String get companyFilesDescription;
+
+  /// No description provided for @companyFilesFolder.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件夹'**
+  String get companyFilesFolder;
+
+  /// No description provided for @companyFilesFile.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件'**
+  String get companyFilesFile;
+
+  /// No description provided for @companyFilesType.
+  ///
+  /// In zh, this message translates to:
+  /// **'类型'**
+  String get companyFilesType;
+
+  /// No description provided for @companyFilesCreatedBy.
+  ///
+  /// In zh, this message translates to:
+  /// **'创建人'**
+  String get companyFilesCreatedBy;
+
+  /// No description provided for @companyFilesCreatedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'创建时间'**
+  String get companyFilesCreatedAt;
+
+  /// No description provided for @companyFilesUpdatedBy.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改人'**
+  String get companyFilesUpdatedBy;
+
+  /// No description provided for @companyFilesDeletedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除时间'**
+  String get companyFilesDeletedAt;
+
+  /// No description provided for @companyFilesPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传未完成'**
+  String get companyFilesPending;
+
+  /// No description provided for @companyFilesProtected.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码保护'**
+  String get companyFilesProtected;
+
+  /// No description provided for @companyFilesLocked.
+  ///
+  /// In zh, this message translates to:
+  /// **'此文件夹需要密码'**
+  String get companyFilesLocked;
+
+  /// No description provided for @companyFilesLockedHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'目录权限仍然有效。解锁只在当前登录会话中临时生效。'**
+  String get companyFilesLockedHint;
+
+  /// No description provided for @companyFilesDeleteHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件夹及其全部子项将一起移到回收站，原件保留。还原后仍按当前权限访问。'**
+  String get companyFilesDeleteHint;
+
+  /// No description provided for @companyFilesPasswordHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码只作为额外保护，不能替代人员授权。设置或修改后，所有临时解锁会失效。'**
+  String get companyFilesPasswordHint;
+
+  /// No description provided for @companyFilesNewPassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'新密码'**
+  String get companyFilesNewPassword;
+
+  /// No description provided for @companyFilesRepeatPassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'再次输入密码'**
+  String get companyFilesRepeatPassword;
+
+  /// No description provided for @companyFilesRemovePassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'清除密码'**
+  String get companyFilesRemovePassword;
+
+  /// No description provided for @companyFilesPasswordMismatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'两次输入的密码不一致'**
+  String get companyFilesPasswordMismatch;
+
+  /// No description provided for @companyFilesRequiredName.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入名称'**
+  String get companyFilesRequiredName;
+
+  /// No description provided for @companyFilesPasswordLength.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码至少 8 位'**
+  String get companyFilesPasswordLength;
+
+  /// No description provided for @companyFilesSelectFolder.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择目标文件夹'**
+  String get companyFilesSelectFolder;
+
+  /// No description provided for @companyFilesMoveHere.
+  ///
+  /// In zh, this message translates to:
+  /// **'移动到此处'**
+  String get companyFilesMoveHere;
+
+  /// No description provided for @companyFilesParent.
+  ///
+  /// In zh, this message translates to:
+  /// **'上一级'**
+  String get companyFilesParent;
+
+  /// No description provided for @companyFilesAccessHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作同时受总权限和文件夹规则约束。拒绝规则优先；继承开启时，上级规则继续生效。'**
+  String get companyFilesAccessHint;
+
+  /// No description provided for @companyFilesInherit.
+  ///
+  /// In zh, this message translates to:
+  /// **'继承上级权限'**
+  String get companyFilesInherit;
+
+  /// No description provided for @companyFilesAddRule.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加授权规则'**
+  String get companyFilesAddRule;
+
+  /// No description provided for @companyFilesAllow.
+  ///
+  /// In zh, this message translates to:
+  /// **'允许'**
+  String get companyFilesAllow;
+
+  /// No description provided for @companyFilesDeny.
+  ///
+  /// In zh, this message translates to:
+  /// **'拒绝'**
+  String get companyFilesDeny;
+
+  /// No description provided for @companyFilesUser.
+  ///
+  /// In zh, this message translates to:
+  /// **'人员'**
+  String get companyFilesUser;
+
+  /// No description provided for @companyFilesDepartment.
+  ///
+  /// In zh, this message translates to:
+  /// **'部门'**
+  String get companyFilesDepartment;
+
+  /// No description provided for @companyFilesPrincipalSearch.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索姓名、工号或部门'**
+  String get companyFilesPrincipalSearch;
+
+  /// No description provided for @companyFilesRead.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看'**
+  String get companyFilesRead;
+
+  /// No description provided for @companyFilesCreate.
+  ///
+  /// In zh, this message translates to:
+  /// **'创建文件夹'**
+  String get companyFilesCreate;
+
+  /// No description provided for @companyFilesEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑名称与说明'**
+  String get companyFilesEdit;
+
+  /// No description provided for @companyFilesManage.
+  ///
+  /// In zh, this message translates to:
+  /// **'管理权限与密码'**
+  String get companyFilesManage;
+
+  /// No description provided for @companyFilesRemoveRule.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除规则'**
+  String get companyFilesRemoveRule;
+
+  /// No description provided for @companyFilesQueue.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传队列'**
+  String get companyFilesQueue;
+
+  /// No description provided for @companyFilesWaiting.
+  ///
+  /// In zh, this message translates to:
+  /// **'等待上传'**
+  String get companyFilesWaiting;
+
+  /// No description provided for @companyFilesUploading.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在上传'**
+  String get companyFilesUploading;
+
+  /// No description provided for @companyFilesVerifying.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在核验并保存'**
+  String get companyFilesVerifying;
+
+  /// No description provided for @companyFilesUploaded.
+  ///
+  /// In zh, this message translates to:
+  /// **'已上传'**
+  String get companyFilesUploaded;
+
+  /// No description provided for @companyFilesUploadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传失败'**
+  String get companyFilesUploadFailed;
+
+  /// No description provided for @companyFilesUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'结果待核对'**
+  String get companyFilesUnknown;
+
+  /// No description provided for @companyFilesCheckResult.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对结果'**
+  String get companyFilesCheckResult;
+
+  /// No description provided for @companyFilesStopQueue.
+  ///
+  /// In zh, this message translates to:
+  /// **'完成当前文件后停止'**
+  String get companyFilesStopQueue;
+
+  /// No description provided for @companyFilesStopped.
+  ///
+  /// In zh, this message translates to:
+  /// **'已停止'**
+  String get companyFilesStopped;
+
+  /// No description provided for @companyFilesQueueHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件逐个上传并扫描。关闭队列不会删除已保存的资料。'**
+  String get companyFilesQueueHint;
+
+  /// No description provided for @companyFilesUnsupported.
+  ///
+  /// In zh, this message translates to:
+  /// **'不支持此文件类型'**
+  String get companyFilesUnsupported;
+
+  /// No description provided for @companyFilesTooLarge.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件超过上传大小限制'**
+  String get companyFilesTooLarge;
+
+  /// No description provided for @companyFilesBatchTooLarge.
+  ///
+  /// In zh, this message translates to:
+  /// **'单次选择的文件总量不能超过 100 MB'**
+  String get companyFilesBatchTooLarge;
+
+  /// No description provided for @companyFilesUnreadable.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法读取文件，请重新选择'**
+  String get companyFilesUnreadable;
+
+  /// No description provided for @companyFilesDropHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'松开鼠标，上传到当前文件夹'**
+  String get companyFilesDropHint;
+
+  /// No description provided for @companyFilesDragHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'手动排序时可长按拖动位置；其他排序下拖到文件夹可移动。'**
+  String get companyFilesDragHint;
+
+  /// No description provided for @companyFilesSavedTo.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件已保存'**
+  String get companyFilesSavedTo;
+
+  /// No description provided for @companyFilesNoAccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有可执行的操作'**
+  String get companyFilesNoAccess;
+
+  /// No description provided for @companyFilesPermissionDenied.
+  ///
+  /// In zh, this message translates to:
+  /// **'访问权限已变化，请刷新后重试'**
+  String get companyFilesPermissionDenied;
+
+  /// No description provided for @companyFilesUnknownHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请求可能已保存。请先核对结果，避免重复上传。'**
+  String get companyFilesUnknownHint;
+
+  /// No description provided for @companyFilesUp.
+  ///
+  /// In zh, this message translates to:
+  /// **'向前移动一位'**
+  String get companyFilesUp;
+
+  /// No description provided for @companyFilesDown.
+  ///
+  /// In zh, this message translates to:
+  /// **'向后移动一位'**
+  String get companyFilesDown;
+
+  /// No description provided for @companyFilesItems.
+  ///
+  /// In zh, this message translates to:
+  /// **'项'**
+  String get companyFilesItems;
+
+  /// No description provided for @companyFilesPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'页'**
+  String get companyFilesPage;
+
+  /// No description provided for @companyFilesPrevious.
+  ///
+  /// In zh, this message translates to:
+  /// **'上一页'**
+  String get companyFilesPrevious;
+
+  /// No description provided for @companyFilesNext.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一页'**
+  String get companyFilesNext;
+
+  /// No description provided for @companyFilesDuplicateRule.
+  ///
+  /// In zh, this message translates to:
+  /// **'此人员或部门的允许和拒绝规则已存在，请编辑已有规则。'**
+  String get companyFilesDuplicateRule;
+
+  /// No description provided for @companyFilesRuleActionsRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请为每条规则至少选择一种操作。'**
+  String get companyFilesRuleActionsRequired;
+
+  /// No description provided for @companyFilesPreviewUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'此文件暂时不能在线预览，可以下载原件查看。'**
+  String get companyFilesPreviewUnavailable;
+
+  /// No description provided for @companyFilesResumeName.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择与待完成文件同名的原件。'**
+  String get companyFilesResumeName;
+
+  /// No description provided for @companyFilesKeepExtension.
+  ///
+  /// In zh, this message translates to:
+  /// **'重命名时请保留原扩展名，避免改变文件的打开方式。'**
+  String get companyFilesKeepExtension;
 }
 
 class _AppLocalizationsDelegate

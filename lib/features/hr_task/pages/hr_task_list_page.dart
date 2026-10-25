@@ -35,6 +35,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -161,9 +162,12 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
 
   @override
   Widget build(BuildContext context) {
-    ref.onPageResume(RouteName.hrTaskList(_type.taskType), () {
-      ref.read(hrTaskSummaryProvider.notifier).reloadSilently();
-    });
+    ref.onPageResume(
+      RouteName.hrTaskList(_type.taskType),
+      () => ref
+          .read(hrTaskSummaryProvider.notifier)
+          .reloadSilently(reportFailure: true),
+    );
     final async = ref.watch(hrTaskSummaryProvider);
     final perms = ref.watch(currentPermissionsProvider);
     final isSuperAdmin = ref.watch(isSuperAdminProvider);
@@ -249,6 +253,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     if (context.breakpoint.isCompact) {
       body = UtenContentContainer(child: body);
     }
+    body = HrTaskRefreshFeedback(child: body);
 
     return Scaffold(
       appBar: UtenAppBar(
@@ -560,12 +565,8 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
 
   String? _leaseText(String? iso) {
     if (iso == null || iso.isEmpty) return null;
-    final parsed = DateTime.tryParse(iso);
-    if (parsed == null) return null;
-    final local = parsed.isUtc ? parsed.toLocal() : parsed;
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${two(local.month)}-${two(local.day)} '
-        '${two(local.hour)}:${two(local.minute)}';
+    final wall = ChinaDateTime.tryParse(iso);
+    return wall == null ? null : ChinaDateTime.formatDateTime(wall);
   }
 
   // ---- 表头筛选（客户端桶 + 客户端裁剪） -----------------------------------

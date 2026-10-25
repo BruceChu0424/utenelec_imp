@@ -82,6 +82,7 @@ class GoodsBomEditDraft implements GoodsBomRepository {
   final _loading = <String, Future<void>>{};
   final _fingerprints = <String, String>{};
   final _components = <String, Map<String, dynamic>>{};
+  final _goodsSnapshots = <String, Map<String, dynamic>>{};
   final _operations = <Map<String, dynamic>>[];
   bool _closed = false;
   bool _busy = false;
@@ -143,6 +144,9 @@ class GoodsBomEditDraft implements GoodsBomRepository {
       }
       _check();
       _fingerprints[goodsId] = json['fingerprint'] as String;
+      if (json['goods'] case final Map<Object?, Object?> goods) {
+        _goodsSnapshots[goodsId] = Map<String, dynamic>.from(goods);
+      }
       _rows[goodsId] = rows;
       for (final row in rows) {
         _components[row['componentGoodsId'] as String] = _presentation(row);
@@ -195,7 +199,20 @@ class GoodsBomEditDraft implements GoodsBomRepository {
           for (final row in entry.value) Map<String, dynamic>.of(row),
         ],
     };
-    final beforeCount = _operations.length;
+    final beforeOperations = [
+      for (final operation in _operations)
+        {
+          ...operation,
+          if (operation['goodsChanges'] is Map)
+            'goodsChanges': Map<String, dynamic>.from(
+              operation['goodsChanges'] as Map,
+            ),
+        },
+    ];
+    final beforeComponents = {
+      for (final entry in _components.entries)
+        entry.key: Map<String, dynamic>.of(entry.value),
+    };
     final beforeFingerprints = Map<String, String>.of(_fingerprints);
     try {
       final value = await action();
@@ -225,7 +242,12 @@ class GoodsBomEditDraft implements GoodsBomRepository {
       _fingerprints
         ..clear()
         ..addAll(beforeFingerprints);
-      _operations.removeRange(beforeCount, _operations.length);
+      _operations
+        ..clear()
+        ..addAll(beforeOperations);
+      _components
+        ..clear()
+        ..addAll(beforeComponents);
       rethrow;
     } finally {
       _busy = false;
@@ -288,6 +310,7 @@ class GoodsBomEditDraft implements GoodsBomRepository {
         'componentModel': item.componentModel,
         'componentSpec': item.componentSpec,
         'componentMaterial': item.componentMaterial,
+        'componentStockQty': item.componentStockQty,
         'componentUnitName': item.componentUnitName,
         'componentColorName': item.componentColorName,
         'componentSourceType': item.componentSourceType,
@@ -295,6 +318,76 @@ class GoodsBomEditDraft implements GoodsBomRepository {
       };
     }
   }
+
+  Future<Map<String, dynamic>?> goodsSnapshot(String goodsId) async {
+    await _ensure(goodsId);
+    _check();
+    final snapshot = _goodsSnapshots[goodsId];
+    return snapshot == null ? null : Map<String, dynamic>.of(snapshot);
+  }
+
+  /// Master attributes share the BOM session's preview and atomic commit. The
+  /// original optimistic version is retained while repeated edits merge into
+  /// one command per component, including repeated occurrences in the tree.
+  Future<void> updateGoods(String goodsId, Map<String, dynamic> changes) =>
+      _mutate(() async {
+        if (changes.keys.any(
+          (key) =>
+              !const {'model', 'spec', 'material', 'sourceType'}.contains(key),
+        )) {
+          throw ApiException('BOM_EDIT_GOODS_FIELD', '包含不可修改的货品字段');
+        }
+        await _ensure(goodsId);
+        final snapshot = _goodsSnapshots[goodsId];
+        if (snapshot == null ||
+            snapshot['componentGoodsWritable'] != true ||
+            snapshot['version'] is! num) {
+          throw ApiException('FORBIDDEN', '没有修改该组件货品资料的权限');
+        }
+        final old = _operations.where(
+          (operation) =>
+              operation['type'] == 'UPDATE_GOODS' &&
+              operation['goodsId'] == goodsId,
+        );
+        final merged = <String, dynamic>{
+          if (old.isNotEmpty)
+            ...Map<String, dynamic>.from(old.first['goodsChanges'] as Map),
+          ...changes,
+        };
+        merged.removeWhere((key, value) => value == snapshot[key]);
+        final operationIndex = _operations.indexWhere(
+          (operation) =>
+              operation['type'] == 'UPDATE_GOODS' &&
+              operation['goodsId'] == goodsId,
+        );
+        if (merged.isEmpty) {
+          if (operationIndex >= 0) _operations.removeAt(operationIndex);
+        } else {
+          final operation = <String, dynamic>{
+            'type': 'UPDATE_GOODS',
+            'goodsId': goodsId,
+            'goodsVersion': snapshot['version'],
+            'goodsChanges': merged,
+          };
+          if (operationIndex >= 0) {
+            _operations[operationIndex] = operation;
+          } else {
+            _operations.add(operation);
+          }
+        }
+        final effective = {...snapshot, ...merged};
+        final presentation = <String, dynamic>{
+          for (final key in const ['model', 'spec', 'material', 'sourceType'])
+            'component${key[0].toUpperCase()}${key.substring(1)}':
+                effective[key],
+        };
+        _components[goodsId] = {...?_components[goodsId], ...presentation};
+        for (final rows in _rows.values) {
+          for (final row in rows) {
+            if (row['componentGoodsId'] == goodsId) row.addAll(presentation);
+          }
+        }
+      });
 
   void confirmPeriodicFields(Set<String> fields) {
     _check();
@@ -352,6 +445,13 @@ class GoodsBomEditDraft implements GoodsBomRepository {
       );
       if (factor != null) row['qty'] = grams / factor;
     }
+    if (row['componentIssueMethod'] == 'PERIODIC') {
+      row['controlStage'] = 'START';
+      row['consumptionBasis'] = 'PER_UNIT';
+      row['basisOutputQty'] = 1.0;
+      row['allowPartialPackage'] = true;
+      row['hardGate'] = false;
+    }
     final qty = row['qty'] as num?;
     final price = row['price'] as num?;
     row['total'] = qty == null || price == null ? null : qty * price;
@@ -371,7 +471,37 @@ class GoodsBomEditDraft implements GoodsBomRepository {
     final row = _find(goodsId, itemId);
     if (body['componentGoodsId'] != null &&
         body['componentGoodsId'] != row['componentGoodsId']) {
-      throw ApiException('BOM_EDIT_COMPONENT', '更换组件请使用物料反查的一键替换');
+      final componentId = body['componentGoodsId'] as String;
+      if (goodsId == componentId) {
+        throw ApiException('BOM_EDIT_CYCLE', '组件不能添加到自身下面');
+      }
+      if (_rows[goodsId]!.any(
+        (candidate) =>
+            candidate['id'] != itemId &&
+            candidate['componentGoodsId'] == componentId,
+      )) {
+        throw ApiException('BOM_EDIT_DUPLICATE', '同一层不能重复添加相同组件');
+      }
+      final component = await _component(componentId);
+      final children = await list(componentId);
+      // Consumption and learning belong to the old parent/component pair.
+      // Keep the relationship identity, never its old component's evidence.
+      row.removeWhere(
+        (key, _) =>
+            key.startsWith('actual') ||
+            key == 'usageBasis' ||
+            key == 'effectiveQty' ||
+            key == 'relearnedAt' ||
+            key == 'unitWeightGrams',
+      );
+      row.addAll(component);
+      row['hasChildren'] = children.isNotEmpty;
+      row['colorId'] = null;
+      row['colorLegacyId'] = null;
+      row['defaultSupplierId'] = null;
+      row['vendLegacyId'] = null;
+      row['price'] = null;
+      row['systemLearned'] = false;
     }
     _applyBody(row, body);
     _operations.add({
@@ -603,6 +733,7 @@ class GoodsBomEditDraft implements GoodsBomRepository {
     _rows.clear();
     _fingerprints.clear();
     _components.clear();
+    _goodsSnapshots.clear();
   }
 
   @override

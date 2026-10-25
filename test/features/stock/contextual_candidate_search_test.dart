@@ -192,14 +192,7 @@ void main() {
     await _chooseInventoryCategory(tester, '成品');
     expect(api.last('/stock/instant-inventory')['categoryId'], 'finished');
     expect(_inventory(tester).items.map((r) => r.goodsId), ['r']);
-    await tester.ensureVisible(
-      find.byKey(const Key('instant-inventory-category')),
-    );
-    await tester.tap(find.byKey(const Key('instant-inventory-category')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('category-picker-all')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('确定').last);
+    await tester.tap(find.byKey(const Key('instant-inventory-all-categories')));
     await tester.pumpAndSettle();
     expect(_inventory(tester).items.map((r) => r.goodsId), ['a', 'r']);
     await _query(tester, '');
@@ -375,21 +368,23 @@ Finder _category(String text) => find.descendant(
   matching: find.text(text),
 );
 Future<void> _chooseInventoryCategory(WidgetTester tester, String text) async {
-  final field = find.byKey(const Key('instant-inventory-category'));
-  await tester.ensureVisible(field);
-  await tester.pumpAndSettle();
-  await tester.tap(field);
-  await tester.pumpAndSettle();
+  final directory = find.byKey(const Key('instant-inventory-open-categories'));
+  if (directory.evaluate().isNotEmpty) {
+    await tester.ensureVisible(directory);
+    await tester.tap(directory);
+    await tester.pumpAndSettle();
+  }
   await tester.tap(_category(text));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('确定').last);
   await tester.pumpAndSettle();
 }
 
 Future<void> _query(WidgetTester tester, String text) async {
+  final inventorySearch = find.byKey(const Key('instant-inventory-search'));
   await tester.enterText(
     find.descendant(
-      of: find.byType(UtenSearchBar).first,
+      of: inventorySearch.evaluate().isNotEmpty
+          ? inventorySearch
+          : find.byType(UtenSearchBar).first,
       matching: find.byType(TextField),
     ),
     text,
@@ -424,6 +419,7 @@ Future<void> _pump(
               : {
                   Perm.stockView,
                   Perm.stockReportExport,
+                  if (kind == 'instant') Perm.materialCategoryView,
                   stockCountSubmitPermission,
                 },
         ),

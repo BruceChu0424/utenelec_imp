@@ -123,8 +123,9 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
   /// 当前选中分段；null = 未选择引导态（不发请求）。
   _PurchaseDocSeg? _seg;
 
-  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
+  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
+  /// 最近三个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
 
   /// 待处理段计数（中性括号 `(N)`）；null = 加载中（不渲染，不把未知伪装成 0）。
   int? _actionableCount;
@@ -195,7 +196,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     _actionableCount = null;
     _supplierIdFilter = null;
     _warehouseIdFilter = null;
-    _historyTime = const UtenHistoryTimeValue.all();
+    _historyTime = UtenHistoryTimeValue.lastThreeMonths();
   }
 
   void _readerChanged() {
@@ -301,13 +302,13 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
       _cfg.draftKind == null ? null : DocumentStatusScope(_cfg.draftKind!);
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
-  Future<PagedResult<PurchaseDocListItem>> _fetch() {
+  Future<PagedResult<PurchaseDocListItem>> _fetch([int? requestedPage]) {
     final seg = _seg!;
     final range = seg.history ? _historyTime.range : null;
     return ref
         .read(purchaseRepositoryProvider(widget.docType))
         .list(
-          page: _list.pageNum,
+          page: requestedPage ?? _list.pageNum,
           filter: PurchaseDocFilter(
             keyword: _list.normalizedKeyword,
             supplierId: _cfg.hasSupplier ? _supplierIdFilter : null,
@@ -405,6 +406,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
       page ?? _list.pageNum,
       silent: silent,
       fetch: _fetch,
+      fetchPage: _fetch,
       isCurrent: captureReadOwner(ref),
     );
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
@@ -423,7 +425,10 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     clearDraftSelection();
     setState(() {
       _seg = seg;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
+      // 进历史段重新按默认近三个月加载；非历史段不消费时间门控，回 all() 占位。
+      _historyTime = seg.history
+          ? UtenHistoryTimeValue.lastThreeMonths()
+          : const UtenHistoryTimeValue.all();
     });
     _reload(1);
   }
@@ -632,8 +637,9 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     // 被详情页盖着时只记下、返回再拉——此前 tick 与返回各拉一次, 一次保存重拉两遍。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
     ref.onPageResume(_myLocation!, () {
-      _reload(null, true);
-      _loadBadge();
+      return _list.revalidate(
+        Future.wait([_reload(null, true), _loadBadge()]).then((_) {}),
+      );
     }, refreshKeys: [_cfg.refreshKey]);
     final isRequest = widget.docType == PurchaseDocType.request;
     final approvedLabel = isRequest ? '计划已下达' : '已审';
@@ -846,14 +852,19 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                             ),
                             isLoading: _list.isLoadingFirst,
                             loadingMore: _list.isLoadingMore,
+                            isRefreshing: _list.refreshing,
+                            refreshError: _list.refreshError,
                             error: _list.error,
-                            onRetry: () => _reload(),
+                            onRetry: () =>
+                                _reload(null, _list.refreshError != null),
                             emptyMessage: seg.history
                                 ? '该时间段内暂无${_cfg.shortLabel}单'
                                 : '暂无${_cfg.shortLabel}单', // TODO(l10n): 补 arb
                             currentPage: _list.currentPage,
                             totalPages: _list.totalPages,
-                            paginationRevision: _list.page,
+                            paginationRevision: _list.paginationRevision,
+                            refreshedPages: _list.refreshedPages,
+                            onRetainedPagesChanged: _list.retainPages,
                             paginationScope: (
                               _readerGeneration,
                               widget.docType,

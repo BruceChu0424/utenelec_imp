@@ -53,6 +53,15 @@ abstract final class Perm {
   static const expenseApprove = 'expense:approve';
   static const expensePay = 'expense:pay';
   static const expenseSettings = 'expense:settings';
+  static const companyFileView = 'company_file:view';
+  static const companyFileDownload = 'company_file:download';
+  static const companyFileUpload = 'company_file:upload';
+  static const companyFileCreate = 'company_file:create';
+  static const companyFileEdit = 'company_file:edit';
+  static const companyFileMove = 'company_file:move';
+  static const companyFileDelete = 'company_file:delete';
+  static const companyFileRestore = 'company_file:restore';
+  static const companyFileManagePermissions = 'company_file:manage_permissions';
   static const visitorApprove = 'visitor:approve';
   static const visitorHostConfirm = 'visitor:host_confirm';
   static const visitorCheckIn = 'visitor:check_in';
@@ -739,9 +748,6 @@ abstract final class Perm {
   static const visitorVerify = 'visitor:verify';
   static const subcontractOutboundExecute = 'subcontract_outbound:execute';
   static const warehouseInboundStockIn = 'warehouse_inbound:stock_in';
-
-  /// 清空业务数据(系统测试工具；超管专属码，任何授权入口都授不出去)。
-  static const systemBusinessDataReset = 'system:business_data_reset';
 }
 
 /// 当前用户的功能权限集合。

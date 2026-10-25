@@ -216,17 +216,23 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
     }
     final result = _result;
     return Padding(
-      padding: const EdgeInsets.all(UtenSpacing.s16),
+      // 水平贴 0：与货品详情页签栏、其他页签共用左缘（2026-10-24 口径）。
+      padding: const EdgeInsets.fromLTRB(
+        0,
+        UtenSpacing.s16,
+        0,
+        UtenSpacing.s16,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('保留每次提交和财务核价时的本位币价格。双击查看关联订货单；没有可访问订单时查看本次报价快照。'),
-          if (_error != null)
+          if (_error != null) ...[
             Text(
               _error!,
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
-          const SizedBox(height: UtenSpacing.s12),
+            const SizedBox(height: UtenSpacing.s12),
+          ],
           Expanded(
             child: MasterDataTableView<GoodsQuoteHistoryRow>(
               tableKey: 'goods.quote-history',

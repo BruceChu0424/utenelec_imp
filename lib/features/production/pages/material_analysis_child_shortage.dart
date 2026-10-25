@@ -800,14 +800,13 @@ abstract class _MaterialAnalysisChildShortageState
     final now = ChinaDateTime.fromInstant(DateTime.now());
     if (minutes < 1) return '刚刚';
     if (minutes < 60) return '$minutes 分钟前';
-    String two(int value) => value.toString().padLeft(2, '0');
     final sameDay =
         local.year == now.year &&
         local.month == now.month &&
         local.day == now.day;
     return sameDay
-        ? '今天 ${two(local.hour)}:${two(local.minute)}'
-        : '${local.month}月${local.day}日 ${two(local.hour)}:${two(local.minute)}';
+        ? '今天 ${ChinaDateTime.formatTime(local)}'
+        : '${local.month}月${local.day}日 ${ChinaDateTime.formatTime(local)}';
   }
 }
 

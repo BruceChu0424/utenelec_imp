@@ -203,19 +203,18 @@ Future<void> _lookAtPage(
   // Use a row within the page rather than its boundary: a partly visible final
   // row of the preceding page must not make the expected visible page ambiguous.
   final anchor = find.byKey(ValueKey('anchor-A-page-$page-row-2'));
-  final scrollable = find
-      .byWidgetPredicate(
-        (widget) =>
-            widget is Scrollable &&
-            axisDirectionToAxis(widget.axisDirection) == Axis.vertical,
-      )
-      .first;
-  await tester.scrollUntilVisible(
-    anchor,
-    forward ? 180 : -180,
-    scrollable: scrollable,
-    maxScrolls: 60,
-  );
+  // Admission of a newly reached row can be deferred during a continuous fast
+  // scroll. Stop between probes so the business viewport can mount that row.
+  for (var attempt = 0; attempt < 60 && anchor.evaluate().isEmpty; attempt++) {
+    final viewport = _vertical(tester);
+    final scrollable = find.byElementPredicate(
+      (element) =>
+          element is StatefulElement && identical(element.state, viewport),
+    );
+    await tester.drag(scrollable, Offset(0, forward ? -180 : 180));
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+  }
   await Scrollable.ensureVisible(tester.element(anchor));
   await tester.pumpAndSettle();
   await _wheel(tester, 1);

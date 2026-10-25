@@ -77,11 +77,25 @@ class PurchaseOrderPrintServiceTest {
         assertThat(document.companyPhone()).isEqualTo("789");
         assertThat(document.totalOriginal()).isEqualTo("90071992547409.91");
         assertThat(document.reviewerName()).isEqualTo("实际复核员");
+        assertThat(document.financeApproved()).isTrue();
         assertThat(document.lines().getFirst().goodsCode()).isEqualTo("FROZEN-1");
         assertThat(document.lines().getFirst().goodsName()).isEqualTo("单据冻结名称");
         assertThat(document.lines().getFirst().physicalQty()).isEqualTo("12.0000");
         assertThat(document.lines().getFirst().giftQty()).isEqualTo("2");
         assertThat(document.lines().getFirst().material()).isEqualTo("紫铜");
+    }
+
+    @Test void terminatedHistoryPrintKeepsCommercialApprovalAndSignatureWhileClearlyMarkingTheOrderEnded() {
+        when(detail.getClosureRequest()).thenReturn(new com.uten.imp.application.port.ProcurementOrderClosureReadPort.ClosureRequestView(
+                UUID.randomUUID(),"APPROVED","CLOSE","供应商停止供货",null,null,null,null));
+
+        var document=service.read(id);
+
+        assertThat(document.statusLabel()).isEqualTo("已结束(财务批准)");
+        assertThat(document.financeApproved()).isTrue();
+        assertThat(document.reviewerName()).isEqualTo("实际复核员");
+        assertThat(document.totalOriginal()).isEqualTo("90071992547409.91");
+        verify(em).createNativeQuery(contains("request_type='ORDER'"));
     }
 
     @Test void maskedCommercialFactsCannotReappearInSupplierPrint() {

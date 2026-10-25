@@ -103,6 +103,9 @@ abstract final class RouteName {
   static const String basicinfoSettlementMethod =
       '/basicinfo/settlement-methods';
 
+  // 公司资料库
+  static const String companyFiles = '/company-files';
+
   // 工资条
   static const String payrollSlipList = '/payroll/slip';
   static const String payrollSlipDetail = '/payroll/slip/:id';

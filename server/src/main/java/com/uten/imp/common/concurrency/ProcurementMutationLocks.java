@@ -36,6 +36,18 @@ public class ProcurementMutationLocks {
                 .map(ref->new CommercialSource(orderType(ref.type()),ref.id())).toList(),Set.of(),Set.of());
         return locks.acquire(declared,()->footprint.orders(snapshot));
     }
+    /** A termination may release inspected subcontract stock held by a short-delivery case. */
+    public FulfillmentMutationLocks.Guard ordersWithHeldPreStock(Collection<ProcurementMutationFootprint.OrderRef> refs) {
+        var snapshot=List.copyOf(refs);
+        var declared=FulfillmentMutationLockPlan.declared(snapshot.stream()
+                .map(ref->new CommercialSource(orderType(ref.type()),ref.id())).toList(),Set.of(),Set.of());
+        return locks.acquire(declared,()->{
+            var base=footprint.orders(snapshot);
+            var held=footprint.heldSubcontractPreStockForOrders(snapshot);
+            return FulfillmentMutationLockPlan.merge(com.uten.imp.common.util.CanonicalFingerprint.sha256(
+                    List.of(base.fingerprint(),held.fingerprint())),List.of(base,held));
+        });
+    }
     public FulfillmentMutationLocks.Guard receipt(String type,UUID id) {
         return receipts(List.of(new ProcurementMutationFootprint.ReceiptRef(type,id)));
     }

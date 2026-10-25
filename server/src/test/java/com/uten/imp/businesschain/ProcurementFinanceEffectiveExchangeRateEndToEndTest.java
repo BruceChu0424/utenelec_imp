@@ -191,8 +191,6 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
         assertThat(db.queryForList("SELECT indexname FROM pg_indexes WHERE schemaname='public' AND tablename IN ('purchase_receipt_items','subcontract_receipt_items') AND indexdef LIKE '%finance_approval_case_id%' ORDER BY indexname",String.class))
                 .containsExactly("idx_purchase_receipt_item_finance_case","idx_subcontract_receipt_item_finance_case");
         assertThat(db.queryForObject("SELECT count(*) FROM pg_constraint WHERE contype='f' AND confrelid='procurement_order_approval_cases'::regclass AND conrelid IN ('purchase_receipt_items'::regclass,'subcontract_receipt_items'::regclass) AND convalidated AND NOT condeferrable",Integer.class)).isEqualTo(2);
-        assertThat(db.queryForList("SELECT table_name FROM fn_business_reset_table_policy() WHERE table_name IN ('purchase_receipt_items','subcontract_receipt_items','procurement_order_approval_cases') AND disposition='CLEAR' ORDER BY table_name",String.class))
-                .containsExactly("procurement_order_approval_cases","purchase_receipt_items","subcontract_receipt_items");
     }
 
     @ParameterizedTest @ValueSource(strings={"PURCHASE","SUBCONTRACT"})

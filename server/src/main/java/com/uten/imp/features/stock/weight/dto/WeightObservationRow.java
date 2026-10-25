@@ -11,7 +11,7 @@ import java.util.UUID;
  * @param namesMasked       供应商/往来方名称已隐藏 (需要 stock_report:view 或 stock:weight:manage)
  * @param sourceDocCode     来源单据细分类型 (仓库单据为 doc_type, 如 DRAW/OTHER_IN)
  * @param billNo            来源单号
- * @param sourceDocCleared  来源单据已不存在 (清空业务数据后, 显示「来源单据已清空」); 类型未知时 null
+ * @param sourceDocCleared  来源单据已不存在 (历史记录显示「来源单据已清空」); 类型未知时 null
  * @param outlier           当前学习结果把它判为离群
  * @param previousRegime    属于之前的批次 (不再参与当前单重)
  * @param status            REVERSED (已红冲) / EXCLUDED (已排除) / OUTLIER (离群) / NORMAL (正常)

@@ -51,6 +51,7 @@ import '../../../shared/formatters/money_display.dart';
 import '../../../shared/formatters/quantity_display.dart'
     show formatQtyWithUnit, formatExactQtyWithUnit;
 import '../../../shared/widgets/source_doc_link.dart';
+import '../../../shared/widgets/legacy_continuation_notice.dart';
 import '../../../shared/widgets/procurement_document_layout.dart';
 import '../../../shared/measurement/exact_measurement_totals.dart';
 import '../../../shared/measurement/document_quantity.dart';
@@ -69,6 +70,8 @@ import '../../../core/router/route_access_policy.dart';
 import '../widgets/purchase_status_badge.dart';
 import '../widgets/purchase_order_print_preview.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
+import '../../../shared/widgets/procurement_order_closure_dialog.dart';
+import '../../../shared/widgets/procurement_order_closure_status.dart';
 
 class PurchaseDocDetailPage extends ConsumerStatefulWidget {
   const PurchaseDocDetailPage({
@@ -587,7 +590,12 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
   bool get _canEdit => _ordinaryWritable && _hasPermission(_cfg.editPerm);
   bool get _canDelete => _ordinaryWritable && _hasPermission(_cfg.deletePerm);
   bool get _canApprove => _ordinaryWritable && _hasPermission(_cfg.approvePerm);
-  bool get _canReverse => _ordinaryWritable && _hasPermission(_cfg.reversePerm);
+  bool get _canReverse =>
+      _ordinaryWritable &&
+      _hasPermission(_cfg.reversePerm) &&
+      !(widget.docType == PurchaseDocType.order &&
+          (_detail?.closureRequest?.isPending == true ||
+              _detail?.closureRequest?.isApproved == true));
 
   bool get _financeReviewOnly =>
       widget.docType == PurchaseDocType.order &&
@@ -601,7 +609,34 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       widget.docType == PurchaseDocType.order &&
       _detail?.status == kPurchaseStatusApproved &&
       _detail?.financeApproval?.isPending != true &&
+      _detail?.closureRequest?.isPending != true &&
+      _detail?.closureRequest?.isApproved != true &&
       _hasPermission(Perm.purchaseOrderChangeQty);
+
+  String? get _closureUnavailableReason {
+    final l10n = _closureWords;
+    if (_busy) return l10n.orderClosureBusy;
+    if (_detail?.closed == true ||
+        _detail?.closureRequest?.isApproved == true) {
+      return l10n.orderClosureAlreadyEnded;
+    }
+    if (_detail?.financeApproval?.isPending == true ||
+        _detail?.closureRequest?.isPending == true) {
+      return l10n.orderClosureAlreadyPending;
+    }
+    if (_detail?.status != kPurchaseStatusApproved) {
+      return l10n.orderClosureUnavailable;
+    }
+    if (!_hasPermission(Perm.purchaseOrderSubmitFinance)) {
+      return l10n.orderClosureMissingPermission;
+    }
+    if (!_ordinaryWritable) return l10n.orderClosureReadOnly;
+    return null;
+  }
+
+  AppLocalizations get _closureWords =>
+      Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+      lookupAppLocalizations(const Locale('zh'));
 
   String get _defaultBackPath =>
       _financeReviewOnly ? _financeApprovalTasksPath : RouteName.purchase;
@@ -644,10 +679,11 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
   @override
   Future<void> nativeReadReload() => _load();
 
-  Future<void> _load() async {
+  Future<void> _load({bool background = false}) async {
     final acceptsRead = captureNativeRead(
       '${widget.docType.name}/${widget.id}',
       () => '${widget.docType.name}/${widget.id}',
+      retainAccepted: background && _detail != null,
     );
     if (!acceptsRead()) return;
     setState(() {
@@ -677,14 +713,19 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       });
     } on ApiException catch (e) {
       if (!acceptsRead()) return;
+      final retained = failNativeRead(e, message: e.message);
       setState(() {
-        _error = e.message;
+        _error = retained ? null : e.message;
+        if (nativeReadAccessDenied(e) || nativeReadResourceRetired(e)) {
+          _detail = null;
+        }
         _loading = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!acceptsRead()) return;
+      final retained = failNativeRead(error, message: '加载详情失败');
       setState(() {
-        _error = '加载详情失败';
+        _error = retained ? null : '加载详情失败';
         _loading = false;
       });
     }
@@ -925,6 +966,22 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     busyTitle: '正在取消，请稍候',
   );
 
+  Future<void> _requestClosure() async {
+    if (_busy || !_ordinaryWritable) return;
+    final ownsNative = captureNativeOwnership();
+    final submitted = await showProcurementOrderClosureDialog(
+      context,
+      orderType: 'PURCHASE',
+      orderId: widget.id,
+      stillCurrent: () => mounted && ownsNative() && _ordinaryWritable,
+      wrapDialog: trackNativeReadDialog,
+    );
+    if (mounted && ownsNative()) {
+      if (submitted == true) bumpListRefresh(ref, _cfg.refreshKey);
+      await _load();
+    }
+  }
+
   Future<void> _doAction(
     String confirm,
     Future<Object?> Function(PurchaseRepository) fn,
@@ -1069,7 +1126,11 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       context,
       RoutePath.purchaseDocDetail(_cfg.type.pathSegment, widget.id),
     );
-    ref.onPageResume(_myLocation!, _load);
+    ref.onPageResume(_myLocation!, () async {
+      await _load(background: true);
+      final error = _error ?? nativeReadRefreshError;
+      if (error != null) throw StateError(error);
+    });
     return Scaffold(
       appBar: UtenAppBar(
         title: '${_cfg.label}详情',
@@ -1104,7 +1165,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
         child: Stack(
           children: [
             UtenContentContainer.wide(
-              child: _loading
+              child: _loading && !nativeReadAccessConfirmed
                   ? Semantics(
                       label: AppLocalizations.of(context).commonLoading,
                       liveRegion: true,
@@ -1158,6 +1219,27 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                               widget.id,
                             ),
                             _headerCard(theme, names),
+                            if (_detail!.closureRequest case final closure?)
+                              ProcurementOrderClosureStatus(
+                                request: closure,
+                                orderType: 'PURCHASE',
+                                canOpenReplacement: _hasPermission(
+                                  Perm.purchaseOrderView,
+                                ),
+                                canEditReplacement:
+                                    _ordinaryWritable &&
+                                    _hasPermission(Perm.purchaseOrderEdit),
+                                canOpenReview: _hasPermission(
+                                  Perm.financeOrderApprovalView,
+                                ),
+                              ),
+                            if (widget.docType == PurchaseDocType.order &&
+                                _detail!.legacyImported &&
+                                _detail!.status == kPurchaseStatusApproved &&
+                                !_detail!.closed)
+                              const LegacyContinuationNotice(
+                                description: '继续办理前，请先核对未收数量、历史收退货及真实来源。',
+                              ),
                             if (widget.docType == PurchaseDocType.order &&
                                 (_detail!.status == kPurchaseStatusDraft ||
                                     _detail!.status ==
@@ -1212,6 +1294,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                       ),
                     ),
             ),
+            nativeReadRefreshFeedback(onRetry: () => _load(background: true)),
             // 处理中屏幕中央加载遮罩（对齐销售单据详情 UtenBusyOverlay 口径）：
             // 只跟随网络等待段，结果提示展示期间已撤下；按钮禁用逻辑不变。
             if (_busy)
@@ -1228,6 +1311,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
               _detail == null ||
               _busy ||
               _loading ||
+              nativeReadRefreshError != null ||
               _error != null
           ? null
           : _actions(theme),
@@ -1340,11 +1424,23 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     };
     const factLabels = {'日期', '供应商', '仓库', '申请部门', '申请人', '需求日', '交货日', '财务审批'};
     return UtenDetailSummaryCard(
-      heading: Text(
-        d.billNo ?? '—',
-        style: theme.textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.w700,
-        ),
+      heading: Row(
+        children: [
+          Text(
+            d.billNo ?? '—',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          // 生成订货单的操作说明挂在编号旁（2026-10-24 用户口径：原提示
+          // 独占表格上一行整行，多数时候只有一个图标，浪费一行空间）。
+          if (_canGenerateRequestOrder) ...[
+            const SizedBox(width: UtenSpacing.s4),
+            const UtenFieldHintIcon(
+              info: '勾选这次需要采购的明细，再生成订货单；下一页可填写本批数量。剩余部分以后再选，不会带入未勾选的明细。',
+            ),
+          ],
+        ],
       ),
       status: rows.last.badge ?? Text(rows.last.value ?? '—'),
       primary: [
@@ -1498,36 +1594,29 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
               key: Key('purchase-request-qty-missing-version'),
             ),
           ),
-        // 2026-09-25 用户口径：纯计数标题「明细 (N)」退役；生成订货单提示与
-        // 数量修正入口保留（Spacer 维持原右对齐落位）。
-        if (_canGenerateRequestOrder || changedCount > 0) ...[
+        // V477：分解前的数量修正（有改动才出现）。生成订货单的操作说明
+        // 2026-10-24 移到表头编号旁，本行不再为它驻留。
+        if (changedCount > 0) ...[
           Row(
             children: [
               const Spacer(),
-              if (_canGenerateRequestOrder)
-                const UtenFieldHintIcon(
-                  info: '勾选这次需要采购的明细，再生成订货单；下一页可填写本批数量。剩余部分以后再选，不会带入未勾选的明细。',
+              Text(
+                '$changedCount 行待保存',
+                key: const Key('purchase-request-qty-dirty-count'),
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w700,
                 ),
-              // V477：分解前的数量修正（有改动才出现）。
-              if (changedCount > 0) ...[
-                Text(
-                  '$changedCount 行待保存',
-                  key: const Key('purchase-request-qty-dirty-count'),
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                UtenButton(
-                  key: const Key('purchase-request-qty-save'),
-                  type: UtenButtonType.danger,
-                  onPressed: _busy || _qtyInputConflicts.isNotEmpty
-                      ? null
-                      : _saveQtyAdjustments,
-                  child: const Text('保存修改'),
-                ),
-              ],
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              UtenButton(
+                key: const Key('purchase-request-qty-save'),
+                type: UtenButtonType.danger,
+                onPressed: _busy || _qtyInputConflicts.isNotEmpty
+                    ? null
+                    : _saveQtyAdjustments,
+                child: const Text('保存修改'),
+              ),
             ],
           ),
           const SizedBox(height: UtenSpacing.s8),
@@ -2211,6 +2300,23 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     } else if (widget.docType == PurchaseDocType.order) {
       final approval = d.financeApproval;
       final pending = approval?.isPending == true;
+      final closureIssue = _closureUnavailableReason;
+      addAction(
+        Tooltip(
+          message: closureIssue ?? _closureWords.orderClosureWholeOrderHint,
+          child: UtenButton(
+            key: const Key('purchase-order-request-close'),
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            icon: Icons.stop_circle_outlined,
+            onPressed: closureIssue == null ? _requestClosure : null,
+            onDisabledTap: () => context.appInfo(
+              closureIssue ?? _closureWords.orderClosureUnavailable,
+            ),
+            child: Text(_closureWords.orderClosureAction),
+          ),
+        ),
+      );
       if (s == kPurchaseStatusDraft && !pending && _canDelete && d.canDelete) {
         addAction(
           UtenButton(
@@ -2291,7 +2397,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
           ),
         );
       }
-      if (children.isEmpty) {
+      if (children.length == 1) {
         addAction(
           UtenButton(
             type: UtenButtonType.secondary,

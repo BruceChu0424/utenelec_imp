@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../models/warehouse_iqc_stock_in.dart'
     show WarehouseIqcStockInConfirmItem;
@@ -226,6 +227,5 @@ String warehouseQualityQuantity(double value) => value
 String warehouseQualityDateTime(String? value) {
   final text = value?.trim();
   if (text == null || text.isEmpty) return '—';
-  final normalized = text.replaceFirst('T', ' ');
-  return normalized.length > 16 ? normalized.substring(0, 16) : normalized;
+  return ChinaDateTime.formatIsoInstant(text, fallback: text);
 }

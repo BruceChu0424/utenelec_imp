@@ -2,6 +2,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/router/nav_helpers.dart';
 
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
@@ -22,7 +23,6 @@ import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/async/bounded_read_map.dart';
 import '../../../core/network/authenticated_request_scope.dart';
-import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -251,7 +251,7 @@ class _WarehouseSalesOutboundBatchPageState
       return;
     }
     final router = GoRouter.maybeOf(context);
-    if (router != null) goFrom(context, '/warehouse/sales-outbound');
+    if (router != null) router.go('/warehouse/sales-outbound');
   }
 
   /// 选填统一出库备注，随每张单的出库事件留证。

@@ -1,6 +1,7 @@
 [Unit]
 Description=Explicitly authorized Uten IMP update job
-After=network-online.target postgresql@16-main.service
+After=network-online.target postgresql@16-main.service systemd-tmpfiles-setup.service
+Requires=systemd-tmpfiles-setup.service
 Wants=network-online.target
 OnFailure=uten-alert@%n.service
 
@@ -9,7 +10,6 @@ Type=oneshot
 User=root
 Group=root
 UMask=0077
-ExecStartPre=+/usr/bin/install -d -o root -g root -m 0700 /run/uten-imp-updater
 ExecStart=/usr/bin/python3 -I /usr/local/lib/uten-imp/host_operations.py worker
 # This unit is independent of uten-imp.service; restarting the ERP cannot kill it.
 # Bounds: check6m + stage60m + backup40m + verify40m + TOC1m + cutover45m

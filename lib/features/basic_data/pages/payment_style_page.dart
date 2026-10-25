@@ -191,6 +191,122 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
   );
 
   @override
+  MasterInlineCreateConfig get inlineCreation {
+    final category = _category;
+    final parents = <MasterSelectOption>[];
+    void visit(List<PaymentStyleNode> nodes, String path) {
+      for (final node in nodes) {
+        final label = path.isEmpty ? node.name : '$path / ${node.name}';
+        if (_nodeCanAddChild(node)) {
+          parents.add(MasterSelectOption(value: node.id, label: label));
+        }
+        visit(node.children, label);
+      }
+    }
+
+    visit(_tree, '');
+    final parent = _workspaceSubtree && _selectedId != null
+        ? _findById(_tree, _selectedId!)
+        : null;
+    const flags = [
+      MasterSelectOption(value: 'false', label: '否'),
+      MasterSelectOption(value: 'true', label: '是'),
+    ];
+    return MasterInlineCreateConfig(
+      namespace:
+          'payment-styles.${category.value}.${_workspaceSubtree ? _selectedId : 'root'}',
+      fields: [
+        const MasterFieldDef(key: 'name', label: '类别名称', required: true),
+        MasterFieldDef(
+          key: 'parentId',
+          label: '所属位置',
+          type: MasterFieldType.select,
+          options: parents,
+          hint: '留空为当前大类的顶层类别',
+        ),
+        const MasterFieldDef(
+          key: 'sortOrder',
+          label: '同级排序',
+          type: MasterFieldType.integer,
+          required: true,
+        ),
+        const MasterFieldDef(
+          key: 'receipt',
+          label: '收款标志',
+          type: MasterFieldType.select,
+          options: flags,
+        ),
+        const MasterFieldDef(
+          key: 'payment',
+          label: '付款标志',
+          type: MasterFieldType.select,
+          options: flags,
+        ),
+        const MasterFieldDef(
+          key: 'departmental',
+          label: '部门核算',
+          type: MasterFieldType.select,
+          options: flags,
+        ),
+        if (_canStatus)
+          const MasterFieldDef(
+            key: 'status',
+            label: '使用状态',
+            type: MasterFieldType.select,
+            options: kMasterStatusOptions,
+            required: true,
+          ),
+      ],
+      columnFields: const {'parent': 'parentId'},
+      defaults: {
+        'sortOrder': '0',
+        'receipt': 'false',
+        'payment': 'false',
+        'departmental': 'false',
+        'status': '使用',
+        if (parent != null && _nodeCanAddChild(parent)) 'parentId': parent.id,
+      },
+      canCreate:
+          _canCreate &&
+          (!_workspaceSubtree ||
+              _selectedId == null ||
+              (parent != null && _nodeCanAddChild(parent))),
+      onCreate: (_, values) async {
+        final parentId = values['parentId']?.toString();
+        if (parentId != null && parentId.isNotEmpty) {
+          final candidate = _findById(_tree, parentId);
+          if (candidate == null || !_nodeCanAddChild(candidate)) {
+            throw ApiException('VALIDATION_FAILED', '所属类别已失效，请重新选择');
+          }
+        }
+        await ref
+            .read(paymentStyleRepositoryProvider)
+            .create(
+              PaymentStyleSaveInput(
+                code: '',
+                name: values['name']?.toString().trim() ?? '',
+                category: category.value,
+                parentId: parentId == null || parentId.isEmpty
+                    ? null
+                    : parentId,
+                sortOrder:
+                    int.tryParse(values['sortOrder']?.toString() ?? '') ?? 0,
+                receipt:
+                    values['receipt'] == true || values['receipt'] == 'true',
+                payment:
+                    values['payment'] == true || values['payment'] == 'true',
+                departmental:
+                    values['departmental'] == true ||
+                    values['departmental'] == 'true',
+                status: values['status']?.toString() ?? '使用',
+              ),
+            );
+        _invalidatePaymentStyleCaches();
+      },
+    );
+  }
+
+  @override
   Future<void> saveInline(String id, Map<String, dynamic> patch) async {
     await super.saveInline(id, patch);
     if (mounted) _invalidatePaymentStyleCaches();
@@ -838,7 +954,11 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
       _workspacePage = 1;
       _workspaceSelected = {};
     });
-    if (editing && inlineCanEdit && inlineReadReady) inlineEdit.begin();
+    if (editing &&
+        (inlineCanEdit || inlineCreation.canCreate) &&
+        inlineReadReady) {
+      inlineEdit.begin();
+    }
   }
 
   Future<void> _batchWorkspaceStatus(
@@ -1013,6 +1133,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
         ),
         Expanded(
           child: MasterDataTableView<_PaymentStyleWorkspaceRow>(
+            appendRowsSource: inlineAppendRowsSource,
             key: const ValueKey('payment-style-inline-table'),
             tableKey: 'basicData.paymentStyle.workspace',
             columns: inlineColumns(_workspaceColumns),
@@ -1048,6 +1169,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
             onRetry: _load,
             batchActionsBuilder: (context, ids) => [
               MasterInlineEditActions<_PaymentStyleWorkspaceRow>(
+                canCreate: _canCreate && inlineReadReady,
                 controller: inlineEdit,
                 canEdit: inlineCanEdit && inlineReadReady,
                 onSave: saveInline,

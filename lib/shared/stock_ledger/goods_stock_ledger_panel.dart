@@ -1,7 +1,7 @@
 // 单货品库存面板 (ADR-135 §6.3): 库存详情页 (/stock/item/:goodsId?tab=balance|ledger|weight|trace)
 // 与货品详情「库存与出入库」页签共用同一个面板。
 //
-// 结构: 顶部 KPI 条 + 四个分段「库存余额 | 出入库流水 | 单重学习」+ 工具条「重量单位: 自动▾」。
+// 结构: 筛选 + 分段 + 表格; 本范围库存合计放在余额表的末行下方。
 // - 库存余额: 各仓库 (x 颜色) 余额; 行操作 查看流水 (切到流水并筛到该仓库 + 颜色) /
 //   调整 (stock:balance:adjust) / 核重 (stock:weight:manage)。
 // - 出入库流水: 存货明细账 (服务端算结存与期初期末), 单号点回源单。
@@ -147,12 +147,12 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
           .read(stockQueryRepositoryProvider)
           .goodsInventoryContext(widget.goodsId, _scope);
       if (!mounted || version != _contextVersion) return;
-      if (result.items.isEmpty) throw StateError('货品库存投影未返回主档资料');
       setState(() {
         _context = result;
         _contextLoading = false;
       });
-      widget.onGoodsLoaded?.call(result.items.first);
+      final goods = result.items.firstOrNull;
+      if (goods != null) widget.onGoodsLoaded?.call(goods);
     } catch (_) {
       if (!mounted || version != _contextVersion) return;
       setState(() {
@@ -362,17 +362,20 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
                 ],
               ),
             const SizedBox(height: UtenSpacing.s8),
-            GoodsStockInventoryOverview(
-              data: _context,
-              loading: _contextLoading,
-              error: _contextError,
-              onRetry: _loadContext,
-              weightDisplay: ref
-                  .watch(warehouseWeightUnitsPrefsProvider)
-                  .display,
-              showQuantities: segment == GoodsStockLedgerSegment.balance,
-            ),
-            const SizedBox(height: UtenSpacing.s8),
+            if (segment != GoodsStockLedgerSegment.balance &&
+                (_contextLoading || _contextError != null)) ...[
+              GoodsStockInventoryOverview(
+                data: _context,
+                loading: _contextLoading,
+                error: _contextError,
+                onRetry: _loadContext,
+                weightDisplay: ref
+                    .watch(warehouseWeightUnitsPrefsProvider)
+                    .display,
+                showQuantities: false,
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+            ],
             UtenFilterToolbar<GoodsStockLedgerSegment>(
               segmentsKey: const Key('stock-item-detail-segments'),
               segments: [
@@ -415,6 +418,15 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
             onViewLedger: (warehouseId, colorId) =>
                 showLedger(warehouseId: warehouseId, colorId: colorId),
             onChanged: _changed,
+            summaryBar: GoodsStockInventoryOverview(
+              data: _context,
+              loading: _contextLoading,
+              error: _contextError,
+              onRetry: _loadContext,
+              weightDisplay: ref
+                  .watch(warehouseWeightUnitsPrefsProvider)
+                  .display,
+            ),
           ),
           GoodsStockLedgerSegment.ledger => GoodsStockLedgerView(
             key: ValueKey(('ledger', widget.goodsId, _readEpoch)),

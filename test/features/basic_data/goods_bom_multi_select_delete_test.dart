@@ -172,6 +172,17 @@ Future<void> _tapScrewToggle(WidgetTester tester) async {
 /// 展开「螺丝」，让它的子级行(垫片)出现在表里。
 Future<void> _expandScrew(WidgetTester tester) => _tapScrewToggle(tester);
 
+Future<void> _tapRowCheckbox(WidgetTester tester, String occurrence) async {
+  final checkbox = find
+      .descendant(
+        of: find.byKey(ValueKey('row-drag-slot:$occurrence')),
+        matching: find.byType(Checkbox),
+      )
+      .hitTestable()
+      .first;
+  await tester.tap(checkbox);
+}
+
 void main() {
   testWidgets('勾两行后删除可用，确认框列出两个组件名', (tester) async {
     final repo = _FakeBomRepo();
@@ -181,9 +192,9 @@ void main() {
     expect(find.byType(Checkbox), findsWidgets);
     expect(_deleteButton(tester).onPressed, isNull, reason: '没勾行时删除必须灰着');
 
-    await tester.tap(find.text('外壳'));
+    await _tapRowCheckbox(tester, 'goods-a/row-a1');
     await tester.pump();
-    await tester.tap(find.text('螺丝'));
+    await _tapRowCheckbox(tester, 'goods-a/row-a2');
     await tester.pump();
 
     expect(_deleteButton(tester).onPressed, isNotNull);
@@ -208,7 +219,7 @@ void main() {
     await _expandScrew(tester);
     expect(find.text('垫片'), findsOneWidget);
 
-    await tester.tap(find.text('垫片'));
+    await _tapRowCheckbox(tester, 'goods-a/row-a2/row-y1');
     await tester.pump();
     await tester.tap(_deleteFinder);
     await tester.pumpAndSettle();
@@ -244,7 +255,7 @@ void main() {
     final repo = _FakeBomRepo();
     await _pumpTab(tester, repo);
 
-    await tester.tap(find.text('外壳'));
+    await _tapRowCheckbox(tester, 'goods-a/row-a1');
     await tester.pump();
     expect(_deleteButton(tester).onPressed, isNotNull);
 
@@ -271,7 +282,7 @@ void main() {
     await _pumpTab(tester, repo);
     await _expandScrew(tester);
 
-    await tester.tap(find.text('垫片'));
+    await _tapRowCheckbox(tester, 'goods-a/row-a2/row-y1');
     await tester.pump();
     expect(_deleteButton(tester).onPressed, isNotNull);
 
@@ -287,9 +298,9 @@ void main() {
     await _pumpTab(tester, repo);
     await _expandScrew(tester);
 
-    await tester.tap(find.text('外壳')); // 挂在 goods-a 下
+    await _tapRowCheckbox(tester, 'goods-a/row-a1'); // 挂在 goods-a 下
     await tester.pump();
-    await tester.tap(find.text('垫片')); // 挂在 goods-y(螺丝本体)下
+    await _tapRowCheckbox(tester, 'goods-a/row-a2/row-y1'); // 挂在 goods-y(螺丝本体)下
     await tester.pump();
 
     await tester.tap(_deleteFinder);

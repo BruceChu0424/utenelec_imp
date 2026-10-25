@@ -88,10 +88,10 @@ public interface AiJobHandler {
         /** 提交人绑定的员工 id; 账号未绑定员工时为空。 */
         UUID submittedByEmployee();
 
-        /** 报告阶段与进度(0-100): 短的独立事务; 任务行已被清库/清理删除时静默返回。 */
+        /** 报告阶段与进度(0-100): 短的独立事务; 任务行已被删除时静默返回。 */
         void progress(String stage, int percent);
 
-        /** 用户已请求取消, 或系统正在排水准备清空业务数据; 处理器应在阶段之间检查并尽快返回。 */
+        /** 用户已请求取消或任务已不再属于本次认领; 处理器应在阶段之间检查并尽快返回。 */
         boolean cancelled();
 
         /** 本任务剩余的 AI 调用次数(uten.ai.max-calls-per-job, 默认 12)。 */

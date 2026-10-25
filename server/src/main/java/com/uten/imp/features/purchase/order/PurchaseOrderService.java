@@ -134,6 +134,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     /** Spring injects this in production; direct-construction tests fail closed. */
     @Autowired
     private CommercialPriceVisibility commercialPriceVisibility;
+    @Autowired
+    private com.uten.imp.application.port.ProcurementOrderClosureReadPort closureRequests;
 
     @Transactional(readOnly = true)
     public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
@@ -768,6 +770,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     private void requireOrderReversalInputs(UUID id,List<PurchaseOrderItem> items) {
+        if (requireOrder(id).getTerminationCaseId()!=null) throw new ApiException(ErrorCode.CONFLICT,"订单已通过财务审批结束，不能反审或红冲");
         if(items.stream().anyMatch(it->positive(it.getReceivedQty()) || positive(it.getReturnedQty()) || positive(it.getGiftReceivedQty()) || positive(it.getGiftReturnedQty())))
             throw new ApiException(ErrorCode.CONFLICT,"订货单已有收货或退货，请先撤销下游单据");
 
@@ -843,6 +846,61 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         return snapshot(order, itemRepo.findByOrderIdOrderByLineNoAsc(id));
     }
 
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public UUID createRemainingDraft(UUID id, List<RemainingLine> remaining, UUID makerEmployeeId) {
+        PurchaseOrder original = requireOrderForUpdate(id);
+        OrderSaveRequest request = new OrderSaveRequest();
+        request.setBillDate(com.uten.imp.common.time.BusinessTime.today());
+        request.setSupplierId(null); // Select a new supplier before normal finance submission.
+        request.setWarehouseId(original.getWarehouseId());
+        request.setCurrencyId(original.getCurrencyId());
+        request.setExchangeRate(original.getExchangeRate());
+        request.setTaxRate(original.getTaxRate());
+        request.setSettlementMethodId(original.getSettlementMethodId());
+        request.setPurchaserId(original.getPurchaserId());
+        request.setDeliverDate(original.getDeliverDate());
+        request.setRemark("由 " + original.getBillNo() + " 提前结束后生成，确认供应商和商业条款后重新提交财务审批");
+        request.setConfirmGiftSemantics(true);
+        Map<UUID, PurchaseOrderItem> oldItems = itemRepo.findByOrderIdOrderByLineNoAsc(id).stream()
+                .collect(java.util.stream.Collectors.toMap(PurchaseOrderItem::getId, java.util.function.Function.identity()));
+        List<OrderItemLine> lines = new ArrayList<>();
+        for (RemainingLine remainder : remaining) {
+            if (remainder.remainingQty().signum() == 0 && remainder.remainingGiftQty().signum() == 0) continue;
+            PurchaseOrderItem old = oldItems.get(remainder.orderItemId());
+            if (old == null) throw new ApiException(ErrorCode.CONFLICT, "剩余明细已变化");
+            OrderItemLine line = new OrderItemLine();
+            line.setLineNo(old.getLineNo()); line.setGoodsId(old.getGoodsId()); line.setColorId(old.getColorId());
+            line.setUnitId(old.getUnitId()); line.setUnitRate(old.getUnitRate());
+            line.setQty(remainder.remainingQty()); line.setGiftQty(remainder.remainingGiftQty());
+            line.setPrice(old.getPrice()); line.setDeliverDate(old.getDeliverDate());
+            line.setAllowedOverReceiptPct(old.getAllowedOverReceiptPct());
+            line.setRemark(old.getRemark()); line.setSourceDocNo(old.getSourceDocNo()); lines.add(line);
+        }
+        request.setItems(lines);
+        var guard=lockOrderRequest(null,request); guard.verifyUnchanged();
+        PurchaseOrder replacement = new PurchaseOrder();
+        replacement.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PURCHASE_ORDER));
+        replacement.setBillDate(request.getBillDate()); replacement.setQuantitySemantics(ProcurementQuantities.EXTRA_GIFT);
+        replacement.setWarehouseId(original.getWarehouseId());
+        replacement.setCurrencyId(original.getCurrencyId()); replacement.setExchangeRate(original.getExchangeRate());
+        replacement.setTaxRate(original.getTaxRate()); replacement.setSettlementMethodId(original.getSettlementMethodId());
+        replacement.setSettlementStyleLegacy(original.getSettlementStyleLegacy());
+        replacement.setPurchaserId(original.getPurchaserId()); replacement.setMakerId(makerEmployeeId);
+        replacement.setDeliverDate(original.getDeliverDate()); replacement.setRemark(request.getRemark());
+        replacement.setStatus(STATUS_DRAFT);
+        mutationLocks.expectCreatedOrder(orderType(),replacement.getId());
+        orderRepo.saveAndFlush(replacement); mutationLocks.registerCreatedOrder(orderType(),replacement.getId());
+        applyTotals(replacement,saveItems(replacement,lines));
+        Map<Integer,PurchaseOrderItem> oldByLine=oldItems.values().stream().collect(java.util.stream.Collectors.toMap(PurchaseOrderItem::getLineNo,java.util.function.Function.identity()));
+        for(PurchaseOrderItem created:itemRepo.findByOrderIdOrderByLineNoAsc(replacement.getId())) {
+            PurchaseOrderItem old=oldByLine.get(created.getLineNo());
+            if(old!=null){created.setProductionPlanNo(old.getProductionPlanNo());created.setSalesOrderNo(old.getSalesOrderNo());}
+        }
+        orderRepo.saveAndFlush(replacement);
+        return replacement.getId();
+    }
+
     /**
      * V486 财务批准后受控改量（对齐销售 V482）：立即生效 + 自动开财务复核 case
      * 重回审批队列 + 逐行 old→new 事实账。最低量取精确实收、普通/IQC实退及
@@ -856,6 +914,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         tx.bind();
         var mutationGuard=mutationLocks.order(orderType(),id);
         PurchaseOrder order = requireOrderForUpdate(id);
+        if (order.getTerminationCaseId()!=null) throw new ApiException(ErrorCode.CONFLICT,"订单已通过财务审批结束，不能改量");
         access.requireWritable(order.getMakerId(), "只能操作本人负责的采购订货单");
         if (order.getStatus() == null || order.getStatus() != STATUS_APPROVED) {
             throw new ApiException(
@@ -1620,14 +1679,15 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 order.getStatus(), order.isClosed(), order.getSourceDocNo(), safeItems,
                 nameResolver.nameWithCodeOf(order.getMakerId()), order.getCreatedAt(),
                 productionLinked, canEdit, canEdit,
-                order.getStatus() == STATUS_APPROVED,
+                order.getStatus() == STATUS_APPROVED && order.getTerminationCaseId()==null,
                 restrictionReason(pending),
                 approval,
                 sourceRequest == null ? null : sourceRequest.id(),
                 sourceRequest == null ? null : sourceRequest.billNo(),
                 priceMasked,
                 priceMasked || order.getStatus()!=STATUS_APPROVED || order.getExchangeRate()==null || order.getExchangeRate().signum()<=0 ? null :
-                com.uten.imp.common.finance.ProcurementApprovedExchangeRate.read(em,"PURCHASE",order.getId(),order.getExchangeRate()).rate());
+                com.uten.imp.common.finance.ProcurementApprovedExchangeRate.read(em,"PURCHASE",order.getId(),order.getExchangeRate()).rate(),
+                closureRequests == null ? null : closureRequests.latest("PURCHASE", order.getId()));
     }
 
     private boolean purchasePriceMasked() {

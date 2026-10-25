@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -300,10 +299,7 @@ class _MultiFileCosts extends _Costs {
     final previous = costText(extra['adoptedFiles']);
     input['extraFields'] = {
       ...extra,
-      'adoptedFiles': [
-        if (previous != null) previous,
-        request['importId'],
-      ].join(','),
+      'adoptedFiles': [?previous, request['importId']].join(','),
     };
     final calculation = _calculation();
     calculation['lines'] = [
@@ -2929,13 +2925,29 @@ void main() {
       await tester.pumpAndSettle();
       expect(nested.innerController.offset, greaterThan(0));
       expect(tester.getTopLeft(find.text('货品名称')).dy, closeTo(headerTop, .5));
-      nested.innerController.jumpTo(
-        nested.innerController.position.maxScrollExtent,
-      );
-      await tester.pumpAndSettle();
+      final lastMaterial = find.text('待核材料 30');
+      final save = find.byKey(const Key('cost-save'));
+      // Lazy row measurement revises the extent. Keep exercising user wheel
+      // input until the final row clears the floating actions.
+      for (var step = 0; step < 20; step++) {
+        if (lastMaterial.hitTestable().evaluate().isNotEmpty &&
+            tester.getBottomLeft(lastMaterial).dy <
+                tester.getTopLeft(save).dy) {
+          break;
+        }
+        await tester.sendEventToBinding(
+          PointerScrollEvent(
+            position: point,
+            scrollDelta: const Offset(0, 240),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+      expect(lastMaterial.hitTestable(), findsOneWidget);
+      expect(tester.getTopLeft(find.text('货品名称')).dy, closeTo(headerTop, .5));
       expect(
-        tester.getBottomLeft(find.text('待核材料 30')).dy,
-        lessThan(tester.getTopLeft(find.byKey(const Key('cost-save'))).dy),
+        tester.getBottomLeft(lastMaterial).dy,
+        lessThan(tester.getTopLeft(save).dy),
       );
       await tester.tap(find.byKey(const Key('cost-settings-toggle')));
       await tester.pumpAndSettle();

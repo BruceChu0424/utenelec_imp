@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -167,7 +168,7 @@ class _FinanceReconciliationPageState
         width: 160,
         type: 'date',
         sortable: true,
-        value: (it) => (it.billDate ?? '').substring(0, 16),
+        value: (it) => _reconciliationDateText(it.billDate),
       ),
       MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
@@ -365,4 +366,12 @@ class _FinanceReconciliationPageState
       ),
     );
   }
+}
+
+// 纯业务日期保留原年月日；带时间的账务事件才按真实时间点展示。
+String? _reconciliationDateText(String? value) {
+  final raw = value?.trim();
+  if (raw == null || raw.isEmpty) return raw;
+  if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(raw)) return raw;
+  return ChinaDateTime.formatIsoInstant(raw, fallback: raw);
 }

@@ -2,7 +2,7 @@
 // 文档：docs/02-组件库/UtenAppBar.md（待写）
 //
 // 设计原则：
-// - 标题层级清晰：标题 17px w600，副标题 12px textTertiary
+// - 标题层级清晰：标题 18px w700，副标题 12px textTertiary
 // - 用发丝级底部分隔线代替阴影分层（elevation 恒为 0）
 // - blurred 变体：半透明背景 + 背景模糊，用于内容可从顶栏下方滚过的场景
 
@@ -277,12 +277,13 @@ class _UtenAppBarState extends State<UtenAppBar> {
                   ? const UtenBackButton()
                   : const SizedBox.shrink()),
           automaticallyImplyLeading: false,
-          // 返回键槽收窄到按钮宽（2026-10-18 左缘对齐口径）：IconButton 型 leading
-          // 会被 AppBar 居中在槽内，56 宽槽会把图标顶到 ~18px；40 宽槽 + 按钮自身
-          // 贴左对齐（UtenBackButton centerStart）让图标落在 x=0，与分栏页左栏
-          // 搜索框共缘。非返回键型 leading 维持默认 56 槽不动。
+          // 返回键槽宽=按钮宽（2026-10-24 按钮==图标口径）：桌面端按钮收紧到
+          // 24×24，图标落在 x=0 且标题紧随其后（此前 40 宽槽在图标和标题之间
+          // 留出 ~36px 死区）；触屏端槽宽=主题最小命中区。IconButton 型 leading
+          // 会被 AppBar 居中在槽内，按钮自身贴左对齐（UtenBackButton
+          // centerStart）保证图标不缩进。非返回键型 leading 维持默认 56 槽不动。
           leadingWidth: (showBackButton || leading is UtenBackButton)
-              ? 40
+              ? UtenBackButton.slotWidth(context)
               : (leading == null && !showBackButton ? 0 : null),
           actions: [
             ConstrainedBox(

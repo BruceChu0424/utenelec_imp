@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -19,6 +20,50 @@ import '../../employee/widgets/employee_identity_correction_dialog.dart';
 import '../models/hr_task_summary.dart';
 import '../providers/hr_task_summary_provider.dart';
 import '../repositories/hr_task_repository.dart';
+
+/// Keeps the current task subtree mounted during a scoped summary recheck.
+class HrTaskRefreshFeedback extends ConsumerWidget {
+  const HrTaskRefreshFeedback({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status = ref.watch(hrTaskRefreshStatusProvider);
+    final summary = ref.watch(hrTaskSummaryProvider);
+    final retained =
+        summary.hasValue && !summary.isLoading && !summary.hasError;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        if (retained && (status.refreshing || status.error != null))
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Material(
+              color: Theme.of(context).colorScheme.surface,
+              child: status.refreshing
+                  ? const LinearProgressIndicator(minHeight: 2)
+                  : UtenInlineNotice(
+                      level: UtenInlineNoticeLevel.warning,
+                      title: '更新失败，当前显示上次内容',
+                      message: status.error,
+                      trailing: TextButton.icon(
+                        onPressed: () => ref
+                            .read(hrTaskSummaryProvider.notifier)
+                            .reloadSilently(),
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('重新更新'),
+                      ),
+                    ),
+            ),
+          ),
+      ],
+    );
+  }
+}
 
 /// 任务类型：决定子页面标题 / 图标 / 认领 taskType。
 enum HrTaskType {

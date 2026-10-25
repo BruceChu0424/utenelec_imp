@@ -101,6 +101,9 @@ CREATE FUNCTION fn_legacy_finance_snapshot(j jsonb,f text[]) RETURNS jsonb LANGU
                 'wrong_file_sha': "UPDATE legacy_procurement_receipt_import_sources SET source_file_sha256=repeat('b',64) WHERE source_kind='PURCHASE_ITEM';",
                 'invalid_source_row_sha': "UPDATE legacy_procurement_receipt_import_sources SET source_row_sha256='invalid' WHERE source_kind='PURCHASE_ITEM';",
                 'shortened_projection_field_array': "UPDATE legacy_procurement_receipt_import_sources SET target_fields=ARRAY['id','legacy_id','order_item_legacy_id'] WHERE source_kind='PURCHASE_ITEM';" + refresh,
+                'duplicate_projection_field': "UPDATE legacy_procurement_receipt_import_sources SET target_fields=target_fields||ARRAY['return_no'] WHERE source_kind='SUBCONTRACT_ITEM';",
+                'null_projection_field': "UPDATE legacy_procurement_receipt_import_sources SET target_fields=target_fields||ARRAY[NULL::text] WHERE source_kind='SUBCONTRACT_ITEM';",
+                'extra_projection_field': "UPDATE legacy_procurement_receipt_import_sources SET target_fields=target_fields||ARRAY['unexpected_capacity'] WHERE source_kind='SUBCONTRACT_ITEM';",
                 'quantity_changed': "UPDATE purchase_receipt_items SET qty='11' WHERE legacy_id=11;",
                 'included_drop_source_header': f"INSERT INTO purchase_receipts VALUES('{identity('dropped103')}',103);",
                 'changed_real_receipt_parent': f"UPDATE purchase_receipt_items SET receipt_id='{identity('purchase_receipts102')}' WHERE legacy_id=11;" + refresh,
@@ -112,6 +115,20 @@ CREATE FUNCTION fn_legacy_finance_snapshot(j jsonb,f text[]) RETURNS jsonb LANGU
                 query = receipt.acceptance_sql(RUN, expected) + ';'
                 write(inserts)
                 receipt.validate(db.query(query), expected); cases.append('valid_drop_aware_two_family_projection')
+                original_fields = sorted(receipt.COMMON_FIELDS + receipt.EXTRA_FIELDS['SUBCONTRACT_ITEM'])
+                locale_fields = original_fields.copy()
+                left, right = locale_fields.index('return_no'), locale_fields.index('returned_qty')
+                locale_fields[left], locale_fields[right] = locale_fields[right], locale_fields[left]
+                for label, ordered in (('database_locale_projection_field_order', locale_fields),
+                                       ('reversed_projection_field_order', list(reversed(original_fields)))):
+                    field_array = 'ARRAY[' + ','.join(literal(field) for field in ordered) + ']::text[]'
+                    write('TRUNCATE ' + ','.join(tables) + ';\n' + inserts
+                          + "UPDATE legacy_procurement_receipt_import_sources SET target_fields="
+                          + field_array + " WHERE source_kind='SUBCONTRACT_ITEM';")
+                    facts = db.query(query)
+                    receipt.validate(facts, expected)
+                    assert facts['families']['SUBCONTRACT_ITEM']['changed_original_projections'] == 0
+                    cases.append(label + '_accepted_without_resigning_snapshot')
                 for label, mutation in mutations.items():
                     write('TRUNCATE ' + ','.join(tables) + ';\n' + inserts + mutation)
                     try: receipt.validate(db.query(query), expected)

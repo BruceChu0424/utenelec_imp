@@ -16,15 +16,8 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
   bool? columnSearchEnabled,
 }) {
   return <MasterColumnDef<InstantInventoryRow>>[
-    MasterColumnDef(
-      columnSearchEnabled: columnSearchEnabled,
-      key: 'category',
-      label: '所属类型',
-      width: 120,
-      value: (r) => r.categoryName ?? '—',
-    ),
-    // 2026-09-14 全站表格统一：名称 → 编号 → 颜色 三列排在最前，
-    // 型号/系列/库位等次要属性排在后面。
+    // 先辨认货品和颜色，再看现存数量/重量及待处理量；
+    // 库位和主档属性放在库存事实后面，备注收尾。
     MasterColumnDef(
       columnSearchEnabled: columnSearchEnabled,
       key: 'name',
@@ -61,59 +54,6 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
       label: '颜色',
       width: 90,
       value: (r) => r.colorName ?? '',
-    ),
-    MasterColumnDef(
-      columnSearchEnabled: columnSearchEnabled,
-      key: 'series',
-      label: '物料系列',
-      width: 90,
-      value: (r) => r.series ?? '',
-    ),
-    MasterColumnDef(
-      columnSearchEnabled: columnSearchEnabled,
-      key: 'stockPlace',
-      label: '库位号',
-      width: 90,
-      value: (r) => r.stockPlace ?? '',
-    ),
-    // 所属仓库 (V587)：货品平时归哪个仓管的主档归属，只读。
-    // 列 key 是 owningWarehouse，不能叫 warehouse —— 本页顶部的仓库筛选是
-    // 另一回事 (那是本次看盘的范围仓)，两者绝不是同一个概念。
-    MasterColumnDef(
-      columnSearchEnabled: columnSearchEnabled,
-      key: 'owningWarehouse',
-      label: '主档归属仓库',
-      width: 120,
-      info: '货品平时归哪个仓管的主档归属，不是这行库存所在的仓，也不是上面的仓库筛选值。',
-      value: (r) => r.owningWarehouseName?.trim() ?? '',
-    ),
-    MasterColumnDef(
-      columnSearchEnabled: columnSearchEnabled,
-      key: 'model',
-      label: '型号',
-      width: 110,
-      value: (r) => r.model ?? '',
-    ),
-    MasterColumnDef(
-      columnSearchEnabled: columnSearchEnabled,
-      key: 'cNumber',
-      label: '客户型号',
-      width: 120,
-      value: (r) => r.cNumber ?? '',
-    ),
-    MasterColumnDef(
-      columnSearchEnabled: columnSearchEnabled,
-      key: 'spec',
-      label: '规格',
-      width: 120,
-      value: (r) => r.spec ?? '',
-    ),
-    MasterColumnDef(
-      columnSearchEnabled: columnSearchEnabled,
-      key: 'remark',
-      label: '备注',
-      width: 90,
-      value: (r) => r.remark ?? '',
     ),
     // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 PCS），独立
     // 「单位」列退役；实盘数量输入格的后缀在共享输入格（stock_count_inline_editor）。
@@ -193,6 +133,66 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
       type: 'number',
       sortable: true,
       value: (r) => formatQtyWithUnit(r.moreQty, r.unitName),
+    ),
+    MasterColumnDef(
+      columnSearchEnabled: columnSearchEnabled,
+      key: 'stockPlace',
+      label: '库位号',
+      width: 90,
+      value: (r) => r.stockPlace ?? '',
+    ),
+    // 所属仓库 (V587)：货品平时归哪个仓管的主档归属，只读。
+    // 列 key 是 owningWarehouse，不能叫 warehouse —— 本页顶部的仓库筛选是
+    // 另一回事 (那是本次看盘的范围仓)，两者绝不是同一个概念。
+    MasterColumnDef(
+      columnSearchEnabled: columnSearchEnabled,
+      key: 'owningWarehouse',
+      label: '主档归属仓库',
+      width: 120,
+      info: '货品平时归哪个仓管的主档归属，不是这行库存所在的仓，也不是上面的仓库筛选值。',
+      value: (r) => r.owningWarehouseName?.trim() ?? '',
+    ),
+    MasterColumnDef(
+      columnSearchEnabled: columnSearchEnabled,
+      key: 'category',
+      label: '所属类型',
+      width: 120,
+      value: (r) => r.categoryName ?? '—',
+    ),
+    MasterColumnDef(
+      columnSearchEnabled: columnSearchEnabled,
+      key: 'model',
+      label: '型号',
+      width: 110,
+      value: (r) => r.model ?? '',
+    ),
+    MasterColumnDef(
+      columnSearchEnabled: columnSearchEnabled,
+      key: 'spec',
+      label: '规格',
+      width: 120,
+      value: (r) => r.spec ?? '',
+    ),
+    MasterColumnDef(
+      columnSearchEnabled: columnSearchEnabled,
+      key: 'cNumber',
+      label: '客户型号',
+      width: 120,
+      value: (r) => r.cNumber ?? '',
+    ),
+    MasterColumnDef(
+      columnSearchEnabled: columnSearchEnabled,
+      key: 'series',
+      label: '物料系列',
+      width: 90,
+      value: (r) => r.series ?? '',
+    ),
+    MasterColumnDef(
+      columnSearchEnabled: columnSearchEnabled,
+      key: 'remark',
+      label: '备注',
+      width: 90,
+      value: (r) => r.remark ?? '',
     ),
   ];
 }

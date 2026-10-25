@@ -2076,7 +2076,11 @@ abstract class _MaterialAnalysisPageBase
 
   String _dateTimeOnly(String? value) {
     if (value == null || value.isEmpty) return '待计算';
-    return value.replaceFirst('T', ' ').split('.').first;
+    return ChinaDateTime.formatIsoInstant(
+      value,
+      fallback: value,
+      seconds: true,
+    );
   }
 
   String _dateOnly(String? value) => value == null || value.isEmpty
@@ -2347,16 +2351,18 @@ class _ProductionMaterialAnalysisPageState
             fontFamily: theme.textTheme.titleLarge?.fontFamily,
           ),
         ),
-        leading: _planSubmissionInProgress
-            ? const SizedBox(width: 48)
-            : UtenBackButton(
-                onPressed: () => popOrBackTo(
+        // 计划下发期间按钮常驻但空转（PopScope 已挡返回；传 null 会回落默认
+        // 返回），leading 槽恒为 UtenBackButton，标题不再左右跳变。
+        leading: UtenBackButton(
+          onPressed: _planSubmissionInProgress
+              ? () {}
+              : () => popOrBackTo(
                   context,
                   defaultPath: widget.planCreateEntry
                       ? '/production'
                       : RouteName.productionSchedule,
                 ),
-              ),
+        ),
         actions: [
           if (compact)
             SizedBox(

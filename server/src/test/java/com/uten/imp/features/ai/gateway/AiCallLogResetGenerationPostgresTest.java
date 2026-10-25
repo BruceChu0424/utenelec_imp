@@ -1,7 +1,6 @@
 package com.uten.imp.features.ai.gateway;
 
 import com.uten.imp.application.port.AiCompletionPort;
-import com.uten.imp.features.admin.systemtest.BusinessDataResetDrainGate;
 import com.uten.imp.features.ai.AiProperties;
 import com.uten.imp.features.ai.client.AiProtocolClient;
 import com.uten.imp.features.ai.provider.*;
@@ -26,13 +25,12 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-/** Uses real forward migrations and the real explicit test-reset transaction. No external AI service. */
+/** Uses real forward migrations and the isolated privileged recovery simulation. No external AI service. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class AiCallLogResetGenerationPostgresTest {
-    static MigratedSchemaBaseline.ScopedDatabase database;
-    static DriverManagerDataSource dataSource;
-    static JdbcTemplate jdbc;
-    BusinessDataResetDrainGate gate;
+    MigratedSchemaBaseline.ScopedDatabase database;
+    DriverManagerDataSource dataSource;
+    JdbcTemplate jdbc;
     AiProtocolClient client;
     AiProviderRuntime runtime;
     AiGateway gateway;
@@ -40,8 +38,7 @@ class AiCallLogResetGenerationPostgresTest {
     CountDownLatch release;
     ExecutorService executor;
 
-    @BeforeAll
-    static void open() throws Exception {
+    void open() throws Exception {
         database = MigratedSchemaBaseline.openDatabase("ai_log_reset_generation");
         dataSource = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
         jdbc = new JdbcTemplate(dataSource);
@@ -50,16 +47,14 @@ class AiCallLogResetGenerationPostgresTest {
                 .isNotNegative();
     }
 
-    @AfterAll
-    static void close() throws Exception {
+    void close() throws Exception {
         if (database != null) database.close();
     }
 
     @BeforeEach
-    void setup() {
-        jdbc.queryForList("SELECT * FROM business_data_reset()");
-        gate = new BusinessDataResetDrainGate();
-        var logs = new AiCallLogService(new NamedParameterJdbcTemplate(jdbc), new DataSourceTransactionManager(dataSource), gate);
+    void setup() throws Exception {
+        open();
+        var logs = new AiCallLogService(new NamedParameterJdbcTemplate(jdbc), new DataSourceTransactionManager(dataSource));
         var providers = mock(AiProviderService.class);
         runtime = mock(AiProviderRuntime.class);
         when(runtime.protocol()).thenReturn(AiProtocol.OPENAI_CHAT);
@@ -90,6 +85,7 @@ class AiCallLogResetGenerationPostgresTest {
             executor.shutdownNow();
             assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
         }
+        close();
     }
 
     @Test
@@ -101,7 +97,6 @@ class AiCallLogResetGenerationPostgresTest {
         long generation = generation();
         commitReset();
         assertThat(generation()).isEqualTo(generation + 1);
-        assertThat(gate.blockingNewRequests()).isFalse();
         release.countDown();
         call.get(10, TimeUnit.SECONDS);
         assertThat(logs()).as("the old call ended after the clear, but belongs to the old dataset").isZero();
@@ -115,9 +110,9 @@ class AiCallLogResetGenerationPostgresTest {
         try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);
             try (var statement = connection.createStatement()) {
-                statement.executeQuery("SELECT * FROM business_data_reset()").close();
+                advanceHistoricalGeneration(connection);
             }
-            // Model a reset in a different process: this local gate is already IDLE.
+            // Model a reset in a different process: the ordinary application has no reset gate.
             release.countDown();
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
             while (System.nanoTime() < deadline && waitingLogLocks() == 0) Thread.sleep(10);
@@ -152,7 +147,7 @@ class AiCallLogResetGenerationPostgresTest {
         try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);
             try (var statement = connection.createStatement()) {
-                statement.executeQuery("SELECT * FROM business_data_reset()").close();
+                advanceHistoricalGeneration(connection);
             }
             connection.rollback();
         }
@@ -191,18 +186,30 @@ class AiCallLogResetGenerationPostgresTest {
     }
 
     private void commitReset() throws Exception {
-        assertThat(gate.beginDrain(5_000)).isEqualTo(com.uten.imp.features.admin.systemtest.BusinessDataResetDrainGate.DrainOutcome.STARTED);
-        try { jdbc.queryForList("SELECT * FROM business_data_reset()"); }
-        finally { gate.endReset(); }
+        try (Connection connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            advanceHistoricalGeneration(connection);
+            connection.commit();
+        }
     }
 
-    private static long generation() {
+    /** Privileged recovery simulation in this test's private database only; no reset function exists. */
+    private void advanceHistoricalGeneration(Connection connection) throws Exception {
+        try (var statement = connection.createStatement()) {
+            statement.execute("LOCK TABLE public.ai_call_logs IN ACCESS EXCLUSIVE MODE");
+            statement.execute("ALTER TABLE authorization_state DISABLE TRIGGER trg_business_reset_generation_guard");
+            statement.execute("UPDATE authorization_state SET business_reset_generation=business_reset_generation+1 WHERE singleton_id=1");
+            statement.execute("ALTER TABLE authorization_state ENABLE ALWAYS TRIGGER trg_business_reset_generation_guard");
+        }
+    }
+
+    private long generation() {
         return jdbc.queryForObject("SELECT business_reset_generation FROM authorization_state WHERE singleton_id=1", Long.class);
     }
 
-    private static long logs() { return jdbc.queryForObject("SELECT count(*) FROM ai_call_logs", Long.class); }
+    private long logs() { return jdbc.queryForObject("SELECT count(*) FROM ai_call_logs", Long.class); }
 
-    private static long waitingLogLocks() {
+    private long waitingLogLocks() {
         return jdbc.queryForObject("SELECT count(*) FROM pg_locks WHERE relation='public.ai_call_logs'::regclass AND NOT granted", Long.class);
     }
 

@@ -61,6 +61,8 @@ public class OrderDetail extends com.uten.imp.common.pricing.ProcurementPriceAss
     /** Effective financial decision for downstream receipts; contract exchangeRate remains frozen. */
     @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=com.uten.imp.common.finance.ExactDecimalText.class)
     private java.math.BigDecimal effectiveFinanceExchangeRate;
+    /** Latest termination request; the normal commercial finance approval remains independent. */
+    private com.uten.imp.application.port.ProcurementOrderClosureReadPort.ClosureRequestView closureRequest;
 
     /**
      * @param caseId 首条案件 id, 供页面深链到委外回厂短交判定页

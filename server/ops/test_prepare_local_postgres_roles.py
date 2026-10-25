@@ -8,6 +8,7 @@ An already available PostgreSQL 16 image is required; tests never pull an image.
 
 import json
 import hashlib
+import hmac
 import os
 from pathlib import Path
 import secrets
@@ -40,6 +41,7 @@ PROTECTED_TABLES = SOURCE_TABLES + (
 PRIVATE_FUNCTIONS = (
     "business_data_reset()",
     "fn_require_runtime_maintenance(boolean)",
+    "fn_require_runtime_refresh()",
     "fn_business_test_reset_verify_purged()",
     "fn_clear_business_test_object_metadata()",
     "fn_audit_track_table()",
@@ -385,12 +387,42 @@ class PrepareLocalPostgresRolesTest(unittest.TestCase):
         self.assertEqual(self.scalar("SELECT payload FROM first_restored_business"), "new instance")
 
     def test_admin_extension_remains_owned_by_admin_and_usable_by_runtime(self):
-        self.psql("CREATE EXTENSION pgcrypto", role="uten_dev_admin")
+        self.psql("CREATE EXTENSION pgcrypto; CREATE EXTENSION pg_trgm; "
+                  "CREATE FUNCTION public.fn_register_legacy_fixture_admin_decoy_source() "
+                  "RETURNS integer LANGUAGE sql AS $$ SELECT 71 $$;", role="uten_dev_admin")
         self.apply_repair()
         self.assertEqual(self.scalar("SELECT pg_get_userbyid(extowner) FROM pg_extension "
                                      "WHERE extname='pgcrypto'"), "uten_dev_admin")
         self.assertEqual(self.scalar("SELECT encode(digest('hello','sha256'),'hex')"),
                          hashlib.sha256(b"hello").hexdigest())
+        # Flyway owns ordinary objects, but these extension functions remain
+        # bootstrap-owned. PUBLIC revocation must not break a real owner import.
+        for role in ("uten_migrator", "uten"):
+            self.assertEqual(self.scalar("SELECT encode(hmac('fixture-value','fixture-key','sha256'),'hex')",
+                                         role=role),
+                             hmac.new(b"fixture-key", b"fixture-value", hashlib.sha256).hexdigest())
+            self.assertEqual(self.scalar("SELECT pgp_sym_decrypt(pgp_sym_encrypt('fixture-plaintext','fixture-key'),'fixture-key')",
+                                         role=role), "fixture-plaintext")
+            self.assertEqual(self.scalar("SELECT similarity('uten','uten')", role=role), "1")
+        self.assertEqual(self.scalar("""
+            SELECT bool_and(p.proowner='uten_dev_admin'::regrole
+                            AND has_function_privilege('uten_migrator',p.oid,'EXECUTE'))
+            FROM pg_proc p JOIN pg_depend d ON d.classid='pg_proc'::regclass AND d.objid=p.oid
+              AND d.refclassid='pg_extension'::regclass AND d.deptype='e'
+            JOIN pg_extension e ON e.oid=d.refobjid
+            WHERE e.extname IN('pgcrypto','pg_trgm') AND p.pronamespace='public'::regnamespace
+        """), "t")
+        # The new grant is catalog-membership based, not ALL public functions or
+        # a familiar name prefix. Private issuer/reset boundaries remain intact.
+        self.assert_permission_denied("SELECT fn_register_legacy_fixture_admin_decoy_source()",
+                                      role="uten_migrator")
+        self.assert_permission_denied("SELECT fn_register_legacy_fixture_admin_decoy_source()")
+        self.assert_permission_denied("SELECT fn_register_legacy_fixture_source()")
+        self.assert_permission_denied("SELECT business_data_reset()")
+        self.assertEqual(self.scalar("SELECT calls FROM fixture_reset_invocations"), "0")
+        before = self.snapshot(role="uten_dev_admin")
+        self.apply_repair()
+        self.assertEqual(self.snapshot(role="uten_dev_admin"), before)
         self.assert_permission_denied("DROP EXTENSION pgcrypto")
 
     def test_bootstrap_runtime_is_refused_without_mutation(self):

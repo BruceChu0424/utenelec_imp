@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 import '../../components/layout/uten_editable_grid.dart';
-import '../../components/layout/uten_draft_status_layout.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/authenticated_request_scope.dart';
@@ -14,6 +13,7 @@ import '../../core/network/server_config.dart';
 import '../../core/performance/json_value_snapshot.dart';
 import '../../core/performance/responsive_data_codec.dart';
 import '../../core/router/nav_helpers.dart';
+import '../../core/ui/app_notification.dart';
 
 import '../providers/authenticated_scope_provider.dart';
 import '../providers/session_provider.dart';
@@ -49,7 +49,6 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     if (!formDraftIdentityIsCurrent || !formDraftEnabled) return;
     _draftSubmissionPending = true;
     _draftSubmissionBlocked = true;
-    _draftStatus.value = '原提交需要在当前查看范围下重新核对，输入继续保留';
     super.setState(() {});
   }
 
@@ -65,10 +64,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
 
   /// Adopt only a locally persisted, already confirmed checkpoint after the
   /// feature validates its original command receipt. No business API is called.
-  void adoptFormDraftRecoveryCheckpoint(
-    FormDraft checkpoint, {
-    String status = '原创建已核对，未完成附件仍保留在本机',
-  }) {
+  void adoptFormDraftRecoveryCheckpoint(FormDraft checkpoint) {
     if (!formDraftIdentityIsCurrent ||
         checkpoint.id != _draftId ||
         ref
@@ -89,7 +85,6 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     _draftError = null;
     _draftSavedSnapshot = _captureDraftSnapshot();
     _draftPendingSnapshot = null;
-    _draftStatus.value = status;
     if (mounted) super.setState(() {});
   }
 
@@ -125,8 +120,13 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   void invalidateFormDraftIdentity() {
     if (!mounted || _draftDisposed || _draftIdentityChanged) return;
     super.setState(() => _draftIdentityChanged = true);
-    _draftStatus.value = '登录身份、权限或服务器已变化，请重新进入页面';
   }
+
+  /// Most editors retire on any permission change. An editor with a separate
+  /// live action-capability check may project out that action permission only;
+  /// its identity, API, read permissions and other scope must remain fenced.
+  Object formDraftReadBoundaryIdentity(SensitiveReadBoundary boundary) =>
+      boundary;
 
   /// Pages with an initial asynchronous GET start this before loading. Other
   /// editors start it when initializing the draft, before any storage await.
@@ -134,11 +134,15 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// source read, including an ABA change before draft initialization finishes.
   void startFormDraftIdentityGuard({bool includePermissions = true}) {
     if (includePermissions && _draftReadBoundarySubscription == null) {
-      final original = ref.read(sensitiveReadBoundaryProvider);
+      final original = formDraftReadBoundaryIdentity(
+        ref.read(sensitiveReadBoundaryProvider),
+      );
       _draftReadBoundarySubscription = ref.listenManual(
         sensitiveReadBoundaryProvider,
         (_, next) {
-          if (next != original) invalidateFormDraftIdentity();
+          if (formDraftReadBoundaryIdentity(next) != original) {
+            invalidateFormDraftIdentity();
+          }
         },
       );
     }
@@ -190,7 +194,6 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     }
     _draftRestoreBlocked = true;
     _draftError = error;
-    _draftStatus.value = '来源已变化，原填写草稿已保留，请重新读取最新任务。';
     super.setState(() {});
   }
 
@@ -207,7 +210,6 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     _restorePlatformGridDrafts(snapshot);
   }
 
-  final _draftStatus = ValueNotifier<String>('');
   final _draftListeners = <Listenable>{};
   bool _draftReady = false;
   bool _draftRestoring = false;
@@ -285,7 +287,6 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
           ref.read(apiBaseUrlProvider) != _draftServer) {
         if (mounted) {
           _draftIdentityChanged = true;
-          _draftStatus.value = '登录身份或服务器已变化，请重新进入新建页面';
         }
         return;
       }
@@ -318,21 +319,16 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
             ref.read(apiBaseUrlProvider) != _draftServer) {
           if (mounted) {
             _draftIdentityChanged = true;
-            _draftStatus.value = '登录身份或服务器已变化，请重新进入新建页面';
           }
           return;
         }
         _draftSavedSnapshot = _captureDraftSnapshot();
         _draftSubmissionBlocked =
             _draftSubmissionPending && !formDraftCanReplaySubmission;
-        _draftStatus.value = _draftSubmissionBlocked
-            ? '上次提交结果待确认，请先核对任务中心的单据记录，避免重复创建。'
-            : '已恢复本机草稿';
       }
     } catch (error) {
       _draftError = error;
       _draftRestoreBlocked = resumeId != null;
-      _draftStatus.value = '草稿保护未就绪：$error';
     } finally {
       if (formDraftIdentityIsCurrent &&
           ref.read(authenticatedScopeProvider) == scope &&
@@ -408,7 +404,6 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     final scope = _draftScope;
     final server = _draftServer;
     super.setState(() => _draftRestoring = true);
-    _draftStatus.value = '正在读取最新单据，原本机草稿仍保留…';
     try {
       await formDraftReloadSource!();
       if (!mounted) return;
@@ -419,13 +414,13 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
         return;
       }
       await resetFormDraftAfterSubmission(preserveCurrentDraft: true);
-      if (mounted && !_draftIdentityChanged && _draftError == null) {
-        _draftStatus.value = '原本机草稿已保留；已读取最新单据，请核对后继续。';
-      }
     } catch (error) {
       _draftError = error;
       _draftRestoreBlocked = true;
-      _draftStatus.value = '最新单据读取失败，原本机草稿仍保留：$error';
+      // 用户主动点「保留本机草稿，加载最新单据」失败：瞬时通知，遮罩原地保留。
+      if (mounted) {
+        context.appApiError(error, fallback: '最新单据读取失败，原本机草稿仍保留');
+      }
     } finally {
       _draftRestoring = false;
       if (mounted) super.setState(() {});
@@ -502,11 +497,9 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       }
       _draftExitAllowed = false;
       _draftPendingSnapshot = snapshot;
-      _draftStatus.value = '正在保存本机草稿…';
       _flushDraftQuietly();
     } catch (error) {
       _draftError = error;
-      _draftStatus.value = '草稿保存失败：$error';
     }
   }
 
@@ -515,7 +508,6 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       saveFormDraftNow().catchError((Object error) {
         if (_draftDisposed) return;
         _draftError = error;
-        _draftStatus.value = '草稿尚未保存，请勿关闭页面：$error';
       }),
     );
   }
@@ -577,7 +569,6 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     } catch (error) {
       if (!_draftDisposed) {
         _draftError = error;
-        _draftStatus.value = '单据已保存，继续处理本单；本机恢复记录暂存失败。';
       }
     }
   }
@@ -611,7 +602,6 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
         _draftRevision = null;
         _draftSavedSnapshot = snapshot;
         _draftError = null;
-        if (!_draftDisposed) _draftStatus.value = '';
         continue;
       }
       final saved = await _draftStore!.save(
@@ -621,7 +611,6 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       _draftRevision = saved.revision;
       _draftSavedSnapshot = snapshot;
       _draftError = null;
-      if (!_draftDisposed) _draftStatus.value = '已自动保存本机草稿';
     }
   }
 
@@ -770,7 +759,6 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
         } catch (checkpointError) {
           if (!_draftDisposed) {
             _draftError = checkpointError;
-            _draftStatus.value = '服务端未接受本次提交，内容仍在页面；本机草稿暂未保存成功，请勿关闭页面。';
           }
         }
       } else if (!formDraftCanReplaySubmission && mounted) {
@@ -807,13 +795,9 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       } catch (_) {
         // Business success must never enter the caller's create-failure/retry path.
         // The pre-write marker remains on disk and blocks unsafe replay.
-        if (!_draftDisposed) {
-          _draftStatus.value = '单据已保存，本机草稿清理失败；请以任务中心的单据记录为准。';
-        }
         return;
       }
     }
-    if (!_draftDisposed) _draftStatus.value = '';
   }
 
   Future<bool> _confirmDraftExit() {
@@ -926,7 +910,11 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       return true;
     } catch (error) {
       _draftError = error;
-      _draftStatus.value = '草稿尚未保存，请保留页面重试：$error';
+      // 底部状态条已退役（2026-10-24）：退出保存失败改为瞬时通知，
+      // 页面仍留在原地保护输入，可再次尝试离开。
+      if (mounted) {
+        context.appApiError(error, fallback: '草稿尚未保存，请保留页面重试');
+      }
       return false;
     }
   }
@@ -958,100 +946,77 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
           });
         }
       },
-      child: ValueListenableBuilder<String>(
-        valueListenable: _draftStatus,
-        builder: (context, status, child) => UtenDraftStatusLayout(
-          status: status,
-          isError: _draftError != null,
-          onRetry:
-              _draftError == null ||
-                  formDraftBusy ||
-                  _draftRestoreBlocked ||
-                  _draftSubmissionBlocked ||
-                  _draftFinished
-              ? null
-              : () async {
-                  try {
-                    await saveFormDraftNow();
-                  } catch (error) {
-                    if (!_draftDisposed) {
-                      _draftError = error;
-                      _draftStatus.value = '草稿尚未保存，请保留页面重试：$error';
-                    }
-                  }
-                },
-          child: child!,
-        ),
-        child: Stack(
-          children: [
-            AbsorbPointer(
-              absorbing:
+      // 2026-10-24 起草稿保存进度不再常驻底部状态条：自动保存静默进行，
+      // 失败由退出守卫与瞬时通知兜底；恢复/阻断遮罩仍在下方 Stack 内。
+      child: Stack(
+        children: [
+          AbsorbPointer(
+            absorbing:
+                _draftRestoring ||
+                _draftIdentityChanged ||
+                _draftRestoreBlocked ||
+                _draftSubmissionBlocked,
+            child: ExcludeFocus(
+              excluding:
                   _draftRestoring ||
                   _draftIdentityChanged ||
                   _draftRestoreBlocked ||
                   _draftSubmissionBlocked,
-              child: ExcludeFocus(
-                excluding:
-                    _draftRestoring ||
-                    _draftIdentityChanged ||
-                    _draftRestoreBlocked ||
-                    _draftSubmissionBlocked,
-                child: child,
+              child: child,
+            ),
+          ),
+          if (_draftRestoring)
+            const Positioned.fill(
+              child: Material(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 12),
+                      Text('正在准备草稿保护…'),
+                    ],
+                  ),
+                ),
               ),
             ),
-            if (_draftRestoring)
-              const Positioned.fill(
-                child: Material(
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 12),
-                        Text('正在准备草稿保护…'),
+          if (!_draftRestoring &&
+              (_draftRestoreBlocked || _draftSubmissionBlocked))
+            Center(
+              child: Material(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _draftSubmissionBlocked
+                            ? '上次提交的结果尚未确认。输入已保留，请先到任务中心核对是否已经生成单据。'
+                            : '这份草稿暂时无法恢复，原草稿已保留。',
+                      ),
+                      const SizedBox(height: 12),
+                      if (formDraftSubmissionRecoveryAction
+                          case final recovery?) ...[
+                        recovery,
+                        const SizedBox(height: 12),
                       ],
-                    ),
-                  ),
-                ),
-              ),
-            if (!_draftRestoring &&
-                (_draftRestoreBlocked || _draftSubmissionBlocked))
-              Center(
-                child: Material(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _draftSubmissionBlocked
-                              ? '上次提交的结果尚未确认。输入已保留，请先到任务中心核对是否已经生成单据。'
-                              : '这份草稿暂时无法恢复，原草稿已保留。',
+                      if (_canReloadDraftSource) ...[
+                        FilledButton(
+                          onPressed: _reloadDraftSource,
+                          child: const Text('保留本机草稿，加载最新单据'),
                         ),
                         const SizedBox(height: 12),
-                        if (formDraftSubmissionRecoveryAction
-                            case final recovery?) ...[
-                          recovery,
-                          const SizedBox(height: 12),
-                        ],
-                        if (_canReloadDraftSource) ...[
-                          FilledButton(
-                            onPressed: _reloadDraftSource,
-                            child: const Text('保留本机草稿，加载最新单据'),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-                        FilledButton(
-                          onPressed: _returnToWorkbench,
-                          child: const Text('返回工作台'),
-                        ),
                       ],
-                    ),
+                      FilledButton(
+                        onPressed: _returnToWorkbench,
+                        child: const Text('返回工作台'),
+                      ),
+                    ],
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -1072,7 +1037,6 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     }
     _draftServerSubscription?.close();
     _draftListeners.clear();
-    _draftStatus.dispose();
     super.dispose();
   }
 }

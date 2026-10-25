@@ -1,5 +1,18 @@
 # ER 草图
 
+## 采购委外提前结束 (V922/V923)
+
+```mermaid
+erDiagram
+    procurement_order_approval_cases ||--o{ procurement_order_termination_sources : releases_source_shares
+    procurement_order_approval_cases ||--o{ procurement_order_termination_peg_changes : releases_unused_supply
+    procurement_order_approval_cases o|--o{ purchase_orders : termination_case_id
+    procurement_order_approval_cases o|--o{ subcontract_orders : termination_case_id
+    production_material_supply_pegs ||--o{ procurement_order_termination_peg_changes : source_and_target
+```
+
+原订单与原来源行保留，结束审批通过 `replacement_order_id` 关联同类型新草稿，不虚构收货、库存、损耗或往来核销，见 [ADR-193](../99-决策记录-ADR/ADR-193-采购委外提前结束与余量重建财审.md)。
+
 ## 本人自定义列删除 (V888)
 
 ```mermaid

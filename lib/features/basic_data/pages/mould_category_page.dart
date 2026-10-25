@@ -37,6 +37,7 @@ import '../widgets/master_inline_edit.dart';
 import '../repositories/master_inline_edit_repository.dart';
 import '../widgets/master_entity_detail_pane.dart';
 import '../widgets/master_detail_sheet.dart';
+import '../widgets/master_legacy_remark.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/master_status_confirmation.dart';
 import '../widgets/mould_manufacturer_field.dart';
@@ -355,6 +356,54 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     final moulds = ref.watch(mouldRepositoryProvider);
     return MasterEntityPaneConfig<MouldListItem, MouldDetail>(
       noun: '模具', // TODO(l10n): 补 arb
+      inlineCreation: (pane) => MasterInlineCreateConfig(
+        namespace: 'moulds.${pane.categoryId}',
+        fields: [
+          const MasterFieldDef(
+            key: 'code',
+            label: '编号',
+            identifierDomain: 'MOULD',
+            hint: '留空按分类自动生成',
+          ),
+          const MasterFieldDef(key: 'name', label: '模具名称', required: true),
+          const MasterFieldDef(key: 'mnumber', label: '备用编号'),
+          const MasterFieldDef(key: 'qty', label: '模数'),
+          const MasterFieldDef(
+            key: 'tqty',
+            label: '套数',
+            type: MasterFieldType.money,
+          ),
+          const MasterFieldDef(key: 'manufacturer', label: '制造厂家'),
+          MasterFieldDef(
+            key: 'mstatus',
+            label: '制造年月',
+            type: MasterFieldType.custom,
+            customBuilder: (field) => UtenMonthField(
+              label: '制造年月',
+              value: field.initialValue,
+              onChanged: field.onChanged,
+            ),
+          ),
+          const MasterFieldDef(key: 'remark', label: '备注'),
+          if (_canStatusMaster)
+            const MasterFieldDef(
+              key: 'status',
+              label: '状态',
+              required: true,
+              type: MasterFieldType.select,
+              options: kMasterStatusOptions,
+            ),
+        ],
+        defaults: {'status': '使用', 'categoryId': pane.categoryId},
+        canCreate: perms.contains(Perm.mouldCreate),
+        onCreate: (_, values) async {
+          await ref.read(mouldRepositoryProvider).create({
+            'status': '使用',
+            ...values,
+            'categoryId': pane.categoryId,
+          });
+        },
+      ),
       icon: Icons.precision_manufacturing_outlined,
       defaultCodePrefix: 'MJ',
       columns: _mouldColumns,
@@ -818,7 +867,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     MasterDetailRow('保管人', d.keeperId == null ? null : d.keeperName),
     if (d.keeperId == null && d.keeper?.isNotEmpty == true)
       MasterDetailRow('历史保管人', d.keeper),
-    MasterDetailRow('备注', d.remark), // TODO(l10n): 补 arb
+    MasterDetailRow('备注', masterLegacyRemarkText(context, d.remark)),
     MasterDetailRow('旧系统 ID', d.legacyId?.toString()), // TODO(l10n): 补 arb
   ];
 
@@ -887,6 +936,11 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       label: '备注',
       width: 200,
       value: (m) => m.remark,
+      cellBuilder: (context, m) => Text(
+        masterLegacyRemarkText(context, m.remark) ?? '—',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
     ),
   ];
 }

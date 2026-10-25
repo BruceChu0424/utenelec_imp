@@ -4,6 +4,8 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/theme/uten_tokens.dart';
 import 'master_edit_dialog.dart';
+import 'master_detail_sheet.dart';
+import 'master_legacy_remark.dart';
 
 /// Uses the editor's field definitions so view mode cannot reorder a master.
 class MasterReadOnlyFields extends StatelessWidget {
@@ -55,11 +57,10 @@ class MasterReadOnlyFields extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: UtenSpacing.s4),
-                      Text(
-                        valueOf(field)?.trim().isNotEmpty == true
-                            ? valueOf(field)!
-                            : '—',
-                        style: theme.textTheme.bodyMedium,
+                      MasterDetailValue(
+                        value: field.key == 'remark'
+                            ? masterLegacyRemarkText(context, valueOf(field))
+                            : valueOf(field),
                       ),
                     ],
                   ),

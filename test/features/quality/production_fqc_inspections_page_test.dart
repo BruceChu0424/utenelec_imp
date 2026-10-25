@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +7,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/filter_segment_tap.dart';
+import '../../support/page_resume_test_bridge.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -36,6 +39,41 @@ Future<void> _pumpPage(
   // 批量审批页依赖 shared_preferences（页面偏好缓存）。
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
+  final router = GoRouter(
+    initialLocation: RouteName.productionFqcInspections,
+    routes: [
+      GoRoute(
+        path: RouteName.productionFqcInspections,
+        builder: (_, _) => const ProductionFqcInspectionsPage(),
+      ),
+      GoRoute(
+        path: '${RouteName.productionFqcInspectionHandlingBase}/:inspectionId',
+        builder: (context, state) => handlingResult == null
+            ? ProductionFqcInspectionPage(
+                inspectionId: state.pathParameters['inspectionId']!,
+                extra: state.extra,
+              )
+            : Scaffold(
+                body: TextButton(
+                  onPressed: () {
+                    api.decided = true;
+                    context.pop(handlingResult);
+                  },
+                  child: const Text('返回部分已决定结果'),
+                ),
+              ),
+      ),
+      GoRoute(
+        path: RouteName.warehouseInspectionBatchApproval,
+        builder: (_, state) => QualityBatchApprovalPage(
+          selection: state.extra is QualityBatchApprovalSelection
+              ? state.extra! as QualityBatchApprovalSelection
+              : const QualityBatchApprovalSelection(),
+        ),
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -48,43 +86,13 @@ Future<void> _pumpPage(
         sharedPreferencesProvider.overrideWithValue(preferences),
       ],
       // 带路由壳：2026-09-12 起双击进 FQC 办理页、批量审批进汇总页（都不再弹窗）。
-      child: MaterialApp.router(
-        locale: const Locale('zh'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        routerConfig: GoRouter(
-          routes: [
-            GoRoute(
-              path: '/',
-              builder: (_, _) => const ProductionFqcInspectionsPage(),
-            ),
-            GoRoute(
-              path:
-                  '${RouteName.productionFqcInspectionHandlingBase}/:inspectionId',
-              builder: (context, state) => handlingResult == null
-                  ? ProductionFqcInspectionPage(
-                      inspectionId: state.pathParameters['inspectionId']!,
-                      extra: state.extra,
-                    )
-                  : Scaffold(
-                      body: TextButton(
-                        onPressed: () {
-                          api.decided = true;
-                          context.pop(handlingResult);
-                        },
-                        child: const Text('返回部分已决定结果'),
-                      ),
-                    ),
-            ),
-            GoRoute(
-              path: RouteName.warehouseInspectionBatchApproval,
-              builder: (_, state) => QualityBatchApprovalPage(
-                selection: state.extra is QualityBatchApprovalSelection
-                    ? state.extra! as QualityBatchApprovalSelection
-                    : const QualityBatchApprovalSelection(),
-              ),
-            ),
-          ],
+      child: PageResumeTestBridge(
+        router: router,
+        child: MaterialApp.router(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          routerConfig: router,
         ),
       ),
     ),
@@ -154,10 +162,19 @@ void main() {
       tester.element(find.byType(ProductionFqcInspectionPage)),
     );
     expect(find.byKey(const Key('fqc-inspection-submit-report')), findsNothing);
+    final capability = Completer<Map<String, dynamic>>();
+    api.capabilityResponse = capability;
     container.read(_fqcPermissions.notifier).state = {
       Perm.productionQualityInspectionView,
       Perm.productionQualityInspectionApprove,
     };
+    await tester.pump();
+    expect(
+      find.byKey(const Key('fqc-inspection-submit-report')),
+      findsNothing,
+      reason: 'approval waits for the fresh server capability',
+    );
+    capability.complete({'canDecide': true});
     await tester.pumpAndSettle();
     expect(
       find.byKey(const Key('fqc-inspection-submit-report')),
@@ -188,6 +205,25 @@ void main() {
     expect(row().idempotencyKey, key);
     expect(api.detailCalls, detailReads);
     expect(api.decisionBody, isNull);
+    // Reading authority remains a sticky boundary even though the narrower
+    // approval permission can change without destroying unfinished quantities.
+    container.read(_fqcPermissions.notifier).state = {};
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('fqc-inspection-decision-table')),
+      findsNothing,
+    );
+    expect(find.byKey(const Key('fqc-inspection-submit-report')), findsNothing);
+    container.read(_fqcPermissions.notifier).state = {
+      Perm.productionQualityInspectionView,
+      Perm.productionQualityInspectionApprove,
+    };
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('fqc-inspection-decision-table')),
+      findsNothing,
+      reason: 'restored grants cannot revive a retired read owner',
+    );
   });
 
   testWidgets('服务端多词结果处置回写仍保留匹配行，刷新失败不会误删部分任务', (tester) async {
@@ -593,6 +629,7 @@ class _FqcApi extends ApiClient {
   Map<String, dynamic>? decisionBody;
   Map<String, dynamic>? batchBody;
   final bool canDecide;
+  Completer<Map<String, dynamic>>? capabilityResponse;
   final bool failReloadAfterDecision;
   final int totalPages;
 
@@ -707,7 +744,9 @@ class _FqcApi extends ApiClient {
   }) async {
     if (path.endsWith('/capability')) {
       capabilityCalls++;
-      return {'canDecide': canDecide};
+      final pending = capabilityResponse;
+      capabilityResponse = null;
+      return pending == null ? {'canDecide': canDecide} : pending.future;
     }
     if (path.endsWith('/count')) return const {'count': 1};
     const listPath = '/production/quality-inspections';

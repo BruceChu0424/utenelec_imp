@@ -43,7 +43,7 @@ public class ProductionReadinessReconciler {
         this.readTransactions.setTimeout(3);
     }
 
-    /** The existing DrainAwareTaskScheduler controls admission during business-data reset. */
+    /** Scheduled executions are recorded by the shared task scheduler. */
     @Scheduled(initialDelay = 5_000, fixedDelay = 60_000)
     public void reconcile() {
         if (enabled) runBatch();

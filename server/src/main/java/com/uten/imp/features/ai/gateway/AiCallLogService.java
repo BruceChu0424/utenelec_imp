@@ -1,6 +1,5 @@
 package com.uten.imp.features.ai.gateway;
 
-import com.uten.imp.application.port.BusinessDataResetGatePort;
 import com.uten.imp.features.ai.provider.AiProviderDtos;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -20,7 +19,7 @@ import java.math.BigDecimal;
 /**
  * AI 调用技术记录(ai_call_logs, ADR-133): 每次调用(含重试的每一次)一行, 只有用途、服务商、模型、
  * 成败、HTTP 状态、token 与耗时; 不存提示词、回复与密钥。写入在独立短事务里, 失败只记日志,
- * 从不让调用方失败; 业务数据清空排水期间跳过(表会被清空)。
+ * 从不让调用方失败; 异步响应仍需匹配捕获的数据代际。
  */
 @Slf4j
 @Service
@@ -28,12 +27,9 @@ public class AiCallLogService {
 
     private final NamedParameterJdbcTemplate jdbc;
     private final TransactionTemplate requiresNew;
-    private final BusinessDataResetGatePort resetGate;
 
-    public AiCallLogService(NamedParameterJdbcTemplate jdbc, PlatformTransactionManager transactionManager,
-                            BusinessDataResetGatePort resetGate) {
+    public AiCallLogService(NamedParameterJdbcTemplate jdbc, PlatformTransactionManager transactionManager) {
         this.jdbc = jdbc;
-        this.resetGate = resetGate;
         this.requiresNew = new TransactionTemplate(transactionManager);
         this.requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.requiresNew.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
@@ -65,7 +61,7 @@ public class AiCallLogService {
     }
 
     public PricingSnapshot capturePricing(UUID providerId, String model, Long generation) {
-        if (providerId == null || generation == null || !resetGate.tryEnter()) return null;
+        if (providerId == null || generation == null) return null;
         try {
             return requiresNew.execute(status -> jdbc.query("""
                     SELECT p.billing_mode,p.billing_currency,p.billing_input_per_million,p.billing_output_per_million,p.version
@@ -79,12 +75,11 @@ public class AiCallLogService {
         } catch (RuntimeException unavailable) {
             log.warn("AI price snapshot read failed: {}", unavailable.getClass().getSimpleName());
             return null;
-        } finally { resetGate.leave(); }
+        }
     }
 
     /** Capture once before a logical network call, including all of its retries. */
     public Long captureResetGeneration() {
-        if (!resetGate.tryEnter()) return null;
         try {
             return requiresNew.execute(status -> jdbc.queryForObject("""
                     SELECT business_reset_generation FROM authorization_state WHERE singleton_id = 1
@@ -92,22 +87,20 @@ public class AiCallLogService {
         } catch (RuntimeException error) {
             log.warn("AI call log reset generation read failed: {}", error.getClass().getSimpleName());
             return null;
-        } finally {
-            resetGate.leave();
         }
     }
 
     /** 写一行; 任何失败都吞掉(记日志)。 */
     public void record(CallRecord call) {
         // An unknown generation cannot be rebound to whichever dataset exists now.
-        if (call.resetGeneration() == null || !resetGate.tryEnter()) {
+        if (call.resetGeneration() == null) {
             return;
         }
         try {
             requiresNew.executeWithoutResult(status -> {
                 // Lock the target before acquiring the INSERT's fresh RC snapshot.
-                // A reset may have committed while this lock was waiting; its
-                // TRUNCATE and generation increment must precede our new check.
+                // Data maintenance may have committed while this lock was waiting;
+                // check the captured generation against the new committed snapshot.
                 jdbc.getJdbcTemplate().execute("LOCK TABLE public.ai_call_logs IN ROW EXCLUSIVE MODE");
                 var pricing = call.pricing();
                 jdbc.update("""
@@ -150,8 +143,6 @@ public class AiCallLogService {
             });
         } catch (RuntimeException e) {
             log.warn("AI call log write failed: {}", e.getClass().getSimpleName());
-        } finally {
-            resetGate.leave();
         }
     }
 

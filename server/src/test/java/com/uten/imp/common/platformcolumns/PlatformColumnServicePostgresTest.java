@@ -58,7 +58,6 @@ class PlatformColumnServicePostgresTest {
         assertThat(saved.version()).isEqualTo(1);assertThat(read("goods").cells().getFirst().value()).isEqualTo("双层");
         assertThatThrownBy(()->tx(()->service.write("goods",record,new Write(0,List.of())))).isInstanceOf(ApiException.class);
         assertThat(read("goods").cells().getFirst().value()).isEqualTo("双层");
-        assertThat(sql.queryForObject("SELECT retain_on_reset FROM platform_record_fields WHERE scope='goods'",Boolean.class)).isTrue();
         assertThat(sql.queryForObject("SELECT count(*) FROM audit_log WHERE target_type='platform_record_field_versions' AND after->>'record_id'=?",Integer.class,record.toString())).isPositive();
         assertThat(service.search("goods","包装说").getFirst().personalUsageCount()).isEqualTo(1);
         assertThatThrownBy(()->sql.update("UPDATE platform_column_definitions SET name='改变历史' WHERE id=?",column.id())).isInstanceOf(Exception.class);
@@ -284,31 +283,6 @@ class PlatformColumnServicePostgresTest {
         Set<String> declared=new HashSet<>();while(matcher.find())declared.add(matcher.group(1));
         declared.removeAll(sql.queryForList("SELECT code FROM permissions",String.class));
         assertThat(declared).as("Display adapters must use real functional authorities").isEmpty();
-    }
-
-    @Test void explicitTestResetClearsCommercialHistoryButRetainsMasterCellsAndImmutableDefinitions() {
-        var masterColumn=define("goods","保留主档","TEXT",false,null);
-        var docColumn=define("sales_order","保留单据","TEXT",false,null);
-        tx(()->service.write("goods",record,new Write(0,List.of(new CellInput(masterColumn.id(),"主档备注")))));
-        tx(()->service.write("sales_order",record,new Write(0,List.of(new CellInput(docColumn.id(),"业务原备注")))));
-        var masterBefore=sql.queryForList("SELECT scope,record_id,version,cells::text FROM platform_record_fields WHERE scope='goods'");
-        assertThat(sql.queryForObject("SELECT count(*) FROM platform_record_field_versions",Integer.class)).isEqualTo(2);
-        // Ordinary destruction remains forbidden; only the authenticated whole testing reset has an exception.
-        assertThatThrownBy(()->sql.update("DELETE FROM platform_record_field_versions"))
-            .isInstanceOf(org.springframework.dao.DataAccessException.class).hasMessageContaining("permanent");
-        assertThatThrownBy(()->sql.update("UPDATE platform_column_definitions SET name='changed' WHERE id=?",masterColumn.id()))
-            .isInstanceOf(org.springframework.dao.DataAccessException.class);
-        tx(()->{service.delete("goods",masterColumn.id());return null;});
-        transaction.execute(status->sql.queryForList("SELECT * FROM business_data_reset()"));
-        assertThat(sql.queryForList("SELECT scope,record_id,version,cells::text FROM platform_record_fields WHERE scope='goods'")).isEqualTo(masterBefore);
-        assertThat(sql.queryForObject("SELECT count(*) FROM platform_record_fields WHERE scope='sales_order'",Integer.class)).isZero();
-        assertThat(sql.queryForObject("SELECT count(*) FROM platform_record_field_versions",Integer.class)).isZero();
-        assertThat(sql.queryForObject("SELECT count(*) FROM platform_column_definitions",Integer.class)).isEqualTo(2);
-        assertThat(sql.queryForObject("SELECT name FROM platform_column_definitions WHERE id=?",String.class,masterColumn.id())).isEqualTo("保留主档");
-        assertThat(sql.queryForObject("SELECT count(*) FROM platform_column_definition_deletions WHERE definition_id=?",Integer.class,masterColumn.id())).isEqualTo(1);
-        assertThat(service.search("goods","")).isEmpty();
-        assertThatThrownBy(()->sql.update("DELETE FROM platform_column_definitions WHERE id=?",masterColumn.id()))
-            .isInstanceOf(org.springframework.dao.DataAccessException.class);
     }
 
     @Test void saveBridgeRekeysMaskedFieldsTogetherWithTheRealBusinessRow() {
@@ -571,7 +545,8 @@ class PlatformColumnServicePostgresTest {
         @Override public boolean canCreate(){return !personal;}
         @Override public void requireDocumentSaveAccess(boolean create){if(!create)requireDefinitionAccess(true);else if(personal)throw new ApiException(ErrorCode.FORBIDDEN);}
         @Override public Map<UUID,RecordAccess> authorizeCreated(Set<UUID> ids){if(ids.stream().anyMatch(id->!PlatformColumnSaveLineage.wasPersisted(id)))throw new ApiException(ErrorCode.CONFLICT);return authorize(ids,false);}
-        @Override public boolean supportsValues(){return !personal||projectionRecords;}@Override public boolean personalDefinitions(){return personal;}@Override public boolean preserveValuesOnReset(){return preserve;}
+        @Override public boolean supportsValues(){return !personal||projectionRecords;}
+        @Override public boolean personalDefinitions(){return personal;}
         @Override public List<FactDefinition> facts(){return List.of(new FactDefinition("qty","数量",false),new FactDefinition("price","单价",true));}
         @Override public List<RelationDefinition> relations(){return targetVisible?List.of(new RelationDefinition("mouldName","模具名称")):List.of();}
         @Override public boolean canDefineRelatedColumns(){return targetVisible;}

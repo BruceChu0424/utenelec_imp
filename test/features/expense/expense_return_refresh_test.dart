@@ -24,6 +24,9 @@ import '../../support/filter_segment_tap.dart';
 class _Api extends ApiClient {
   _Api() : super(Dio());
   String status = 'SUBMITTED';
+  bool remoteCreated = false;
+  int get pendingCount =>
+      (status == 'SUBMITTED' ? 1 : 0) + (remoteCreated ? 1 : 0);
   final listCalls = <Map<String, dynamic>>[];
   int facetCalls = 0;
   int summaryCalls = 0;
@@ -39,12 +42,13 @@ class _Api extends ApiClient {
         'claimNos': [
           if (query?['queue'] != 'pending' || status == 'SUBMITTED')
             {'value': 'BX1', 'label': 'BX1', 'count': 1},
+          if (remoteCreated) {'value': 'BX2', 'label': 'BX2', 'count': 1},
         ],
       };
     }
     if (path.endsWith('/summary')) {
       summaryCalls++;
-      return {'pendingCount': status == 'SUBMITTED' ? 1 : 0};
+      return {'pendingCount': pendingCount};
     }
     if (path.endsWith('/mine') || path.endsWith('/pending')) {
       listCalls.add({'path': path, ...?query});
@@ -52,6 +56,11 @@ class _Api extends ApiClient {
       final matches = path.endsWith('/pending')
           ? status == 'SUBMITTED'
           : statuses == null || statuses.contains(status);
+      final matchesCreated =
+          remoteCreated &&
+          (path.endsWith('/pending') ||
+              statuses == null ||
+              statuses.contains('SUBMITTED'));
       return {
         'items': [
           if (matches)
@@ -67,10 +76,23 @@ class _Api extends ApiClient {
               'items': <Map<String, dynamic>>[],
               'version': status == 'SUBMITTED' ? 1 : 2,
             },
+          if (matchesCreated)
+            {
+              'id': 'claim-2',
+              'claimNo': 'BX2',
+              'applicantId': 'employee-1',
+              'applicantName': '申请人',
+              'title': '另一终端新建的报销',
+              'status': 'SUBMITTED',
+              'totalAmount': 50,
+              'createdAt': '2026-10-12T08:05:00Z',
+              'items': <Map<String, dynamic>>[],
+              'version': 1,
+            },
         ],
         'page': query?['page'] ?? 1,
         'size': 24,
-        'total': matches ? 1 : 0,
+        'total': (matches ? 1 : 0) + (matchesCreated ? 1 : 0),
         'totalPages': 1,
       };
     }
@@ -87,13 +109,13 @@ class _Badges extends BadgeSummaryNotifier {
     entries: {
       'expenseMine': BadgeCounts(
         api.status == 'REJECTED' ? 1 : 0,
-        api.status == 'SUBMITTED' ? 1 : 0,
+        api.pendingCount,
       ),
-      'expenseFinance': BadgeCounts(api.status == 'SUBMITTED' ? 1 : 0, 0),
+      'expenseFinance': BadgeCounts(api.pendingCount, 0),
     },
     facts: {
       BadgeFact.expenseRejected: api.status == 'REJECTED' ? 1 : 0,
-      BadgeFact.expensePendingApproval: api.status == 'SUBMITTED' ? 1 : 0,
+      BadgeFact.expensePendingApproval: api.pendingCount,
     },
   );
   @override
@@ -120,7 +142,7 @@ void main() {
   for (final approval in [false, true]) {
     for (final stale in [false, true]) {
       testWidgets(
-        '${approval ? 'approval' : 'mine'} queue ${stale ? 'refreshes after remote rejection and stale return' : 'preserves recent view-only return without extra requests'}',
+        '${approval ? 'approval' : 'mine'} queue ${stale ? 'refreshes after remote rejection and stale return' : 'revalidates immediately and shows a remote addition'}',
         (tester) async {
           await tester.binding.setSurfaceSize(const Size(1200, 1000));
           addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -203,6 +225,10 @@ void main() {
             // detail. No local write-revision shortcut can refresh the list.
             api.status = 'REJECTED';
             await tester.pump(const Duration(seconds: 31));
+          } else {
+            // A server-side creation has no local write-revision signal and
+            // must still appear after even the shortest detail visit.
+            api.remoteCreated = true;
           }
           await tester.tap(find.text('返回队列'));
           await tester.pumpAndSettle();
@@ -226,9 +252,19 @@ void main() {
               );
             }
           } else {
-            expect(api.listCalls.length, originalCalls);
-            expect(_table(tester).items.single.id, 'claim-1');
-            expect(badges.refreshCalls, 0);
+            expect(api.listCalls.length, originalCalls + 1);
+            expect(_table(tester).items.map((claim) => claim.id), [
+              'claim-1',
+              'claim-2',
+            ]);
+            expect(_table(tester).items.last.title, '另一终端新建的报销');
+            expect(
+              _table(tester).items.last.status,
+              ExpenseClaimStatus.submitted,
+            );
+            expect(api.facetCalls, originalFacetCalls + 1);
+            if (approval) expect(api.summaryCalls, originalSummaryCalls + 1);
+            expect(badges.refreshCalls, 1);
           }
           expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox());

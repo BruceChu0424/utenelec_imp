@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'editor_resource_key.dart';
 import '../../features/client_update/client_update_navigation.dart';
+import '../../features/company_files/pages/company_files_page.dart';
 import '../../features/stock/models/instant_inventory_scope.dart';
 import '../../shared/ai/guided/ai_guided_file_plan.dart';
 
@@ -572,6 +573,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
 
           // —— 工资 ——
+          DraftAwareGoRoute(
+            path: RouteName.companyFiles,
+            name: 'company-files',
+            builder: (_, _) => const CompanyFilesPage(),
+          ),
           DraftAwareGoRoute(
             path: '/payroll/slip',
             name: 'payroll-slip-list',

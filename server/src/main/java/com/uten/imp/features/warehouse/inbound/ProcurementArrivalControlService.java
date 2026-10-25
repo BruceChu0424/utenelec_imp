@@ -87,6 +87,17 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         return "COALESCE(fn_purchase_order_gift_remaining_qty("+itemAlias+".order_item_id),0)";
     }
 
+    private static String terminatedOrder(String expectationAlias) {
+        return """
+                (EXISTS(SELECT 1 FROM purchase_orders terminated_order
+                    WHERE %1$s.order_type='PURCHASE' AND terminated_order.id=%1$s.order_id
+                      AND terminated_order.termination_case_id IS NOT NULL)
+                 OR EXISTS(SELECT 1 FROM subcontract_orders terminated_order
+                    WHERE %1$s.order_type='SUBCONTRACT' AND terminated_order.id=%1$s.order_id
+                      AND terminated_order.termination_case_id IS NOT NULL))
+                """.formatted(expectationAlias);
+    }
+
     private static String warehouseWorkRemaining() {
         return """
                 (expectation.status = 'OPEN' AND (
@@ -650,7 +661,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 prepend(orderType, orderItemIds));
         jdbc.update("""
                 UPDATE inbound_expectations expectation
-                SET status = CASE WHEN NOT EXISTS (
+                SET status = CASE WHEN %s THEN 'CLOSED' WHEN NOT EXISTS (
                         SELECT 1 FROM inbound_expectation_items item
                         WHERE item.expectation_id = expectation.id
                           AND %s
@@ -662,7 +673,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                       WHERE item.expectation_id = expectation.id
                         AND item.order_item_id IN (%s)
                   )
-                """.formatted(SUBCONTRACT.equals(orderType)
+                """.formatted(terminatedOrder("expectation"), SUBCONTRACT.equals(orderType)
                                 ? SubcontractLossSettlementSql.expectationRemainingQty("item", "expectation.order_type") + " > 0"
                                 : "(item.accepted_qty < item.ordered_qty OR fn_purchase_order_gift_remaining_qty(item.order_item_id)>0)", placeholders),
                 prepend(orderType, orderItemIds));
@@ -2383,6 +2394,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                   AND COALESCE(order_item.is_deleted, FALSE) = FALSE
                   AND COALESCE(procurement_order.is_deleted, FALSE) = FALSE
                   AND procurement_order.status = 1
+                  AND procurement_order.termination_case_id IS NULL
                 ORDER BY order_item.id, receipt_item.line_no NULLS LAST, receipt_item.id
                 FOR UPDATE OF receipt, receipt_item, order_item, procurement_order
                 """.formatted(allowedOverReceiptPctExpression,
@@ -2982,7 +2994,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 """.formatted(receiptItemTable, orderItemTable), orderType, receiptId);
         jdbc.update("""
                 UPDATE inbound_expectations expectation
-                SET status = CASE WHEN NOT EXISTS (
+                SET status = CASE WHEN %s THEN 'CLOSED' WHEN NOT EXISTS (
                         SELECT 1 FROM inbound_expectation_items item
                         WHERE item.expectation_id = expectation.id
                           AND %s
@@ -2997,7 +3009,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                       WHERE item.expectation_id = expectation.id
                         AND receipt_item.receipt_id = ?
                   )
-                """.formatted(SUBCONTRACT.equals(orderType)
+                """.formatted(terminatedOrder("expectation"), SUBCONTRACT.equals(orderType)
                                 ? SubcontractLossSettlementSql.expectationRemainingQty("item", "expectation.order_type") + " > 0"
                                 : "(item.accepted_qty < item.ordered_qty OR fn_purchase_order_gift_remaining_qty(item.order_item_id)>0)", receiptItemTable), orderType, receiptId);
         // 弹卡办结：expectation 已 CLOSED（全部登记完）时撤回「预计到货」

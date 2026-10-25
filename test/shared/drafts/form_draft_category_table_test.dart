@@ -47,6 +47,67 @@ typedef _Union = FormDraftCategoryRow<_Record>;
 const _scope = FormDraftCategoryScope(kind: 'salesOrder');
 
 void main() {
+  testWidgets('draft wrapper forwards background window and retry feedback', (
+    tester,
+  ) async {
+    var retries = 0;
+    final retained = <List<int>>[];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          formDraftsProvider.overrideWith(() => _Drafts([_draft('local')])),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: FormDraftCategoryTable<_Record>(
+              scope: _scope,
+              table: MasterDataTableView<_Record>(
+                columns: [
+                  MasterColumnDef(
+                    key: 'billNo',
+                    label: '单号',
+                    width: 180,
+                    value: (row) => row.number,
+                  ),
+                ],
+                items: const [_Record('second', 'NEW-SECOND')],
+                refreshedPages: const {
+                  1: [_Record('first', 'NEW-FIRST')],
+                  2: [_Record('second', 'NEW-SECOND')],
+                },
+                onRetainedPagesChanged: retained.add,
+                isRefreshing: true,
+                refreshError: 'offline',
+                onRetry: () => retries++,
+                currentPage: 2,
+                totalPages: 2,
+                onPageChange: (_) async {},
+                idOf: (row) => row.id,
+                facets: const {},
+                nullCounts: const {},
+                filters: const {},
+                onFilterChanged: (_, _) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final table = tester.widget<MasterDataTableView<_Union>>(
+      find.byType(MasterDataTableView<_Union>),
+    );
+    expect(table.isRefreshing, isTrue);
+    expect(table.refreshError, 'offline');
+    expect(table.refreshedPages.keys, [1, 2]);
+    expect(table.refreshedPages[1]!.single.record!.id, 'first');
+    expect(table.unpagedItems.where((row) => row.isLocal), hasLength(1));
+    table.onRetry!();
+    expect(retries, 1);
+    expect(retained, isNotEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'history stays available with formal rows and no active local drafts',
     (tester) async {

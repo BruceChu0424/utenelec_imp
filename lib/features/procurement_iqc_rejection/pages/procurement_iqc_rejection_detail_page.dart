@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -817,7 +818,8 @@ class _EventTile extends StatelessWidget {
     final theme = Theme.of(context);
     return Semantics(
       container: true,
-      label: '${_eventLabel(event.eventType)}，${event.createdAt ?? '时间未知'}',
+      label:
+          '${_eventLabel(event.eventType)}，${ChinaDateTime.formatIsoInstant(event.createdAt, fallback: '时间未知', seconds: true)}',
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -846,7 +848,10 @@ class _EventTile extends StatelessWidget {
                         event.reference,
                         event.eventDate,
                         event.reason,
-                        event.createdAt,
+                        ChinaDateTime.formatIsoInstant(
+                          event.createdAt,
+                          seconds: true,
+                        ),
                       ]
                       .where((value) => value?.trim().isNotEmpty == true)
                       .join(' · '),

@@ -10,12 +10,14 @@ import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/sales/models/sales_order_progress.dart';
 import 'package:uten_imp/features/sales/pages/sales_order_progress_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../../support/page_resume_test_bridge.dart';
 
 /// 页面 build 期捕获本页路径（onPageResume 返回即刷新用），需包一层 GoRouter。
 Widget _host() {
@@ -26,10 +28,17 @@ Widget _host() {
         path: '/sales/progress',
         builder: (_, _) => const SalesOrderProgressPage(),
       ),
+      GoRoute(
+        path: '/sales/orders/:id',
+        builder: (_, _) => const Scaffold(body: Text('ORDER-DETAIL')),
+      ),
     ],
   );
   addTearDown(router.dispose);
-  return MaterialApp.router(routerConfig: router);
+  return PageResumeTestBridge(
+    router: router,
+    child: MaterialApp.router(routerConfig: router),
+  );
 }
 
 void main() {
@@ -232,7 +241,7 @@ void main() {
   );
 
   testWidgets(
-    'history segment loads ALL orders (stage empty) across every stage',
+    'history segment defaults to last three months; 全部 loads ALL orders (stage empty)',
     (tester) async {
       // 历史记录 = 全部订单档案视图：含被驳回/进行中/已发货/已中止/已结案，
       // 不再只查已发货——用户反馈「点全部查不到订单」的口径回归锁。
@@ -260,16 +269,28 @@ void main() {
 
       await tester.tap(find.text('历史记录'));
       await tester.pumpAndSettle();
-      // 历史门默认「全部」（2026-10-04 口径）：历史记录被选中即全量加载，
-      // 不限时间（时间胶囊仍可切具体时间段）。
+      // 历史门默认近三个月（2026-10-24 口径）：选中即按最近三个月加载，
+      // 时间胶囊仍可切「全部」或具体时间段。
       expect(api.progressQueries, hasLength(2));
       // 历史记录不带 stage 参数（repo 空串省略）= 后端默认全部订单。
       expect(api.progressQueries.last.containsKey('stage'), isFalse);
+      final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
+      expect(
+        api.progressQueries.last['dateFrom'],
+        ChinaDateTime.formatDate(defaultRange.start),
+      );
+      expect(
+        api.progressQueries.last['dateTo'],
+        ChinaDateTime.formatDate(defaultRange.end),
+      );
 
-      // 再点已选中的「全部」胶囊不重复发请求。
+      // 「全部」不再默认选中：点它切换为不限时间，全量重查（不带日期）。
       await tester.tap(find.text('全部'));
       await tester.pumpAndSettle();
-      expect(api.progressQueries, hasLength(2));
+      expect(api.progressQueries, hasLength(3));
+      expect(api.progressQueries.last.containsKey('stage'), isFalse);
+      expect(api.progressQueries.last.containsKey('dateFrom'), isFalse);
+      expect(api.progressQueries.last.containsKey('dateTo'), isFalse);
 
       // 终态/被驳回订单都能出现在历史里；取消单（finance 未确认）显示「已中止」
       // 而非「等待财务审核」——终态优先于财务闸门。
@@ -342,7 +363,10 @@ void main() {
               Perm.salesOrderView,
             }),
           ],
-          child: MaterialApp.router(routerConfig: router),
+          child: PageResumeTestBridge(
+            router: router,
+            child: MaterialApp.router(routerConfig: router),
+          ),
         ),
       );
       await tester.pumpAndSettle();

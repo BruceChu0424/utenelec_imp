@@ -15,6 +15,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/stock/models/stock_query.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/measurement/weight_prefs.dart';
 import 'package:uten_imp/shared/stock_ledger/goods_stock_ledger_panel.dart';
@@ -41,6 +43,7 @@ class _PanelApi extends ApiClient {
   final posts = <(String, Object?)>[];
   int balanceCalls = 0;
   int traceCalls = 0;
+  bool emptyBalances = false;
 
   @override
   Future<List<Map<String, dynamic>>> getList(
@@ -164,24 +167,26 @@ class _PanelApi extends ApiClient {
       case '/stock/balances':
         balanceCalls++;
         return {
-          'items': [
-            {
-              'id': 'b1',
-              'warehouseId': 'w1',
-              'goodsId': 'g1',
-              'colorId': 'c1',
-              'qty': 5000,
-              'weight': 11.55,
-              'weightEstimated': true,
-            },
-            {
-              'id': 'b2',
-              'warehouseId': 'w1',
-              'goodsId': 'g1',
-              'qty': 20,
-              'weight': null,
-            },
-          ],
+          'items': emptyBalances
+              ? <Object>[]
+              : [
+                  {
+                    'id': 'b1',
+                    'warehouseId': 'w1',
+                    'goodsId': 'g1',
+                    'colorId': 'c1',
+                    'qty': 5000,
+                    'weight': 11.55,
+                    'weightEstimated': true,
+                  },
+                  {
+                    'id': 'b2',
+                    'warehouseId': 'w1',
+                    'goodsId': 'g1',
+                    'qty': 20,
+                    'weight': null,
+                  },
+                ],
           'page': 1,
           'size': 50,
           'total': 2,
@@ -378,12 +383,13 @@ Future<_PanelApi> _pump(
   Set<String> permissions = const {Perm.stockView},
   GoodsStockLedgerSegment initialSegment = GoodsStockLedgerSegment.balance,
   bool withNavigation = false,
+  _PanelApi? apiOverride,
 }) async {
   tester.view.physicalSize = const Size(1600, 1000);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  final api = _PanelApi();
+  final api = apiOverride ?? _PanelApi();
   final home = Scaffold(
     body: GoodsStockLedgerPanel(goodsId: 'g1', initialSegment: initialSegment),
   );
@@ -571,6 +577,7 @@ void main() {
       final oldResponse = Completer<Map<String, dynamic>>();
       final oldApi = _PanelApi()..contextResponse = oldResponse.future;
       final nextApi = _PanelApi()..contextName = '新公司货品';
+      final loadedNames = <String?>[];
       const permissions = {Perm.stockView};
       final container = ProviderContainer(
         overrides: [
@@ -588,8 +595,13 @@ void main() {
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
-          child: const MaterialApp(
-            home: Scaffold(body: GoodsStockLedgerPanel(goodsId: 'g1')),
+          child: MaterialApp(
+            home: Scaffold(
+              body: GoodsStockLedgerPanel(
+                goodsId: 'g1',
+                onGoodsLoaded: (goods) => loadedNames.add(goods.name),
+              ),
+            ),
           ),
         ),
       );
@@ -606,7 +618,7 @@ void main() {
         ),
       ]);
       await tester.pumpAndSettle();
-      expect(find.text('名称：新公司货品'), findsOneWidget);
+      expect(loadedNames, ['新公司货品']);
       oldResponse.complete({
         'items': [
           {'goodsId': 'g1', 'name': '旧公司货品', 'unitName': '个', 'qty': 99},
@@ -617,7 +629,8 @@ void main() {
         'totalPages': 1,
       });
       await tester.pumpAndSettle();
-      expect(find.text('名称：新公司货品'), findsOneWidget);
+      expect(loadedNames, ['新公司货品']);
+      expect(find.text('名称：新公司货品'), findsNothing);
       expect(find.text('名称：旧公司货品'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -658,6 +671,21 @@ void main() {
     await _pump(tester);
 
     expect(find.byKey(const ValueKey('stock-scoped-totals')), findsOneWidget);
+    final balanceTable = tester.widget<MasterDataTableView<BalanceRow>>(
+      find.byKey(const Key('stock-item-balance-table')),
+    );
+    expect(balanceTable.summaryBar, isNotNull);
+    expect(balanceTable.summaryBarInline, isTrue);
+    expect(find.text('名称：螺丝'), findsNothing);
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('stock-scoped-totals'))).dy,
+      greaterThan(
+        tester
+            .getBottomLeft(find.byKey(const ValueKey('balance-view-ledger-b2')))
+            .dy,
+      ),
+      reason: 'Scoped totals belong immediately after the last balance row.',
+    );
     expect(
       find.textContaining('库存 12,500'),
       findsNothing,
@@ -678,6 +706,57 @@ void main() {
     expect(find.byKey(const ValueKey('balance-adjust-b1')), findsNothing);
     expect(find.byKey(const ValueKey('balance-weigh-b1')), findsNothing);
   });
+
+  testWidgets(
+    'empty stock totals stay below the table and fit a narrow large-text view',
+    (tester) async {
+      final api = _PanelApi()
+        ..emptyBalances = true
+        ..contextResponse = Future.value({
+          'items': <Object>[],
+          'page': 1,
+          'size': 50,
+          'total': 0,
+          'totalPages': 1,
+          'totals': [
+            for (final key in ['qty', 'pending_qty', 'pending_stock_in_qty'])
+              {
+                'key': key,
+                'label': switch (key) {
+                  'qty' => '合计库存数量',
+                  'pending_qty' => '合计待检量',
+                  _ => '合计合格待入库',
+                },
+                'type': 'number',
+                'groupKey': 'unit_name',
+                'groups': [
+                  {'unit': '个', 'value': key == 'pending_qty' ? 6 : 0},
+                ],
+              },
+          ],
+        });
+      await _pump(tester, apiOverride: api);
+      tester.view.physicalSize = const Size(390, 844);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpAndSettle();
+
+      final summary = find.byKey(const ValueKey('stock-scoped-totals'));
+      await tester.ensureVisible(summary);
+      await tester.pumpAndSettle();
+      final bounds = tester.getRect(summary);
+      expect(bounds.left, greaterThanOrEqualTo(0));
+      expect(bounds.right, lessThanOrEqualTo(390));
+      expect(
+        bounds.top,
+        greaterThanOrEqualTo(tester.getBottomLeft(find.text('该货品暂无库存余额')).dy),
+      );
+      expect(find.text('合计待检量: '), findsOneWidget);
+      expect(find.text('6 个'), findsOneWidget);
+      expect(find.text('合计合格待入库: '), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'old weight and balance permissions no longer reveal retired direct edits',

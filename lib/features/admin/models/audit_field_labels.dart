@@ -84,6 +84,20 @@ abstract final class AuditFieldLabels {
   /// 表限定的列名标签(键 = `表名.列名`)，只收与通用字典含义不同或只属于
   /// 一张表的列；与服务端 AuditEventInterpreter.tableFieldLabels() 逐字一致。
   static const Map<String, String> _tableLabels = {
+    'company_file_nodes.parent_id': '上级文件夹',
+    'company_file_nodes.kind': '资料类型',
+    'company_file_nodes.position': '排列位置',
+    'company_file_nodes.inherit_permissions': '继承上级权限',
+    'company_file_nodes.password_hash': '目录密码',
+    'company_file_nodes.password_revision': '密码版本',
+    'company_file_nodes.attachment_id': '文件原件',
+    'company_file_nodes.pending': '上传未完成',
+    'company_file_nodes.deletion_batch': '回收批次',
+    'company_file_acl.node_id': '文件夹',
+    'company_file_acl.subject_type': '授权对象类型',
+    'company_file_acl.subject_id': '授权对象',
+    'company_file_acl.effect': '允许或拒绝',
+    'company_file_acl.actions': '操作权限',
     // ADR-175：平台品牌字段与服务端 AuditEventInterpreter.tableFieldLabels()
     // 逐字一致；版本、时间与主键沿用下方通用标签，图片字节不进入审计快照。
     'platform_branding.company_name': '公司名称',

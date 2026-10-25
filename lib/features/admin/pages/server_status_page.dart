@@ -899,7 +899,7 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
   String _date(DateTime? value) {
     if (value == null) return '—';
     final wallTime = ChinaDateTime.fromInstant(value);
-    return '${ChinaDateTime.formatDateTime(wallTime)}:${wallTime.second.toString().padLeft(2, '0')}';
+    return ChinaDateTime.formatDateTime(wallTime, seconds: true);
   }
 
   String _statusLabel(ServerHealthStatus status) => switch (status) {

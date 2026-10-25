@@ -27,6 +27,7 @@ const aiUsePermissionScope = PagePermissionScope(
 PagePermissionScope? pagePermissionScopeFor(String location) {
   final path = _normalizedPath(location);
   if (path == null) return null;
+  if (path == '/company-files') return _companyFilesScope;
   if (path == '/stock/count-session') {
     return const PagePermissionScope(
       surfaceKey: 'warehouse.stock-item',
@@ -188,6 +189,7 @@ PagePermissionScope? pagePermissionScopeBySurfaceKey(String surfaceKey) {
 
 const _registeredPagePermissionScopes = <PagePermissionScope>[
   aiUsePermissionScope,
+  _companyFilesScope,
   _employeeScope,
   _departmentScope,
   _payrollScope,
@@ -537,6 +539,11 @@ const _employeeScope = PagePermissionScope(
 const _departmentScope = PagePermissionScope(
   surfaceKey: 'org.department',
   title: '部门与岗位',
+);
+
+const _companyFilesScope = PagePermissionScope(
+  surfaceKey: 'common.company-files',
+  title: '公司资料库',
 );
 
 const _payrollScope = PagePermissionScope(

@@ -224,7 +224,7 @@ class RemoteMfaPostgresTest {
         assertThat(jdbc.queryForObject("SELECT enabled_at IS NOT NULL FROM staff_mfa WHERE user_id=?",Boolean.class,target)).isTrue();
     }
 
-    @Test void businessResetPreservesFactorsAndPolicyButNeverRevivesOldActiveOrPendingSessions() {
+    @Test void sessionRevocationPreservesFactorsAndPolicyButNeverRevivesOldActiveOrPendingSessions() {
         var activeEnrollment=enroll();
         AuthUser active=principal;
         String encrypted=jdbc.queryForObject("SELECT secret_ciphertext FROM staff_mfa WHERE user_id=?",String.class,active.getId());
@@ -233,7 +233,7 @@ class RemoteMfaPostgresTest {
         jdbc.update("UPDATE remote_access_policy SET enabled=true,version=version+1 WHERE singleton_id=1");
         var policy=jdbc.queryForMap("SELECT enabled,max_users,version FROM remote_access_policy WHERE singleton_id=1");
 
-        transaction.executeWithoutResult(s->jdbc.queryForList("SELECT * FROM business_data_reset()"));
+        transaction.executeWithoutResult(s->jdbc.update("DELETE FROM auth_sessions"));
 
         assertThat(jdbc.queryForObject("SELECT count(*) FROM auth_sessions",Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT secret_ciphertext FROM staff_mfa WHERE user_id=?",String.class,active.getId())).isEqualTo(encrypted);

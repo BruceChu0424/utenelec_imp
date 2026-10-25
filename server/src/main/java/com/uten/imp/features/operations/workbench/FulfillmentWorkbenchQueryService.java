@@ -70,11 +70,14 @@ public class FulfillmentWorkbenchQueryService {
                     v.goods_id, v.goods_code,
                     v.goods_name, v.spec, v.color_id, v.color_name, v.unit_id, v.unit_name,
                     v.supply_route, v.required_qty, v.allocated_qty, v.fulfilled_qty,
-                    v.supply_pegged_qty, v.open_qty, v.task_status, v.need_date,
+                    v.supply_pegged_qty,
+                    CASE WHEN current_order.termination_case_id IS NOT NULL THEN 0::numeric ELSE v.open_qty END AS open_qty,
+                    CASE WHEN current_order.termination_case_id IS NOT NULL THEN 'COMPLETED' ELSE v.task_status END AS task_status,
+                    v.need_date,
                     v.expected_date, v.exception_code, v.updated_at,
                     v.action_doc_type, v.action_doc_id, v.action_doc_no, v.action_item_id,
                     v.action_doc_status, 1::bigint AS goods_count,
-                    CASE WHEN v.open_qty > 0 THEN 1 ELSE 0 END::bigint AS open_line_count,
+                    CASE WHEN current_order.termination_case_id IS NULL AND v.open_qty > 0 THEN 1 ELSE 0 END::bigint AS open_line_count,
                     ARRAY[v.action_item_id::text] AS action_item_ids,
                     NULL::text AS workshop_name, NULL::text AS worker_name,
                     NULL::text AS draw_batch_no, '[]'::jsonb AS lines,
@@ -622,6 +625,9 @@ public class FulfillmentWorkbenchQueryService {
             case "FINANCE_REJECTED" -> "财务驳回";
             case "FINANCE_REVIEW_PENDING" -> "改量待财务复核";
             case "FINANCE_REVIEW_REJECTED" -> "改量财务退回";
+            case "ORDER_CLOSE_PENDING" -> "结束待财务审批";
+            case "ORDER_CLOSE_REJECTED" -> "结束申请已退回";
+            case "ORDER_CLOSED" -> "已提前结束";
             case "COMPLETED" -> "已完成";
             default -> status;
         };
@@ -975,13 +981,31 @@ public class FulfillmentWorkbenchQueryService {
             // A quantity amendment keeps the approved document and physical execution facts.
             // Its latest review still determines the actionable workbench state and its label.
             stageExpression = """
-                    CASE WHEN base.action_doc_status='1' AND base.task_status='ORDER_PENDING_APPROVAL'
+                    CASE WHEN closure_state.terminated THEN 'ORDER_CLOSED'
+                         WHEN closure_state.status='PENDING' THEN 'ORDER_CLOSE_PENDING'
+                         WHEN closure_state.status='REJECTED' THEN 'ORDER_CLOSE_REJECTED'
+                         WHEN base.action_doc_status='1' AND base.task_status='ORDER_PENDING_APPROVAL'
                               THEN 'FINANCE_REVIEW_PENDING'
                          WHEN base.action_doc_status='1' AND base.task_status='FINANCE_REJECTED'
                               THEN 'FINANCE_REVIEW_REJECTED'
                          ELSE %s END
                     """.formatted(stageExpression);
         }
+        String closureJoin = purchase || subcontract ? """
+                LEFT JOIN LATERAL (
+                    SELECT current_order.termination_case_id IS NOT NULL AS terminated, latest.status
+                    FROM %s current_order
+                    LEFT JOIN LATERAL (
+                        SELECT approval.status FROM procurement_order_approval_cases approval
+                        WHERE approval.order_type='%s' AND approval.order_id=current_order.id
+                          AND approval.request_type IN ('CLOSE','CLOSE_AND_REORDER')
+                        ORDER BY approval.attempt DESC, approval.created_at DESC, approval.id DESC
+                        LIMIT 1
+                    ) latest ON TRUE
+                    WHERE current_order.id=base.action_doc_id AND base.action_doc_type='%s_ORDER'
+                ) closure_state ON TRUE
+                """.formatted(subcontract ? "subcontract_orders" : "purchase_orders",
+                        subcontract ? "SUBCONTRACT" : "PURCHASE", subcontract ? "SUBCONTRACT" : "PURCHASE") : "";
         // 财务退回保留 exception_code 的兼容与原始异常事实；页面由状态列与「进行中」
         // 红数提示处理责任，不再重复生成财务退回子分类。countPending 仍按权威 task_status 计数。
         String exceptionExpression = subcontract ? """
@@ -1091,7 +1115,7 @@ public class FulfillmentWorkbenchQueryService {
                         %s AS orderable_qty,
                         CASE WHEN %s IS NOT NULL THEN base.supplier_name END AS supplier_name,
                         base.search_goods_names, base.search_goods_codes
-                 FROM %s base %s %s %s %s)
+                 FROM %s base %s %s %s %s %s)
                 """.formatted(kitPrefix, exceptionExpression, subcontract ? "issue.issued_at" : "NULL::timestamptz",
                         canCreate ? "TRUE" : "FALSE", requestType,
                         subcontract ? " AND NOT COALESCE(bom_gap.bom_missing, FALSE)"
@@ -1105,7 +1129,7 @@ public class FulfillmentWorkbenchQueryService {
                         subcontract ? "COALESCE(bom_gap.item_ids, ARRAY[]::text[])" : "ARRAY[]::text[]",
                         subcontract ? "kit.orderable_qty" : "NULL::numeric",
                         visibleDoc,
-                        source, issueJoin, progressJoin, bomGapJoin, productionProductJoin);
+                        source, issueJoin, progressJoin, bomGapJoin, productionProductJoin, closureJoin);
     }
 
     private static FulfillmentWorkbenchPage emptyPage(int page, int size) {

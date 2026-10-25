@@ -496,7 +496,7 @@ class _JobPanelState extends State<ServerUpdateJobPanel> {
         const SizedBox(height: UtenSpacing.s12),
         if (job.state == 'SCHEDULED') ...[
           Text(
-            '${l.serverUpdateScheduledAt}：${job.displayLocalTime ?? job.scheduledAt?.toUtc().toIso8601String() ?? l.serverUpdateNotChecked}（${job.displayLocalTime == null ? 'UTC' : widget.timeZone ?? l.serverUpdateTimeZone}）',
+            '${l.serverUpdateScheduledAt}：${DisplayDateTime.beijing(job.scheduledAt?.toIso8601String(), fallback: l.serverUpdateNotChecked)}',
           ),
           const SizedBox(height: UtenSpacing.s8),
           Text(l.serverUpdateScheduleWait),

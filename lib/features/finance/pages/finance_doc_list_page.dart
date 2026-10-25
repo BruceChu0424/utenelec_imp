@@ -76,7 +76,9 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
   String? _myLocation;
   int? _statusFilter; // null=全部
   bool _historyMode = false;
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
+
+  /// 历史单据段的时间门控值；默认近三个月（2026-10-24 用户口径）。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
   bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）
   String? _partyIdFilter;
   String? _accountIdFilter;
@@ -144,7 +146,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         : null;
     _statusFilterSelected = _statusFilter != null;
     _historyMode = false;
-    _historyTime = const UtenHistoryTimeValue.all();
+    _historyTime = UtenHistoryTimeValue.lastThreeMonths();
     _partyIdFilter = null;
     _accountIdFilter = null;
     _receiptKindFilter = null;
@@ -247,10 +249,10 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
   );
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
-  Future<PagedResult<FinanceDocListItem>> _fetch() => ref
+  Future<PagedResult<FinanceDocListItem>> _fetch([int? requestedPage]) => ref
       .read(financeRepositoryProvider(widget.docType))
       .list(
-        page: _list.pageNum,
+        page: requestedPage ?? _list.pageNum,
         filter: _docFilter(),
         sort: _list.sortKey,
         order: _list.sortOrder,
@@ -295,6 +297,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         page ?? _list.pageNum,
         silent: silent,
         fetch: _fetch,
+        fetchPage: _fetch,
         isCurrent: captureReadOwner(ref),
       ),
     ]);
@@ -533,7 +536,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     _myLocation ??= GoRouterState.of(context).matchedLocation;
     ref.onPageResume(
       _myLocation!,
-      () => _reload(null, true),
+      () => _list.revalidate(_reload(null, true)),
       refreshKeys: [_cfg.refreshKey],
     );
     return Scaffold(
@@ -675,12 +678,16 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                       ),
                       isLoading: _list.isLoadingFirst,
                       loadingMore: _list.isLoadingMore,
+                      isRefreshing: _list.refreshing,
+                      refreshError: _list.refreshError,
                       error: _list.error,
-                      onRetry: () => _reload(),
+                      onRetry: () => _reload(null, _list.refreshError != null),
                       emptyMessage: '暂无${_cfg.shortLabel}单',
                       currentPage: _list.currentPage,
                       totalPages: _list.totalPages,
-                      paginationRevision: _list.page,
+                      paginationRevision: _list.paginationRevision,
+                      refreshedPages: _list.refreshedPages,
+                      onRetainedPagesChanged: _list.retainPages,
                       paginationScope: (
                         widget.docType,
                         _list.normalizedKeyword,

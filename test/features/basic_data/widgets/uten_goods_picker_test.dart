@@ -18,6 +18,30 @@ import 'package:uten_imp/features/basic_data/widgets/uten_goods_picker.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
+  testWidgets('single picker can opt into double-click confirmation', (
+    tester,
+  ) async {
+    GoodsListItem? selected;
+    await _pumpPicker(
+      tester,
+      _FakeGoodsRepository(),
+      confirmOnDoubleTap: true,
+      onSelected: (value) => selected = value,
+    );
+    await tester.tap(find.byKey(const Key('open-goods-picker')));
+    await tester.pumpAndSettle();
+    await tester.enterText(_searchEditable(), 'G-');
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('连接器甲'));
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(selected, isNull);
+    await tester.tap(find.text('连接器甲'));
+    await tester.pumpAndSettle();
+    expect(selected?.id, 'goods-a');
+    expect(_widePickerSheet(), findsNothing);
+  });
+
   testWidgets('点击侧边阴影取消多选，不提交勾选且再次打开没有旧选择', (tester) async {
     final repository = _FakeGoodsRepository();
     final results = <List<GoodsListItem>>[];
@@ -535,6 +559,7 @@ Future<void> _pumpPicker(
   WidgetTester tester,
   GoodsRepository goodsRepository, {
   ValueChanged<GoodsListItem?>? onSelected,
+  bool confirmOnDoubleTap = false,
 }) async {
   tester.view.devicePixelRatio = 1;
   // Leave enough room for the fixture's longest complete category row and
@@ -552,7 +577,12 @@ Future<void> _pumpPicker(
         ),
         goodsRepositoryProvider.overrideWithValue(goodsRepository),
       ],
-      child: MaterialApp(home: _PickerHarness(onSelected: onSelected)),
+      child: MaterialApp(
+        home: _PickerHarness(
+          onSelected: onSelected,
+          confirmOnDoubleTap: confirmOnDoubleTap,
+        ),
+      ),
     ),
   );
 }
@@ -601,9 +631,10 @@ Finder _searchTextField() => find.descendant(
 );
 
 class _PickerHarness extends ConsumerWidget {
-  const _PickerHarness({this.onSelected});
+  const _PickerHarness({this.onSelected, this.confirmOnDoubleTap = false});
 
   final ValueChanged<GoodsListItem?>? onSelected;
+  final bool confirmOnDoubleTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -611,7 +642,11 @@ class _PickerHarness extends ConsumerWidget {
       body: ElevatedButton(
         key: const Key('open-goods-picker'),
         onPressed: () async {
-          final selected = await showUtenGoodsPicker(context, ref);
+          final selected = await showUtenGoodsPicker(
+            context,
+            ref,
+            confirmOnDoubleTap: confirmOnDoubleTap,
+          );
           onSelected?.call(selected);
         },
         child: const Text('打开货品选择'),

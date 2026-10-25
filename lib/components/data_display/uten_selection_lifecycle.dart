@@ -200,6 +200,21 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
   bool _attached = false;
   bool _active = true;
   bool _flushScheduled = false;
+  bool _awaitingLayout = false;
+
+  bool get _registrationReady {
+    if (!_attached || !_active || _parent == null) return false;
+    final render = context.findRenderObject();
+    if (render is! _AttachmentRenderBox || !render.hasSize) return false;
+    if (render.hasKeptAliveAncestor) {
+      // A sliver may rebuild retained rows without laying them out. Their new
+      // paragraphs must wait for an actual row layout before the parent can
+      // sort their geometry. Existing selected members stay registered.
+      _awaitingLayout = true;
+      return false;
+    }
+    return !_awaitingLayout;
+  }
 
   void _notifySelection() {
     final next = _selectedMembers.isNotEmpty;
@@ -260,7 +275,7 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
     assert(!_members.contains(selectable), 'Duplicate selection registration');
     _members.add(selectable);
     _watchSelection(selectable);
-    if (_attached && _active && _parent != null) {
+    if (_registrationReady) {
       // The SDK already batches ordinary additions until post-frame layout.
       // An extra deferred layer would leave empty native scroll containers
       // registered when table selection is cleared at the end of that frame.
@@ -299,6 +314,7 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
     void flush([Duration? _]) {
       _flushScheduled = false;
       if (!mounted || !_attached || !_active || _parent == null) return;
+      if (!_registrationReady) return;
       // One pass per frame, including additions from nested selection delegates.
       // Native delegates subsequently merge/sort only the attached additions.
       for (final selectable in _members.toList(growable: false)) {
@@ -320,6 +336,11 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
   void _didAttach() {
     _attached = true;
     _scheduleFlush();
+  }
+
+  void _didGeometryReady() {
+    _awaitingLayout = false;
+    if (_members.length != _registered.length) _scheduleFlush();
   }
 
   void _willDetach() {
@@ -360,6 +381,7 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
   Widget build(BuildContext context) => _AttachmentObserver(
     onAttach: _didAttach,
     onDetach: _willDetach,
+    onGeometryReady: _didGeometryReady,
     child: _parent == null
         ? widget.child
         : SelectionRegistrarScope(registrar: this, child: widget.child),
@@ -370,20 +392,49 @@ class _AttachmentObserver extends SingleChildRenderObjectWidget {
   const _AttachmentObserver({
     required this.onAttach,
     required this.onDetach,
+    required this.onGeometryReady,
     required super.child,
   });
   final VoidCallback onAttach;
   final VoidCallback onDetach;
+  final VoidCallback onGeometryReady;
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _AttachmentRenderBox(onAttach, onDetach);
+      _AttachmentRenderBox(onAttach, onDetach, onGeometryReady);
 }
 
 class _AttachmentRenderBox extends RenderProxyBox {
-  _AttachmentRenderBox(this.onAttach, this.onDetach);
+  _AttachmentRenderBox(this.onAttach, this.onDetach, this.onGeometryReady);
   final VoidCallback onAttach;
   final VoidCallback onDetach;
+  final VoidCallback onGeometryReady;
+
+  bool get hasKeptAliveAncestor {
+    RenderObject? current = this;
+    while (current != null) {
+      final data = current.parentData;
+      if (data is SliverMultiBoxAdaptorParentData && data.keptAlive) {
+        return true;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    onGeometryReady();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    super.paint(context, offset);
+    // Tight retained rows can return with their existing layout. A completed
+    // visible paint also proves their descendants have usable geometry.
+    onGeometryReady();
+  }
 
   @override
   void attach(PipelineOwner owner) {

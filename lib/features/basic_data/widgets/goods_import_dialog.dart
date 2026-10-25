@@ -324,7 +324,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
             r.importedCount > 0 &&
             _queue.completed.length <= 1)
           Text(
-            '如导入有误，可点工具栏「撤回」一键撤销本次导入。',
+            basicDataL10n(context).goodsImportUndoHint,
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),

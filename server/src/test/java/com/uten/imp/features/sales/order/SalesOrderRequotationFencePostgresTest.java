@@ -15,7 +15,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** The actual migrated PostgreSQL schema must preserve replacement evidence and still allow trusted test reset. */
+/** The actual migrated PostgreSQL schema must preserve replacement evidence after the reset capability is removed. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS", matches="(?i)true")
 class SalesOrderRequotationFencePostgresTest {
     private MigratedSchemaBaseline.ScopedDatabase database;
@@ -63,7 +63,7 @@ class SalesOrderRequotationFencePostgresTest {
                 .isEqualByComparingTo("10");
     }
 
-    @Test void controlledResetClearsReplacementBusinessGraphAndKeepsCustomerMaster() throws Exception {
+    @Test void legacyResetFlagCannotClearReplacementBusinessGraph() throws Exception {
         Fixture f = fixture();
         seal(f);
         try (var connection = source.getConnection(); var statement = connection.createStatement()) {
@@ -85,14 +85,15 @@ class SalesOrderRequotationFencePostgresTest {
                 statement.execute("DROP ROLE " + role);
             }
         }
-        long generation = jdbc.queryForObject("SELECT business_reset_generation FROM authorization_state WHERE singleton_id=1", Long.class);
-        jdbc.queryForMap("SELECT * FROM business_data_reset()");
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_orders WHERE id=?", Long.class, f.order())).isZero();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_quotes WHERE id IN (?,?)", Long.class, f.quote(), f.replacement())).isZero();
-        assertThat(jdbc.queryForObject("SELECT name FROM clients WHERE id=?", String.class, f.client())).isEqualTo("保留的客户主档");
-        assertThat(jdbc.queryForObject("SELECT business_reset_generation FROM authorization_state WHERE singleton_id=1", Long.class))
-                .isEqualTo(generation + 1);
-        assertThat(jdbc.queryForObject("SELECT fn_business_test_reset_active()", Boolean.class)).isFalse();
+        jdbc.execute("SET app.test_business_reset='CLEAR_TEST_BUSINESS_WITH_HISTORY'");
+        try {
+            assertThatThrownBy(() -> jdbc.update("UPDATE sales_orders SET is_stopped=false WHERE id=?", f.order()))
+                    .hasMessageContaining("permanently read-only");
+            assertThat(jdbc.queryForObject("SELECT to_regprocedure('public.business_data_reset()')::text", String.class)).isNull();
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_orders WHERE id=?", Long.class, f.order())).isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_quotes WHERE id IN (?,?)", Long.class, f.quote(), f.replacement())).isEqualTo(2);
+            assertThat(jdbc.queryForObject("SELECT name FROM clients WHERE id=?", String.class, f.client())).isEqualTo("保留的客户主档");
+        } finally { jdbc.execute("RESET app.test_business_reset"); }
     }
 
     private void seal(Fixture f) {

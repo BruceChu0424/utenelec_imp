@@ -82,6 +82,7 @@ class _FinanceProcurementApprovalTasksPageState
   bool _loading = false;
   String? _error;
   int _requestVersion = 0;
+  int _ownerGeneration = 0;
 
   /// 类型筛选由状态表头承接；null = 同时展示采购和委外。
   FinanceProcurementOrderType? _orderType;
@@ -179,6 +180,7 @@ class _FinanceProcurementApprovalTasksPageState
     _status =
         const {
           'PENDING',
+          'CLOSURE_PENDING',
           'APPROVED',
           'REJECTED',
           'ALL',
@@ -206,6 +208,7 @@ class _FinanceProcurementApprovalTasksPageState
   }
 
   void _invalidateScope() {
+    ++_ownerGeneration;
     ++_requestVersion;
     ++_columnFilters.generation;
     if (!mounted) return;
@@ -226,6 +229,7 @@ class _FinanceProcurementApprovalTasksPageState
       _selectStatus(
         const {
               'PENDING',
+              'CLOSURE_PENDING',
               'APPROVED',
               'REJECTED',
               'ALL',
@@ -377,10 +381,11 @@ class _FinanceProcurementApprovalTasksPageState
   );
 
   Future<void> _open(FinanceProcurementApprovalTask task) async {
+    final owner = _ownerGeneration;
     final drafts = _taskDrafts(task);
     if (drafts.isNotEmpty) {
       await resumeTaskFormDraft(context, ref, drafts);
-      if (mounted) _refreshCurrent();
+      if (mounted && owner == _ownerGeneration) await _refreshCurrent();
       return;
     }
     // 双击/行菜单主入口 → 财务专用审核详情页（底部通过/驳回，不退回本列表即可决策）；
@@ -389,24 +394,26 @@ class _FinanceProcurementApprovalTasksPageState
       context.appWarning('这条任务的审批编号缺失，请刷新后重试');
       return;
     }
-    final decided = await context.push<bool>(
+    await context.push<bool>(
       '${FinanceWorkflowRoutes.approvalTasks}/${Uri.encodeComponent(task.caseId)}',
     );
-    if (decided == true && mounted) {
-      // 审核详情页已办结该笔：回列表即刷新，勾选状态清空避免指向已变化任务。
-      setState(_clearSelectionState);
-      await _load(_result?.page ?? 1);
+    if (mounted && owner == _ownerGeneration) {
+      // A different reviewer may have decided while this user only inspected
+      // the case. Every real return revalidates the authorized server queue.
+      await _refreshCurrent();
     }
   }
 
   /// 次要入口：跳共享只读订货单详情（财务想看订单全貌时用）。
-  void _openSourceOrder(FinanceProcurementApprovalTask task) {
+  Future<void> _openSourceOrder(FinanceProcurementApprovalTask task) async {
     final route = task.detailRoute;
     if (route == null) {
       context.appWarning('该任务缺少有效的订货类型或单据编号，请刷新后重试');
       return;
     }
-    context.push(route);
+    final owner = _ownerGeneration;
+    await context.push(route);
+    if (mounted && owner == _ownerGeneration) await _refreshCurrent();
   }
 
   List<FinanceProcurementApprovalTask> get _selectedTasks => [
@@ -498,7 +505,11 @@ class _FinanceProcurementApprovalTasksPageState
                   description: '确认后，系统将以此登录员工记录整批订货财务审核责任。',
                 ),
                 const SizedBox(height: 12),
-                Text('$summary。整批通过后订货立即生效，并分别生成仓库预计到货任务。'),
+                Text(
+                  _selectedTasks.any((task) => task.isClosureRequest)
+                      ? '$summary。${AppLocalizations.of(context).orderClosureBatchHint}'
+                      : '$summary。整批通过后订货立即生效，并分别生成仓库预计到货任务。',
+                ),
               ],
             ),
           ),
@@ -758,7 +769,9 @@ class _FinanceProcurementApprovalTasksPageState
     final canReject =
         result.items.any((task) => task.allowedActions.contains('REJECT')) ||
         _selectedTasks.any((task) => task.allowedActions.contains('REJECT'));
-    final selectable = _status == 'PENDING' && (canApprove || canReject);
+    final selectable =
+        (_status == 'PENDING' || _status == 'CLOSURE_PENDING') &&
+        (canApprove || canReject);
 
     // 2026-09-24 对齐物料分析页口径：工具条/提示行进折叠头（上滑先收走，
     // 表头顶到头再表内滚），body 只剩表格；独立页与业务审核中心嵌入态同款。
@@ -906,6 +919,15 @@ class _FinanceProcurementApprovalTasksPageState
     };
     final drafts = _taskDrafts(task);
     if (drafts.isNotEmpty) return '$type · ${taskDraftStatus(drafts)}';
+    if (task.isClosureRequest) {
+      final l10n = AppLocalizations.of(context);
+      return '$type · ${switch (task.status) {
+        'APPROVED' => l10n.orderClosureApproved,
+        'REJECTED' => l10n.orderClosureRejected,
+        null || 'PENDING' => l10n.orderClosurePending,
+        _ => task.status ?? '',
+      }}';
+    }
     return switch (task.status) {
       'APPROVED' => '$type已批准',
       'REJECTED' => '$type已驳回',
@@ -927,7 +949,7 @@ class _FinanceProcurementApprovalTasksPageState
       'REJECTED' => UtenStatusBadgeType.danger,
       'APPROVED' => UtenStatusBadgeType.success,
       null || 'PENDING' =>
-        task.changeCount > 0 || (task.attempt ?? 1) > 1
+        task.isClosureRequest || task.changeCount > 0 || (task.attempt ?? 1) > 1
             ? UtenStatusBadgeType.orange
             : task.orderType == FinanceProcurementOrderType.purchase
             ? UtenStatusBadgeType.success
@@ -955,6 +977,10 @@ class _FinanceProcurementApprovalTasksPageState
                 badgeFactOrNullProvider(BadgeFact.procurementApproval),
               ),
               countForm: UtenSegmentCountForm.actionable,
+            ),
+            UtenFilterSegment(
+              value: 'CLOSURE_PENDING',
+              label: AppLocalizations.of(context).orderClosurePending,
             ),
             const UtenFilterSegment(
               value: 'REJECTED',

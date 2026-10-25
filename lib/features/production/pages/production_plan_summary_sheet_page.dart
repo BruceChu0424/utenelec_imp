@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -304,11 +305,7 @@ class _ProductionPlanSummarySheetPageState
     return user?.name ?? '—';
   }
 
-  String get _today {
-    final now = DateTime.now();
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${now.year}-${two(now.month)}-${two(now.day)}';
-  }
+  String get _today => ChinaDateTime.formatDate(ChinaDateTime.today());
 
   // ===== 页面 =====
 

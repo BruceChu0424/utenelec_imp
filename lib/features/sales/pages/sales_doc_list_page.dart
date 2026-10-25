@@ -142,8 +142,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   /// 订货单 null = 当前大类内全部状态；其他单据 null = 引导占位。
   _SalesDocSeg? _statusSeg;
 
-  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
+  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
+  /// 最近三个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
 
   /// 可发货置顶（订货单工作台小项）：true 时后端按"有预留单排前 + 交货日升序"
   /// 排序，忽略列排序。
@@ -311,7 +312,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     _columnFilters.reset();
     _stage = null;
     _statusSeg = null;
-    _historyTime = const UtenHistoryTimeValue.all();
+    _historyTime = UtenHistoryTimeValue.lastThreeMonths();
     _clientIdFilter = null;
     _financeAuditFilter = null;
     _warehouseWorkStatusFilter = null;
@@ -554,11 +555,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   }
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
-  Future<PagedResult<SalesDocListItem>> _fetch() {
+  Future<PagedResult<SalesDocListItem>> _fetch([int? requestedPage]) {
     return ref
         .read(salesRepositoryProvider(widget.docType))
         .list(
-          page: _list.pageNum,
+          page: requestedPage ?? _list.pageNum,
           filter: _docFilter(),
           sort: _shippableFirst && !_isHistory ? 'shippable' : _list.sortKey,
           order: _shippableFirst && !_isHistory || _list.sortKey == null
@@ -609,6 +610,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       page ?? _list.pageNum,
       silent: silent,
       fetch: _fetch,
+      fetchPage: _fetch,
       isCurrent: captureReadOwner(ref),
     );
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
@@ -645,7 +647,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     setState(() {
       _stage = stage;
       _statusSeg = null;
-      _historyTime = const UtenHistoryTimeValue.all();
+      // 进历史段重新按默认近三个月加载；其他大类不消费时间门控，回 all() 占位。
+      _historyTime = stage == _kHistoryStage
+          ? UtenHistoryTimeValue.lastThreeMonths()
+          : const UtenHistoryTimeValue.all();
     });
     // 订货单大类选中即加载（小类默认不选=全部效果）。
     _reload(1);
@@ -653,10 +658,17 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
 
   void _selectStatusSeg(_SalesDocSeg seg) {
     if (seg == _statusSeg) return;
+    final wasHistory = _statusSeg?.history == true;
     clearDraftSelection();
     setState(() {
       _statusSeg = seg;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
+      // 进历史段重新按默认近三个月加载；历史内换状态筛选保留已选时间
+      // （ADR-180 历史保留原时间范围）；非历史段回 all() 占位。
+      if (seg.history) {
+        if (!wasHistory) _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+      } else {
+        _historyTime = const UtenHistoryTimeValue.all();
+      }
     });
     _reload(1);
   }
@@ -906,8 +918,12 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       SalesRoutePath.list(_cfg.type.pathSegment),
     );
     ref.onPageResume(_myLocation!, () {
-      _reload(null, true);
-      if (_isOrder) _loadStats();
+      return _list.revalidate(
+        Future.wait([
+          _reload(null, true),
+          if (_isOrder) _loadStats(),
+        ]).then((_) {}),
+      );
     }, refreshKeys: [_cfg.refreshKey]);
     final seg = _statusSeg;
     // 报价分段/状态文字走 arb(ADR-134)；其它单据沿用原有文案。
@@ -1196,14 +1212,18 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                       ),
                       isLoading: _list.isLoadingFirst,
                       loadingMore: _list.isLoadingMore,
+                      isRefreshing: _list.refreshing,
+                      refreshError: _list.refreshError,
                       error: _list.error,
-                      onRetry: () => _reload(),
+                      onRetry: () => _reload(null, _list.refreshError != null),
                       emptyMessage: _isHistory
                           ? '该时间段内暂无${_cfg.shortLabel}单'
                           : '暂无${_cfg.shortLabel}单',
                       currentPage: _list.currentPage,
                       totalPages: _list.totalPages,
-                      paginationRevision: _list.page,
+                      paginationRevision: _list.paginationRevision,
+                      refreshedPages: _list.refreshedPages,
+                      onRetainedPagesChanged: _list.retainPages,
                       paginationScope: (
                         widget.docType,
                         _list.normalizedKeyword,

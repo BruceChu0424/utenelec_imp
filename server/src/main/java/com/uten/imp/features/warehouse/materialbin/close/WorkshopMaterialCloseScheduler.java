@@ -37,7 +37,7 @@ public class WorkshopMaterialCloseScheduler {
         this.closes = closes;
     }
 
-    /** 由既有 DrainAwareTaskScheduler 控制清空业务数据期间的准入。 */
+    /** Scheduled executions are recorded by the shared task scheduler. */
     @Scheduled(fixedDelay = 600_000, initialDelay = 180_000)
     public void retry() {
         if (enabled) runBatch();

@@ -75,6 +75,160 @@ Widget _app(
 );
 
 void main() {
+  testWidgets(
+    'primary owner replacement rebinds the position without remounting editors',
+    (tester) async {
+      final first = ScrollController();
+      final second = ScrollController();
+      final owner = ValueNotifier<ScrollController>(first);
+      final input = TextEditingController(text: 'retained owner draft');
+      final tableKey = GlobalKey();
+      addTearDown(first.dispose);
+      addTearDown(second.dispose);
+      addTearDown(owner.dispose);
+      addTearDown(input.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ValueListenableBuilder<ScrollController>(
+              valueListenable: owner,
+              builder: (_, controller, _) => PrimaryScrollController(
+                controller: controller,
+                child: MasterDataTableView<int>(
+                  key: tableKey,
+                  primary: true,
+                  columns: [
+                    MasterColumnDef(
+                      key: 'name',
+                      label: 'Name',
+                      width: 250,
+                      value: (row) => 'ROW-$row',
+                      cellBuilder: (_, row) => SizedBox(
+                        height: 240,
+                        child: row == 0
+                            ? SelectionContainer.disabled(
+                                child: TextField(controller: input),
+                              )
+                            : Text('ROW-$row'),
+                      ),
+                    ),
+                  ],
+                  items: const [0, 1, 2],
+                  idOf: (row) => '$row',
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final editor = tester.state<EditableTextState>(find.byType(EditableText));
+      final scrollable = Scrollable.of(editor.context, axis: Axis.vertical);
+      final tableState = tableKey.currentState;
+      expect(first.hasClients, isTrue);
+      for (final next in [second, first]) {
+        final previous = owner.value;
+        owner.value = next;
+        await tester.pumpAndSettle();
+        expect(previous.hasClients, isFalse);
+        expect(next.hasClients, isTrue);
+        expect(scrollable.position, same(next.position));
+        expect(tableKey.currentState, same(tableState));
+        expect(
+          tester.state<EditableTextState>(find.byType(EditableText)),
+          same(editor),
+        );
+        expect(input.text, 'retained owner draft');
+        next.jumpTo(120);
+        await tester.pumpAndSettle();
+        expect(scrollable.position.pixels, 120);
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
+
+  testWidgets(
+    'primary fullscreen preserves the live editor and scrollable in both directions',
+    (tester) async {
+      final input = TextEditingController(text: 'uncommitted draft');
+      addTearDown(input.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: NestedScrollView(
+              headerSliverBuilder: (_, _) => [
+                const SliverToBoxAdapter(child: SizedBox(height: 80)),
+              ],
+              body: MasterDataTableView<int>(
+                primary: true,
+                columns: [
+                  MasterColumnDef(
+                    key: 'name',
+                    label: 'Name',
+                    width: 250,
+                    value: (_) => input.text,
+                    cellBuilder: (_, _) => SelectionContainer.disabled(
+                      child: TextField(controller: input),
+                    ),
+                  ),
+                ],
+                items: const [0],
+                idOf: (row) => '$row',
+                facets: const {},
+                nullCounts: const {},
+                filters: const {},
+                onFilterChanged: (_, _) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final field = find.byType(EditableText);
+      final editor = tester.state<EditableTextState>(field);
+      final scrollable = Scrollable.of(
+        tester.element(field),
+        axis: Axis.vertical,
+      );
+      for (var turn = 0; turn < 2; turn++) {
+        await tester.tap(field);
+        input.selection = const TextSelection(baseOffset: 2, extentOffset: 8);
+        await tester.pump();
+        await tester.tap(
+          find.byKey(const ValueKey('master-table-fullscreen-toggle')),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.state<EditableTextState>(field), same(editor));
+        expect(
+          Scrollable.of(tester.element(field), axis: Axis.vertical),
+          same(scrollable),
+        );
+        expect(input.text, 'uncommitted draft');
+        expect(
+          input.selection,
+          const TextSelection(baseOffset: 2, extentOffset: 8),
+        );
+        await tester.tap(
+          find.byKey(const ValueKey('master-table-fullscreen-toggle')),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.state<EditableTextState>(field), same(editor));
+        expect(
+          tester
+              .state<NestedScrollViewState>(find.byType(NestedScrollView))
+              .innerController
+              .positions,
+          hasLength(1),
+        );
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
+
   for (final mode in ['normal', 'virtualized', 'primary']) {
     testWidgets('$mode: empty to populated request reveals final row once', (
       tester,

@@ -550,6 +550,28 @@
       "doc": "docs/03-页面/基础资料页.md"
     },
     {
+      "route": "/company-files",
+      "title": "公司资料库",
+      "aliases": [],
+      "module": "常用功能",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "公司资料库"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "company_file:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/公司资料库.md"
+    },
+    {
       "route": "/dashboard",
       "title": "工作台",
       "aliases": [
@@ -3261,9 +3283,7 @@
     {
       "route": "/subcontract",
       "title": "委外管理",
-      "aliases": [
-        "委外专属工作台与页面权限"
-      ],
+      "aliases": [],
       "module": "委外管理",
       "purpose": "包含：委外任务中心、回厂短交判定、待退回供应商、新建委外订货、新建成品退回、新建余料退回、新建损耗与责任、委外材料出仓单。",
       "paths": [
@@ -3279,11 +3299,15 @@
         "subcontract_application:view",
         "subcontract_material_issue:view",
         "subcontract_material_return:create",
+        "subcontract_material_return:view",
         "subcontract_order:create",
         "subcontract_order:view",
+        "subcontract_receipt:view",
         "subcontract_report:view",
         "subcontract_return:create",
+        "subcontract_return:view",
         "subcontract_waste:create",
+        "subcontract_waste:view",
         "supplier_return_task:view"
       ],
       "allOf": [],
@@ -3296,6 +3320,11 @@
         "/subcontract/material-returns/new",
         "/subcontract/wastes/new",
         "/subcontract/material-issues",
+        "/subcontract/orders",
+        "/subcontract/receipts",
+        "/subcontract/returns",
+        "/subcontract/material-returns",
+        "/subcontract/wastes",
         "/subcontract/report/detail",
         "/subcontract/report/summary",
         "/subcontract/report/in-out-status"
@@ -3329,10 +3358,18 @@
     {
       "route": "/subcontract/material-issues",
       "title": "委外材料出仓单",
-      "aliases": [],
+      "aliases": [
+        "委外发料单"
+      ],
       "module": "委外管理",
       "purpose": "发给委外商的直属物料出仓单：查看、核对与反审",
       "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "委外发料单"
+        ],
         [
           "工作台",
           "PMC运营部",
@@ -3351,12 +3388,19 @@
     },
     {
       "route": "/subcontract/material-returns",
-      "title": "余料退回列表",
+      "title": "委外材料退货单",
       "aliases": [],
       "module": "委外管理",
-      "purpose": "",
-      "paths": [],
-      "parent": "/subcontract",
+      "purpose": "旧系统历史 · 全部年份 · 只读查询",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "委外材料退货单"
+        ]
+      ],
+      "parent": null,
       "record": false,
       "anyOf": [
         "subcontract_material_return:view"
@@ -3392,12 +3436,19 @@
     },
     {
       "route": "/subcontract/orders",
-      "title": "委外订货列表",
+      "title": "委外订货单",
       "aliases": [],
       "module": "委外管理",
-      "purpose": "",
-      "paths": [],
-      "parent": "/subcontract",
+      "purpose": "旧系统历史 · 全部年份 · 只读查询",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "委外订货单"
+        ]
+      ],
+      "parent": null,
       "record": false,
       "anyOf": [
         "subcontract_order:view"
@@ -3430,6 +3481,31 @@
       ],
       "hubOf": [],
       "doc": null
+    },
+    {
+      "route": "/subcontract/receipts",
+      "title": "委外进仓单",
+      "aliases": [
+        "委外专属工作台与页面权限"
+      ],
+      "module": "委外管理",
+      "purpose": "旧系统历史 · 全部年份 · 只读查询",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "委外进仓单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "subcontract_receipt:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/委外专属工作台与页面权限.md"
     },
     {
       "route": "/subcontract/report/detail",
@@ -3502,12 +3578,19 @@
     },
     {
       "route": "/subcontract/returns",
-      "title": "成品退回列表",
+      "title": "委外退货单",
       "aliases": [],
       "module": "委外管理",
-      "purpose": "",
-      "paths": [],
-      "parent": "/subcontract",
+      "purpose": "旧系统历史 · 全部年份 · 只读查询",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "委外退货单"
+        ]
+      ],
+      "parent": null,
       "record": false,
       "anyOf": [
         "subcontract_return:view"
@@ -3568,12 +3651,19 @@
     },
     {
       "route": "/subcontract/wastes",
-      "title": "损耗与责任列表",
+      "title": "委外材料损耗单",
       "aliases": [],
       "module": "委外管理",
-      "purpose": "",
-      "paths": [],
-      "parent": "/subcontract",
+      "purpose": "旧系统历史 · 全部年份 · 只读查询",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "委外材料损耗单"
+        ]
+      ],
+      "parent": null,
       "record": false,
       "anyOf": [
         "subcontract_waste:view"

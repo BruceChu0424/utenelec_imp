@@ -218,15 +218,15 @@ void main() {
     expect(find.textContaining('报工时允许超产比例 10%'), findsOneWidget);
     expect(find.text('最新处理：全部转公共备货'), findsOneWidget);
     expect(
-      find.textContaining('继续待处理 · 计划甲 · 2026-10-07 08:00\n等待实物清点'),
+      find.textContaining('继续待处理 · 计划甲 · 2026-10-07 08:00(北京)\n等待实物清点'),
       findsOneWidget,
     );
     expect(
-      find.textContaining('要求核实 · 计划乙 · 2026-10-07 09:00\n请车间核实计数'),
+      find.textContaining('要求核实 · 计划乙 · 2026-10-07 09:00(北京)\n请车间核实计数'),
       findsOneWidget,
     );
     expect(
-      find.textContaining('接收为公共产出 · 计划丙 · 2026-10-07 10:00\n全部转公共备货'),
+      find.textContaining('接收为公共产出 · 计划丙 · 2026-10-07 10:00(北京)\n全部转公共备货'),
       findsOneWidget,
     );
     expect(find.widgetWithText(FilledButton, '接收为公共产出'), findsNothing);

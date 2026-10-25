@@ -34,14 +34,14 @@ void main() {
             )
             .first;
         await tester.scrollUntilVisible(
-          find.text('已于 2026-10-13 08:30 阅读'),
+          find.text('已于 2026-10-13 08:30(北京) 阅读'),
           200,
           scrollable: scrollable,
           maxScrolls: 150,
         );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
-        expect(find.text('已于 2026-10-13 08:30 阅读'), findsOneWidget);
+        expect(find.text('已于 2026-10-13 08:30(北京) 阅读'), findsOneWidget);
       });
     }
     for (final mode in [
@@ -90,11 +90,12 @@ Notice _notice(NoticeInteractionMode mode, {bool received = true}) => Notice(
       ? NoticeType.task
       : NoticeType.announcement,
   publisher: '负责发布通知的长姓名同事',
-  publishedAt: DateTime(2026, 10, 13, 8, 30),
-  readAt: DateTime(2026, 10, 13, 8, 30),
+  // Notice models carry Beijing wall-clock fields in a UTC date carrier.
+  publishedAt: DateTime.utc(2026, 10, 13, 8, 30),
+  readAt: DateTime.utc(2026, 10, 13, 8, 30),
   isRead: true,
   kind: NoticeKind.todo,
-  dueAt: DateTime(2026, 10, 31, 18),
+  dueAt: DateTime.utc(2026, 10, 31, 18),
   taskCompleted: true,
   priority: NoticePriority.urgent,
   topPriority: true,
@@ -109,7 +110,7 @@ Notice _notice(NoticeInteractionMode mode, {bool received = true}) => Notice(
       id: 'blessing-responsive',
       senderName: '负责送祝福的长姓名同事',
       content: '完整的祝福内容。',
-      createdAt: DateTime(2026, 10, 13, 8, 30),
+      createdAt: DateTime.utc(2026, 10, 13, 8, 30),
       mine: true,
     ),
   ],

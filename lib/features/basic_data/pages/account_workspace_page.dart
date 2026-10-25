@@ -389,13 +389,21 @@ class _AccountPageState extends ConsumerState<AccountPage>
     }
     final pending = _referenceOptionsFuture;
     if (pending != null) return pending;
-    final future = _loadReferenceOptions();
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    // Inline choice cells can request these references while their parent is
+    // building. Start the loading-state update after that build, retaining the
+    // caller's read owner across the deferred start.
+    final future = Future<bool>.microtask(() {
+      if (!mounted || !inlineAcceptsRead(boundary)) return false;
+      return _loadReferenceOptions(boundary);
+    });
     _referenceOptionsFuture = future;
     return future;
   }
 
-  Future<bool> _loadReferenceOptions() async {
-    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
+  Future<bool> _loadReferenceOptions(
+    SensitiveReadBoundary inlineReadBoundary,
+  ) async {
     setState(() {
       _stylesLoading = true;
       _stylesError = null;
@@ -880,6 +888,14 @@ class _AccountPageState extends ConsumerState<AccountPage>
             ownerRoute.isCurrent ||
             _batchDialogs.any((route) => route.isCurrent)) &&
         (status == null ? _canDelete : _canStatus);
+    // The unsaved-edit decision belongs to the editor, before any batch busy
+    // state changes its fields or captures a sensitive write request.
+    if (!await inlineEdit.confirmLeave(context) ||
+        !mounted ||
+        _batchBusy ||
+        !current()) {
+      return;
+    }
     setState(() {
       _batchBusy = true;
       _batchAction = action;
@@ -890,9 +906,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
         ref,
         isCurrent: current,
         write: () async {
-          if (!await inlineEdit.confirmLeave(context) ||
-              !mounted ||
-              !current()) {
+          if (inlineEdit.active || inlineEdit.dirty || !current()) {
             return null;
           }
           final confirmed = await _confirmBatch(

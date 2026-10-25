@@ -228,7 +228,7 @@ void main() {
 
     expect(find.text('已提交待批准'), findsOneWidget);
     expect(find.textContaining('已提交 4'), findsOneWidget);
-    expect(find.textContaining('最后分析 2026-08-08 10:00:00'), findsOneWidget);
+    expect(find.textContaining('最后分析 2026-08-08 18:00:00(北京)'), findsOneWidget);
     expect(find.text('尚未排产'), findsNothing);
     expect(find.textContaining('生产计划已提交待批准'), findsOneWidget);
   });

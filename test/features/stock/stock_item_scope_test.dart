@@ -378,8 +378,9 @@ void main() {
         expect(api.last(suffix), containsPair('inventoryOnly', true));
         expect(api.last(suffix), containsPair('includeDefective', false));
       }
-      expect(find.textContaining('客户型号C-9'), findsOneWidget);
-      expect(find.textContaining('货品主档纸张备注'), findsOneWidget);
+      expect(find.textContaining('库存成品 · P-001'), findsOneWidget);
+      expect(find.textContaining('客户型号C-9'), findsNothing);
+      expect(find.textContaining('货品主档纸张备注'), findsNothing);
       final warehousePicker = find.byKey(
         const ValueKey('stock-inventory-warehouse'),
       );
@@ -470,7 +471,8 @@ void main() {
       );
       expect(api.last('/inventory-context')['colorNull'], true);
       expect(api.last('/stock/balances')['colorNull'], true);
-      expect(find.textContaining('型号M-1'), findsOneWidget);
+      expect(find.textContaining('库存成品 · P-001'), findsOneWidget);
+      expect(find.textContaining('型号M-1'), findsNothing);
       expect(find.text('该货品暂无库存余额'), findsOneWidget);
       final panel = tester.state<GoodsStockLedgerPanelState>(
         find.byType(GoodsStockLedgerPanel),

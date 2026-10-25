@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -380,7 +381,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(ClientUpdatePage), findsOneWidget);
     expect(find.text(release.releaseNotes), findsOneWidget);
-    await tester.tap(find.byType(BackButton));
+    await tester.tap(find.byType(UtenBackButton));
     await tester.pumpAndSettle();
     expect(find.text('发现新版本'), findsNothing);
     await login('login-two');

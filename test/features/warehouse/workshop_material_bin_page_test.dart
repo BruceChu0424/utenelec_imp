@@ -502,7 +502,10 @@ void main() {
     );
 
     expect(find.textContaining('已撤销结算, 改完请点「重新结算」'), findsOneWidget);
-    expect(find.textContaining('2026-09-29 10:00 系统会自动重新结算'), findsOneWidget);
+    expect(
+      find.textContaining('2026-09-29 10:00(北京) 系统会自动重新结算'),
+      findsOneWidget,
+    );
     expect(
       find.descendant(
         of: find.byKey(const Key('wm-close-retry')),

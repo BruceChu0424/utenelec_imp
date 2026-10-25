@@ -55,7 +55,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.taskLoads, 2);
     expect(find.text('车间任务 2'), findsOneWidget);
-    // ADR-108: 只看了一眼就返回(期间本端没有写、未满 30 秒)不重拉。
+    // 无本机写入的真实返回也必须重验证，并展示服务器的新一轮结果。
     container.read(pageResumeProvider.notifier).state = (
       location: '/other',
       tick: 1,
@@ -65,8 +65,9 @@ void main() {
       tick: 2,
     );
     await tester.pumpAndSettle();
-    expect(repository.taskLoads, 2);
-    // 离开期间有过写操作(网络层推进写修订号)再返回: 重拉一次。
+    expect(repository.taskLoads, 3);
+    expect(find.text('车间任务 3'), findsOneWidget);
+    // 离开期间有过写操作再返回，也只重拉一次。
     container.read(pageResumeProvider.notifier).state = (
       location: '/other',
       tick: 3,
@@ -77,8 +78,8 @@ void main() {
       tick: 4,
     );
     await tester.pumpAndSettle();
-    expect(repository.taskLoads, 3);
-    expect(find.text('车间任务 3'), findsOneWidget);
+    expect(repository.taskLoads, 4);
+    expect(find.text('车间任务 4'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
     container.dispose();

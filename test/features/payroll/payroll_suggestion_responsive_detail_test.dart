@@ -66,7 +66,7 @@ class _Suggestions extends Fake implements SuggestionRepository {
     title: '完整的建议标题与提交人',
     content: '正文需要可读而且保持原点赞操作。',
     status: SuggestionStatus.submitted,
-    submittedAt: DateTime(2026, 10, 13, 8, 35),
+    submittedAt: DateTime.utc(2026, 10, 13, 8, 35),
     likes: 9999999 + likes.length,
     likedByMe: likes.isNotEmpty,
     replies: [
@@ -75,7 +75,7 @@ class _Suggestions extends Fake implements SuggestionRepository {
         replier: '很长的官方回复人员姓名',
         replierRole: 'HR',
         content: '完整的官方回复内容',
-        repliedAt: DateTime(2026, 10, 13, 9),
+        repliedAt: DateTime.utc(2026, 10, 13, 9),
       ),
     ],
   );
@@ -193,11 +193,11 @@ void main() {
               identical(element.state, pageScroll),
         );
         await tester.scrollUntilVisible(
-          find.text('2026-10-13 08:35'),
+          find.text('2026-10-13 08:35(北京)'),
           240,
           scrollable: scrollable,
         );
-        expect(find.text('2026-10-13 08:35'), findsOneWidget);
+        expect(find.text('2026-10-13 08:35(北京)'), findsOneWidget);
         expect(
           find.byKey(const ValueKey('suggestion-reply-submit')),
           findsNothing,

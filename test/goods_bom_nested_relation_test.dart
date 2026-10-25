@@ -178,8 +178,17 @@ Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
   // 2026-09-12 用户口径「只显示名字和组件X级」：身份格不再有路径行，
   // 编号也不再堆进副标题（看「编号」列）。
   expect(find.textContaining('路径：'), findsNothing);
-  // 单击嵌套行：勾上这一行(多选模式下单击 = 切换勾选)，编辑/删除按钮随之可用。
-  await tester.tap(nestedName);
+  // The name is now an editable input. Select the actual nested relationship
+  // through its checkbox without replacing or focusing the component name.
+  await tester.tap(
+    find
+        .descendant(
+          of: find.byKey(const ValueKey('row-drag-slot:goods-a/row-b/row-c')),
+          matching: find.byType(Checkbox),
+        )
+        .hitTestable()
+        .first,
+  );
   await tester.pumpAndSettle();
 }
 
@@ -280,7 +289,7 @@ void main() {
 
     await tester.tap(find.text('删除').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    await tester.tap(find.byKey(const Key('goods-bom-batch-delete-confirm')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
@@ -303,7 +312,7 @@ void main() {
     await _pumpBom(tester, repo);
 
     await tester.tap(
-      find.textContaining('Nested component'),
+      find.text('组件 2 级'),
       buttons: kSecondaryMouseButton,
       kind: PointerDeviceKind.mouse,
     );
@@ -342,7 +351,7 @@ void main() {
     await _pumpBom(tester, repo);
 
     await tester.tap(
-      find.textContaining('Nested component'),
+      find.text('组件 2 级'),
       buttons: kSecondaryMouseButton,
       kind: PointerDeviceKind.mouse,
     );
@@ -355,7 +364,12 @@ void main() {
       findsOneWidget,
     );
     // 只改备注：请求里没有 qty，服务端保留原设计使用数量(学习组件不被接管)。
-    await tester.enterText(find.widgetWithText(TextField, '备注'), '换供应商试产');
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (widget) => widget is TextField && widget.decoration?.labelText == '备注',
+      ),
+      '换供应商试产',
+    );
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
@@ -371,7 +385,7 @@ void main() {
     await _pumpBom(tester, repo);
 
     await tester.tap(
-      find.textContaining('Nested component'),
+      find.text('组件 2 级'),
       buttons: kSecondaryMouseButton,
       kind: PointerDeviceKind.mouse,
     );

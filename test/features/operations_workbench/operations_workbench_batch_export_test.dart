@@ -8,6 +8,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
@@ -163,8 +165,8 @@ Future<void> _pumpPage(
 }
 
 void main() {
-  testWidgets('in-progress rows offer selection and export via the floating '
-      'action; locked rows cannot be picked', (tester) async {
+  testWidgets('shared order selection keeps non-exportable rows out of the '
+      'floating export action', (tester) async {
     final gateway = _FakeGateway(_inProgressData());
     final calls = <List<({String id, String number})>>[];
     void Function(int done, int total)? progressSink;
@@ -188,9 +190,16 @@ void main() {
     await selectFilterSegment(tester, '进行中');
     await tester.pumpAndSettle();
 
-    // 表头三态全选格在前(at(0))，行勾选框从 at(1) 起；锁行没有 Checkbox。
-    expect(find.byType(Checkbox), findsNWidgets(3));
-    expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
+    // Selection is shared with whole-order closure. Export eligibility remains
+    // an independent predicate, including when another purpose can select a row.
+    final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
+      find.byType(MasterDataTableView<OperationsWorkbenchTask>),
+    );
+    expect(table.items.map((row) => table.idOf!(row)), [
+      'task-1',
+      'task-2',
+      'task-3',
+    ]);
     final button = find.byKey(
       const Key('operations-workbench-purchase-export-docs'),
     );
@@ -206,6 +215,20 @@ void main() {
     await tester.tap(find.byType(Checkbox).at(2));
     await tester.pump();
     expect(find.text('导出单据(2)'), findsOneWidget);
+
+    await tester.tap(find.byType(Checkbox).at(3));
+    await tester.pump();
+    expect(tester.widget<UtenButton>(button).onPressed, isNull);
+    await tester.tap(button);
+    await tester.pump();
+    expect(
+      calls,
+      isEmpty,
+      reason: 'mixed eligibility cannot silently export a subset',
+    );
+    await tester.tap(find.byType(Checkbox).at(3));
+    await tester.pump();
+    expect(tester.widget<UtenButton>(button).onPressed, isNotNull);
 
     await tester.tap(button);
     await tester.pump();
@@ -272,7 +295,7 @@ void main() {
     expect(calls.single.single.id, 'order-1');
   });
 
-  testWidgets('only finance-approved orders can be selected, including '
+  testWidgets('only finance-approved orders can be exported, including '
       'amendment review and conflicting approval projections', (tester) async {
     final base = _inProgressData();
     final items = [
@@ -346,14 +369,31 @@ void main() {
     );
     await selectFilterSegment(tester, '进行中');
     await tester.pumpAndSettle();
-    expect(find.byType(Checkbox), findsNWidgets(2));
-    expect(find.byIcon(Icons.lock_outline_rounded), findsNWidgets(7));
-    expect(find.byTooltip('仅财务已通过的采购订货单可导出'), findsNWidgets(7));
+    final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
+      find.byType(MasterDataTableView<OperationsWorkbenchTask>),
+    );
+    expect(
+      table.items.map((row) => table.idOf!(row)),
+      items.map((row) => row.id),
+    );
     await tester.tap(find.byType(Checkbox).first);
     await tester.pump();
-    await tester.tap(
-      find.byKey(const Key('operations-workbench-purchase-export-docs')),
+    final exportButton = find.byKey(
+      const Key('operations-workbench-purchase-export-docs'),
     );
+    expect(tester.widget<UtenButton>(exportButton).onPressed, isNull);
+    await tester.tap(exportButton);
+    await tester.pump();
+    expect(
+      calls,
+      isEmpty,
+      reason:
+          'finance review, rejected, conflicting and missing statuses deny export',
+    );
+    table.onSelectedIdsChanged!({'approved'});
+    await tester.pump();
+    expect(tester.widget<UtenButton>(exportButton).onPressed, isNotNull);
+    await tester.tap(exportButton);
     await tester.pump();
     expect(calls.single.single.id, 'doc-1');
   });
@@ -473,33 +513,56 @@ void main() {
     );
   });
 
-  testWidgets('without injected capability the segment stays read-only', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          apiClientProvider.overrideWithValue(_OfflineApi()),
-          fixedBadgeSummaryOverride(
-            badgeSummaryFixture(
-              facts: const {BadgeFact.purchaseTaskInProgress: 3},
+  testWidgets(
+    'without injected export capability shared selection cannot export',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(_OfflineApi()),
+            fixedBadgeSummaryOverride(
+              badgeSummaryFixture(
+                facts: const {BadgeFact.purchaseTaskInProgress: 3},
+              ),
+            ),
+          ],
+          child: MaterialApp(
+            home: OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.purchase,
+              repository: _FakeGateway(_inProgressData()),
             ),
           ),
-        ],
-        child: MaterialApp(
-          home: OperationsWorkbenchPage(
-            department: OperationsWorkbenchDepartment.purchase,
-            repository: _FakeGateway(_inProgressData()),
-          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await selectFilterSegment(tester, '进行中');
-    await tester.pumpAndSettle();
-    expect(find.byType(Checkbox), findsNothing);
-    expect(find.byIcon(Icons.lock_outline_rounded), findsNothing);
-  });
+      );
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '进行中');
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('operations-workbench-purchase-export-docs')),
+        findsNothing,
+      );
+      final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
+        find.byType(MasterDataTableView<OperationsWorkbenchTask>),
+      );
+      table.onSelectedIdsChanged!({'task-1'});
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('operations-workbench-purchase-export-docs')),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(
+                const Key('procurement-order-closure-selection-action'),
+              ),
+            )
+            .onPressed,
+        isNull,
+        reason: 'selection never grants order-closure permission',
+      );
+    },
+  );
 }

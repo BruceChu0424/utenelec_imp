@@ -1,4 +1,5 @@
 import '../../support/native_detail_reader_overrides.dart';
+import '../../support/pump_until.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
@@ -281,6 +282,29 @@ Future<_FinanceApi> _pumpFinance(
   return server;
 }
 
+/// Draft work can yield to zero-delay timers even for one row under load.
+/// Drive that work with fake frames before awaiting its completed Future.
+Future<void> _pumpDraftFuture(
+  WidgetTester tester,
+  Future<void> operation, {
+  required String reason,
+}) async {
+  var done = false;
+  Object? error;
+  StackTrace? stack;
+  final completion = operation.then<void>(
+    (_) => done = true,
+    onError: (Object failure, StackTrace trace) {
+      error = failure;
+      stack = trace;
+      done = true;
+    },
+  );
+  await pumpUntil(tester, () => done, reason: reason);
+  await completion;
+  if (error != null) Error.throwWithStackTrace(error!, stack!);
+}
+
 void main() {
   for (final type in [FinanceDocType.expense, FinanceDocType.otherIncome]) {
     testWidgets(
@@ -365,9 +389,17 @@ void main() {
         final newState =
             tester.state(find.byType(FinanceDocEditPage))
                 as FormDraftMixin<FinanceDocEditPage>;
-        await newState.restoreFormDraft(snapshot);
+        await _pumpDraftFuture(
+          tester,
+          newState.restoreFormDraft(snapshot),
+          reason: 'The local department draft did not finish restoring',
+        );
         await tester.pumpAndSettle();
-        await newState.saveFormDraftNow();
+        await _pumpDraftFuture(
+          tester,
+          newState.saveFormDraftNow(),
+          reason: 'The local department draft did not finish persisting',
+        );
         await tester.pumpAndSettle();
         final container = ProviderScope.containerOf(
           tester.element(find.byType(FinanceDocEditPage)),

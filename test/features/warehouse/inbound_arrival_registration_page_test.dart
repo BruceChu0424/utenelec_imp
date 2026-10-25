@@ -611,7 +611,7 @@ void main() {
         expect(recoveredRows.first['selected'], false);
         expect(recoveredRows.first['stockPlaceAutofilled'], false);
         expect(recoveredRows.first['item'], rows.first['item']);
-        expect(find.text('已恢复本机草稿'), findsOneWidget);
+        expect(find.text('已恢复本机草稿'), findsNothing);
         expect(api.arrivalPostBodies, isEmpty);
         expect(tester.takeException(), isNull);
       },

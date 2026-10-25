@@ -428,22 +428,22 @@ void main() {
       expect(table.showColumnChooser, isTrue);
       expect(table.columnEditingEnabled, isFalse);
       expect(table.columns.map((column) => column.key), [
-        'category',
         'name',
         'goodsCode',
         'color',
-        'series',
-        'stockPlace',
-        'owningWarehouse',
-        'model',
-        'cNumber',
-        'spec',
-        'remark',
         'qty',
         'weight',
         'pendingQty',
         'pendingStockInQty',
         'moreQty',
+        'stockPlace',
+        'owningWarehouse',
+        'category',
+        'model',
+        'spec',
+        'cNumber',
+        'series',
+        'remark',
       ]);
       final values = {
         for (final column in table.columns)

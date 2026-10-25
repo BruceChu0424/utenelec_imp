@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
 import '../../components/inputs/uten_input_decoration.dart';
+import '../../components/inputs/uten_field_message.dart';
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/authenticated_request_scope.dart';
@@ -308,6 +309,7 @@ class _BatchDialogState extends ConsumerState<_BatchDialog> {
                       ),
                     TextFormField(
                       key: const Key('procurement-order-closure-batch-reason'),
+                      errorBuilder: utenTextFieldErrorBuilder,
                       controller: _reason,
                       enabled: !_busy,
                       maxLength: 500,

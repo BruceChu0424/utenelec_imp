@@ -159,7 +159,10 @@ void main() {
     await tester.tap(find.text('待检处置'));
     await tester.pumpAndSettle();
 
-    final uri = router.routeInformationProvider.value.uri;
+    final destination = find.text('待检处置任务中心已打开');
+    expect(destination, findsOneWidget);
+    expect(router.canPop(), isTrue, reason: '普通任务中心向下导航保留来源页面');
+    final uri = GoRouterState.of(tester.element(destination)).uri;
     expect(uri.path, RouteName.warehouseInspections);
     expect(uri.queryParameters['returnTo'], RouteName.qualityTaskCenter);
   });
@@ -207,7 +210,7 @@ void main() {
   });
 
   testWidgets(
-    'returning to quality task center refreshes badges only after a write',
+    'every real return to quality task center revalidates server badges',
     (tester) async {
       final summary = FixedBadgeSummaryNotifier(
         badgeSummaryFixture(entries: {BadgeEntry.qualityIqcPending: (1, 0)}),
@@ -243,14 +246,14 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      // 只看了一眼就返回(期间本端没有写操作、未满 30 秒): 不重拉。
+      // 没有本机写入也要重拉：其它设备可能已经办理了待检任务。
       await goAwayAndBack(1);
-      expect(summary.refreshCalls, 0);
+      expect(summary.refreshCalls, 1);
 
-      // 处置页里提交了一笔(网络层推进写修订号)再返回: 重拉一次, 新数随汇总到达。
+      // 处置页提交后返回同样重拉一次，新数随服务器汇总到达。
       container.read(dataWriteRevisionProvider.notifier).state++;
       await goAwayAndBack(3);
-      expect(summary.refreshCalls, 1);
+      expect(summary.refreshCalls, 2);
       summary.emit(
         badgeSummaryFixture(entries: {BadgeEntry.qualityIqcPending: (2, 0)}),
       );

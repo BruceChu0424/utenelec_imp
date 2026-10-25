@@ -29,7 +29,7 @@ import '../../support/audit_screenshot_support.dart';
 
 void main() {
   testWidgets(
-    'legacy effective order keeps an explicit bottom-right cancel/end entry',
+    'native effective order keeps an explicit bottom-right cancel/end entry',
     (tester) async {
       const captureUi = bool.fromEnvironment('UTEN_CAPTURE_UI');
       final capture = captureUi ? GlobalKey() : null;
@@ -41,7 +41,7 @@ void main() {
           Perm.purchaseOrderSubmitFinance,
         },
         priceMasked: false,
-        legacyApproved: true,
+        nativeApproved: true,
         capture: capture,
       );
       final action = find.byKey(const Key('purchase-order-request-close'));
@@ -65,6 +65,30 @@ void main() {
     },
   );
 
+  testWidgets(
+    'imported effective order stays read-only despite closure permission',
+    (tester) async {
+      await _pumpDetail(
+        tester,
+        permissions: const {
+          Perm.purchaseOrderView,
+          Perm.purchaseOrderEdit,
+          Perm.purchaseOrderDelete,
+          Perm.purchaseOrderReverse,
+          Perm.purchaseOrderSubmitFinance,
+        },
+        priceMasked: false,
+        legacyApproved: true,
+      );
+      final action = find.byKey(const Key('purchase-order-request-close'));
+      expect(tester.widget<UtenButton>(action).onPressed, isNull);
+      expect(find.text('历史已结案 · 只读'), findsWidgets);
+      expect(find.byType(DocumentUnapprovalAction), findsNothing);
+      expect(find.text('编辑'), findsNothing);
+      expect(find.text('删除'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final closureStatus in ['APPROVED', 'PENDING']) {
     testWidgets(
       'purchase $closureStatus closure hides original order unapproval',
@@ -177,6 +201,7 @@ Future<void> _pumpDetail(
   String? purchaserName,
   String? closureStatus,
   bool legacyApproved = false,
+  bool nativeApproved = false,
   GlobalKey? capture,
 }) async {
   tester.view.physicalSize = const Size(1400, 1600);
@@ -193,6 +218,7 @@ Future<void> _pumpDetail(
     purchaserName: purchaserName,
     closureStatus: closureStatus,
     legacyApproved: legacyApproved,
+    nativeApproved: nativeApproved,
   );
   await tester.pumpWidget(
     ProviderScope(
@@ -229,6 +255,7 @@ class _TestApi extends ApiClient {
     this.purchaserName,
     this.closureStatus,
     this.legacyApproved = false,
+    this.nativeApproved = false,
   }) : super(Dio());
 
   final bool priceMasked;
@@ -237,6 +264,7 @@ class _TestApi extends ApiClient {
   final String? purchaserName;
   final String? closureStatus;
   final bool legacyApproved;
+  final bool nativeApproved;
 
   @override
   Future<List<Map<String, dynamic>>> getList(
@@ -266,6 +294,8 @@ class _TestApi extends ApiClient {
       return <String, dynamic>{
         'id': 'order-1',
         'makerId': 'maker-1',
+        'historyReadOnly': legacyApproved,
+        'legacyImported': legacyApproved,
         'billNo': 'PO-001',
         'billDate': '2026-09-01',
         'makerName': '采购员',
@@ -275,7 +305,10 @@ class _TestApi extends ApiClient {
         'supplierId': 'supplier-1',
         'currencyId': 'usd',
         'exchangeRate': 7,
-        'status': closureStatus == null && !legacyApproved ? 0 : 1,
+        'status': closureStatus == null && !legacyApproved && !nativeApproved
+            ? 0
+            : 1,
+        if (nativeApproved) 'financeApproval': {'status': 'APPROVED'},
         if (legacyApproved) ...{
           'legacyId': 101,
           'financeApproval': {'status': 'LEGACY_EFFECTIVE'},

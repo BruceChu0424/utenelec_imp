@@ -353,7 +353,10 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         boundary != ref.read(sensitiveReadBoundaryProvider)) {
       return;
     }
-    await _selectSubject(candidate);
+    // The picker owns record selection, not the report GET it starts. Releasing
+    // its busy state here lets an identity/endpoint/permission change retire a
+    // pending report immediately, just like selecting an inline suggestion.
+    unawaited(_selectSubject(candidate));
   }
 
   void _changeEntry(String? value) {

@@ -91,14 +91,14 @@ void main() {
         tick: 2,
       );
       await tester.pumpAndSettle();
-      // 本页返回信号: 纯查看返回不重拉(ADR-108 收紧: 期间没写过数据、未超 30 秒)。
-      expect(api.taskRequestCount, 1);
+      // 纯查看后的真实返回也重新读取服务器，避免保留页面一直显示旧任务。
+      expect(api.taskRequestCount, 2);
 
       api.blockNextTaskRequest();
       await tester.tap(find.byTooltip('刷新'));
       await tester.pump();
       await tester.pump();
-      expect(api.taskRequestCount, 2);
+      expect(api.taskRequestCount, 3);
       final refreshSpinner = find.descendant(
         of: find.byType(UtenRefreshButton),
         matching: find.byType(CircularProgressIndicator),
@@ -113,7 +113,7 @@ void main() {
       // 300ms 防抖后按新关键词重拉; 期间卡住的旧刷新随后迟到, 不能覆盖新结果。
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
-      expect(api.taskRequestCount, 3, reason: api.taskKeywords.toString());
+      expect(api.taskRequestCount, 4, reason: api.taskKeywords.toString());
       expect(api.taskKeywords.last, 'RB202608280001');
       expect(find.text('共 2 条'), findsOneWidget);
       expect(refreshSpinner, findsNothing);
@@ -156,13 +156,13 @@ void main() {
         RouteName.warehouseProductionFinishedInboundTasks,
         reason: pushedLocation.toString(),
       );
-      expect(api.taskRequestCount, 3);
+      expect(api.taskRequestCount, 4);
 
       await tester.tap(find.byKey(const Key('complete-arrival-route')));
       await tester.pumpAndSettle();
 
       // 办理返回后由打开路径主动重拉一次列表。
-      expect(api.taskRequestCount, 4);
+      expect(api.taskRequestCount, 5);
       expect(find.text('产成品入库'), findsOneWidget);
 
       await tester.tap(find.byTooltip('返回'));
@@ -171,7 +171,7 @@ void main() {
         find.byKey(const Key('open-finished-inbound-tasks')),
         findsOneWidget,
       );
-      expect(api.taskRequestCount, 4);
+      expect(api.taskRequestCount, 5);
     },
   );
 

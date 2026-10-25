@@ -3,68 +3,70 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 void main() {
-  testWidgets(
-    'background width scan reaches its complete tail without a frame per slice',
-    (tester) async {
-      final seen = <int>{};
-      final rows = List.generate(5001, (index) => index);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 900,
-              height: 400,
-              child: MasterDataTableView<int>(
-                virtualized: true,
-                columns: [
-                  MasterColumnDef<int>(
-                    key: 'name',
-                    label: '名称',
-                    width: 72,
-                    value: (row) => '$row',
-                    measureWidthOf: (_, row, _) {
-                      seen.add(row);
-                      return row == rows.last ? 410 : 80;
-                    },
-                  ),
-                ],
-                items: rows,
-                facets: const {},
-                nullCounts: const {},
-                filters: const {},
-                onFilterChanged: (_, _) {},
-                showFullscreenToggle: false,
-              ),
+  testWidgets('cached widths leave the frame budget for unmeasured values', (
+    tester,
+  ) async {
+    final seen = <int>{};
+    final visited = <int>{};
+    final rows = List.generate(5001, (index) => index);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 900,
+            height: 400,
+            child: MasterDataTableView<int>(
+              virtualized: true,
+              columns: [
+                MasterColumnDef<int>(
+                  key: 'name',
+                  label: '名称',
+                  width: 72,
+                  value: (row) => row == rows.last ? 'tail' : 'repeat',
+                  measureValueOf: (row) {
+                    visited.add(row);
+                    return row == rows.last ? 'tail' : 'repeat';
+                  },
+                  measureWidthOf: (_, row, _) {
+                    seen.add(row);
+                    return row == rows.last ? 410 : 80;
+                  },
+                ),
+              ],
+              items: rows,
+              facets: const {},
+              nullCounts: const {},
+              filters: const {},
+              onFilterChanged: (_, _) {},
+              showFullscreenToggle: false,
             ),
           ),
         ),
-      );
-      final frames = await tester.pumpAndSettle();
-      expect(seen, containsAll(rows));
-      final header = tester
-          .widgetList<Container>(
-            find.ancestor(
-              of: find.text('名称'),
-              matching: find.byType(Container),
-            ),
-          )
-          .firstWhere(
-            (container) =>
-                container.constraints?.hasBoundedWidth == true &&
-                container.constraints!.minWidth ==
-                    container.constraints!.maxWidth,
-          );
-      expect(header.constraints!.maxWidth, greaterThanOrEqualTo(410));
-      expect(
-        frames,
-        lessThan(12),
-        reason:
-            'unchanged widths must not require a render frame for every '
-            'background measurement slice',
-      );
-      expect(tester.takeException(), isNull);
-    },
-  );
+      ),
+    );
+    final frames = await tester.pumpAndSettle();
+    expect(visited, containsAll(rows));
+    expect(seen, {rows.first, rows.last});
+    final header = tester
+        .widgetList<Container>(
+          find.ancestor(of: find.text('名称'), matching: find.byType(Container)),
+        )
+        .firstWhere(
+          (container) =>
+              container.constraints?.hasBoundedWidth == true &&
+              container.constraints!.minWidth ==
+                  container.constraints!.maxWidth,
+        );
+    expect(header.constraints!.maxWidth, greaterThanOrEqualTo(410));
+    expect(
+      frames,
+      lessThan(12),
+      reason:
+          'already cached values must not consume the shaping budget '
+          'needed by the previously unseen tail',
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('slow shaping respects elapsed budget and still reaches the tail', (
     tester,

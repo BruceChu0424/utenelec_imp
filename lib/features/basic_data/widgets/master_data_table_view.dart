@@ -2783,7 +2783,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 数据变了(列集合不变)：待本帧之后补量新值、需要时加宽。
   bool _widthGrowthPending = false;
   bool _widthGrowthScheduled = false;
-  Timer? _widthGrowthContinuation;
   List<T>? _widthGrowthPool;
   int _widthGrowthOffset = 0;
   int _widthGrowthColumn = 0;
@@ -4075,29 +4074,33 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     List<T> pool,
     TextScaler textScaler,
   ) {
-    final theme = Theme.of(context);
     final measure = _textMeasures.putIfAbsent(def.key, _ColumnTextMeasure.new);
     if (!measure.headerMeasured) {
       measure.header = _measureText(
         def.label,
-        UtenTableHeader.textStyle(theme),
+        UtenTableHeader.textStyle(Theme.of(context)),
         textScaler,
       );
       measure.headerMeasured = true;
     }
-    final bodyStyle = theme.textTheme.bodyMedium ?? const TextStyle();
-    // 状态/进度列渲染带加粗，量宽同步用加粗样式，防止首帧量窄截字。
-    final measureStyle = utenIsStatusOrProgressColumn(def.key, def.label)
-        ? bodyStyle.copyWith(fontWeight: FontWeight.w700)
-        : bodyStyle;
     // 去重集合只防重复量同一串；过大时清掉(最大宽度已记下，不影响结果)。
     if (measure.seen.length > 4000) measure.seen.clear();
     for (var r = 0; r < pool.length; r++) {
       final text = (def.measureValueOf ?? def.value)(pool[r]) ?? '';
       if (text.isEmpty || !measure.seen.add(text)) continue;
-      final width =
-          def.measureWidthOf?.call(context, pool[r], textScaler) ??
-          _measureText(text, measureStyle, textScaler);
+      double width;
+      if (def.measureWidthOf case final measureWidth?) {
+        width = measureWidth(context, pool[r], textScaler);
+      } else {
+        final bodyStyle =
+            Theme.of(context).textTheme.bodyMedium ?? const TextStyle();
+        // Status/progress values use the same bold geometry as their cells.
+        final style = utenIsStatusOrProgressColumn(def.key, def.label)
+            ? bodyStyle.copyWith(fontWeight: FontWeight.w700)
+            : bodyStyle;
+        width = _measureText(text, style, textScaler);
+      }
+      measure.bodyRevision++;
       if (width > measure.body) measure.body = width;
     }
     return measure;
@@ -4130,11 +4133,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   /// 数据刷新后的增量量宽：挪到本帧之后执行，只量新出现的值；有列需要加宽才重建一次。
-  void _scheduleWidthGrowth({bool afterFrame = true}) {
+  void _scheduleWidthGrowth() {
     if (_widthGrowthScheduled) return;
     _widthGrowthScheduled = true;
-    void measureSlice() {
-      _widthGrowthContinuation = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       _widthGrowthScheduled = false;
       if (!mounted || !_widthGrowthPending) return;
       final textScaler = MediaQuery.textScalerOf(context);
@@ -4162,17 +4164,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         }
         if (!_manualResized.contains(i)) {
           final def = _columns[i];
-          final fitted = _fitColumnWidth(
-            context,
-            def,
-            _measureColumn(context, def, [row], textScaler),
-          );
-          if (fitted > next[i] + 0.5) {
-            next[i] = fitted;
-            grown = true;
+          final previous = _textMeasures[def.key]?.bodyRevision ?? 0;
+          final measure = _measureColumn(context, def, [row], textScaler);
+          if (measure.bodyRevision != previous) {
+            measuredCells++;
+            final fitted = _fitColumnWidth(context, def, measure);
+            if (fitted > next[i] + 0.5) {
+              next[i] = fitted;
+              grown = true;
+            }
           }
         }
-        measuredCells++;
+        // Cached/manual cells do not spend shaping slots. The elapsed limit
+        // still applies to every visited cell, including cache-only scans.
         if (measuredCells >= _widthMeasureCellBudget ||
             clock.elapsed >= _widthMeasureTimeBudget) {
           break;
@@ -4187,21 +4191,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _widthGrowthPending =
           _columns.isNotEmpty && _widthGrowthOffset < pool.length;
       if (_widthGrowthPending) {
-        // Yield between bounded slices without rendering an unchanged table.
-        // Actual width growth already schedules its required layout above.
-        _scheduleWidthGrowth(afterFrame: false);
+        _scheduleWidthGrowth();
+        WidgetsBinding.instance.ensureVisualUpdate();
       } else {
         _widthGrowthPool = null;
         _widthGrowthOffset = 0;
         _widthGrowthColumn = 0;
       }
-    }
-
-    if (afterFrame) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => measureSlice());
-    } else {
-      _widthGrowthContinuation = Timer(Duration.zero, measureSlice);
-    }
+    });
   }
 
   void _requestInputWidth(
@@ -4292,7 +4289,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _dragAutoScroll?.cancel();
     _dragHoverTimer?.cancel();
     _dragRetracking?.cancel();
-    _widthGrowthContinuation?.cancel();
     if (_dragKeyHandlerInstalled) {
       _dragKeyHandlerInstalled = false;
       HardwareKeyboard.instance.removeHandler(_handleRowDragKeyEvent);
@@ -9067,6 +9063,7 @@ int debugMasterTableMeasureTextCount = 0;
 
 /// 一列的量宽缓存：表头宽、单元格最大宽、已量过的值(按字符串去重)。
 class _ColumnTextMeasure {
+  int bodyRevision = 0;
   bool headerMeasured = false;
   double header = 0;
   double body = 0;

@@ -46,9 +46,9 @@ class CompanyFileAuditTest {
                 "company_file_upload_complete", "完成公司文件上传",
                 "company_file_recycle", "移入公司资料回收站",
                 "company_file.restore", "还原公司资料",
-                "company_file.lock", "重新锁定公司目录",
-                "company_file_unlock", "解锁公司目录",
-                "company_file_password_clear", "清除公司目录密码").entrySet()) {
+                "company_file.lock", "重新锁定公司资料",
+                "company_file_unlock", "解锁公司资料",
+                "company_file_password_clear", "清除公司资料密码").entrySet()) {
             var log = new AuditLog();
             log.setAction(action.getKey());
             log.setTargetType("company_file_nodes");

@@ -1,0 +1,72 @@
+{
+  "companyFilesCopy": [
+    "复制文件",
+    "Copy file",
+    "파일 복사"
+  ],
+  "companyFilesCut": [
+    "剪切",
+    "Cut",
+    "잘라내기"
+  ],
+  "companyFilesPaste": [
+    "粘贴",
+    "Paste",
+    "붙여넣기"
+  ],
+  "companyFilesClearClipboard": [
+    "取消复制或剪切",
+    "Clear copied or cut item",
+    "복사 또는 잘라내기 취소"
+  ],
+  "companyFilesCopySuffix": [
+    "副本",
+    "Copy",
+    "복사본"
+  ],
+  "companyFilesCopied": [
+    "已复制，可到目标文件夹粘贴",
+    "Copied; paste into the destination folder",
+    "복사되었습니다. 대상 폴더에 붙여넣으세요"
+  ],
+  "companyFilesCutReady": [
+    "已剪切，粘贴后移动到目标文件夹",
+    "Cut; paste to move into the destination folder",
+    "잘라냈습니다. 대상 폴더에 붙여넣어 이동하세요"
+  ],
+  "companyFilesClipboardUnavailable": [
+    "来源资料已变化或无权访问，请重新选择",
+    "The source changed or is unavailable; select it again",
+    "원본이 변경되었거나 접근할 수 없습니다. 다시 선택하세요"
+  ],
+  "companyFilesSameFolder": [
+    "资料已在当前文件夹",
+    "The item is already in this folder",
+    "이미 현재 폴더에 있습니다"
+  ],
+  "companyFilesShowDirectory": [
+    "展开目录",
+    "Expand navigation",
+    "탐색 펼치기"
+  ],
+  "companyFilesHideDirectory": [
+    "收起目录",
+    "Collapse navigation",
+    "탐색 접기"
+  ],
+  "companyFilesDirectory": [
+    "目录",
+    "Navigation",
+    "탐색"
+  ],
+  "companyFilesMore": [
+    "更多操作",
+    "More actions",
+    "추가 작업"
+  ],
+  "companyFilesPreview": [
+    "预览文件",
+    "Preview file",
+    "파일 미리 보기"
+  ]
+}

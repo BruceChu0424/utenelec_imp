@@ -6,6 +6,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/authenticated_request_scope.dart';
 import 'package:uten_imp/features/company_files/models/company_file.dart';
+import 'package:uten_imp/features/company_files/models/company_file_access_draft.dart';
 import 'package:uten_imp/features/company_files/models/company_file_upload.dart';
 import 'package:uten_imp/features/company_files/repositories/company_file_repository.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
@@ -37,14 +38,21 @@ class _Repository extends CompanyFileRepository {
       loseCompleteResponse = false,
       completed = false;
   final requestIds = <String>[];
+  final initialAccess = <Map<String, dynamic>?>[];
   @override
   Future<CompanyFile> reserveFile({
     String? parentId,
     required String name,
     required String requestId,
+    Object? access,
   }) async {
     reserveCount++;
     requestIds.add(requestId);
+    initialAccess.add(
+      access == null
+          ? null
+          : (access as CompanyFileInitialAccessDraft).toJson(),
+    );
     if (loseReservationResponse) {
       loseReservationResponse = false;
       throw NetworkTimeoutException();
@@ -199,6 +207,54 @@ void main() {
       expect(file.complete, isTrue);
       expect(repository.requestIds.toSet(), hasLength(1));
       expect(attachments.rawCount, 1);
+    },
+  );
+
+  test(
+    'private file settings survive an uncertain reservation without a public retry',
+    () async {
+      final repository = _Repository()..loseReservationResponse = true;
+      final attachments = _Attachments();
+      final access = CompanyFileInitialAccessDraft(
+        inheritPermissions: false,
+        rules: const [
+          CompanyFileAccessRule(
+            subjectType: 'DEPARTMENT',
+            subjectId: 'department',
+            subjectName: '研发部',
+          ),
+        ],
+        password: 'Synthetic-initial-file-password!',
+      );
+      final file = CompanyFileUpload(
+        name: '模板.txt',
+        bytes: Uint8List.fromList([97, 98, 99]),
+        contentType: 'text/plain',
+        initialAccess: access,
+      );
+      final scope = await _scope();
+      await file.send(
+        repository: repository,
+        attachments: attachments,
+        scope: scope,
+        parentId: 'target',
+        onChanged: () {},
+      );
+      expect(file.state, CompanyFileUploadState.unknown);
+      expect(attachments.rawCount, 0);
+      await file.send(
+        repository: repository,
+        attachments: attachments,
+        scope: scope,
+        parentId: 'target',
+        onChanged: () {},
+      );
+      expect(file.complete, isTrue);
+      expect(repository.requestIds.toSet(), hasLength(1));
+      expect(repository.initialAccess, [access.toJson(), access.toJson()]);
+      expect(attachments.rawCount, 1);
+      expect(attachments.confirmCount, 1);
+      expect(file.initialAccess, isNull);
     },
   );
 

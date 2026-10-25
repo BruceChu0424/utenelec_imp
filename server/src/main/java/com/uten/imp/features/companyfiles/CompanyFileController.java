@@ -36,7 +36,7 @@ public class CompanyFileController {
     }
 
     @GetMapping("/principals")
-    @PreAuthorize("hasAuthority('company_file:manage_permissions')")
+    @PreAuthorize("hasAuthority('company_file:view') and (hasAuthority('company_file:manage_permissions') or hasAuthority('company_file:create') or hasAuthority('company_file:upload'))")
     public List<Principal> principals(
             @RequestParam(defaultValue = "USER") String type,
             @RequestParam(defaultValue = "") String search) {

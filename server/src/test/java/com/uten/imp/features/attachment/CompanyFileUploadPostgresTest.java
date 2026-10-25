@@ -124,7 +124,8 @@ class CompanyFileUploadPostgresTest {
             }
         });
         var audit=mock(AuditService.class);var access=mock(AttachmentAccessPort.class);
-        library=transactional(new CompanyFileService(db,current,access,audit,new CompanyFileUnlocks()));
+        var crypto=new CryptoProperties();crypto.setHmacKey("company-file-isolated-test-hmac-key-that-is-never-used-in-production");
+        library=transactional(new CompanyFileService(db,current,access,audit,new CompanyFileUnlocks(),new CompanyFileCreationFingerprint(crypto)));
         var policy=transactional(new CompanyFileAttachmentAccessPolicy(library));
         var sessions=transactional(new AttachmentUploadSessionStore(db,properties));var outbox=new AttachmentObjectOutboxStore(db);
         var repository=mock(AttachmentRepository.class,delegatesTo(actualRepository));
@@ -134,7 +135,6 @@ class CompanyFileUploadPostgresTest {
             value.setUpdatedAt(Instant.now());value.setUpdatedBy(user.getId());return actualRepository.saveAndFlush(value);
         }).when(repository).saveAndFlush(any());
         var confirms=transactional(new AttachmentConfirmTransaction(repository,sessions,outbox,db));
-        var crypto=new CryptoProperties();crypto.setHmacKey("company-file-isolated-test-hmac-key-that-is-never-used-in-production");
         var gate=new AttachmentUploadSafetyGate(properties,storage,scanner,new MockEnvironment().withProperty("spring.profiles.active","dev"));
         gate.validateConfiguration();
         attachmentService=transactional(new AttachmentService(storage,repository,properties,current,List.of(policy),
@@ -174,6 +174,34 @@ class CompanyFileUploadPostgresTest {
         String body=mvc.perform(post("/api/company-files/"+entry.id()+"/complete").contentType("application/json")
                 .content(json.writeValueAsBytes(new Complete(original.id(),entry.version())))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         return json.readValue(body,Entry.class);
+    }
+
+    @Test void initialPrivateFilePasswordPreservesStandardUploadAndProtectsEveryPublishedReadPath()throws Exception {
+        UUID requestId=UUID.randomUUID();
+        var create=new Create(null,"受保护模板.txt",null,requestId,new InitialAccess(false,List.of(),"initial-file-password"));
+        String reserved=mvc.perform(post("/api/company-files/files").contentType("application/json")
+                .content(json.writeValueAsBytes(create))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        Entry entry=json.readValue(reserved,Entry.class);byte[] bytes="protected original\n".repeat(30).getBytes(StandardCharsets.UTF_8);
+        var grant=presign(entry,"text/plain",bytes);raw(grant,"text/plain",bytes);
+        var original=confirm(entry,grant,"text/plain",bytes);
+        mvc.perform(get("/api/attachments/raw/"+grant.storageKey())).andExpect(status().isForbidden());
+        assertThatThrownBy(()->attachmentService.openPreviewSource(original.id())).isInstanceOf(com.uten.imp.common.web.ApiException.class);
+        Entry published=publish(entry,original);assertThat(published.locked()).isTrue();
+        mvc.perform(get("/api/attachments/raw/"+grant.storageKey())).andExpect(status().isForbidden());
+        mvc.perform(get("/api/attachments/"+original.id()+"/download-grant")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/attachments/"+original.id()+"/history/download")).andExpect(status().isForbidden());
+        assertThatThrownBy(()->attachmentService.openPreviewSource(original.id())).isInstanceOf(com.uten.imp.common.web.ApiException.class);
+        library.unlock(published.id(),new Unlock("initial-file-password"));
+        mvc.perform(get("/api/attachments/raw/"+grant.storageKey())).andExpect(status().isOk()).andExpect(content().bytes(bytes));
+        try(var source=attachmentService.openPreviewSource(original.id()).open()) {assertThat(source.readAllBytes()).isEqualTo(bytes);}
+        Entry rotated=library.setPassword(published.id(),new Password("rotated-file-password",published.version()));
+        Entry replay=library.reserveFile(create);assertThat(replay.id()).isEqualTo(published.id());assertThat(replay.locked()).isTrue();
+        assertThat(replay.version()).isEqualTo(rotated.version());
+        mvc.perform(get("/api/attachments/raw/"+grant.storageKey())).andExpect(status().isForbidden());
+        library.unlock(published.id(),new Unlock("rotated-file-password"));
+        library.setPermissions(published.id(),new Permissions(true,List.of(new Rule("USER",actor,null,"DENY",List.of("download"))),rotated.version()));
+        mvc.perform(get("/api/attachments/raw/"+grant.storageKey())).andExpect(status().isForbidden());
+        assertThatThrownBy(()->attachmentService.openPreviewSource(original.id())).isInstanceOf(com.uten.imp.common.web.ApiException.class);
     }
 
     @Test void chineseTextWordAndExcelTemplatesRoundTripWithIdenticalBytesAndDigest()throws Exception {

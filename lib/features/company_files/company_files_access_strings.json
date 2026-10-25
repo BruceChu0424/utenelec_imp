@@ -1,0 +1,122 @@
+{
+  "companyFilesEntryAccessTitle": [
+    "资料访问权限",
+    "Document access",
+    "자료 접근 권한"
+  ],
+  "companyFilesEntryAccessHint": [
+    "仅影响这份文件或文件夹，不会修改系统总权限。",
+    "These settings apply only to this file or folder and do not change system permissions.",
+    "이 설정은 이 파일 또는 폴더에만 적용되며 시스템 권한을 변경하지 않습니다."
+  ],
+  "companyFilesWhoCanRead": [
+    "谁可以查看",
+    "Who can read",
+    "열람 가능한 대상"
+  ],
+  "companyFilesInheritEntryAccess": [
+    "继承所在文件夹的访问范围",
+    "Inherit the parent folder's access",
+    "상위 폴더의 접근 범위 상속"
+  ],
+  "companyFilesSpecificReaders": [
+    "指定人员或部门",
+    "Choose people or departments",
+    "직원 또는 부서 지정"
+  ],
+  "companyFilesSpecificReadersHint": [
+    "向指定人员及部门开放阅读，所选部门包含下级。上级拒绝仍有效，创建者保留原本已有的操作权限。",
+    "Selected people and departments can read; departments include their descendants. Parent denies still apply. The creator keeps only their existing operation rights.",
+    "지정한 직원과 부서가 열람하며 선택한 부서의 하위 부서도 포함됩니다. 상위 거부 규칙은 유지되며 생성자는 원래 가진 작업 권한만 유지합니다."
+  ],
+  "companyFilesAllowedReaders": [
+    "允许查看",
+    "Allowed readers",
+    "열람 허용"
+  ],
+  "companyFilesDeniedReaders": [
+    "禁止查看",
+    "Denied readers",
+    "열람 거부"
+  ],
+  "companyFilesAddReader": [
+    "添加人员或部门",
+    "Add people or departments",
+    "직원 또는 부서 추가"
+  ],
+  "companyFilesNoReadersSelected": [
+    "尚未指定其他阅读人员或部门",
+    "No additional readers selected",
+    "추가 열람 대상이 지정되지 않았습니다"
+  ],
+  "companyFilesEntryPasswordTitle": [
+    "资料密码",
+    "Document password",
+    "자료 암호"
+  ],
+  "companyFilesSetInitialPassword": [
+    "添加密码保护",
+    "Add password protection",
+    "암호 보호 추가"
+  ],
+  "companyFilesEntryPasswordHint": [
+    "密码是额外保护，仍会检查本资料的人员和部门访问范围。",
+    "A password adds protection; this document's people and department access still applies.",
+    "암호는 추가 보호 수단이며 이 자료의 직원 및 부서 접근 범위는 계속 적용됩니다."
+  ],
+  "companyFilesPasswordByteLimit": [
+    "密码至少 8 个字符，UTF-8 长度不超过 72 字节",
+    "Use at least 8 characters and no more than 72 UTF-8 bytes",
+    "암호는 8자 이상, UTF-8 기준 72바이트 이하여야 합니다"
+  ],
+  "companyFilesUploadAccessTitle": [
+    "上传文件的访问设置",
+    "Access for uploaded files",
+    "업로드 파일 접근 설정"
+  ],
+  "companyFilesUploadAccessHint": [
+    "此设置会分别保存到本次选择的每份文件，之后可单独修改。",
+    "These settings are saved separately on each selected file and can be changed individually later.",
+    "이 설정은 선택한 각 파일에 별도로 저장되며 나중에 개별적으로 변경할 수 있습니다."
+  ],
+  "companyFilesSelectedFiles": [
+    "已选文件",
+    "Selected files",
+    "선택한 파일"
+  ],
+  "companyFilesCreateAccessHint": [
+    "名称、访问范围和密码将一并保存，创建成功后才会显示资料。",
+    "The name, access and password are saved together before the document appears.",
+    "이름, 접근 범위 및 암호를 함께 저장한 후 자료가 표시됩니다."
+  ],
+  "companyFilesAccessOperationsHint": [
+    "这些规则只限制本资料的操作范围，不会授予系统功能权限。",
+    "These rules limit actions on this document and do not grant system capabilities.",
+    "이 규칙은 이 자료의 작업 범위만 제한하며 시스템 기능 권한을 부여하지 않습니다."
+  ],
+  "companyFilesAccessRuleLimit": [
+    "每份资料最多设置 100 条访问规则",
+    "Use no more than 100 access rules per document",
+    "자료당 접근 규칙은 100개까지 설정할 수 있습니다"
+  ],
+  "companyFilesPasteCopyTitle": [
+    "粘贴文件副本",
+    "Paste a file copy",
+    "파일 사본 붙여넣기"
+  ],
+  "companyFilesPasteCopyHint": [
+    "副本会按目标文件夹重新设置访问范围和密码，不会复制原文件的保护设置。",
+    "The copy gets its own access and password in the destination folder. Protection settings from the original are not copied.",
+    "사본은 대상 폴더에서 접근 범위와 암호를 새로 설정합니다. 원본의 보호 설정은 복사되지 않습니다."
+  ],
+  "companyFilesNameTooLong": [
+    "名称最多 180 个字符",
+    "Use no more than 180 characters for the name",
+    "이름은 180자 이하여야 합니다"
+  ],
+  "companyFilesDescriptionTooLong": [
+    "说明最多 2000 个字符",
+    "Use no more than 2000 characters for the description",
+    "설명은 2000자 이하여야 합니다"
+  ]
+}

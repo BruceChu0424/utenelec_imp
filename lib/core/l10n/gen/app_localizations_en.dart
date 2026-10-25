@@ -15,8 +15,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clientUpdateNewTitle => 'New version available';
 
   @override
-  String get clientUpdateSubtitle =>
-      'Check automatically and update this device';
+  String get clientUpdateSubtitle => 'Check automatically and update this device';
 
   @override
   String get clientUpdateCurrent => 'Installed version';
@@ -46,42 +45,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clientUpdateInstalling => 'Installing update';
 
   @override
-  String get clientUpdateWindowsHint =>
-      'The update downloads automatically, then closes and restarts the app. Device settings and saved drafts are retained. Save your work first.';
+  String get clientUpdateWindowsHint => 'The update downloads automatically, then closes and restarts the app. Device settings and saved drafts are retained. Save your work first.';
 
   @override
-  String get clientUpdateAndroidHint =>
-      'After downloading, the app opens the system installation prompt. If installation permission is required, grant it and return to retry.';
+  String get clientUpdateAndroidHint => 'After downloading, the app opens the system installation prompt. If installation permission is required, grant it and return to retry.';
 
   @override
-  String get clientUpdateStoreHint =>
-      'The official app store will open. Complete the update there.';
+  String get clientUpdateStoreHint => 'The official app store will open. Complete the update there.';
 
   @override
-  String get clientUpdateUnsupported =>
-      'In-app updates are not yet available on this operating system.';
+  String get clientUpdateUnsupported => 'In-app updates are not yet available on this operating system.';
 
   @override
-  String get clientUpdateFailed =>
-      'The update did not complete. Check your connection and installation permissions, then retry.';
+  String get clientUpdateFailed => 'The update did not complete. Check your connection and installation permissions, then retry.';
 
   @override
-  String get clientUpdateInstallerOpened =>
-      'The system installation prompt is open. Follow its instructions to complete the update.';
+  String get clientUpdateInstallerOpened => 'The system installation prompt is open. Follow its instructions to complete the update.';
 
   @override
   String get clientUpdateNotes => 'What\'s new';
 
   @override
-  String get clientUpdateNoNotes =>
-      'No release notes are available for this version.';
+  String get clientUpdateNoNotes => 'No release notes are available for this version.';
 
   @override
   String get clientUpdatePublishTitle => 'Publish client version';
 
   @override
-  String get clientUpdatePublishHint =>
-      'Upload and publish new versions for each platform. Employees\' clients will check automatically and show an update prompt.';
+  String get clientUpdatePublishHint => 'Upload and publish new versions for each platform. Employees\' clients will check automatically and show an update prompt.';
 
   @override
   String get clientUpdatePlatform => 'Platform';
@@ -111,19 +102,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clientUpdatePublished => 'New client version published';
 
   @override
-  String get clientUpdatePublishInvalid =>
-      'Complete the version details, use a build number above published versions, and choose the matching package or enter an official store URL.';
+  String get clientUpdatePublishInvalid => 'Complete the version details, use a build number above published versions, and choose the matching package or enter an official store URL.';
 
   @override
-  String get clientUpdatePackageHint =>
-      'Choose a dedicated update ZIP for Windows or a release-signed APK for Android. Increase the build number for each release.';
+  String get clientUpdatePackageHint => 'Choose a dedicated update ZIP for Windows or a release-signed APK for Android. Increase the build number for each release.';
 
   @override
   String get clientUpdateWithdraw => 'Withdraw release';
 
   @override
-  String get clientUpdateWithdrawConfirm =>
-      'Other devices will no longer receive this version. Devices already updated will not be downgraded. Withdraw this release?';
+  String get clientUpdateWithdrawConfirm => 'Other devices will no longer receive this version. Devices already updated will not be downgraded. Withdraw this release?';
 
   @override
   String get clientUpdateReleaseList => 'Client release history';
@@ -181,8 +169,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get websiteOperationsTitle => 'Website operations';
 
   @override
-  String get websiteManageSubtitle =>
-      'Manage site content and products. Follow up with customers in the sales inbox.';
+  String get websiteManageSubtitle => 'Manage site content and products. Follow up with customers in the sales inbox.';
 
   @override
   String get websiteConnectionTitle => 'Cloud connection';
@@ -197,8 +184,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get websiteConnectionChecking => 'Checking the cloud connection';
 
   @override
-  String get websiteConnectionHelp =>
-      'Check the cloud service and connection settings, then check again.';
+  String get websiteConnectionHelp => 'Check the cloud service and connection settings, then check again.';
 
   @override
   String get websiteCheckAgain => 'Check again';
@@ -213,16 +199,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get websiteOpening => 'Opening';
 
   @override
-  String get websiteOpenFailed =>
-      'Could not open the website. Check your browser settings and retry.';
+  String get websiteOpenFailed => 'Could not open the website. Check your browser settings and retry.';
 
   @override
-  String get websiteUntrustedTarget =>
-      'The website address does not match the trusted configuration. Opening was stopped.';
+  String get websiteUntrustedTarget => 'The website address does not match the trusted configuration. Opening was stopped.';
 
   @override
-  String get websiteSessionChanged =>
-      'Your session or permissions changed. Open this page again.';
+  String get websiteSessionChanged => 'Your session or permissions changed. Open this page again.';
 
   @override
   String get websiteAccessDenied => 'This account cannot manage the website.';
@@ -231,8 +214,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get websiteConfigure => 'Connection settings';
 
   @override
-  String get websiteConfigureHelp =>
-      'Only super administrators can select an approved website address. Credentials are managed on the server.';
+  String get websiteConfigureHelp => 'Only super administrators can select an approved website address. Credentials are managed on the server.';
 
   @override
   String get websiteDisplayName => 'Website name';
@@ -250,8 +232,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get websiteConfigSaved => 'Connection settings saved';
 
   @override
-  String get websiteConfigRequired =>
-      'Enter a website name and select an approved address.';
+  String get websiteConfigRequired => 'Enter a website name and select an approved address.';
 
   @override
   String get websiteLastChecked => 'Last checked';
@@ -275,58 +256,49 @@ class AppLocalizationsEn extends AppLocalizations {
   String get websiteHomeSection => 'Home and sections';
 
   @override
-  String get websiteHomeDescription =>
-      'Edit the home page, brand content and contact information.';
+  String get websiteHomeDescription => 'Edit the home page, brand content and contact information.';
 
   @override
   String get websiteProductsSection => 'Product catalogue';
 
   @override
-  String get websiteProductsDescription =>
-      'Manage series, variants, images and technical details.';
+  String get websiteProductsDescription => 'Manage series, variants, images and technical details.';
 
   @override
   String get websiteResourcesSection => 'Media and documents';
 
   @override
-  String get websiteResourcesDescription =>
-      'Maintain images, product documents and downloads.';
+  String get websiteResourcesDescription => 'Maintain images, product documents and downloads.';
 
   @override
   String get websiteNewsSection => 'News and projects';
 
   @override
-  String get websiteNewsDescription =>
-      'Manage news and verified project stories.';
+  String get websiteNewsDescription => 'Manage news and verified project stories.';
 
   @override
   String get websiteReleasesSection => 'Publication history';
 
   @override
-  String get websiteReleasesDescription =>
-      'Preview content, review versions and restore when authorized.';
+  String get websiteReleasesDescription => 'Preview content, review versions and restore when authorized.';
 
   @override
   String get websiteSettingsSection => 'Website settings';
 
   @override
-  String get websiteSettingsDescription =>
-      'Manage languages, navigation and site information.';
+  String get websiteSettingsDescription => 'Manage languages, navigation and site information.';
 
   @override
   String get websiteInquiryEntry => 'Sales inquiry inbox';
 
   @override
-  String get websiteInquiryDescription =>
-      'Read inquiries, claim follow-ups and link customer records.';
+  String get websiteInquiryDescription => 'Read inquiries, claim follow-ups and link customer records.';
 
   @override
-  String get websiteEditingRequiresConnection =>
-      'The editor becomes available after a successful connection check.';
+  String get websiteEditingRequiresConnection => 'The editor becomes available after a successful connection check.';
 
   @override
-  String get websiteConfigNoOrigins =>
-      'No approved website addresses are configured on the server. Contact your administrator.';
+  String get websiteConfigNoOrigins => 'No approved website addresses are configured on the server. Contact your administrator.';
 
   @override
   String get websiteInquiryTimeline => 'Follow-up history';
@@ -344,8 +316,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get websiteInquiryNoteSaved => 'Follow-up note saved';
 
   @override
-  String get websiteInquiryNoteRequired =>
-      'Enter a follow-up note between 1 and 2000 characters.';
+  String get websiteInquiryNoteRequired => 'Enter a follow-up note between 1 and 2000 characters.';
 
   @override
   String get websiteInquiryOrigin => 'Inquiry source';
@@ -390,60 +361,46 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tableCopySelectedText => 'Copy selected text';
 
   @override
-  String get release2518ServerUpdates =>
-      'Authorized staff can check for server updates manually, then update now or schedule an update in the server\'s local time. Available updates show a reminder and badge; there are no periodic update checks.';
+  String get release2518ServerUpdates => 'Authorized staff can check for server updates manually, then update now or schedule an update in the server\'s local time. Available updates show a reminder and badge; there are no periodic update checks.';
 
   @override
-  String get release2518Storage =>
-      'Server storage shows memory, disks, database, upload and backup details. Authorized staff can preview cleanup of eligible resources; current versions, required rollback and recovery backups, and uploaded originals remain protected.';
+  String get release2518Storage => 'Server storage shows memory, disks, database, upload and backup details. Authorized staff can preview cleanup of eligible resources; current versions, required rollback and recovery backups, and uploaded originals remain protected.';
 
   @override
-  String get release2518CompanyConnections =>
-      'Super administrators can configure each company\'s OSS update source and SMS gateway. Keys are write-only, and SMS gateway changes apply to the next code request.';
+  String get release2518CompanyConnections => 'Super administrators can configure each company\'s OSS update source and SMS gateway. Keys are write-only, and SMS gateway changes apply to the next code request.';
 
   @override
-  String get release2518LayoutAndTrace =>
-      'Tables and editors share a consistent layout, with improved finance tax review and workshop material identity reuse. Bidirectional material tracing preserves actual quantities, units and sources; related subcontract picking tasks support exact navigation and pagination.';
+  String get release2518LayoutAndTrace => 'Tables and editors share a consistent layout, with improved finance tax review and workshop material identity reuse. Bidirectional material tracing preserves actual quantities, units and sources; related subcontract picking tasks support exact navigation and pagination.';
 
   @override
-  String get release2517PickerLayout =>
-      'Selection panels keep Clear, Cancel and Confirm together at the bottom right. Clear is marked in red, with tidier page inputs and more compact category rows.';
+  String get release2517PickerLayout => 'Selection panels keep Clear, Cancel and Confirm together at the bottom right. Clear is marked in red, with tidier page inputs and more compact category rows.';
 
   @override
-  String get release2517Lifecycle =>
-      'Daily lists focus on work in progress and upcoming tasks. Completed and cancelled records are grouped under History and remain available to view.';
+  String get release2517Lifecycle => 'Daily lists focus on work in progress and upcoming tasks. Completed and cancelled records are grouped under History and remain available to view.';
 
   @override
-  String get release2517Paging =>
-      'When viewing history, clearing a status filter, changing pages or refreshing keeps you in history. Handling the final inquiry on the last page returns you to a valid page.';
+  String get release2517Paging => 'When viewing history, clearing a status filter, changing pages or refreshing keeps you in history. Handling the final inquiry on the last page returns you to a valid page.';
 
   @override
-  String get release2517Drafts =>
-      'History no longer mixes in task drafts or pending actions. Unfinished drafts remain linked to their original tasks and can be resumed.';
+  String get release2517Drafts => 'History no longer mixes in task drafts or pending actions. Unfinished drafts remain linked to their original tasks and can be resumed.';
 
   @override
-  String get editorDocumentIdentityChanged =>
-      'The document or source has changed. Reopen this page.';
+  String get editorDocumentIdentityChanged => 'The document or source has changed. Reopen this page.';
 
   @override
-  String get editorSessionIdentityChanged =>
-      'The signed-in account or server has changed. Reopen this page.';
+  String get editorSessionIdentityChanged => 'The signed-in account or server has changed. Reopen this page.';
 
   @override
-  String get release2511DailyReport =>
-      'Daily reports use compact product cards with expandable destinations and components; material review preserves quantities and source links.';
+  String get release2511DailyReport => 'Daily reports use compact product cards with expandable destinations and components; material review preserves quantities and source links.';
 
   @override
-  String get release2511Workshop =>
-      'Workshop task dialogs show actions for the current state, with one material visible initially and an option to expand the list.';
+  String get release2511Workshop => 'Workshop task dialogs show actions for the current state, with one material visible initially and an option to expand the list.';
 
   @override
-  String get release2511Batch =>
-      'Batch material orders and quality processing share the write flow to reduce repeated reads, locks and final calculations.';
+  String get release2511Batch => 'Batch material orders and quality processing share the write flow to reduce repeated reads, locks and final calculations.';
 
   @override
-  String get release2511Platform =>
-      'Super administrators can configure company branding, logos and theme colors; upgrades preserve saved settings and personal preferences.';
+  String get release2511Platform => 'Super administrators can configure company branding, logos and theme colors; upgrades preserve saved settings and personal preferences.';
 
   @override
   String get serverAlertAcknowledge => 'Acknowledge';
@@ -469,76 +426,58 @@ class AppLocalizationsEn extends AppLocalizations {
   String get releaseNotesClose => 'Got it';
 
   @override
-  String get releaseNotesUnavailable =>
-      'No release notes are included for this version.';
+  String get releaseNotesUnavailable => 'No release notes are included for this version.';
 
   @override
-  String get release253Hr =>
-      'Select multiple employees and compare current identity details with proposed corrections before applying them together.';
+  String get release253Hr => 'Select multiple employees and compare current identity details with proposed corrections before applying them together.';
 
   @override
-  String get release253Permissions =>
-      'Manage page and child-page access in a shared drawer with bulk grants. Editing and deletion remain separate permissions.';
+  String get release253Permissions => 'Manage page and child-page access in a shared drawer with bulk grants. Editing and deletion remain separate permissions.';
 
   @override
-  String get release253Materials =>
-      'Confirm aggregated material orders once and process dependencies automatically, with corrected shared supply sources and shortages.';
+  String get release253Materials => 'Confirm aggregated material orders once and process dependencies automatically, with corrected shared supply sources and shortages.';
 
   @override
-  String get release253Ai =>
-      'The AI assistant adds file understanding, action confirmation and personal operation memory, plus usage reporting and per-person limits.';
+  String get release253Ai => 'The AI assistant adds file understanding, action confirmation and personal operation memory, plus usage reporting and per-person limits.';
 
   @override
-  String get release253Notices =>
-      'Material arrivals notify authorized workshop leaders when additional production becomes possible. Urgent alerts, tasks, progress and announcements have distinct styles.';
+  String get release253Notices => 'Material arrivals notify authorized workshop leaders when additional production becomes possible. Urgent alerts, tasks, progress and announcements have distinct styles.';
 
   @override
-  String get release253Maintenance =>
-      'Removed obsolete code and documentation, strengthened permission and concurrency checks, and added these release notes to the version entry.';
+  String get release253Maintenance => 'Removed obsolete code and documentation, strengthened permission and concurrency checks, and added these release notes to the version entry.';
 
   @override
-  String get release254QuantityPrecision =>
-      'Material orders, production reports and direct transfers preserve original quantities, with fixes for small quantities, unit conversions, split orders and repeated-submission receipts.';
+  String get release254QuantityPrecision => 'Material orders, production reports and direct transfers preserve original quantities, with fixes for small quantities, unit conversions, split orders and repeated-submission receipts.';
 
   @override
-  String get release254AiAuthorization =>
-      'AI access must be granted separately. Accounts without permission cannot see the assistant or use its features.';
+  String get release254AiAuthorization => 'AI access must be granted separately. Accounts without permission cannot see the assistant or use its features.';
 
   @override
-  String get release254SensitiveAuthorization =>
-      'Changing sensitive permissions requires identity verification again, so important grants receive your confirmation.';
+  String get release254SensitiveAuthorization => 'Changing sensitive permissions requires identity verification again, so important grants receive your confirmation.';
 
   @override
-  String get release254OverLimit =>
-      'Record actual output in full. Planning reviews output above the limit while approval, quality, inventory and cost retain the same source.';
+  String get release254OverLimit => 'Record actual output in full. Planning reviews output above the limit while approval, quality, inventory and cost retain the same source.';
 
   @override
-  String get release254PlanningReminders =>
-      'Planning staff whose accounts or permissions are added later receive reminders for orders not yet taken into material analysis, without repeating handled tasks.';
+  String get release254PlanningReminders => 'Planning staff whose accounts or permissions are added later receive reminders for orders not yet taken into material analysis, without repeating handled tasks.';
 
   @override
-  String get release254PeoplePicker =>
-      'People pickers show departments and staff side by side, with employee codes, account status, search and selection across departments. Existing access rules still apply.';
+  String get release254PeoplePicker => 'People pickers show departments and staff side by side, with employee codes, account status, search and selection across departments. Existing access rules still apply.';
 
   @override
-  String get release254AccountSupport =>
-      'Authorized staff can verify their identity and generate a temporary password from employee details. The employee must change it at first login, and access changes stop password display.';
+  String get release254AccountSupport => 'Authorized staff can verify their identity and generate a temporary password from employee details. The employee must change it at first login, and access changes stop password display.';
 
   @override
-  String get release254Dashboard =>
-      'Dashboard metrics appear horizontally. Tasks occupy one row, with remaining tasks available through the task-count link.';
+  String get release254Dashboard => 'Dashboard metrics appear horizontally. Tasks occupy one row, with remaining tasks available through the task-count link.';
 
   @override
-  String get release254Publishing =>
-      'Aligned app and installation-package versions and strengthened checks before release to reduce upgrade issues.';
+  String get release254Publishing => 'Aligned app and installation-package versions and strengthened checks before release to reduce upgrade issues.';
 
   @override
-  String get businessColumnAmountUnavailable =>
-      'This account cannot currently apply this column to amounts. Restore price access, or explicitly choose text or a number record.';
+  String get businessColumnAmountUnavailable => 'This account cannot currently apply this column to amounts. Restore price access, or explicitly choose text or a number record.';
 
   @override
-  String get businessColumnEditorSubtitle =>
-      'Add document information or apply entered values to each line\'s official amount.';
+  String get businessColumnEditorSubtitle => 'Add document information or apply entered values to each line\'s official amount.';
 
   @override
   String get businessColumnBrowse => 'Existing columns';
@@ -550,12 +489,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get businessColumnManage => 'Added to this document';
 
   @override
-  String get businessColumnNoResults =>
-      'No matching columns. Choose New column to create one.';
+  String get businessColumnNoResults => 'No matching columns. Choose New column to create one.';
 
   @override
-  String get businessColumnNewHint =>
-      'Enter a name, then choose its purpose. Enter actual values in each table row.';
+  String get businessColumnNewHint => 'Enter a name, then choose its purpose. Enter actual values in each table row.';
 
   @override
   String get businessColumnOfficialAmount => 'Affects official amount';
@@ -567,12 +504,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get businessColumnRowAmount => 'This line\'s amount';
 
   @override
-  String get businessColumnRecordHint =>
-      'Values are stored with each document line as additional information.';
+  String get businessColumnRecordHint => 'Values are stored with each document line as additional information.';
 
   @override
-  String get businessColumnOfficialHint =>
-      'Entered values affect this line\'s amount, including saving, finance review and downstream processing.';
+  String get businessColumnOfficialHint => 'Entered values affect this line\'s amount, including saving, finance review and downstream processing.';
 
   @override
   String get businessColumnExampleTitle => 'Try an example';
@@ -584,27 +519,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get businessColumnExampleValue => 'Column value (example)';
 
   @override
-  String get businessColumnExampleHint =>
-      'Examples are not copied into the document. Blank values are skipped; zero is applied as entered.';
+  String get businessColumnExampleHint => 'Examples are not copied into the document. Blank values are skipped; zero is applied as entered.';
 
   @override
-  String get businessColumnExampleInvalid =>
-      'Use valid numbers. Division by zero, inexact division and negative results are not allowed.';
+  String get businessColumnExampleInvalid => 'Use valid numbers. Division by zero, inexact division and negative results are not allowed.';
 
   @override
-  String get businessColumnFixedFeeHint =>
-      'The value applies once per line. For example, adding 20 to 100 gives 120.';
+  String get businessColumnFixedFeeHint => 'The value applies once per line. For example, adding 20 to 100 gives 120.';
 
   @override
-  String get businessColumnFactorHint =>
-      'Enter a multiplier or divisor. Multiplying by 0.9 applies 90% of the original amount.';
+  String get businessColumnFactorHint => 'Enter a multiplier or divisor. Multiplying by 0.9 applies 90% of the original amount.';
 
   @override
   String get businessColumnRemove => 'Remove from document';
 
   @override
-  String get businessColumnRemoveHint =>
-      'Removing clears this column\'s values from all lines and recalculates amounts. Save the document to persist the change. Other documents and reusable definitions are unaffected.';
+  String get businessColumnRemoveHint => 'Removing clears this column\'s values from all lines and recalculates amounts. Save the document to persist the change. Other documents and reusable definitions are unaffected.';
 
   @override
   String get platformColumnDeleteTitle => 'Delete column';
@@ -618,35 +548,28 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get platformColumnDeleteForbidden =>
-      'You can only delete columns you created and have permission to manage.';
+  String get platformColumnDeleteForbidden => 'You can only delete columns you created and have permission to manage.';
 
   @override
-  String get platformColumnDeleteUnavailable =>
-      'This column can no longer be deleted. Reload and try again.';
+  String get platformColumnDeleteUnavailable => 'This column can no longer be deleted. Reload and try again.';
 
   @override
-  String get platformColumnDeleteReferenced =>
-      'Other calculated columns still reference this column. Delete those calculated columns first.';
+  String get platformColumnDeleteReferenced => 'Other calculated columns still reference this column. Delete those calculated columns first.';
 
   @override
-  String get platformColumnDeleteBusy =>
-      'This column is being deleted. Wait for the response.';
+  String get platformColumnDeleteBusy => 'This column is being deleted. Wait for the response.';
 
   @override
   String get businessColumnUseExisting => 'Use existing column';
 
   @override
-  String get businessColumnAlreadyAdded =>
-      'This definition is already added. Open Added to this document to review it.';
+  String get businessColumnAlreadyAdded => 'This definition is already added. Open Added to this document to review it.';
 
   @override
-  String get businessColumnOrderHint =>
-      'Amounts follow the order columns were added. Dragging headers changes display order only; populated fee columns remain visible.';
+  String get businessColumnOrderHint => 'Amounts follow the order columns were added. Dragging headers changes display order only; populated fee columns remain visible.';
 
   @override
-  String get businessColumnNoAdded =>
-      'No custom columns have been added to this document.';
+  String get businessColumnNoAdded => 'No custom columns have been added to this document.';
 
   @override
   String get businessColumnNameRequired => 'Enter a column name';
@@ -655,19 +578,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get businessColumnAmountRule => 'Amount operation';
 
   @override
-  String get businessColumnSubtractHint =>
-      'Enter the value to deduct from this line, for example 100 minus 20 equals 80.';
+  String get businessColumnSubtractHint => 'Enter the value to deduct from this line, for example 100 minus 20 equals 80.';
 
   @override
   String get bomLearningTitle => 'BOM learning';
 
   @override
-  String get bomLearningHelp =>
-      'Actual usage = cumulative net consumption of completed, reconciled production ÷ cumulative output of the batches that used the material. Material analysis and workshop material issue use the actual usage first and fall back to the design usage when there is no data. Released tasks keep the quantities frozen at release. Defects recorded in daily reports are kept for reference only and do not count as output; usage per produced unit counts good plus defective pieces.';
+  String get bomLearningHelp => 'Actual usage = cumulative net consumption of completed, reconciled production ÷ cumulative output of the batches that used the material. Material analysis and workshop material issue use the actual usage first and fall back to the design usage when there is no data. Released tasks keep the quantities frozen at release. Defects recorded in daily reports are kept for reference only and do not count as output; usage per produced unit counts good plus defective pieces.';
 
   @override
-  String get bomLearningInactive =>
-      'No learning record yet. Accumulation starts when in-house production of this item is completed and leftover material is reconciled.';
+  String get bomLearningInactive => 'No learning record yet. Accumulation starts when in-house production of this item is completed and leftover material is reconciled.';
 
   @override
   String bomLearningPaused(String reason) {
@@ -694,8 +614,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get bomActualTipUsed =>
-      'Material analysis and workshop material issue use the actual usage.';
+  String get bomActualTipUsed => 'Material analysis and workshop material issue use the actual usage.';
 
   @override
   String bomUsesDesignBecause(String reason) {
@@ -703,20 +622,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get bomDesignReasonNoData =>
-      'No completed production with counted leftover material yet';
+  String get bomDesignReasonNoData => 'No completed production with counted leftover material yet';
 
   @override
-  String get bomDesignReasonNotLinear =>
-      'Whole packages or fixed batches cannot use an average';
+  String get bomDesignReasonNotLinear => 'Whole packages or fixed batches cannot use an average';
 
   @override
-  String get bomDesignReasonOutputUnitChanged =>
-      'The parent item\'s unit changed and relearning is needed';
+  String get bomDesignReasonOutputUnitChanged => 'The parent item\'s unit changed and relearning is needed';
 
   @override
-  String get bomDesignReasonSubcontractOutbound =>
-      'The parent is subcontracted and this material is issued to the subcontractor, so the subcontract (design) quantity is used';
+  String get bomDesignReasonSubcontractOutbound => 'The parent is subcontracted and this material is issued to the subcontractor, so the subcontract (design) quantity is used';
 
   @override
   String get bomDesignReasonOther => 'No usable actual data';
@@ -730,12 +645,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bomDesignQtyRequired => 'Enter the design usage';
 
   @override
-  String get bomDesignQtyInvalid =>
-      'Design usage must be a number greater than 0';
+  String get bomDesignQtyInvalid => 'Design usage must be a number greater than 0';
 
   @override
-  String get bomLearnedEdgeEditHint =>
-      'This component was learned from actual material use. Changing the design usage makes it manually maintained; actual usage keeps accumulating.';
+  String get bomLearnedEdgeEditHint => 'This component was learned from actual material use. Changing the design usage makes it manually maintained; actual usage keeps accumulating.';
 
   @override
   String bomLearnedEdgeDeleteNote(int count) {
@@ -772,12 +685,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bomLearningRelearnDone => 'Relearning started';
 
   @override
-  String get bomLearningRelearnFailed =>
-      'Relearning failed. Please try again later.';
+  String get bomLearningRelearnFailed => 'Relearning failed. Please try again later.';
 
   @override
-  String get bomLearningLoadFailed =>
-      'Failed to load the learning record. Please retry.';
+  String get bomLearningLoadFailed => 'Failed to load the learning record. Please retry.';
 
   @override
   String get bomLearningEmpty => 'No components and no materials used yet';
@@ -786,31 +697,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bomLearningAction => 'Action';
 
   @override
-  String get bomLearningBlockedOutputIdentity =>
-      'the parent item\'s unit or identity changed';
+  String get bomLearningBlockedOutputIdentity => 'the parent item\'s unit or identity changed';
 
   @override
-  String get bomLearningBlockedMaterialIdentity =>
-      'a material was deleted or its unit changed';
+  String get bomLearningBlockedMaterialIdentity => 'a material was deleted or its unit changed';
 
   @override
-  String get bomLearningBlockedColorConflict =>
-      'the same material was issued in several colors; decide it manually in the assembly information';
+  String get bomLearningBlockedColorConflict => 'the same material was issued in several colors; decide it manually in the assembly information';
 
   @override
-  String get bomLearningBlockedPrecision =>
-      'a usage is outside the recordable range';
+  String get bomLearningBlockedPrecision => 'a usage is outside the recordable range';
 
   @override
   String get bomLearningBlockedCycle => 'it would create an assembly loop';
 
   @override
-  String get bomLearningBlockedOther =>
-      'maintain the components manually in the assembly information';
+  String get bomLearningBlockedOther => 'maintain the components manually in the assembly information';
 
   @override
-  String get materialDiscoveryBatchHelp =>
-      'Select continuous or full-kit production to identify materials before arranging batches.';
+  String get materialDiscoveryBatchHelp => 'Select continuous or full-kit production to identify materials before arranging batches.';
 
   @override
   String get materialDiscoveryCancel => 'Withdraw material definition request';
@@ -845,16 +750,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialDiscoveryTitle => 'Record materials to issue';
 
   @override
-  String get materialDiscoveryHelp =>
-      'Confirm with the workshop, add the materials, quantities and physical warehouses, then issue them from the generated draw documents.';
+  String get materialDiscoveryHelp => 'Confirm with the workshop, add the materials, quantities and physical warehouses, then issue them from the generated draw documents.';
 
   @override
-  String get materialDiscoveryRequestHelp =>
-      'These manufactured items have no material definition yet. Optionally select materials and requested quantities for each work order, or leave them for the warehouse to complete. Entered materials carry through to the warehouse for source and quantity confirmation. Actual issue is required before starting.';
+  String get materialDiscoveryRequestHelp => 'These manufactured items have no material definition yet. Optionally select materials and requested quantities for each work order, or leave them for the warehouse to complete. Entered materials carry through to the warehouse for source and quantity confirmation. Actual issue is required before starting.';
 
   @override
-  String get materialDiscoveryPrefilledHelp =>
-      'Materials and requested quantities from the workshop are already filled in. Confirm the physical warehouse and quantity, and adjust the table if needed.';
+  String get materialDiscoveryPrefilledHelp => 'Materials and requested quantities from the workshop are already filled in. Confirm the physical warehouse and quantity, and adjust the table if needed.';
 
   @override
   String get materialDiscoveryPending => 'Awaiting warehouse material entry';
@@ -869,16 +771,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialDiscoverySave => 'Create draw documents';
 
   @override
-  String get materialDiscoverySaved =>
-      'Materials recorded. Review and issue them from the draw documents.';
+  String get materialDiscoverySaved => 'Materials recorded. Review and issue them from the draw documents.';
 
   @override
-  String get materialDiscoveryInvalid =>
-      'Choose a material and physical warehouse on each row, and enter a positive quantity with up to 4 decimal places. The goods base unit is used.';
+  String get materialDiscoveryInvalid => 'Choose a material and physical warehouse on each row, and enter a positive quantity with up to 4 decimal places. The goods base unit is used.';
 
   @override
-  String get materialDiscoveryUncertain =>
-      'The result is uncertain. Your input is preserved. Check the result or retry the same request.';
+  String get materialDiscoveryUncertain => 'The result is uncertain. Your input is preserved. Check the result or retry the same request.';
 
   @override
   String get materialDiscoveryCheck => 'Check submitted result';
@@ -902,16 +801,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialDiscoveryColor => 'Color';
 
   @override
-  String get materialDiscoveryLoadFailed =>
-      'Could not load the material request. Try again.';
+  String get materialDiscoveryLoadFailed => 'Could not load the material request. Try again.';
 
   @override
-  String get materialDiscoveryNoPermission =>
-      'You do not have permission to define materials for this request.';
+  String get materialDiscoveryNoPermission => 'You do not have permission to define materials for this request.';
 
   @override
-  String get materialDiscoveryDone =>
-      'This request has been processed. Open its draw documents.';
+  String get materialDiscoveryDone => 'This request has been processed. Open its draw documents.';
 
   @override
   String get materialDiscoveryOpenDraw => 'Open draw document';
@@ -920,45 +816,37 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialDiscoveryRetry => 'Retry';
 
   @override
-  String get materialDiscoveryRequestSent =>
-      'Material request sent. Awaiting warehouse confirmation and issue.';
+  String get materialDiscoveryRequestSent => 'Material request sent. Awaiting warehouse confirmation and issue.';
 
   @override
-  String get materialDiscoveryMissingUnit =>
-      'This material has no base unit. Complete its goods record first.';
+  String get materialDiscoveryMissingUnit => 'This material has no base unit. Complete its goods record first.';
 
   @override
   String get materialDiscoveryRequestTitle => 'Review material request';
 
   @override
-  String get productionDailyReportLoadFailed =>
-      'Could not load the details. Please retry.';
+  String get productionDailyReportLoadFailed => 'Could not load the details. Please retry.';
 
   @override
-  String get productionDailyReportReverseConfirmation =>
-      'This will reverse the report. Continue?';
+  String get productionDailyReportReverseConfirmation => 'This will reverse the report. Continue?';
 
   @override
   String get productionDailyReportDeleteTitle => 'Delete daily report';
 
   @override
-  String get productionDailyReportDeleteConfirmation =>
-      'Delete this draft daily report?';
+  String get productionDailyReportDeleteConfirmation => 'Delete this draft daily report?';
 
   @override
   String get productionDailyReportDeleteAction => 'Delete';
 
   @override
-  String get productionDailyReportApprovedStateVerified =>
-      'The report is currently approved. The page has been refreshed.';
+  String get productionDailyReportApprovedStateVerified => 'The report is currently approved. The page has been refreshed.';
 
   @override
-  String get productionDailyReportReversedStateVerified =>
-      'The report is currently reversed. The page has been refreshed.';
+  String get productionDailyReportReversedStateVerified => 'The report is currently reversed. The page has been refreshed.';
 
   @override
-  String get productionDailyReportStateChangedReview =>
-      'The report status has changed. The page has been refreshed; please check its current status.';
+  String get productionDailyReportStateChangedReview => 'The report status has changed. The page has been refreshed; please check its current status.';
 
   @override
   String get appTitle => 'Uten Integrated Management Platform';
@@ -982,8 +870,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get connectionReconnecting => 'The network is unstable. Reconnecting…';
 
   @override
-  String get connectionDisconnected =>
-      'The server is temporarily unavailable. Reconnecting automatically';
+  String get connectionDisconnected => 'The server is temporarily unavailable. Reconnecting automatically';
 
   @override
   String get connectionRestored => 'Connection restored. You can continue.';
@@ -1028,16 +915,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loginServerRecoveryAction => 'Restore automatic server selection';
 
   @override
-  String get loginServerRecoveryHint =>
-      'Use this after changing networks or if sign-in fails. Only the trusted office and cloud addresses built into this app are used.';
+  String get loginServerRecoveryHint => 'Use this after changing networks or if sign-in fails. Only the trusted office and cloud addresses built into this app are used.';
 
   @override
-  String get loginServerRecoverySuccess =>
-      'Automatic server selection restored. Please sign in again.';
+  String get loginServerRecoverySuccess => 'Automatic server selection restored. Please sign in again.';
 
   @override
-  String get loginServerRecoveryFailed =>
-      'Could not restore server selection. Try again or contact an administrator.';
+  String get loginServerRecoveryFailed => 'Could not restore server selection. Try again or contact an administrator.';
 
   @override
   String loginFooter(int year) {
@@ -1078,8 +962,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsFontSize => 'Interface size';
 
   @override
-  String get settingsFontSizeHint =>
-      'Scales text, icons, buttons, cards and spacing together; remembered per account on this device';
+  String get settingsFontSizeHint => 'Scales text, icons, buttons, cards and spacing together; remembered per account on this device';
 
   @override
   String get settingsSectionPerformance => 'Performance';
@@ -1146,8 +1029,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get visitorIsEmployee =>
-      'This phone is an employee account, please use staff sign in';
+  String get visitorIsEmployee => 'This phone is an employee account, please use staff sign in';
 
   @override
   String get visitorPhoneInvalid => 'Please enter a valid phone number';
@@ -1237,16 +1119,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorApplyValidateVisitTime => 'Please select visit time';
 
   @override
-  String get visitorApplyValidateVisitTimeFuture =>
-      'Visit time must be later than now';
+  String get visitorApplyValidateVisitTimeFuture => 'Visit time must be later than now';
 
   @override
-  String get visitorApplyValidatePlate =>
-      'Plate number is required when visiting by car';
+  String get visitorApplyValidatePlate => 'Plate number is required when visiting by car';
 
   @override
-  String get visitorApplyDuplicateTime =>
-      'You already have an active visit at this time';
+  String get visitorApplyDuplicateTime => 'You already have an active visit at this time';
 
   @override
   String get visitorApplySuccess => 'Submitted, awaiting approval';
@@ -1351,8 +1230,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityPasscodeHint => 'Pass code';
 
   @override
-  String get securityPasscodeInvalid =>
-      'Please enter the 6-digit numeric pass code';
+  String get securityPasscodeInvalid => 'Please enter the 6-digit numeric pass code';
 
   @override
   String get visitorPasscodeLabel => 'Pass code';
@@ -1630,19 +1508,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOnboardSubmit => 'Submit Onboarding';
 
   @override
-  String get employeeOnboardSuccess =>
-      'Onboarding completed and the one-time password was delivered';
+  String get employeeOnboardSuccess => 'Onboarding completed and the one-time password was delivered';
 
   @override
   String get employeeOnboardSubmitFailed => 'Submit failed, please try again';
 
   @override
-  String get employeeOnboardNote =>
-      'Submitting auto-generates the employee code (UT prefix) and uses the phone number as the login account. The initial password is the last six characters of the ID number, or a system-generated random password when it is shorter than six characters (shown once, time-limited). It must be changed at first sign-in.';
+  String get employeeOnboardNote => 'Submitting auto-generates the employee code (UT prefix) and uses the phone number as the login account. The initial password is the last six characters of the ID number, or a system-generated random password when it is shorter than six characters (shown once, time-limited). It must be changed at first sign-in.';
 
   @override
-  String get employeeOnboardCodeAutoNote =>
-      'Employee code is auto-generated on submit (UT prefix, unique and incremental)';
+  String get employeeOnboardCodeAutoNote => 'Employee code is auto-generated on submit (UT prefix, unique and incremental)';
 
   @override
   String get employeeOnboardStepBasic => 'Basic Info';
@@ -1666,32 +1541,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOnboardNext => 'Next';
 
   @override
-  String get employeeOnboardNoPermission =>
-      'You do not have permission to onboard employees (requires both employee create and sensitive-info write permissions)';
+  String get employeeOnboardNoPermission => 'You do not have permission to onboard employees (requires both employee create and sensitive-info write permissions)';
 
   @override
-  String get employeeOnboardNoPermissionEmpty =>
-      'No permission to onboard employees or write sensitive info';
+  String get employeeOnboardNoPermissionEmpty => 'No permission to onboard employees or write sensitive info';
 
   @override
-  String get employeeOnboardConfirmDateRequired =>
-      'Confirmation date is required for active employees';
+  String get employeeOnboardConfirmDateRequired => 'Confirmation date is required for active employees';
 
   @override
-  String get employeeOnboardConfirmDateBeforeHire =>
-      'Confirmation date cannot be earlier than the hire date';
+  String get employeeOnboardConfirmDateBeforeHire => 'Confirmation date cannot be earlier than the hire date';
 
   @override
-  String get employeeOnboardConfirmDateInfo =>
-      'Required for active status; defaults to the hire date and can be adjusted';
+  String get employeeOnboardConfirmDateInfo => 'Required for active status; defaults to the hire date and can be adjusted';
 
   @override
-  String get employeeOnboardSubmitting =>
-      'Creating the employee record and initial account. Do not resubmit or leave this page.';
+  String get employeeOnboardSubmitting => 'Creating the employee record and initial account. Do not resubmit or leave this page.';
 
   @override
-  String get employeeOnboardIdentityDerived =>
-      'Derived from the ID number; the ID document prevails after submission';
+  String get employeeOnboardIdentityDerived => 'Derived from the ID number; the ID document prevails after submission';
 
   @override
   String get employeeOnboardSupervisorHint => 'Select a supervisor';
@@ -1700,8 +1568,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOnboardSupervisorSheet => 'Choose Supervisor';
 
   @override
-  String get employeeOnboardEduHint =>
-      'Optional: record education history here; there is no other entry point after submission yet.';
+  String get employeeOnboardEduHint => 'Optional: record education history here; there is no other entry point after submission yet.';
 
   @override
   String get employeeOnboardAddEducation => 'Add Education';
@@ -1751,15 +1618,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOnboardEduEnd => 'End Date';
 
   @override
-  String get employeeOnboardEduDateOrder =>
-      'End date cannot be earlier than start date';
+  String get employeeOnboardEduDateOrder => 'End date cannot be earlier than start date';
 
   @override
   String get employeeOnboardPickDegree => 'Please select a degree';
 
   @override
-  String get employeeOnboardContactHint =>
-      'Optional: we recommend at least one emergency contact for urgent situations.';
+  String get employeeOnboardContactHint => 'Optional: we recommend at least one emergency contact for urgent situations.';
 
   @override
   String get employeeOnboardAddContact => 'Add Contact';
@@ -1812,8 +1677,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get positionPickerDepartmentFirst => 'Select a department first';
 
   @override
-  String get positionPickerSearchHint =>
-      'Search by position name, code, or level';
+  String get positionPickerSearchHint => 'Search by position name, code, or level';
 
   @override
   String positionPickerUseCustom(Object name) {
@@ -1821,16 +1685,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get positionPickerCustomDescription =>
-      'It will be saved under the selected department after confirmation';
+  String get positionPickerCustomDescription => 'It will be saved under the selected department after confirmation';
 
   @override
-  String get positionPickerNoPositions =>
-      'This department has no positions; enter a new one directly';
+  String get positionPickerNoPositions => 'This department has no positions; enter a new one directly';
 
   @override
-  String get positionPickerLoadFailed =>
-      'Positions could not be loaded; retry or enter a new one directly';
+  String get positionPickerLoadFailed => 'Positions could not be loaded; retry or enter a new one directly';
 
   @override
   String get positionPickerClear => 'Clear';
@@ -1839,22 +1700,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOnboardCredentialTitle => 'Account created';
 
   @override
-  String get employeeOnboardCredentialWarning =>
-      'This temporary password is shown only once. Deliver it securely now; the plaintext cannot be retrieved after closing.';
+  String get employeeOnboardCredentialWarning => 'This temporary password is shown only once. Deliver it securely now; the plaintext cannot be retrieved after closing.';
 
   @override
   String get employeeOnboardAccountLabel => 'Login account';
 
   @override
-  String get employeeOnboardTemporaryPasswordLabel =>
-      'One-time temporary password';
+  String get employeeOnboardTemporaryPasswordLabel => 'One-time temporary password';
 
   @override
   String get employeeOnboardCopyTemporaryPassword => 'Copy password';
 
   @override
-  String get employeeOnboardTemporaryPasswordCopied =>
-      'Temporary password copied';
+  String get employeeOnboardTemporaryPasswordCopied => 'Temporary password copied';
 
   @override
   String get employeeOnboardCredentialSaved => 'I saved it securely';
@@ -1934,8 +1792,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeUnlockAccountSuccess => 'Account unlocked';
 
   @override
-  String get employeeProvisionConfirm =>
-      'This creates a login account for the employee. The account defaults to the phone number; the initial password is the last six characters of the ID number on file, or a system-generated random password when there is no ID number or it is shorter than six characters (shown once, time-limited). It must be changed on first login. Continue?';
+  String get employeeProvisionConfirm => 'This creates a login account for the employee. The account defaults to the phone number; the initial password is the last six characters of the ID number on file, or a system-generated random password when there is no ID number or it is shorter than six characters (shown once, time-limited). It must be changed on first login. Continue?';
 
   @override
   String get employeeIdIssueBadge => 'To verify';
@@ -1955,32 +1812,25 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get employeeIdIssueDetailInvalid =>
-      'HR should check it against the employee\'s ID document and correct it. The login account is not affected.';
+  String get employeeIdIssueDetailInvalid => 'HR should check it against the employee\'s ID document and correct it. The login account is not affected.';
 
   @override
-  String get employeeIdIssueDetailMissing =>
-      'HR should add the ID number. The login account is not affected.';
+  String get employeeIdIssueDetailMissing => 'HR should add the ID number. The login account is not affected.';
 
   @override
-  String get employeeIdIssueDetailUnchecked =>
-      'HR should check it against the employee\'s ID document and correct it if needed. The login account is not affected.';
+  String get employeeIdIssueDetailUnchecked => 'HR should check it against the employee\'s ID document and correct it if needed. The login account is not affected.';
 
   @override
-  String get employeeIdIssueProvisionHint =>
-      'You can still create the account. The HR task center will remind HR to verify and correct it.';
+  String get employeeIdIssueProvisionHint => 'You can still create the account. The HR task center will remind HR to verify and correct it.';
 
   @override
-  String get employeeIdIssueCredentialInvalid =>
-      'The initial password comes from the ID number on file (random when shorter than six characters) and may differ from the last six characters of the employee\'s real ID. Give the employee the password shown here.';
+  String get employeeIdIssueCredentialInvalid => 'The initial password comes from the ID number on file (random when shorter than six characters) and may differ from the last six characters of the employee\'s real ID. Give the employee the password shown here.';
 
   @override
-  String get employeeIdIssueCredentialMissing =>
-      'The initial password is randomly generated. Copy it and give it to the employee.';
+  String get employeeIdIssueCredentialMissing => 'The initial password is randomly generated. Copy it and give it to the employee.';
 
   @override
-  String get employeeIdIssueCredentialUnchecked =>
-      'The initial password is the last six characters of the ID number on file; it is randomly generated when the number cannot be read or is shorter than six characters. Give the employee the password shown here.';
+  String get employeeIdIssueCredentialUnchecked => 'The initial password is the last six characters of the ID number on file; it is randomly generated when the number cannot be read or is shorter than six characters. Give the employee the password shown here.';
 
   @override
   String get employeeIdentityCorrectAction => 'Edit ID details';
@@ -1989,27 +1839,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeIdentityCorrectTitle => 'Edit ID details';
 
   @override
-  String get employeeIdentityCorrectHint =>
-      'Resident ID numbers are checked automatically, and the birth date and gender are updated from the number.';
+  String get employeeIdentityCorrectHint => 'Resident ID numbers are checked automatically, and the birth date and gender are updated from the number.';
 
   @override
-  String get employeeIdentityCorrectNoPrefill =>
-      'You cannot view the full ID number. Enter the complete new number.';
+  String get employeeIdentityCorrectNoPrefill => 'You cannot view the full ID number. Enter the complete new number.';
 
   @override
   String get employeeIdentityCorrectNumberRequired => 'ID number is required';
 
   @override
-  String get employeeIdentityCorrectNumberTooLong =>
-      'ID number cannot exceed 64 characters';
+  String get employeeIdentityCorrectNumberTooLong => 'ID number cannot exceed 64 characters';
 
   @override
-  String get employeeIdentityCorrectLoadFailed =>
-      'Could not load the current ID details. You can still enter the new ID details.';
+  String get employeeIdentityCorrectLoadFailed => 'Could not load the current ID details. You can still enter the new ID details.';
 
   @override
-  String get employeeIdentityCorrectFailed =>
-      'Failed to save ID details. Try again later.';
+  String get employeeIdentityCorrectFailed => 'Failed to save ID details. Try again later.';
 
   @override
   String get employeeIdentityCorrectSaving => 'Saving';
@@ -2033,8 +1878,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeConfirmTitle => 'Confirm regular employment?';
 
   @override
-  String get employeeConfirmBody =>
-      'Register the actual confirmation date. Probationary employees become Active; already-regular employees get the date backfilled.';
+  String get employeeConfirmBody => 'Register the actual confirmation date. Probationary employees become Active; already-regular employees get the date backfilled.';
 
   @override
   String get employeeConfirmSuccess => 'Employment confirmed';
@@ -2043,8 +1887,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeRehireTitle => 'Confirm rehire?';
 
   @override
-  String get employeeRehireBody =>
-      'The employee will become Active again and the login account will be re-enabled. The old password was voided at departure: ask account support to reset it and hand the new temporary password to the employee in person.';
+  String get employeeRehireBody => 'The employee will become Active again and the login account will be re-enabled. The old password was voided at departure: ask account support to reset it and hand the new temporary password to the employee in person.';
 
   @override
   String get employeeRehireSuccess => 'Rehired';
@@ -2150,8 +1993,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get departmentEmployeesEmpty =>
-      'No employees in this department (or its sub-departments)';
+  String get departmentEmployeesEmpty => 'No employees in this department (or its sub-departments)';
 
   @override
   String get departmentLoadFailed => 'Failed to load';
@@ -2190,8 +2032,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get payrollItemTax => 'Income tax (-5%)';
 
   @override
-  String get payrollSubmitNote =>
-      'After submission it enters finance review. Once approved, HR releases the slips to employees.';
+  String get payrollSubmitNote => 'After submission it enters finance review. Once approved, HR releases the slips to employees.';
 
   @override
   String get payrollSubmitButton => 'Submit for review';
@@ -2227,8 +2068,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticePublishScopeAll => 'Everyone';
 
   @override
-  String get noticePublishScopeAllHint =>
-      'Notify every employee in the company';
+  String get noticePublishScopeAllHint => 'Notify every employee in the company';
 
   @override
   String get noticePublishValidateTitle => 'Please enter a title';
@@ -2261,19 +2101,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticePublishContentLabel => 'Body';
 
   @override
-  String get noticePublishUrgentHint =>
-      'Urgent notices use a high-priority alert. Use this only for items requiring immediate attention.';
+  String get noticePublishUrgentHint => 'Urgent notices use a high-priority alert. Use this only for items requiring immediate attention.';
 
   @override
-  String get noticePublishTopPriorityHint =>
-      'Pinned notices appear first and alert recipients as important.';
+  String get noticePublishTopPriorityHint => 'Pinned notices appear first and alert recipients as important.';
 
   @override
   String get noticePublishScopeSelected => 'Selected audience';
 
   @override
-  String get noticePublishScopeSelectedHint =>
-      'Departments and people can be combined. Departments include descendants and duplicate recipients are removed.';
+  String get noticePublishScopeSelectedHint => 'Departments and people can be combined. Departments include descendants and duplicate recipients are removed.';
 
   @override
   String get noticePublishDepartmentsLabel => 'Departments (multiple)';
@@ -2308,20 +2145,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticePublishEmployeeConfirm => 'Done';
 
   @override
-  String get noticePublishValidateAudience =>
-      'Choose at least one department or person';
+  String get noticePublishValidateAudience => 'Choose at least one department or person';
 
   @override
-  String noticePublishAudienceSummary(
-    Object departmentCount,
-    Object employeeCount,
-  ) {
+  String noticePublishAudienceSummary(Object departmentCount, Object employeeCount) {
     return '$departmentCount departments and $employeeCount people selected';
   }
 
   @override
-  String get noticePublishAudienceRecalculateHint =>
-      'The server recalculates the actual recipient count from the current organisation and account status before publishing.';
+  String get noticePublishAudienceRecalculateHint => 'The server recalculates the actual recipient count from the current organisation and account status before publishing.';
 
   @override
   String noticePublishConfirmAudience(Object summary, Object count) {
@@ -2361,39 +2193,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeTypeNewborn => 'Newborn';
 
   @override
-  String get noticeTypeAnnouncementDesc =>
-      'Company announcement; everyone can tap “Acknowledge”';
+  String get noticeTypeAnnouncementDesc => 'Company announcement; everyone can tap “Acknowledge”';
 
   @override
-  String get noticeTypePolicyDesc =>
-      'Policy release; everyone can tap “Acknowledge”';
+  String get noticeTypePolicyDesc => 'Policy release; everyone can tap “Acknowledge”';
 
   @override
-  String get noticeTypeBenefitDesc =>
-      'Benefit notice; everyone can tap “Acknowledge”';
+  String get noticeTypeBenefitDesc => 'Benefit notice; everyone can tap “Acknowledge”';
 
   @override
-  String get noticeTypeSystemDesc =>
-      'System notice; everyone can tap “Acknowledge”';
+  String get noticeTypeSystemDesc => 'System notice; everyone can tap “Acknowledge”';
 
   @override
   String get noticeTypeUrgentDesc => 'Urgent notice with high-priority alert';
 
   @override
-  String get noticeTypeBirthdayDesc =>
-      'Celebrate a birthday; everyone can “Send blessing”';
+  String get noticeTypeBirthdayDesc => 'Celebrate a birthday; everyone can “Send blessing”';
 
   @override
-  String get noticeTypeAnniversaryDesc =>
-      'Work anniversary; everyone can “Send blessing”';
+  String get noticeTypeAnniversaryDesc => 'Work anniversary; everyone can “Send blessing”';
 
   @override
-  String get noticeTypeWeddingDesc =>
-      'Wedding blessing; everyone can “Send blessing”';
+  String get noticeTypeWeddingDesc => 'Wedding blessing; everyone can “Send blessing”';
 
   @override
-  String get noticeTypeNewbornDesc =>
-      'Newborn blessing; everyone can “Send blessing”';
+  String get noticeTypeNewbornDesc => 'Newborn blessing; everyone can “Send blessing”';
 
   @override
   String get noticeGroupBroadcast => 'Broadcast';
@@ -2466,8 +2290,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeCelebrationSubjectLabel => 'Honoree';
 
   @override
-  String get noticeCelebrationSubjectHint =>
-      'Choose the colleague to celebrate';
+  String get noticeCelebrationSubjectHint => 'Choose the colleague to celebrate';
 
   @override
   String get noticeCelebrationSubjectRequired => 'Please choose an honoree';
@@ -2572,12 +2395,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileChangeSubmitFailed => 'Submit failed, please retry';
 
   @override
-  String get profileChangeConflict =>
-      'Profile has been updated by someone else, please refresh';
+  String get profileChangeConflict => 'Profile has been updated by someone else, please refresh';
 
   @override
-  String get profileChangeRateLimited =>
-      'You already submitted a change for this item in the last 24 hours';
+  String get profileChangeRateLimited => 'You already submitted a change for this item in the last 24 hours';
 
   @override
   String get profileChangeListTitle => 'My change requests';
@@ -2657,19 +2478,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileChangeRejectDialogTitle => 'Reject request';
 
   @override
-  String get profileChangeRejectReasonRequired =>
-      'Rejection reason is required';
+  String get profileChangeRejectReasonRequired => 'Rejection reason is required';
 
   @override
-  String get profileChangeRejectReasonHint =>
-      'Explain why; the employee will see this';
+  String get profileChangeRejectReasonHint => 'Explain why; the employee will see this';
 
   @override
   String get profileChangeApproveDialogTitle => 'Confirm approval?';
 
   @override
-  String get profileChangeApproveDialogBody =>
-      'Changes will be merged into the employee profile immediately';
+  String get profileChangeApproveDialogBody => 'Changes will be merged into the employee profile immediately';
 
   @override
   String get profileChangeConfirm => 'Confirm';
@@ -2722,8 +2540,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileFieldGroupOrganization => 'Organization';
 
   @override
-  String get profileEditPolicyHint =>
-      'Green \"direct edit\" fields apply immediately; yellow fields take effect after HR review; all other fields are maintained by HR.';
+  String get profileEditPolicyHint => 'Green \"direct edit\" fields apply immediately; yellow fields take effect after HR review; all other fields are maintained by HR.';
 
   @override
   String profileEditPendingConflictHint(int count) {
@@ -2917,8 +2734,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get productionHubPlan => 'New production plan';
 
   @override
-  String get productionHubPlanSub =>
-      'Create a plan manually, optionally referencing a sales order';
+  String get productionHubPlanSub => 'Create a plan manually, optionally referencing a sales order';
 
   @override
   String get productionHubMaterialAnalysis => 'Material readiness analysis';
@@ -2951,15 +2767,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get financeSalesAllQueueLabel => 'sales order finance confirmations';
 
   @override
-  String get financeSalesInitialQueueLabel =>
-      'initial sales order finance approvals';
+  String get financeSalesInitialQueueLabel => 'initial sales order finance approvals';
 
   @override
   String get financeSalesChangesQueueLabel => 'sales order changes';
 
   @override
-  String get financeHubTaskApprovalSub =>
-      'Purchase and subcontract order approvals';
+  String get financeHubTaskApprovalSub => 'Purchase and subcontract order approvals';
 
   @override
   String get financeHubTaskOverDelivery => 'Over-delivery approval';
@@ -3067,8 +2881,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseHubSectionReports => 'Warehouse reports';
 
   @override
-  String get warehouseHubSectionReportsDesc =>
-      'Detail (per item) & summary (per doc)';
+  String get warehouseHubSectionReportsDesc => 'Detail (per item) & summary (per doc)';
 
   @override
   String get warehouseHubInventoryLive => 'Live stock';
@@ -3146,8 +2959,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get basicDataHubSettlementMethod => 'Settlement methods';
 
   @override
-  String get basicDataHubSettlementMethodSub =>
-      'Terms dictionary and payment-term rules';
+  String get basicDataHubSettlementMethodSub => 'Terms dictionary and payment-term rules';
 
   @override
   String get impersonationSwitchPerson => 'Switch person';
@@ -3193,12 +3005,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get exportDialogTitle => 'Export Excel';
 
   @override
-  String get exportPasswordOptionalHint =>
-      'A password is optional. Leave it blank for a regular Excel file, or enter 1–128 characters to encrypt it.';
+  String get exportPasswordOptionalHint => 'A password is optional. Leave it blank for a regular Excel file, or enter 1–128 characters to encrypt it.';
 
   @override
-  String get exportPasswordOptionalLabel =>
-      'Opening password (optional, 1–128)';
+  String get exportPasswordOptionalLabel => 'Opening password (optional, 1–128)';
 
   @override
   String get exportPasswordConfirmLabel => 'Confirm password';
@@ -3235,16 +3045,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileLoadFailed => 'Employee record failed to load';
 
   @override
-  String get profileUnboundTitle =>
-      'This account is not linked to an employee record';
+  String get profileUnboundTitle => 'This account is not linked to an employee record';
 
   @override
-  String get profileUnboundDescription =>
-      'Contact an administrator or HR to link this account to an employee record.';
+  String get profileUnboundDescription => 'Contact an administrator or HR to link this account to an employee record.';
 
   @override
-  String get profileSessionUnavailable =>
-      'You are not signed in, or your sign-in has expired';
+  String get profileSessionUnavailable => 'You are not signed in, or your sign-in has expired';
 
   @override
   String get profileValueNotProvided => 'Not provided';
@@ -3271,37 +3078,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileEmploymentHistoryTitle => 'Employment history';
 
   @override
-  String get profileCompensationBoundaryDescription =>
-      'Salary and bank information are intentionally not shown on My Profile. Check monthly income in Payslips, or contact authorized HR for other questions.';
+  String get profileCompensationBoundaryDescription => 'Salary and bank information are intentionally not shown on My Profile. Check monthly income in Payslips, or contact authorized HR for other questions.';
 
   @override
-  String get profileMissingEmergencyContact =>
-      'No emergency contact is registered. Ask HR to register one before requesting changes here.';
+  String get profileMissingEmergencyContact => 'No emergency contact is registered. Ask HR to register one before requesting changes here.';
 
   @override
   String get historyEventConfirm => 'Confirmation';
 
   @override
-  String get accountProvisionPermissionDenied =>
-      'You do not have permission to provision accounts. Contact account support.';
+  String get accountProvisionPermissionDenied => 'You do not have permission to provision accounts. Contact account support.';
 
   @override
-  String get accountProvisionAlreadyExists =>
-      'This employee already has an account or the account is inactive; it cannot be provisioned again.';
+  String get accountProvisionAlreadyExists => 'This employee already has an account or the account is inactive; it cannot be provisioned again.';
 
   @override
   String get accountProvisionConfirmTitle => 'Confirm account provisioning';
 
   @override
-  String get accountProvisionFailed =>
-      'Account provisioning failed. Try again later.';
+  String get accountProvisionFailed => 'Account provisioning failed. Try again later.';
 
   @override
   String get accountProvisionInProgress => 'Provisioning';
 
   @override
-  String get accountProvisionMissingPhone =>
-      'This employee has no phone number on file, so no account can be created. Add the phone number in the employee profile first.';
+  String get accountProvisionMissingPhone => 'This employee has no phone number on file, so no account can be created. Add the phone number in the employee profile first.';
 
   @override
   String get accountStatusNotProvisioned => 'Not provisioned';
@@ -3310,39 +3111,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accountStatusInactive => 'Account inactive';
 
   @override
-  String get pagePermissionAccountNotProvisionedTitle =>
-      'This person does not have an account, so permissions cannot be configured yet';
+  String get pagePermissionAccountNotProvisionedTitle => 'This person does not have an account, so permissions cannot be configured yet';
 
   @override
-  String get pagePermissionAccountNotProvisionedCanProvision =>
-      'Provision the account first. After the initial password is saved, this person\'s permissions will load automatically.';
+  String get pagePermissionAccountNotProvisionedCanProvision => 'Provision the account first. After the initial password is saved, this person\'s permissions will load automatically.';
 
   @override
-  String get pagePermissionAccountNotProvisionedNoAccess =>
-      'Contact someone with Account Support permission to provision the login account.';
+  String get pagePermissionAccountNotProvisionedNoAccess => 'Contact someone with Account Support permission to provision the login account.';
 
   @override
-  String get employeePermissionSettingsTooltip =>
-      'Configure employee permissions';
+  String get employeePermissionSettingsTooltip => 'Configure employee permissions';
 
   @override
-  String get employeeAccountNotProvisionedTooltip =>
-      'Employee account not provisioned';
+  String get employeeAccountNotProvisionedTooltip => 'Employee account not provisioned';
 
   @override
-  String get employeeResignedCannotProvision =>
-      'A resigned employee cannot be given a login account';
+  String get employeeResignedCannotProvision => 'A resigned employee cannot be given a login account';
 
   @override
-  String get employeeAccountNotProvisionedContactSupport =>
-      'This employee does not have an account. Contact account support.';
+  String get employeeAccountNotProvisionedContactSupport => 'This employee does not have an account. Contact account support.';
 
   @override
   String get materialMainWarehouse => 'Main warehouse';
 
   @override
-  String get materialWarehouseScopeExplanation =>
-      'Planning uses main-warehouse totals. Warehouse staff arrange the picking locations.';
+  String get materialWarehouseScopeExplanation => 'Planning uses main-warehouse totals. Warehouse staff arrange the picking locations.';
 
   @override
   String get materialSearchHint => 'Search products or materials';
@@ -3372,8 +3165,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialShortage => 'Still short';
 
   @override
-  String get materialSupplyProgressHint =>
-      'Track ordering, finance approval, arrival, inspection and stock-in. Double-click for details. Physical shortage remains after issue and updates after qualified stock-in.';
+  String get materialSupplyProgressHint => 'Track ordering, finance approval, arrival, inspection and stock-in. Double-click for details. Physical shortage remains after issue and updates after qualified stock-in.';
 
   @override
   String get materialToSupply => 'Order quantity';
@@ -3432,24 +3224,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialTaskEmpty => 'No tasks match this filter';
 
   @override
-  String get materialTaskBuyHint =>
-      'Issue remaining purchasing demand and track orders, receipts and inspections.';
+  String get materialTaskBuyHint => 'Issue remaining purchasing demand and track orders, receipts and inspections.';
 
   @override
-  String get materialTaskSubcontractHint =>
-      'Issue remaining subcontracting demand; components first create workshop preparation tasks.';
+  String get materialTaskSubcontractHint => 'Issue remaining subcontracting demand; components first create workshop preparation tasks.';
 
   @override
-  String get materialTaskWorkshopHint =>
-      'Set quantity, workshop and owner before issuing. Material-short tasks wait until materials are ready and issued.';
+  String get materialTaskWorkshopHint => 'Set quantity, workshop and owner before issuing. Material-short tasks wait until materials are ready and issued.';
 
   @override
-  String get materialTaskSectionHint =>
-      'Manage preparation by route and review pending, in-progress and blocked tasks.';
+  String get materialTaskSectionHint => 'Manage preparation by route and review pending, in-progress and blocked tasks.';
 
   @override
-  String get materialWarehouseLimit =>
-      'An analysis supports at most 100 physical warehouses. Adjust the warehouse scope before analyzing.';
+  String get materialWarehouseLimit => 'An analysis supports at most 100 physical warehouses. Adjust the warehouse scope before analyzing.';
 
   @override
   String materialRoutesNext(int count) {
@@ -3457,8 +3244,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get materialIssueNext =>
-      'Next: open purchasing, subcontracting or workshop tasks to issue remaining demand and track issued work.';
+  String get materialIssueNext => 'Next: open purchasing, subcontracting or workshop tasks to issue remaining demand and track issued work.';
 
   @override
   String materialWorkshopNext(int count) {
@@ -3469,8 +3255,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialRootRoutePending => 'Route pending';
 
   @override
-  String get materialRootExternalRoute =>
-      'Issue this top-level product from its purchasing or subcontracting entry';
+  String get materialRootExternalRoute => 'Issue this top-level product from its purchasing or subcontracting entry';
 
   @override
   String get materialRootSupplyCompleted => 'Supply demand fulfilled';
@@ -3497,12 +3282,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialRevokeRootStock => 'Reverse stock allocation';
 
   @override
-  String get materialRootRevokeFailed =>
-      'Stock allocation could not be reversed. Refresh and review it.';
+  String get materialRootRevokeFailed => 'Stock allocation could not be reversed. Refresh and review it.';
 
   @override
-  String get materialRootSupplyProcessed =>
-      'Supply processed. Review the stock handovers and additional demand records.';
+  String get materialRootSupplyProcessed => 'Supply processed. Review the stock handovers and additional demand records.';
 
   @override
   String get orderChangeQtyButton => 'Change Qty';
@@ -3511,8 +3294,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get orderChangeQtyTitle => 'Order Qty Change';
 
   @override
-  String get orderChangeQtyWarning =>
-      'Changes after approval take effect immediately and automatically re-enter finance review; finance will see the change list (before → after). Rejection does not restore quantities.';
+  String get orderChangeQtyWarning => 'Changes after approval take effect immediately and automatically re-enter finance review; finance will see the change list (before → after). Rejection does not restore quantities.';
 
   @override
   String orderChangeQtyCurrent(String qty) {
@@ -3526,16 +3308,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get orderChangeQtyConfirm => 'Confirm Change';
 
   @override
-  String get orderChangeQtyInvalid =>
-      'Some quantities are incorrect (must be greater than 0). Please check.';
+  String get orderChangeQtyInvalid => 'Some quantities are incorrect (must be greater than 0). Please check.';
 
   @override
-  String get orderChangeQtySuccess =>
-      'Quantities changed; the order has re-entered finance review';
+  String get orderChangeQtySuccess => 'Quantities changed; the order has re-entered finance review';
 
   @override
-  String get orderChangeQtyFailed =>
-      'Failed to change quantities. Please try again later.';
+  String get orderChangeQtyFailed => 'Failed to change quantities. Please try again later.';
 
   @override
   String orderQtyChangeOld(String value) {
@@ -3561,119 +3340,91 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get procurementApprovalQtyChangesHint =>
-      'Quantities were changed after finance approval and the order has automatically re-entered review; please verify each line (before → after) before reviewing.';
+  String get procurementApprovalQtyChangesHint => 'Quantities were changed after finance approval and the order has automatically re-entered review; please verify each line (before → after) before reviewing.';
 
   @override
   String get productionMaterialRecheck => 'Recheck material readiness';
 
   @override
-  String get productionMaterialRecheckReady =>
-      'Materials are ready. Select the tasks and submit a material request in My Workshop Tasks. Start after the warehouse has issued all materials.';
+  String get productionMaterialRecheckReady => 'Materials are ready. Select the tasks and submit a material request in My Workshop Tasks. Start after the warehouse has issued all materials.';
 
   @override
-  String get productionMaterialRecheckWaiting =>
-      'Materials are still short. Check completed stock receipts and reservations for other tasks.';
+  String get productionMaterialRecheckWaiting => 'Materials are still short. Check completed stock receipts and reservations for other tasks.';
 
   @override
-  String get fieldAutofilledReview =>
-      'Filled from a previous record or default. Please review before use.';
+  String get fieldAutofilledReview => 'Filled from a previous record or default. Please review before use.';
 
   @override
-  String get workflowQuantityHint =>
-      'Enter this quantity in the row unit. Do not mix boxes, pieces or kilograms; a linked source must have enough available quantity.';
+  String get workflowQuantityHint => 'Enter this quantity in the row unit. Do not mix boxes, pieces or kilograms; a linked source must have enough available quantity.';
 
   @override
-  String get workflowOrderQuantityHint =>
-      'Enter the ordered quantity in the row unit. Editing is locked during finance review; changes after approval require a new review.';
+  String get workflowOrderQuantityHint => 'Enter the ordered quantity in the row unit. Editing is locked during finance review; changes after approval require a new review.';
 
   @override
-  String get workflowReturnQuantityHint =>
-      'Use the original shipment line unit for the actual returned quantity. Do not exceed the remaining returnable quantity. Approved returns await inspection before becoming saleable stock.';
+  String get workflowReturnQuantityHint => 'Use the original shipment line unit for the actual returned quantity. Do not exceed the remaining returnable quantity. Approved returns await inspection before becoming saleable stock.';
 
   @override
-  String get workflowPriceHint =>
-      'Enter the price per row unit in its currency. The line amount follows quantity; do not enter the line total as a unit price.';
+  String get workflowPriceHint => 'Enter the price per row unit in its currency. The line amount follows quantity; do not enter the line total as a unit price.';
 
   @override
-  String get workflowReturnPriceHint =>
-      'Return credit is calculated at approval from the original shipment and prior returns. A reference price cannot increase the refundable amount.';
+  String get workflowReturnPriceHint => 'Return credit is calculated at approval from the original shipment and prior returns. A reference price cannot increase the refundable amount.';
 
   @override
-  String get workflowDiscountHint =>
-      'Use a decimal multiplier: 1 is full price and 0.9 means 10% off. Do not enter 9 or 90.';
+  String get workflowDiscountHint => 'Use a decimal multiplier: 1 is full price and 0.9 means 10% off. Do not enter 9 or 90.';
 
   @override
-  String get workflowExchangeRateHint =>
-      'Enter the base-currency value of one unit of the original currency, with up to 6 decimals. Check any prefilled rate for this transaction.';
+  String get workflowExchangeRateHint => 'Enter the base-currency value of one unit of the original currency, with up to 6 decimals. Check any prefilled rate for this transaction.';
 
   @override
-  String get workflowTaxRateHint =>
-      'Enter a percentage: 13 means 13%. Do not enter 0.13.';
+  String get workflowTaxRateHint => 'Enter a percentage: 13 means 13%. Do not enter 0.13.';
 
   @override
-  String get workflowCurrencyHint =>
-      'The currency defines this line’s prices and amounts. Check the source document before changing it.';
+  String get workflowCurrencyHint => 'The currency defines this line’s prices and amounts. Check the source document before changing it.';
 
   @override
-  String get workflowSettlementHint =>
-      'Select the agreed supplier settlement terms. Different suppliers, currencies or terms may produce separate orders.';
+  String get workflowSettlementHint => 'Select the agreed supplier settlement terms. Different suppliers, currencies or terms may produce separate orders.';
 
   @override
-  String get workflowWorkshopQuantityHint =>
-      'Enter the quantity assigned to the workshop now. Dispatch can happen first; starting and material issue still require the necessary materials and state.';
+  String get workflowWorkshopQuantityHint => 'Enter the quantity assigned to the workshop now. Dispatch can happen first; starting and material issue still require the necessary materials and state.';
 
   @override
-  String get workflowReportQuantityHint =>
-      'Enter the output completed this time in the plan-line unit, not cumulative output. Approved reporting still requires warehouse registration, quality inspection and stock-in.';
+  String get workflowReportQuantityHint => 'Enter the output completed this time in the plan-line unit, not cumulative output. Approved reporting still requires warehouse registration, quality inspection and stock-in.';
 
   @override
-  String get workflowArrivalQuantityHint =>
-      'Enter the actual quantity received now in the row unit, including shortages or excess. Quantity above approval enters exception handling rather than available stock.';
+  String get workflowArrivalQuantityHint => 'Enter the actual quantity received now in the row unit, including shortages or excess. Quantity above approval enters exception handling rather than available stock.';
 
   @override
-  String get workflowIqcPassHint =>
-      'Enter only the quantity passed this time. Passed plus failed quantity must not exceed the uninspected balance; warehouse confirmation is still needed for stock-in.';
+  String get workflowIqcPassHint => 'Enter only the quantity passed this time. Passed plus failed quantity must not exceed the uninspected balance; warehouse confirmation is still needed for stock-in.';
 
   @override
-  String get workflowIqcFailHint =>
-      'Enter only the quantity failed this time. It does not become available stock and still needs return, rework or another disposition.';
+  String get workflowIqcFailHint => 'Enter only the quantity failed this time. It does not become available stock and still needs return, rework or another disposition.';
 
   @override
-  String get workflowPrepaymentAmountHint =>
-      'Enter the advance payment actually received in the order currency. Receipt is recorded once; later applying it to receivables does not record another cash receipt.';
+  String get workflowPrepaymentAmountHint => 'Enter the advance payment actually received in the order currency. Receipt is recorded once; later applying it to receivables does not record another cash receipt.';
 
   @override
-  String get workflowReceiptAllocationHint =>
-      'Allocate this receipt to the receivable in its original currency, up to its collectible balance. Do not allocate the same received money twice.';
+  String get workflowReceiptAllocationHint => 'Allocate this receipt to the receivable in its original currency, up to its collectible balance. Do not allocate the same received money twice.';
 
   @override
-  String get workflowBankFeeHint =>
-      'Enter the actual bank fee. A fee deducted from the receipt must not also be recorded as a separate payment.';
+  String get workflowBankFeeHint => 'Enter the actual bank fee. A fee deducted from the receipt must not also be recorded as a separate payment.';
 
   @override
-  String get workflowOtherFeeHint =>
-      'Enter only other fees for this receipt and select their expense category. Do not record a fee twice.';
+  String get workflowOtherFeeHint => 'Enter only other fees for this receipt and select their expense category. Do not record a fee twice.';
 
   @override
-  String get workflowReturnReasonHint =>
-      'Describe the return reason and original shipment. Approval creates a credit awaiting disposition and quarantines the goods; refund or replacement decisions are separate.';
+  String get workflowReturnReasonHint => 'Describe the return reason and original shipment. Approval creates a credit awaiting disposition and quarantines the goods; refund or replacement decisions are separate.';
 
   @override
-  String get workflowPrepaymentOrderHint =>
-      'Select the sales order for this advance payment. Its customer and currency are inherited; change the order if the source is wrong.';
+  String get workflowPrepaymentOrderHint => 'Select the sales order for this advance payment. Its customer and currency are inherited; change the order if the source is wrong.';
 
   @override
-  String get workflowPrepaymentApplyHint =>
-      'Explain which advance payment covers which receivables and why. Applying it adjusts balances without recording another cash receipt.';
+  String get workflowPrepaymentApplyHint => 'Explain which advance payment covers which receivables and why. Applying it adjusts balances without recording another cash receipt.';
 
   @override
-  String get workflowFinanceReviewHint =>
-      'Record your review. Compare before and after values for changed orders. Finance approval does not mean payment, shipment or production has occurred.';
+  String get workflowFinanceReviewHint => 'Record your review. Compare before and after values for changed orders. Finance approval does not mean payment, shipment or production has occurred.';
 
   @override
-  String get workflowFinanceRejectHint =>
-      'State what is wrong and what must change. Sales receives this reason and can resubmit after correction.';
+  String get workflowFinanceRejectHint => 'State what is wrong and what must change. Sales receives this reason and can resubmit after correction.';
 
   @override
   String get workflowOptionalDetails => 'Additional details (optional)';
@@ -3706,20 +3457,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get moneySummaryExpectedNewCash => 'Estimated new payment needed';
 
   @override
-  String get moneySummaryBalanceHint =>
-      'Finance must confirm how this balance is applied or refunded. It does not mean a refund has been paid.';
+  String get moneySummaryBalanceHint => 'Finance must confirm how this balance is applied or refunded. It does not mean a refund has been paid.';
 
   @override
-  String get moneySummaryCollectionHint =>
-      'Estimated from current receivables, future shipments and unused advances. No credit or refund is applied automatically.';
+  String get moneySummaryCollectionHint => 'Estimated from current receivables, future shipments and unused advances. No credit or refund is applied automatically.';
 
   @override
-  String get moneySummarySourceHint =>
-      'Amounts come from approved documents. Customer payments may include deducted fees; bank cash received is shown in account transactions.';
+  String get moneySummarySourceHint => 'Amounts come from approved documents. Customer payments may include deducted fees; bank cash received is shown in account transactions.';
 
   @override
-  String get moneySummaryUnallocatedHint =>
-      'Some payments have not been matched to this order. Finance needs to reconcile them.';
+  String get moneySummaryUnallocatedHint => 'Some payments have not been matched to this order. Finance needs to reconcile them.';
 
   @override
   String get warehouseArrivalSourceLabel => 'Arrival source';
@@ -3734,15 +3481,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseArrivalSourceReplacement => 'Replace returns first';
 
   @override
-  String get materialIssuedPlanSyncPending =>
-      'Issued; waiting for plan progress to sync';
+  String get materialIssuedPlanSyncPending => 'Issued; waiting for plan progress to sync';
 
   @override
   String get subcontractPlanIssuedDate => 'Task issue date';
 
   @override
-  String get subcontractPlanIssuedDateHint =>
-      'The date planning first issued this subcontract task.';
+  String get subcontractPlanIssuedDateHint => 'The date planning first issued this subcontract task.';
 
   @override
   String get serverStatusTitle => 'Server status';
@@ -3751,8 +3496,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverStatusRefresh => 'Refresh';
 
   @override
-  String get serverStatusAccessRequired =>
-      'You do not have permission to view server status';
+  String get serverStatusAccessRequired => 'You do not have permission to view server status';
 
   @override
   String get serverStatusResources => 'Resources';
@@ -3767,20 +3511,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverStatusOverview => 'Health overview';
 
   @override
-  String get serverStatusOverviewHint =>
-      'Based on the server’s latest collected measurements.';
+  String get serverStatusOverviewHint => 'Based on the server’s latest collected measurements.';
 
   @override
-  String get serverStatusCollecting =>
-      'Waiting for the server to collect measurements.';
+  String get serverStatusCollecting => 'Waiting for the server to collect measurements.';
 
   @override
-  String get serverStatusStale =>
-      'Measurements are out of date. Waiting for a new sample.';
+  String get serverStatusStale => 'Measurements are out of date. Waiting for a new sample.';
 
   @override
-  String get serverStatusRefreshFailed =>
-      'Unable to update. Previous measurements are for reference only; try refreshing shortly.';
+  String get serverStatusRefreshFailed => 'Unable to update. Previous measurements are for reference only; try refreshing shortly.';
 
   @override
   String get serverStatusUpdatedAt => 'Collected at';
@@ -3827,8 +3567,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverStatusDatabase => 'Database';
 
   @override
-  String get serverStatusDatabaseHint =>
-      'Database responsiveness and current connection count.';
+  String get serverStatusDatabaseHint => 'Database responsiveness and current connection count.';
 
   @override
   String get serverStatusResponse => 'Response time';
@@ -3849,8 +3588,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverStatusAttention => 'Needs attention';
 
   @override
-  String get serverStatusNotCollected =>
-      'This measurement is not available yet';
+  String get serverStatusNotCollected => 'This measurement is not available yet';
 
   @override
   String serverStatusUptimeValue(int days, int hours, int minutes) {
@@ -3858,8 +3596,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get serverStatusThresholdUnknown =>
-      'No alert thresholds are available';
+  String get serverStatusThresholdUnknown => 'No alert thresholds are available';
 
   @override
   String serverStatusThresholds(String warning, String critical) {
@@ -3894,19 +3631,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get productionMaterialRecheckHelp =>
-      'Recheck qualified receipts for this task and available stock. This does not receive stock or record actual consumption.';
+  String get productionMaterialRecheckHelp => 'Recheck qualified receipts for this task and available stock. This does not receive stock or record actual consumption.';
 
   @override
   String get productionMaterialViewUsage => 'View usage records';
 
   @override
-  String get systemSettingInvalidInteger =>
-      'Enter a whole number of 0 or greater';
+  String get systemSettingInvalidInteger => 'Enter a whole number of 0 or greater';
 
   @override
-  String get systemSettingInvalidValue =>
-      'The setting is outside its allowed range';
+  String get systemSettingInvalidValue => 'The setting is outside its allowed range';
 
   @override
   String get systemSettingEnabled => 'Enabled';
@@ -3918,23 +3652,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get systemSettingFixFields => 'Check the highlighted settings first';
 
   @override
-  String get systemSettingUnsavedRefresh =>
-      'Save or revert your changes before refreshing';
+  String get systemSettingUnsavedRefresh => 'Save or revert your changes before refreshing';
 
   @override
-  String get systemSettingEffectTiming =>
-      'Security limits apply to subsequent actions, and token lifetimes apply the next time you sign in. Celebrations and audit retention apply on their scheduled runs. Changes are audited and require password confirmation.';
+  String get systemSettingEffectTiming => 'Security limits apply to subsequent actions, and token lifetimes apply the next time you sign in. Celebrations and audit retention apply on their scheduled runs. Changes are audited and require password confirmation.';
 
   @override
-  String get auditSummaryUnavailable =>
-      'Summary unavailable; event records remain available';
+  String get auditSummaryUnavailable => 'Summary unavailable; event records remain available';
 
   @override
   String get auditSummaryRetry => 'Retry summary';
 
   @override
-  String get auditWorkspaceDescription =>
-      'Review sign-in records by person and time, then follow events to business changes.';
+  String get auditWorkspaceDescription => 'Review sign-in records by person and time, then follow events to business changes.';
 
   @override
   String get materialReasonLabel => 'Reason';
@@ -3964,8 +3694,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseOutboundBatchReview => 'Review sales outbound tasks';
 
   @override
-  String get warehouseOutboundBatchHint =>
-      'Check goods, quantities, units, warehouses and actual locations before confirming the outbound.';
+  String get warehouseOutboundBatchHint => 'Check goods, quantities, units, warehouses and actual locations before confirming the outbound.';
 
   @override
   String warehouseOutboundBatchConfirm(String action, int count) {
@@ -3973,20 +3702,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get warehouseOutboundBatchStopped =>
-      'Batch processing stopped. Return and refresh before selecting unfinished tasks.';
+  String get warehouseOutboundBatchStopped => 'Batch processing stopped. Return and refresh before selecting unfinished tasks.';
 
   @override
-  String get warehouseOutboundBatchUnknown =>
-      'No definite result was received. Return and refresh to check the current status before proceeding.';
+  String get warehouseOutboundBatchUnknown => 'No definite result was received. Return and refresh to check the current status before proceeding.';
 
   @override
-  String get warehouseOutboundBatchStale =>
-      'The task status or allowed actions have changed. Refresh and review.';
+  String get warehouseOutboundBatchStale => 'The task status or allowed actions have changed. Refresh and review.';
 
   @override
-  String get warehouseOutboundBatchEmpty =>
-      'The selected tasks are no longer actionable. Return and refresh the list.';
+  String get warehouseOutboundBatchEmpty => 'The selected tasks are no longer actionable. Return and refresh the list.';
 
   @override
   String get warehouseOutboundBatchResult => 'Processing result';
@@ -4074,12 +3799,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get warehouseStockOutboundHint =>
-      'Check goods, quantities, units and actual warehouses. Selecting a line selects its entire document. To change quantities, edit the draft first.';
+  String get warehouseStockOutboundHint => 'Check goods, quantities, units and actual warehouses. Selecting a line selects its entire document. To change quantities, edit the draft first.';
 
   @override
-  String get warehouseStockOutboundLoadFailed =>
-      'Unable to load outbound details. Please retry.';
+  String get warehouseStockOutboundLoadFailed => 'Unable to load outbound details. Please retry.';
 
   @override
   String warehouseStockOutboundCompleted(int count) {
@@ -4093,8 +3816,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseStockOutboundUnavailable => 'Currently unavailable';
 
   @override
-  String get warehouseStockOutboundProcessing =>
-      'Confirming outbound documents';
+  String get warehouseStockOutboundProcessing => 'Confirming outbound documents';
 
   @override
   String get warehouseStockOutboundBillNo => 'Outbound document';
@@ -4115,16 +3837,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseSubcontractOutboundBatchAction => 'Batch outbound';
 
   @override
-  String get warehouseSubcontractOutboundBatchConfirm =>
-      'Confirm batch outbound';
+  String get warehouseSubcontractOutboundBatchConfirm => 'Confirm batch outbound';
 
   @override
-  String get warehouseSubcontractOutboundReviewHint =>
-      'Check each quantity and actual warehouse before confirming outbound.';
+  String get warehouseSubcontractOutboundReviewHint => 'Check each quantity and actual warehouse before confirming outbound.';
 
   @override
-  String get warehouseSubcontractOutboundBatchHint =>
-      'Lines are selected together for each outbound document. Reduce quantities for a partial issue; enter 0 to skip a material this time (the line is removed on save). To skip a whole document, use \"Return to subcontract (not issued)\" on its picking page. Each document is saved and approved separately; completed results are retained. If one fails, processing pauses; verify the result before continuing the remaining documents.';
+  String get warehouseSubcontractOutboundBatchHint => 'Lines are selected together for each outbound document. Reduce quantities for a partial issue; enter 0 to skip a material this time (the line is removed on save). To skip a whole document, use \"Return to subcontract (not issued)\" on its picking page. Each document is saved and approved separately; completed results are retained. If one fails, processing pauses; verify the result before continuing the remaining documents.';
 
   @override
   String get warehouseSubcontractOutboundDocuments => 'Document details';
@@ -4154,8 +3873,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseSubcontractOutboundGoodsCode => 'Code';
 
   @override
-  String get warehouseSubcontractOutboundParentName =>
-      'Subcontract item returned';
+  String get warehouseSubcontractOutboundParentName => 'Subcontract item returned';
 
   @override
   String get warehouseSubcontractOutboundParentCode => 'Subcontract item code';
@@ -4164,8 +3882,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseSubcontractOutboundColor => 'Colour';
 
   @override
-  String get warehouseSubcontractOutboundStockAvailable =>
-      'Available in warehouse';
+  String get warehouseSubcontractOutboundStockAvailable => 'Available in warehouse';
 
   @override
   String get warehouseSubcontractOutboundQuantity => 'Issue quantity';
@@ -4186,32 +3903,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseSubcontractOutboundPaused => 'Paused; verify the result';
 
   @override
-  String get warehouseSubcontractOutboundUncertain =>
-      'The receipt is uncertain. Verify the result before continuing.';
+  String get warehouseSubcontractOutboundUncertain => 'The receipt is uncertain. Verify the result before continuing.';
 
   @override
-  String get warehouseSubcontractOutboundChanged =>
-      'The document has changed or been processed. Return, refresh and select it again.';
+  String get warehouseSubcontractOutboundChanged => 'The document has changed or been processed. Return, refresh and select it again.';
 
   @override
-  String get warehouseSubcontractOutboundSelectRequired =>
-      'Select at least one outbound task.';
+  String get warehouseSubcontractOutboundSelectRequired => 'Select at least one outbound task.';
 
   @override
-  String get warehouseSubcontractOutboundSelectionLimit =>
-      'Select at most 50 tasks per batch.';
+  String get warehouseSubcontractOutboundSelectionLimit => 'Select at most 50 tasks per batch.';
 
   @override
-  String get warehouseSubcontractOutboundWarehouseRequired =>
-      'Select an issue warehouse.';
+  String get warehouseSubcontractOutboundWarehouseRequired => 'Select an issue warehouse.';
 
   @override
-  String get warehouseSubcontractOutboundLoadFailed =>
-      'Could not load outbound details. Please retry.';
+  String get warehouseSubcontractOutboundLoadFailed => 'Could not load outbound details. Please retry.';
 
   @override
-  String get warehouseSubcontractOutboundConfirmResponsibility =>
-      'Confirmation records the signed-in employee as responsible for this outbound approval.';
+  String get warehouseSubcontractOutboundConfirmResponsibility => 'Confirmation records the signed-in employee as responsible for this outbound approval.';
 
   @override
   String warehouseSubcontractOutboundBatchResult(int done, int total) {
@@ -4219,15 +3929,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get warehouseSubcontractOutboundContinue =>
-      'Continue unprocessed tasks';
+  String get warehouseSubcontractOutboundContinue => 'Continue unprocessed tasks';
 
   @override
   String get warehouseSubcontractOutboundVerify => 'Verify processing result';
 
   @override
-  String get warehouseSubcontractOutboundNoLines =>
-      'No outbound lines are currently available';
+  String get warehouseSubcontractOutboundNoLines => 'No outbound lines are currently available';
 
   @override
   String get warehouseStockOutboundConfirmSingle => 'Confirm outbound';
@@ -4260,19 +3968,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseSubcontractOutboundLineRemark => 'Line notes';
 
   @override
-  String get warehouseSubcontractOutboundWarehouseSyncHint =>
-      'Defaults to the original document\'s actual warehouse. Changing it updates every line belonging to that document.';
+  String get warehouseSubcontractOutboundWarehouseSyncHint => 'Defaults to the original document\'s actual warehouse. Changing it updates every line belonging to that document.';
 
   @override
-  String get warehouseSubcontractOutboundDocumentRemarkHint =>
-      'These notes are shared by every line of the same outbound document. Use line notes for information specific to one line.';
+  String get warehouseSubcontractOutboundDocumentRemarkHint => 'These notes are shared by every line of the same outbound document. Use line notes for information specific to one line.';
 
   @override
   String get warehouseSubcontractOutboundOpenPicking => 'Open picking outbound';
 
   @override
-  String get warehouseSubcontractOutboundBannerScope =>
-      'The warehouse work view has no prices or amounts and offers no subcontract business editing.';
+  String get warehouseSubcontractOutboundBannerScope => 'The warehouse work view has no prices or amounts and offers no subcontract business editing.';
 
   @override
   String get warehouseSubcontractOutboundApprove => 'Approve outbound';
@@ -4281,24 +3986,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get productionBatchTitle => 'Batch production and material request';
 
   @override
-  String get productionBatchPermission =>
-      'You do not have permission to arrange batch material requests.';
+  String get productionBatchPermission => 'You do not have permission to arrange batch material requests.';
 
   @override
-  String get productionBatchSelectTask =>
-      'Select a waiting work order from workshop tasks.';
+  String get productionBatchSelectTask => 'Select a waiting work order from workshop tasks.';
 
   @override
-  String get productionBatchInvalidQuantity =>
-      'Enter a positive quantity with up to four decimal places.';
+  String get productionBatchInvalidQuantity => 'Enter a positive quantity with up to four decimal places.';
 
   @override
-  String get productionBatchPreviewFailed =>
-      'Unable to review the producible batch. Please retry.';
+  String get productionBatchPreviewFailed => 'Unable to review the producible batch. Please retry.';
 
   @override
-  String get productionBatchReplay =>
-      'This batch was already arranged; no duplicate tasks were created.';
+  String get productionBatchReplay => 'This batch was already arranged; no duplicate tasks were created.';
 
   @override
   String productionBatchSubmittedReuse(String quantity, String unit) {
@@ -4306,11 +4006,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String productionBatchSubmitted(
-    String quantity,
-    String unit,
-    String remaining,
-  ) {
+  String productionBatchSubmitted(String quantity, String unit, String remaining) {
     return 'Submitted the material request for $quantity $unit; $remaining $unit remain for a later batch.';
   }
 
@@ -4340,8 +4036,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get productionBatchSubmitting => 'Submitting this batch';
 
   @override
-  String get productionBatchSubmittingHint =>
-      'Checking this batch\'s quantity and material sources. Please wait.';
+  String get productionBatchSubmittingHint => 'Checking this batch\'s quantity and material sources. Please wait.';
 
   @override
   String get productionBatchProductFallback => 'Production item not confirmed';
@@ -4356,22 +4051,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get productionBatchOriginal => 'Awaiting production';
 
   @override
-  String get productionBatchOriginalHint =>
-      'Quantity awaiting arrangement for this work order';
+  String get productionBatchOriginalHint => 'Quantity awaiting arrangement for this work order';
 
   @override
   String get productionBatchReady => 'Complete-kit capacity';
 
   @override
-  String get productionBatchReadyHint =>
-      'Based on qualified physical materials';
+  String get productionBatchReadyHint => 'Based on qualified physical materials';
 
   @override
   String get productionBatchSelected => 'Reviewed batch quantity';
 
   @override
-  String get productionBatchSelectedHint =>
-      'Quantity arranged upon confirmation';
+  String get productionBatchSelectedHint => 'Quantity arranged upon confirmation';
 
   @override
   String get productionBatchRemaining => 'Remaining after this batch';
@@ -4403,27 +4095,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get productionBatchNeedsReview => 'Quantity changed; review required';
 
   @override
-  String get productionBatchNeedsReviewHint =>
-      'The table shows the previous review. Review again before confirming this batch.';
+  String get productionBatchNeedsReviewHint => 'The table shows the previous review. Review again before confirming this batch.';
 
   @override
   String get productionBatchNoKit => 'This batch cannot be arranged yet';
 
   @override
-  String get productionBatchNoKitHint =>
-      'Available materials cannot form a complete batch. Review again after materials are received.';
+  String get productionBatchNoKitHint => 'Available materials cannot form a complete batch. Review again after materials are received.';
 
   @override
-  String get productionBatchReuseHint =>
-      'This batch uses materials already issued for earlier batches. Confirm, then return to workshop tasks to start.';
+  String get productionBatchReuseHint => 'This batch uses materials already issued for earlier batches. Confirm, then return to workshop tasks to start.';
 
   @override
-  String get productionBatchDirectTransferBadge =>
-      'Workshop direct transfer · auto-issued';
+  String get productionBatchDirectTransferBadge => 'Workshop direct transfer · auto-issued';
 
   @override
-  String get productionBatchDirectTransferHint =>
-      'All materials of this batch come from same-workshop direct transfers (line-side warehouse): they are issued automatically on confirm. No draw request, no warehouse step — return to workshop tasks and start.';
+  String get productionBatchDirectTransferHint => 'All materials of this batch come from same-workshop direct transfers (line-side warehouse): they are issued automatically on confirm. No draw request, no warehouse step — return to workshop tasks and start.';
 
   @override
   String productionBatchSubmittedDirectTransfer(String quantity, String unit) {
@@ -4431,8 +4118,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get productionBatchFlow =>
-      'Confirm request → Warehouse issues materials → Start in workshop';
+  String get productionBatchFlow => 'Confirm request → Warehouse issues materials → Start in workshop';
 
   @override
   String productionBatchRemainingText(String quantity, String unit) {
@@ -4440,8 +4126,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get productionBatchAllRemaining =>
-      'This batch covers all production remaining on this work order.';
+  String get productionBatchAllRemaining => 'This batch covers all production remaining on this work order.';
 
   @override
   String get productionBatchMaterials => 'Materials for this batch';
@@ -4470,12 +4155,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get productionBatchMaterialQuantity => 'Quantity to request';
 
   @override
-  String get productionBatchMaterialQuantityHint =>
-      'Additional material needed for this batch, in this row\'s unit and actual warehouse.';
+  String get productionBatchMaterialQuantityHint => 'Additional material needed for this batch, in this row\'s unit and actual warehouse.';
 
   @override
-  String get productionBatchNoAdditionalMaterials =>
-      'No additional materials are needed; arrange production using the existing material sources.';
+  String get productionBatchNoAdditionalMaterials => 'No additional materials are needed; arrange production using the existing material sources.';
 
   @override
   String get securityReasonBlocked => 'Blacklisted: entry denied';
@@ -4511,8 +4194,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityBlacklistNoticeLabel => 'Visitor Blacklist';
 
   @override
-  String get securityBlacklistNoticeDesc =>
-      'Once blacklisted, the visitor immediately loses login and entry access; the action and reason are audited.';
+  String get securityBlacklistNoticeDesc => 'Once blacklisted, the visitor immediately loses login and entry access; the action and reason are audited.';
 
   @override
   String get securityBlacklistReasonLabel => 'Reason';
@@ -4527,8 +4209,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityBlacklistRemove => 'Remove from Blacklist';
 
   @override
-  String get securityBlacklistRemoveConfirm =>
-      'Remove this visitor from the blacklist? They can log in and apply again; existing applications keep their status.';
+  String get securityBlacklistRemoveConfirm => 'Remove this visitor from the blacklist? They can log in and apply again; existing applications keep their status.';
 
   @override
   String get securityBlacklistRemoveDone => 'Removed from blacklist';
@@ -4558,8 +4239,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorColHostDepartment => 'Host Department';
 
   @override
-  String get visitorApplySubmittingOverlay =>
-      'Submitting your application. Please do not resubmit or leave this page.';
+  String get visitorApplySubmittingOverlay => 'Submitting your application. Please do not resubmit or leave this page.';
 
   @override
   String get visitorApplyHostHint => 'Select the person to visit';
@@ -4568,12 +4248,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorApplyHostSheetTitle => 'Select the person to visit';
 
   @override
-  String get visitorApplyHostSearchEmpty =>
-      'Search the person to visit by name';
+  String get visitorApplyHostSearchEmpty => 'Search the person to visit by name';
 
   @override
-  String get visitorApplyHostSearchHint =>
-      'Type at least 2 characters; up to 5 matches are shown';
+  String get visitorApplyHostSearchHint => 'Type at least 2 characters; up to 5 matches are shown';
 
   @override
   String visitorSettingsPortalTag(Object app) {
@@ -4581,8 +4259,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get visitorApprovalHostDeptColInfo =>
-      'The host department recorded when the visitor applied; the header filter searches by this department.';
+  String get visitorApprovalHostDeptColInfo => 'The host department recorded when the visitor applied; the header filter searches by this department.';
 
   @override
   String visitorBatchLimitError(int limit, int count) {
@@ -4656,8 +4333,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorBatchSubjectLabel => 'visitor applications';
 
   @override
-  String get visitorBatchForwardNoneSelected =>
-      'All selected applications are already with their hosts; nothing to forward';
+  String get visitorBatchForwardNoneSelected => 'All selected applications are already with their hosts; nothing to forward';
 
   @override
   String visitorBatchForwardTitle(int count) {
@@ -4704,8 +4380,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorApprovalDoneReject => 'Visitor application rejected';
 
   @override
-  String get visitorApprovalDoneForward =>
-      'Forwarded to the host for confirmation';
+  String get visitorApprovalDoneForward => 'Forwarded to the host for confirmation';
 
   @override
   String get visitorApprovalDoneFallback => 'Action completed';
@@ -4714,26 +4389,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorApprovalApproveNoticeLabel => 'Visitor Approval';
 
   @override
-  String get visitorApprovalApproveNoticeDesc =>
-      'On confirmation your account and the decision are recorded; you are responsible for this entry approval.';
+  String get visitorApprovalApproveNoticeDesc => 'On confirmation your account and the decision are recorded; you are responsible for this entry approval.';
 
   @override
   String get visitorApprovalRejectNoticeLabel => 'Visitor Rejection';
 
   @override
-  String get visitorApprovalRejectNoticeDesc =>
-      'On confirmation your account and the rejection are recorded; you are responsible for this decision.';
+  String get visitorApprovalRejectNoticeDesc => 'On confirmation your account and the rejection are recorded; you are responsible for this decision.';
 
   @override
-  String get myVisitorsConfirmDone =>
-      'Host confirmed; the application is back with HR';
+  String get myVisitorsConfirmDone => 'Host confirmed; the application is back with HR';
 
   @override
   String get myVisitorsRejectDone => 'Host rejected';
 
   @override
-  String get myVisitorsBatchNoneSelected =>
-      'None of the selected applications await your confirmation';
+  String get myVisitorsBatchNoneSelected => 'None of the selected applications await your confirmation';
 
   @override
   String myVisitorsBatchTitle(int count) {
@@ -4769,8 +4440,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get myVisitorsStatusColInfo =>
-      'Shows only items awaiting your confirmation by default; the header filter switches to forwarded / approved / rejected.';
+  String get myVisitorsStatusColInfo => 'Shows only items awaiting your confirmation by default; the header filter switches to forwarded / approved / rejected.';
 
   @override
   String get expenseFlowNew => 'New expense claim';
@@ -4788,16 +4458,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get expenseFlowSave => 'Save';
 
   @override
-  String get expenseFlowFlowGuide =>
-      'Enter expenses → save draft → attach originals and register evidence → submit → finance records payment';
+  String get expenseFlowFlowGuide => 'Enter expenses → save draft → attach originals and register evidence → submit → finance records payment';
 
   @override
-  String get expenseFlowInvoiceGuide =>
-      'Save a draft, then attach invoice or other lawful evidence originals. Keep electronic evidence in its original format. Image recognition only suggests fields; it does not verify or archive evidence.';
+  String get expenseFlowInvoiceGuide => 'Save a draft, then attach invoice or other lawful evidence originals. Keep electronic evidence in its original format. Image recognition only suggests fields; it does not verify or archive evidence.';
 
   @override
-  String get expenseFlowNoInvoiceGuide =>
-      'Without an invoice, explain the circumstances and attach lawful evidence of the transaction for finance review.';
+  String get expenseFlowNoInvoiceGuide => 'Without an invoice, explain the circumstances and attach lawful evidence of the transaction for finance review.';
 
   @override
   String get expenseFlowApplicant => 'Applicant';
@@ -4815,22 +4482,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get expenseFlowTitleHint => 'For example: client visit in Shanghai';
 
   @override
-  String get expenseFlowTitleInfo =>
-      'Summarize the purpose. This appears on the printed claim.';
+  String get expenseFlowTitleInfo => 'Summarize the purpose. This appears on the printed claim.';
 
   @override
   String get expenseFlowRemark => 'Purpose and explanation';
 
   @override
-  String get expenseFlowRemarkHint =>
-      'Travel, project, attendees, or explanation for missing invoices';
+  String get expenseFlowRemarkHint => 'Travel, project, attendees, or explanation for missing invoices';
 
   @override
   String get expenseFlowMissingTitle => 'Enter a claim title';
 
   @override
-  String get expenseFlowTitleLength =>
-      'The claim title must be 200 characters or fewer';
+  String get expenseFlowTitleLength => 'The claim title must be 200 characters or fewer';
 
   @override
   String get expenseFlowMissingItems => 'Add at least one expense item';
@@ -4842,8 +4506,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get expenseFlowAdd => 'Add';
 
   @override
-  String get expenseFlowEmptyItems =>
-      'Add an item with its category, actual amount and transaction date.';
+  String get expenseFlowEmptyItems => 'Add an item with its category, actual amount and transaction date.';
 
   @override
   String get expenseFlowTotal => 'Claim total';
@@ -4855,53 +4518,43 @@ class AppLocalizationsEn extends AppLocalizations {
   String get expenseFlowDeleteItem => 'Remove item';
 
   @override
-  String get expenseFlowDraftSaved =>
-      'Draft saved. Add evidence before submitting for approval.';
+  String get expenseFlowDraftSaved => 'Draft saved. Add evidence before submitting for approval.';
 
   @override
   String get expenseFlowSaved => 'Saved';
 
   @override
-  String get expenseFlowRejectedGuide =>
-      'Returned for correction. Update the claim, save it and submit again.';
+  String get expenseFlowRejectedGuide => 'Returned for correction. Update the claim, save it and submit again.';
 
   @override
   String get expenseFlowLoadFailed => 'Unable to load. Try again.';
 
   @override
-  String get expenseFlowNotEditable =>
-      'Only the applicant can edit a draft or returned claim.';
+  String get expenseFlowNotEditable => 'Only the applicant can edit a draft or returned claim.';
 
   @override
-  String get expenseFlowAmountInvalid =>
-      'Enter a positive amount with at most two decimals, up to CNY 9999999999.99';
+  String get expenseFlowAmountInvalid => 'Enter a positive amount with at most two decimals, up to CNY 9999999999.99';
 
   @override
-  String get expenseFlowInvoiceAmountInvalid =>
-      'Use at most two decimals. Total must be positive; net and tax must be nonnegative.';
+  String get expenseFlowInvoiceAmountInvalid => 'Use at most two decimals. Total must be positive; net and tax must be nonnegative.';
 
   @override
-  String get expenseFlowOcrGuide =>
-      'Choose an image to suggest fields, then check each field against the original. Recognition does not verify authenticity or save the original.';
+  String get expenseFlowOcrGuide => 'Choose an image to suggest fields, then check each field against the original. Recognition does not verify authenticity or save the original.';
 
   @override
-  String get expenseFlowOcrConfirm =>
-      'I checked the suggested fields against the original';
+  String get expenseFlowOcrConfirm => 'I checked the suggested fields against the original';
 
   @override
-  String get expenseFlowOcrConfirmRequired =>
-      'Check the suggested fields and confirm before saving';
+  String get expenseFlowOcrConfirmRequired => 'Check the suggested fields and confirm before saving';
 
   @override
-  String get expenseFlowOriginalRequired =>
-      'Upload the original on the detail page, then select the matching file here';
+  String get expenseFlowOriginalRequired => 'Upload the original on the detail page, then select the matching file here';
 
   @override
   String get expenseFlowInvoiceDateRequired => 'Select the evidence date';
 
   @override
-  String get expenseFlowOtherNumberInvalid =>
-      'Other evidence numbers allow letters, digits, slashes and hyphens, up to 60 characters. Enter the issuer.';
+  String get expenseFlowOtherNumberInvalid => 'Other evidence numbers allow letters, digits, slashes and hyphens, up to 60 characters. Enter the issuer.';
 
   @override
   String get expenseFlowVerify => 'Record verification';
@@ -4910,15 +4563,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get expenseFlowVerifyTitle => 'Manual evidence verification';
 
   @override
-  String get expenseFlowVerifyGuide =>
-      'Check the business transaction and original attachment. Verify tax invoices through the STA invoice verification platform or e-Tax service; verify other evidence through its applicable channel. Arithmetic checks and image recognition are not tax verification.';
+  String get expenseFlowVerifyGuide => 'Check the business transaction and original attachment. Verify tax invoices through the STA invoice verification platform or e-Tax service; verify other evidence through its applicable channel. Arithmetic checks and image recognition are not tax verification.';
 
   @override
   String get expenseFlowVerifyOfficial => 'Open the STA verification platform';
 
   @override
-  String get expenseFlowVerifyRemark =>
-      'Verification record (channel, result and notes) *';
+  String get expenseFlowVerifyRemark => 'Verification record (channel, result and notes) *';
 
   @override
   String get expenseFlowVerifyPassed => 'Verified';
@@ -4927,12 +4578,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get expenseFlowVerifyMismatch => 'Mismatch';
 
   @override
-  String get expenseFlowVerifyRequired =>
-      'Enter the verification channel and result';
+  String get expenseFlowVerifyRequired => 'Enter the verification channel and result';
 
   @override
-  String get expenseFlowVerifyBeforeApprove =>
-      'Record a successful manual verification for every invoice before approval';
+  String get expenseFlowVerifyBeforeApprove => 'Record a successful manual verification for every invoice before approval';
 
   @override
   String get expenseFlowPaymentRecord => 'Record payment';
@@ -4941,23 +4590,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get expenseFlowPaymentConfirm => 'Confirm payment was made';
 
   @override
-  String get expenseFlowPaymentGuide =>
-      'Complete the actual payment first. This records that payment, updates the system account balance and creates accounting entries. It does not send a bank transfer.';
+  String get expenseFlowPaymentGuide => 'Complete the actual payment first. This records that payment, updates the system account balance and creates accounting entries. It does not send a bank transfer.';
 
   @override
-  String get expenseFlowPaymentDone =>
-      'Payment recorded and accounting entries created';
+  String get expenseFlowPaymentDone => 'Payment recorded and accounting entries created';
 
   @override
-  String get expenseFlowPrintDisclaimer =>
-      'Internal claim display form. It does not replace original evidence, tax verification or statutory electronic archives.';
+  String get expenseFlowPrintDisclaimer => 'Internal claim display form. It does not replace original evidence, tax verification or statutory electronic archives.';
 
   @override
   String get expenseFlowSettingsTitle => 'Expense settings';
 
   @override
-  String get expenseFlowSettingsDescription =>
-      'Finance maintains company details and evidence requirements shown automatically to applicants.';
+  String get expenseFlowSettingsDescription => 'Finance maintains company details and evidence requirements shown automatically to applicants.';
 
   @override
   String get expenseFlowCompanyName => 'Company name';
@@ -4969,12 +4614,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get expenseFlowSubmissionGuide => 'Claim and evidence instructions';
 
   @override
-  String get expenseFlowRequireInvoice =>
-      'Require registered invoices for submission';
+  String get expenseFlowRequireInvoice => 'Require registered invoices for submission';
 
   @override
-  String get expenseFlowRequireInvoiceHint =>
-      'When disabled, lawful original evidence and an explanation for missing invoices are still required.';
+  String get expenseFlowRequireInvoiceHint => 'When disabled, lawful original evidence and an explanation for missing invoices are still required.';
 
   @override
   String get expenseFlowSettingsSaved => 'Expense settings saved';
@@ -4992,23 +4635,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get expenseFlowCompanyNameRequired => 'Enter the company name';
 
   @override
-  String get expenseFlowSettingsEntryDescription =>
-      'Company name, tax ID and evidence requirements';
+  String get expenseFlowSettingsEntryDescription => 'Company name, tax ID and evidence requirements';
 
   @override
-  String get expenseFlowApprovalEntryDescription =>
-      'Verify evidence, review claims and record payment';
+  String get expenseFlowApprovalEntryDescription => 'Verify evidence, review claims and record payment';
 
   @override
   String get expenseFlowApprovalTitle => 'Expense approval';
 
   @override
-  String get expenseFlowInvoiceRequiredGuide =>
-      'Finance requires a registered invoice linked to its original file before submission.';
+  String get expenseFlowInvoiceRequiredGuide => 'Finance requires a registered invoice linked to its original file before submission.';
 
   @override
-  String get expenseFlowReadEvidenceRequired =>
-      'Approval requires evidence preview and download permission. Contact an authorizer.';
+  String get expenseFlowReadEvidenceRequired => 'Approval requires evidence preview and download permission. Contact an authorizer.';
 
   @override
   String get expenseFlowHistory => 'Processed';
@@ -5017,37 +4656,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get expenseFlowPendingCorrection => 'Needs correction';
 
   @override
-  String get expenseFlowPaymentProofs =>
-      'Payment proof (bank receipt or signed cash receipt)';
+  String get expenseFlowPaymentProofs => 'Payment proof (bank receipt or signed cash receipt)';
 
   @override
-  String get expenseFlowPaymentProofGuide =>
-      'Complete the actual payment and upload its receipt before recording payment.';
+  String get expenseFlowPaymentProofGuide => 'Complete the actual payment and upload its receipt before recording payment.';
 
   @override
-  String get expenseFlowPaymentProofRequired =>
-      'Upload payment proof before confirming that payment was made.';
+  String get expenseFlowPaymentProofRequired => 'Upload payment proof before confirming that payment was made.';
 
   @override
   String get expenseFlowItemPurpose => 'Expense purpose *';
 
   @override
-  String get expenseFlowItemPurposeHint =>
-      'Describe the actual business purpose, such as the client, project or trip.';
+  String get expenseFlowItemPurposeHint => 'Describe the actual business purpose, such as the client, project or trip.';
 
   @override
   String get expenseFlowItemPurposeRequired => 'Enter the expense purpose';
 
   @override
-  String get goodsLearnedPriceUnconfirmed =>
-      'Verify the price unit and currency';
+  String get goodsLearnedPriceUnconfirmed => 'Verify the price unit and currency';
 
   @override
   String get goodsLearnedPriceTaxRate => 'Tax rate';
 
   @override
-  String get shelfLocationQuantityHint =>
-      'Locations are storage suggestions. Quantities are totals for the actual warehouse and color, not counts at a specific shelf location.';
+  String get shelfLocationQuantityHint => 'Locations are storage suggestions. Quantities are totals for the actual warehouse and color, not counts at a specific shelf location.';
 
   @override
   String get shelfActualWarehouse => 'Actual warehouse';
@@ -5056,8 +4689,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shelfMasterOnly => 'Master suggestion (no warehouse)';
 
   @override
-  String get shelfChooseWarehouseForRack =>
-      'Select one physical warehouse to view its rack diagram. The table lists each warehouse separately.';
+  String get shelfChooseWarehouseForRack => 'Select one physical warehouse to view its rack diagram. The table lists each warehouse separately.';
 
   @override
   String get materialPreparationReview => 'Review and order';
@@ -5077,12 +4709,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get materialPreparationNoActions =>
-      'No materials available for processing';
+  String get materialPreparationNoActions => 'No materials available for processing';
 
   @override
-  String get materialPreparationAvailableHint =>
-      'Supply available to this line includes stock and issued supply, including incoming and unprocessed quantities. Supply assigned to other orders is excluded. Material issue requires actual stock.';
+  String get materialPreparationAvailableHint => 'Supply available to this line includes stock and issued supply, including incoming and unprocessed quantities. Supply assigned to other orders is excluded. Material issue requires actual stock.';
 
   @override
   String get materialPreparationPending => 'To order';
@@ -5153,8 +4783,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get wmSecondMaterialConfirm =>
-      'Does this product use two materials (two-shot)? If you are only changing material, edit the existing row';
+  String get wmSecondMaterialConfirm => 'Does this product use two materials (two-shot)? If you are only changing material, edit the existing row';
 
   @override
   String get wmRequestIssue => 'Request material';
@@ -5212,8 +4841,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get wmCountingNextPeriod =>
-      'Counting has started; this batch goes to the next period';
+  String get wmCountingNextPeriod => 'Counting has started; this batch goes to the next period';
 
   @override
   String get wmSupplementFlag => 'This batch was missed in the previous period';
@@ -5222,15 +4850,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmSupplementPeriod => 'Add to period';
 
   @override
-  String get wmAlsoOrderMaterials =>
-      'Also issue other materials per work order (e.g. inserts)';
+  String get wmAlsoOrderMaterials => 'Also issue other materials per work order (e.g. inserts)';
 
   @override
   String get wmFillFromGoodsWeight => 'Fill checked rows from item weight';
 
   @override
-  String get wmCloseFailing =>
-      'Settlement keeps failing; retrying daily. Please contact the administrator';
+  String get wmCloseFailing => 'Settlement keeps failing; retrying daily. Please contact the administrator';
 
   @override
   String get wmStartCount => 'Start count';
@@ -5266,8 +4892,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmWeighLoose => 'Loose material';
 
   @override
-  String get wmFillGuide =>
-      'Full estimates capacity; half estimates half capacity. Empty records zero: use only when no material remains. Weigh residual material and enter kilograms when possible. Level estimates affect this period and the next.';
+  String get wmFillGuide => 'Full estimates capacity; half estimates half capacity. Empty records zero: use only when no material remains. Weigh residual material and enter kilograms when possible. Level estimates affect this period and the next.';
 
   @override
   String get wmMachineIdle => 'Machine idle, all empty';
@@ -5404,12 +5029,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmIncludeWorkshopStore => 'Include workshop stores';
 
   @override
-  String get workshopMaterialSetupHubDesc =>
-      'Machines & containers, go-live preparation; open bins and start batch issuing from the Workshop bins overview';
+  String get workshopMaterialSetupHubDesc => 'Machines & containers, go-live preparation; open bins and start batch issuing from the Workshop bins overview';
 
   @override
-  String get workshopMaterialReportsHubDesc =>
-      'Count-derived consumption, variance and settlement status by period';
+  String get workshopMaterialReportsHubDesc => 'Count-derived consumption, variance and settlement status by period';
 
   @override
   String get wmReceiveReturn => 'Receive return';
@@ -5436,8 +5059,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmReportMaterial => 'Material';
 
   @override
-  String get wmReportNoBin =>
-      'No workshop has enabled bulk issue yet, so there is no store usage to show.';
+  String get wmReportNoBin => 'No workshop has enabled bulk issue yet, so there is no store usage to show.';
 
   @override
   String get wmOpenBom => 'Open BOM';
@@ -5455,16 +5077,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bomLearningAverage => 'Average usage per unit';
 
   @override
-  String get warehouseGoodsMasterDefaultHint =>
-      'The goods master default warehouse was filled in. Verify the actual destination for this receipt.';
+  String get warehouseGoodsMasterDefaultHint => 'The goods master default warehouse was filled in. Verify the actual destination for this receipt.';
 
   @override
-  String get warehouseSuggestedDestinationHint =>
-      'A suggested warehouse was filled in. Verify the actual destination.';
+  String get warehouseSuggestedDestinationHint => 'A suggested warehouse was filled in. Verify the actual destination.';
 
   @override
-  String get warehouseBatchRegistrationHelp =>
-      'Each line needs a warehouse and location. Goods master defaults take precedence over personal warehouse context. Selected lines can be edited together. Each report creates its own inspection submission; final receipt follows quality release.';
+  String get warehouseBatchRegistrationHelp => 'Each line needs a warehouse and location. Goods master defaults take precedence over personal warehouse context. Selected lines can be edited together. Each report creates its own inspection submission; final receipt follows quality release.';
 
   @override
   String get goodsNameEnLabel => 'English name';
@@ -5473,30 +5092,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get goodsNameEnHint => 'e.g. DOUBLE 3 PIN SOCKET WITH SWITCH';
 
   @override
-  String get goodsNameEnInfo =>
-      'How customer quotations and orders name this item in English. When reading a customer file, the system uses it to match the English description to this item.';
+  String get goodsNameEnInfo => 'How customer quotations and orders name this item in English. When reading a customer file, the system uses it to match the English description to this item.';
 
   @override
-  String get goodsNameEnColumnInfo =>
-      'The English name customers use for this item. It is remembered automatically when sales save a document with an English description, and can be edited on the item details.';
+  String get goodsNameEnColumnInfo => 'The English name customers use for this item. It is remembered automatically when sales save a document with an English description, and can be edited on the item details.';
 
   @override
-  String get goodsNameEnSearchHint =>
-      'Search items (name/English name/code/model/spec/series)';
+  String get goodsNameEnSearchHint => 'Search items (name/English name/code/model/spec/series)';
 
   @override
   String get goodsNameEnLearned => 'Learned automatically';
 
   @override
-  String get goodsNameEnLearnedTip =>
-      'The system remembered this English name when sales saved a customer file. Edit it if it is wrong.';
+  String get goodsNameEnLearnedTip => 'The system remembered this English name when sales saved a customer file. Edit it if it is wrong.';
 
   @override
   String get goodsNameEnEdit => 'Edit English name';
 
   @override
-  String get goodsNameEnEditDescription =>
-      'Enter the English description written on customer files. After saving, customer files are matched to this item by this name. Leave it blank to stop using an English name.';
+  String get goodsNameEnEditDescription => 'Enter the English description written on customer files. After saving, customer files are matched to this item by this name. Leave it blank to stop using an English name.';
 
   @override
   String get goodsNameEnSaving => 'Saving…';
@@ -5508,8 +5122,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get goodsNameEnCleared => 'English name cleared';
 
   @override
-  String get goodsNameEnImportHint =>
-      'English names can be imported too (header \"英文名称\" or \"English Name\").';
+  String get goodsNameEnImportHint => 'English names can be imported too (header \"英文名称\" or \"English Name\").';
 
   @override
   String goodsNameEnTooLong(int max) {
@@ -5523,12 +5136,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clientNameEnHint => 'e.g. SUNAS TRADING LIMITED';
 
   @override
-  String get clientNameEnInfo =>
-      'The customer\'s company name in English or another foreign language. The system uses it to find this customer when reading customer files, and fills it in automatically when sales save documents.';
+  String get clientNameEnInfo => 'The customer\'s company name in English or another foreign language. The system uses it to find this customer when reading customer files, and fills it in automatically when sales save documents.';
 
   @override
-  String get clientNameEnSearchHint =>
-      'Search customers (short name/code/full name/foreign name/contact/mobile/email)';
+  String get clientNameEnSearchHint => 'Search customers (short name/code/full name/foreign name/contact/mobile/email)';
 
   @override
   String get clientGoodsAliasTab => 'Item names';
@@ -5537,19 +5148,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clientGoodsAliasTitle => 'How this customer names our items';
 
   @override
-  String get clientGoodsAliasDescription =>
-      'Model numbers and descriptions on this customer\'s quotations and orders, and which of our items they mean. The system uses this list first when reading this customer\'s files.';
+  String get clientGoodsAliasDescription => 'Model numbers and descriptions on this customer\'s quotations and orders, and which of our items they mean. The system uses this list first when reading this customer\'s files.';
 
   @override
-  String get clientGoodsAliasSearchHint =>
-      'Search the customer\'s wording, item name or code';
+  String get clientGoodsAliasSearchHint => 'Search the customer\'s wording, item name or code';
 
   @override
   String get clientGoodsAliasEmptyTitle => 'No item names yet';
 
   @override
-  String get clientGoodsAliasEmpty =>
-      'After a quotation or order with the customer\'s model numbers is saved, the customer\'s wording is remembered here automatically';
+  String get clientGoodsAliasEmpty => 'After a quotation or order with the customer\'s model numbers is saved, the customer\'s wording is remembered here automatically';
 
   @override
   String get clientGoodsAliasNoMatch => 'Nothing found. Try another keyword.';
@@ -5618,8 +5226,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clientGoodsAliasDeleted => 'Match deleted';
 
   @override
-  String get clientGoodsAliasLoadFailed =>
-      'Could not load item names. Please try again.';
+  String get clientGoodsAliasLoadFailed => 'Could not load item names. Please try again.';
 
   @override
   String clientGoodsAliasTotal(int count) {
@@ -5655,20 +5262,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiJobQueued => 'Waiting in line, starting shortly';
 
   @override
-  String get aiJobSlowHint =>
-      'Large files can take a minute or two. Please wait, there is no need to click again';
+  String get aiJobSlowHint => 'Large files can take a minute or two. Please wait, there is no need to click again';
 
   @override
-  String get aiJobTimeout =>
-      'This took too long, so we stopped waiting. Please try again later or split the file into smaller parts';
+  String get aiJobTimeout => 'This took too long, so we stopped waiting. Please try again later or split the file into smaller parts';
 
   @override
-  String get aiJobGone =>
-      'This task no longer exists (it may have been cleaned up). Please start again';
+  String get aiJobGone => 'This task no longer exists (it may have been cleaned up). Please start again';
 
   @override
-  String get aiJobFailedGeneric =>
-      'That did not work this time. Please try again later';
+  String get aiJobFailedGeneric => 'That did not work this time. Please try again later';
 
   @override
   String get aiJobConfidenceHigh => 'High';
@@ -5688,8 +5291,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSettingsTitle => 'AI services';
 
   @override
-  String get aiSettingsEntrySubtitle =>
-      'Configure model providers, API keys and connection tests';
+  String get aiSettingsEntrySubtitle => 'Configure model providers, API keys and connection tests';
 
   @override
   String aiSettingsHeroActive(String name, String model) {
@@ -5697,31 +5299,25 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get aiSettingsHeroReady =>
-      'Used to recognize customer files uploaded by sales';
+  String get aiSettingsHeroReady => 'Used to recognize customer files uploaded by sales';
 
   @override
   String get aiSettingsHeroNone => 'No AI service is available yet';
 
   @override
-  String get aiSettingsHeroNoneHint =>
-      'After you add a provider and the test passes, customer files uploaded by sales are recognized automatically';
+  String get aiSettingsHeroNoneHint => 'After you add a provider and the test passes, customer files uploaded by sales are recognized automatically';
 
   @override
-  String get aiSettingsHeroDefaultDisabled =>
-      'The default service is disabled, so AI is not being used';
+  String get aiSettingsHeroDefaultDisabled => 'The default service is disabled, so AI is not being used';
 
   @override
-  String get aiSettingsHeroNeedsKey =>
-      'No API key has been entered yet, so AI is not being used';
+  String get aiSettingsHeroNeedsKey => 'No API key has been entered yet, so AI is not being used';
 
   @override
-  String get aiSettingsSecurityNote =>
-      'Keys are stored encrypted and only the last characters are shown. Saving, deleting and testing with a stored key ask for your login password again.';
+  String get aiSettingsSecurityNote => 'Keys are stored encrypted and only the last characters are shown. Saving, deleting and testing with a stored key ask for your login password again.';
 
   @override
-  String get aiSettingsOutboundOff =>
-      'This server does not call external AI (the default for test environments). You can save settings, but no calls will be made';
+  String get aiSettingsOutboundOff => 'This server does not call external AI (the default for test environments). You can save settings, but no calls will be made';
 
   @override
   String get aiSettingsProvidersSection => 'Providers';
@@ -5736,15 +5332,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSettingsEmptyTitle => 'No AI service configured';
 
   @override
-  String get aiSettingsEmptyHint =>
-      'Mainland providers such as DeepSeek, Qwen, Kimi and Zhipu are supported, as well as a locally deployed model';
+  String get aiSettingsEmptyHint => 'Mainland providers such as DeepSeek, Qwen, Kimi and Zhipu are supported, as well as a locally deployed model';
 
   @override
   String get aiSettingsLoadFailed => 'Failed to load AI service settings';
 
   @override
-  String get aiSettingsNoAccess =>
-      'Only super administrators can view and change AI services';
+  String get aiSettingsNoAccess => 'Only super administrators can view and change AI services';
 
   @override
   String get aiSettingsRetry => 'Retry';
@@ -5792,8 +5386,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSettingsKeyNotNeeded => 'Not required';
 
   @override
-  String get aiSettingsKeyUnreadable =>
-      'The API key cannot be decrypted. Please enter it again';
+  String get aiSettingsKeyUnreadable => 'The API key cannot be decrypted. Please enter it again';
 
   @override
   String get aiSettingsLastTest => 'Last test';
@@ -5841,8 +5434,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get aiSettingsDeleteDefaultBlocked =>
-      'The default service cannot be deleted. Set another service as default first';
+  String get aiSettingsDeleteDefaultBlocked => 'The default service cannot be deleted. Set another service as default first';
 
   @override
   String get aiSettingsDeleted => 'Deleted';
@@ -5874,8 +5466,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get aiSettingsTestNeedsKeyEdit =>
-      'There is no API key yet. Tap \"Edit\" to enter one, then test';
+  String get aiSettingsTestNeedsKeyEdit => 'There is no API key yet. Tap \"Edit\" to enter one, then test';
 
   @override
   String get aiSettingsTodayUsage => 'Today\'s usage';
@@ -5892,15 +5483,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSettingsTodayUsageOpenTooltip => 'View usage & quotas';
 
   @override
-  String get aiSettingsUsageUnavailable =>
-      'Usage is temporarily unavailable. This does not affect the service';
+  String get aiSettingsUsageUnavailable => 'Usage is temporarily unavailable. This does not affect the service';
 
   @override
   String get aiSettingsPreset => 'Provider';
 
   @override
-  String get aiSettingsPresetInfo =>
-      'Choosing a provider fills in the endpoint and recommended settings. You can still change every field';
+  String get aiSettingsPresetInfo => 'Choosing a provider fills in the endpoint and recommended settings. You can still change every field';
 
   @override
   String aiSettingsPresetOverseasOff(String label) {
@@ -5908,8 +5497,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get aiSettingsOverseasOffHint =>
-      'Overseas providers are off by default. To use one, ask your deployment administrator to enable it in the server configuration and complete the cross-border data assessment';
+  String get aiSettingsOverseasOffHint => 'Overseas providers are off by default. To use one, ask your deployment administrator to enable it in the server configuration and complete the cross-border data assessment';
 
   @override
   String aiSettingsPresetUnavailable(String label) {
@@ -5931,23 +5519,19 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get aiSettingsBaseUrlInfo =>
-      'The Base URL from the provider documentation. Only https is allowed; a local deployment may use http://127.0.0.1';
+  String get aiSettingsBaseUrlInfo => 'The Base URL from the provider documentation. Only https is allowed; a local deployment may use http://127.0.0.1';
 
   @override
   String get aiSettingsBaseUrlRequired => 'Enter the endpoint URL';
 
   @override
-  String get aiSettingsBaseUrlInvalid =>
-      'The endpoint URL is invalid. It should start with https:// and have no query parameters';
+  String get aiSettingsBaseUrlInvalid => 'The endpoint URL is invalid. It should start with https:// and have no query parameters';
 
   @override
-  String get aiSettingsBaseUrlHttpLocalOnly =>
-      'Only local deployments may use http. Use https for other providers';
+  String get aiSettingsBaseUrlHttpLocalOnly => 'Only local deployments may use http. Use https for other providers';
 
   @override
-  String get aiSettingsModelHint =>
-      'Enter the model name, or tap \"Get models\" to pick from a list';
+  String get aiSettingsModelHint => 'Enter the model name, or tap \"Get models\" to pick from a list';
 
   @override
   String get aiSettingsModelRequired => 'Enter a model name';
@@ -5964,16 +5548,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get aiSettingsModelsEmpty =>
-      'The provider returned no model list. Enter the model name directly';
+  String get aiSettingsModelsEmpty => 'The provider returned no model list. Enter the model name directly';
 
   @override
-  String get aiSettingsApiKeyHint =>
-      'Paste the key created in the provider console';
+  String get aiSettingsApiKeyHint => 'Paste the key created in the provider console';
 
   @override
-  String get aiSettingsApiKeyNotNeededHint =>
-      'Local deployments usually need no key, so you can leave this blank';
+  String get aiSettingsApiKeyNotNeededHint => 'Local deployments usually need no key, so you can leave this blank';
 
   @override
   String get aiSettingsApiKeyRequired => 'Enter the API key';
@@ -5985,20 +5566,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSettingsUndoClear => 'Keep the key';
 
   @override
-  String get aiSettingsKeyWillClear =>
-      'The stored key will be removed when you save';
+  String get aiSettingsKeyWillClear => 'The stored key will be removed when you save';
 
   @override
-  String get aiSettingsUrlChangedNeedKey =>
-      'The endpoint changed, so the API key must be entered again';
+  String get aiSettingsUrlChangedNeedKey => 'The endpoint changed, so the API key must be entered again';
 
   @override
-  String get aiSettingsUrlChangedNeedKeyDetail =>
-      'For security, the stored key is only ever sent to the original address. Paste the key again before saving.';
+  String get aiSettingsUrlChangedNeedKeyDetail => 'For security, the stored key is only ever sent to the original address. Paste the key again before saving.';
 
   @override
-  String get aiSettingsUrlChangedNeedKeyLocalDetail =>
-      'For security, the stored key is only ever sent to the original address. Paste the key again, or tap \"Remove key\" if the new address needs none.';
+  String get aiSettingsUrlChangedNeedKeyLocalDetail => 'For security, the stored key is only ever sent to the original address. Paste the key again, or tap \"Remove key\" if the new address needs none.';
 
   @override
   String get aiSettingsAdvanced => 'Advanced settings';
@@ -6007,8 +5584,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSettingsProtocol => 'API protocol';
 
   @override
-  String get aiSettingsProtocolInfo =>
-      'Mainland providers and local deployments are almost always OpenAI compatible; only Claude uses Anthropic';
+  String get aiSettingsProtocolInfo => 'Mainland providers and local deployments are almost always OpenAI compatible; only Claude uses Anthropic';
 
   @override
   String get aiSettingsProtocolOpenAi => 'OpenAI compatible';
@@ -6020,8 +5596,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSettingsJsonMode => 'JSON output';
 
   @override
-  String get aiSettingsJsonModeInfo =>
-      'Asks the model to reply with JSON only so the system can read the result. Choose \"Not required\" if the provider does not support it';
+  String get aiSettingsJsonModeInfo => 'Asks the model to reply with JSON only so the system can read the result. Choose \"Not required\" if the provider does not support it';
 
   @override
   String get aiSettingsJsonModeNone => 'Not required';
@@ -6036,8 +5611,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSettingsThinking => 'Thinking parameter style';
 
   @override
-  String get aiSettingsThinkingInfo =>
-      'The chat thinking-depth setting is sent in this provider style; table reading and similar tasks still switch thinking off. Choosing the provider selects the right style; with \"Do not send\" the chat cannot adjust thinking depth. The Qwen style only switches thinking off (Qwen thinking needs streaming output and cannot be combined with JSON); models that reject thinking parameters, such as Claude Haiku 4.5, are never sent them. \"Test connection\" tries the chat default once.';
+  String get aiSettingsThinkingInfo => 'The chat thinking-depth setting is sent in this provider style; table reading and similar tasks still switch thinking off. Choosing the provider selects the right style; with \"Do not send\" the chat cannot adjust thinking depth. The Qwen style only switches thinking off (Qwen thinking needs streaming output and cannot be combined with JSON); models that reject thinking parameters, such as Claude Haiku 4.5, are never sent them. \"Test connection\" tries the chat default once.';
 
   @override
   String get aiSettingsThinkingNone => 'Do not send';
@@ -6055,29 +5629,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSettingsTemperature => 'Consistent output (temperature 0)';
 
   @override
-  String get aiSettingsTemperatureInfo =>
-      'Keeps results consistent for the same file. Turn off if the model rejects this parameter';
+  String get aiSettingsTemperatureInfo => 'Keeps results consistent for the same file. Turn off if the model rejects this parameter';
 
   @override
   String get aiSettingsVision => 'Can read images and scans';
 
   @override
-  String get aiSettingsVisionInfo =>
-      'Turn on if the model can read images; needed for photos and scanned PDFs uploaded by sales';
+  String get aiSettingsVisionInfo => 'Turn on if the model can read images; needed for photos and scanned PDFs uploaded by sales';
 
   @override
   String get aiSettingsMaxTokens => 'Max output length';
 
   @override
-  String get aiSettingsMaxTokensInfo =>
-      '256 to 65536; files with many lines need more. This caps one output including thinking; \"Deep\" chat thinking never goes beyond it, so raise it to leave more room';
+  String get aiSettingsMaxTokensInfo => '256 to 65536; files with many lines need more. This caps one output including thinking; \"Deep\" chat thinking never goes beyond it, so raise it to leave more room';
 
   @override
   String get aiSettingsTimeout => 'Timeout (seconds)';
 
   @override
-  String get aiSettingsTimeoutInfo =>
-      '10 to 600; a reply slower than this counts as a failure';
+  String get aiSettingsTimeoutInfo => '10 to 600; a reply slower than this counts as a failure';
 
   @override
   String aiSettingsNumberRange(int min, int max) {
@@ -6085,12 +5655,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get aiSettingsOverseasAck =>
-      'Customer data (company names, goods descriptions) will be sent to an overseas provider. I confirm the cross-border data assessment is complete';
+  String get aiSettingsOverseasAck => 'Customer data (company names, goods descriptions) will be sent to an overseas provider. I confirm the cross-border data assessment is complete';
 
   @override
-  String get aiSettingsOverseasAckRequired =>
-      'Tick the confirmation above before using an overseas provider';
+  String get aiSettingsOverseasAckRequired => 'Tick the confirmation above before using an overseas provider';
 
   @override
   String get aiSettingsSave => 'Save';
@@ -6111,8 +5679,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSettingsTestNeedsKey => 'Enter the API key before testing';
 
   @override
-  String get aiSettingsTestStoredMismatch =>
-      'Testing with the stored key requires the saved endpoint and model. Save first, or enter the key again to test';
+  String get aiSettingsTestStoredMismatch => 'Testing with the stored key requires the saved endpoint and model. Save first, or enter the key again to test';
 
   @override
   String get aiSettingsTestResultTitle => 'Connection test';
@@ -6144,8 +5711,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSettingsTestPassedShort => 'Passed';
 
   @override
-  String get aiSettingsTestFailed =>
-      'The connection test failed. Check the hints and try again';
+  String get aiSettingsTestFailed => 'The connection test failed. Check the hints and try again';
 
   @override
   String get aiSettingsTestFailedShort => 'Failed';
@@ -6154,19 +5720,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSettingsTestWarnShort => 'Check notes';
 
   @override
-  String get aiSettingsTestPassedWithNotes =>
-      'Connected, but there is something to check. See the notes above';
+  String get aiSettingsTestPassedWithNotes => 'Connected, but there is something to check. See the notes above';
 
   @override
-  String get aiSettingsTestStoredUnsavedAdvanced =>
-      'Advanced settings were changed, and a test with the stored key would not include them. Save first, or enter the key again to test';
+  String get aiSettingsTestStoredUnsavedAdvanced => 'Advanced settings were changed, and a test with the stored key would not include them. Save first, or enter the key again to test';
 
   @override
   String get aiSettingsModelChoices => 'Models:';
 
   @override
-  String get aiSettingsOverseasLockedShort =>
-      'Overseas providers are not enabled; the deployment administrator must turn them on on the server';
+  String get aiSettingsOverseasLockedShort => 'Overseas providers are not enabled; the deployment administrator must turn them on on the server';
 
   @override
   String get aiSettingsKeyConfiguredPlain => 'Set';
@@ -6207,12 +5770,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesQuoteStatusHistory => 'History';
 
   @override
-  String get salesQuoteStatusBannerDraft =>
-      'Draft: when ready, tap \"Submit for finance pricing\". It can become an order only after finance sets the prices and discounts.';
+  String get salesQuoteStatusBannerDraft => 'Draft: when ready, tap \"Submit for finance pricing\". It can become an order only after finance sets the prices and discounts.';
 
   @override
-  String get salesQuoteStatusBannerPending =>
-      'Submitted for finance pricing and waiting for finance. To change it, withdraw it first.';
+  String get salesQuoteStatusBannerPending => 'Submitted for finance pricing and waiting for finance. To change it, withdraw it first.';
 
   @override
   String salesQuoteStatusBannerReturned(String reason) {
@@ -6230,8 +5791,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get salesQuoteStatusBannerReversed =>
-      'This quote has been voided and is view only.';
+  String get salesQuoteStatusBannerReversed => 'This quote has been voided and is view only.';
 
   @override
   String get salesQuoteStatusFinanceFallback => 'Finance';
@@ -6279,24 +5839,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesQuoteStatusActionBack => 'Back to list';
 
   @override
-  String get salesQuoteStatusSubmitConfirmBody =>
-      'Finance will set the price and discount line by line. You cannot change the quote meanwhile. Submit now?';
+  String get salesQuoteStatusSubmitConfirmBody => 'Finance will set the price and discount line by line. You cannot change the quote meanwhile. Submit now?';
 
   @override
-  String get salesQuoteStatusWithdrawConfirmBody =>
-      'The quote goes back to draft so you can keep editing; submit it for pricing again afterwards. Withdraw now?';
+  String get salesQuoteStatusWithdrawConfirmBody => 'The quote goes back to draft so you can keep editing; submit it for pricing again afterwards. Withdraw now?';
 
   @override
-  String get salesQuoteStatusReopenConfirmBody =>
-      'Finance has already priced this quote. Editing again returns it to draft, and it must be priced again before it can become an order. Continue?';
+  String get salesQuoteStatusReopenConfirmBody => 'Finance has already priced this quote. Editing again returns it to draft, and it must be priced again before it can become an order. Continue?';
 
   @override
-  String get salesQuoteStatusDeleteConfirmBody =>
-      'Delete this draft quote? This cannot be undone.';
+  String get salesQuoteStatusDeleteConfirmBody => 'Delete this draft quote? This cannot be undone.';
 
   @override
-  String get salesQuoteStatusConvertConfirmBody =>
-      'Create an order draft from the accepted version, carrying approved prices, discounts and terms. Review the information, save and submit the order for finance approval.';
+  String get salesQuoteStatusConvertConfirmBody => 'Create an order draft from the accepted version, carrying approved prices, discounts and terms. Review the information, save and submit the order for finance approval.';
 
   @override
   String get salesQuoteStatusConfirm => 'OK';
@@ -6311,8 +5866,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesQuoteStatusWithdrawn => 'Withdrawn; you can keep editing';
 
   @override
-  String get salesQuoteStatusReopened =>
-      'Back to draft; submit for pricing again when ready';
+  String get salesQuoteStatusReopened => 'Back to draft; submit for pricing again when ready';
 
   @override
   String get salesQuoteStatusDeleted => 'Deleted';
@@ -6323,8 +5877,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get salesQuoteStatusActionFailed =>
-      'That did not work. Please try again later.';
+  String get salesQuoteStatusActionFailed => 'That did not work. Please try again later.';
 
   @override
   String get salesQuoteStatusBusy => 'Working on it, please wait';
@@ -6354,8 +5907,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesQuoteStatusRevisionReopen => 'Reopened by sales';
 
   @override
-  String get salesQuoteStatusRevisionFinanceReopen =>
-      'Confirmation withdrawn by finance';
+  String get salesQuoteStatusRevisionFinanceReopen => 'Confirmation withdrawn by finance';
 
   @override
   String get salesQuoteStatusRevisionOther => 'Other record';
@@ -6378,8 +5930,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quoteFinanceHubTitle => 'Quote pricing';
 
   @override
-  String get quoteFinanceHubSubtitle =>
-      'Finance sets prices and discounts on sales quotes; sales can convert them to orders once confirmed';
+  String get quoteFinanceHubSubtitle => 'Finance sets prices and discounts on sales quotes; sales can convert them to orders once confirmed';
 
   @override
   String get quoteFinanceListTitle => 'Quote pricing';
@@ -6456,8 +6007,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quoteFinanceEmptyPending => 'No quotes waiting for pricing';
 
   @override
-  String get quoteFinanceEmptyPendingHint =>
-      'Quotes appear here after sales submit them. Sales can convert a quote to an order only after you confirm the prices.';
+  String get quoteFinanceEmptyPendingHint => 'Quotes appear here after sales submit them. Sales can convert a quote to an order only after you confirm the prices.';
 
   @override
   String get quoteFinanceEmptyConfirmed => 'No priced quotes yet';
@@ -6466,8 +6016,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quoteFinanceEmptyReturned => 'No quotes returned to sales';
 
   @override
-  String get quoteFinanceEmptyReturnedHint =>
-      'After sales fix a returned quote it comes back to \"To price\".';
+  String get quoteFinanceEmptyReturnedHint => 'After sales fix a returned quote it comes back to \"To price\".';
 
   @override
   String quoteFinanceEmptySearch(String keyword) {
@@ -6475,8 +6024,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get quoteFinanceLoadFailed =>
-      'Could not load quotes. Check the network and try again.';
+  String get quoteFinanceLoadFailed => 'Could not load quotes. Check the network and try again.';
 
   @override
   String get quoteFinanceRetry => 'Retry';
@@ -6529,22 +6077,18 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get quoteFinanceReadOnlyNotice =>
-      'You have nothing to do on this quote right now; it is view only.';
+  String get quoteFinanceReadOnlyNotice => 'You have nothing to do on this quote right now; it is view only.';
 
   @override
-  String get quoteFinanceResubmitNotice =>
-      'Resubmitted by sales. Highlighted lines have a discount different from the one you last confirmed; please check them.';
+  String get quoteFinanceResubmitNotice => 'Resubmitted by sales. Highlighted lines have a discount different from the one you last confirmed; please check them.';
 
   @override
   String quoteFinanceNeedPriceNotice(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other:
-          '$count lines have no list price. Enter a deal price, or choose \"Mark as free / zero price\" from the line menu, before confirming.',
-      one:
-          '1 line has no list price. Enter a deal price, or choose \"Mark as free / zero price\" from the line menu, before confirming.',
+      other: '$count lines have no list price. Enter a deal price, or choose \"Mark as free / zero price\" from the line menu, before confirming.',
+      one: '1 line has no list price. Enter a deal price, or choose \"Mark as free / zero price\" from the line menu, before confirming.',
     );
     return '$_temp0';
   }
@@ -6630,8 +6174,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quoteFinanceColListPrice => 'List price';
 
   @override
-  String get quoteFinanceColListPriceInfo =>
-      'The selling price in goods data. When there is none, or the deal price is above it, finance sets the deal price directly; below it, the price always becomes a discount.';
+  String get quoteFinanceColListPriceInfo => 'The selling price in goods data. When there is none, or the deal price is above it, finance sets the deal price directly; below it, the price always becomes a discount.';
 
   @override
   String get quoteFinanceColFilePrice => 'File unit price (original)';
@@ -6643,15 +6186,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quoteFinanceColDealPrice => 'Deal price';
 
   @override
-  String get quoteFinanceColDealPriceInfo =>
-      'What the customer finally pays per unit. Changing the deal price recalculates the discount, and vice versa.';
+  String get quoteFinanceColDealPriceInfo => 'What the customer finally pays per unit. Changing the deal price recalculates the discount, and vice versa.';
 
   @override
   String get quoteFinanceColDiscount => 'Discount';
 
   @override
-  String get quoteFinanceColDiscountInfo =>
-      'Discount = deal price ÷ list price, 4 decimal places; 1 means the list price.';
+  String get quoteFinanceColDiscountInfo => 'Discount = deal price ÷ list price, 4 decimal places; 1 means the list price.';
 
   @override
   String get quoteFinanceColLineAmount => 'Amount';
@@ -6660,8 +6201,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quoteFinanceColFileDiff => 'Difference from file';
 
   @override
-  String get quoteFinanceColFileDiffInfo =>
-      'This line amount minus the amount in the customer file (converted to base currency). 0 means it matches the file.';
+  String get quoteFinanceColFileDiffInfo => 'This line amount minus the amount in the customer file (converted to base currency). 0 means it matches the file.';
 
   @override
   String get quoteFinanceColLastConfirmed => 'Last confirmed discount';
@@ -6691,15 +6231,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quoteFinanceFileMatch => 'Matches';
 
   @override
-  String get quoteFinanceErrorDealPrice =>
-      'Enter a number greater than 0. For a free or zero-price line, use \"Set as free / zero price\" in the line menu.';
+  String get quoteFinanceErrorDealPrice => 'Enter a number greater than 0. For a free or zero-price line, use \"Set as free / zero price\" in the line menu.';
 
   @override
   String get quoteFinanceErrorFinancePrice => 'Enter a number of 0 or more';
 
   @override
-  String get quoteFinanceErrorDiscount =>
-      'Discount must be above 0 and at most 1, with up to 4 decimals';
+  String get quoteFinanceErrorDiscount => 'Discount must be above 0 and at most 1, with up to 4 decimals';
 
   @override
   String get quoteFinanceErrorNeedPrice => 'Enter the deal price';
@@ -6733,8 +6271,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get quoteFinanceBatchDiscountHint =>
-      'For example, 0.95 means 95% of the list price';
+  String get quoteFinanceBatchDiscountHint => 'For example, 0.95 means 95% of the list price';
 
   @override
   String get quoteFinanceBatchApply => 'Apply';
@@ -6762,16 +6299,14 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get quoteFinanceBatchNeedSelection =>
-      'Select the lines to change first';
+  String get quoteFinanceBatchNeedSelection => 'Select the lines to change first';
 
   @override
   String quoteFinanceCheckedEditHint(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other:
-          'This line is selected: changing the discount updates all $count selected lines',
+      other: 'This line is selected: changing the discount updates all $count selected lines',
     );
     return '$_temp0';
   }
@@ -6812,8 +6347,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get quoteFinanceClaimNotReady =>
-      'You do not hold this quote for pricing yet. Tap \"Claim again and refresh\".';
+  String get quoteFinanceClaimNotReady => 'You do not hold this quote for pricing yet. Tap \"Claim again and refresh\".';
 
   @override
   String get quoteFinanceSaveFirst => 'Save your changes before confirming';
@@ -6823,40 +6357,32 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other:
-          '$count lines still have no price, so the quote cannot be confirmed. Enter deal prices or mark them as free / zero.',
-      one:
-          '1 line still has no price, so the quote cannot be confirmed. Enter a deal price or mark it as free / zero.',
+      other: '$count lines still have no price, so the quote cannot be confirmed. Enter deal prices or mark them as free / zero.',
+      one: '1 line still has no price, so the quote cannot be confirmed. Enter a deal price or mark it as free / zero.',
     );
     return '$_temp0';
   }
 
   @override
-  String get quoteFinanceConfirmedDone =>
-      'Quote confirmed; sales have been told they can convert it';
+  String get quoteFinanceConfirmedDone => 'Quote confirmed; sales have been told they can convert it';
 
   @override
-  String get quoteFinanceReturnedDone =>
-      'Returned to sales; they will be notified';
+  String get quoteFinanceReturnedDone => 'Returned to sales; they will be notified';
 
   @override
-  String get quoteFinanceReopenedDone =>
-      'Confirmation undone; you can edit the prices again';
+  String get quoteFinanceReopenedDone => 'Confirmation undone; you can edit the prices again';
 
   @override
-  String get quoteFinanceLoadDetailFailed =>
-      'The quote details could not be loaded. Try again.';
+  String get quoteFinanceLoadDetailFailed => 'The quote details could not be loaded. Try again.';
 
   @override
-  String get quoteFinanceActionFailed =>
-      'That did not work. Please try again later.';
+  String get quoteFinanceActionFailed => 'That did not work. Please try again later.';
 
   @override
   String get quoteFinanceUnsavedTitle => 'You have unsaved changes';
 
   @override
-  String get quoteFinanceUnsavedBody =>
-      'These changes will be lost if you leave. Leave anyway?';
+  String get quoteFinanceUnsavedBody => 'These changes will be lost if you leave. Leave anyway?';
 
   @override
   String get quoteFinanceLeave => 'Leave';
@@ -6871,8 +6397,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quoteFinanceSaving => 'Saving changes';
 
   @override
-  String get quoteFinanceSessionChanged =>
-      'Your sign-in changed. Please open the quote again.';
+  String get quoteFinanceSessionChanged => 'Your sign-in changed. Please open the quote again.';
 
   @override
   String quoteFinanceConfirmTitle(String billNo) {
@@ -6880,15 +6405,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get quoteFinanceConfirmBody =>
-      'Once confirmed, the prices and discounts are fixed and sales can convert the quote to an order. To change them later, undo the confirmation before it is converted.';
+  String get quoteFinanceConfirmBody => 'Once confirmed, the prices and discounts are fixed and sales can convert the quote to an order. To change them later, undo the confirmation before it is converted.';
 
   @override
   String get quoteFinanceConfirmResponsibility => 'Quote pricing confirmation';
 
   @override
-  String get quoteFinanceConfirmResponsibilityDesc =>
-      'The system records you as the person who priced this quote.';
+  String get quoteFinanceConfirmResponsibilityDesc => 'The system records you as the person who priced this quote.';
 
   @override
   String quoteFinanceConfirmTotal(String amount) {
@@ -6901,8 +6424,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get quoteFinanceReturnBody =>
-      'The quote goes back to sales to fix and resubmit. Write the reason; sales will see it.';
+  String get quoteFinanceReturnBody => 'The quote goes back to sales to fix and resubmit. Write the reason; sales will see it.';
 
   @override
   String get quoteFinanceReturnChipQty => 'Customer wants to change quantity';
@@ -6911,8 +6433,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quoteFinanceReturnChipGoods => 'Goods missing, please add';
 
   @override
-  String get quoteFinanceReturnChipPrice =>
-      'Price needs confirming with the customer';
+  String get quoteFinanceReturnChipPrice => 'Price needs confirming with the customer';
 
   @override
   String get quoteFinanceReturnReasonLabel => 'Return reason (required)';
@@ -6927,8 +6448,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quoteFinanceReopenTitle => 'Undo confirmation to edit';
 
   @override
-  String get quoteFinanceReopenBody =>
-      'The quote goes back to \"To price\" so you can edit prices; confirm it again afterwards. Sales cannot convert it meanwhile. Undo now?';
+  String get quoteFinanceReopenBody => 'The quote goes back to \"To price\" so you can edit prices; confirm it again afterwards. Sales cannot convert it meanwhile. Undo now?';
 
   @override
   String get quoteFinanceCancel => 'Cancel';
@@ -6970,8 +6490,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get quoteFinanceOrderChipHint =>
-      'This order comes from a finance-priced quote. When prices and discounts match the quote, only credit and terms need checking now.';
+  String get quoteFinanceOrderChipHint => 'This order comes from a finance-priced quote. When prices and discounts match the quote, only credit and terms need checking now.';
 
   @override
   String get quoteFinanceOrderColQuotePrice => 'Quote price';
@@ -7003,12 +6522,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quoteFinanceOrderColFileName => 'File description';
 
   @override
-  String get quoteFinanceAboveListHint =>
-      'Above the list price, so it is saved as a finance price (discount 1)';
+  String get quoteFinanceAboveListHint => 'Above the list price, so it is saved as a finance price (discount 1)';
 
   @override
-  String get quoteFinanceMenuRefreshMaster =>
-      'Refresh from the latest list price';
+  String get quoteFinanceMenuRefreshMaster => 'Refresh from the latest list price';
 
   @override
   String quoteFinanceRefreshMasterChip(String price) {
@@ -7037,23 +6554,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesQuoteStatusImportTitle => 'Choose a quote priced by finance';
 
   @override
-  String get salesQuoteStatusImportEmpty =>
-      'No priced quotes are ready to become orders';
+  String get salesQuoteStatusImportEmpty => 'No priced quotes are ready to become orders';
 
   @override
-  String get salesQuoteStatusImportLoadFailed =>
-      'Could not load quotes. Please try again later.';
+  String get salesQuoteStatusImportLoadFailed => 'Could not load quotes. Please try again later.';
 
   @override
-  String get salesIntakeApprovedOrderHint =>
-      'Approved orders are changed with quantity change or edit; they cannot be re-read from a file';
+  String get salesIntakeApprovedOrderHint => 'Approved orders are changed with quantity change or edit; they cannot be re-read from a file';
 
   @override
   String get salesIntakeReplaceTitle => 'The lines already have goods';
 
   @override
-  String get salesIntakeReplaceMessage =>
-      'Replace the existing lines with the result, or add it after them?';
+  String get salesIntakeReplaceMessage => 'Replace the existing lines with the result, or add it after them?';
 
   @override
   String get salesIntakeReplace => 'Replace';
@@ -7084,8 +6597,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get salesIntakeAttachFailed =>
-      'The original file could not be attached; you can upload it in the attachments area';
+  String get salesIntakeAttachFailed => 'The original file could not be attached; you can upload it in the attachments area';
 
   @override
   String get salesIntakeProgressTitle => 'Reading the customer file';
@@ -7109,23 +6621,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesIntakeStagePricing => 'Work out discounts';
 
   @override
-  String get salesIntakeSendWholeFileTitle =>
-      'The whole file will be sent to the AI service';
+  String get salesIntakeSendWholeFileTitle => 'The whole file will be sent to the AI service';
 
   @override
-  String get salesIntakeSendWholeFileMessage =>
-      'This is a PDF or image, so the whole file must be sent to the AI service to be read. If it contains sensitive details such as bank accounts, make sure it can be sent.';
+  String get salesIntakeSendWholeFileMessage => 'This is a PDF or image, so the whole file must be sent to the AI service to be read. If it contains sensitive details such as bank accounts, make sure it can be sent.';
 
   @override
   String get salesIntakeSendWholeFileConfirm => 'Continue';
 
   @override
-  String get salesIntakeAiRequired =>
-      'PDFs and images need AI to be read. Upload an Excel file or contact the administrator';
+  String get salesIntakeAiRequired => 'PDFs and images need AI to be read. Upload an Excel file or contact the administrator';
 
   @override
-  String get salesIntakeVisionRequired =>
-      'This is an image. The administrator needs to enable a model that can read images in AI settings';
+  String get salesIntakeVisionRequired => 'This is an image. The administrator needs to enable a model that can read images in AI settings';
 
   @override
   String salesIntakeFileTooLarge(String max) {
@@ -7133,23 +6641,19 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get salesIntakeFileUnreadable =>
-      'Could not read this file. Please choose it again';
+  String get salesIntakeFileUnreadable => 'Could not read this file. Please choose it again';
 
   @override
-  String get salesIntakeFileTypeUnsupported =>
-      'Only Excel, CSV, PDF or image files can be read';
+  String get salesIntakeFileTypeUnsupported => 'Only Excel, CSV, PDF or image files can be read';
 
   @override
   String get salesIntakeFailedTitle => 'Could not read this file';
 
   @override
-  String get salesIntakeResultUnreadable =>
-      'The result could not be loaded. Please read the file again';
+  String get salesIntakeResultUnreadable => 'The result could not be loaded. Please read the file again';
 
   @override
-  String get salesIntakeNoLines =>
-      'No goods lines were found. Make sure this is a quotation or proforma invoice';
+  String get salesIntakeNoLines => 'No goods lines were found. Make sure this is a quotation or proforma invoice';
 
   @override
   String get salesIntakeCancel => 'Cancel';
@@ -7158,15 +6662,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesIntakeCreateClientTitle => 'Create customer from file';
 
   @override
-  String get salesIntakeCreateClientIntro =>
-      'A new customer will be created from the details below, owned by you, in the Uncategorized group.';
+  String get salesIntakeCreateClientIntro => 'A new customer will be created from the details below, owned by you, in the Uncategorized group.';
 
   @override
   String get salesIntakeCreateClientName => 'Customer short name';
 
   @override
-  String get salesIntakeCreateClientNameRequired =>
-      'Enter the customer short name';
+  String get salesIntakeCreateClientNameRequired => 'Enter the customer short name';
 
   @override
   String get salesIntakeCreateClientConfirm => 'Create customer';
@@ -7177,12 +6679,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get salesIntakeCreateClientExists =>
-      'This customer already exists and has been selected';
+  String get salesIntakeCreateClientExists => 'This customer already exists and has been selected';
 
   @override
-  String get salesIntakeCreateClientFailed =>
-      'The customer was not created. Please try again later';
+  String get salesIntakeCreateClientFailed => 'The customer was not created. Please try again later';
 
   @override
   String get salesIntakeFieldFullName => 'Full name';
@@ -7251,20 +6751,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get salesIntakeClientNotFound =>
-      'This buyer is not among your customers';
+  String get salesIntakeClientNotFound => 'This buyer is not among your customers';
 
   @override
-  String get salesIntakeClientSuggestions =>
-      'It looks like one of these customers. Choose one:';
+  String get salesIntakeClientSuggestions => 'It looks like one of these customers. Choose one:';
 
   @override
-  String get salesIntakeClientNone =>
-      'No customer chosen yet; you can also choose one in the header after importing';
+  String get salesIntakeClientNone => 'No customer chosen yet; you can also choose one in the header after importing';
 
   @override
-  String get salesIntakeNoVisibleClients =>
-      'You have no customers yet. Ask your supervisor to assign customers to you in Customer data';
+  String get salesIntakeNoVisibleClients => 'You have no customers yet. Ask your supervisor to assign customers to you in Customer data';
 
   @override
   String salesIntakeEnrichSummary(String fields) {
@@ -7283,8 +6779,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get salesIntakeEnrichCurrentEmpty =>
-      'Not filled in the customer data yet';
+  String get salesIntakeEnrichCurrentEmpty => 'Not filled in the customer data yet';
 
   @override
   String salesIntakeFilterReview(int count) {
@@ -7314,8 +6809,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesIntakeCollapse => 'Hide';
 
   @override
-  String get salesIntakeNoReviewLines =>
-      'All lines matched automatically. You can import right away';
+  String get salesIntakeNoReviewLines => 'All lines matched automatically. You can import right away';
 
   @override
   String salesIntakeLineNo(String no) {
@@ -7373,8 +6867,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesIntakeMerge => 'Merge back into one line';
 
   @override
-  String get salesIntakeBundleHint =>
-      'This line is a set; you can split it and choose goods one by one';
+  String get salesIntakeBundleHint => 'This line is a set; you can split it and choose goods one by one';
 
   @override
   String salesIntakeSetNameEn(String text) {
@@ -7393,32 +6886,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesIntakeDiscountPending => 'Discount to be decided';
 
   @override
-  String get salesIntakePricingNoListPrice =>
-      'This goods has no list price yet';
+  String get salesIntakePricingNoListPrice => 'This goods has no list price yet';
 
   @override
-  String get salesIntakePricingAboveList =>
-      'The file price is above the list price';
+  String get salesIntakePricingAboveList => 'The file price is above the list price';
 
   @override
-  String get salesIntakePricingOutOfRange =>
-      'Unusual discount; the goods may be wrong';
+  String get salesIntakePricingOutOfRange => 'Unusual discount; the goods may be wrong';
 
   @override
-  String get salesIntakePricingAmbiguous =>
-      'Cannot tell which currency the file uses; check the discount';
+  String get salesIntakePricingAmbiguous => 'Cannot tell which currency the file uses; check the discount';
 
   @override
-  String get salesIntakePricingRateMissing =>
-      'The reference exchange rate is not set, so the discount could not be worked out';
+  String get salesIntakePricingRateMissing => 'The reference exchange rate is not set, so the discount could not be worked out';
 
   @override
-  String get salesIntakeUnmatchedRemarkHint =>
-      'Not imported; the file text goes into the remark';
+  String get salesIntakeUnmatchedRemarkHint => 'Not imported; the file text goes into the remark';
 
   @override
-  String get salesIntakeBlockedHint =>
-      'Cannot go straight into an order; make a quotation for finance to price first';
+  String get salesIntakeBlockedHint => 'Cannot go straight into an order; make a quotation for finance to price first';
 
   @override
   String salesIntakeBlockedTitle(int count) {
@@ -7432,23 +6918,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get salesIntakeBlockedMessage =>
-      'They cannot go straight into an order. Make a quotation first so finance can price them.';
+  String get salesIntakeBlockedMessage => 'They cannot go straight into an order. Make a quotation first so finance can price them.';
 
   @override
   String get salesIntakeHandoffToQuote => 'Make a quotation instead';
 
   @override
-  String get salesIntakeDuplicateTitle =>
-      'This file may already have been entered';
+  String get salesIntakeDuplicateTitle => 'This file may already have been entered';
 
   @override
-  String salesIntakeDuplicateItem(
-    String doc,
-    String billNo,
-    String date,
-    String reason,
-  ) {
+  String salesIntakeDuplicateItem(String doc, String billNo, String date, String reason) {
     return '$doc $billNo ($date, $reason)';
   }
 
@@ -7504,8 +6983,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get salesIntakePriceMaskedNotice =>
-      'You cannot see prices; discounts are worked out from the file prices when you save';
+  String get salesIntakePriceMaskedNotice => 'You cannot see prices; discounts are worked out from the file prices when you save';
 
   @override
   String salesIntakeCurrencyNotice(String currency, String rate, String base) {
@@ -7563,42 +7041,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesIntakeMarkerDefault => 'Please check this match';
 
   @override
-  String get salesIntakeMarkerUnit =>
-      'The file quantity is not in pieces; check the quantity';
+  String get salesIntakeMarkerUnit => 'The file quantity is not in pieces; check the quantity';
 
   @override
-  String get salesIntakeMarkerQuotePricing =>
-      'No list price (or file price above it); finance will set the price';
+  String get salesIntakeMarkerQuotePricing => 'No list price (or file price above it); finance will set the price';
 
   @override
-  String get salesIntakeMarkerQuoteDiscount =>
-      'The discount could not be worked out; finance will decide it';
+  String get salesIntakeMarkerQuoteDiscount => 'The discount could not be worked out; finance will decide it';
 
   @override
-  String get salesIntakeMarkerOrderDiscount =>
-      'The discount could not be worked out; check it against the file price and fill it in';
+  String get salesIntakeMarkerOrderDiscount => 'The discount could not be worked out; check it against the file price and fill it in';
 
   @override
-  String get salesIntakeQuoteLineReplaced =>
-      'This line was priced by finance on the quote. After switching to other goods it no longer uses the quoted price and discount; it is recalculated from the list price when saved';
+  String get salesIntakeQuoteLineReplaced => 'This line was priced by finance on the quote. After switching to other goods it no longer uses the quoted price and discount; it is recalculated from the list price when saved';
 
   @override
-  String get salesIntakeMarkerBundlePart =>
-      'The set was split; check the goods and discount';
+  String get salesIntakeMarkerBundlePart => 'The set was split; check the goods and discount';
 
   @override
   String get salesIntakeColClientModel => 'File model';
 
   @override
-  String get salesIntakeColClientModelInfo =>
-      'The model or item number on the customer\'s file. After saving, the system remembers what the customer calls it so the next file is read more accurately.';
+  String get salesIntakeColClientModelInfo => 'The model or item number on the customer\'s file. After saving, the system remembers what the customer calls it so the next file is read more accurately.';
 
   @override
   String get salesIntakeColClientGoodsName => 'File description';
 
   @override
-  String get salesIntakeColClientGoodsNameInfo =>
-      'The description on the customer\'s file. Choosing goods by hand fills in the goods English name; you can change it.';
+  String get salesIntakeColClientGoodsNameInfo => 'The description on the customer\'s file. Choosing goods by hand fills in the goods English name; you can change it.';
 
   @override
   String get salesIntakeColClientPrice => 'File price';
@@ -7609,12 +7079,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get salesIntakeColClientPriceInfo =>
-      'The unit price on the customer\'s file (in the file currency), for reference only. The unit price always comes from the goods list price; the discount is worked out from this price.';
+  String get salesIntakeColClientPriceInfo => 'The unit price on the customer\'s file (in the file currency), for reference only. The unit price always comes from the goods list price; the discount is worked out from this price.';
 
   @override
-  String get salesIntakeQuotePriceHint =>
-      'The list price is the starting point. Edit this quote’s price and discount without changing goods master data. Finance reviews submitted quotes and can fill in missing prices.';
+  String get salesIntakeQuotePriceHint => 'The list price is the starting point. Edit this quote’s price and discount without changing goods master data. Finance reviews submitted quotes and can fill in missing prices.';
 
   @override
   String get salesIntakeFinancePriced => 'Finance price';
@@ -7632,8 +7100,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesIntakeQuoteLockedDiscount => '(set in quotation)';
 
   @override
-  String get salesIntakeQuoteLockedDiscountInfo =>
-      'Finance set this discount in the quotation. To change it, reopen the quotation';
+  String get salesIntakeQuoteLockedDiscountInfo => 'Finance set this discount in the quotation. To change it, reopen the quotation';
 
   @override
   String get quoteTemplateDownload => 'Download quotation';
@@ -7642,8 +7109,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quoteTemplateChoose => 'Choose customer quotation template';
 
   @override
-  String get quoteTemplateChooseHint =>
-      'Choose one or more templates. Multiple files are downloaded together in a ZIP. You can also use the standard format.';
+  String get quoteTemplateChooseHint => 'Choose one or more templates. Multiple files are downloaded together in a ZIP. You can also use the standard format.';
 
   @override
   String quoteTemplateVersionUsage(int version, int count) {
@@ -7669,8 +7135,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get businessColumnSearch => 'Enter a name to find existing columns';
 
   @override
-  String get businessColumnReuseHint =>
-      'Reuse a column or create one. Saved columns are available for reuse; new documents keep their default layout.';
+  String get businessColumnReuseHint => 'Reuse a column or create one. Saved columns are available for reuse; new documents keep their default layout.';
 
   @override
   String get businessColumnSystem => 'System column';
@@ -7679,12 +7144,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get businessColumnReference => 'Reference only';
 
   @override
-  String get businessColumnLimit =>
-      'A document can contain up to 32 additional columns.';
+  String get businessColumnLimit => 'A document can contain up to 32 additional columns.';
 
   @override
-  String get businessColumnAmountHint =>
-      'Operations apply to each line amount in the order added. Moving headers changes display order only. Blank values are skipped. Division must be exact and nonzero; the final amount cannot be negative.';
+  String get businessColumnAmountHint => 'Operations apply to each line amount in the order added. Moving headers changes display order only. Blank values are skipped. Division must be exact and nonzero; the final amount cannot be negative.';
 
   @override
   String get businessColumnType => 'Content type';
@@ -7714,16 +7177,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get businessColumnCreate => 'Create and add';
 
   @override
-  String get businessColumnLoadFailed =>
-      'Could not load columns. Please retry.';
+  String get businessColumnLoadFailed => 'Could not load columns. Please retry.';
 
   @override
-  String get businessColumnSaveFailed =>
-      'Could not save the column. Please retry.';
+  String get businessColumnSaveFailed => 'Could not save the column. Please retry.';
 
   @override
-  String get businessColumnInvalid =>
-      'Check additional column numbers, divisors and the final amount.';
+  String get businessColumnInvalid => 'Check additional column numbers, divisors and the final amount.';
 
   @override
   String get businessColumnNameEn => 'English name';
@@ -7942,20 +7402,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costSaved => 'Cost draft saved';
 
   @override
-  String get costConfirmPrompt =>
-      'Confirmation freezes usage, prices and costs. Later changes require a new version.';
+  String get costConfirmPrompt => 'Confirmation freezes usage, prices and costs. Later changes require a new version.';
 
   @override
-  String get costLeavePrompt =>
-      'Save the current draft to the server before switching.';
+  String get costLeavePrompt => 'Save the current draft to the server before switching.';
 
   @override
-  String get costCalculationStale =>
-      'Inputs changed; amounts await recalculation';
+  String get costCalculationStale => 'Inputs changed; amounts await recalculation';
 
   @override
-  String get costConflict =>
-      'The server version changed. Local inputs are preserved; compare before restoring.';
+  String get costConflict => 'The server version changed. Local inputs are preserved; compare before restoring.';
 
   @override
   String get costRecoverLocal => 'Recover local draft';
@@ -7979,12 +7435,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costDelete => 'Delete';
 
   @override
-  String get costDeleteFeePrompt =>
-      'Deleting this cost changes this draft. Historical versions are preserved.';
+  String get costDeleteFeePrompt => 'Deleting this cost changes this draft. Historical versions are preserved.';
 
   @override
-  String get costEmpty =>
-      'No cost sheet yet. Create one from the assembly structure.';
+  String get costEmpty => 'No cost sheet yet. Create one from the assembly structure.';
 
   @override
   String get costNoActual => 'No actual cost evidence yet';
@@ -8002,8 +7456,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costActualUnclassified => 'Unclassified amount';
 
   @override
-  String get costActualIncomplete =>
-      'Labor and overhead coverage is incomplete';
+  String get costActualIncomplete => 'Labor and overhead coverage is incomplete';
 
   @override
   String get costSourceDocument => 'Source document';
@@ -8033,8 +7486,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costLossPolicy => 'Subcontract loss allowance';
 
   @override
-  String get costLossPolicyHint =>
-      'A subcontract contract default only; not used for costing or usage learning.';
+  String get costLossPolicyHint => 'A subcontract contract default only; not used for costing or usage learning.';
 
   @override
   String get costDecimalInvalid => 'Enter a valid non-negative decimal';
@@ -8067,8 +7519,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costTemplateSaved => 'Cost template saved';
 
   @override
-  String get costFeeApplicability =>
-      'Entering a price applies this cost. Blank means incomplete; choose Not applicable to remove it.';
+  String get costFeeApplicability => 'Entering a price applies this cost. Blank means incomplete; choose Not applicable to remove it.';
 
   @override
   String get costSnapshotReadOnly => 'Historical snapshot is read only';
@@ -8080,8 +7531,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costImportBlock => 'Product block';
 
   @override
-  String get costImportReview =>
-      'Check the match for each row. Cached prices are verified in this sheet currency; external formulas are not adopted.';
+  String get costImportReview => 'Check the match for each row. Cached prices are verified in this sheet currency; external formulas are not adopted.';
 
   @override
   String get costImportKind => 'Mapping type';
@@ -8105,8 +7555,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costImportApply => 'Apply to this sheet';
 
   @override
-  String get costImportNeedsReview =>
-      'Review every row. Skips require a reason and materials require a target.';
+  String get costImportNeedsReview => 'Review every row. Skips require a reason and materials require a target.';
 
   @override
   String get costCompare => 'Compare versions';
@@ -8196,12 +7645,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costActualRecorded => 'Recorded actual cost (local)';
 
   @override
-  String get costBasisMismatch =>
-      'Baseline output or currency basis differs from the actual range; no variance is calculated.';
+  String get costBasisMismatch => 'Baseline output or currency basis differs from the actual range; no variance is calculated.';
 
   @override
-  String get costCoverageMismatch =>
-      'Actual labor and overhead are incomplete. Values are shown side by side without a full-cost variance.';
+  String get costCoverageMismatch => 'Actual labor and overhead are incomplete. Values are shown side by side without a full-cost variance.';
 
   @override
   String get costVariance => 'Comparable cost variance';
@@ -8216,8 +7663,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryCostPolicy => 'Reconciliation and activation';
 
   @override
-  String get inventoryCostPolicyHint =>
-      'Reconcile source inventory values and historical cost vouchers first. Activation appends new vouchers; legacy conflicts and cross-period differences require review.';
+  String get inventoryCostPolicyHint => 'Reconcile source inventory values and historical cost vouchers first. Activation appends new vouchers; legacy conflicts and cross-period differences require review.';
 
   @override
   String get inventoryCostEnabled => 'Actual cost posting enabled';
@@ -8238,8 +7684,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryCostEvidence => 'Reconciliation evidence';
 
   @override
-  String get inventoryCostEvidenceRequired =>
-      'Enter at least 8 characters of reconciliation evidence';
+  String get inventoryCostEvidenceRequired => 'Enter at least 8 characters of reconciliation evidence';
 
   @override
   String get inventoryCostFrom => 'Source date from';
@@ -8248,16 +7693,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryCostTo => 'Source date to';
 
   @override
-  String get inventoryCostInvalidRange =>
-      'The source start date must not follow the end date';
+  String get inventoryCostInvalidRange => 'The source start date must not follow the end date';
 
   @override
-  String get inventoryCostLoadFailed =>
-      'Could not load actual cost postings. Retry.';
+  String get inventoryCostLoadFailed => 'Could not load actual cost postings. Retry.';
 
   @override
-  String get inventoryCostWriteFailed =>
-      'The action failed. Refresh and review before retrying.';
+  String get inventoryCostWriteFailed => 'The action failed. Refresh and review before retrying.';
 
   @override
   String get inventoryCostStatus => 'Posting status';
@@ -8296,26 +7738,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryCostReason => 'Review reason';
 
   @override
-  String get inventoryCostReasonRequired =>
-      'Enter a review reason of at least 4 characters';
+  String get inventoryCostReasonRequired => 'Enter a review reason of at least 4 characters';
 
   @override
-  String get inventoryCostNoOpenPeriod =>
-      'No open period in this range. Adjust the dates.';
+  String get inventoryCostNoOpenPeriod => 'No open period in this range. Adjust the dates.';
 
   @override
   String get inventoryCostPost => 'Append cost vouchers';
 
   @override
-  String get inventoryCostPostHint =>
-      'Append balanced vouchers for source value changes, including returns and late differences. Retries do not duplicate postings or rewrite prior vouchers.';
+  String get inventoryCostPostHint => 'Append balanced vouchers for source value changes, including returns and late differences. Retries do not duplicate postings or rewrite prior vouchers.';
 
   @override
   String get inventoryCostClosePeriod => 'Close cost period';
 
   @override
-  String get inventoryCostCloseHint =>
-      'Closing prevents further postings to this period. Later differences require an explicitly reviewed open period.';
+  String get inventoryCostCloseHint => 'Closing prevents further postings to this period. Later differences require an explicitly reviewed open period.';
 
   @override
   String get inventoryCostPendingCount => 'Pending postings in period';
@@ -8342,8 +7780,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryCostValuePending => 'Cost verification pending';
 
   @override
-  String get inventoryCostLegacyConflict =>
-      'Legacy voucher needs reconciliation';
+  String get inventoryCostLegacyConflict => 'Legacy voucher needs reconciliation';
 
   @override
   String get inventoryCostTargetClosed => 'Target period closed';
@@ -8358,8 +7795,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costConvertCurrency => 'Convert cost currency';
 
   @override
-  String get costCurrencyConversionHint =>
-      'Amounts are converted on the server using the source and target rates. Quantities and percentages stay unchanged. Inputs change only after success.';
+  String get costCurrencyConversionHint => 'Amounts are converted on the server using the source and target rates. Quantities and percentages stay unchanged. Inputs change only after success.';
 
   @override
   String get costSourceExchangeRate => 'Source currency to local rate';
@@ -8368,16 +7804,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costTargetExchangeRate => 'Target currency to local rate';
 
   @override
-  String get costExchangeRateRequired =>
-      'Enter an explicit decimal exchange rate greater than zero';
+  String get costExchangeRateRequired => 'Enter an explicit decimal exchange rate greater than zero';
 
   @override
-  String get costPriceNormalizedHelp =>
-      'Unit price is shown in this cost sheet currency per material base unit. Original price, unit conversion and tax basis are available in source details.';
+  String get costPriceNormalizedHelp => 'Unit price is shown in this cost sheet currency per material base unit. Original price, unit conversion and tax basis are available in source details.';
 
   @override
-  String get costCurrencyConverted =>
-      'Costs converted to the target currency; not saved yet';
+  String get costCurrencyConverted => 'Costs converted to the target currency; not saved yet';
 
   @override
   String get costUnitContributionShort => 'Unit cost';
@@ -8410,8 +7843,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costCopyValue => 'Copy recorded value';
 
   @override
-  String get costSourceUnavailable =>
-      'No source page is available here. Copy the identifier for the responsible team to reconcile.';
+  String get costSourceUnavailable => 'No source page is available here. Copy the identifier for the responsible team to reconcile.';
 
   @override
   String get costGapLabor => 'Actual labor is not recorded';
@@ -8441,8 +7873,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costGapClassification => 'Input costs need classification';
 
   @override
-  String get costGapOutputBasis =>
-      'Effective output basis needs reconciliation';
+  String get costGapOutputBasis => 'Effective output basis needs reconciliation';
 
   @override
   String get costGapScope => 'Cost scope is incomplete';
@@ -8454,20 +7885,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costGapOther => 'Other cost evidence needs reconciliation';
 
   @override
-  String get costGapActionCharges =>
-      'Record actual cost evidence and reconcile again';
+  String get costGapActionCharges => 'Record actual cost evidence and reconcile again';
 
   @override
-  String get costGapActionHistory =>
-      'Check historical source documents and units; do not substitute current master data';
+  String get costGapActionHistory => 'Check historical source documents and units; do not substitute current master data';
 
   @override
-  String get costGapActionRefresh =>
-      'Refresh after the cost task finishes; inspect its source if still pending';
+  String get costGapActionRefresh => 'Refresh after the cost task finishes; inspect its source if still pending';
 
   @override
-  String get costGapActionSource =>
-      'Review source documents, returns and outputs, then refresh';
+  String get costGapActionSource => 'Review source documents, returns and outputs, then refresh';
 
   @override
   String get costAmountBasis => 'Amount basis';
@@ -8556,8 +7983,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costMissingPriceInput => 'Enter price';
 
   @override
-  String get costDefaultFeeHelp =>
-      'Enter the per-product cost in the applicable row after adding the column. Other methods are available in advanced options.';
+  String get costDefaultFeeHelp => 'Enter the per-product cost in the applicable row after adding the column. Other methods are available in advanced options.';
 
   @override
   String get costKnownPartial => 'Known partial cost';
@@ -8600,15 +8026,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costProductionLoading => 'Loading approved production…';
 
   @override
-  String get costProductionUnavailable =>
-      'Production records unavailable; retry';
+  String get costProductionUnavailable => 'Production records unavailable; retry';
 
   @override
   String get costProductionNone => 'No visible approved production reports';
 
   @override
-  String get costProductionUnitPending =>
-      'Original production reporting units need verification';
+  String get costProductionUnitPending => 'Original production reporting units need verification';
 
   @override
   String costRecentProductionLabel(String scope, String quantity, String unit) {
@@ -8616,8 +8040,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get costProductionScopeHelp =>
-      'Current evidence within your visible production scope: approved report quantities less confirmed FQC invalidation; rework restoration offsets its original source. Draft reports are excluded. This is separate from received stock and estimate quantity and does not mean costs are complete.';
+  String get costProductionScopeHelp => 'Current evidence within your visible production scope: approved report quantities less confirmed FQC invalidation; rework restoration offsets its original source. Draft reports are excluded. This is separate from received stock and estimate quantity and does not mean costs are complete.';
 
   @override
   String get costProductionBatch => 'Production scope';
@@ -8656,8 +8079,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costProductionOpenCosts => 'View costs for this production scope';
 
   @override
-  String get costProductionPending =>
-      'Production quantity needs review; view evidence';
+  String get costProductionPending => 'Production quantity needs review; view evidence';
 
   @override
   String get costProductionSource => 'Calculation evidence';
@@ -8666,32 +8088,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costProductionCopyScope => 'Copy batch identifier';
 
   @override
-  String get costProductionSourceReport =>
-      'Approved reports that have not been withdrawn';
+  String get costProductionSourceReport => 'Approved reports that have not been withdrawn';
 
   @override
-  String get costProductionSourceFamily =>
-      'Related split and supplemental production tasks';
+  String get costProductionSourceFamily => 'Related split and supplemental production tasks';
 
   @override
-  String get costProductionSourceProgress =>
-      'Deduct confirmed FQC invalidation; restore rework against its original source';
+  String get costProductionSourceProgress => 'Deduct confirmed FQC invalidation; restore rework against its original source';
 
   @override
-  String get costProductionSourceUnit =>
-      'Preserve the original reporting unit and conversion evidence';
+  String get costProductionSourceUnit => 'Preserve the original reporting unit and conversion evidence';
 
   @override
-  String get costProductionSourceDefects =>
-      'Reported defects are separate and not deducted twice';
+  String get costProductionSourceDefects => 'Reported defects are separate and not deducted twice';
 
   @override
-  String get costProductionSourceOther =>
-      'Provided by production reports and related records';
+  String get costProductionSourceOther => 'Provided by production reports and related records';
 
   @override
-  String get costProductionProgressPending =>
-      'Reports and workshop progress are not reconciled; quantity is withheld';
+  String get costProductionProgressPending => 'Reports and workshop progress are not reconciled; quantity is withheld';
 
   @override
   String costPerUnitLabel(String unit) {
@@ -8704,27 +8119,22 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get costEstimateAmountHelp =>
-      'Priced material quantity × adopted unit price, plus this row’s fees. Estimating 1,000 finished units using two components each prices 2,000 components. This is an estimate, not reported production or booked cost.';
+  String get costEstimateAmountHelp => 'Priced material quantity × adopted unit price, plus this row’s fees. Estimating 1,000 finished units using two components each prices 2,000 components. This is an estimate, not reported production or booked cost.';
 
   @override
-  String get costUnitContributionHelp =>
-      'This row’s material and fees per finished-product unit: estimated amount divided by estimate quantity. The finished-product unit belongs to this cost version.';
+  String get costUnitContributionHelp => 'This row’s material and fees per finished-product unit: estimated amount divided by estimate quantity. The finished-product unit belongs to this cost version.';
 
   @override
-  String get costMaterialPriceNotApplied =>
-      'Summary assemblies and customer-supplied material do not carry a separate material price; see row evidence.';
+  String get costMaterialPriceNotApplied => 'Summary assemblies and customer-supplied material do not carry a separate material price; see row evidence.';
 
   @override
   String get salesQuoteCustomerConfirm => 'Record customer acceptance';
 
   @override
-  String get salesQuoteCustomerConfirmBody =>
-      'Confirm that the customer accepts the goods, quantities, prices, discounts and terms in this version. You can then create an order draft. Further changes require finance review and fresh customer acceptance.';
+  String get salesQuoteCustomerConfirmBody => 'Confirm that the customer accepts the goods, quantities, prices, discounts and terms in this version. You can then create an order draft. Further changes require finance review and fresh customer acceptance.';
 
   @override
-  String get salesQuoteCustomerConfirmed =>
-      'Customer acceptance recorded; ready to create an order';
+  String get salesQuoteCustomerConfirmed => 'Customer acceptance recorded; ready to create an order';
 
   @override
   String get salesQuoteAwaitingCustomer => 'Awaiting customer acceptance';
@@ -8733,15 +8143,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesQuoteAwaitingConversion => 'Ready to create order';
 
   @override
-  String get salesQuoteAwaitingCustomerBody =>
-      'Finance has priced this quote. Confirm this version with the customer, record acceptance and create an order, or revise or cancel the quote.';
+  String get salesQuoteAwaitingCustomerBody => 'Finance has priced this quote. Confirm this version with the customer, record acceptance and create an order, or revise or cancel the quote.';
 
   @override
   String get salesQuoteCancelQuote => 'Cancel quote';
 
   @override
-  String get salesQuoteCancelReason =>
-      'Reason (for example, customer declined or opportunity lost)';
+  String get salesQuoteCancelReason => 'Reason (for example, customer declined or opportunity lost)';
 
   @override
   String get salesQuoteCancelReasonRequired => 'Enter a cancellation reason';
@@ -8750,12 +8158,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesQuoteCancelledDone => 'Quote cancelled; history retained';
 
   @override
-  String get quoteTemplateMissingTitle =>
-      'No quotation template for this customer';
+  String get quoteTemplateMissingTitle => 'No quotation template for this customer';
 
   @override
-  String get quoteTemplateMissingHint =>
-      'Upload the customer\'s Excel template and review the field mapping before saving, or download the standard format.';
+  String get quoteTemplateMissingHint => 'Upload the customer\'s Excel template and review the field mapping before saving, or download the standard format.';
 
   @override
   String get quoteTemplateUpload => 'Upload and learn template';
@@ -8764,8 +8170,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quoteTemplateReviewTitle => 'Review customer template';
 
   @override
-  String get quoteTemplateReviewHint =>
-      'Review the worksheet and its column matches before saving. Similar layouts update the template; different layouts remain selectable.';
+  String get quoteTemplateReviewHint => 'Review the worksheet and its column matches before saving. Similar layouts update the template; different layouts remain selectable.';
 
   @override
   String get quoteTemplateSaveDownload => 'Save template and download';
@@ -8774,16 +8179,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quoteTemplateSheet => 'Worksheet';
 
   @override
-  String get quoteTemplateReference =>
-      'Reference column (matching quotation fields only)';
+  String get quoteTemplateReference => 'Reference column (matching quotation fields only)';
 
   @override
-  String get quoteTemplateFileRequired =>
-      'Upload an xlsx or xls file up to 15 MB';
+  String get quoteTemplateFileRequired => 'Upload an xlsx or xls file up to 15 MB';
 
   @override
-  String get quoteTemplateUnreadable =>
-      'Unable to read a reusable template. Check the Excel headers.';
+  String get quoteTemplateUnreadable => 'Unable to read a reusable template. Check the Excel headers.';
 
   @override
   String get quoteTemplateSaved => 'Customer quotation template saved';
@@ -8807,8 +8209,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatResetTitle => 'Start a new chat?';
 
   @override
-  String get aiChatResetHint =>
-      'A new chat no longer uses earlier questions and answers. Earlier history is kept and can be cleared in chat settings. Completed business actions remain in effect.';
+  String get aiChatResetHint => 'A new chat no longer uses earlier questions and answers. Earlier history is kept and can be cleared in chat settings. Completed business actions remain in effect.';
 
   @override
   String get aiChatCancel => 'Cancel';
@@ -8820,16 +8221,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatWelcome => 'What can I help with today?';
 
   @override
-  String get aiChatBoundary =>
-      'Answers follow your account permissions. Actions suggested by the AI appear as a confirmation card and run only after you confirm, still checked against your permissions and system rules.';
+  String get aiChatBoundary => 'Answers follow your account permissions. Actions suggested by the AI appear as a confirmation card and run only after you confirm, still checked against your permissions and system rules.';
 
   @override
-  String get aiChatUnavailable =>
-      'Only supported business questions are available right now.';
+  String get aiChatUnavailable => 'Only supported business questions are available right now.';
 
   @override
-  String get aiChatLoadFailed =>
-      'The assistant could not connect. Please retry.';
+  String get aiChatLoadFailed => 'The assistant could not connect. Please retry.';
 
   @override
   String get aiChatRetry => 'Retry';
@@ -8853,19 +8251,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatRemoveFile => 'Remove file';
 
   @override
-  String get aiChatFileHint =>
-      'Excel, CSV/TXT, PDF, images and DOCX, up to 15 MB. The file is classified before assisted filling.';
+  String get aiChatFileHint => 'Excel, CSV/TXT, PDF, images and DOCX, up to 15 MB. The file is classified before assisted filling.';
 
   @override
-  String get aiChatFileFailed =>
-      'Could not read the file. Please select it again.';
+  String get aiChatFileFailed => 'Could not read the file. Please select it again.';
 
   @override
   String get aiChatFileLarge => 'The file must be 15 MB or smaller.';
 
   @override
-  String get aiChatFileMemory =>
-      'This chat has reached its file capacity. Start a new chat to attach another file.';
+  String get aiChatFileMemory => 'This chat has reached its file capacity. Start a new chat to attach another file.';
 
   @override
   String get aiChatSending => 'Working on your question…';
@@ -8883,19 +8278,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatFailed => 'Processing did not finish. Please try again.';
 
   @override
-  String get aiChatTimeout =>
-      'Processing took too long. Please try again later.';
+  String get aiChatTimeout => 'Processing took too long. Please try again later.';
 
   @override
   String get aiChatGone => 'This request has expired. Start a new chat.';
 
   @override
-  String get aiChatPermissionChanged =>
-      'Your access or sign-in changed. This chat was cleared. Refresh and try again.';
+  String get aiChatPermissionChanged => 'Your access or sign-in changed. This chat was cleared. Refresh and try again.';
 
   @override
-  String get aiChatEmptyReply =>
-      'No answer was returned. Please rephrase your question.';
+  String get aiChatEmptyReply => 'No answer was returned. Please rephrase your question.';
 
   @override
   String get aiChatYou => 'You';
@@ -8913,24 +8305,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatPageAware => 'Helping with this page';
 
   @override
-  String get aiChatPageOff =>
-      'Not reading this page (turn it on in chat settings)';
+  String get aiChatPageOff => 'Not reading this page (turn it on in chat settings)';
 
   @override
-  String get aiChatPageHint =>
-      'Reads the tables and fields you can see on this page and sends them to the AI service configured by your administrator. Costs, salaries, credit limits and personal data such as ID numbers, bank accounts and phone numbers are sent by name only, without values; payroll, HR and personal pages and system administration pages (settings, AI service, permissions, audit, server status) are not read.';
+  String get aiChatPageHint => 'Reads the tables and fields you can see on this page and sends them to the AI service configured by your administrator. Costs, salaries, credit limits and personal data such as ID numbers, bank accounts and phone numbers are sent by name only, without values; payroll, HR and personal pages and system administration pages (settings, AI service, permissions, audit, server status) are not read.';
 
   @override
-  String get aiChatPageQuestion =>
-      'How do I fill in this page? Show an example.';
+  String get aiChatPageQuestion => 'How do I fill in this page? Show an example.';
 
   @override
-  String get aiChatAttachmentQuestion =>
-      'Analyze this file, identify the appropriate workflow and help fill in its form.';
+  String get aiChatAttachmentQuestion => 'Analyze this file, identify the appropriate workflow and help fill in its form.';
 
   @override
-  String get aiChatLimit =>
-      'This chat window is getting long. Start a new chat to continue.';
+  String get aiChatLimit => 'This chat window is getting long. Start a new chat to continue.';
 
   @override
   String get aiChatFileReady => 'File ready; send your question';
@@ -8939,27 +8326,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatSendAgain => 'Send again';
 
   @override
-  String get aiChatPrivacyNotice =>
-      'Your messages, the last few questions and answers of this chat and what you can see on this page are processed by the AI service configured by your administrator. Do not enter passwords or other sensitive information. Always check answers against the page. The assistant only answers how to use the platform, its business rules and business data you may see; it does not handle code, servers, commands, databases or passwords.';
+  String get aiChatPrivacyNotice => 'Your messages, the last few questions and answers of this chat and what you can see on this page are processed by the AI service configured by your administrator. Do not enter passwords or other sensitive information. Always check answers against the page. The assistant only answers how to use the platform, its business rules and business data you may see; it does not handle code, servers, commands, databases or passwords.';
 
   @override
   String get aiChatReceived => 'Delivered. Waiting for a reply…';
 
   @override
-  String get aiChatRequestRejected =>
-      'This message was not submitted successfully.';
+  String get aiChatRequestRejected => 'This message was not submitted successfully.';
 
   @override
-  String get aiChatDeliveryUnknown =>
-      'Delivery is unconfirmed. Sending again will send it as a new message.';
+  String get aiChatDeliveryUnknown => 'Delivery is unconfirmed. Sending again will send it as a new message.';
 
   @override
-  String get aiChatReplyFailed =>
-      'Delivered, but AI could not complete the reply.';
+  String get aiChatReplyFailed => 'Delivered, but AI could not complete the reply.';
 
   @override
-  String get aiChatReplyInterrupted =>
-      'Accepted, but the result could not be retrieved.';
+  String get aiChatReplyInterrupted => 'Accepted, but the result could not be retrieved.';
 
   @override
   String get aiChatWaitingStopped => 'Stopped waiting for this reply.';
@@ -8989,27 +8371,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatDocumentReady => 'File analyzed';
 
   @override
-  String get aiChatDocumentSourceMismatch =>
-      'The file did not match its source. Please select the original file again.';
+  String get aiChatDocumentSourceMismatch => 'The file did not match its source. Please select the original file again.';
 
   @override
-  String get aiChatDocumentOpenFailed =>
-      'The form could not be opened. Please try again.';
+  String get aiChatDocumentOpenFailed => 'The form could not be opened. Please try again.';
 
   @override
-  String get aiChatDocumentManualSave =>
-      'Not saved yet. Check the details, then save.';
+  String get aiChatDocumentManualSave => 'Not saved yet. Check the details, then save.';
 
   @override
   String get aiChatDocumentPlanSteps => 'Processing steps';
 
   @override
-  String get aiChatDocumentUnsupported =>
-      'Assisted filling is not available for this purpose yet. Follow the document guidance in the appropriate page.';
+  String get aiChatDocumentUnsupported => 'Assisted filling is not available for this purpose yet. Follow the document guidance in the appropriate page.';
 
   @override
-  String get aiChatDocumentOpened =>
-      'The form is open. Continue there or in the task center.';
+  String get aiChatDocumentOpened => 'The form is open. Continue there or in the task center.';
 
   @override
   String get aiChatGuidedParsing => 'Identify the file';
@@ -9045,16 +8422,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatGuidedWaiting => 'Paused for your review';
 
   @override
-  String get aiChatGuidedExisting =>
-      'Your existing input has been preserved. Review it before continuing.';
+  String get aiChatGuidedExisting => 'Your existing input has been preserved. Review it before continuing.';
 
   @override
-  String get aiChatGuidedNoMasterWrites =>
-      'The source file is retained. Add customers, products or custom columns yourself in the relevant page.';
+  String get aiChatGuidedNoMasterWrites => 'The source file is retained. Add customers, products or custom columns yourself in the relevant page.';
 
   @override
-  String get aiChatGuidedMasterManual =>
-      'Create the master record yourself first, then select it here.';
+  String get aiChatGuidedMasterManual => 'Create the master record yourself first, then select it here.';
 
   @override
   String get aiChatGuidedClient => 'Customer';
@@ -9063,29 +8437,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatGuidedFilledFields => 'Filled details';
 
   @override
-  String get aiChatGuidedLocalSaveFailed =>
-      'Local recovery could not be saved. The original file is still on this page. Keep the page open and try again.';
+  String get aiChatGuidedLocalSaveFailed => 'Local recovery could not be saved. The original file is still on this page. Keep the page open and try again.';
 
   @override
   String get aiChatGuidedExpenseSaved => 'Expense claim saved';
 
   @override
-  String get aiChatGuidedInvoiceRegister =>
-      'Upload original and register invoice';
+  String get aiChatGuidedInvoiceRegister => 'Upload original and register invoice';
 
   @override
   String get aiChatGuidedOpenSaved => 'View saved expense claim';
 
   @override
-  String get aiChatGuidedUploadUncertain =>
-      'The original upload outcome is unconfirmed, so it was not uploaded again. Check the original in the saved claim first.';
+  String get aiChatGuidedUploadUncertain => 'The original upload outcome is unconfirmed, so it was not uploaded again. Check the original in the saved claim first.';
 
   @override
   String get aiChatGuidedInvoiceFields => 'Invoice details';
 
   @override
-  String get aiChatGuidedInvoiceReview =>
-      'Please check against the original invoice.';
+  String get aiChatGuidedInvoiceReview => 'Please check against the original invoice.';
 
   @override
   String get aiChatInvoiceInvoiceType => 'Invoice type';
@@ -9142,24 +8512,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatInvoiceTypeOther => 'Other receipt';
 
   @override
-  String get aiChatGuidedQuoteRequest =>
-      'Create a sales quotation from this file for my review.';
+  String get aiChatGuidedQuoteRequest => 'Create a sales quotation from this file for my review.';
 
   @override
-  String get aiChatGuidedOrderRequest =>
-      'Fill the current sales order from this file for my review.';
+  String get aiChatGuidedOrderRequest => 'Fill the current sales order from this file for my review.';
 
   @override
-  String get aiChatDocumentLongRequest =>
-      'The file instructions are too long to analyze completely. Please choose the workflow to continue.';
+  String get aiChatDocumentLongRequest => 'The file instructions are too long to analyze completely. Please choose the workflow to continue.';
 
   @override
-  String get quoteTemplateMappingRequired =>
-      'Keep quantity and either model or description';
+  String get quoteTemplateMappingRequired => 'Keep quantity and either model or description';
 
   @override
-  String get quoteTemplateMappingDuplicate =>
-      'Each piece of information can match only one column. Adjust duplicate matches.';
+  String get quoteTemplateMappingDuplicate => 'Each piece of information can match only one column. Adjust duplicate matches.';
 
   @override
   String get aiAuditTitle => 'Usage and costs';
@@ -9191,8 +8556,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAuditAllProviders => 'All services';
 
   @override
-  String get aiAuditPlatformOnly =>
-      'This platform only. Estimates use the configured prices.';
+  String get aiAuditPlatformOnly => 'This platform only. Estimates use the configured prices.';
 
   @override
   String aiAuditUses(int count) {
@@ -9345,8 +8709,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAuditOutputPrice => 'Price per million output tokens';
 
   @override
-  String get aiAuditPriceHint =>
-      'Use your provider prices. These are estimates, not a provider bill.';
+  String get aiAuditPriceHint => 'Use your provider prices. These are estimates, not a provider bill.';
 
   @override
   String get aiAuditFiveHourQuota => 'Quota per 5 hours (calls)';
@@ -9355,8 +8718,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAuditWeeklyQuota => 'Weekly quota (calls)';
 
   @override
-  String get aiAuditQuotaHint =>
-      'Used counts come from this platform\'s successful calls; remaining = quota - used. It may differ slightly from the provider\'s own accounting.';
+  String get aiAuditQuotaHint => 'Used counts come from this platform\'s successful calls; remaining = quota - used. It may differ slightly from the provider\'s own accounting.';
 
   @override
   String aiAuditQuota5hUsed(int used, String quota) {
@@ -9437,8 +8799,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get stockCountReasonLabel => 'Count note (optional)';
 
   @override
-  String get stockCountReasonHint =>
-      'e.g. go-live count or routine count, up to 500 characters';
+  String get stockCountReasonHint => 'e.g. go-live count or routine count, up to 500 characters';
 
   @override
   String weightParamsLoadFailed(String reason) {
@@ -9446,8 +8807,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get weightParamsLoadFailedUnknown =>
-      'The network or service is temporarily unavailable';
+  String get weightParamsLoadFailedUnknown => 'The network or service is temporarily unavailable';
 
   @override
   String get warehouseOwningPickerTitle => 'Select owning warehouse';
@@ -9462,19 +8822,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseMasterUseDefective => 'Defective stock';
 
   @override
-  String get warehouseMasterUseHint =>
-      'A defective-stock warehouse only holds goods judged defective and never counts as available. The use cannot change while it holds stock or is still a product\'s owning warehouse.';
+  String get warehouseMasterUseHint => 'A defective-stock warehouse only holds goods judged defective and never counts as available. The use cannot change while it holds stock or is still a product\'s owning warehouse.';
 
   @override
   String get warehouseMasterParentLabel => 'Parent warehouse';
 
   @override
-  String get warehouseMasterParentFixedHint =>
-      'Always under the main warehouse (only two levels: main and sub-warehouses)';
+  String get warehouseMasterParentFixedHint => 'Always under the main warehouse (only two levels: main and sub-warehouses)';
 
   @override
-  String get warehouseMasterParentSelf =>
-      'This is the main warehouse: totals, responsibility scope and navigation only; documents cannot use it';
+  String get warehouseMasterParentSelf => 'This is the main warehouse: totals, responsibility scope and navigation only; documents cannot use it';
 
   @override
   String get warehouseMasterMainTag => 'Main';
@@ -9483,26 +8840,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseMasterLineSideLabel => 'Workshop material store';
 
   @override
-  String get warehouseMasterLineSideYes =>
-      'Yes (workshop transfers and bulk issue)';
+  String get warehouseMasterLineSideYes => 'Yes (workshop transfers and bulk issue)';
 
   @override
   String get warehouseMasterLineSideNo => 'No';
 
   @override
-  String get warehouseMasterLineSideReadOnlyHint =>
-      'Workshop material stores are opened and closed on the workshop material store page; read-only here';
+  String get warehouseMasterLineSideReadOnlyHint => 'Workshop material stores are opened and closed on the workshop material store page; read-only here';
 
   @override
   String get warehouseDefectiveTag => 'Defective';
 
   @override
-  String get warehouseDefectiveBlockedHint =>
-      'Defective-stock warehouse, not selectable here';
+  String get warehouseDefectiveBlockedHint => 'Defective-stock warehouse, not selectable here';
 
   @override
-  String get stockTransferSameClassHint =>
-      'Both ends of a normal transfer must be good-stock or both defective-stock warehouses. To move goods into or out of defective stock use \"Defective stock\" in the stock detail.';
+  String get stockTransferSameClassHint => 'Both ends of a normal transfer must be good-stock or both defective-stock warehouses. To move goods into or out of defective stock use \"Defective stock\" in the stock detail.';
 
   @override
   String get defectiveMoveAction => 'Defective stock';
@@ -9514,12 +8867,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get defectiveMoveRelease => 'Release after re-inspection';
 
   @override
-  String get defectiveMoveToDefectiveExplain =>
-      'Moves goods judged defective from a good-stock warehouse into a defective-stock warehouse. Afterwards they no longer count as available anywhere (sales reservations, MRP, material analysis, issues).';
+  String get defectiveMoveToDefectiveExplain => 'Moves goods judged defective from a good-stock warehouse into a defective-stock warehouse. Afterwards they no longer count as available anywhere (sales reservations, MRP, material analysis, issues).';
 
   @override
-  String get defectiveMoveReleaseExplain =>
-      'After quality re-inspection passes, moves goods from the defective-stock warehouse back to a good-stock warehouse, where they count as available again.';
+  String get defectiveMoveReleaseExplain => 'After quality re-inspection passes, moves goods from the defective-stock warehouse back to a good-stock warehouse, where they count as available again.';
 
   @override
   String get defectiveMoveFrom => 'From warehouse';
@@ -9534,19 +8885,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get defectiveMoveReason => 'Reason';
 
   @override
-  String get defectiveMoveReasonHintToDefective =>
-      'Why the goods were judged defective (required, up to 500 characters)';
+  String get defectiveMoveReasonHintToDefective => 'Why the goods were judged defective (required, up to 500 characters)';
 
   @override
-  String get defectiveMoveReasonHintRelease =>
-      'The re-inspection conclusion (required, up to 500 characters)';
+  String get defectiveMoveReasonHintRelease => 'The re-inspection conclusion (required, up to 500 characters)';
 
   @override
   String get defectiveMoveSubmit => 'Submit and post';
 
   @override
-  String get defectiveMoveIncomplete =>
-      'Choose both warehouses and enter a quantity above 0 and a reason';
+  String get defectiveMoveIncomplete => 'Choose both warehouses and enter a quantity above 0 and a reason';
 
   @override
   String defectiveMoveDone(String billNo) {
@@ -9645,8 +8993,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmBinLoadFailed => 'Loading failed, please retry';
 
   @override
-  String get wmBinNetworkRetry =>
-      'The network is unstable and the result is not confirmed yet. Your input is kept; tap again (it will not be done twice).';
+  String get wmBinNetworkRetry => 'The network is unstable and the result is not confirmed yet. Your input is kept; tap again (it will not be done twice).';
 
   @override
   String wmBinRevokeTitle(int n) {
@@ -9664,8 +9011,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get wmBinRevokeHint =>
-      'Only mistakes can be undone: a bin that already has stock movements or workshop transfers, or batch issuing already in use, cannot be undone.';
+  String get wmBinRevokeHint => 'Only mistakes can be undone: a bin that already has stock movements or workshop transfers, or batch issuing already in use, cannot be undone.';
 
   @override
   String wmBinRevokeBlockedLine(String name, String reasons) {
@@ -9692,12 +9038,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get wmBinNotOpenDescription =>
-      'Once opened, upstream and downstream jobs in the workshop can hand over directly; start batch issuing when raw material such as pellets is stored in the workshop in bulk.';
+  String get wmBinNotOpenDescription => 'Once opened, upstream and downstream jobs in the workshop can hand over directly; start batch issuing when raw material such as pellets is stored in the workshop in bulk.';
 
   @override
-  String get wmBinNotOpenAskWarehouse =>
-      'Ask the warehouse to open it in Workshop bins.';
+  String get wmBinNotOpenAskWarehouse => 'Ask the warehouse to open it in Workshop bins.';
 
   @override
   String get wmBinPanelTitleOpen => 'Open workshop bins';
@@ -9711,8 +9055,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get wmBinSourceHint =>
-      'When the warehouse issues to this bin, stock is taken from here by default when it has some; leave empty to use each item\'s own warehouse. Pick the main warehouse, then a sub-warehouse.';
+  String get wmBinSourceHint => 'When the warehouse issues to this bin, stock is taken from here by default when it has some; leave empty to use each item\'s own warehouse. Pick the main warehouse, then a sub-warehouse.';
 
   @override
   String get wmBinSourcePickerTitle => 'Choose the bin\'s issue source';
@@ -9730,16 +9073,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmBinAlsoPeriodic => 'Also start batch issuing';
 
   @override
-  String get wmBinAlsoPeriodicHint =>
-      'Raw material such as pellets is kept in the workshop in bulk and consumed by counting; otherwise the bin only receives workshop transfers.';
+  String get wmBinAlsoPeriodicHint => 'Raw material such as pellets is kept in the workshop in bulk and consumed by counting; otherwise the bin only receives workshop transfers.';
 
   @override
-  String get wmBinPeriodicFlowNotice =>
-      'After starting, products that use bin material only need to choose the material once; no work-order requisition first. Production can start without unit weights; they are needed before estimates and settlement. Products that also need order materials such as inserts still requisition those as before.';
+  String get wmBinPeriodicFlowNotice => 'After starting, products that use bin material only need to choose the material once; no work-order requisition first. Production can start without unit weights; they are needed before estimates and settlement. Products that also need order materials such as inserts still requisition those as before.';
 
   @override
-  String get wmBinPendingNone =>
-      'No in-progress tasks in the selected workshops need a material choice.';
+  String get wmBinPendingNone => 'No in-progress tasks in the selected workshops need a material choice.';
 
   @override
   String wmBinPendingTitle(int n) {
@@ -9783,8 +9123,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmBinSaving => 'Working on it, please wait';
 
   @override
-  String get wmBinSavingPeriodic =>
-      'Creating the bins and period 1 and binding in-progress tasks';
+  String get wmBinSavingPeriodic => 'Creating the bins and period 1 and binding in-progress tasks';
 
   @override
   String get wmLeafColumn => 'Issue from';
@@ -9810,16 +9149,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmSetupNoWorkshop => 'No production workshop found';
 
   @override
-  String get wmSetupNoWorkshopHint =>
-      'Workshops are departments under Production; create them in department management first';
+  String get wmSetupNoWorkshopHint => 'Workshops are departments under Production; create them in department management first';
 
   @override
-  String get wmSetupWorkshopUnavailable =>
-      'The workshop is unavailable or not visible to you';
+  String get wmSetupWorkshopUnavailable => 'The workshop is unavailable or not visible to you';
 
   @override
-  String get wmSetupWorkshopUnavailableHint =>
-      'Go back and check the workshop, or refresh and retry.';
+  String get wmSetupWorkshopUnavailableHint => 'Go back and check the workshop, or refresh and retry.';
 
   @override
   String get wmSetupMaterialIssueMethod => 'Raw material issue method';
@@ -9828,19 +9164,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmSetupOpeningGuide => 'How to register go-live leftovers';
 
   @override
-  String get wmSetupOpeningGuideTitle =>
-      'Count workshop leftovers before go-live';
+  String get wmSetupOpeningGuideTitle => 'Count workshop leftovers before go-live';
 
   @override
-  String get wmSetupOpeningGuideBody =>
-      'First record full bags on the racks, opened bags, mixed material waiting to be used and what is left in machine containers; record weighed and estimated amounts separately.\n\nLeftovers already on the stock books: check the original warehouse and work order. Material issued against work orders is returned through the usual flow first; material still on an ordinary warehouse\'s books is transferred into the workshop bin in bulk by the warehouse.\n\nLeftovers never booked: after the quantity and value are approved, book them as other stock-in and then transfer them into the bin in bulk; do not add a second copy of the stock or book material already used up.\n\nThis only links go-live stock; production staff do not have to requisition again for each work order. Afterwards register top-ups and returns as they happen and count when needed; container estimates affect usage differences and are not exact consumption.';
+  String get wmSetupOpeningGuideBody => 'First record full bags on the racks, opened bags, mixed material waiting to be used and what is left in machine containers; record weighed and estimated amounts separately.\n\nLeftovers already on the stock books: check the original warehouse and work order. Material issued against work orders is returned through the usual flow first; material still on an ordinary warehouse\'s books is transferred into the workshop bin in bulk by the warehouse.\n\nLeftovers never booked: after the quantity and value are approved, book them as other stock-in and then transfer them into the bin in bulk; do not add a second copy of the stock or book material already used up.\n\nThis only links go-live stock; production staff do not have to requisition again for each work order. Afterwards register top-ups and returns as they happen and count when needed; container estimates affect usage differences and are not exact consumption.';
 
   @override
   String get wmSetupOpeningGuideOk => 'Got it';
 
   @override
-  String get warehouseMasterLineSideManaged =>
-      'Yes, opened and managed in Workshop bins (read-only here)';
+  String get warehouseMasterLineSideManaged => 'Yes, opened and managed in Workshop bins (read-only here)';
 
   @override
   String get handoffLotRegistrationTitle => 'Register finished goods receipt';
@@ -9851,22 +9184,19 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get handoffLotBatchesHint =>
-      'One report may be split into several registration batches by warehouse, one quality sheet per warehouse. A batch not yet handled by quality can be withdrawn; its lots then return to pending registration.';
+  String get handoffLotBatchesHint => 'One report may be split into several registration batches by warehouse, one quality sheet per warehouse. A batch not yet handled by quality can be withdrawn; its lots then return to pending registration.';
 
   @override
   String get handoffLotSplitColumn => 'Breakdown';
 
   @override
-  String get handoffLotSplitColumnInfo =>
-      'How much of this physical lot is demand share, planned public stock and actual surplus (calculated by the server). Quality and warehouse count act on the whole lot: passed / received quantity fills the demand share first, failed / missing quantity is taken from the actual surplus first.';
+  String get handoffLotSplitColumnInfo => 'How much of this physical lot is demand share, planned public stock and actual surplus (calculated by the server). Quality and warehouse count act on the whole lot: passed / received quantity fills the demand share first, failed / missing quantity is taken from the actual surplus first.';
 
   @override
   String get inboundArrivalRegistrationTitle => 'Register actual arrival';
 
   @override
-  String get fqcWholeLotOnlyHint =>
-      'This physical lot is split into demand share, planned public stock or actual surplus. Decide passed and failed quantities for the whole lot on the inspection sheet (passed fills the demand share first, failed is taken from the actual surplus first).';
+  String get fqcWholeLotOnlyHint => 'This physical lot is split into demand share, planned public stock or actual surplus. Decide passed and failed quantities for the whole lot on the inspection sheet (passed fills the demand share first, failed is taken from the actual surplus first).';
 
   @override
   String get fqcOpenSheetForLot => 'Decide on inspection sheet';
@@ -9886,12 +9216,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseScopePickerTitle => 'Filter warehouses';
 
   @override
-  String get warehouseScopeSupervisorTooltip =>
-      'You are a warehouse supervisor: view all warehouses or pick one. Task lists and counts follow the selected scope on the server; handling permissions are unchanged.';
+  String get warehouseScopeSupervisorTooltip => 'You are a warehouse supervisor: view all warehouses or pick one. Task lists and counts follow the selected scope on the server; handling permissions are unchanged.';
 
   @override
-  String get warehouseScopeKeeperTooltip =>
-      'The task center shows only tasks of the warehouses you manage; badges and notices count only these. To change them, ask a warehouse supervisor to update keepers in Warehouse master data.';
+  String get warehouseScopeKeeperTooltip => 'The task center shows only tasks of the warehouses you manage; badges and notices count only these. To change them, ask a warehouse supervisor to update keepers in Warehouse master data.';
 
   @override
   String warehouseKeeperDialogTitle(String name) {
@@ -9899,24 +9227,19 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get warehouseKeeperRolesHint =>
-      'Keepers decide who sees and receives this warehouse\'s tasks:\n1. People registered on the main warehouse and the warehouse department manager are supervisors: they see all warehouses and can pick any one in the task center;\n2. People registered on a sub-warehouse see and receive only their own warehouses\' tasks (badges count only these) and can switch among them;\n3. Colleagues without a registration see warehouses nobody manages and tasks not yet assigned to a warehouse; notices of a warehouse without keepers go to supervisors.\nCheck the employee number when names are duplicated. People without a login account are not effective keepers.';
+  String get warehouseKeeperRolesHint => 'Keepers decide who sees and receives this warehouse\'s tasks:\n1. People registered on the main warehouse and the warehouse department manager are supervisors: they see all warehouses and can pick any one in the task center;\n2. People registered on a sub-warehouse see and receive only their own warehouses\' tasks (badges count only these) and can switch among them;\n3. Colleagues without a registration see warehouses nobody manages and tasks not yet assigned to a warehouse; notices of a warehouse without keepers go to supervisors.\nCheck the employee number when names are duplicated. People without a login account are not effective keepers.';
 
   @override
-  String get warehouseKeeperNoAccount =>
-      'no active login account: cannot see tasks or receive notices';
+  String get warehouseKeeperNoAccount => 'no active login account: cannot see tasks or receive notices';
 
   @override
-  String get warehouseKeeperOutsideDepartment =>
-      'not in the warehouse department: needs warehouse task permissions to see tasks and receive notices';
+  String get warehouseKeeperOutsideDepartment => 'not in the warehouse department: needs warehouse task permissions to see tasks and receive notices';
 
   @override
-  String get warehouseKeeperDuplicateName =>
-      'another employee has the same name, check the employee number';
+  String get warehouseKeeperDuplicateName => 'another employee has the same name, check the employee number';
 
   @override
-  String get warehouseKeeperCleared =>
-      'Keepers cleared: this warehouse\'s tasks and notices go to supervisors, and colleagues without a registration can see them';
+  String get warehouseKeeperCleared => 'Keepers cleared: this warehouse\'s tasks and notices go to supervisors, and colleagues without a registration can see them';
 
   @override
   String get warehouseKeeperSaved => 'Keepers saved';
@@ -9927,24 +9250,19 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get defectiveMoveUncertain =>
-      'The last submission has not been confirmed yet, so the fields are locked. Retry with the same content; you can edit again once the result is confirmed.';
+  String get defectiveMoveUncertain => 'The last submission has not been confirmed yet, so the fields are locked. Retry with the same content; you can edit again once the result is confirmed.';
 
   @override
-  String get defectiveMoveReservationWarning =>
-      'These reservations no longer have stock behind them; please tell the people concerned';
+  String get defectiveMoveReservationWarning => 'These reservations no longer have stock behind them; please tell the people concerned';
 
   @override
-  String get wmBinSourceFollowOwning =>
-      'No issue source: issue from each goods\' owning warehouse';
+  String get wmBinSourceFollowOwning => 'No issue source: issue from each goods\' owning warehouse';
 
   @override
-  String get wmBinSourceFollowOwningHint =>
-      'Clears the current source warehouse; that warehouse can then be disabled or repurposed normally';
+  String get wmBinSourceFollowOwningHint => 'Clears the current source warehouse; that warehouse can then be disabled or repurposed normally';
 
   @override
-  String get wmBinSourceCleared =>
-      'Issuing now follows each goods\' owning warehouse';
+  String get wmBinSourceCleared => 'Issuing now follows each goods\' owning warehouse';
 
   @override
   String get wmMachinesBatchCreate => 'Add machines in bulk';
@@ -10040,8 +9358,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get aiActionRowsInvalid =>
-      'Row numbers are not valid, for example 1,3,5-8';
+  String get aiActionRowsInvalid => 'Row numbers are not valid, for example 1,3,5-8';
 
   @override
   String aiActionColumnMissing(String column) {
@@ -10060,12 +9377,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesAiActionSetLine => 'Change a line';
 
   @override
-  String get salesAiActionConfirmReview =>
-      'Confirm goods match (learned on save)';
+  String get salesAiActionConfirmReview => 'Confirm goods match (learned on save)';
 
   @override
-  String get salesAiConfirmReviewRowHint =>
-      'Only rows whose matched goods need checking; unit, amount or duplicate reminders need the value fixed';
+  String get salesAiConfirmReviewRowHint => 'Only rows whose matched goods need checking; unit, amount or duplicate reminders need the value fixed';
 
   @override
   String get salesAiActionSave => 'Save the document';
@@ -10086,8 +9401,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get salesAiSaveFailed =>
-      'The document was not saved. Check the message on the page.';
+  String get salesAiSaveFailed => 'The document was not saved. Check the message on the page.';
 
   @override
   String get salesAiPageBusy => 'The page is busy. Confirm again shortly.';
@@ -10103,20 +9417,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get aiChatAttachRouteOnly =>
-      'Only the page name will be attached (nothing readable on this page)';
+  String get aiChatAttachRouteOnly => 'Only the page name will be attached (nothing readable on this page)';
 
   @override
-  String get aiChatAttachWithheld =>
-      'This page holds payroll or personal data. Its content is not read; only your question is sent.';
+  String get aiChatAttachWithheld => 'This page holds payroll or personal data. Its content is not read; only your question is sent.';
 
   @override
-  String get aiChatAttachProtected =>
-      'System administration page (settings, AI service, permissions, audit, server status): its content is not read and the assistant cannot act here; only your question is sent.';
+  String get aiChatAttachProtected => 'System administration page (settings, AI service, permissions, audit, server status): its content is not read and the assistant cannot act here; only your question is sent.';
 
   @override
-  String get aiChatCardProtectedPage =>
-      'Actions on system administration pages are never done through the assistant. Please do it on the page yourself.';
+  String get aiChatCardProtectedPage => 'Actions on system administration pages are never done through the assistant. Please do it on the page yourself.';
 
   @override
   String aiChatSources(String sources) {
@@ -10127,8 +9437,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatVerifyOnPage => 'Check against the page';
 
   @override
-  String get aiChatFallback =>
-      'The AI did not answer in time. This summary comes from the page.';
+  String get aiChatFallback => 'The AI did not answer in time. This summary comes from the page.';
 
   @override
   String get aiChatCardConfirm => 'Confirm';
@@ -10154,8 +9463,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatCardFailed => 'Not completed';
 
   @override
-  String get aiChatCardAuthChanged =>
-      'Your access changed, so this card was voided. Ask again.';
+  String get aiChatCardAuthChanged => 'Your access changed, so this card was voided. Ask again.';
 
   @override
   String get aiChatCardConfirmed => 'Confirmed, waiting for the result';
@@ -10164,16 +9472,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatCardWrongPage => 'Go back to the original page to confirm.';
 
   @override
-  String get aiChatCardHandlerMissing =>
-      'This page no longer offers this action. Ask again.';
+  String get aiChatCardHandlerMissing => 'This page no longer offers this action. Ask again.';
 
   @override
-  String get aiChatCardPageChanged =>
-      'The page was replaced or reopened since you asked. Nothing was done; ask again.';
+  String get aiChatCardPageChanged => 'The page was replaced or reopened since you asked. Nothing was done; ask again.';
 
   @override
-  String get aiChatCardDetached =>
-      'The page was reloaded, so this card can no longer run. Ask again.';
+  String get aiChatCardDetached => 'The page was reloaded, so this card can no longer run. Ask again.';
 
   @override
   String aiActionRowChanged(int row) {
@@ -10187,27 +9492,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatCardStepUp => 'You will be asked for your sign-in password.';
 
   @override
-  String get aiChatCardUnknown =>
-      'The result is not confirmed yet. Check the result before trying again.';
+  String get aiChatCardUnknown => 'The result is not confirmed yet. Check the result before trying again.';
 
   @override
-  String get aiChatCardInvalidArgs =>
-      'The details no longer match this page. Nothing was done.';
+  String get aiChatCardInvalidArgs => 'The details no longer match this page. Nothing was done.';
 
   @override
   String get aiChatCardCheck => 'Check result';
 
   @override
-  String get aiChatCardSourceMissing =>
-      'The original file is no longer in this chat. Upload it again.';
+  String get aiChatCardSourceMissing => 'The original file is no longer in this chat. Upload it again.';
 
   @override
-  String get aiChatCardFormNotOpened =>
-      'The form did not open, so this card is void. Upload the file again to retry.';
+  String get aiChatCardFormNotOpened => 'The form did not open, so this card is void. Upload the file again to retry.';
 
   @override
-  String get aiChatCardFormNoAccess =>
-      'This account may not open that form, so this card is void. Ask an administrator for access, then upload the file again.';
+  String get aiChatCardFormNoAccess => 'This account may not open that form, so this card is void. Ask an administrator for access, then upload the file again.';
 
   @override
   String aiChatDocumentChosen(String title) {
@@ -10225,8 +9525,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get aiChatDocumentAiJudged =>
-      'AI judged the purpose from the headers and layout only (no cell contents were sent to it). Please check it.';
+  String get aiChatDocumentAiJudged => 'AI judged the purpose from the headers and layout only (no cell contents were sent to it). Please check it.';
 
   @override
   String get aiAuditPurposePageState => 'Understand this page';
@@ -10235,36 +9534,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAuditPurposeAction => 'Action after confirmation';
 
   @override
-  String get productionReadinessMeaningReady =>
-      'Materials ready (or none needed); can start';
+  String get productionReadinessMeaningReady => 'Materials ready (or none needed); can start';
 
   @override
-  String get productionReadinessMeaningReadyPartial =>
-      'Some materials issued; can start now';
+  String get productionReadinessMeaningReadyPartial => 'Some materials issued; can start now';
 
   @override
-  String get productionReadinessMeaningToDraw =>
-      'Materials prepared; go draw them';
+  String get productionReadinessMeaningToDraw => 'Materials prepared; go draw them';
 
   @override
-  String get productionReadinessMeaningToDrawPartial =>
-      'Some materials available; draw them';
+  String get productionReadinessMeaningToDrawPartial => 'Some materials available; draw them';
 
   @override
-  String get productionReadinessMeaningPending =>
-      'Draw submitted; waiting for the warehouse';
+  String get productionReadinessMeaningPending => 'Draw submitted; waiting for the warehouse';
 
   @override
-  String get productionReadinessMeaningWaiting =>
-      'Short of materials; waiting for arrival';
+  String get productionReadinessMeaningWaiting => 'Short of materials; waiting for arrival';
 
   @override
-  String get productionReadinessMeaningWaitPlanning =>
-      'Short and not yet ordered; waiting for planning';
+  String get productionReadinessMeaningWaitPlanning => 'Short and not yet ordered; waiting for planning';
 
   @override
-  String get productionReadinessMeaningDecide =>
-      'Choose a production route first; other actions are locked';
+  String get productionReadinessMeaningDecide => 'Choose a production route first; other actions are locked';
 
   @override
   String get aiActionSearch => 'Search';
@@ -10282,22 +9573,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatSettingsBack => 'Back to chat';
 
   @override
-  String get aiChatSettingsSynced =>
-      'Settings are saved with your account and apply on every device right away.';
+  String get aiChatSettingsSynced => 'Settings are saved with your account and apply on every device right away.';
 
   @override
   String get aiChatSettingsSaving => 'Saving…';
 
   @override
-  String get aiChatSettingsSaveFailed =>
-      'The setting was not saved and has been restored. Please try again later.';
+  String get aiChatSettingsSaveFailed => 'The setting was not saved and has been restored. Please try again later.';
 
   @override
   String get aiChatSettingsDetail => 'Answer length';
 
   @override
-  String get aiChatSettingsDetailHint =>
-      'Saying \"keep it short\" or \"in detail\" in a question applies to that question only.';
+  String get aiChatSettingsDetailHint => 'Saying \"keep it short\" or \"in detail\" in a question applies to that question only.';
 
   @override
   String get aiChatSettingsDetailComprehensive => 'Detailed';
@@ -10312,8 +9600,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatSettingsReasoning => 'Thinking depth';
 
   @override
-  String get aiChatSettingsReasoningHint =>
-      'Fast is the default; writing \"analyse in detail\" makes that one answer think deeper. Deep is more thorough but slower.';
+  String get aiChatSettingsReasoningHint => 'Fast is the default; writing \"analyse in detail\" makes that one answer think deeper. Deep is more thorough but slower.';
 
   @override
   String get aiChatSettingsReasoningFast => 'Fast';
@@ -10325,8 +9612,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatSettingsReasoningDeep => 'Deep';
 
   @override
-  String get aiChatSettingsReasoningUnsupported =>
-      'The current AI service cannot adjust thinking depth';
+  String get aiChatSettingsReasoningUnsupported => 'The current AI service cannot adjust thinking depth';
 
   @override
   String get aiChatSettingsPageAware => 'Read the current page';
@@ -10335,15 +9621,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatSettingsShowSources => 'Show answer sources';
 
   @override
-  String get aiChatSettingsShowSourcesHint =>
-      'Turning this off hides the sources line; answers are still checked against the page and references.';
+  String get aiChatSettingsShowSourcesHint => 'Turning this off hides the sources line; answers are still checked against the page and references.';
 
   @override
   String get aiChatSettingsMemory => 'Conversation memory';
 
   @override
-  String get aiChatSettingsMemoryHint =>
-      'The AI uses the last few questions and answers of this chat, even across pages; answers with sensitive data are not carried over.';
+  String get aiChatSettingsMemoryHint => 'The AI uses the last few questions and answers of this chat, even across pages; answers with sensitive data are not carried over.';
 
   @override
   String get aiChatSettingsMemoryOff => 'Off';
@@ -10378,12 +9662,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatSettingsSendCtrlEnter => 'Ctrl+Enter';
 
   @override
-  String get aiChatSettingsSendEnterHint =>
-      'Enter sends; Shift+Enter starts a new line.';
+  String get aiChatSettingsSendEnterHint => 'Enter sends; Shift+Enter starts a new line.';
 
   @override
-  String get aiChatSettingsSendCtrlEnterHint =>
-      'Ctrl+Enter sends; Enter starts a new line.';
+  String get aiChatSettingsSendCtrlEnterHint => 'Ctrl+Enter sends; Enter starts a new line.';
 
   @override
   String get aiChatSettingsStyle => 'Wording';
@@ -10395,15 +9677,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatSettingsStyleProfessional => 'Professional';
 
   @override
-  String get aiChatSettingsStyleHint =>
-      'Plain explains business terms along the way; professional uses business terms directly.';
+  String get aiChatSettingsStyleHint => 'Plain explains business terms along the way; professional uses business terms directly.';
 
   @override
   String get aiChatSettingsSuggestions => 'Show suggested questions';
 
   @override
-  String get aiChatSettingsSuggestionsHint =>
-      'Shows questions you can tap in the chat.';
+  String get aiChatSettingsSuggestionsHint => 'Shows questions you can tap in the chat.';
 
   @override
   String get aiChatSettingsConfirm => 'Confirm before actions';
@@ -10412,29 +9692,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatSettingsConfirmAlways => 'Always on';
 
   @override
-  String get aiChatSettingsConfirmHint =>
-      'Any action the AI proposes appears as a confirmation card first and runs only after you confirm. This cannot be turned off.';
+  String get aiChatSettingsConfirmHint => 'Any action the AI proposes appears as a confirmation card first and runs only after you confirm. This cannot be turned off.';
 
   @override
   String get aiChatSettingsClear => 'Clear chat history';
 
   @override
-  String get aiChatSettingsClearHint =>
-      'Earlier questions and answers will no longer show or be used for new questions. Only your own account is affected.';
+  String get aiChatSettingsClearHint => 'Earlier questions and answers will no longer show or be used for new questions. Only your own account is affected.';
 
   @override
   String get aiChatSettingsClearTitle => 'Clear all chat history?';
 
   @override
-  String get aiChatSettingsClearBody =>
-      'All AI chat history of your account will be cleared and cannot be restored. Completed business actions are not affected.';
+  String get aiChatSettingsClearBody => 'All AI chat history of your account will be cleared and cannot be restored. Completed business actions are not affected.';
 
   @override
   String get aiChatSettingsClearDone => 'Chat history cleared';
 
   @override
-  String get aiChatSettingsClearFailed =>
-      'Chat history could not be cleared. Please try again later.';
+  String get aiChatSettingsClearFailed => 'Chat history could not be cleared. Please try again later.';
 
   @override
   String get aiChatMemoryRecentTitle => 'Recent operations';
@@ -10443,22 +9719,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatMemorySettingLabel => 'Remember my frequent operations';
 
   @override
-  String get aiChatMemorySettingHint =>
-      'Remembers the forms you asked me to open and the queries you use often, so a similar request is ready right away next time.';
+  String get aiChatMemorySettingHint => 'Remembers the forms you asked me to open and the queries you use often, so a similar request is ready right away next time.';
 
   @override
   String get aiChatMemoryClear => 'Clear records';
 
   @override
-  String get aiChatMemoryClearConfirm =>
-      'Clear the frequent operations I remember about you?';
+  String get aiChatMemoryClearConfirm => 'Clear the frequent operations I remember about you?';
 
   @override
   String get aiChatMemoryCleared => 'Cleared';
 
   @override
-  String get aiChatMemoryUnavailable =>
-      'Your account currently has no permission';
+  String get aiChatMemoryUnavailable => 'Your account currently has no permission';
 
   @override
   String aiChatHiddenTurns(int count) {
@@ -10469,15 +9742,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatRestored => 'Your recent chat. New questions continue it.';
 
   @override
-  String get aiChatRestoredDataChanged =>
-      'The business data this answer quoted has changed, so the old answer is not shown. Ask again if you need it.';
+  String get aiChatRestoredDataChanged => 'The business data this answer quoted has changed, so the old answer is not shown. Ask again if you need it.';
 
   @override
   String get aiSettingsThinkingZhipu => 'Zhipu GLM style';
 
   @override
-  String get aiSettingsThinkingAnthropic =>
-      'Anthropic effort style (Opus 4.5 / Sonnet 4.6 and later)';
+  String get aiSettingsThinkingAnthropic => 'Anthropic effort style (Opus 4.5 / Sonnet 4.6 and later)';
 
   @override
   String get hrReconcileTitle => 'Employee Data Reconciliation';
@@ -10498,8 +9769,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hrReconcileApplying => 'Updating employee records…';
 
   @override
-  String get hrReconcileEmptyEntry =>
-      'Open this page by selecting employees on the identity check page';
+  String get hrReconcileEmptyEntry => 'Open this page by selecting employees on the identity check page';
 
   @override
   String get hrReconcilePlanEmpty => 'This plan has no employees to process';
@@ -10553,12 +9823,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hrReconcileSelectHigh => 'Select high confidence';
 
   @override
-  String get hrReconcileValidity =>
-      'Valid for 24 hours; unapplied changes are cleared after that';
+  String get hrReconcileValidity => 'Valid for 24 hours; unapplied changes are cleared after that';
 
   @override
-  String get hrReconcileExpiredTitle =>
-      'This reconciliation is past 24 hours; unapplied changes were cleared';
+  String get hrReconcileExpiredTitle => 'This reconciliation is past 24 hours; unapplied changes were cleared';
 
   @override
   String get hrReconcileExpiredRetry => 'Reconcile again';
@@ -10577,8 +9845,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get hrReconcileApplyHintFirst =>
-      'Select employees and confirm their new ID numbers first';
+  String get hrReconcileApplyHintFirst => 'Select employees and confirm their new ID numbers first';
 
   @override
   String get hrReconcileConfirmTitle => 'Confirm employee data correction';
@@ -10592,12 +9859,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get hrReconcileConfirmBodyDerived =>
-      'Gender and date of birth will be updated from the new ID number';
+  String get hrReconcileConfirmBodyDerived => 'Gender and date of birth will be updated from the new ID number';
 
   @override
-  String get hrReconcileConfirmBodyPassword =>
-      'Your login password is required to confirm';
+  String get hrReconcileConfirmBodyPassword => 'Your login password is required to confirm';
 
   @override
   String hrReconcileConfirmBodySkipped(int people) {
@@ -10608,8 +9873,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hrReconcileLeaveTitle => 'Discard these changes?';
 
   @override
-  String get hrReconcileLeaveBody =>
-      'The plan is kept for 24 hours; you can resume from reconciliation records';
+  String get hrReconcileLeaveBody => 'The plan is kept for 24 hours; you can resume from reconciliation records';
 
   @override
   String get hrReconcileLeaveConfirm => 'Discard';
@@ -10618,24 +9882,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hrReconcileLeaveCancel => 'Keep editing';
 
   @override
-  String get hrReconcilePlanChanged =>
-      'This reconciliation was updated; the latest content has been reloaded';
+  String get hrReconcilePlanChanged => 'This reconciliation was updated; the latest content has been reloaded';
 
   @override
-  String get hrReconcilePlanBusyConflict =>
-      'A previous correction is still running; please wait and retry';
+  String get hrReconcilePlanBusyConflict => 'A previous correction is still running; please wait and retry';
 
   @override
-  String get hrReconcileGenerateFailed =>
-      'Failed to generate the reconciliation plan. Please try again later.';
+  String get hrReconcileGenerateFailed => 'Failed to generate the reconciliation plan. Please try again later.';
 
   @override
-  String get hrReconcileLoadFailed =>
-      'Failed to load the reconciliation plan. Please try again later.';
+  String get hrReconcileLoadFailed => 'Failed to load the reconciliation plan. Please try again later.';
 
   @override
-  String get hrReconcileApplyFailed =>
-      'The correction did not complete. Please try again later.';
+  String get hrReconcileApplyFailed => 'The correction did not complete. Please try again later.';
 
   @override
   String get hrReconcileIdEmpty => '(empty)';
@@ -10653,12 +9912,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hrReconcileColSuggestion => 'Suggestion';
 
   @override
-  String get hrReconcileManualOnlyNotice =>
-      'Suggestions are for reference. Enter each identity number manually, then select the rows and confirm.';
+  String get hrReconcileManualOnlyNotice => 'Suggestions are for reference. Enter each identity number manually, then select the rows and confirm.';
 
   @override
-  String get hrReconcileLegacyChoicesIgnored =>
-      'Suggestion choices from the old draft were ignored. Manual entries were kept; enter the remaining numbers manually.';
+  String get hrReconcileLegacyChoicesIgnored => 'Suggestion choices from the old draft were ignored. Manual entries were kept; enter the remaining numbers manually.';
 
   @override
   String get hrReconcileColEmployee => 'Employee';
@@ -10667,8 +9924,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hrReconcileColReason => 'Reason';
 
   @override
-  String get hrReconcileIdNumberInfo =>
-      'Enter identity numbers manually for every suggestion type. Suggestions are never filled or submitted automatically.';
+  String get hrReconcileIdNumberInfo => 'Enter identity numbers manually for every suggestion type. Suggestions are never filled or submitted automatically.';
 
   @override
   String hrReconcileBasisOf(String label) {
@@ -10793,12 +10049,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiUsageEmpty => 'No usage yet';
 
   @override
-  String get aiUsageLoadFailed =>
-      'Failed to load AI usage, please try again later';
+  String get aiUsageLoadFailed => 'Failed to load AI usage, please try again later';
 
   @override
-  String get aiUsagePersonMissing =>
-      'Usage information for this person was not found';
+  String get aiUsagePersonMissing => 'Usage information for this person was not found';
 
   @override
   String get aiUsageColPerson => 'Person';
@@ -10856,8 +10110,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiUsageDisableLabel => 'Disable AI for this account';
 
   @override
-  String get aiUsageDisableHint =>
-      'While disabled, AI chat and file recognition cannot be used; you can restore it anytime';
+  String get aiUsageDisableHint => 'While disabled, AI chat and file recognition cannot be used; you can restore it anytime';
 
   @override
   String get aiUsageDisableConfirm => 'Disable AI usage for this account?';
@@ -10866,12 +10119,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiUsageDisableAction => 'Disable';
 
   @override
-  String get aiUsageDisabledBanner =>
-      'AI usage for this account has been disabled';
+  String get aiUsageDisabledBanner => 'AI usage for this account has been disabled';
 
   @override
-  String get aiUsageNoPersonalLimit =>
-      'No personal quota; the site-wide budget applies';
+  String get aiUsageNoPersonalLimit => 'No personal quota; the site-wide budget applies';
 
   @override
   String get aiUsageByPurpose => 'By purpose';
@@ -11010,80 +10261,61 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiRecordsBillingOpen => 'Billing';
 
   @override
-  String get release258StatusColors =>
-      'Status colors now follow one consistent palette: status columns use solid cell backgrounds, and warehouse outbound progress is readable at a glance (pending yellow, partial orange, complete green).';
+  String get release258StatusColors => 'Status colors now follow one consistent palette: status columns use solid cell backgrounds, and warehouse outbound progress is readable at a glance (pending yellow, partial orange, complete green).';
 
   @override
-  String get release258IqcPending =>
-      'The pending-inspection queue shows goods names and pending quantities again, grouped by base unit instead of dashes.';
+  String get release258IqcPending => 'The pending-inspection queue shows goods names and pending quantities again, grouped by base unit instead of dashes.';
 
   @override
-  String get release258StockCount =>
-      'Stock counting now runs in a dedicated session page: quantities are entered in place, drafts are saved locally, and you can resume later.';
+  String get release258StockCount => 'Stock counting now runs in a dedicated session page: quantities are entered in place, drafts are saved locally, and you can resume later.';
 
   @override
-  String get release258CompactCells =>
-      'Table input cells across the app use one compact specification (10,6) for a tighter, consistent editing experience.';
+  String get release258CompactCells => 'Table input cells across the app use one compact specification (10,6) for a tighter, consistent editing experience.';
 
   @override
-  String get release258LockReason =>
-      'Locked rows in the subcontract task center are redesigned: a lock icon marks each row, and tapping it shows the lock reason.';
+  String get release258LockReason => 'Locked rows in the subcontract task center are redesigned: a lock icon marks each row, and tapping it shows the lock reason.';
 
   @override
-  String get release259RollbackMerge =>
-      'Purchase and subcontract requests are back to per-material ordering: the mistaken rolling merge from the previous release is fully reverted, and the task center decomposes orders line by line again.';
+  String get release259RollbackMerge => 'Purchase and subcontract requests are back to per-material ordering: the mistaken rolling merge from the previous release is fully reverted, and the task center decomposes orders line by line again.';
 
   @override
-  String get release259SubcontractPending =>
-      'The subcontract task center \"Pending\" tab is now one flat table: application and drawing tasks are mixed in one table, drawable rows are red, submitted-awaiting-issue rows are yellow, and multiple rows can be batch-drawn.';
+  String get release259SubcontractPending => 'The subcontract task center \"Pending\" tab is now one flat table: application and drawing tasks are mixed in one table, drawable rows are red, submitted-awaiting-issue rows are yellow, and multiple rows can be batch-drawn.';
 
   @override
-  String get release259InProgressGate =>
-      'The subcontract \"In progress\" bar is tightened: orders whose material drawing has not finished no longer count as in progress — only fully drawn (or draw-free) orders enter, and drawings in flight carry the yellow badge.';
+  String get release259InProgressGate => 'The subcontract \"In progress\" bar is tightened: orders whose material drawing has not finished no longer count as in progress — only fully drawn (or draw-free) orders enter, and drawings in flight carry the yellow badge.';
 
   @override
-  String get release259NoticeGrouping =>
-      'The notification center shows unread by default and stacks by source; receipt and detail read states are reconciled so handled items no longer appear unread.';
+  String get release259NoticeGrouping => 'The notification center shows unread by default and stacks by source; receipt and detail read states are reconciled so handled items no longer appear unread.';
 
   @override
-  String get release259PopupSettings =>
-      'A notification setting is added at the top right of the workbench: pop-up reminders can be turned off per category, leaving the notification center and completion withdrawal unaffected.';
+  String get release259PopupSettings => 'A notification setting is added at the top right of the workbench: pop-up reminders can be turned off per category, leaving the notification center and completion withdrawal unaffected.';
 
   @override
-  String get release259HrAndProfile =>
-      'Employee onboarding becomes a five-step wizard (all fields open, minimal required); the pending-review segment of stock count review gets a red badge; the profile page adapts to small screens.';
+  String get release259HrAndProfile => 'Employee onboarding becomes a five-step wizard (all fields open, minimal required); the pending-review segment of stock count review gets a red badge; the profile page adapts to small screens.';
 
   @override
-  String get release2510TableAlignment =>
-      'Numeric table columns across the app are now left-aligned; quantities and amounts carry their units inline (amounts use a plain currency suffix) for one consistent reading line.';
+  String get release2510TableAlignment => 'Numeric table columns across the app are now left-aligned; quantities and amounts carry their units inline (amounts use a plain currency suffix) for one consistent reading line.';
 
   @override
-  String get release2510TransferOpen =>
-      'Summary-view transfers open up: root supply rows can be transferred directly, aggregated rows order against the per-dimension pool maximum, and the top level can withdraw the latest plan package in one batch.';
+  String get release2510TransferOpen => 'Summary-view transfers open up: root supply rows can be transferred directly, aggregated rows order against the per-dimension pool maximum, and the top level can withdraw the latest plan package in one batch.';
 
   @override
-  String get release2510BatchReport =>
-      'Quality inspection submits a whole report at once: batch reporting and decisions run in one transaction with joint pre-locking; any single failure rolls the whole batch back and reports by order number.';
+  String get release2510BatchReport => 'Quality inspection submits a whole report at once: batch reporting and decisions run in one transaction with joint pre-locking; any single failure rolls the whole batch back and reports by order number.';
 
   @override
-  String get release2510FinanceRate =>
-      'Purchase/subcontract finance approval accepts the day\'s exchange rate: the local-currency total is stamped with the approval, defaulting through approved rate, then submission snapshot, then 1.';
+  String get release2510FinanceRate => 'Purchase/subcontract finance approval accepts the day\'s exchange rate: the local-currency total is stamped with the approval, defaulting through approved rate, then submission snapshot, then 1.';
 
   @override
-  String get release2510NeedDate =>
-      'The pending-decomposition segment of the task center falls back its need date to the plan issue date instead of blank columns; overdue judgement still looks only at real need dates.';
+  String get release2510NeedDate => 'The pending-decomposition segment of the task center falls back its need date to the plan issue date instead of blank columns; overdue judgement still looks only at real need dates.';
 
   @override
-  String get release2510DirectTransfer =>
-      'Intra-workshop flow no longer requires pre-opening the workshop bin: direct transfers open the bin automatically on approval; granular bulk drawing still requires an explicit opening.';
+  String get release2510DirectTransfer => 'Intra-workshop flow no longer requires pre-opening the workshop bin: direct transfers open the bin automatically on approval; granular bulk drawing still requires an explicit opening.';
 
   @override
-  String get release2510SessionIdentity =>
-      'Fixed false \"sign-in identity changed\" errors during silent session refresh: identity comparison is now semantic, so unchanged sessions keep their signed-in state.';
+  String get release2510SessionIdentity => 'Fixed false \"sign-in identity changed\" errors during silent session refresh: identity comparison is now semantic, so unchanged sessions keep their signed-in state.';
 
   @override
-  String get release2510Misc =>
-      'The shipment audit filter toolbar matches the app-wide pattern; the ordering-approval/IQC responsibility banners are retired; the BOM per-product view alternates two guide colors; HR task badges return to the today-only caliber; the subcontract loss tolerance now agrees between list and detail.';
+  String get release2510Misc => 'The shipment audit filter toolbar matches the app-wide pattern; the ordering-approval/IQC responsibility banners are retired; the BOM per-product view alternates two guide colors; HR task badges return to the today-only caliber; the subcontract loss tolerance now agrees between list and detail.';
 
   @override
   String badgeModuleProgressTooltip(int count) {
@@ -11112,8 +10344,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverUpdateNoNewVersion => 'Up to date at last check';
 
   @override
-  String get serverUpdateNoCheckResult =>
-      'Check the release source for an available update.';
+  String get serverUpdateNoCheckResult => 'Check the release source for an available update.';
 
   @override
   String get serverUpdateCheck => 'Check for updates';
@@ -11122,22 +10353,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverUpdateView => 'Review update';
 
   @override
-  String get serverUpdateReadOnly =>
-      'This session is read-only. Update actions are unavailable.';
+  String get serverUpdateReadOnly => 'This session is read-only. Update actions are unavailable.';
 
   @override
   String get serverUpdateManual => 'Manual checks';
 
   @override
-  String get serverUpdateLocalOnly =>
-      'Opening this page, refreshing and viewing progress only read this server\'s state; they never check the release source automatically.';
+  String get serverUpdateLocalOnly => 'Opening this page, refreshing and viewing progress only read this server\'s state; they never check the release source automatically.';
 
   @override
   String get serverUpdateUnconfigured => 'Release source not configured';
 
   @override
-  String get serverUpdateUnconfiguredHint =>
-      'Ask a super administrator to configure the release source before checking.';
+  String get serverUpdateUnconfiguredHint => 'Ask a super administrator to configure the release source before checking.';
 
   @override
   String get serverUpdateUnavailable => 'Server update service unavailable';
@@ -11191,19 +10419,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverUpdateDiagnosticsCopied => 'Safe diagnostics copied';
 
   @override
-  String get serverUpdateLegacyFailure =>
-      'This host did not record safe failure details. Ask an administrator to investigate using the request ID.';
+  String get serverUpdateLegacyFailure => 'This host did not record safe failure details. Ask an administrator to investigate using the request ID.';
 
   @override
-  String get serverUpdateServicePreserved =>
-      'Original service preserved by this job';
+  String get serverUpdateServicePreserved => 'Original service preserved by this job';
 
   @override
   String get serverUpdateServiceUnknown => 'Service status needs verification';
 
   @override
-  String get serverUpdateRecoveryHint =>
-      'Ask a super administrator to verify the recovery point and service health before any further update.';
+  String get serverUpdateRecoveryHint => 'Ask a super administrator to verify the recovery point and service health before any further update.';
 
   @override
   String get serverUpdateNextStep => 'Next step';
@@ -11236,15 +10461,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverUpdateTimeZone => 'Server time zone';
 
   @override
-  String get serverUpdateRetryCheckHint =>
-      'After addressing the cause, check again explicitly. This update will not be replayed.';
+  String get serverUpdateRetryCheckHint => 'After addressing the cause, check again explicitly. This update will not be replayed.';
 
   @override
   String get serverUpdatePending => 'Verifying the original job';
 
   @override
-  String get serverUpdatePendingHint =>
-      'The request outcome is unknown. Only the original job is queried; do not submit again.';
+  String get serverUpdatePendingHint => 'The request outcome is unknown. Only the original job is queried; do not submit again.';
 
   @override
   String get serverUpdateManagement => 'Management';
@@ -11253,23 +10476,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverUpdateSource => 'Release source and credentials';
 
   @override
-  String get serverUpdateSourceHint =>
-      'Super administrators only; secrets are write-only';
+  String get serverUpdateSourceHint => 'Super administrators only; secrets are write-only';
 
   @override
-  String get serverUpdateSourcePending =>
-      'Save outcome pending; read the configuration again';
+  String get serverUpdateSourcePending => 'Save outcome pending; read the configuration again';
 
   @override
   String get serverUpdateStorage => 'Storage management';
 
   @override
-  String get serverUpdateMigrationRequired =>
-      'This release includes database migrations';
+  String get serverUpdateMigrationRequired => 'This release includes database migrations';
 
   @override
-  String get serverUpdateMigrationNotRequired =>
-      'No database migration required';
+  String get serverUpdateMigrationNotRequired => 'No database migration required';
 
   @override
   String get serverUpdateHealthPass => 'Health check passed';
@@ -11305,8 +10524,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverUpdatePhaseUnknown => 'Unconfirmed';
 
   @override
-  String get serverUpdateScheduleWait =>
-      'At the scheduled time, the server rechecks permission, source and target version. Closing this page does not cancel it.';
+  String get serverUpdateScheduleWait => 'At the scheduled time, the server rechecks permission, source and target version. Closing this page does not cancel it.';
 
   @override
   String get serverUpdateRefresh => 'Refresh local state';
@@ -11315,19 +10533,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverUpdateNoJob => 'No update job yet';
 
   @override
-  String get serverUpdateNoJobHint =>
-      'Progress and results appear here after an explicit check.';
+  String get serverUpdateNoJobHint => 'Progress and results appear here after an explicit check.';
 
   @override
-  String get serverUpdateCheckBeforeRetry =>
-      'Check the version again before deciding to update.';
+  String get serverUpdateCheckBeforeRetry => 'Check the version again before deciding to update.';
 
   @override
   String get serverUpdateCloseTemporarily => 'Close for now';
 
   @override
-  String get serverUpdateReadbackRequired =>
-      'The save outcome is unknown. Read the server configuration before saving again. The original request will not be replayed.';
+  String get serverUpdateReadbackRequired => 'The save outcome is unknown. Read the server configuration before saving again. The original request will not be replayed.';
 
   @override
   String get serverUpdateExitCode => 'Exit code';
@@ -11336,8 +10551,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverUpdateCompanyVersion => 'Company server version';
 
   @override
-  String get serverUpdateReadyHint =>
-      'An update is available. Install now or schedule it for a quiet period.';
+  String get serverUpdateReadyHint => 'An update is available. Install now or schedule it for a quiet period.';
 
   @override
   String get serverUpdateReceiptStatus => 'Original request status';
@@ -11346,47 +10560,37 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taskClaimChecking => 'Checking the review lease. Please wait.';
 
   @override
-  String get taskClaimIdentityChanged =>
-      'Your signed-in identity changed. Reopen the review.';
+  String get taskClaimIdentityChanged => 'Your signed-in identity changed. Reopen the review.';
 
   @override
-  String get taskClaimAcquireFailed =>
-      'The review lease could not be acquired. Try again.';
+  String get taskClaimAcquireFailed => 'The review lease could not be acquired. Try again.';
 
   @override
-  String get taskClaimNetworkUnavailable =>
-      'Cannot reach the server. Check your connection and claim again.';
+  String get taskClaimNetworkUnavailable => 'Cannot reach the server. Check your connection and claim again.';
 
   @override
-  String get taskClaimNetworkTimeout =>
-      'The server response timed out. Claim again later.';
+  String get taskClaimNetworkTimeout => 'The server response timed out. Claim again later.';
 
   @override
-  String get taskClaimLoginExpired =>
-      'Your session expired. Sign in again and retry.';
+  String get taskClaimLoginExpired => 'Your session expired. Sign in again and retry.';
 
   @override
-  String get taskClaimPermissionDenied =>
-      'You do not have permission to review this task. Refresh your permissions and retry.';
+  String get taskClaimPermissionDenied => 'You do not have permission to review this task. Refresh your permissions and retry.';
 
   @override
-  String get taskClaimConflict =>
-      'The task lease or content changed. Refresh and claim again.';
+  String get taskClaimConflict => 'The task lease or content changed. Refresh and claim again.';
 
   @override
-  String get taskClaimNotFound =>
-      'The review task is unavailable or no longer pending. Refresh the list.';
+  String get taskClaimNotFound => 'The review task is unavailable or no longer pending. Refresh the list.';
 
   @override
   String get taskClaimRateLimited => 'Too many requests. Claim again later.';
 
   @override
-  String get taskClaimServerUnavailable =>
-      'The server cannot process the review lease right now. Try again later.';
+  String get taskClaimServerUnavailable => 'The server cannot process the review lease right now. Try again later.';
 
   @override
-  String get taskClaimInvalidResponse =>
-      'No valid review lease was returned. Claim again.';
+  String get taskClaimInvalidResponse => 'No valid review lease was returned. Claim again.';
 
   @override
   String get taskClaimExpired => 'The review lease expired. Claim again.';
@@ -11397,82 +10601,64 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get taskClaimDecisionNotReady =>
-      'The review lease is no longer valid. Claim again and check the latest content.';
+  String get taskClaimDecisionNotReady => 'The review lease is no longer valid. Claim again and check the latest content.';
 
   @override
-  String get taskClaimReplaced =>
-      'The review lease expired or was replaced. Review is paused. Claim again.';
+  String get taskClaimReplaced => 'The review lease expired or was replaced. Review is paused. Claim again.';
 
   @override
-  String get taskClaimRenewFailed =>
-      'The review lease could not be verified. Review is paused. Claim again and check the latest content.';
+  String get taskClaimRenewFailed => 'The review lease could not be verified. Review is paused. Claim again and check the latest content.';
 
   @override
-  String get taskClaimReadOnly =>
-      'No valid review lease is held. This page is view only.';
+  String get taskClaimReadOnly => 'No valid review lease is held. This page is view only.';
 
   @override
   String get taskClaimRetry => 'Claim again and refresh';
 
   @override
-  String get financeSalesReviewAccessHint =>
-      'Sales order finance review access is required. Ask a permissions administrator for access.';
+  String get financeSalesReviewAccessHint => 'Sales order finance review access is required. Ask a permissions administrator for access.';
 
   @override
-  String get financeProcurementReviewAccessHint =>
-      'Purchase order approval access is required. Ask a permissions administrator for access.';
+  String get financeProcurementReviewAccessHint => 'Purchase order approval access is required. Ask a permissions administrator for access.';
 
   @override
-  String get financeArrivalReviewAccessHint =>
-      'Employees with the relevant view and approval permissions can handle excess arrivals. No additional department membership or named grant is required.';
+  String get financeArrivalReviewAccessHint => 'Employees with the relevant view and approval permissions can handle excess arrivals. No additional department membership or named grant is required.';
 
   @override
-  String get dashboardAuthorizedScope =>
-      'Shown by granted features and data scope';
+  String get dashboardAuthorizedScope => 'Shown by granted features and data scope';
 
   @override
-  String get dashboardNoAuthorizedMetrics =>
-      'No overview metrics in your visible scope';
+  String get dashboardNoAuthorizedMetrics => 'No overview metrics in your visible scope';
 
   @override
-  String get dashboardNoAuthorizedTodos =>
-      'No pending tasks in your visible scope';
+  String get dashboardNoAuthorizedTodos => 'No pending tasks in your visible scope';
 
   @override
-  String get financeBatchReviewCheckFailed =>
-      'The batch review content could not be verified. Refresh and try again.';
+  String get financeBatchReviewCheckFailed => 'The batch review content could not be verified. Refresh and try again.';
 
   @override
-  String get financeBatchReviewResultUnknown =>
-      'The batch review outcome is unconfirmed. Refresh and check the document states before acting again.';
+  String get financeBatchReviewResultUnknown => 'The batch review outcome is unconfirmed. Refresh and check the document states before acting again.';
 
   @override
-  String get financeReviewLoadFailed =>
-      'The review details could not be loaded. Try again.';
+  String get financeReviewLoadFailed => 'The review details could not be loaded. Try again.';
 
   @override
-  String get financeReportLoadFailed =>
-      'The report could not be loaded. Refresh and try again.';
+  String get financeReportLoadFailed => 'The report could not be loaded. Refresh and try again.';
 
   @override
-  String get financeBatchReviewRefreshFailed =>
-      'The batch review completed, but the page could not refresh. Refresh to check the latest document states.';
+  String get financeBatchReviewRefreshFailed => 'The batch review completed, but the page could not refresh. Refresh to check the latest document states.';
 
   @override
-  String get financeReviewAuthorityChanged =>
-      'The review content or version changed. Your input is retained. Reload and check the latest content before reviewing.';
+  String get financeReviewAuthorityChanged => 'The review content or version changed. Your input is retained. Reload and check the latest content before reviewing.';
 
   @override
-  String get permissionMissingReads =>
-      'The grant configuration is retained, but it is not currently effective and the corresponding page\'s viewing permissions are missing. Check the grant status; add viewing permissions when access to that page is needed.';
+  String get permissionMissingReads => 'The grant configuration is retained, but it is not currently effective and the corresponding page\'s viewing permissions are missing. Check the grant status; add viewing permissions when access to that page is needed.';
 
   @override
   String get permissionCompleteReads => 'Add required viewing permissions';
 
   @override
-  String get permissionInactiveGrant =>
-      'The previous grant is no longer effective. This action is currently unauthorized.';
+  String get permissionInactiveGrant => 'The previous grant is no longer effective. This action is currently unauthorized.';
 
   @override
   String get permissionRenewGrant => 'Grant again';
@@ -11481,109 +10667,85 @@ class AppLocalizationsEn extends AppLocalizations {
   String get permissionRemoveInactiveGrant => 'Remove inactive grant';
 
   @override
-  String get permissionPendingReads =>
-      'Saving adds only ordinary viewing permissions that may be granted automatically. To restore revoked permissions or grant sensitive permissions, confirm each in its own permission setting.';
+  String get permissionPendingReads => 'Saving adds only ordinary viewing permissions that may be granted automatically. To restore revoked permissions or grant sensitive permissions, confirm each in its own permission setting.';
 
   @override
-  String get permissionBatchNormalOnly =>
-      'Grant group (exclude sensitive and locked items)';
+  String get permissionBatchNormalOnly => 'Grant group (exclude sensitive and locked items)';
 
   @override
-  String get permissionSavedRefreshPending =>
-      'Permissions were saved, but the current session could not refresh. Reload the page to check the latest permissions.';
+  String get permissionSavedRefreshPending => 'Permissions were saved, but the current session could not refresh. Reload the page to check the latest permissions.';
 
   @override
   String get permissionSaved => 'Page permissions saved';
 
   @override
-  String get permissionSavedDetailPending =>
-      'Permissions were saved, but the latest settings could not be read. Reload this employee before making further changes.';
+  String get permissionSavedDetailPending => 'Permissions were saved, but the latest settings could not be read. Reload this employee before making further changes.';
 
   @override
-  String get permissionSaveResultUnknown =>
-      'The permission save outcome is unconfirmed. Reload this employee\'s permissions and check them before acting again.';
+  String get permissionSaveResultUnknown => 'The permission save outcome is unconfirmed. Reload this employee\'s permissions and check them before acting again.';
 
   @override
   String get masterEntitySearchHint => 'Search by name or code';
 
   @override
-  String get permissionRevokeOnly =>
-      'You can only remove the existing grant. Granting it again is not allowed.';
+  String get permissionRevokeOnly => 'You can only remove the existing grant. Granting it again is not allowed.';
 
   @override
-  String get release2523TaskAudience =>
-      'Workbench todos, red and yellow badges and action notices now follow actually granted operations and document responsibility: view-only access no longer creates operational tasks, real cross-department grants still receive them, and the system administrator no longer receives every business todo by default.';
+  String get release2523TaskAudience => 'Workbench todos, red and yellow badges and action notices now follow actually granted operations and document responsibility: view-only access no longer creates operational tasks, real cross-department grants still receive them, and the system administrator no longer receives every business todo by default.';
 
   @override
-  String get release2523PermissionTransfer =>
-      'Permission configurations can be imported, previewed and transferred across departments, keeping shared-tool permission categories consistent, with a full audit trail.';
+  String get release2523PermissionTransfer => 'Permission configurations can be imported, previewed and transferred across departments, keeping shared-tool permission categories consistent, with a full audit trail.';
 
   @override
-  String get release2523PickerTables =>
-      'Customer, employee, goods and similar pickers are upgraded to table views with a unified bottom confirm bar for clearer comparison; browsing panel width tiers are unified and adapt to narrow screens.';
+  String get release2523PickerTables => 'Customer, employee, goods and similar pickers are upgraded to table views with a unified bottom confirm bar for clearer comparison; browsing panel width tiers are unified and adapt to narrow screens.';
 
   @override
-  String get release2523PlatformSettings =>
-      'The platform settings page is reorganized into a concise title, permission badge and a shared connection status summary with responsive sections; unsaved drafts survive section switches.';
+  String get release2523PlatformSettings => 'The platform settings page is reorganized into a concise title, permission badge and a shared connection status summary with responsive sections; unsaved drafts survive section switches.';
 
   @override
-  String get release2523LoginOtp =>
-      'The login verification challenge is isolated per account and server context; switching account or server no longer leaves a stale challenge, and late callbacks expire automatically.';
+  String get release2523LoginOtp => 'The login verification challenge is isolated per account and server context; switching account or server no longer leaves a stale challenge, and late callbacks expire automatically.';
 
   @override
-  String get release2523ServerAlert =>
-      'Server status alerts restore the system-administrator receiving exception, and alert pools resolve by real grants.';
+  String get release2523ServerAlert => 'Server status alerts restore the system-administrator receiving exception, and alert pools resolve by real grants.';
 
   @override
-  String get release2521Permissions =>
-      'Finance reviews, final quality inspections and similar operations follow effective permissions without extra department or named-grant requirements. Business data scopes and document-state checks remain in place.';
+  String get release2521Permissions => 'Finance reviews, final quality inspections and similar operations follow effective permissions without extra department or named-grant requirements. Business data scopes and document-state checks remain in place.';
 
   @override
-  String get release2521Session =>
-      'Sessions and page actions follow refreshed permissions after authorization changes. Unsaved switch changes are marked as pending save.';
+  String get release2521Session => 'Sessions and page actions follow refreshed permissions after authorization changes. Unsaved switch changes are marked as pending save.';
 
   @override
-  String get release2521PermissionSettings =>
-      'Ordinary switches change only the selected permission. Saving adds eligible ordinary viewing permissions under the authorization rules; sensitive grants and restoration of revoked permissions still require individual confirmation.';
+  String get release2521PermissionSettings => 'Ordinary switches change only the selected permission. Saving adds eligible ordinary viewing permissions under the authorization rules; sensitive grants and restoration of revoked permissions still require individual confirmation.';
 
   @override
-  String get release2521ReviewFeedback =>
-      'Review-claim failures show the actual reason. Unconfirmed batch-review outcomes clearly ask you to refresh and check document states.';
+  String get release2521ReviewFeedback => 'Review-claim failures show the actual reason. Unconfirmed batch-review outcomes clearly ask you to refresh and check document states.';
 
   @override
-  String get release2521ServerUpdates =>
-      'Server update tasks show their current stage and result. Reopen the page to continue checking progress; failures show confirmed reasons and suggested next steps.';
+  String get release2521ServerUpdates => 'Server update tasks show their current stage and result. Reopen the page to continue checking progress; failures show confirmed reasons and suggested next steps.';
 
   @override
-  String get release2521TableSearchCopy =>
-      'Search text columns such as names and codes from the header. Press Enter or Search to show matching rows, and combine conditions across columns. Search and load more candidates, or select and copy table text without changing checked rows.';
+  String get release2521TableSearchCopy => 'Search text columns such as names and codes from the header. Press Enter or Search to show matching rows, and combine conditions across columns. Search and load more candidates, or select and copy table text without changing checked rows.';
 
   @override
-  String get release2521FieldHints =>
-      'Empty form fields now show their field names, with examples and guidance available from the information control. Forms, selectors and dates use consistent empty states while preserving valid values and personal display settings.';
+  String get release2521FieldHints => 'Empty form fields now show their field names, with examples and guidance available from the information control. Forms, selectors and dates use consistent empty states while preserving valid values and personal display settings.';
 
   @override
-  String get release2521ReferencePickers =>
-      'Mould and component pickers show categories on the left and a detail table on the right, including series, names, codes, specifications and colours. Typing shows similar candidates; the button opens the full picker with your keywords. Existing selection scopes, usage quantities and checks remain in place.';
+  String get release2521ReferencePickers => 'Mould and component pickers show categories on the left and a detail table on the right, including series, names, codes, specifications and colours. Typing shows similar candidates; the button opens the full picker with your keywords. Existing selection scopes, usage quantities and checks remain in place.';
 
   @override
-  String get release2521MasterDataImport =>
-      'Goods exports include the fields needed to import an edited template, using actual category paths and existing validation. Category code prefixes can start with digits, and remarks can appear beside category names. Existing codes and category identities are preserved.';
+  String get release2521MasterDataImport => 'Goods exports include the fields needed to import an edited template, using actual category paths and existing validation. Category code prefixes can start with digits, and remarks can appear beside category names. Existing codes and category identities are preserved.';
 
   @override
-  String get release2521PurchaseDocuments =>
-      'Purchase orders support print previews, with the actual finance reviewer shown in the review field. Purchase task history shows each material on its own row with the supplier. Pending decomposition and workbench tables can be exported using the current filters.';
+  String get release2521PurchaseDocuments => 'Purchase orders support print previews, with the actual finance reviewer shown in the review field. Purchase task history shows each material on its own row with the supplier. Pending decomposition and workbench tables can be exported using the current filters.';
 
   @override
-  String get release2521GoodsHistory =>
-      'View your last ten goods data changes and undo or redo them when current conditions allow. Later changes, business references and permissions are checked again, and each operation is recorded.';
+  String get release2521GoodsHistory => 'View your last ten goods data changes and undo or redo them when current conditions allow. Later changes, business references and permissions are checked again, and each operation is recorded.';
 
   @override
   String get goodsHistoryTitle => 'Goods operation history';
 
   @override
-  String get goodsHistoryHint =>
-      'Select one of the last 10 data changes to undo. Redo restores the last undo. Later changes or business references may prevent restoration.';
+  String get goodsHistoryHint => 'Select one of the last 10 data changes to undo. Redo restores the last undo. Later changes or business references may prevent restoration.';
 
   @override
   String get goodsHistoryUndo => 'Undo';
@@ -11605,31 +10767,25 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get goodsHistoryUndoDone =>
-      'The selected operation was undone and recorded.';
+  String get goodsHistoryUndoDone => 'The selected operation was undone and recorded.';
 
   @override
   String get goodsHistoryRedoDone => 'The last undo was redone and recorded.';
 
   @override
-  String get goodsHistoryLoadFailed =>
-      'Could not load operation history. Refresh to try again.';
+  String get goodsHistoryLoadFailed => 'Could not load operation history. Refresh to try again.';
 
   @override
-  String get goodsHistoryActionFailed =>
-      'The operation result could not be confirmed.';
+  String get goodsHistoryActionFailed => 'The operation result could not be confirmed.';
 
   @override
-  String get goodsHistoryRefreshBeforeRetry =>
-      'History is retained. Refresh and check the latest state before trying again.';
+  String get goodsHistoryRefreshBeforeRetry => 'History is retained. Refresh and check the latest state before trying again.';
 
   @override
-  String get goodsHistoryNoPermission =>
-      'You do not have access to goods operation history.';
+  String get goodsHistoryNoPermission => 'You do not have access to goods operation history.';
 
   @override
-  String get goodsHistoryEmpty =>
-      'No operation history yet. Data changes will appear here.';
+  String get goodsHistoryEmpty => 'No operation history yet. Data changes will appear here.';
 
   @override
   String get goodsHistoryEvents => 'Undo and redo activity';
@@ -11654,8 +10810,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get goodsHistorySelected => 'Selected';
 
   @override
-  String get goodsHistoryBlocked =>
-      'This operation cannot currently be undone or redone. Refresh for the latest state.';
+  String get goodsHistoryBlocked => 'This operation cannot currently be undone or redone. Refresh for the latest state.';
 
   @override
   String get goodsHistoryOther => 'Data change';
@@ -11706,12 +10861,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get goodsHistoryClose => 'Close';
 
   @override
-  String get goodsHistoryGoodsPurchasePolicy =>
-      'Edit goods purchase receipt policy';
+  String get goodsHistoryGoodsPurchasePolicy => 'Edit goods purchase receipt policy';
 
   @override
-  String get goodsHistoryGoodsSubcontractPolicy =>
-      'Edit goods subcontract policy';
+  String get goodsHistoryGoodsSubcontractPolicy => 'Edit goods subcontract policy';
 
   @override
   String materialBomIssueHeading(int count, int sources) {
@@ -11719,8 +10872,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get materialBomIssueGuidance =>
-      'Affected demands stay on this page. Analyze other demands separately. Recheck after engineering repairs; unresolved demands cannot be issued.';
+  String get materialBomIssueGuidance => 'Affected demands stay on this page. Analyze other demands separately. Recheck after engineering repairs; unresolved demands cannot be issued.';
 
   @override
   String materialBomIssueForwardedTask(String taskNo) {
@@ -11747,15 +10899,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get materialBomIssueForwarded =>
-      'Sent to engineering. Recheck after repair.';
+  String get materialBomIssueForwarded => 'Sent to engineering. Recheck after repair.';
 
   @override
   String get materialBomIssueForwardFailed => 'Could not send to engineering';
 
   @override
-  String get materialBomIssueClear =>
-      'No BOM issues found. Run analysis again to check demand and stock.';
+  String get materialBomIssueClear => 'No BOM issues found. Run analysis again to check demand and stock.';
 
   @override
   String get materialBomIssueOpenGoods => 'Open goods details';
@@ -11767,8 +10917,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rdInitialUnitTitle => 'Verify the initial basic unit';
 
   @override
-  String get rdInitialUnitGuidance =>
-      'Choose the unit from original source evidence and record your basis. This is only available when the basic unit is missing and no quantity facts exist outside the BOM. Existing units and historical quantity meanings cannot be changed. An existing legacy unit mapping must agree.';
+  String get rdInitialUnitGuidance => 'Choose the unit from original source evidence and record your basis. This is only available when the basic unit is missing and no quantity facts exist outside the BOM. Existing units and historical quantity meanings cannot be changed. An existing legacy unit mapping must agree.';
 
   @override
   String get rdInitialUnitLabel => 'Verified basic unit';
@@ -11777,16 +10926,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rdInitialUnitRequired => 'Choose the verified basic unit';
 
   @override
-  String get rdInitialUnitEvidence =>
-      'Original source and verification evidence';
+  String get rdInitialUnitEvidence => 'Original source and verification evidence';
 
   @override
-  String get rdInitialUnitEvidenceRequired =>
-      'Enter at least 2 characters of evidence';
+  String get rdInitialUnitEvidenceRequired => 'Enter at least 2 characters of evidence';
 
   @override
-  String get rdInitialUnitLoadFailed =>
-      'Could not load units. Close and try again.';
+  String get rdInitialUnitLoadFailed => 'Could not load units. Close and try again.';
 
   @override
   String get rdInitialUnitCancel => 'Cancel';
@@ -11795,8 +10941,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rdInitialUnitConfirm => 'Confirm initial basic unit';
 
   @override
-  String get rdInitialUnitSaved =>
-      'Initial basic unit verified. Continue handling any other data issues.';
+  String get rdInitialUnitSaved => 'Initial basic unit verified. Continue handling any other data issues.';
 
   @override
   String get rdInitialUnitFailed => 'Could not verify the initial basic unit';
@@ -11838,8 +10983,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get bomEditSaveNote =>
-      'Confirm to save all changes. Production already started keeps its original material records.';
+  String get bomEditSaveNote => 'Confirm to save all changes. Production already started keeps its original material records.';
 
   @override
   String get bomEditContinue => 'Continue editing';
@@ -11851,8 +10995,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bomEditConfirmSave => 'Confirm save';
 
   @override
-  String get bomEditSaved =>
-      'Assembly information saved and all references synchronized';
+  String get bomEditSaved => 'Assembly information saved and all references synchronized';
 
   @override
   String bomEditMoreProblems(int count) {
@@ -11860,8 +11003,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get bomEditSaveUnknown =>
-      'The save result cannot be confirmed yet. Check the assembly information before retrying. Your draft remains on this page.';
+  String get bomEditSaveUnknown => 'The save result cannot be confirmed yet. Check the assembly information before retrying. Your draft remains on this page.';
 
   @override
   String get bomEditSaveFailedTitle => 'Assembly changes were not fully saved';
@@ -11878,12 +11020,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bomEditDiscardRefresh => 'Discard draft and refresh';
 
   @override
-  String get bomEditPermissionChanged =>
-      'Editing permission or sign-in state has changed. Restore access before saving the draft.';
+  String get bomEditPermissionChanged => 'Editing permission or sign-in state has changed. Restore access before saving the draft.';
 
   @override
-  String get bomEditBoundaryExpired =>
-      'Your identity or permissions changed. The previous editing draft has expired. If you just saved, check the result again.';
+  String get bomEditBoundaryExpired => 'Your identity or permissions changed. The previous editing draft has expired. If you just saved, check the result again.';
 
   @override
   String get bomEditNoView => 'This account cannot view assembly information';
@@ -11906,8 +11046,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get bomEditPasteParentRequired =>
-      'Select one parent component, or clear the selection to paste at the top level';
+  String get bomEditPasteParentRequired => 'Select one parent component, or clear the selection to paste at the top level';
 
   @override
   String bomEditPasteStaged(int count) {
@@ -11930,8 +11069,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get bomEditComponentStaged =>
-      'Component changes staged. Save and exit to apply them.';
+  String get bomEditComponentStaged => 'Component changes staged. Save and exit to apply them.';
 
   @override
   String bomEditReviewWarnings(String message, String warnings) {
@@ -11977,12 +11115,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get goodsBomBatchCommitUncertain =>
-      'The submission result is not yet confirmed. Inputs are locked. Retry this submission to check its original result.';
+  String get goodsBomBatchCommitUncertain => 'The submission result is not yet confirmed. Inputs are locked. Retry this submission to check its original result.';
 
   @override
-  String get goodsBomBatchFailed =>
-      'Assembly maintenance did not complete. Preview again before retrying.';
+  String get goodsBomBatchFailed => 'Assembly maintenance did not complete. Preview again before retrying.';
 
   @override
   String get goodsBomBatchAddTitle => 'Add components in bulk';
@@ -11991,8 +11127,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get goodsBomBatchRemoveTitle => 'Remove selected components in bulk';
 
   @override
-  String get goodsBomBatchOverwriteTitle =>
-      'Overwrite the entire assembly list';
+  String get goodsBomBatchOverwriteTitle => 'Overwrite the entire assembly list';
 
   @override
   String goodsBomBatchTargets(int count) {
@@ -12000,16 +11135,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get goodsBomBatchOverwriteDescription =>
-      'Overwrite this good\'s top-level assembly list with the copied components. Existing top-level components absent from the new list will be removed. Nested shared subassemblies retain their own assembly lists.';
+  String get goodsBomBatchOverwriteDescription => 'Overwrite this good\'s top-level assembly list with the copied components. Existing top-level components absent from the new list will be removed. Nested shared subassemblies retain their own assembly lists.';
 
   @override
-  String get goodsBomBatchRemoveDescription =>
-      'Remove matching components only from the selected goods\' top level. Skip goods without a match. Components inside nested subassemblies are retained.';
+  String get goodsBomBatchRemoveDescription => 'Remove matching components only from the selected goods\' top level. Skip goods without a match. Components inside nested subassemblies are retained.';
 
   @override
-  String get goodsBomBatchAddDescription =>
-      'Append the specified components to the selected goods\' top level. Skip existing components and retain their quantities and other fields.';
+  String get goodsBomBatchAddDescription => 'Append the specified components to the selected goods\' top level. Skip existing components and retain their quantities and other fields.';
 
   @override
   String get goodsBomBatchChooseComponents => 'Select components';
@@ -12029,23 +11161,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String goodsBomBatchSummary(
-    int targets,
-    int added,
-    int updated,
-    int removed,
-    int skipped,
-  ) {
+  String goodsBomBatchSummary(int targets, int added, int updated, int removed, int skipped) {
     return 'Will change $targets goods: add $added, update $updated, remove $removed, skip $skipped.';
   }
 
   @override
-  String goodsBomBatchTargetCounts(
-    int added,
-    int updated,
-    int removed,
-    int skipped,
-  ) {
+  String goodsBomBatchTargetCounts(int added, int updated, int removed, int skipped) {
     return 'Add $added / Update $updated / Remove $removed / Skip $skipped';
   }
 
@@ -12060,8 +11181,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get goodsBomBatchConfirmImpact =>
-      'Review the selected goods, skipped items and shared impact. Confirm to save the whole batch. If any item fails, nothing will be changed.';
+  String get goodsBomBatchConfirmImpact => 'Review the selected goods, skipped items and shared impact. Confirm to save the whole batch. If any item fails, nothing will be changed.';
 
   @override
   String get goodsBomBatchCloseVerify => 'Close and refresh to verify';
@@ -12076,13 +11196,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get goodsBomBatchConfirmCommit => 'Confirm batch changes';
 
   @override
-  String goodsBomBatchCompleted(
-    int targets,
-    int added,
-    int updated,
-    int removed,
-    int skipped,
-  ) {
+  String goodsBomBatchCompleted(int targets, int added, int updated, int removed, int skipped) {
     return 'Processed $targets goods: added $added, updated $updated, removed $removed, skipped $skipped.';
   }
 
@@ -12090,8 +11204,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get goodsBomBatchClearTopTitle => 'Clear the top-level assembly list';
 
   @override
-  String get goodsBomBatchOverwriteCopied =>
-      'Overwrite the entire assembly list (using copied components)';
+  String get goodsBomBatchOverwriteCopied => 'Overwrite the entire assembly list (using copied components)';
 
   @override
   String goodsBomBatchMoreProblems(int count) {
@@ -12120,12 +11233,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get whereUsedReplacementPickerTitle => 'Choose replacement component';
 
   @override
-  String get whereUsedReplacementSameComponent =>
-      'The replacement must differ from the current component';
+  String get whereUsedReplacementSameComponent => 'The replacement must differ from the current component';
 
   @override
-  String get whereUsedReplacementFailed =>
-      'Replacement was not completed. Preview the current assembly relationships and try again.';
+  String get whereUsedReplacementFailed => 'Replacement was not completed. Preview the current assembly relationships and try again.';
 
   @override
   String whereUsedReplacementRules(int count) {
@@ -12133,8 +11244,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get whereUsedReplacementHistory =>
-      'Only current assembly relationships change. Historical documents, frozen demand and recorded consumption retain their original records.';
+  String get whereUsedReplacementHistory => 'Only current assembly relationships change. Historical documents, frozen demand and recorded consumption retain their original records.';
 
   @override
   String whereUsedReplacementImpact(int edges, int products) {
@@ -12162,19 +11272,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get whereUsedReplaceAction => 'Replace component';
 
   @override
-  String get whereUsedReplacementSuccess =>
-      'Component replaced and related product assemblies updated';
+  String get whereUsedReplacementSuccess => 'Component replaced and related product assemblies updated';
 
   @override
-  String get whereUsedHistoryNotReplaceable =>
-      'This product has historical relationships only. Historical records cannot be replaced.';
+  String get whereUsedHistoryNotReplaceable => 'This product has historical relationships only. Historical records cannot be replaced.';
 
   @override
   String get whereUsedExportFiltered => 'Export filtered results';
 
   @override
-  String get whereUsedExportDescription =>
-      'Export all filtered results with component identity, filters, operator, export time and evidence sources. Use Excel for further filtering or PDF for reading and printing.';
+  String get whereUsedExportDescription => 'Export all filtered results with component identity, filters, operator, export time and evidence sources. Use Excel for further filtering or PDF for reading and printing.';
 
   @override
   String get whereUsedExportExcel => 'Excel';
@@ -12186,8 +11293,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get whereUsedExportFilename => 'where_used_filtered_results';
 
   @override
-  String get whereUsedReplacementCommitUncertain =>
-      'The submission result is not confirmed. Retry this same submission to retrieve its result; keep the selected component unchanged.';
+  String get whereUsedReplacementCommitUncertain => 'The submission result is not confirmed. Retry this same submission to retrieve its result; keep the selected component unchanged.';
 
   @override
   String get whereUsedRetryReplacementCommit => 'Retry this submission';
@@ -12205,8 +11311,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bomEditRefreshing => 'Refreshing assembly information';
 
   @override
-  String get bomEditPrepareFailed =>
-      'Could not prepare editing. Please try again.';
+  String get bomEditPrepareFailed => 'Could not prepare editing. Please try again.';
 
   @override
   String get warehouseScopeAllVisible => 'All visible warehouses';
@@ -12217,15 +11322,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get warehouseScopeIncludesVisibleChildren =>
-      'Includes visible sub-warehouses';
+  String get warehouseScopeIncludesVisibleChildren => 'Includes visible sub-warehouses';
 
   @override
   String get warehouseScopeLoadFailedRetry => 'Warehouse filter failed. Retry';
 
   @override
-  String get warehouseScopeVisibleTooltip =>
-      'Filter within warehouses you can view.';
+  String get warehouseScopeVisibleTooltip => 'Filter within warehouses you can view.';
 
   @override
   String warehouseScopeTaskFilter(String name) {
@@ -12236,12 +11339,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseScopeClearFilter => 'Clear filter';
 
   @override
-  String get warehouseTaskSelectionChanged =>
-      'The selected tasks have changed. Refresh and select them again.';
+  String get warehouseTaskSelectionChanged => 'The selected tasks have changed. Refresh and select them again.';
 
   @override
-  String get warehouseFinishedLotsChanged =>
-      'The selected lots have changed or have been handled by someone else. Return to the task center, refresh and select them again.';
+  String get warehouseFinishedLotsChanged => 'The selected lots have changed or have been handled by someone else. Return to the task center, refresh and select them again.';
 
   @override
   String get warehouseMasterTitle => 'Warehouse records';
@@ -12250,35 +11351,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseMasterSearchHint => 'Search warehouse name / code';
 
   @override
-  String get warehouseMasterSelectHint =>
-      'Select a warehouse to view its details and live inventory';
+  String get warehouseMasterSelectHint => 'Select a warehouse to view its details and live inventory';
 
   @override
-  String get warehouseMasterDetailsLoadFailed =>
-      'Failed to load warehouse details. Please retry.';
+  String get warehouseMasterDetailsLoadFailed => 'Failed to load warehouse details. Please retry.';
 
   @override
-  String get warehouseMasterInventorySummaryHint =>
-      'Includes live inventory from child accounting warehouses';
+  String get warehouseMasterInventorySummaryHint => 'Includes live inventory from child accounting warehouses';
 
   @override
   String get warehouseInventorySearchHint => 'Search goods name / code';
 
   @override
-  String get warehouseInventoryNoAccess =>
-      'You do not have permission to view inventory';
+  String get warehouseInventoryNoAccess => 'You do not have permission to view inventory';
 
   @override
-  String get warehouseInventoryLoadFailed =>
-      'Failed to load inventory. Please retry.';
+  String get warehouseInventoryLoadFailed => 'Failed to load inventory. Please retry.';
 
   @override
-  String get warehouseInventoryEmpty =>
-      'This warehouse has no inventory records';
+  String get warehouseInventoryEmpty => 'This warehouse has no inventory records';
 
   @override
-  String get warehouseInventoryOpenLedger =>
-      'Double-click goods to view stock movements';
+  String get warehouseInventoryOpenLedger => 'Double-click goods to view stock movements';
 
   @override
   String get warehouseInventoryQuantity => 'Stock quantity';
@@ -12323,8 +11417,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bomEditDiscardAndExit => 'Exit without saving';
 
   @override
-  String get masterEditDiscardRemainingNote =>
-      'Discard only the remaining unsaved changes. Successfully saved changes will be kept.';
+  String get masterEditDiscardRemainingNote => 'Discard only the remaining unsaved changes. Successfully saved changes will be kept.';
 
   @override
   String get filterAllCategoriesSummary => 'All categories';
@@ -12357,16 +11450,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get permissionTemplateEmpty => 'No permission templates yet';
 
   @override
-  String get permissionTemplateEmptyHint =>
-      'Create a template, or save an employee\'s effective permissions.';
+  String get permissionTemplateEmptyHint => 'Create a template, or save an employee\'s effective permissions.';
 
   @override
-  String get permissionTemplateSnapshotNote =>
-      'Templates save permission snapshots. Editing or deleting a template does not change accounts already configured.';
+  String get permissionTemplateSnapshotNote => 'Templates save permission snapshots. Editing or deleting a template does not change accounts already configured.';
 
   @override
-  String get permissionTemplateScopeNote =>
-      'Only operation permissions are configured. Data scope, department, account identity and remote access are managed separately.';
+  String get permissionTemplateScopeNote => 'Only operation permissions are configured. Data scope, department, account identity and remote access are managed separately.';
 
   @override
   String get permissionTemplateSelect => 'Select a permission template';
@@ -12378,12 +11468,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get permissionTemplateReplace => 'Replace with template';
 
   @override
-  String get permissionTemplateMergeHint =>
-      'Keep current permissions and add template permissions. Explicit revocations are never silently restored.';
+  String get permissionTemplateMergeHint => 'Keep current permissions and add template permissions. Explicit revocations are never silently restored.';
 
   @override
-  String get permissionTemplateReplaceHint =>
-      'Set effective permissions to the template, revoking permissions outside it. Review the changes carefully.';
+  String get permissionTemplateReplaceHint => 'Set effective permissions to the template, revoking permissions outside it. Review the changes carefully.';
 
   @override
   String get permissionTemplatePreview => 'Preview changes';
@@ -12407,24 +11495,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get permissionTemplateClose => 'Close';
 
   @override
-  String get permissionTemplateDeleteHint =>
-      'Delete this template only. Permissions already applied to accounts are retained.';
+  String get permissionTemplateDeleteHint => 'Delete this template only. Permissions already applied to accounts are retained.';
 
   @override
-  String get permissionTemplateInvalidName =>
-      'Enter a name of up to 80 characters and a description of up to 1000 characters.';
+  String get permissionTemplateInvalidName => 'Enter a name of up to 80 characters and a description of up to 1000 characters.';
 
   @override
-  String get permissionTemplateBoundaryChanged =>
-      'Your identity, authorization or server changed. Close and reopen this window.';
+  String get permissionTemplateBoundaryChanged => 'Your identity, authorization or server changed. Close and reopen this window.';
 
   @override
-  String get permissionTemplateUncertain =>
-      'The request outcome is unknown. Close this window, refresh and verify the result before trying again.';
+  String get permissionTemplateUncertain => 'The request outcome is unknown. Close this window, refresh and verify the result before trying again.';
 
   @override
-  String get permissionTemplateLoadFailed =>
-      'Could not load permission templates. Try again.';
+  String get permissionTemplateLoadFailed => 'Could not load permission templates. Try again.';
 
   @override
   String get permissionTemplateRetry => 'Reload';
@@ -12435,19 +11518,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get permissionTemplateUnknownCodes =>
-      'The template contains codes absent from the current catalog. Review and remove them, or recreate the template.';
+  String get permissionTemplateUnknownCodes => 'The template contains codes absent from the current catalog. Review and remove them, or recreate the template.';
 
   @override
   String get permissionTemplateClearUnknown => 'Remove unavailable codes';
 
   @override
-  String get permissionTemplateSensitiveNote =>
-      'Sensitive permissions may be saved. Applying them to each employee still requires individual confirmation.';
+  String get permissionTemplateSensitiveNote => 'Sensitive permissions may be saved. Applying them to each employee still requires individual confirmation.';
 
   @override
-  String get permissionTemplateNoSelection =>
-      'Select a template to view its permissions';
+  String get permissionTemplateNoSelection => 'Select a template to view its permissions';
 
   @override
   String get hierarchyActions => 'More actions';
@@ -12474,8 +11554,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get productionSalesRequirements => 'Sales production instructions';
 
   @override
-  String get materialTransferContextChanged =>
-      'Your account, permissions, or plan changed. Close this window and review the transfer again.';
+  String get materialTransferContextChanged => 'Your account, permissions, or plan changed. Close this window and review the transfer again.';
 
   @override
   String get goodsBatchPasteTitle => 'Paste goods in bulk';
@@ -12509,12 +11588,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get goodsBatchPastePendingTotal =>
-      'Enter a copy count to see the total';
+  String get goodsBatchPastePendingTotal => 'Enter a copy count to see the total';
 
   @override
-  String get goodsBatchPasteAutoCode =>
-      'New goods codes are generated automatically';
+  String get goodsBatchPasteAutoCode => 'New goods codes are generated automatically';
 
   @override
   String get importReviewSourceRow => 'File row';
@@ -12538,12 +11615,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get importReviewNewValue => 'Imported value';
 
   @override
-  String get importReviewLegend =>
-      'Red strikethrough shows the existing value; green shows the imported value. Only selected conflicts will be replaced. Blank cells never clear existing values.';
+  String get importReviewLegend => 'Red strikethrough shows the existing value; green shows the imported value. Only selected conflicts will be replaced. Blank cells never clear existing values.';
 
   @override
-  String get importReviewFillLegend =>
-      'Missing values will be filled while existing values stay unchanged. Confirm to create and complete records.';
+  String get importReviewFillLegend => 'Missing values will be filled while existing values stay unchanged. Confirm to create and complete records.';
 
   @override
   String importReviewReplaceSelected(int count) {
@@ -12554,8 +11629,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get importReviewIgnoreAll => 'Ignore all conflicts';
 
   @override
-  String get importReviewIgnoreExplanation =>
-      'Ignoring skips conflicts only. New goods and missing values will still be imported.';
+  String get importReviewIgnoreExplanation => 'Ignoring skips conflicts only. New goods and missing values will still be imported.';
 
   @override
   String get importReviewIgnoreRow => 'Ignore this row';
@@ -12603,48 +11677,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String get importMatchPathName => 'Same category and name';
 
   @override
-  String importReviewSummary(
-    int added,
-    int filled,
-    int conflicts,
-    int unchanged,
-  ) {
+  String importReviewSummary(int added, int filled, int conflicts, int unchanged) {
     return 'New $added, fill $filled, conflicts $conflicts, unchanged $unchanged';
   }
 
   @override
-  String importResultSummary(
-    int created,
-    int filled,
-    int updated,
-    int ignored,
-    int unchanged,
-  ) {
+  String importResultSummary(int created, int filled, int updated, int ignored, int unchanged) {
     return 'Created $created, filled $filled, replaced $updated, ignored $ignored, unchanged $unchanged';
   }
 
   @override
-  String get bomImportMergeLabel =>
-      'Merge and review (keep components outside this file)';
+  String get bomImportMergeLabel => 'Merge and review (keep components outside this file)';
 
   @override
   String get importReviewUnchanged => 'No change';
 
   @override
-  String get goodsImportTemplateHint =>
-      'Use an exported goods file to create or update records. Category (join its path with -) and goods name are required; code may be blank. Keep the system identifier when updating. A blank code keeps the original; an unused new code goes to review. Clear the system identifier for a new row and optionally enter a new code. Reused codes require the system identifier to confirm the current goods.';
+  String get goodsImportTemplateHint => 'Use an exported goods file to create or update records. Category (join its path with -) and goods name are required; code may be blank. Keep the system identifier when updating. A blank code keeps the original; an unused new code goes to review. Clear the system identifier for a new row and optionally enter a new code. Reused codes require the system identifier to confirm the current goods.';
 
   @override
-  String get goodsImportMergeHint =>
-      'The system identifier selects the original goods. Without it, the code selects existing goods; a new code can create goods with the same name and different colors or materials. Only when both identifier and code are blank does a unique category/name match apply; multiple matches require a code or identifier. Missing values are filled automatically; review other differences on the full page and choose replace or ignore. Blank cells keep existing values. Deleted goods with the same code are restored from the file.';
+  String get goodsImportMergeHint => 'The system identifier selects the original goods. Without it, the code selects existing goods; a new code can create goods with the same name and different colors or materials. Only when both identifier and code are blank does a unique category/name match apply; multiple matches require a code or identifier. Missing values are filled automatically; review other differences on the full page and choose replace or ignore. Blank cells keep existing values. Deleted goods with the same code are restored from the file.';
 
   @override
-  String get goodsImportUndoHint =>
-      'Use Undo on the toolbar for ordinary imported data. If a code changed, select a version in Change history to restore it under the current code rules.';
+  String get goodsImportUndoHint => 'Use Undo on the toolbar for ordinary imported data. If a code changed, select a version in Change history to restore it under the current code rules.';
 
   @override
-  String get dropdownMoveResizeHint =>
-      'Drag here to move; drag an edge to resize';
+  String get dropdownMoveResizeHint => 'Drag here to move; drag an edge to resize';
 
   @override
   String get dropdownResetGeometry => 'Restore automatic size and position';
@@ -12667,8 +11725,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bomAddChildComponent => 'Add child component';
 
   @override
-  String get bomSelectParentFirst =>
-      'Select one component to use as the parent first';
+  String get bomSelectParentFirst => 'Select one component to use as the parent first';
 
   @override
   String get bomNewComponentRow => 'New component';
@@ -12683,12 +11740,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get masterInlineApplyDraft => 'Apply to table';
 
   @override
-  String get masterInlineCreateUncertain =>
-      'The creation result is unconfirmed. Refresh and check first; resubmission of this row is paused to prevent duplicates.';
+  String get masterInlineCreateUncertain => 'The creation result is unconfirmed. Refresh and check first; resubmission of this row is paused to prevent duplicates.';
 
   @override
-  String get masterInlineCreateNotAllowed =>
-      'Create access or the current category changed. Refresh before entering more records.';
+  String get masterInlineCreateNotAllowed => 'Create access or the current category changed. Refresh before entering more records.';
 
   @override
   String get masterInlineNewRowHint => 'New record';
@@ -12697,15 +11752,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get importRedetectCurrent => 'Check this file again';
 
   @override
-  String get importRedetectRequired =>
-      'Check this file again before submitting';
+  String get importRedetectRequired => 'Check this file again before submitting';
 
   @override
   String get importRetryPrevious => 'Retry previous submission';
 
   @override
-  String get importFilesTransactionNote =>
-      'Select multiple files to check and import in order. Each file is saved independently; later failures or closing do not undo successful files.';
+  String get importFilesTransactionNote => 'Select multiple files to check and import in order. Each file is saved independently; later failures or closing do not undo successful files.';
 
   @override
   String importFilesCompleted(int completed, int total) {
@@ -12718,16 +11771,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get importFilesPaused =>
-      'This file is paused. Continue reviewing to resume; later files have not been processed.';
+  String get importFilesPaused => 'This file is paused. Continue reviewing to resume; later files have not been processed.';
 
   @override
-  String get importFilesFailed =>
-      'This file did not finish and the queue is paused. Check it again or select files again.';
+  String get importFilesFailed => 'This file did not finish and the queue is paused. Check it again or select files again.';
 
   @override
-  String get importFilesCloseNote =>
-      'Closing abandons unprocessed files and keeps successful imports. Selecting files again replaces only the unprocessed queue.';
+  String get importFilesCloseNote => 'Closing abandons unprocessed files and keeps successful imports. Selecting files again replaces only the unprocessed queue.';
 
   @override
   String importFilesOutcome(String filename, String summary) {
@@ -12741,35 +11791,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get importFilesFinished => 'All selected files have been processed';
 
   @override
-  String get orderClosureUnverifiedQuantity =>
-      'Legacy quantities are unverified. Ending this order stops future fulfillment and keeps the original quantities and recorded activity. Remaining quantities cannot be calculated or reordered.';
+  String get orderClosureUnverifiedQuantity => 'Legacy quantities are unverified. Ending this order stops future fulfillment and keeps the original quantities and recorded activity. Remaining quantities cannot be calculated or reordered.';
 
   @override
   String get orderClosureHandleBlocker => 'Open the related task';
 
   @override
-  String get orderClosureContactQuality =>
-      'An authorized quality reviewer must complete this order\'s inspection before the end request can be reviewed again.';
+  String get orderClosureContactQuality => 'An authorized quality reviewer must complete this order\'s inspection before the end request can be reviewed again.';
 
   @override
-  String get orderClosureContactWarehouse =>
-      'Authorized warehouse staff must finish this order\'s receipt, return or physical disposition before reviewing the end request again.';
+  String get orderClosureContactWarehouse => 'Authorized warehouse staff must finish this order\'s receipt, return or physical disposition before reviewing the end request again.';
 
   @override
-  String get orderClosureContactSubcontract =>
-      'Authorized subcontract staff must review this order\'s material tasks before reviewing the end request again.';
+  String get orderClosureContactSubcontract => 'Authorized subcontract staff must review this order\'s material tasks before reviewing the end request again.';
 
   @override
-  String get orderClosureContactFinance =>
-      'An authorized finance reviewer must resolve this order\'s current review before reviewing the end request again.';
+  String get orderClosureContactFinance => 'An authorized finance reviewer must resolve this order\'s current review before reviewing the end request again.';
 
   @override
-  String get orderClosureQualityPreserved =>
-      'Physical goods under inspection and their inspection tasks remain active. Requesting an end does not cancel inspection or treat unchecked goods as resolved.';
+  String get orderClosureQualityPreserved => 'Physical goods under inspection and their inspection tasks remain active. Requesting an end does not cancel inspection or treat unchecked goods as resolved.';
 
   @override
-  String get orderClosureRejectHint =>
-      'This decision rejects the end request. The original order continues under its approved terms. The applicant can review the reason and submit a new end request.';
+  String get orderClosureRejectHint => 'This decision rejects the end request. The original order continues under its approved terms. The applicant can review the reason and submit a new end request.';
 
   @override
   String get orderClosureAction => 'Cancel/end order';
@@ -12778,16 +11821,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get orderClosureBatchAction => 'Cancel/end selected orders';
 
   @override
-  String get orderClosureEligibilityChecking =>
-      'Checking the selected orders with the server. Please wait.';
+  String get orderClosureEligibilityChecking => 'Checking the selected orders with the server. Please wait.';
 
   @override
-  String get orderClosureEligibilityFailed =>
-      'Eligibility could not be checked. Refresh or select the orders again.';
+  String get orderClosureEligibilityFailed => 'Eligibility could not be checked. Refresh or select the orders again.';
 
   @override
-  String get orderClosureNoEligibleOrders =>
-      'None of the selected orders can currently be processed. Resolve their pending tasks and select them again.';
+  String get orderClosureNoEligibleOrders => 'None of the selected orders can currently be processed. Resolve their pending tasks and select them again.';
 
   @override
   String get orderClosureEligibleOrders => 'Eligible orders';
@@ -12796,12 +11836,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get orderClosureUnavailableOrders => 'Unavailable orders';
 
   @override
-  String get orderClosureEligibleOnlyConfirm =>
-      'I confirm that only the eligible orders above will be submitted; unavailable items will remain unchanged';
+  String get orderClosureEligibleOnlyConfirm => 'I confirm that only the eligible orders above will be submitted; unavailable items will remain unchanged';
 
   @override
-  String get orderClosureUnsupportedRowReason =>
-      'This record is not an order eligible for an end request and will remain unchanged.';
+  String get orderClosureUnsupportedRowReason => 'This record is not an order eligible for an end request and will remain unchanged.';
 
   @override
   String get orderClosureBusy => 'An operation is in progress. Please wait.';
@@ -12810,79 +11848,64 @@ class AppLocalizationsEn extends AppLocalizations {
   String get orderClosureSelectOrders => 'Select the orders to cancel or end.';
 
   @override
-  String get orderClosureSelectionChanged =>
-      'The selected tasks changed. Refresh and select them again.';
+  String get orderClosureSelectionChanged => 'The selected tasks changed. Refresh and select them again.';
 
   @override
-  String get orderClosureOrdersOnly =>
-      'The selection includes requests or other records. Select only the orders to end.';
+  String get orderClosureOrdersOnly => 'The selection includes requests or other records. Select only the orders to end.';
 
   @override
   String get orderClosureBatchLimit => 'Select at most 50 orders at a time.';
 
   @override
-  String get orderClosureMissingPermission =>
-      'Finance submission permission is required. Contact your administrator.';
+  String get orderClosureMissingPermission => 'Finance submission permission is required. Contact your administrator.';
 
   @override
-  String get orderClosureWholeOrderHint =>
-      'The request covers each entire order, including all its lines. Selecting several goods lines from one order creates one request. Both options require finance approval and retain historical records.';
+  String get orderClosureWholeOrderHint => 'The request covers each entire order, including all its lines. Selecting several goods lines from one order creates one request. Both options require finance approval and retain historical records.';
 
   @override
-  String get orderClosureAlreadyPending =>
-      'This order already has a pending finance review. Resolve it first.';
+  String get orderClosureAlreadyPending => 'This order already has a pending finance review. Resolve it first.';
 
   @override
-  String get orderClosureAlreadyEnded =>
-      'This order has already ended and cannot be submitted again.';
+  String get orderClosureAlreadyEnded => 'This order has already ended and cannot be submitted again.';
 
   @override
-  String get orderClosureReadOnly =>
-      'This document is read-only. Its creator or a user with write scope must perform this action.';
+  String get orderClosureReadOnly => 'This document is read-only. Its creator or a user with write scope must perform this action.';
 
   @override
-  String get orderClosureApprovalHint =>
-      'Both options take effect only after finance approval. Existing receipt, inventory and accounting records are retained, and subcontract material custody still requires resolution. Fulfillment changes require a new review.';
+  String get orderClosureApprovalHint => 'Both options take effect only after finance approval. Existing receipt, inventory and accounting records are retained, and subcontract material custody still requires resolution. Fulfillment changes require a new review.';
 
   @override
-  String get orderClosureReceiptFinalityHint =>
-      'Complete receipt, return and quality dispositions before ending the order. After approval, the confirmed received quantities cannot be changed directly.';
+  String get orderClosureReceiptFinalityHint => 'Complete receipt, return and quality dispositions before ending the order. After approval, the confirmed received quantities cannot be changed directly.';
 
   @override
-  String get orderClosureCloseHint =>
-      'Approval ends remaining fulfillment and removes expected remaining deliveries.';
+  String get orderClosureCloseHint => 'Approval ends remaining fulfillment and removes expected remaining deliveries.';
 
   @override
   String get orderClosureReorder => 'End and reorder remaining quantities';
 
   @override
-  String get orderClosureReorderHint =>
-      'Approval creates a linked draft for the reviewed remaining quantities with the previous prices as reference. Choose a supplier, review the terms, then submit it for normal finance approval.';
+  String get orderClosureReorderHint => 'Approval creates a linked draft for the reviewed remaining quantities with the previous prices as reference. Choose a supplier, review the terms, then submit it for normal finance approval.';
 
   @override
   String get orderClosureReason => 'Reason for ending';
 
   @override
-  String get orderClosureReasonHint =>
-      'For example: supplier stopped delivery or legacy order no longer required';
+  String get orderClosureReasonHint => 'For example: supplier stopped delivery or legacy order no longer required';
 
   @override
-  String get orderClosureReasonRequired =>
-      'Enter a reason for ending the order';
+  String get orderClosureReasonRequired => 'Enter a reason for ending the order';
 
   @override
   String get orderClosureSubmit => 'Submit for finance approval';
 
   @override
-  String get orderClosureSubmitted =>
-      'End request submitted for finance approval; it takes effect after approval';
+  String get orderClosureSubmitted => 'End request submitted for finance approval; it takes effect after approval';
 
   @override
   String get orderClosureLoadFailed => 'Unable to load order end information';
 
   @override
-  String get orderClosureUnavailable =>
-      'This order cannot be ended in its current state. Refresh and check its status.';
+  String get orderClosureUnavailable => 'This order cannot be ended in its current state. Refresh and check its status.';
 
   @override
   String get orderClosureRemaining => 'Remaining ordered quantity';
@@ -12900,19 +11923,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get orderClosureRejected => 'End rejected';
 
   @override
-  String get orderClosureApproveHint =>
-      'Approval ends remaining fulfillment on the original order. Reordering creates a linked draft with reference prices. Choose its supplier, review the terms, then submit it for approval. Inventory and accounting records are retained, and material custody still requires resolution.';
+  String get orderClosureApproveHint => 'Approval ends remaining fulfillment on the original order. Reordering creates a linked draft with reference prices. Choose its supplier, review the terms, then submit it for approval. Inventory and accounting records are retained, and material custody still requires resolution.';
 
   @override
   String get orderClosureReviewTitle => 'Order end request';
 
   @override
-  String get orderClosureApprovedToast =>
-      'End request approved; remaining fulfillment on the original order has ended';
+  String get orderClosureApprovedToast => 'End request approved; remaining fulfillment on the original order has ended';
 
   @override
-  String get orderClosureBatchHint =>
-      'Selection includes end requests. Approval ends remaining fulfillment and creates new drafts where requested. Review each reason and remaining quantity.';
+  String get orderClosureBatchHint => 'Selection includes end requests. Approval ends remaining fulfillment and creates new drafts where requested. Review each reason and remaining quantity.';
 
   @override
   String get companyFilesTitle => 'Company library';
@@ -12984,10 +12004,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get companyFilesRestore => 'Restore';
 
   @override
-  String get companyFilesAccess => 'Folder access';
+  String get companyFilesAccess => 'Access permissions';
 
   @override
-  String get companyFilesPassword => 'Folder password';
+  String get companyFilesPassword => 'Access password';
 
   @override
   String get companyFilesUnlock => 'Unlock';
@@ -13014,8 +12034,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get companyFilesEmpty => 'This folder is empty';
 
   @override
-  String get companyFilesEmptyHint =>
-      'Add documents using the toolbar or drop files here when you have permission.';
+  String get companyFilesEmptyHint => 'Use the bottom-right actions, right-click empty space, or drop files here when you have permission.';
 
   @override
   String get companyFilesNoResults => 'No matching documents';
@@ -13024,8 +12043,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get companyFilesTrashEmpty => 'Recycle bin is empty';
 
   @override
-  String get companyFilesTrashHint =>
-      'Deleted documents retain their originals and can be restored by authorized staff.';
+  String get companyFilesTrashHint => 'Deleted documents retain their originals and can be restored by authorized staff.';
 
   @override
   String get companyFilesLoading => 'Loading documents…';
@@ -13067,19 +12085,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get companyFilesProtected => 'Password protected';
 
   @override
-  String get companyFilesLocked => 'This folder requires a password';
+  String get companyFilesLocked => 'This item requires a password';
 
   @override
-  String get companyFilesLockedHint =>
-      'Folder permissions still apply. Unlocking is temporary and limited to this session.';
+  String get companyFilesLockedHint => 'Access rules still apply. Unlocking is temporary and limited to this session.';
 
   @override
-  String get companyFilesDeleteHint =>
-      'The folder and all its contents will move to the recycle bin. Originals are retained and current permissions apply after restoration.';
+  String get companyFilesDeleteHint => 'The folder and all its contents will move to the recycle bin. Originals are retained and current permissions apply after restoration.';
 
   @override
-  String get companyFilesPasswordHint =>
-      'A password adds protection and does not replace access permissions. Changing it invalidates temporary unlocks.';
+  String get companyFilesPasswordHint => 'The password adds protection to this item and does not replace access rules. Changing it invalidates temporary unlocks.';
 
   @override
   String get companyFilesNewPassword => 'New password';
@@ -13109,8 +12124,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get companyFilesParent => 'Parent folder';
 
   @override
-  String get companyFilesAccessHint =>
-      'Actions require both global permissions and folder access. Deny rules take priority; inherited rules continue to apply.';
+  String get companyFilesAccessHint => 'These rules apply only to this item and inherited children; system grants are unchanged. Deny rules take priority and existing action permissions still apply.';
 
   @override
   String get companyFilesInherit => 'Inherit parent permissions';
@@ -13131,8 +12145,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get companyFilesDepartment => 'Department';
 
   @override
-  String get companyFilesPrincipalSearch =>
-      'Search a name, employee number or department';
+  String get companyFilesPrincipalSearch => 'Search a name, employee number or department';
 
   @override
   String get companyFilesRead => 'View';
@@ -13180,8 +12193,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get companyFilesStopped => 'Stopped';
 
   @override
-  String get companyFilesQueueHint =>
-      'Files are uploaded and scanned one at a time. Closing the queue keeps saved documents.';
+  String get companyFilesQueueHint => 'Files are uploaded and scanned one at a time. Closing the queue keeps saved documents.';
 
   @override
   String get companyFilesUnsupported => 'Unsupported file type';
@@ -13190,19 +12202,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get companyFilesTooLarge => 'File exceeds the upload limit';
 
   @override
-  String get companyFilesBatchTooLarge =>
-      'Select no more than 100 MB at a time';
+  String get companyFilesBatchTooLarge => 'Select no more than 100 MB at a time';
 
   @override
-  String get companyFilesUnreadable =>
-      'Unable to read the file; select it again';
+  String get companyFilesUnreadable => 'Unable to read the file; select it again';
 
   @override
   String get companyFilesDropHint => 'Drop to upload into this folder';
 
   @override
-  String get companyFilesDragHint =>
-      'In custom order, hold and drag to reorder; in other orders, drop onto a folder to move.';
+  String get companyFilesDragHint => 'In custom order, hold and drag to reorder; in other orders, drop onto a folder to move.';
 
   @override
   String get companyFilesSavedTo => 'File saved';
@@ -13211,12 +12220,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get companyFilesNoAccess => 'No available actions';
 
   @override
-  String get companyFilesPermissionDenied =>
-      'Access changed; refresh and try again';
+  String get companyFilesPermissionDenied => 'Access changed; refresh and try again';
 
   @override
-  String get companyFilesUnknownHint =>
-      'The request may have been saved. Check its result before uploading again.';
+  String get companyFilesUnknownHint => 'The request may have been saved. Check its result before uploading again.';
 
   @override
   String get companyFilesUp => 'Move one position earlier';
@@ -13237,22 +12244,131 @@ class AppLocalizationsEn extends AppLocalizations {
   String get companyFilesNext => 'Next page';
 
   @override
-  String get companyFilesDuplicateRule =>
-      'Allow and deny rules already exist for this person or department; edit the existing rules.';
+  String get companyFilesDuplicateRule => 'Allow and deny rules already exist for this person or department; edit the existing rules.';
 
   @override
-  String get companyFilesRuleActionsRequired =>
-      'Select at least one action for each rule.';
+  String get companyFilesRuleActionsRequired => 'Select at least one action for each rule.';
 
   @override
-  String get companyFilesPreviewUnavailable =>
-      'Online preview is unavailable. Download the original to view it.';
+  String get companyFilesPreviewUnavailable => 'Online preview is unavailable. Download the original to view it.';
 
   @override
-  String get companyFilesResumeName =>
-      'Select the original with the same name as the incomplete upload.';
+  String get companyFilesResumeName => 'Select the original with the same name as the incomplete upload.';
 
   @override
-  String get companyFilesKeepExtension =>
-      'Keep the original extension when renaming to preserve how the file opens.';
+  String get companyFilesKeepExtension => 'Keep the original extension when renaming to preserve how the file opens.';
+
+  @override
+  String get companyFilesEntryAccessTitle => 'Document access';
+
+  @override
+  String get companyFilesEntryAccessHint => 'These settings apply only to this file or folder and do not change system permissions.';
+
+  @override
+  String get companyFilesWhoCanRead => 'Who can read';
+
+  @override
+  String get companyFilesInheritEntryAccess => 'Inherit the parent folder\'s access';
+
+  @override
+  String get companyFilesSpecificReaders => 'Choose people or departments';
+
+  @override
+  String get companyFilesSpecificReadersHint => 'Selected people and departments can read; departments include their descendants. Parent denies still apply. The creator keeps only their existing operation rights.';
+
+  @override
+  String get companyFilesAllowedReaders => 'Allowed readers';
+
+  @override
+  String get companyFilesDeniedReaders => 'Denied readers';
+
+  @override
+  String get companyFilesAddReader => 'Add people or departments';
+
+  @override
+  String get companyFilesNoReadersSelected => 'No additional readers selected';
+
+  @override
+  String get companyFilesEntryPasswordTitle => 'Document password';
+
+  @override
+  String get companyFilesSetInitialPassword => 'Add password protection';
+
+  @override
+  String get companyFilesEntryPasswordHint => 'A password adds protection; this document\'s people and department access still applies.';
+
+  @override
+  String get companyFilesPasswordByteLimit => 'Use at least 8 characters and no more than 72 UTF-8 bytes';
+
+  @override
+  String get companyFilesUploadAccessTitle => 'Access for uploaded files';
+
+  @override
+  String get companyFilesUploadAccessHint => 'These settings are saved separately on each selected file and can be changed individually later.';
+
+  @override
+  String get companyFilesSelectedFiles => 'Selected files';
+
+  @override
+  String get companyFilesCreateAccessHint => 'The name, access and password are saved together before the document appears.';
+
+  @override
+  String get companyFilesAccessOperationsHint => 'These rules limit actions on this document and do not grant system capabilities.';
+
+  @override
+  String get companyFilesAccessRuleLimit => 'Use no more than 100 access rules per document';
+
+  @override
+  String get companyFilesPasteCopyTitle => 'Paste a file copy';
+
+  @override
+  String get companyFilesPasteCopyHint => 'The copy gets its own access and password in the destination folder. Protection settings from the original are not copied.';
+
+  @override
+  String get companyFilesNameTooLong => 'Use no more than 180 characters for the name';
+
+  @override
+  String get companyFilesDescriptionTooLong => 'Use no more than 2000 characters for the description';
+
+  @override
+  String get companyFilesCopy => 'Copy file';
+
+  @override
+  String get companyFilesCut => 'Cut';
+
+  @override
+  String get companyFilesPaste => 'Paste';
+
+  @override
+  String get companyFilesClearClipboard => 'Clear copied or cut item';
+
+  @override
+  String get companyFilesCopySuffix => 'Copy';
+
+  @override
+  String get companyFilesCopied => 'Copied; paste into the destination folder';
+
+  @override
+  String get companyFilesCutReady => 'Cut; paste to move into the destination folder';
+
+  @override
+  String get companyFilesClipboardUnavailable => 'The source changed or is unavailable; select it again';
+
+  @override
+  String get companyFilesSameFolder => 'The item is already in this folder';
+
+  @override
+  String get companyFilesShowDirectory => 'Expand navigation';
+
+  @override
+  String get companyFilesHideDirectory => 'Collapse navigation';
+
+  @override
+  String get companyFilesDirectory => 'Navigation';
+
+  @override
+  String get companyFilesMore => 'More actions';
+
+  @override
+  String get companyFilesPreview => 'Preview file';
 }

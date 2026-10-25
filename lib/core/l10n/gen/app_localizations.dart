@@ -22391,13 +22391,13 @@ abstract class AppLocalizations {
   /// No description provided for @companyFilesAccess.
   ///
   /// In zh, this message translates to:
-  /// **'文件夹权限'**
+  /// **'访问权限'**
   String get companyFilesAccess;
 
   /// No description provided for @companyFilesPassword.
   ///
   /// In zh, this message translates to:
-  /// **'文件夹密码'**
+  /// **'访问密码'**
   String get companyFilesPassword;
 
   /// No description provided for @companyFilesUnlock.
@@ -22451,7 +22451,7 @@ abstract class AppLocalizations {
   /// No description provided for @companyFilesEmptyHint.
   ///
   /// In zh, this message translates to:
-  /// **'有上传或创建权限时，可以从上方添加资料，也可以将文件拖到这里。'**
+  /// **'有上传或创建权限时，可用右下角按钮添加资料，也可右键空白处或拖入文件。'**
   String get companyFilesEmptyHint;
 
   /// No description provided for @companyFilesNoResults.
@@ -22553,13 +22553,13 @@ abstract class AppLocalizations {
   /// No description provided for @companyFilesLocked.
   ///
   /// In zh, this message translates to:
-  /// **'此文件夹需要密码'**
+  /// **'此资料需要密码'**
   String get companyFilesLocked;
 
   /// No description provided for @companyFilesLockedHint.
   ///
   /// In zh, this message translates to:
-  /// **'目录权限仍然有效。解锁只在当前登录会话中临时生效。'**
+  /// **'独立访问范围仍然有效。解锁只在当前登录会话中临时生效。'**
   String get companyFilesLockedHint;
 
   /// No description provided for @companyFilesDeleteHint.
@@ -22571,7 +22571,7 @@ abstract class AppLocalizations {
   /// No description provided for @companyFilesPasswordHint.
   ///
   /// In zh, this message translates to:
-  /// **'密码只作为额外保护，不能替代人员授权。设置或修改后，所有临时解锁会失效。'**
+  /// **'密码是当前资料的额外保护，不代替人员或部门授权。修改密码后，所有临时解锁失效。'**
   String get companyFilesPasswordHint;
 
   /// No description provided for @companyFilesNewPassword.
@@ -22631,7 +22631,7 @@ abstract class AppLocalizations {
   /// No description provided for @companyFilesAccessHint.
   ///
   /// In zh, this message translates to:
-  /// **'操作同时受总权限和文件夹规则约束。拒绝规则优先；继承开启时，上级规则继续生效。'**
+  /// **'这些规则只适用于当前资料及其继承项，不会修改系统授权。拒绝规则优先；操作仍需已获授的使用资格。'**
   String get companyFilesAccessHint;
 
   /// No description provided for @companyFilesInherit.
@@ -22897,6 +22897,234 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'重命名时请保留原扩展名，避免改变文件的打开方式。'**
   String get companyFilesKeepExtension;
+
+  /// No description provided for @companyFilesEntryAccessTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'资料访问权限'**
+  String get companyFilesEntryAccessTitle;
+
+  /// No description provided for @companyFilesEntryAccessHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅影响这份文件或文件夹，不会修改系统总权限。'**
+  String get companyFilesEntryAccessHint;
+
+  /// No description provided for @companyFilesWhoCanRead.
+  ///
+  /// In zh, this message translates to:
+  /// **'谁可以查看'**
+  String get companyFilesWhoCanRead;
+
+  /// No description provided for @companyFilesInheritEntryAccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'继承所在文件夹的访问范围'**
+  String get companyFilesInheritEntryAccess;
+
+  /// No description provided for @companyFilesSpecificReaders.
+  ///
+  /// In zh, this message translates to:
+  /// **'指定人员或部门'**
+  String get companyFilesSpecificReaders;
+
+  /// No description provided for @companyFilesSpecificReadersHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'向指定人员及部门开放阅读，所选部门包含下级。上级拒绝仍有效，创建者保留原本已有的操作权限。'**
+  String get companyFilesSpecificReadersHint;
+
+  /// No description provided for @companyFilesAllowedReaders.
+  ///
+  /// In zh, this message translates to:
+  /// **'允许查看'**
+  String get companyFilesAllowedReaders;
+
+  /// No description provided for @companyFilesDeniedReaders.
+  ///
+  /// In zh, this message translates to:
+  /// **'禁止查看'**
+  String get companyFilesDeniedReaders;
+
+  /// No description provided for @companyFilesAddReader.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加人员或部门'**
+  String get companyFilesAddReader;
+
+  /// No description provided for @companyFilesNoReadersSelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未指定其他阅读人员或部门'**
+  String get companyFilesNoReadersSelected;
+
+  /// No description provided for @companyFilesEntryPasswordTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'资料密码'**
+  String get companyFilesEntryPasswordTitle;
+
+  /// No description provided for @companyFilesSetInitialPassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加密码保护'**
+  String get companyFilesSetInitialPassword;
+
+  /// No description provided for @companyFilesEntryPasswordHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码是额外保护，仍会检查本资料的人员和部门访问范围。'**
+  String get companyFilesEntryPasswordHint;
+
+  /// No description provided for @companyFilesPasswordByteLimit.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码至少 8 个字符，UTF-8 长度不超过 72 字节'**
+  String get companyFilesPasswordByteLimit;
+
+  /// No description provided for @companyFilesUploadAccessTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传文件的访问设置'**
+  String get companyFilesUploadAccessTitle;
+
+  /// No description provided for @companyFilesUploadAccessHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'此设置会分别保存到本次选择的每份文件，之后可单独修改。'**
+  String get companyFilesUploadAccessHint;
+
+  /// No description provided for @companyFilesSelectedFiles.
+  ///
+  /// In zh, this message translates to:
+  /// **'已选文件'**
+  String get companyFilesSelectedFiles;
+
+  /// No description provided for @companyFilesCreateAccessHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'名称、访问范围和密码将一并保存，创建成功后才会显示资料。'**
+  String get companyFilesCreateAccessHint;
+
+  /// No description provided for @companyFilesAccessOperationsHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'这些规则只限制本资料的操作范围，不会授予系统功能权限。'**
+  String get companyFilesAccessOperationsHint;
+
+  /// No description provided for @companyFilesAccessRuleLimit.
+  ///
+  /// In zh, this message translates to:
+  /// **'每份资料最多设置 100 条访问规则'**
+  String get companyFilesAccessRuleLimit;
+
+  /// No description provided for @companyFilesPasteCopyTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'粘贴文件副本'**
+  String get companyFilesPasteCopyTitle;
+
+  /// No description provided for @companyFilesPasteCopyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'副本会按目标文件夹重新设置访问范围和密码，不会复制原文件的保护设置。'**
+  String get companyFilesPasteCopyHint;
+
+  /// No description provided for @companyFilesNameTooLong.
+  ///
+  /// In zh, this message translates to:
+  /// **'名称最多 180 个字符'**
+  String get companyFilesNameTooLong;
+
+  /// No description provided for @companyFilesDescriptionTooLong.
+  ///
+  /// In zh, this message translates to:
+  /// **'说明最多 2000 个字符'**
+  String get companyFilesDescriptionTooLong;
+
+  /// No description provided for @companyFilesCopy.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制文件'**
+  String get companyFilesCopy;
+
+  /// No description provided for @companyFilesCut.
+  ///
+  /// In zh, this message translates to:
+  /// **'剪切'**
+  String get companyFilesCut;
+
+  /// No description provided for @companyFilesPaste.
+  ///
+  /// In zh, this message translates to:
+  /// **'粘贴'**
+  String get companyFilesPaste;
+
+  /// No description provided for @companyFilesClearClipboard.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消复制或剪切'**
+  String get companyFilesClearClipboard;
+
+  /// No description provided for @companyFilesCopySuffix.
+  ///
+  /// In zh, this message translates to:
+  /// **'副本'**
+  String get companyFilesCopySuffix;
+
+  /// No description provided for @companyFilesCopied.
+  ///
+  /// In zh, this message translates to:
+  /// **'已复制，可到目标文件夹粘贴'**
+  String get companyFilesCopied;
+
+  /// No description provided for @companyFilesCutReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'已剪切，粘贴后移动到目标文件夹'**
+  String get companyFilesCutReady;
+
+  /// No description provided for @companyFilesClipboardUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源资料已变化或无权访问，请重新选择'**
+  String get companyFilesClipboardUnavailable;
+
+  /// No description provided for @companyFilesSameFolder.
+  ///
+  /// In zh, this message translates to:
+  /// **'资料已在当前文件夹'**
+  String get companyFilesSameFolder;
+
+  /// No description provided for @companyFilesShowDirectory.
+  ///
+  /// In zh, this message translates to:
+  /// **'展开目录'**
+  String get companyFilesShowDirectory;
+
+  /// No description provided for @companyFilesHideDirectory.
+  ///
+  /// In zh, this message translates to:
+  /// **'收起目录'**
+  String get companyFilesHideDirectory;
+
+  /// No description provided for @companyFilesDirectory.
+  ///
+  /// In zh, this message translates to:
+  /// **'目录'**
+  String get companyFilesDirectory;
+
+  /// No description provided for @companyFilesMore.
+  ///
+  /// In zh, this message translates to:
+  /// **'更多操作'**
+  String get companyFilesMore;
+
+  /// No description provided for @companyFilesPreview.
+  ///
+  /// In zh, this message translates to:
+  /// **'预览文件'**
+  String get companyFilesPreview;
 }
 
 class _AppLocalizationsDelegate

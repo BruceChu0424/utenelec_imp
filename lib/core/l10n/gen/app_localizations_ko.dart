@@ -12526,10 +12526,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get companyFilesRestore => '복원';
 
   @override
-  String get companyFilesAccess => '폴더 접근 권한';
+  String get companyFilesAccess => '접근 권한';
 
   @override
-  String get companyFilesPassword => '폴더 암호';
+  String get companyFilesPassword => '접근 암호';
 
   @override
   String get companyFilesUnlock => '잠금 해제';
@@ -12557,7 +12557,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get companyFilesEmptyHint =>
-      '업로드 또는 생성 권한이 있으면 위 도구 모음에서 자료를 추가하거나 여기에 파일을 놓을 수 있습니다.';
+      '권한이 있으면 오른쪽 아래 작업, 빈 공간 우클릭 또는 파일 끌어 놓기로 자료를 추가할 수 있습니다.';
 
   @override
   String get companyFilesNoResults => '일치하는 자료가 없습니다';
@@ -12608,11 +12608,11 @@ class AppLocalizationsKo extends AppLocalizations {
   String get companyFilesProtected => '암호로 보호됨';
 
   @override
-  String get companyFilesLocked => '이 폴더에는 암호가 필요합니다';
+  String get companyFilesLocked => '이 자료에는 암호가 필요합니다';
 
   @override
   String get companyFilesLockedHint =>
-      '폴더 접근 권한은 계속 적용됩니다. 잠금 해제는 현재 로그인 세션에서만 일시적으로 유효합니다.';
+      '접근 규칙은 계속 적용됩니다. 잠금 해제는 현재 로그인 세션에서만 일시적으로 유효합니다.';
 
   @override
   String get companyFilesDeleteHint =>
@@ -12620,7 +12620,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get companyFilesPasswordHint =>
-      '암호는 추가 보호 수단이며 사용자 권한을 대체하지 않습니다. 암호를 변경하면 모든 임시 잠금 해제가 만료됩니다.';
+      '암호는 이 자료의 추가 보호 수단이며 접근 규칙을 대체하지 않습니다. 변경하면 임시 잠금 해제가 만료됩니다.';
 
   @override
   String get companyFilesNewPassword => '새 암호';
@@ -12651,7 +12651,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get companyFilesAccessHint =>
-      '작업에는 전체 권한과 폴더 규칙이 모두 적용됩니다. 거부 규칙이 우선하며 상속을 켜면 상위 규칙도 적용됩니다.';
+      '이 규칙은 현재 자료와 상속 항목에만 적용되며 시스템 권한은 변경하지 않습니다. 거부 규칙과 기존 작업 권한이 적용됩니다.';
 
   @override
   String get companyFilesInherit => '상위 폴더 권한 상속';
@@ -12789,4 +12789,127 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get companyFilesKeepExtension =>
       '이름을 바꿀 때 파일이 열리는 방식이 바뀌지 않도록 원래 확장자를 유지하세요.';
+
+  @override
+  String get companyFilesEntryAccessTitle => '자료 접근 권한';
+
+  @override
+  String get companyFilesEntryAccessHint =>
+      '이 설정은 이 파일 또는 폴더에만 적용되며 시스템 권한을 변경하지 않습니다.';
+
+  @override
+  String get companyFilesWhoCanRead => '열람 가능한 대상';
+
+  @override
+  String get companyFilesInheritEntryAccess => '상위 폴더의 접근 범위 상속';
+
+  @override
+  String get companyFilesSpecificReaders => '직원 또는 부서 지정';
+
+  @override
+  String get companyFilesSpecificReadersHint =>
+      '지정한 직원과 부서가 열람하며 선택한 부서의 하위 부서도 포함됩니다. 상위 거부 규칙은 유지되며 생성자는 원래 가진 작업 권한만 유지합니다.';
+
+  @override
+  String get companyFilesAllowedReaders => '열람 허용';
+
+  @override
+  String get companyFilesDeniedReaders => '열람 거부';
+
+  @override
+  String get companyFilesAddReader => '직원 또는 부서 추가';
+
+  @override
+  String get companyFilesNoReadersSelected => '추가 열람 대상이 지정되지 않았습니다';
+
+  @override
+  String get companyFilesEntryPasswordTitle => '자료 암호';
+
+  @override
+  String get companyFilesSetInitialPassword => '암호 보호 추가';
+
+  @override
+  String get companyFilesEntryPasswordHint =>
+      '암호는 추가 보호 수단이며 이 자료의 직원 및 부서 접근 범위는 계속 적용됩니다.';
+
+  @override
+  String get companyFilesPasswordByteLimit =>
+      '암호는 8자 이상, UTF-8 기준 72바이트 이하여야 합니다';
+
+  @override
+  String get companyFilesUploadAccessTitle => '업로드 파일 접근 설정';
+
+  @override
+  String get companyFilesUploadAccessHint =>
+      '이 설정은 선택한 각 파일에 별도로 저장되며 나중에 개별적으로 변경할 수 있습니다.';
+
+  @override
+  String get companyFilesSelectedFiles => '선택한 파일';
+
+  @override
+  String get companyFilesCreateAccessHint =>
+      '이름, 접근 범위 및 암호를 함께 저장한 후 자료가 표시됩니다.';
+
+  @override
+  String get companyFilesAccessOperationsHint =>
+      '이 규칙은 이 자료의 작업 범위만 제한하며 시스템 기능 권한을 부여하지 않습니다.';
+
+  @override
+  String get companyFilesAccessRuleLimit => '자료당 접근 규칙은 100개까지 설정할 수 있습니다';
+
+  @override
+  String get companyFilesPasteCopyTitle => '파일 사본 붙여넣기';
+
+  @override
+  String get companyFilesPasteCopyHint =>
+      '사본은 대상 폴더에서 접근 범위와 암호를 새로 설정합니다. 원본의 보호 설정은 복사되지 않습니다.';
+
+  @override
+  String get companyFilesNameTooLong => '이름은 180자 이하여야 합니다';
+
+  @override
+  String get companyFilesDescriptionTooLong => '설명은 2000자 이하여야 합니다';
+
+  @override
+  String get companyFilesCopy => '파일 복사';
+
+  @override
+  String get companyFilesCut => '잘라내기';
+
+  @override
+  String get companyFilesPaste => '붙여넣기';
+
+  @override
+  String get companyFilesClearClipboard => '복사 또는 잘라내기 취소';
+
+  @override
+  String get companyFilesCopySuffix => '복사본';
+
+  @override
+  String get companyFilesCopied => '복사되었습니다. 대상 폴더에 붙여넣으세요';
+
+  @override
+  String get companyFilesCutReady => '잘라냈습니다. 대상 폴더에 붙여넣어 이동하세요';
+
+  @override
+  String get companyFilesClipboardUnavailable =>
+      '원본이 변경되었거나 접근할 수 없습니다. 다시 선택하세요';
+
+  @override
+  String get companyFilesSameFolder => '이미 현재 폴더에 있습니다';
+
+  @override
+  String get companyFilesShowDirectory => '탐색 펼치기';
+
+  @override
+  String get companyFilesHideDirectory => '탐색 접기';
+
+  @override
+  String get companyFilesDirectory => '탐색';
+
+  @override
+  String get companyFilesMore => '추가 작업';
+
+  @override
+  String get companyFilesPreview => '파일 미리 보기';
 }

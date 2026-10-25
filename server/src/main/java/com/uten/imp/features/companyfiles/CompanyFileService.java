@@ -26,7 +26,7 @@ import java.util.*;
  * attachments.
  */
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
 @Transactional(readOnly = true)
 public class CompanyFileService {
     public static final String OWNER_TYPE = "COMPANY_FILE";
@@ -67,6 +67,13 @@ public class CompanyFileService {
     private final AttachmentAccessPort attachments;
     private final AuditService audit;
     private final CompanyFileUnlocks unlocks;
+    private final CompanyFileCreationFingerprint creationFingerprints;
+
+    /** Existing callers without initial access settings keep their constructor contract. */
+    public CompanyFileService(JdbcTemplate jdbc, SecurityContextCurrentUser currentUser,
+            AttachmentAccessPort attachments, AuditService audit, CompanyFileUnlocks unlocks) {
+        this(jdbc, currentUser, attachments, audit, unlocks, null);
+    }
 
     public Listing list(
             UUID parentId,
@@ -181,11 +188,15 @@ public class CompanyFileService {
     private Entry create(Create request, String kind) {
         treeLock();
         AuthUser user = user();
+        requireGlobal(user, "view");
         String action = kind.equals("FOLDER") ? "create" : "upload";
         requireGlobal(user, action);
         String name = validName(request.name());
         String description = validDescription(request.description());
-        String fingerprint = fingerprint(request.parentId(), kind, name, description);
+        InitialAccess access = request.access();
+        Map<String, Acl> initialRules = access == null ? Map.of() : validatedRules(access.rules(), true);
+        if (access != null && access.inheritPermissions() == null) throw invalid("请选择访问权限的继承方式");
+        String fingerprint = creationFingerprint(user, request, kind, name, description, initialRules);
         if (request.requestId() != null) {
             List<Map<String, Object>> previous =
                     jdbc.queryForList(
@@ -199,7 +210,8 @@ public class CompanyFileService {
                     throw conflict("这次上传标识已用于不同内容，请重新选择文件");
                 Scope existingScope = new Scope(user);
                 Node existing = existingScope.node((UUID) receipt.get("id"));
-                existingScope.require(existing, "view", false, true);
+                // A retry is a metadata receipt, not permission/password replacement or a fresh unlock.
+                existingScope.require(existing, "view", false, false);
                 return existingScope.entry(existing, false);
             }
         }
@@ -211,12 +223,25 @@ public class CompanyFileService {
             if (scope.chain(parent).size() >= MAX_DEPTH) throw invalid("文件夹最多支持 32 层");
         }
         capacity(request.parentId());
+        String passwordHash = access == null ? null : unlocks.hash(access.password());
+        boolean inherit = access == null || access.inheritPermissions();
+        if (access != null && !inherit) {
+            List<String> creatorActions = ACTIONS.stream()
+                    .filter(a -> parent == null ? has(user, a) : scope.can(parent, a, false, true)).toList();
+            String creatorKey = aclKey("USER", user.getId(), "ALLOW");
+            Acl selected = initialRules.get(creatorKey);
+            Set<String> combined = new TreeSet<>(creatorActions);
+            if (selected != null) combined.addAll(selected.actions);
+            initialRules.put(creatorKey, new Acl("USER", user.getId(), "ALLOW", List.copyOf(combined)));
+            if (initialRules.size() > 100)
+                throw invalid("最多设置 100 条访问规则，请为创建人的访问规则保留一个位置");
+        }
         UUID id = UUID.randomUUID();
         try {
             jdbc.update(
                     """
-                    INSERT INTO company_file_nodes(id,parent_id,kind,name,description,position,pending,created_by,updated_by,request_id,request_fingerprint)
-                    VALUES(?,?,?,?,?,coalesce((SELECT max(position)+1024 FROM company_file_nodes WHERE parent_id IS NOT DISTINCT FROM ?),1024),?,?,?,?,?)
+                    INSERT INTO company_file_nodes(id,parent_id,kind,name,description,position,pending,created_by,updated_by,request_id,request_fingerprint,inherit_permissions,password_hash)
+                    VALUES(?,?,?,?,?,coalesce((SELECT max(position)+1024 FROM company_file_nodes WHERE parent_id IS NOT DISTINCT FROM ?),1024),?,?,?,?,?,?,?)
                     """,
                     id,
                     request.parentId(),
@@ -228,12 +253,24 @@ public class CompanyFileService {
                     user.getId(),
                     user.getId(),
                     request.requestId(),
-                    fingerprint);
+                    fingerprint,
+                    inherit,
+                    passwordHash);
         } catch (DataIntegrityViolationException e) {
             throw conflict("同一目录已存在这个名称，请换一个名称");
         }
+        for (Acl rule : initialRules.values()) {
+            jdbc.update("INSERT INTO company_file_acl(node_id,subject_type,subject_id,effect,actions) VALUES(?,?,?,?,?::text[])",
+                    id, rule.subjectType, rule.subjectId, rule.effect, arrayLiteral(rule.actions));
+        }
+        Scope createdScope = new Scope(user);
+        Node created = createdScope.node(id);
+        if (!createdScope.can(created, "view", false, false)
+                || (kind.equals("FILE") && !createdScope.canPendingUpload(created))) {
+            throw invalid("这些访问设置会使您无法访问或完成新资料，请保留本人所需的访问权限");
+        }
         event(user, kind.equals("FOLDER") ? "create" : "upload_reserve", id);
-        return new Scope(user).entry(load(id), false);
+        return createdScope.entry(created, false);
     }
 
     @Transactional
@@ -242,14 +279,16 @@ public class CompanyFileService {
         AuthUser user = user();
         Scope s = new Scope(user);
         Node n = s.node(id);
-        s.require(n, "upload", false, true);
         if (!n.kind.equals("FILE")) throw invalid("只能确认文件上传");
         if (!n.createdBy.equals(user.getId()))
             throw new ApiException(ErrorCode.FORBIDDEN, "只能完成自己发起的上传");
         if (!n.pending) {
+            requireGlobal(user, "upload");
+            s.require(n, "view", false, false);
             if (request.attachmentId().equals(n.attachmentId)) return s.entry(n, false);
             throw conflict("这个文件已完成，不能替换原件");
         }
+        s.requirePendingUpload(n);
         checkVersion(n, request.version());
         AttachmentAccessPort.AttachmentView original =
                 attachments.listVisible(OWNER_TYPE, id).stream()
@@ -386,7 +425,7 @@ public class CompanyFileService {
         s.prime(values);
         for (Node child : values) {
             if (child.pending && child.createdBy.equals(u.getId()))
-                s.require(child, "upload", false, true);
+                s.requirePendingUpload(child);
             else s.require(child, "delete", false, true);
         }
         UUID batch = UUID.randomUUID();
@@ -441,7 +480,6 @@ public class CompanyFileService {
     public Permissions permissions(UUID id) {
         Scope s = new Scope(user());
         Node n = s.node(id);
-        requireFolder(n);
         s.require(n, "manage_permissions", false, true);
         return new Permissions(
                 n.inheritPermissions,
@@ -455,29 +493,11 @@ public class CompanyFileService {
         AuthUser u = user();
         Scope s = new Scope(u);
         Node n = s.node(id);
-        requireFolder(n);
         s.require(n, "manage_permissions", false, true);
         checkVersion(n, request.version());
         if (u.getImpersonatedBy() != null)
             throw new ApiException(ErrorCode.IMPERSONATION_READ_ONLY);
-        Map<String, Acl> desired = new LinkedHashMap<>();
-        for (Rule rule : request.rules()) {
-            if (!Set.of("USER", "DEPARTMENT").contains(rule.subjectType())
-                    || !Set.of("ALLOW", "DENY").contains(rule.effect())
-                    || rule.actions().isEmpty()
-                    || !ACTIONS.containsAll(rule.actions())
-                    || new HashSet<>(rule.actions()).size() != rule.actions().size())
-                throw invalid("目录授权规则无效");
-            String key = aclKey(rule.subjectType(), rule.subjectId(), rule.effect());
-            Acl value =
-                    new Acl(
-                            rule.subjectType(),
-                            rule.subjectId(),
-                            rule.effect(),
-                            rule.actions().stream().sorted().toList());
-            if (desired.putIfAbsent(key, value) != null) throw invalid("同一对象的相同授权类型不能重复");
-            principal(rule.subjectType(), rule.subjectId());
-        }
+        Map<String, Acl> desired = validatedRules(request.rules(), false);
         Map<String, Acl> existing = new LinkedHashMap<>();
         for (Acl rule : s.rules(id))
             existing.put(
@@ -488,7 +508,7 @@ public class CompanyFileService {
                             rule.effect,
                             rule.actions.stream().sorted().toList()));
         if (n.inheritPermissions == request.inheritPermissions() && existing.equals(desired))
-            return s.entry(n, false);
+            return s.can(n, "view", false, false) ? s.entry(n, false) : receipt(n);
         for (var row : existing.entrySet())
             if (!desired.containsKey(row.getKey())) {
                 Acl rule = row.getValue();
@@ -526,8 +546,7 @@ public class CompanyFileService {
         event(u, "permissions_set", id);
         Node updated = load(id);
         Scope refreshed = new Scope(u);
-        // The editor can deliberately remove their own access; return only the reviewed metadata
-        // receipt.
+        // Recovery authority or revoking one's own access never grants metadata visibility.
         return refreshed.can(updated, "view", false, false)
                 ? refreshed.entry(updated, false)
                 : receipt(updated);
@@ -539,7 +558,6 @@ public class CompanyFileService {
         AuthUser u = user();
         Scope s = new Scope(u);
         Node n = s.node(id);
-        requireFolder(n);
         s.require(n, "manage_permissions", false, true);
         checkVersion(n, request.version());
         if (u.getImpersonatedBy() != null)
@@ -554,7 +572,11 @@ public class CompanyFileService {
                 id);
         unlocks.invalidate(id);
         event(u, hash == null ? "password_clear" : "password_set", id);
-        return new Scope(u).entry(load(id), false);
+        Node updated = load(id);
+        Scope refreshed = new Scope(u);
+        return refreshed.can(updated, "view", false, false)
+                ? refreshed.entry(updated, false)
+                : receipt(updated);
     }
 
     @Transactional
@@ -562,7 +584,6 @@ public class CompanyFileService {
         AuthUser u = user();
         Scope s = new Scope(u);
         Node n = s.node(id);
-        requireFolder(n);
         s.require(n, "view", n.deleted, false);
         // Unlock ancestors first; a known child UUID cannot skip an ancestor password.
         for (Node ancestor : s.chain(n))
@@ -586,7 +607,9 @@ public class CompanyFileService {
 
     public List<Principal> principals(String type, String search) {
         AuthUser u = user();
-        requireGlobal(u, "manage_permissions");
+        requireGlobal(u, "view");
+        if (!has(u, "create") && !has(u, "upload") && !has(u, "manage_permissions"))
+            throw new ApiException(ErrorCode.FORBIDDEN);
         if (!Set.of("USER", "DEPARTMENT").contains(type)) throw invalid("请选择人员或部门");
         String value = search == null ? "" : search.strip();
         if (value.length() > 60) throw invalid("搜索内容过长");
@@ -629,7 +652,7 @@ public class CompanyFileService {
         Scope s = new Scope(u);
         Node n = s.node(id);
         requireFile(n);
-        s.require(n, "view", false, true);
+        s.require(n, "view", false, !(n.pending && n.createdBy.equals(u.getId())));
     }
 
     public void requireAttachmentDownload(UUID id, AuthUser u) {
@@ -645,9 +668,7 @@ public class CompanyFileService {
         Scope s = new Scope(u);
         Node n = s.node(id);
         requireFile(n);
-        s.require(n, "upload", false, true);
-        if (!n.pending || !n.createdBy.equals(u.getId()))
-            throw new ApiException(ErrorCode.FORBIDDEN, "这个文件不能再上传或替换原件，请上传为新文件");
+        s.requirePendingUpload(n);
     }
 
     private final class Scope {
@@ -797,6 +818,7 @@ public class CompanyFileService {
             if (!trash && path.stream().anyMatch(v -> v.deleted)) return false;
             if (n.pending
                     && !n.createdBy.equals(user.getId())
+                    && !recovery
                     && (!Set.of("view", "delete").contains(action) || !canAdministerPending(path)))
                 return false;
             if (recovery)
@@ -829,7 +851,10 @@ public class CompanyFileService {
                     && has(user, "delete")
                     && decision(path, "manage_permissions")
                     && decision(path, "delete")
-                    && path.stream()
+                    // As with any locked entry, eligible cleanup managers can see its own
+                    // lock label and enter a known password. Ancestors must already be unlocked;
+                    // actual deletion still requires every password through can(..., true).
+                    && path.subList(0, path.size() - 1).stream()
                             .noneMatch(
                                     v ->
                                             v.passwordHash != null
@@ -841,9 +866,22 @@ public class CompanyFileService {
             if (!can(n, action, trash, requireUnlocked)) {
                 if (!can(n, "view", trash, false)) throw missing();
                 if (requireUnlocked && locked(n))
-                    throw new ApiException(ErrorCode.FORBIDDEN, "文件夹已锁定，请先输入目录密码");
-                throw new ApiException(ErrorCode.FORBIDDEN, "没有这项操作的目录权限，请联系资料管理员");
+                    throw new ApiException(ErrorCode.FORBIDDEN, "资料已锁定，请先输入访问密码");
+                throw new ApiException(ErrorCode.FORBIDDEN, "没有这项操作的资料权限，请联系资料管理员");
             }
+        }
+
+        boolean canPendingUpload(Node n) {
+            return n.kind.equals("FILE") && n.pending && n.createdBy.equals(user.getId())
+                    && can(n, "upload", false, false);
+        }
+
+        void requirePendingUpload(Node n) {
+            if (!n.kind.equals("FILE") || !n.pending || !n.createdBy.equals(user.getId()))
+                throw new ApiException(ErrorCode.FORBIDDEN, "这个文件不能再上传或替换原件，请上传为新文件");
+            // Only the initializing owner can finish this unpublished file. Parent locks and ACLs
+            // are checked by can/require even when the file's own new password is not unlocked.
+            require(n, "upload", false, false);
         }
 
         boolean locked(Node n) {
@@ -863,19 +901,19 @@ public class CompanyFileService {
                 }
                 if (n.deleted && !action.equals("restore")) continue;
                 if (!n.deleted && action.equals("restore")) continue;
-                if (n.kind.equals("FILE")
-                        && Set.of("create", "manage_permissions").contains(action)) continue;
+                if (n.kind.equals("FILE") && action.equals("create")) continue;
                 if (n.kind.equals("FOLDER") && action.equals("download")) continue;
                 if (action.equals("upload")
                         && n.kind.equals("FILE")
                         && (!n.pending || !n.createdBy.equals(user.getId()))) continue;
                 if (n.pending && action.equals("download")) continue;
-                if (can(n, action, trash, true)) result.add(action);
+                if ((action.equals("upload") && canPendingUpload(n))
+                        || can(n, action, trash, true)) result.add(action);
             }
             if (n.pending
                     && !n.deleted
                     && n.createdBy.equals(user.getId())
-                    && can(n, "upload", false, true)
+                    && canPendingUpload(n)
                     && !result.contains("delete")) result.add("delete");
             return List.copyOf(result);
         }
@@ -908,6 +946,29 @@ public class CompanyFileService {
                     n.pending,
                     actions(n, trash));
         }
+    }
+
+    private Map<String, Acl> validatedRules(List<Rule> rules, boolean readOnly) {
+        if (rules == null || rules.size() > 100) throw invalid("资料访问规则无效");
+        Set<String> allowed = readOnly ? Set.of("view", "download") : Set.copyOf(ACTIONS);
+        Map<String, Acl> result = new LinkedHashMap<>();
+        for (Rule rule : rules) {
+            if (rule == null || rule.subjectId() == null
+                    || rule.subjectType() == null || rule.effect() == null
+                    || !Set.of("USER", "DEPARTMENT").contains(rule.subjectType())
+                    || !Set.of("ALLOW", "DENY").contains(rule.effect())
+                    || rule.actions() == null || rule.actions().isEmpty()
+                    || rule.actions().stream().anyMatch(Objects::isNull)
+                    || !allowed.containsAll(rule.actions())
+                    || new HashSet<>(rule.actions()).size() != rule.actions().size()) {
+                throw invalid(readOnly ? "新资料只能设置查看和下载范围，不能授予系统操作权限" : "资料授权规则无效");
+            }
+            Acl value = new Acl(rule.subjectType(), rule.subjectId(), rule.effect(), rule.actions().stream().sorted().toList());
+            if (result.putIfAbsent(aclKey(value.subjectType, value.subjectId, value.effect), value) != null)
+                throw invalid("同一对象的相同授权类型不能重复");
+            principal(rule.subjectType(), rule.subjectId());
+        }
+        return result;
     }
 
     private Rule ruleDto(Acl acl) {
@@ -1103,6 +1164,30 @@ public class CompanyFileService {
         }
     }
 
+    private String creationFingerprint(AuthUser user, Create request, String kind, String name,
+            String description, Map<String, Acl> rules) {
+        String legacy = fingerprint(request.parentId(), kind, name, description);
+        if (request.access() == null) return legacy;
+        if (creationFingerprints == null)
+            throw new IllegalStateException("资料库初始访问设置缺少创建请求验证器");
+        StringBuilder payload = new StringBuilder();
+        appendCanonical(payload, legacy);
+        appendCanonical(payload, String.valueOf(request.access().inheritPermissions()));
+        rules.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(row -> {
+            appendCanonical(payload, row.getKey());
+            appendCanonical(payload, String.join(",", row.getValue().actions));
+        });
+        // The password exists only in this transient keyed input. A plain digest would become
+        // an offline password oracle in the node fingerprint and FULL audit snapshots.
+        appendCanonical(payload, request.access().password());
+        return creationFingerprints.sign(user.getId(), payload.toString());
+    }
+
+    private static void appendCanonical(StringBuilder target, String value) {
+        if (value == null) target.append("-1:");
+        else target.append(value.length()).append(':').append(value);
+    }
+
     private static Comparator<Node> comparator(String sort, String direction) {
         String key = sort == null ? "manual" : sort;
         if (!Set.of("manual", "name", "updated", "size").contains(key)) throw invalid("排序方式无效");
@@ -1133,26 +1218,28 @@ public class CompanyFileService {
     }
 
     private static Entry receipt(Node n) {
+        // Only identity/version acknowledge a successful access mutation. All other fields
+        // are safe constants: knowing an ID and recovery authority do not grant file metadata.
         return new Entry(
                 n.id,
-                n.parentId,
-                n.kind,
-                n.name,
-                n.description,
+                null,
+                "",
+                "",
+                null,
                 n.version,
-                n.position,
-                n.passwordHash != null,
+                0,
+                false,
                 true,
-                n.deleted,
-                n.deletedAt,
-                n.createdAt,
-                n.updatedAt,
+                false,
+                null,
+                null,
+                null,
                 "",
                 "",
                 null,
                 null,
                 null,
-                n.pending,
+                false,
                 List.of());
     }
 

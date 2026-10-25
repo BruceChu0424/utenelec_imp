@@ -36,18 +36,18 @@ public class CompanyFileUnlocks {
     String hash(String password) {
         if (password == null) return null;
         if (password.isBlank() || password.codePointCount(0, password.length()) < 8)
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "目录密码至少需要 8 个字符，清除密码请使用清除操作");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "资料密码至少需要 8 个字符，清除密码请使用清除操作");
         // BCrypt has a 72-byte input limit; reject instead of silently truncating Chinese
         // passwords.
         if (password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72)
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "目录密码的 UTF-8 长度不能超过 72 字节");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "资料密码的 UTF-8 长度不能超过 72 字节");
         return costly(() -> encoder.encode(password));
     }
 
     public Instant unlock(UUID nodeId, long revision, String hash, String password, AuthUser user) {
         requireSession(user);
         prune();
-        if (hash == null) throw new ApiException(ErrorCode.CONFLICT, "这个目录没有密码保护");
+        if (hash == null) throw new ApiException(ErrorCode.CONFLICT, "这份资料没有密码保护");
         AttemptKey attemptKey = new AttemptKey(user.getId(), nodeId);
         Attempts state =
                 attempts.compute(
@@ -58,12 +58,12 @@ public class CompanyFileUnlocks {
                                         : old);
         synchronized (state) {
             if (state.count >= 5)
-                throw new ApiException(ErrorCode.RATE_LIMITED, "目录密码输错次数过多，请十五分钟后重试");
+                throw new ApiException(ErrorCode.RATE_LIMITED, "资料密码输错次数过多，请十五分钟后重试");
             if (password == null
                     || password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72
                     || !costly(() -> encoder.matches(password, hash))) {
                 state.count++;
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "目录密码不正确");
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "资料密码不正确");
             }
         }
         // Keep one stable monitor until the window expires. Removing a successful state would let

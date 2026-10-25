@@ -178,7 +178,7 @@ class CompanyFileLibraryPostgresTest {
                         "company_file:manage_permissions","company_file:move","company_file:restore","company_file:upload","company_file:view");
         assertThat(db.queryForObject("SELECT count(*) FROM permission_surface_permissions p JOIN permission_surfaces s ON s.id=p.surface_id "
                 +"WHERE s.surface_key='common.company-files'",Integer.class)).isEqualTo(9);
-        assertThat(db.queryForObject("SELECT baseline FROM permissions WHERE code='company_file:view'",Boolean.class)).isTrue();
+        assertThat(db.queryForObject("SELECT baseline FROM permissions WHERE code='company_file:view'",Boolean.class)).isFalse();
         assertThat(db.queryForObject("SELECT baseline FROM permissions WHERE code='company_file:manage_permissions'",Boolean.class)).isFalse();
     }
 

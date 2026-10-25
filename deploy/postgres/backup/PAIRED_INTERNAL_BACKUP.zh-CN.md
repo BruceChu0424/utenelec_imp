@@ -75,6 +75,9 @@ python3 /usr/local/lib/uten-imp/paired_internal_backup.py \
 历史v1行情备份若含health，其原清单与摘要照常校验；恢复时原health字节保留在 `restore-evidence/`，
 live health清除旧 `runId/configRevision`、标记自动采集未运行。新导出恢复后不生成旧心跳；
 新主机获得新的自有进程和新鲜 heartbeat 后才可显示运行/设置已应用。
+恢复报告 `healthReset` 只表示是否实际清洗了备份中携带的历史 health：新导出没有该文件时为 false，
+目标也不生成旧心跳；历史 v1 含 health 时完整验证原摘要、保存原字节后清洗 live 副本，返回 true。
+这个事件标志不表示恢复失败或 worker 已运行，正式运行状态仍由新 owned heartbeat 单独确认。
 签名发行中的离线 payload 在新机自动重建执行缓存，缓存无需备份。
 正式换机验收还需核对数据库四项设置（尤其关闭值）、货品绑定版本、行情原始文件摘要和新 owned heartbeat；
 仅 `--verify` 成功不代表应用已经恢复运行。

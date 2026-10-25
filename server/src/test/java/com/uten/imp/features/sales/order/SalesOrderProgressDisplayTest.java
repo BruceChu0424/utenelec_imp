@@ -41,7 +41,8 @@ class SalesOrderProgressDisplayTest {
                 UUID.randomUUID().toString(), "SO-MIXED", "2026-10-12", "2026-10-13", "",
                 new BigDecimal("1001"), BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO,
                 new BigDecimal("1001"), true, false, null, "", null, false, false,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 1
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 1,
+                new BigDecimal("1001") // authoritative positive outstanding of the physical rows
         }));
         when(em.createNativeQuery(anyString())).thenReturn(count, rows);
 

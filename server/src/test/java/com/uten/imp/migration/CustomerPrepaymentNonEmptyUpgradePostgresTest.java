@@ -26,11 +26,14 @@ class CustomerPrepaymentNonEmptyUpgradePostgresTest {
     @AfterAll static void stop(){POSTGRES.stop();}
 
     @Test
-    void v378HistoryUpgradesWithoutGuessingMultiOrderCashOrRewritingLegacyDeposit() throws Exception {
+    void v378HistoryUpgradesThroughTheReviewedPreFreshStartBoundaryWithoutGuessingCash() throws Exception {
         flyway("378").migrate();
         Fixture f;
         try(Connection connection=connection()){f=seedV378(connection);}
-        flyway(null).migrate();
+        // This is a nonempty historical upgrade, not a fresh installation.
+        // Customer source/settlement changes finish before V425, whose destructive
+        // audit reset is intentionally forbidden for a run with existing history.
+        flyway("424").migrate();
         try(Connection connection=connection()){
             assertThat(text(connection,"SELECT receipt_kind FROM finance_receipts WHERE id=?",f.singleReceipt()))
                     .isEqualTo("AR_SETTLEMENT");
@@ -81,7 +84,14 @@ class CustomerPrepaymentNonEmptyUpgradePostgresTest {
                                        'customer_open_item_offsets'::regclass,
                                        'finance_receipt_source_allocations'::regclass)
                       AND p.proname = 'fn_audit'
-                    """)).isEqualTo(6); // ADR-105 FULL: 每表行事件 + 带 WHEN 的更新各一个
+                    """)).isEqualTo(3); // V380: exactly one I/U/D row-audit trigger per historical table.
+            String before=preservedFacts(connection);
+            assertThatThrownBy(()->flyway(null).migrate())
+                    .isInstanceOf(org.flywaydb.core.api.FlywayException.class)
+                    .hasStackTraceContaining("V425 audit fresh-start is allowed only");
+            assertThat(preservedFacts(connection)).isEqualTo(before);
+            assertThat(text(connection,"SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1"))
+                    .isEqualTo("424");
         }
         String querySource=java.nio.file.Files.readString(java.nio.file.Path.of(
                 "src/main/java/com/uten/imp/features/finance/receivables/CustomerPrepaymentQueryService.java"));
@@ -130,6 +140,17 @@ class CustomerPrepaymentNonEmptyUpgradePostgresTest {
                 """,multiLedger,order1,multiLedger,order2);
         return new Fixture(order1,singleLedger,multiLedger,directLedger,singleReceipt,multiReceipt,
                 directReceipt,singleLine,multiLine);
+    }
+
+    /** All existing monetary rows and their audit trail survive the refused reset. */
+    private static String preservedFacts(Connection connection)throws SQLException {
+        StringBuilder result=new StringBuilder();
+        for(String table:java.util.List.of("clients","currencies","sales_orders","ar_ap_ledger","ar_ap_source_refs","finance_receipts","finance_receipt_lines",
+                "finance_receipt_source_allocations","customer_open_item_offset_batches","customer_open_item_offsets","audit_log")) {
+            result.append(table).append(':').append(text(connection,
+                    "SELECT COALESCE(jsonb_agg(to_jsonb(snapshot_row) ORDER BY to_jsonb(snapshot_row)::text)::text,'[]') FROM public."+table+" snapshot_row"));
+        }
+        return result.toString();
     }
 
     private static void insertOrder(Connection c,UUID id,String no,UUID client,UUID currency,String deposit)throws SQLException{

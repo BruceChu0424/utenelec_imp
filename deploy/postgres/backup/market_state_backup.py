@@ -103,14 +103,19 @@ def _inventory(root: Path, *, source: bool):
         for entry in entries:
             path = Path(entry.path)
             relative = path.relative_to(root)
-            # Windows DirEntry.stat may cache zero st_ino/st_nlink; lstat gives
-            # the real identity required to reject hard links and reparse points.
-            info = path.lstat()
             if source and (entry.name.casefold() in _EXCLUDED_DIRS
                            or entry.name.casefold().startswith((".venv-", "venv-"))):
                 continue
-            if source and _excluded(relative):
+            # Live health is an independently replaced, volatile run receipt,
+            # not recoverable market state. Skip it and transient temp files
+            # before lstat: either can disappear after the directory listing.
+            # Keep _excluded unchanged so signed historical v1 inventories
+            # containing health still verify and restore with their old digest.
+            if source and (_excluded(relative) or relative.as_posix().casefold() == "auto-feed-health.json"):
                 continue
+            # Windows DirEntry.stat may cache zero st_ino/st_nlink; lstat gives
+            # the real identity required to reject hard links and reparse points.
+            info = path.lstat()
             if not _private(info):
                 raise ValueError("Market-state links are forbidden")
             if stat.S_ISDIR(info.st_mode):

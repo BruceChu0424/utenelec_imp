@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import continuous_backup as base
 import snapshot_chunks as chunks
+import test_continuous_backup as archive_fixtures
 
 
 class EncryptedChunkSnapshotTest(unittest.TestCase):
@@ -74,6 +75,59 @@ class EncryptedChunkSnapshotTest(unittest.TestCase):
         self.assertNotEqual(hashlib.sha256(plain).hexdigest(),first)
         self.assertNotEqual(first,chunks.identity(b"b"*32,plain))
         self.assertEqual(first,chunks.identity(b"a"*32,plain))
+
+    def test_retention_validates_a_shared_chunk_once_for_all_retained_references(self):
+        shared = self.object()
+        for _ in range(8):
+            self.send(self.point([shared]), self.manifest)
+        with patch.object(chunks, 'object_record', wraps=chunks.object_record) as reads:
+            result = base.retain(self.config)
+        self.assertEqual(8, result['completedSnapshots'])
+        visits = [call for call in reads.call_args_list if call.args[1] == shared['opaqueId']]
+        self.assertEqual(1, len(visits), 'A shared immutable chunk must not be restatted for every point')
+
+    def test_damaged_retained_dependency_aborts_before_removing_any_old_point(self):
+        shared = self.object()
+        old = self.send(self.point([shared], age=50), self.manifest)
+        old_path = self.storage / 'snapshots' / old['snapshotId'] / 'target-receipt.json'
+        old['receivedAt'] = (base.now() - timedelta(days=50)).isoformat()
+        base.atomic_json(old_path, old)
+        for _ in range(3):
+            self.send(self.point([shared]), self.manifest)
+        storage = self.storage / 'objects' / shared['opaqueId']
+        (storage / 'cipher.gpg').unlink()
+        with self.assertRaises((ValueError, OSError)):
+            base.retain(self.config)
+        self.assertTrue((self.storage / 'snapshots' / old['snapshotId']).is_dir(),
+                        'Do not remove older recovery points before validating the retained closure')
+
+    def test_global_preflight_keeps_archives_snapshots_and_objects_when_retained_chunk_is_missing(self):
+        archive = archive_fixtures.CiphertextReceiverTest()
+        archive.setUp()
+        def close_archive():
+            archive.tearDown()
+            archive.doCleanups()
+        self.addCleanup(close_archive)
+        archive.storage, archive.config = self.storage, self.config
+        for age in (50, 3, 2, 1):
+            receipt = archive.send(archive.header(age))
+            receipt['receivedAt'] = (base.now() - timedelta(days=age)).isoformat()
+            base.atomic_json(self.storage / receipt['exportId'] / 'target-receipt.json', receipt)
+        used = self.object()
+        old = self.send(self.point([used], age=50), self.manifest)
+        old['receivedAt'] = (base.now() - timedelta(days=50)).isoformat()
+        base.atomic_json(self.storage / 'snapshots' / old['snapshotId'] / 'target-receipt.json', old)
+        for _ in range(3):
+            self.send(self.point([used]), self.manifest)
+        unused = self.object('d' * 64)
+        unused['receivedAt'] = (base.now() - timedelta(days=3)).isoformat()
+        base.atomic_json(self.storage / 'objects' / unused['opaqueId'] / 'receipt.json', unused)
+        (self.storage / 'objects' / used['opaqueId'] / 'cipher.gpg').unlink()
+        before = {path.relative_to(self.storage) for path in self.storage.rglob('*')}
+        with self.assertRaises((ValueError, OSError)):
+            base.retain(self.config)
+        self.assertEqual(before, {path.relative_to(self.storage) for path in self.storage.rglob('*')})
+        self.assertEqual(4, len(base.completed(self.config)))
 
     def test_commits_only_after_every_ciphertext_dependency_is_durable(self):
         obj = self.object();header = self.point([obj])

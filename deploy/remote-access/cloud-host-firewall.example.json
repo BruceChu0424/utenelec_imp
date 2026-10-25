@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "role": "cloud",
+  "public_interface": "REPLACE_IFACE",
+  "ssh_source_policy": "security-group",
+  "admin_ipv4_cidrs": [],
+  "wireguard_ipv4_cidrs": ["0.0.0.0/0"],
+  "dhcpv4": "REPLACE_AFTER_READING_THE_REAL_NETWORK_CONFIGURATION"
+}

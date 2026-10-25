@@ -1,0 +1,27 @@
+[Unit]
+Description=Load the confirmed cloud host ingress policy without touching the tunnel table
+ConditionPathExists=/var/lib/uten-remote/cloud-host-firewall/active.json
+Before=network-pre.target network.target sshd.service ssh.service wg-quick@wg-uten.service uten-remote-nginx.service
+After=local-fs.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3 /usr/local/lib/uten-remote/cloud_host_firewall.py boot
+ExecReload=/usr/bin/python3 /usr/local/lib/uten-remote/cloud_host_firewall.py boot
+User=root
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/uten-remote/cloud-host-firewall
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+CapabilityBoundingSet=CAP_NET_ADMIN
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

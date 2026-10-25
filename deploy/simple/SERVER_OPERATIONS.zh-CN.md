@@ -98,6 +98,9 @@ sudo bash /reviewed/deploy/simple/install-server-operations.sh /reviewed/deploy/
 
 验收 `systemctl is-enabled/is-active uten-imp-updater.timer` 为 disabled/inactive，
 `uten-imp-operations.service` 为 active，应用账号可连接 socket 且无权读 source.env。
+运维桥接、更新 worker 和成套备份进程会在内存中处理凭据或业务原文，现役单元显式设置 `LimitCORE=0`。
+安装后用 `systemctl show -p LimitCORE` 核对实际限制；仅 `daemon-reload` 不会改变已有进程的限制，
+桥接服务须在无未完成作业时受控重启，oneshot 服务在下次启动生效。不要为核验主动制造生产崩溃。
 在页面验证保存后读回、普通用户/仅运维不能修改来源、无更新权限不能启动、重复 requestId 只执行一次、
 预约取消/撤权/错过窗口，以及重启期间作业恢复。只改应用 JAR 不会更新已安装的主机助手和 systemd 单元。
 

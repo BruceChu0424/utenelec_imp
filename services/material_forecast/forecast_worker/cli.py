@@ -23,12 +23,24 @@ def atomic_json(path: Path, value: dict, *, public: bool = False) -> None:
         _atomic_json(path, value, public=public)
 
 
+def atomic_health_json(path: Path, value: dict) -> None:
+    """Publish volatile liveness independently of durable snapshot copies.
+
+    A backup may hold the state barrier longer than the supervisor's freshness
+    window. Health is excluded from new exports and must remain live during
+    that copy; all model, quote and cache writes still use atomic_json.
+    """
+    if path.name != "auto-feed-health.json":
+        raise ValueError("Only the volatile heartbeat may bypass the state barrier")
+    _atomic_json(path, value, public=True)
+
+
 def _atomic_json(path: Path, value: dict, *, public: bool = False) -> None:
     descriptor, temporary = tempfile.mkstemp(prefix="." + path.name + ".", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
             if public and os.name == "posix":
-                # Only the three published market documents are shared with the
+                # Only the published market documents are shared with the
                 # ERP reader group. Private ledgers/cache/locks remain owner-only.
                 # An SGID output directory supplies the reader group without
                 # giving this separate writer identity any ERP group membership.

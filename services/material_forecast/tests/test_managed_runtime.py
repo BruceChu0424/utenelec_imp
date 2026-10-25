@@ -11,7 +11,9 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from forecast_worker.locking import os_file_lock
@@ -27,6 +29,108 @@ spec.loader.exec_module(builder)
 
 
 class ManagedRuntimeTests(unittest.TestCase):
+    def test_heartbeat_remains_fresh_while_a_real_backup_blocks_persistent_writes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            source, exported = root / "live", root / "exported"
+            source.mkdir()
+            (source / "snapshot.json").write_text('{"generation":1}', encoding="utf-8")
+            clock = [datetime(2026, 10, 25, tzinfo=timezone.utc)]
+            worker = AutoFeed(source, now=lambda: clock[0], continuous=True,
+                              config_revision="a" * 64,
+                              run_id="12345678-1234-1234-1234-123456789abc")
+            worker.heartbeat(status="IDLE")
+            backup_module = PREPARE.parents[2] / "deploy/postgres/backup"
+            started, release, writer_started, writer_done = [root / name for name in
+                ("backup-started", "backup-release", "writer-started", "writer-done")]
+            exporter_script = f"""
+import json, sys, time
+from pathlib import Path
+sys.path.insert(0, {str(backup_module)!r})
+import market_state_backup as market
+def gate(size):
+    if size and not Path({str(started)!r}).exists():
+        Path({str(started)!r}).write_text('locked')
+        deadline = time.monotonic() + 30
+        while not Path({str(release)!r}).exists():
+            if time.monotonic() >= deadline: raise TimeoutError('backup test barrier')
+            time.sleep(.02)
+print(json.dumps(market.export_market_state(Path({str(source)!r}), Path({str(exported)!r}), copy_budget=gate)))
+"""
+            writer_script = f"""
+import sys
+from pathlib import Path
+sys.path.insert(0, {str(PREPARE.parent)!r})
+from forecast_worker.cli import atomic_json
+from forecast_worker.locking import register_write_barrier
+root = Path({str(source)!r})
+register_write_barrier(root)
+Path({str(writer_started)!r}).write_text('waiting')
+atomic_json(root / 'snapshot.json', {{'generation': 2}}, public=True)
+Path({str(writer_done)!r}).write_text('done')
+"""
+            children = []
+            heartbeat = None
+
+            def start(script):
+                child = subprocess.Popen([sys.executable, "-I", "-c", script],
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                         text=True, encoding="utf-8", env=prepare.child_environment())
+                children.append(child)
+                return child
+
+            def wait_for(path, child):
+                deadline = time.monotonic() + 20
+                while not path.exists():
+                    if child.poll() is not None:
+                        self.fail(child.communicate(timeout=5)[1])
+                    if time.monotonic() >= deadline:
+                        self.fail("child did not reach its real lock barrier")
+                    time.sleep(.02)
+
+            try:
+                exporter = start(exporter_script)
+                wait_for(started, exporter)
+                writer = start(writer_script)
+                wait_for(writer_started, writer)
+                clock[0] += timedelta(seconds=30)
+                heartbeat = threading.Thread(target=lambda: worker.heartbeat(status="MODEL"), daemon=True)
+                heartbeat.start()
+                heartbeat.join(timeout=2)
+                self.assertFalse(heartbeat.is_alive(), "a durable backup barrier blocked the volatile heartbeat")
+                health = json.loads((source / "auto-feed-health.json").read_text(encoding="utf-8"))
+                self.assertEqual("2026-10-25T00:00:30Z", health["generatedAt"])
+                self.assertEqual(worker.run_id, health["runId"])
+                self.assertEqual(worker.config_revision, health["configRevision"])
+                self.assertTrue(health["autoUpdateEnabled"])
+                self.assertTrue(all(item["status"] == "MODEL" for item in health["series"]))
+                self.assertIsNone(writer.poll())
+                self.assertFalse(writer_done.exists(), "the persistent writer bypassed snapshot consistency")
+                self.assertEqual({"generation": 1}, json.loads((source / "snapshot.json").read_text()))
+                release.write_text("continue")
+                output, error = exporter.communicate(timeout=15)
+                self.assertEqual(0, exporter.returncode, error)
+                _, error = writer.communicate(timeout=15)
+                self.assertEqual(0, writer.returncode, error)
+                summary = json.loads(output)
+                spec = importlib.util.spec_from_file_location("heartbeat_backup_verifier", backup_module / "market_state_backup.py")
+                backup = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(backup)
+                self.assertEqual(summary, backup.verify_market_state(exported))
+                self.assertEqual({"generation": 1}, json.loads((exported / "snapshot.json").read_text()))
+                self.assertEqual({"generation": 2}, json.loads((source / "snapshot.json").read_text()))
+                self.assertFalse((exported / "auto-feed-health.json").exists())
+            finally:
+                release.write_text("continue")
+                if heartbeat is not None:
+                    heartbeat.join(timeout=5)
+                for child in children:
+                    try:
+                        child.communicate(timeout=15)
+                    except subprocess.TimeoutExpired:
+                        child.kill()
+                        child.communicate(timeout=10)
+
     def test_real_managed_process_stops_and_releases_lease_when_owner_pipe_closes(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

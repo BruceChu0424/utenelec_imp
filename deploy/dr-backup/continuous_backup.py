@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import selectors
 import shutil
 import signal
 import stat
@@ -27,10 +28,42 @@ HASH = re.compile(r"[a-f0-9]{64}\Z")
 FINGERPRINT = re.compile(r"[A-F0-9]{40}\Z")
 CHUNK = 1024 * 1024
 HEADER_LIMIT = 2 * 1024 * 1024
+SOURCE_CAPTURE_WAIT_SECONDS = 60
+RECEIVER_WAIT_SECONDS = 30
+TRANSFER_IDLE_SECONDS = 60
+ARCHIVE_JOB_SECONDS = 35 * 60
+SNAPSHOT_JOB_SECONDS = 4 * 60
+FAILURE_CODES = frozenset({'LOCK_BUSY', 'SOURCE_BUSY', 'RECEIVER_BUSY',
+    'RECEIVER_CAPACITY_LIMIT', 'RECEIVER_PROCESS_FAILED', 'RECEIVER_REJECTED',
+    'TRANSFER_PIPE_CLOSED', 'TRANSFER_IO_ERROR', 'TRANSFER_IDLE_TIMEOUT',
+    'TRANSFER_DEADLINE_EXCEEDED', 'INVALID_TRANSFER'})
 SOURCE_FIELDS = {"format", "exportId", "state", "sourceSetId", "sourceManifestSha256",
     "recipientFingerprint", "ciphertextFile", "ciphertextBytes", "ciphertextSha256",
     "cryptoRecoveryIncluded", "completedAt", "targetCopyVerified", "restoreVerified",
     "marketStateIncluded", "clientReleaseStateIncluded"}
+
+
+class TransferFailure(OSError):
+    """A fixed public failure code, never raw SSH stderr or private configuration."""
+    def __init__(self, code):
+        if not isinstance(code, str) or code not in FAILURE_CODES:
+            code = 'RECEIVER_REJECTED'
+        self.code = code
+        super().__init__(code)
+
+
+class TransferBusy(BlockingIOError):
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
+
+
+def failure_record(error):
+    code = getattr(error, 'code', None)
+    if not isinstance(code, str) or code not in FAILURE_CODES:
+        code = ('TRANSFER_PIPE_CLOSED' if isinstance(error, BrokenPipeError) else
+                'TRANSFER_IO_ERROR' if isinstance(error, OSError) else 'INVALID_TRANSFER')
+    return {'format': FORMAT, 'state': 'FAILED', 'errorType': type(error).__name__, 'errorCode': code}
 
 
 def now():
@@ -114,13 +147,24 @@ def digest(path):
 
 
 @contextmanager
-def lock(path):
+def lock(path, *, timeout=0, busy_code='LOCK_BUSY'):
+    if not isinstance(timeout, (int, float)) or not 0 <= timeout <= 600 or busy_code not in FAILURE_CODES:
+        raise ValueError('Invalid transfer barrier budget')
     fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
         info = os.fstat(fd)
         if info.st_uid != os.geteuid() or info.st_nlink != 1 or not stat.S_ISREG(info.st_mode):
             raise ValueError("Unsafe transfer barrier")
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as error:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TransferBusy(busy_code) from error
+                time.sleep(min(.05, remaining))
         yield
     finally:
         os.close(fd)
@@ -254,7 +298,7 @@ def receive(config, incoming, outgoing):
     named = datetime.strptime(receipt["sourceSetId"].split("-")[0], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
     if abs((snapshot - named).total_seconds()) >= 1 or snapshot > instant(receipt["completedAt"]):
         raise ValueError("Snapshot timestamp does not match its fixed source identity")
-    with lock(root / ".receiver.lock"):
+    with lock(root / ".receiver.lock", timeout=RECEIVER_WAIT_SECONDS, busy_code='RECEIVER_BUSY'):
         rows = completed(config)
         final = root / receipt["exportId"]
         duplicate = next((row for row in rows if row[0] == final), None)
@@ -263,7 +307,7 @@ def receive(config, incoming, outgoing):
         usage = shutil.disk_usage(root)
         if not duplicate and (usage.free - receipt["ciphertextBytes"] < config["min_free_bytes"]
                 or storage_bytes(root) + receipt["ciphertextBytes"] > config["max_storage_bytes"]):
-            raise OSError("Receiver capacity reserve would be crossed")
+            raise TransferFailure('RECEIVER_CAPACITY_LIMIT')
         stage = root / (".incoming-" + uuid.uuid4().hex)
         stage.mkdir(mode=0o700)
         try:
@@ -307,7 +351,7 @@ def receive(config, incoming, outgoing):
 
 def retain(config):
     root = private_path(config["storage_root"], directory=True)
-    with lock(root / ".receiver.lock"):
+    with lock(root / ".receiver.lock", timeout=RECEIVER_WAIT_SECONDS, busy_code='RECEIVER_BUSY'):
         rows = completed(config)
         keep = {path for path, _, _ in rows[-config["minimum_complete_sets"]:]}
         daily = {}
@@ -321,7 +365,7 @@ def retain(config):
             if timestamp >= moment - timedelta(days=config["daily_retention_days"]):
                 daily[timestamp.date()] = path
         keep.update(daily.values())
-        deleted = 0
+        obsolete = []
         for path, _, _ in rows:
             if path in keep:
                 continue
@@ -329,13 +373,19 @@ def retain(config):
                 raise ValueError("Retention target escaped its root")
             if {item.name for item in path.iterdir()} != {"archive.gpg", "source-receipt.json", "target-receipt.json"}:
                 raise ValueError("Unexpected archive contents block retention")
+            obsolete.append(path)
+        # Both independent recovery formats and all retained dependencies must
+        # pass preflight before removing even an expired full archive. Reuse
+        # the unique-object validation plan under this same receiver mutex.
+        chunks = chunks_module() if Path(__file__).with_name('snapshot_chunks.py').exists() else None
+        chunk_plan = chunks.retention_plan_locked(config, sys.modules[__name__]) if chunks else None
+        for path in obsolete:
             # Only the target's independent root timer invokes this function. It is absent from the RPC.
             shutil.rmtree(path)
-            deleted += 1
         sync_directory(root)
-        chunk_retention = chunks_module().retain_locked(config, sys.modules[__name__]) if Path(__file__).with_name("snapshot_chunks.py").exists() else {}
+        chunk_retention = chunks.apply_retention_plan_locked(chunk_plan, sys.modules[__name__]) if chunks else {}
         status = build_status(config)
-        status["lastRetention"] = {"at": now().isoformat(), "deletedSets": deleted}
+        status["lastRetention"] = {"at": now().isoformat(), "deletedSets": len(obsolete)}
         status["lastRetention"].update(chunk_retention)
         atomic_json(Path(config["status_file"]), status)
         return status
@@ -353,7 +403,101 @@ def ssh_command(config):
         "-i", config["identity_file"], config["ssh_target"]]
 
 
-def upload(config, directory, source_snapshot):
+def transfer_exchange(process, header, payload, maximum, *, deadline):
+    """Stream with finite idle time and the caller's remaining whole-job budget."""
+    idle_deadline = time.monotonic() + TRANSFER_IDLE_SECONDS
+    source = Path(payload).open('rb') if payload is not None else None
+    pending = memoryview(header)
+    response = bytearray()
+    input_complete = False
+    try:
+        with selectors.DefaultSelector() as poller:
+            for pipe, event in ((process.stdin, selectors.EVENT_WRITE), (process.stdout, selectors.EVENT_READ)):
+                os.set_blocking(pipe.fileno(), False)
+                poller.register(pipe, event)
+
+            def close_input():
+                if not process.stdin.closed:
+                    poller.unregister(process.stdin)
+                    process.stdin.close()
+
+            def remaining_budget():
+                current = time.monotonic()
+                if current >= deadline:
+                    raise TransferFailure('TRANSFER_DEADLINE_EXCEEDED')
+                if current >= idle_deadline:
+                    raise TransferFailure('TRANSFER_IDLE_TIMEOUT')
+                return min(deadline, idle_deadline) - current
+
+            while not process.stdout.closed:
+                for selected, _ in poller.select(remaining_budget()):
+                    pipe = selected.fileobj
+                    if pipe.closed:
+                        continue
+                    if pipe is process.stdin:
+                        if not pending:
+                            block = source.read(CHUNK) if source is not None else b''
+                            if not block:
+                                input_complete = True
+                                close_input()
+                                continue
+                            pending = memoryview(block)
+                        try:
+                            written = os.write(pipe.fileno(), pending)
+                            pending = pending[written:]
+                            if written:
+                                idle_deadline = time.monotonic() + TRANSFER_IDLE_SECONDS
+                        except BlockingIOError:
+                            continue
+                        except BrokenPipeError:
+                            # EOF must reach a rejecting receiver before waiting
+                            # for its failure record or its process to finish.
+                            close_input()
+                    else:
+                        try:
+                            block = os.read(pipe.fileno(), min(CHUNK, maximum + 1 - len(response)))
+                        except BlockingIOError:
+                            continue
+                        if not block:
+                            poller.unregister(pipe)
+                            pipe.close()
+                            close_input()
+                            break
+                        response.extend(block)
+                        idle_deadline = time.monotonic() + TRANSFER_IDLE_SECONDS
+                        if len(response) > maximum:
+                            raise TransferFailure('RECEIVER_REJECTED')
+                        if response.endswith(b'\n'):
+                            try:
+                                early = decode_json(response)
+                            except (ValueError, UnicodeError):
+                                early = None
+                            if isinstance(early, dict) and early.get('format') == FORMAT and early.get('state') == 'FAILED':
+                                close_input()
+            try:
+                returncode = process.wait(timeout=remaining_budget())
+            except subprocess.TimeoutExpired:
+                remaining_budget()
+                raise TransferFailure('TRANSFER_IDLE_TIMEOUT') from None
+        try:
+            value = decode_json(response)
+        except (ValueError, UnicodeError):
+            raise TransferFailure('RECEIVER_PROCESS_FAILED') from None
+        if not isinstance(value, dict):
+            raise TransferFailure('RECEIVER_REJECTED')
+        if value.get('format') == FORMAT and value.get('state') == 'FAILED':
+            raise TransferFailure(value.get('errorCode'))
+        if returncode:
+            raise TransferFailure('RECEIVER_PROCESS_FAILED')
+        if not input_complete:
+            raise TransferFailure('TRANSFER_PIPE_CLOSED')
+        return value
+    finally:
+        if source is not None:
+            source.close()
+
+
+def upload(config, directory, source_snapshot, *, deadline=None):
     receipt = read_json(directory / "receipt.json")
     header = {"format": FORMAT, "operation": "submit", "sourceReceipt": receipt,
               "sourceSnapshotAt": source_snapshot}
@@ -361,16 +505,9 @@ def upload(config, directory, source_snapshot):
     process = subprocess.Popen(ssh_command(config), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL, env={"PATH": "/usr/bin:/bin", "LANG": "C"})
     try:
-        process.stdin.write((json.dumps(header, separators=(",", ":")) + "\n").encode())
-        with (directory / "archive.gpg").open("rb") as stream:
-            while block := stream.read(CHUNK):
-                process.stdin.write(block)
-        process.stdin.close()
-        raw = process.stdout.read(HEADER_LIMIT + 1)
-        process.stdout.close()
-        if process.wait(timeout=60) or len(raw) > HEADER_LIMIT:
-            raise ValueError("Receiver did not return a bounded success receipt")
-        result = json.loads(raw)
+        result = transfer_exchange(process, (json.dumps(header, separators=(",", ":")) + "\n").encode(),
+                                   directory / 'archive.gpg', HEADER_LIMIT,
+                                   deadline=deadline if deadline is not None else time.monotonic() + ARCHIVE_JOB_SECONDS)
         if (result.get("state") != "TARGET_BYTES_VERIFIED" or result.get("exportId") != receipt["exportId"]
                 or result.get("ciphertextSha256") != receipt["ciphertextSha256"]
                 or result.get("ciphertextBytes") != receipt["ciphertextBytes"]):
@@ -397,30 +534,40 @@ def close_transfer_pipes(process):
                 pass
 
 
+def capture_archive(config, state):
+    # The shared source mutex protects consistent input creation and capture.
+    # A complete private ciphertext archive no longer depends on live inputs;
+    # network backpressure must not block the five-minute capture pipeline.
+    with lock(state / '.source.lock', timeout=SOURCE_CAPTURE_WAIT_SECONDS, busy_code='SOURCE_BUSY'):
+        environment = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8",
+                       "PYTHONDONTWRITEBYTECODE": "1"}
+        result = subprocess.run(["/usr/bin/python3", "-I", config["paired_helper"], "--config",
+            config["paired_config"]], capture_output=True, env=environment, timeout=1800)
+        if result.returncode:
+            raise RuntimeError("PAIRED_BACKUP_FAILED")
+        paired_config = read_json(config["paired_config"])
+        root = Path(paired_config["backup_root"])
+        spec = importlib.util.spec_from_file_location("uten_dr_sealed_export", config["sealed_helper"])
+        sealed = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = sealed
+        spec.loader.exec_module(sealed)
+        directory, receipt = sealed.export(root, Path(config["source_export_directory"]),
+            private_path(config["recipient_file"]).read_bytes(), config["recipient_fingerprint"],
+            config["recovery_files"], helper=Path(config["paired_helper"]),
+            include_remote_recovery=config.get('include_remote_recovery',False))
+        manifest = read_json(root / receipt["sourceSetId"] / "manifest.json")
+        return directory, receipt, manifest['started_at']
+
+
 def run_source(config):
+    deadline = time.monotonic() + ARCHIVE_JOB_SECONDS
     state = private_path(config["state_directory"], directory=True)
-    with lock(state / ".source.lock"):
+    with lock(state / ".archive-source.lock"):
         status_path = state / "status.json"
         previous = read_json(status_path) if status_path.exists() else None
         try:
-            environment = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8",
-                           "PYTHONDONTWRITEBYTECODE": "1"}
-            result = subprocess.run(["/usr/bin/python3", "-I", config["paired_helper"], "--config",
-                config["paired_config"]], capture_output=True, env=environment, timeout=1800)
-            if result.returncode:
-                raise RuntimeError("PAIRED_BACKUP_FAILED")
-            paired_config = read_json(config["paired_config"])
-            root = Path(paired_config["backup_root"])
-            spec = importlib.util.spec_from_file_location("uten_dr_sealed_export", config["sealed_helper"])
-            sealed = importlib.util.module_from_spec(spec)
-            sys.modules[spec.name] = sealed
-            spec.loader.exec_module(sealed)
-            directory, receipt = sealed.export(root, Path(config["source_export_directory"]),
-                private_path(config["recipient_file"]).read_bytes(), config["recipient_fingerprint"],
-                config["recovery_files"], helper=Path(config["paired_helper"]),
-                include_remote_recovery=config.get('include_remote_recovery',False))
-            manifest = read_json(root / receipt["sourceSetId"] / "manifest.json")
-            target = upload(config, directory, manifest["started_at"])
+            directory, receipt, source_snapshot = capture_archive(config, state)
+            target = upload(config, directory, source_snapshot, deadline=deadline)
             atomic_json(directory / "target-receipt.json", target)
             status = {"format": FORMAT, "state": "TARGET_BYTES_VERIFIED", "observedAt": now().isoformat(),
                 "health": "HEALTHY", "targetId": "cloud-archive", "latest": target,
@@ -434,9 +581,13 @@ def run_source(config):
             return status
         except Exception as error:
             status = {"format": FORMAT, "state": "FAILED", "health": "DEGRADED", "observedAt": now().isoformat(),
-                "errorType": type(error).__name__, "latest": previous.get("latest") if previous else None,
+                **failure_record(error), "latest": previous.get("latest") if previous else None,
                 "rpo15MinutesSatisfied": False, "continuousWalProtected": False,
                 "originalHistoryContinuous": False, "restoreVerified": False}
+            if isinstance(error, TransferBusy) and error.code == 'SOURCE_BUSY':
+                status.update(state='DEFERRED', retryPolicy='NEXT_TIMER')
+                atomic_json(status_path, status)
+                return status
             atomic_json(status_path, status)
             raise
 
@@ -485,7 +636,12 @@ def main():
             print(json.dumps(value))
         return 0
     except Exception as error:
-        print(json.dumps({"format": FORMAT, "state": "FAILED", "errorType": type(error).__name__}), file=sys.stderr)
+        failure = failure_record(error)
+        if args.mode == 'receive':
+            # SSH transports stdout back to the sender even if the finite input
+            # is rejected early. Never include traceback, paths or raw stderr.
+            print(json.dumps(failure), flush=True)
+        print(json.dumps(failure), file=sys.stderr)
         return 1
 
 

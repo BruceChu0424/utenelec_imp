@@ -41,7 +41,8 @@ class UploadProcessCleanupTest(unittest.TestCase):
         try:
             with patch.object(backup,'ssh_command',return_value=[sys.executable,'-I','-c',code]), \
                  patch.object(backup.subprocess,'Popen',side_effect=spawn):
-                with self.assertRaises(BrokenPipeError if payload else FileNotFoundError):
+                expected = backup.TransferFailure if payload else FileNotFoundError
+                with self.assertRaises(expected):
                     self.invoke(kind,payload=payload)
             self.assertEqual(len(spawned),1)
             child=spawned[0]

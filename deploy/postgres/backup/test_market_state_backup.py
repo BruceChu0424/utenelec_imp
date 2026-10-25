@@ -88,12 +88,38 @@ class MarketStateBackupTest(unittest.TestCase):
         before = {name: (self.source / name).read_bytes()
                   for name, _ in market._inventory(self.source, source=True)}
         result = market.restore_market_state(self.destination, self.target)
-        self.assertTrue(result["healthReset"])
+        self.assertFalse(result["healthReset"])
         self.assertEqual(summary["manifestSha256"], result["manifestSha256"])
         for name, raw in before.items():
-            if name != "auto-feed-health.json":
-                self.assertEqual(raw, (self.target / name).read_bytes(), name)
-        self.assertEqual(before["auto-feed-health.json"],
+            self.assertEqual(raw, (self.target / name).read_bytes(), name)
+        self.assertFalse((self.destination / "auto-feed-health.json").exists())
+        self.assertFalse((self.target / "auto-feed-health.json").exists())
+        self.assertEqual(b"0", (self.target / ".market-write.lock").read_bytes())
+
+    def test_legacy_v1_health_is_verified_unchanged_and_reset_only_on_restore(self):
+        self.exported()
+        # Recreate the historical v1 inventory, whose independently trusted hash
+        # already binds the heartbeat. Verification must not rewrite that set.
+        original_health = (self.source / "auto-feed-health.json").read_bytes()
+        (self.destination / "auto-feed-health.json").write_bytes(original_health)
+        manifest_path = self.destination / market.MANIFEST
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["records"] = [row for row in manifest["records"] if row["path"] != "auto-feed-health.json"]
+        manifest["records"].append({"path": "auto-feed-health.json", "size": len(original_health),
+                                    "sha256": hashlib.sha256(original_health).hexdigest()})
+        manifest["files"] = len(manifest["records"])
+        manifest["bytes"] = sum(row["size"] for row in manifest["records"])
+        write(manifest_path, manifest)
+        manifest_bytes = manifest_path.read_bytes()
+        trusted_digest = hashlib.sha256(manifest_bytes).hexdigest()
+        summary = market.verify_market_state(self.destination)
+        self.assertEqual(trusted_digest, summary["manifestSha256"])
+        result = market.restore_market_state(self.destination, self.target)
+        self.assertTrue(result["healthReset"])
+        self.assertEqual(trusted_digest, result["manifestSha256"])
+        self.assertEqual(manifest_bytes, manifest_path.read_bytes())
+        self.assertEqual(original_health, (self.destination / "auto-feed-health.json").read_bytes())
+        self.assertEqual(original_health,
                          (self.target / "restore-evidence/auto-feed-health.json").read_bytes())
         restored = json.loads((self.target / "auto-feed-health.json").read_text(encoding="utf-8"))
         self.assertFalse(restored["autoUpdateEnabled"])
@@ -110,12 +136,26 @@ class MarketStateBackupTest(unittest.TestCase):
         barrier = self.target / ".market-write.lock"
         self.assertEqual(b"0", barrier.read_bytes())
         with market.market_state_lock(self.target, timeout=.1): pass
-        health = json.loads((self.target / "auto-feed-health.json").read_text(encoding="utf-8"))
-        self.assertFalse(health["autoUpdateEnabled"])
+        self.assertFalse((self.target / "auto-feed-health.json").exists())
         second = self.root / "next-backup"
         result = market.export_market_state(self.target, second)
         self.assertEqual(result, market.verify_market_state(second))
         self.assertFalse((second / ".market-write.lock").exists())
+
+    def test_source_inventory_ignores_volatile_files_before_reading_their_metadata(self):
+        temporary = self.source / ".auto-feed-health.json.disappeared.tmp"
+        temporary.write_bytes(b"in-flight heartbeat")
+        original = Path.lstat
+
+        def disappearing(path, *args, **kwargs):
+            if path.parent == self.source and path.name in {"auto-feed-health.json", temporary.name}:
+                raise FileNotFoundError("volatile heartbeat replaced after directory listing")
+            return original(path, *args, **kwargs)
+
+        with patch.object(Path, "lstat", new=disappearing):
+            summary = self.exported()
+        self.assertEqual(summary, market.verify_market_state(self.destination))
+        self.assertFalse((self.destination / "auto-feed-health.json").exists())
 
     def test_runtime_venv_locks_and_partial_files_are_excluded(self):
         for name in (".venv/Scripts/python.exe", "runtime/secret.env", "wheelhouse/runtime.whl",

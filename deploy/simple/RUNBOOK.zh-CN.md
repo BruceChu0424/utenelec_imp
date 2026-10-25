@@ -7,7 +7,9 @@
 > [首装执行记录与勘误](../../docs/99-项目治理/2026-09-02-首装执行记录与勘误.md)。
 > **手把手版（含阿里云/GitHub 控制台逐步截图位与验收清单）见
 > [新库上线与首装操作指引](../../docs/99-项目治理/2026-09-01-新库上线与首装操作指引.md)。**
-> 日常发版 = 打 tag 推 GitHub 后按需手动拉取；自动检查间隔在系统设置中配置（默认每周日），含数据库迁移的版本需手动激活。
+> 日常发版 = 同一提交 CI 全绿后打 tag 推 GitHub，由有权用户在系统设置检查、立即更新或明确预约更新。
+> 自动拉取与自动激活已退役，`uten-imp-updater.timer` 必须 disabled/inactive；以
+> [服务器运维操作](SERVER_OPERATIONS.zh-CN.md) 的独立 Operations 作业为准。
 > **占位符约定**：文中 `<服务器IP>` 等尖括号占位符代表真实环境值（不入库防泄露），
 > 操作时替换为本机 Tailscale IP / 真实账号等。
 > **2026-10-06 服务器安全基线** (ADR-157)：目录与保留规范、密钥纪律、离线托管件、删除流程、告警、
@@ -22,12 +24,12 @@
                                       │ 构建+签名+上传
                                       ▼
                               阿里云 OSS releases/<v>/** + LATEST.txt
-                                      │ 按系统设置到期拉取（默认每周日当地 05:00）
+                                      │ 有权用户显式检查、立即或预约更新
                                       ▼
-公司服务器 updater ──▶ /opt/uten-imp/releases/<v>
-      ├─ 纯代码：自动激活（切 current + 重启 + 健康检查，失败自动回滚）
-      └─ 含迁移：暂存后等你 SSH：uten-imp-updater activate <v>
-                  （自动 pg_dump 备份 → migrator → 切换 → 健康检查）
+公司服务器 Operations worker ──▶ /opt/uten-imp/releases/<v>
+      ├─ 下载验签及完整性核验 → 成套备份 → 必要时 migrator
+      └─ 原子切换 → 同进程稳定健康检查；纯代码失败可回滚
+                  （含迁移失败保持恢复要求，不擅自回退数据库）
 Nginx：web 静态 + /api 反代 127.0.0.1:8080（deploy/nginx/uten-imp-http-lan.conf）
 ```
 

@@ -14,6 +14,7 @@ Type=oneshot
 User=root
 Group=root
 UMask=0077
+LimitCORE=0
 ExecStart=/usr/bin/python3 -I /usr/local/lib/uten-imp/paired_internal_backup.py --config /etc/uten-imp/paired-internal-backup.json
 TimeoutStartSec=35min
 TimeoutStopSec=15s

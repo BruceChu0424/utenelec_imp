@@ -25,6 +25,7 @@
 | `sysctl-60-uten-net.conf` | `/etc/sysctl.d/60-uten-net.conf` | root 0644 | 随时, `sysctl --system` 生效 |
 | `timesyncd-10-uten.conf` | `/etc/systemd/timesyncd.conf.d/10-uten.conf` | root 0644 | 随时, 重启 systemd-timesyncd |
 | `apt-52uten-origins` | `/etc/apt/apt.conf.d/52uten-origins` | root 0644 | 随时 |
+| `needrestart-90-uten-maintenance.conf` | `/etc/needrestart/conf.d/90-uten-maintenance.conf` | root 0644 | 确认采用下述维护窗口重启策略后安装；不重启服务 |
 | `fail2ban-00-uten-ignore.local.example` | `/etc/fail2ban/jail.d/00-uten-ignore.local` | root 0644 | 改 SSH 之前 |
 | `sshd-00-uten-imp.conf.example` | `/etc/ssh/sshd_config.d/00-uten-imp.conf` | root 0600 | 手工维护的主机; 先挂自动回退定时器 |
 | `cloud-init-99-uten-ssh-pwauth.cfg` | `/etc/cloud/cloud.cfg.d/99-uten-ssh-pwauth.cfg` | root 0644 | 与上一行一起 |
@@ -57,3 +58,16 @@
 
 回归: `deploy/updater/test_simple_units_contract.py` 校验本目录与 `../units/` 的保留期、可写路径、
 占位符与脚本语法一致。
+
+## 系统补丁与服务重启
+
+Ubuntu 24.04 的 `needrestart` 默认可能在安全更新后自动重启受影响服务；
+`Unattended-Upgrade::Automatic-Reboot "false"` 只禁止自动重启整机。
+`90-uten-maintenance.conf` 将 needrestart 设为只列出待重启服务，保留自动安全更新下载和安装。
+依据见 [Ubuntu 自动更新文档](https://ubuntu.com/server/docs/how-to/software/automatic-updates/#service-restarts)。
+
+安装前保留原文件及摘要，确认没有正在执行的包更新；安装后用 `perl -c` 检查配置语法，
+再运行 `sudo needrestart -b -r l` 核对待重启项。此检查显式使用只列出模式，不以重启生产服务验收。
+维护窗口内先核对导入、备份及更新作业，按依赖顺序重启所列服务并验证数据库、ERP、入口和备份。
+该配置不阻止软件包维护脚本自身重启服务；升级数据库等关键软件包仍须安排维护窗口。
+回滚仅恢复原配置文件，不启动或重启业务，也不关闭安全更新。

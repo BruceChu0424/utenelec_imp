@@ -191,7 +191,7 @@ def receive(header, incoming, outgoing, config, base):
         existing = [value for name in header["opaqueIds"] if (value := object_record(objects, name, base))]
         outgoing.write(canonical({"format": FORMAT, "objects": existing}) + b"\n")
         return
-    with base.lock(root / ".receiver.lock"):
+    with base.lock(root / ".receiver.lock", timeout=base.RECEIVER_WAIT_SECONDS, busy_code='RECEIVER_BUSY'):
         if operation == "putChunk":
             if set(header) != {"format", "operation", "opaqueId", "cipherSha256", "cipherBytes"}:
                 raise ValueError("Invalid chunk upload header")
@@ -274,8 +274,9 @@ def receive(header, incoming, outgoing, config, base):
             raise
 
 
-def retain_locked(config, base):
-    _, objects, _ = directories(config, base)
+def retention_plan_locked(config, base):
+    """Prove the complete snapshot/object plan before either format is deleted."""
+    _, objects, points = directories(config, base)
     rows = snapshots(config, base)  # Any malformed point aborts all chunk GC.
     keep = {row[0] for row in rows[-config["minimum_complete_sets"]:]}
     daily = {}
@@ -286,36 +287,57 @@ def retain_locked(config, base):
         if timestamp >= moment - timedelta(days=config["hourly_retention_days"]):keep.add(directory)
         if timestamp >= moment - timedelta(days=config["daily_retention_days"]):daily[timestamp.date()] = directory
     keep.update(daily.values())
-    deleted = 0
-    for directory, _, _ in rows:
+    retained = [row for row in rows if row[0] in keep]
+    # Objects are immutable and this entire operation owns the receiver mutex.
+    # Validate every reference, but open each shared object once rather than
+    # once per snapshot (thousands of snapshots may reference the same chunk).
+    # Prove the complete retained closure before removing any recovery point.
+    needed = {}
+    for _, _, refs in retained:
+        for row in refs:
+            previous = needed.setdefault(row['opaqueId'], row)
+            if previous != row:
+                raise ValueError('Retained references disagree about an immutable chunk')
+    for name, row in needed.items():
+        known = object_record(objects, name, base)
+        if known is None or any(known[key] != row[key] for key in ('cipherSha256', 'cipherBytes')):
+            raise ValueError('Retained dependency closure blocks GC')
+    obsolete_points = []
+    for directory, receipt, _ in rows:
         if directory in keep:continue
         if directory.parent.name != "snapshots" or directory != directory.resolve():
             raise ValueError("Snapshot retention escaped its root")
         allowed = {"manifest.gpg", "references.json", "target-receipt.json"}
-        if next(row[1] for row in rows if row[0] == directory).get("sourceSignatureVerified"):
+        if receipt.get("sourceSignatureVerified"):
             allowed |= {"source-receipt.json", "source-signature.sshsig"}
         if {p.name for p in directory.iterdir()} != allowed:
             raise ValueError("Unknown snapshot contents block cleanup")
-        shutil.rmtree(directory);deleted += 1
-    retained = snapshots(config, base)
-    needed = {row["opaqueId"] for _, _, refs in retained for row in refs}
-    # All retained closures are checked before deleting even an unreferenced object.
-    for _, _, refs in retained:
-        for row in refs:
-            known = object_record(objects, row["opaqueId"], base)
-            if known is None or any(known[key] != row[key] for key in ("cipherSha256", "cipherBytes")):
-                raise ValueError("Retained dependency closure blocks GC")
-    gc = 0
+        obsolete_points.append(directory)
+    obsolete_objects = []
     for directory in objects.iterdir():
         if directory.name.startswith(".incoming-"):continue
         if not OPAQUE.fullmatch(directory.name):raise ValueError("Unknown chunk entry blocks GC")
+        if directory.name in needed:continue
         known = object_record(objects, directory.name, base)
-        if directory.name in needed or base.instant(known["receivedAt"]) >= moment - timedelta(days=2):continue
+        if base.instant(known["receivedAt"]) >= moment - timedelta(days=2):continue
         if directory.parent != objects or directory != directory.resolve():raise ValueError("Chunk GC escaped its root")
         if {p.name for p in directory.iterdir()} != {"cipher.gpg", "receipt.json"}:raise ValueError("Unknown chunk files block GC")
-        shutil.rmtree(directory);gc += 1
-    base.sync_directory(objects)
-    return {"deletedSnapshots": deleted, "deletedUnreferencedChunks": gc}
+        obsolete_objects.append(directory)
+    return {'pointsRoot': points, 'objectsRoot': objects,
+            'snapshots': tuple(obsolete_points), 'objects': tuple(obsolete_objects)}
+
+
+def apply_retention_plan_locked(plan, base):
+    """Only consume a preflight plan while its original receiver mutex is held."""
+    for directory in (*plan['snapshots'], *plan['objects']):
+        shutil.rmtree(directory)
+    base.sync_directory(plan['pointsRoot'])
+    base.sync_directory(plan['objectsRoot'])
+    return {'deletedSnapshots': len(plan['snapshots']), 'deletedUnreferencedChunks': len(plan['objects'])}
+
+
+def retain_locked(config, base):
+    return apply_retention_plan_locked(retention_plan_locked(config, base), base)
 
 
 def bundle(config, snapshot_id, outgoing, base):
@@ -350,18 +372,12 @@ def bundle(config, snapshot_id, outgoing, base):
                 archive.addfile(member,stream)
 
 
-def rpc(config, header, base, payload=None, maximum=4 * 1024 * 1024):
+def rpc(config, header, base, payload=None, maximum=4 * 1024 * 1024, *, deadline=None):
     process = subprocess.Popen(base.ssh_command(config), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL, env={"PATH": "/usr/bin:/bin", "LANG": "C"})
     try:
-        process.stdin.write(canonical(header) + b"\n")
-        if payload:
-            with Path(payload).open("rb") as stream:
-                while block := stream.read(base.CHUNK):process.stdin.write(block)
-        process.stdin.close()
-        raw = process.stdout.read(maximum + 1);process.stdout.close()
-        if process.wait(timeout=60) or len(raw) > maximum:raise ValueError("Chunk receiver did not acknowledge")
-        return base.decode_json(raw)
+        return base.transfer_exchange(process, canonical(header) + b'\n', payload, maximum,
+            deadline=deadline if deadline is not None else base.time.monotonic() + base.SNAPSHOT_JOB_SECONDS)
     finally:
         try:
             if process.poll() is None:process.kill();process.wait(timeout=10)
@@ -382,52 +398,57 @@ def encrypt_bytes(raw, destination, public_fd, home, sealed):
 
 
 def run_source(config, base):
+    deadline = base.time.monotonic() + base.SNAPSHOT_JOB_SECONDS
     state = base.private_path(config["state_directory"], directory=True)
-    with base.lock(state / ".source.lock"):
+    with base.lock(state / ".snapshot-source.lock"):
         status_path = state / "snapshot-status.json"
         previous = base.read_json(status_path) if status_path.exists() else None
         stage = None
         key_fd = None
         try:
-            result = subprocess.run(["/usr/bin/python3", "-I", config["paired_helper"], "--config", config["paired_config"]],
-                capture_output=True, timeout=180, env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8", "PYTHONDONTWRITEBYTECODE": "1"})
-            if result.returncode:raise RuntimeError("Consistent paired snapshot failed")
-            spec = importlib.util.spec_from_file_location("uten_snapshot_sealed", config["sealed_helper"])
-            sealed = importlib.util.module_from_spec(spec);sys.modules[spec.name] = sealed;spec.loader.exec_module(sealed)
-            paired = sealed.load_paired(Path(config["paired_helper"]))
-            root = Path(base.read_json(config["paired_config"])["backup_root"])
-            secret = base.private_path(config["chunk_identity_file"]).read_bytes()
-            if len(secret) != 32:raise ValueError("Invalid opaque chunk identity secret")
-            stage = state / (".snapshot-" + uuid.uuid4().hex)
-            stage.mkdir(mode=0o700);home = stage / "gnupg";home.mkdir(mode=0o700)
-            public = base.private_path(config["recipient_file"]).read_bytes()
-            sealed.check_recipient(public, config["recipient_fingerprint"], home)
-            key_fd = os.memfd_create("uten-snapshot-recipient", os.MFD_CLOEXEC)
-            os.write(key_fd, public);os.lseek(key_fd, 0, os.SEEK_SET)
-            plaintext, files = {}, []
-            with sealed.shared_backup_lock(root):
-                set_id, manifest_digest, entries, summary = sealed.collect_files(root, paired,
-                    Path(config["paired_helper"]), Path("/"), config["recovery_files"],
-                    include_remote_recovery=config.get('include_remote_recovery',False))
-                total = sum(path.stat().st_size for path, _ in entries)
-                if total > config.get("max_snapshot_plain_bytes", 512 * 1024**2):raise ValueError("Snapshot memory budget exceeded")
-                for path, name in entries:
-                    ids = [];whole = hashlib.sha256();size = 0
-                    before = sealed.safe_path(path)
-                    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
-                    with os.fdopen(fd, "rb") as stream:
-                        if not os.path.samestat(before, os.fstat(stream.fileno())):raise ValueError("Snapshot input changed")
-                        while raw := stream.read(CHUNK_BYTES):
-                            opaque = identity(secret, raw);plaintext.setdefault(opaque, raw)
-                            ids.append({"opaqueId": opaque, "size": len(raw), "sha256": hashlib.sha256(raw).hexdigest()})
-                            whole.update(raw);size += len(raw)
-                        after = os.fstat(stream.fileno())
-                    if (before.st_size,before.st_mtime_ns,before.st_ctime_ns)!=(after.st_size,after.st_mtime_ns,after.st_ctime_ns):
-                        raise ValueError("Snapshot file changed during read")
-                    files.append({"path": name, "size": size, "sha256": whole.hexdigest(), "chunks": ids})
-                if len(plaintext) > MAX_REFERENCES:raise ValueError("Snapshot chunk closure exceeds budget")
-                source_manifest = base.read_json(root / set_id / "manifest.json")
-            probed = rpc(config, {"format": base.FORMAT, "operation": "probeChunks", "opaqueIds": sorted(plaintext)}, base)
+            with base.lock(state / '.source.lock', timeout=base.SOURCE_CAPTURE_WAIT_SECONDS, busy_code='SOURCE_BUSY'):
+                result = subprocess.run(["/usr/bin/python3", "-I", config["paired_helper"], "--config", config["paired_config"]],
+                    capture_output=True, timeout=180, env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8", "PYTHONDONTWRITEBYTECODE": "1"})
+                if result.returncode:raise RuntimeError("Consistent paired snapshot failed")
+                spec = importlib.util.spec_from_file_location("uten_snapshot_sealed", config["sealed_helper"])
+                sealed = importlib.util.module_from_spec(spec);sys.modules[spec.name] = sealed;spec.loader.exec_module(sealed)
+                paired = sealed.load_paired(Path(config["paired_helper"]))
+                root = Path(base.read_json(config["paired_config"])["backup_root"])
+                secret = base.private_path(config["chunk_identity_file"]).read_bytes()
+                if len(secret) != 32:raise ValueError("Invalid opaque chunk identity secret")
+                stage = state / (".snapshot-" + uuid.uuid4().hex)
+                stage.mkdir(mode=0o700);home = stage / "gnupg";home.mkdir(mode=0o700)
+                public = base.private_path(config["recipient_file"]).read_bytes()
+                sealed.check_recipient(public, config["recipient_fingerprint"], home)
+                key_fd = os.memfd_create("uten-snapshot-recipient", os.MFD_CLOEXEC)
+                os.write(key_fd, public);os.lseek(key_fd, 0, os.SEEK_SET)
+                plaintext, files = {}, []
+                with sealed.shared_backup_lock(root):
+                    set_id, manifest_digest, entries, summary = sealed.collect_files(root, paired,
+                        Path(config["paired_helper"]), Path("/"), config["recovery_files"],
+                        include_remote_recovery=config.get('include_remote_recovery',False))
+                    total = sum(path.stat().st_size for path, _ in entries)
+                    if total > config.get("max_snapshot_plain_bytes", 512 * 1024**2):raise ValueError("Snapshot memory budget exceeded")
+                    for path, name in entries:
+                        ids = [];whole = hashlib.sha256();size = 0
+                        before = sealed.safe_path(path)
+                        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+                        with os.fdopen(fd, "rb") as stream:
+                            if not os.path.samestat(before, os.fstat(stream.fileno())):raise ValueError("Snapshot input changed")
+                            while raw := stream.read(CHUNK_BYTES):
+                                opaque = identity(secret, raw);plaintext.setdefault(opaque, raw)
+                                ids.append({"opaqueId": opaque, "size": len(raw), "sha256": hashlib.sha256(raw).hexdigest()})
+                                whole.update(raw);size += len(raw)
+                            after = os.fstat(stream.fileno())
+                        if (before.st_size,before.st_mtime_ns,before.st_ctime_ns)!=(after.st_size,after.st_mtime_ns,after.st_ctime_ns):
+                            raise ValueError("Snapshot file changed during read")
+                        files.append({"path": name, "size": size, "sha256": whole.hexdigest(), "chunks": ids})
+                    if len(plaintext) > MAX_REFERENCES:raise ValueError("Snapshot chunk closure exceeds budget")
+                    source_manifest = base.read_json(root / set_id / "manifest.json")
+            # All source bytes and identities are captured privately; release
+            # the source mutex before encryption and receiver/GC backpressure.
+            probed = rpc(config, {"format": base.FORMAT, "operation": "probeChunks", "opaqueIds": sorted(plaintext)}, base,
+                         deadline=deadline)
             existing = {row["opaqueId"]: row for row in probed["objects"]}
             refs = [];new_bytes = new_count = 0
             for opaque, raw in sorted(plaintext.items()):
@@ -437,7 +458,7 @@ def run_source(config, base):
                     encrypt_bytes(raw, cipher, key_fd, home, sealed)
                     header = {"format": base.FORMAT, "operation": "putChunk", "opaqueId": opaque,
                               "cipherSha256": base.digest(cipher), "cipherBytes": cipher.stat().st_size}
-                    known = rpc(config, header, base, cipher)
+                    known = rpc(config, header, base, cipher, deadline=deadline)
                     if any(known.get(key) != header[key] for key in ("opaqueId", "cipherSha256", "cipherBytes")):
                         raise ValueError("Chunk acknowledgment differs")
                     new_count += 1;new_bytes += known["cipherBytes"];cipher.unlink()
@@ -463,7 +484,7 @@ def run_source(config, base):
                 marketStateIncluded=bool(summary.get("market_state")), clientReleaseStateIncluded=bool(summary.get("client_release_state")))
             signature = sign_receipt(receipt, config["signing_key_file"], base)
             target = rpc(config, {"format": base.FORMAT, "operation": "commitSnapshot", "snapshotReceipt": receipt,
-                                   "references": refs, "sourceSignature": signature}, base, cipher)
+                                   "references": refs, "sourceSignature": signature}, base, cipher, deadline=deadline)
             if target.get("snapshotId") != point_id or target.get("manifestCipherSha256") != receipt["manifestCipherSha256"]:
                 raise ValueError("Snapshot commit acknowledgment differs")
             status_value = {"format": FORMAT, "state": "SNAPSHOT_CIPHERTEXT_COMPLETE", "observedAt": base.now().isoformat(),
@@ -474,10 +495,15 @@ def run_source(config, base):
             base.atomic_json(status_path, status_value)
             return status_value
         except Exception as error:
-            base.atomic_json(status_path, {"format": FORMAT, "state": "FAILED", "health": "DEGRADED",
-                "observedAt": base.now().isoformat(), "errorType": type(error).__name__,
+            failure = {**base.failure_record(error), "format": FORMAT, "health": "DEGRADED",
+                "observedAt": base.now().isoformat(),
                 "latest": previous.get("latest") if previous else None,
-                "continuousWalProtected": False, "arbitraryPitrOriginalHistoryProtected": False})
+                "continuousWalProtected": False, "arbitraryPitrOriginalHistoryProtected": False}
+            if isinstance(error, base.TransferBusy) and error.code == 'SOURCE_BUSY':
+                failure.update(state='DEFERRED', retryPolicy='NEXT_TIMER')
+                base.atomic_json(status_path, failure)
+                return failure
+            base.atomic_json(status_path, failure)
             raise
         finally:
             if key_fd is not None:os.close(key_fd)

@@ -38,7 +38,7 @@ def publication_functions() -> dict:
     exec(compile(ast.Module(body=errors, type_ignores=[]), str(data_path), 'exec'), namespace)
     source = worker / 'cli.py'
     parsed = ast.parse(source.read_text(encoding='utf-8'))
-    names = {'atomic_json', '_atomic_json', 'series_lock'}
+    names = {'atomic_json', 'atomic_health_json', '_atomic_json', 'series_lock'}
     functions = [node for node in parsed.body if isinstance(node, ast.FunctionDef) and node.name in names]
     assert {node.name for node in functions} == names
     exec(compile(ast.Module(body=functions, type_ignores=[]), str(source), 'exec'), namespace)
@@ -104,6 +104,7 @@ def main() -> None:
                 with namespace['series_lock'](root / 'collector.lock'):
                     namespace['atomic_json'](root / 'snapshot.json', {'public_market_fixture': True}, public=True)
                     namespace['atomic_json'](root / 'private-state.json', {'private_fixture': True})
+                    namespace['atomic_health_json'](root / 'auto-feed-health.json', {'live_run_fixture': True})
                     os.write(ready_write, b'1')
                     os.read(finish_read, 1)
             except BaseException:
@@ -115,6 +116,8 @@ def main() -> None:
             assert os.read(ready_read, 1) == b'1', 'writer failed before publishing fixture'
             assert stat.S_IMODE((root / 'snapshot.json').stat().st_mode) == 0o640
             assert (root / 'snapshot.json').stat().st_gid == shared_gid
+            assert stat.S_IMODE((root / 'auto-feed-health.json').stat().st_mode) == 0o640
+            assert (root / 'auto-feed-health.json').stat().st_gid == shared_gid
             assert stat.S_IMODE((root / 'private-state.json').stat().st_mode) == 0o600
             assert stat.S_IMODE((root / 'collector.lock').stat().st_mode) == 0o600
             assert stat.S_IMODE((root / '.market-write.lock').stat().st_mode) == 0o600
@@ -122,7 +125,9 @@ def main() -> None:
             def reader() -> None:
                 unprivileged(reader_uid, shared_gid)
                 assert json.loads((root / 'snapshot.json').read_text()) == {'public_market_fixture': True}
+                assert json.loads((root / 'auto-feed-health.json').read_text()) == {'live_run_fixture': True}
                 denied(lambda: (root / 'snapshot.json').open('a'))
+                denied(lambda: (root / 'auto-feed-health.json').open('a'))
                 denied(lambda: (root / 'private-state.json').read_bytes())
                 denied(lambda: (root / 'collector.lock').read_bytes())
                 denied(lambda: (root / '.market-write.lock').read_bytes())

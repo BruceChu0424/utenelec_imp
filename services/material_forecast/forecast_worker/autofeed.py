@@ -11,7 +11,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 from . import __version__
-from .cli import atomic_json, series_lock
+from .cli import atomic_health_json, atomic_json, series_lock
 from .data import BUSINESS_ZONE, instant, utc_text
 from .locking import register_write_barrier
 from .shfe import ReportCache, ShfeClient, SourceCancelled, SourceError, chain_points, load_benchmarks, price
@@ -46,12 +46,12 @@ class AutoFeed:
         with self.health_lock:
             for item in self.health.values():
                 item.update(changes)
-            atomic_json(self.output / "auto-feed-health.json", {
+            atomic_health_json(self.output / "auto-feed-health.json", {
                 "schemaVersion": 1, "workerVersion": __version__, "generatedAt": utc_text(self.now()),
                 "autoUpdateEnabled": self.continuous and not self.stop.is_set(),
                 "series": list(self.health.values()),
                 **({"configRevision": self.config_revision, "runId": self.run_id} if self.config_revision else {}),
-            }, public=True)
+            })
 
     def _heartbeat_loop(self) -> None:
         while not self.stop.wait(30):

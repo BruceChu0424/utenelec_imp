@@ -153,6 +153,14 @@ appliedRevision then acknowledges the disabled policy without a live heartbeat.
 An unknown external collector must yield COLLECTOR_BUSY, not a false disabled
 acknowledgement. Old restored health/PIDs cannot assert an online/applied state.
 
+Heartbeat publication is an atomic volatile write, independent of the durable
+`.market-write.lock` barrier. A long backup copy must not delay the 30s heartbeat
+or cause the supervisor's unchanged 90s freshness check to stop a healthy worker.
+Model snapshots, quotes, source revisions and cache pointers retain their
+existing durable write barrier. Health still echoes the current runId and
+configuration revision; bypassing the snapshot barrier does not acknowledge an
+old process or a saved but unapplied policy.
+
 Replace path-existence collector lock with real OS file locking (fcntl/msvcrt),
 released even after crash. Existing leftover marker files cannot block reboot.
 Control/config changes do not reset source cache, old predictions or bindings.
@@ -195,8 +203,12 @@ Paired backup must explicitly include a stable market-state subtree (raw source
 revisions, issued predictions, cache pointers/state, current snapshots/quotes).
 Coordinate short file-write barriers or a validated stable export; existing media
 backup only includes DB referenced attachment objects and does not suffice.
-Exclude executable caches/venvs and live OS locks. Restore retains old health as
-evidence but resets its online acknowledgement; never resurrect a PID/run lease.
+Exclude executable caches/venvs, live OS locks and the volatile root heartbeat
+from new exports. Historical v1 backups containing health retain their exact
+inventory/digest verification; restore keeps that old health as evidence and
+resets its online acknowledgement. New exports restore without a health file;
+only the newly owned worker may create its online acknowledgement. Never
+resurrect a PID/run lease.
 
 Verify full API policy/step-up/CAS, process restart/disable/crash recovery and no
 duplicate, real source/consumer contract, mapping version unchanged across price

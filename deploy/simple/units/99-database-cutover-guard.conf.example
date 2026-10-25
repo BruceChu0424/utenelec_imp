@@ -1,0 +1,11 @@
+# Temporary, opt-in maintenance drop-in. Never install via the normal installer.
+# /etc/systemd/system/uten-imp.service.d/99-database-cutover-guard.conf
+# Root reads the private policy and delegates only a fixed read-only SQL query.
+# '+' escapes the unit identity/capability/filesystem sandbox for this command.
+# Immediately regain NNP and bound root to identity delegation; code is fixed,
+# root-owned and read-only. Original ExecStart retains the application sandbox.
+[Service]
+ExecCondition=+/usr/bin/setpriv --bounding-set=-all,+setuid,+setgid --inh-caps=-all --ambient-caps=-all --no-new-privs /usr/bin/python3 -I /usr/local/lib/uten-imp/cutover-start-guard.py
+# Exit 1 skips startup without failure. Also contain crashes/signals/timeouts:
+# normal Restart=always is restored by removing this exact temporary drop-in.
+Restart=no

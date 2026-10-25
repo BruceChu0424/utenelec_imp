@@ -4529,6 +4529,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
      * CANCELED）时，按 (PROCUREMENT_ORDER, orderId) 撤回「预计到货」行动卡。
      * 仍在 OPEN 时不动作（部分登记不撤卡）。幂等。
      */
+    @Override
     public void resolveArrivalExpectationNotices(
             String orderType, UUID orderId) {
         if (orderType == null || orderId == null) return;
@@ -6200,6 +6201,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
      * 按 (aggregateKind, aggregateId) 批量 resolve 全部接收人的待审通知——
      * 弹卡停止展示、收件台计数归零、通知中心灰显「已办结」。幂等。
      */
+    @Override
     public int resolveReviewNotices(
             String aggregateKind, UUID aggregateId, String reason) {
         return noticeService.resolveReviewNotices(aggregateKind, aggregateId, reason);

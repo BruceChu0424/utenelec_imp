@@ -103,8 +103,9 @@ public class ProcurementOrderClosureService {
     @PreAuthorize("hasAnyAuthority('purchase_order:submit_finance','subcontract_order:submit_finance')")
     public FinanceApproval submit(String rawType,UUID id,ClosureRequest request) {
         tx.bind(); String type=kind(rawType); requirePermission(type,"view"); requirePermission(type,"submit_finance");
-        String mode=request==null?null:request.mode();
-        if (!Set.of("CLOSE","CLOSE_AND_REORDER").contains(mode==null?"":mode)) throw invalid("请选择直接结束或结束并重建剩余订单");
+        if(request==null) throw invalid("请选择直接结束或结束并重建剩余订单");
+        String mode=request.mode();
+        if (mode==null || !Set.of("CLOSE","CLOSE_AND_REORDER").contains(mode)) throw invalid("请选择直接结束或结束并重建剩余订单");
         String reason=request.reason()==null?"":request.reason().strip();
         if(reason.isEmpty()||reason.length()>1000) throw invalid("请填写结束原因，最多1000字");
         var guard=locks.order(type,id);
@@ -150,7 +151,7 @@ public class ProcurementOrderClosureService {
         if(!state.fingerprint().equals(current.fingerprint())) throw conflict("订单收退货、质检或物料事实已变化，请退回结束申请后重新核对提交");
         ClosureBlock downstreamBlock=downstreamBlock(type,orderId,current.billNo());
         if(downstreamBlock!=null) throw conflict(downstreamBlock.reason());
-        var snapshot=ports.get(type).lockFinanceReconfirmationSnapshot(orderId);
+        ports.get(type).lockFinanceReconfirmationSnapshot(orderId);
         UUID actor=currentUser.requireId(),employee=currentUser.requireEmployeeId();
         jdbc.update("""
                 UPDATE procurement_order_approval_cases SET status='APPROVED',decided_at=now(),decided_by_user_id=?,

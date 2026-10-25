@@ -195,7 +195,14 @@ public class ProcurementOrderTerminationSourceService implements ProcurementOrde
         }
         static Kind of(String value) {if("PURCHASE".equals(value))return PURCHASE;if("SUBCONTRACT".equals(value))return SUBCONTRACT;throw conflict("未知订单类型");}
     }
-    private static Map<String,Object> args(Object...pairs) {Map<String,Object> result=new HashMap<>();for(int i=0;i<pairs.length;i+=2)result.put((String)pairs[i],pairs[i+1]);return result;}
+    private static Map<String,Object> args(Object...pairs) {
+        if(pairs==null || pairs.length%2!=0) throw new IllegalArgumentException("Expected complete SQL parameter key/value pairs");
+        Map<String,Object> result=new HashMap<>();
+        for(int index=0;index+1<pairs.length;index+=2) {
+            result.put((String)pairs[index],pairs[index+1]);
+        }
+        return result;
+    }
     private static BigDecimal amount(Map<String,Object> row,String name) {Object value=row.get(name);return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());}
     private static BigDecimal zero(BigDecimal value) {return value==null?BigDecimal.ZERO:value;}
     private static ApiException conflict(String message) {return new ApiException(ErrorCode.CONFLICT,message);}

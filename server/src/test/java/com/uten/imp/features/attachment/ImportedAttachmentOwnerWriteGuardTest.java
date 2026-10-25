@@ -67,12 +67,12 @@ class ImportedAttachmentOwnerWriteGuardTest {
         private final String type;private final boolean manage,upload,delete;
         final List<String> actions=new ArrayList<>();
         public Owner(String type,boolean manage,boolean upload,boolean delete){this.type=type;this.manage=manage;this.upload=upload;this.delete=delete;}
-        public String ownerType(){return type;}
-        public void requireCanView(UUID id,AuthUser user){ }
-        public void requireCanManage(UUID id,AuthUser user){allowed(manage);actions.add("manage");}
-        public void requireCanManageForUpdate(UUID id,AuthUser user){allowed(manage);actions.add("manageUpdate");}
-        public void requireCanUploadForUpdate(UUID id,AuthUser user){allowed(upload);actions.add("uploadUpdate");}
-        public void requireCanDeleteForUpdate(UUID id,AuthUser user){allowed(delete);actions.add("deleteUpdate");}
+        @Override public String ownerType(){return type;}
+        @Override public void requireCanView(UUID id,AuthUser user){ }
+        @Override public void requireCanManage(UUID id,AuthUser user){allowed(manage);actions.add("manage");}
+        @Override public void requireCanManageForUpdate(UUID id,AuthUser user){allowed(manage);actions.add("manageUpdate");}
+        @Override public void requireCanUploadForUpdate(UUID id,AuthUser user){allowed(upload);actions.add("uploadUpdate");}
+        @Override public void requireCanDeleteForUpdate(UUID id,AuthUser user){allowed(delete);actions.add("deleteUpdate");}
         private static void allowed(boolean value){if(!value)throw new ApiException(ErrorCode.FORBIDDEN,"owner action denied");}
     }
 }

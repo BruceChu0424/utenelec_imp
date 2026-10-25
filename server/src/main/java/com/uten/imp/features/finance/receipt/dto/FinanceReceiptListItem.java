@@ -25,6 +25,7 @@ public class FinanceReceiptListItem extends com.uten.imp.common.history.Document
     // Additive exact text never passes through a binary floating-point value.
     public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
     /** The source identity is immutable; ordinary save requests cannot set it. */
+    @Override
     public boolean isLegacyImported() { return super.isLegacyImported(); }
 
     @Override public void disableHistoryActions() {

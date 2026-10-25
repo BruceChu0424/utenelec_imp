@@ -413,7 +413,7 @@ public class SalesOrderService {
                     pgStr(row, 0), pgStr(row, 1), pgStr(row, 2), pgStr(row, 3), pgStr(row, 4),
                     orderQty, producedQty, shippedQty, reservedQty, plannedQty, unplannedQty,
                     null, progressStageOf(
-                            orderQty, producedQty, shippedQty,
+                            orderQty, producedQty,
                             reservedQty, plannedQty, unplannedQty,
                             financeRejected, stopped, closed,
                             shipmentDraftQty, shipmentPendingFinanceQty,
@@ -824,17 +824,16 @@ public class SalesOrderService {
             double shipmentApprovedQty,
             boolean draft) {
         return progressStageOf(
-                orderQty, producedQty, shippedQty, reservedQty, plannedQty, unplannedQty,
+                orderQty, producedQty, reservedQty, plannedQty, unplannedQty,
                 financeRejected, stopped, closed, shipmentDraftQty, shipmentPendingFinanceQty,
                 shipmentFinanceRejectedQty, shipmentApprovedQty, draft,
                 Math.max(orderQty - shippedQty, 0));
     }
 
-    /** Full row-quantity mirror. Excess delivery of one SKU cannot fulfill another SKU. */
+    /** Row-level outstanding is authoritative; aggregate excess shipment cannot fulfill another SKU. */
     static String progressStageOf(
             double orderQty,
             double producedQty,
-            double shippedQty,
             double reservedQty,
             double plannedQty,
             double unplannedQty,

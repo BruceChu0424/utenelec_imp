@@ -88,7 +88,15 @@ class CompanyFileUploadPostgresTest {
         actualRepository=new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(entityFactory)).getRepository(AttachmentRepository.class);
         transactions=new JpaTransactionManager(entityFactory);
     }
-    @AfterAll static void stop()throws Exception {if(entityFactory!=null)entityFactory.close();if(database!=null)database.close();}
+    @AfterAll
+    static void stop() throws Exception {
+        if (entityFactory != null) {
+            entityFactory.close();
+        }
+        if (database != null) {
+            database.close();
+        }
+    }
     @SuppressWarnings("unchecked") static <T>T transactional(T target) {
         var factory=new ProxyFactory(target);factory.setProxyTargetClass(true);
         var interceptor=new TransactionInterceptor();interceptor.setTransactionManager(transactions);

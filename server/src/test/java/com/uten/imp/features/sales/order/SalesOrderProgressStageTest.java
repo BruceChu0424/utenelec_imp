@@ -204,17 +204,17 @@ class SalesOrderProgressStageTest {
         // SKU A ordered10/shipped20; SKU B ordered10/shipped0.
         // Raw totals look shipped20/ordered20, but SKU B still needs10.
         assertEquals("PENDING", SalesOrderService.progressStageOf(
-                20, 0, 20, 0, 0, 10, false, false, false, 0, 0, 0, 0, false, 10));
+                20, 0, 0, 0, 10, false, false, false, 0, 0, 0, 0, false, 10));
         // A real return restores outstanding even after original full delivery.
         assertEquals("PENDING", SalesOrderService.progressStageOf(
-                10, 0, 10, 0, 0, 2, false, false, false, 0, 0, 0, 0, false, 2));
+                10, 0, 0, 0, 2, false, false, false, 0, 0, 0, 0, false, 2));
         // Explicit row flag_qty settles the remaining two; raw counters stay unchanged.
         assertEquals("SHIPPED", SalesOrderService.progressStageOf(
-                10, 0, 8, 0, 0, 0, false, false, false, 0, 0, 0, 0, false, 0));
+                10, 0, 0, 0, 0, false, false, false, 0, 0, 0, 0, false, 0));
         assertEquals("CLOSED", SalesOrderService.progressStageOf(
-                20, 0, 20, 0, 0, 10, false, false, true, 0, 0, 0, 0, false, 10));
+                20, 0, 0, 0, 10, false, false, true, 0, 0, 0, 0, false, 10));
         assertEquals("CANCELED", SalesOrderService.progressStageOf(
-                20, 0, 20, 0, 0, 10, false, true, false, 0, 0, 0, 0, false, 10));
+                20, 0, 0, 0, 10, false, true, false, 0, 0, 0, 0, false, 10));
         String grouped = SalesOrderService.progressGroupedSql(
                 new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope("1=1", null, java.util.Set.of()));
         org.junit.jupiter.api.Assertions.assertTrue(grouped.contains("AS outstanding_qty"));

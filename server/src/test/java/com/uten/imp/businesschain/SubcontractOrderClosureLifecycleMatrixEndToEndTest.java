@@ -400,7 +400,12 @@ class SubcontractOrderClosureLifecycleMatrixEndToEndTest {
     }
     private void issue(Fixture f,BigDecimal quantity) {
         harness.loginAs(f.buyer());var draft=harness.submitSubcontractDraw(f.item(),quantity,"matrix-issue-"+UUID.randomUUID());
-        harness.loginAs(f.warehouseUser());for(UUID id:draft) issues.approve(id);harness.loginAs(f.buyer());drain();
+        harness.loginAs(f.warehouseUser());
+        for (UUID id : draft) {
+            issues.approve(id);
+        }
+        harness.loginAs(f.buyer());
+        drain();
     }
     private Arrival arrival(Fixture f,String quantity) {
         harness.loginAs(f.warehouseUser());

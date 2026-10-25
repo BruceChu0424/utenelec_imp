@@ -14,7 +14,7 @@ import java.util.UUID;
 public class InquiryDetail extends com.uten.imp.common.history.DocumentHistoryMetadata
         implements com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities {
     private UUID id;
-    private Integer legacyId;
+    @lombok.Getter(onMethod_ = @Override) private Integer legacyId;
     private String billNo;
     private LocalDate billDate;
     private UUID supplierId;

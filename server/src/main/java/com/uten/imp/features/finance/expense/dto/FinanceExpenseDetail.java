@@ -43,6 +43,7 @@ public class FinanceExpenseDetail extends com.uten.imp.common.history.DocumentHi
     public String getAmountOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountOriginal); }
     public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
     /** The source identity is immutable; ordinary save requests cannot set it. */
+    @Override
     public boolean isLegacyImported() { return super.isLegacyImported(); }
 
     @Override public void disableHistoryActions() {

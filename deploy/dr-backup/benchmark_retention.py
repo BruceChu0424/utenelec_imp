@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import time
+import resource
 from unittest.mock import patch
 
 import continuous_backup as base
@@ -68,9 +69,12 @@ def benchmark(snapshot_count=256, chunk_count=2048):
             elapsed = time.monotonic() - started
         if result['completedSnapshots'] != snapshot_count or records.call_count != chunk_count:
             raise AssertionError('Synthetic retention failed shared closure validation')
+        if len(result['snapshotRecoveryPoints']) != min(snapshot_count, chunks.CATALOG_WINDOW):
+            raise AssertionError('Catalog output escaped its fixed metadata window')
         return {'state': 'SYNTHETIC_RETENTION_BENCHMARK_PASSED', 'snapshots': snapshot_count,
             'totalReferences': snapshot_count * chunk_count, 'uniqueChunks': chunk_count,
             'objectMetadataReads': records.call_count, 'elapsedSeconds': round(elapsed, 3),
+            'returnedRecoveryPoints': len(result['snapshotRecoveryPoints']),
             'deletedSnapshots': result['lastRetention']['deletedSnapshots'],
             'deletedUnreferencedChunks': result['lastRetention']['deletedUnreferencedChunks'],
             'productionPathsAccepted': False}
@@ -80,5 +84,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--snapshots', type=int, default=256)
     parser.add_argument('--chunks', type=int, default=2048)
+    parser.add_argument('--memory-limit-mib', type=int)
     args = parser.parse_args()
+    if args.memory_limit_mib is not None:
+        if not 96 <= args.memory_limit_mib <= 4096:
+            raise ValueError('Invalid isolated benchmark address-space limit')
+        ceiling = args.memory_limit_mib * 1024**2
+        resource.setrlimit(resource.RLIMIT_AS, (ceiling, ceiling))
     print(json.dumps(benchmark(args.snapshots, args.chunks)))

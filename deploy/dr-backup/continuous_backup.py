@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import resource
 import selectors
 import shutil
 import signal
@@ -33,10 +34,14 @@ RECEIVER_WAIT_SECONDS = 30
 TRANSFER_IDLE_SECONDS = 60
 ARCHIVE_JOB_SECONDS = 35 * 60
 SNAPSHOT_JOB_SECONDS = 4 * 60
+MAX_ARCHIVE_BYTES = 3 * 1024**3
+BUDGET_FIELDS = frozenset({'snapshot_budget_seconds', 'snapshot_unit_timeout_seconds',
+    'archive_budget_seconds', 'archive_unit_timeout_seconds', 'bundle_budget_seconds'})
 FAILURE_CODES = frozenset({'LOCK_BUSY', 'SOURCE_BUSY', 'RECEIVER_BUSY',
     'RECEIVER_CAPACITY_LIMIT', 'RECEIVER_PROCESS_FAILED', 'RECEIVER_REJECTED',
     'TRANSFER_PIPE_CLOSED', 'TRANSFER_IO_ERROR', 'TRANSFER_IDLE_TIMEOUT',
-    'TRANSFER_DEADLINE_EXCEEDED', 'INVALID_TRANSFER'})
+    'TRANSFER_DEADLINE_EXCEEDED', 'SOURCE_SNAPSHOT_LIMIT', 'SOURCE_SPOOL_CAPACITY',
+    'SOURCE_ARCHIVE_LIMIT', 'SOURCE_SPOOL_UNMOUNTED', 'CATALOG_RESOURCE_LIMIT', 'TRANSFER_CANCELLED', 'INVALID_TRANSFER'})
 SOURCE_FIELDS = {"format", "exportId", "state", "sourceSetId", "sourceManifestSha256",
     "recipientFingerprint", "ciphertextFile", "ciphertextBytes", "ciphertextSha256",
     "cryptoRecoveryIncluded", "completedAt", "targetCopyVerified", "restoreVerified",
@@ -63,7 +68,76 @@ def failure_record(error):
     if not isinstance(code, str) or code not in FAILURE_CODES:
         code = ('TRANSFER_PIPE_CLOSED' if isinstance(error, BrokenPipeError) else
                 'TRANSFER_IO_ERROR' if isinstance(error, OSError) else 'INVALID_TRANSFER')
-    return {'format': FORMAT, 'state': 'FAILED', 'errorType': type(error).__name__, 'errorCode': code}
+    result = {'format': FORMAT, 'state': 'FAILED', 'errorType': type(error).__name__, 'errorCode': code}
+    if getattr(error, 'cleanup_required', False):
+        result['cleanupRequired'] = True
+    return result
+
+
+def run_budget(config, mode):
+    if any((key.endswith('_budget_seconds') or key.endswith('_unit_timeout_seconds'))
+           and key not in BUDGET_FIELDS for key in config):
+        raise ValueError('Unknown bounded backup budget field')
+    default_unit, maximum_unit = ((SNAPSHOT_JOB_SECONDS, 15 * 60) if mode == 'snapshot'
+                                  else (ARCHIVE_JOB_SECONDS, ARCHIVE_JOB_SECONDS))
+    unit = config.get(mode + '_unit_timeout_seconds', default_unit)
+    budget = config.get(mode + '_budget_seconds', default_unit - 30)
+    if (mode not in {'snapshot', 'archive'} or type(unit) is not int or type(budget) is not int
+            or not 60 <= unit <= maximum_unit or not 30 <= budget <= unit - 30):
+        raise ValueError('Backup budget must leave thirty seconds below the reviewed unit timeout')
+    return budget, unit
+
+
+@contextmanager
+def timed_phase(phases, name):
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        phases[name] = round(max(0, time.monotonic() - started), 3)
+
+
+@contextmanager
+def bounded_source_job(config, mode):
+    """CLI watchdog also bounds helper/export work before the network pump."""
+    budget, _ = run_budget(config, mode)
+    def deadline_expired(*_):
+        raise TransferFailure('TRANSFER_DEADLINE_EXCEEDED')
+    def interrupted(*_):
+        raise TransferFailure('TRANSFER_CANCELLED')
+    previous = {kind: signal.getsignal(kind) for kind in (signal.SIGALRM, signal.SIGTERM, signal.SIGINT)}
+    try:
+        signal.signal(signal.SIGALRM, deadline_expired)
+        signal.signal(signal.SIGTERM, interrupted)
+        signal.signal(signal.SIGINT, interrupted)
+        signal.setitimer(signal.ITIMER_REAL, budget)
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        for kind, handler in previous.items():
+            signal.signal(kind, handler)
+
+
+def archive_limit(config):
+    limit = config.get('max_archive_bytes', MAX_ARCHIVE_BYTES)
+    if type(limit) is not int or not 100 <= limit <= MAX_ARCHIVE_BYTES:
+        raise ValueError('Invalid bounded source archive limit')
+    return limit
+
+
+@contextmanager
+def bounded_archive_files(limit):
+    """The GPG child inherits a real output-file cap before encryption starts."""
+    previous = resource.getrlimit(resource.RLIMIT_FSIZE)
+    ceiling = limit
+    for inherited in previous:
+        if inherited != resource.RLIM_INFINITY:
+            ceiling = min(ceiling, inherited)
+    resource.setrlimit(resource.RLIMIT_FSIZE, (ceiling, previous[1]))
+    try:
+        yield
+    finally:
+        resource.setrlimit(resource.RLIMIT_FSIZE, previous)
 
 
 def now():
@@ -171,6 +245,9 @@ def lock(path, *, timeout=0, busy_code='LOCK_BUSY'):
 
 
 def source_receipt(value, config):
+    limit = config['max_archive_bytes']
+    if type(limit) is not int or not 100 <= limit <= MAX_ARCHIVE_BYTES:
+        raise ValueError('Invalid bounded receiver archive limit')
     if (not isinstance(value, dict) or set(value) != SOURCE_FIELDS
             or value["format"] != "uten-sealed-paired-v1" or value["state"] != "CIPHERTEXT_CREATED"
             or not EXPORT.fullmatch(value["exportId"]) or not SET.fullmatch(value["sourceSetId"])
@@ -180,7 +257,7 @@ def source_receipt(value, config):
             or value["recipientFingerprint"] != config["recipient_fingerprint"]
             or value["ciphertextFile"] != "archive.gpg"
             or type(value["ciphertextBytes"]) is not int
-            or not 100 <= value["ciphertextBytes"] <= config["max_archive_bytes"]):
+            or not 100 <= value["ciphertextBytes"] <= limit):
         raise ValueError("Invalid source receipt")
     for key in ("cryptoRecoveryIncluded", "targetCopyVerified", "restoreVerified",
                 "marketStateIncluded", "clientReleaseStateIncluded"):
@@ -209,6 +286,8 @@ def completed(config):
                 or target.get("ciphertextBytes") != archive.stat().st_size
                 or source["ciphertextBytes"] != archive.stat().st_size):
             raise ValueError("Completed archive evidence is damaged")
+        if len(result) >= 10000:
+            raise TransferFailure('CATALOG_RESOURCE_LIMIT')
         result.append((directory, source, target))
     return sorted(result, key=lambda item: instant(item[2]["receivedAt"]))
 
@@ -257,11 +336,12 @@ def build_status(config):
         "rpo15MinutesSatisfied": False, "continuousWalProtected": False,
         "originalHistoryContinuous": False, "immutableStorageVerified": False,
         "restoreVerified": False,
+        'archiveCatalogReturnedPoints': min(100, len(rows)), 'archiveCatalogTruncated': len(rows) > 100,
         "recoveryPoints": [{"id": source["sourceSetId"], "exportId": source["exportId"],
             "storageTargetId": "cloud-archive", "recoverableUntil": target["sourceSnapshotAt"],
             "manifestSha256": source["sourceManifestSha256"], "cipherSha256": source["ciphertextSha256"],
             "complete": True, "cipherVerified": True, "keysCovered": False, "verified": False,
-            "reasonCode": "CIPHERTEXT_VERIFIED_RESTORE_PENDING"} for _, source, target in rows]}
+            "reasonCode": "CIPHERTEXT_VERIFIED_RESTORE_PENDING"} for _, source, target in rows[-100:]]}
     if Path(__file__).with_name("snapshot_chunks.py").exists():
         snapshot_status = chunks_module().status(config, sys.modules[__name__])
         result.update(snapshot_status)
@@ -499,6 +579,9 @@ def transfer_exchange(process, header, payload, maximum, *, deadline):
 
 def upload(config, directory, source_snapshot, *, deadline=None):
     receipt = read_json(directory / "receipt.json")
+    limit = archive_limit(config)
+    if type(receipt.get('ciphertextBytes')) is not int or not 100 <= receipt['ciphertextBytes'] <= limit:
+        raise TransferFailure('SOURCE_ARCHIVE_LIMIT')
     header = {"format": FORMAT, "operation": "submit", "sourceReceipt": receipt,
               "sourceSnapshotAt": source_snapshot}
     # The receiver consumes a finite bounded file, then verifies EOF and hash before publishing.
@@ -507,7 +590,7 @@ def upload(config, directory, source_snapshot, *, deadline=None):
     try:
         result = transfer_exchange(process, (json.dumps(header, separators=(",", ":")) + "\n").encode(),
                                    directory / 'archive.gpg', HEADER_LIMIT,
-                                   deadline=deadline if deadline is not None else time.monotonic() + ARCHIVE_JOB_SECONDS)
+                                   deadline=deadline if deadline is not None else time.monotonic() + run_budget(config, 'archive')[0])
         if (result.get("state") != "TARGET_BYTES_VERIFIED" or result.get("exportId") != receipt["exportId"]
                 or result.get("ciphertextSha256") != receipt["ciphertextSha256"]
                 or result.get("ciphertextBytes") != receipt["ciphertextBytes"]):
@@ -534,15 +617,19 @@ def close_transfer_pipes(process):
                 pass
 
 
-def capture_archive(config, state):
+def capture_archive(config, state, *, deadline=None, phases=None):
     # The shared source mutex protects consistent input creation and capture.
     # A complete private ciphertext archive no longer depends on live inputs;
     # network backpressure must not block the five-minute capture pipeline.
     with lock(state / '.source.lock', timeout=SOURCE_CAPTURE_WAIT_SECONDS, busy_code='SOURCE_BUSY'):
         environment = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8",
                        "PYTHONDONTWRITEBYTECODE": "1"}
-        result = subprocess.run(["/usr/bin/python3", "-I", config["paired_helper"], "--config",
-            config["paired_config"]], capture_output=True, env=environment, timeout=1800)
+        timeout = min(1800, deadline - time.monotonic()) if deadline is not None else 1800
+        if timeout <= 0:
+            raise TransferFailure('TRANSFER_DEADLINE_EXCEEDED')
+        with timed_phase(phases if phases is not None else {}, 'pairedSnapshot'):
+            result = subprocess.run(["/usr/bin/python3", "-I", config["paired_helper"], "--config",
+                config["paired_config"]], capture_output=True, env=environment, timeout=timeout)
         if result.returncode:
             raise RuntimeError("PAIRED_BACKUP_FAILED")
         paired_config = read_json(config["paired_config"])
@@ -551,23 +638,50 @@ def capture_archive(config, state):
         sealed = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = sealed
         spec.loader.exec_module(sealed)
-        directory, receipt = sealed.export(root, Path(config["source_export_directory"]),
-            private_path(config["recipient_file"]).read_bytes(), config["recipient_fingerprint"],
-            config["recovery_files"], helper=Path(config["paired_helper"]),
-            include_remote_recovery=config.get('include_remote_recovery',False))
+        # Keep the paired set fixed across preflight and the existing exporter.
+        # The exporter takes a compatible nested shared lock; no new helper API
+        # or source-selection override is needed.
+        with timed_phase(phases if phases is not None else {}, 'sealedExport'), sealed.shared_backup_lock(root):
+            selected_id, selected_digest, inputs, selected_scope = sealed.collect_files(root, sealed.load_paired(Path(config['paired_helper'])),
+                Path(config['paired_helper']), Path('/'), config['recovery_files'],
+                include_remote_recovery=config.get('include_remote_recovery', False))
+            plain_limit = config.get('max_snapshot_plain_bytes', 512 * 1024**2)
+            if type(plain_limit) is not int or not 1 <= plain_limit <= 2 * 1024**3:
+                raise ValueError('Invalid bounded source plaintext limit')
+            if sum(path.stat().st_size for path, _ in inputs) > plain_limit:
+                raise TransferFailure('SOURCE_SNAPSHOT_LIMIT')
+            inventory_bytes = sum(len(json.dumps({'path': name, 'size': path.stat().st_size,
+                'sha256': '0' * 64}, sort_keys=True, separators=(',', ':')).encode()) + 1 for path, name in inputs)
+            envelope = {'format': 'uten-sealed-paired-v1', 'sourceSetId': selected_id,
+                'sourceManifestSha256': selected_digest, 'recipientFingerprint': config['recipient_fingerprint'],
+                'files': [], 'cryptoRecoveryIncluded': True,
+                'scope': {'marketStateIncluded': bool(selected_scope.get('market_state')),
+                    'clientReleaseStateIncluded': bool(selected_scope.get('client_release_state')),
+                    'remoteGatewayRecovery': selected_scope.get('remote_recovery')}}
+            if inventory_bytes + len(json.dumps(envelope, sort_keys=True, separators=(',', ':')).encode()) > 64 * 1024**2:
+                raise TransferFailure('SOURCE_ARCHIVE_LIMIT')
+            with bounded_archive_files(archive_limit(config)):
+                directory, receipt = sealed.export(root, Path(config["source_export_directory"]),
+                    private_path(config["recipient_file"]).read_bytes(), config["recipient_fingerprint"],
+                    config["recovery_files"], helper=Path(config["paired_helper"]),
+                    include_remote_recovery=config.get('include_remote_recovery',False))
         manifest = read_json(root / receipt["sourceSetId"] / "manifest.json")
         return directory, receipt, manifest['started_at']
 
 
 def run_source(config):
-    deadline = time.monotonic() + ARCHIVE_JOB_SECONDS
+    budget, unit = run_budget(config, 'archive')
+    deadline = time.monotonic() + budget
+    phases = {}
     state = private_path(config["state_directory"], directory=True)
     with lock(state / ".archive-source.lock"):
         status_path = state / "status.json"
         previous = read_json(status_path) if status_path.exists() else None
         try:
-            directory, receipt, source_snapshot = capture_archive(config, state)
-            target = upload(config, directory, source_snapshot, deadline=deadline)
+            with timed_phase(phases, 'consistentCapture'):
+                directory, receipt, source_snapshot = capture_archive(config, state, deadline=deadline, phases=phases)
+            with timed_phase(phases, 'transfer'):
+                target = upload(config, directory, source_snapshot, deadline=deadline)
             atomic_json(directory / "target-receipt.json", target)
             status = {"format": FORMAT, "state": "TARGET_BYTES_VERIFIED", "observedAt": now().isoformat(),
                 "health": "HEALTHY", "targetId": "cloud-archive", "latest": target,
@@ -575,7 +689,8 @@ def run_source(config):
                 "rpo15MinutesSatisfied": False, "continuousWalProtected": False,
                 "originalHistoryContinuous": False, "restoreVerified": False,
                 "marketStateIncluded": receipt["marketStateIncluded"],
-                "clientReleaseStateIncluded": receipt["clientReleaseStateIncluded"]}
+                "clientReleaseStateIncluded": receipt["clientReleaseStateIncluded"],
+                'budgetSeconds': budget, 'reviewedUnitTimeoutSeconds': unit, 'phaseSeconds': phases}
             atomic_json(status_path, status)
             prune_source_exports(config, directory)
             return status
@@ -583,7 +698,8 @@ def run_source(config):
             status = {"format": FORMAT, "state": "FAILED", "health": "DEGRADED", "observedAt": now().isoformat(),
                 **failure_record(error), "latest": previous.get("latest") if previous else None,
                 "rpo15MinutesSatisfied": False, "continuousWalProtected": False,
-                "originalHistoryContinuous": False, "restoreVerified": False}
+                "originalHistoryContinuous": False, "restoreVerified": False,
+                'budgetSeconds': budget, 'reviewedUnitTimeoutSeconds': unit, 'phaseSeconds': phases}
             if isinstance(error, TransferBusy) and error.code == 'SOURCE_BUSY':
                 status.update(state='DEFERRED', retryPolicy='NEXT_TIMER')
                 atomic_json(status_path, status)
@@ -628,11 +744,18 @@ def main():
         if args.mode == "receive":
             receive(config, sys.stdin.buffer, sys.stdout.buffer)
         elif args.mode == "bundle":
+            budget = config.get('bundle_budget_seconds', 600)
+            if type(budget) is not int or not 30 <= budget <= 3600:
+                raise ValueError('Invalid bounded bundle budget')
+            signal.alarm(budget)
             chunks_module().bundle(config, args.snapshot_id, sys.stdout.buffer, sys.modules[__name__])
+        elif args.mode in {'source', 'snapshot'}:
+            with bounded_source_job(config, 'archive' if args.mode == 'source' else 'snapshot'):
+                value = (run_source(config) if args.mode == 'source' else
+                         chunks_module().run_source(config, sys.modules[__name__]))
+            print(json.dumps(value))
         else:
-            value = (run_source(config) if args.mode == "source" else
-                     chunks_module().run_source(config, sys.modules[__name__]) if args.mode == "snapshot" else
-                     retain(config) if args.mode == "retain" else build_status(config))
+            value = retain(config) if args.mode == "retain" else build_status(config)
             print(json.dumps(value))
         return 0
     except Exception as error:

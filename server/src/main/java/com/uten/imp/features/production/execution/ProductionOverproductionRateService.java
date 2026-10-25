@@ -193,12 +193,19 @@ public class ProductionOverproductionRateService {
     private record DraftRate(UUID id,UUID planId,BigDecimal rate,long version,boolean open) {}
     private List<DraftRate> planningDraftItems(Collection<UUID> plans,boolean lock) {
         if(plans==null || plans.isEmpty())return List.of();
+        // Keep base relations: the editable candidate needs both xmin and FOR UPDATE OF item.
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT item.id,plan.id,item.allowed_overproduction_rate,item.xmin::text::bigint,
                     (NOT plan.is_closed AND NOT plan.is_stopped AND NOT plan.is_canceled
                      AND plan.actual_output_supplement_request_id IS NULL)
-                FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=item.plan_id
+                FROM production_plan_items item JOIN production_plans plan ON plan.id=item.plan_id
                 WHERE plan.id IN (:plans) AND plan.status=0 AND NOT plan.is_deleted AND NOT item.is_deleted
+                    AND NULLIF(to_jsonb(item)->>'legacy_id','') IS NULL
+                    AND NULLIF(to_jsonb(item)->>'legacy_import_run_id','') IS NULL
+                    AND NOT fn_imported_business_document('production_plan_items',item.id)
+                    AND NULLIF(to_jsonb(plan)->>'legacy_id','') IS NULL
+                    AND NULLIF(to_jsonb(plan)->>'legacy_import_run_id','') IS NULL
+                    AND NOT fn_imported_business_document('production_plans',plan.id)
                     AND NOT EXISTS(SELECT 1 FROM production_execution_segments segment WHERE segment.source_plan_item_id=item.id)
                 ORDER BY item.id
                 """+(lock?" FOR UPDATE OF item":"")).setParameter("plans",plans)).stream().map(row ->
@@ -211,9 +218,10 @@ public class ProductionOverproductionRateService {
         if(countPending(task.id())>0)return "此任务已有待审批的比例调整，请先处理原申请";
         // A saved report already binds its output split to the current allowance.
         // Reporting takes the same plan/segment locks, so the check cannot race its save.
+        // Retained imported reports are still facts and must not reopen an effective rate.
         if(Boolean.TRUE.equals(em.createNativeQuery("""
-                SELECT EXISTS(SELECT 1 FROM (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_report_items',archive_origin.id)) item
-                    JOIN (SELECT * FROM production_daily_reports archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_reports',archive_origin.id)) report ON report.id=item.report_id
+                SELECT EXISTS(SELECT 1 FROM production_daily_report_items item
+                    JOIN production_daily_reports report ON report.id=item.report_id
                     WHERE item.execution_segment_id=:id AND NOT item.is_deleted AND NOT report.is_deleted)
                 """).setParameter("id",task.id()).getSingleResult()))return "已有报工记录，允许超产比例已锁定";
         return null;

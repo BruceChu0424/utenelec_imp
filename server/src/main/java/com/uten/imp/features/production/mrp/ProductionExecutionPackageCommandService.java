@@ -1522,7 +1522,7 @@ public class ProductionExecutionPackageCommandService {
                                   ON i.request_id = r.id
                                  AND i.is_deleted = FALSE
                                 WHERE r.id = :id
-                                GROUP BY r.id
+                                GROUP BY r.id, r.bill_no
                                 """)
                         .setParameter(
                                 "id",

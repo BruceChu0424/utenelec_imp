@@ -80,6 +80,20 @@ class ProductionOverproductionRateEndToEndTest {
         var current=locked.stream().map(rate->new ProductionOverproductionRateService.PlanningRateVersion(rate.segmentId(),rate.rateVersion())).toList();
         assertThrows(ApiException.class,()->planningRates.change(analysis,Set.of(item),current,new BigDecimal(".30"),"reported-planning-"+UUID.randomUUID()));
         assertRate(".20");
+
+        // The isolated database owner models a retained report. Its archive policy
+        // removes it from action selectors, never from an existing rate's facts.
+        db.update("UPDATE production_daily_reports SET legacy_id=? WHERE id=?",
+                940000000+Math.floorMod(report.hashCode(),1000000),report);
+        assertTrue(db.queryForObject("SELECT fn_imported_business_document('production_daily_reports',?)",Boolean.class,report));
+        var retained=rates.planningRates(Set.of(plan));
+        assertFalse(retained.getFirst().canEdit());
+        assertTrue(retained.getFirst().blockingReason().contains("报工"));
+        var retainedVersions=retained.stream().map(rate->new ProductionOverproductionRateService.PlanningRateVersion(
+                rate.segmentId(),rate.planItemId(),rate.rateVersion())).toList();
+        assertThrows(ApiException.class,()->rates.changePlanningRates(Set.of(plan),retainedVersions,
+                new BigDecimal(".30"),"retained-report-rate-"+UUID.randomUUID()));
+        assertRate(".20");
     }
 
     @Test void concurrentReportWaitsForPlanningRateAndCannotPersistOldAllowanceSplit() throws Exception {

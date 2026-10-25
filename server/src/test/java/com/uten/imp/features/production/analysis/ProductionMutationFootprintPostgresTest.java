@@ -80,6 +80,34 @@ class ProductionMutationFootprintPostgresTest {
     }
 
     @Test
+    void retainedImportedDocumentRemainsInTheActualDependencyAndRowVersionFootprint() {
+        UUID unit=unit(), warehouse=warehouse(null), product=goods(unit);
+        UUID document=UUID.randomUUID(), item=UUID.randomUUID();
+        int legacy=DOCUMENT_NUMBER.incrementAndGet();
+        String number="CR20260907"+legacy;
+        // The isolated database owner installs retained input. Ordinary commands remain
+        // subject to V926; footprint discovery itself grants no mutation authority.
+        jdbc.update("INSERT INTO stock_documents(id,legacy_id,doc_type,bill_no,bill_date,warehouse_id,status) VALUES (?,?,'FINISHED_IN',?,'2026-09-07',?,0)",
+                document,legacy,number,warehouse);
+        jdbc.update("""
+                INSERT INTO stock_document_items(id,legacy_id,doc_id,bill_type,bill_no,bill_date,line_no,
+                    goods_id,unit_id,unit_rate,qty,base_qty,goods_snapshot_source)
+                VALUES (?,?,?,'FINISHED_IN',?,'2026-09-07',1,?,?,1,5,5,'MASTER_AT_SAVE')
+                """,item,legacy,document,number,product,unit);
+        assertThat(jdbc.queryForObject("SELECT fn_imported_business_document('stock_documents',?)",Boolean.class,document)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT fn_imported_business_document('stock_document_items',?)",Boolean.class,item)).isTrue();
+
+        var before=footprints.forStockDocuments(List.of(document));
+        assertThat(before.inventoryDimensions()).containsExactly(new InventoryDimension(product,null));
+        assertThat(footprints.forStockDocuments(List.of(document)).fingerprint()).isEqualTo(before.fingerprint());
+        // An independently committed, owner-authorized maintenance write must remain
+        // visible to CAS even when the retained row is hidden from action selectors.
+        jdbc.update("UPDATE stock_document_items SET qty=6,base_qty=6 WHERE id=?",item);
+        assertThat(footprints.forStockDocuments(List.of(document)).fingerprint()).isNotEqualTo(before.fingerprint());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",Integer.class,document)).isZero();
+    }
+
+    @Test
     void previewAndStockDocumentIncludeCurrentBomAndDetectChangedSources() {
         UUID unit=unit(), warehouse=warehouse(null), root=goods(unit), child=goods(unit), leaf=goods(unit);
         UUID direct=UUID.randomUUID(), nested=UUID.randomUUID();

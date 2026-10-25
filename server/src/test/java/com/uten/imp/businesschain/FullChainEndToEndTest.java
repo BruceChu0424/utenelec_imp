@@ -10442,10 +10442,13 @@ class FullChainEndToEndTest {
         assertEquals(employeeIdOf(purchaserA),
                 jdbc.queryForObject("select maker_id from purchase_orders where id = ?", UUID.class, orderId),
                 "前置：采购单 maker = A");
+        String targetBillNo = strFor("select bill_no from purchase_orders where id=?", orderId);
+        var targetFilter = new com.uten.imp.features.purchase.order.dto.OrderQueryFilter(
+                null, null, null, null, null, null, null, targetBillNo);
 
         // (1) purchaserB (no view:all) — list excludes, detail NOT_FOUND, write/delete FORBIDDEN
         loginAs(purchaserB);
-        var bPage = purchaseOrderService.list(emptyOrderFilter(), 1, 50, null, null);
+        var bPage = purchaseOrderService.list(targetFilter, 1, 50, null, null);
         assertTrue(bPage.getItems().stream().noneMatch(i -> i.getId().equals(orderId)),
                 "对象隔离：B 的列表不含 A 的采购单");
         ApiException nf = assertThrows(ApiException.class,
@@ -10463,19 +10466,24 @@ class FullChainEndToEndTest {
 
         // (2) supervisor (purchase:view:all) — list includes, detail ok
         loginAs(supervisor);
-        var sPage = purchaseOrderService.list(emptyOrderFilter(), 1, 50, null, null);
+        var sPage = purchaseOrderService.list(targetFilter, 1, 50, null, null);
         assertTrue(sPage.getItems().stream().anyMatch(i -> i.getId().equals(orderId)),
                 "view:all：主管列表含 A 的采购单");
+        assertEquals(1, sPage.getTotal(), "exact bill number retains the same object-scope predicate before pagination");
         assertDoesNotThrow(() -> purchaseOrderService.detail(orderId),
                 "view:all：主管可读 A 的采购单");
 
         // (3) super-admin — detail ok
         loginAs(w.superAdminUserId());
+        assertTrue(purchaseOrderService.list(targetFilter, 1, 50, null, null).getItems().stream()
+                .anyMatch(item -> item.getId().equals(orderId)), "super-admin exact target remains visible");
         assertDoesNotThrow(() -> purchaseOrderService.detail(orderId),
                 "超管可读任意采购单");
 
         // (4) owner A — detail ok, write ok (owner gate passes)
         loginAs(purchaserA);
+        assertTrue(purchaseOrderService.list(targetFilter, 1, 50, null, null).getItems().stream()
+                .anyMatch(item -> item.getId().equals(orderId)), "owner exact target remains visible");
         assertDoesNotThrow(() -> purchaseOrderService.detail(orderId));
         assertDoesNotThrow(() -> purchaseOrderService.update(orderId, headerOnlyOrderReq(w)),
                 "owner：A 可改自己的采购单(归属 gate 放行)");
@@ -10487,7 +10495,7 @@ class FullChainEndToEndTest {
         assertEquals(ErrorCode.NOT_FOUND,
                 assertThrows(ApiException.class, () -> purchaseOrderService.detail(orderId)).getCode(),
                 "NULL owner：普通用户不可读(B → NOT_FOUND)，不再公共可读");
-        assertTrue(purchaseOrderService.list(emptyOrderFilter(), 1, 50, null, null).getItems().stream()
+        assertTrue(purchaseOrderService.list(targetFilter, 1, 50, null, null).getItems().stream()
                         .noneMatch(i -> i.getId().equals(orderId)),
                 "NULL owner：普通用户列表也不含");
         assertEquals(ErrorCode.FORBIDDEN,
@@ -10495,6 +10503,8 @@ class FullChainEndToEndTest {
                         () -> purchaseOrderService.update(orderId, headerOnlyOrderReq(w))).getCode(),
                 "NULL owner：老数据普通用户不可写(B → FORBIDDEN)");
         loginAs(supervisor);
+        assertTrue(purchaseOrderService.list(targetFilter, 1, 50, null, null).getItems().stream()
+                .anyMatch(item -> item.getId().equals(orderId)), "view:all exact NULL-owner target remains visible");
         assertDoesNotThrow(() -> purchaseOrderService.detail(orderId),
                 "NULL owner：view:all 可读");
         assertEquals(ErrorCode.FORBIDDEN,

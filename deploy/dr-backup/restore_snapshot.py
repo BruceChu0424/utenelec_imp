@@ -95,6 +95,8 @@ def reconstruct_to_directory(manifest, references, read_plain, receipt, director
 def _reconstruct(manifest, references, read_plain, receipt, directory=None, *, deadline=None):
     expected = {"format", "snapshotId", "nonce", "sourceSetId", "sourceSnapshotAt", "sourceManifestSha256",
         "recipientFingerprint", "referenceListSha256", "chunkBytes", "dedupIdentityKeyRecovery", "files", "scope"}
+    if isinstance(manifest, dict) and 'configurationVersion' in manifest:
+        expected.add('configurationVersion')
     if not isinstance(manifest,dict) or set(manifest)!=expected or manifest["format"]!=chunks.FORMAT:
         raise ValueError("Invalid decrypted snapshot manifest")
     for key in ("snapshotId","nonce","sourceSetId","sourceSnapshotAt","sourceManifestSha256",
@@ -104,6 +106,10 @@ def _reconstruct(manifest, references, read_plain, receipt, directory=None, *, d
         raise ValueError("Snapshot reference closure differs")
     secret=base64.b64decode(manifest['dedupIdentityKeyRecovery'],validate=True)
     if len(secret)!=32 or manifest['chunkBytes']!=chunks.CHUNK_BYTES:raise ValueError("Invalid chunk identity recovery")
+    if ('configurationVersion' in receipt or 'configurationVersion' in manifest) and (
+            receipt.get('configurationVersion') != manifest.get('configurationVersion')
+            or manifest.get('configurationVersion') != chunks.recovery_configuration_identity(manifest['files'], secret)):
+        raise ValueError('Restored recovery configuration version differs from the signed point')
     if manifest['scope'].get('cryptoRecoveryIncluded') is not True:raise ValueError("Missing crypto recovery scope")
     chunks.reference_list(references, base)
     available={row['opaqueId'] for row in references};used=set();contents={};total=0
@@ -288,6 +294,8 @@ def restore_bundle(args, secret, candidate_options=None):
         contents=reconstruct_to_directory(manifest,references,read_plain,receipt,plain_root,deadline=deadline)
         report=restore_drill.restore_contents(contents,receipt['sourceSetId'],args.docker,candidate_options,
                                             spool_directory=workspace,deadline=deadline)
+        if 'configurationVersion' in receipt:
+            report['configurationVersion'] = receipt['configurationVersion']
         report.update(snapshotId=receipt['snapshotId'],sourceSignatureVerified=True,chunksVerified=len(references),
             manifestCipherSha256=receipt['manifestCipherSha256'],referenceListSha256=receipt['referenceListSha256'],
             arbitraryPitrOriginalHistoryProtected=False,restoreInputMode='PRIVATE_DISK',

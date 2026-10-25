@@ -1,12 +1,114 @@
 # 数据迁移当前入口：全部旧业务只读与正式公司交接
 
+> **V4草稿，待Root终审和正式窗口终填。** 当前事实以本节及文末V4实证增补为准；下方较早原文只作带日期的过程快照。文档核对没有连接数据库、网络、CI或启动/停止后端。
+
+## 当前已证与未完成项（A/crypto真实闭环；公司未正式替换）
+
+| 范围 | 已发生、已核实际证据 | 此刻交付边界 |
+|---|---|---|
+| 本地主库与用户运行实例 | a641原子切换后，本地uten_imp为OID4072623，旧19699已改名隔离。Root自起45948曾按用户关闭；用户后来正常自起50456/profile前端，真实检查时本地已到856/head930。 | 旧PID或旧停机票不作当前运行证明。销售修复main已合，Root请用户自行重启其后端/前端加载；本文不声明新实例已加载、页面或部门UAT已通过。旧固定source helper不得再跑。 |
+| 公司完整base | 602830412B完整载体实际restore COMMIT及独立RO通过，receipt214c。candidate为uten_imp_archive_candidate_20261025_company，OID1801072、SID7672666251697880435、owner uten_migrator。 | 旧正式uten_imp/OID1685044尚未替换；candidate仍是855条/head929，保持离线。不能将本地930当公司已930。 |
+| gen2安全审计保全 | 人类最新授权下管理员在管理机签发gen2，4c804内层已真实RAM解密整SHA一致；私钥/密码只管理机CurrentUser DPAPI。 | 原3809快照不是final maintenance；正式fence后fresh补采/最终GPG/新恢复演练仍待实际。没有“等待用户手动生成钥匙”的当前前置条件。 |
+| A公司身份overlay | 2026-10-26 01:40:46(北京)真实COMMIT，01:42:57(北京)新独立RRRO全通过：36公司用户、5身份锚、526保护范围、正式855/登记/28序列及原4c804保全。源193与库存8684/hold95保持；公司198含5身份锚，不算新增旧业务。 | 已完成该模块，禁止按旧scopeV2失败票重apply。01:30:48(北京)旧失败审计seq+1的事实仍保留，不setval回拨。 |
+| 公司crypto | f1d03 binary UTF8 SQL于02:19:28(北京)真实COMMIT；866独立逆向完整SHA RRRO于02:22:19(北京)通过；后继真实Java verify-after521cb7c5…818cd通过，196行组/1034PGP/365HMAC、旧PGP0、NULL21保留。 | A/crypto阶段已闭环；公司env/数据keys和旧正式1685044未替换。这不是正常930/runtime、正式签包、窗口或业务验收。 |
+| 销售用户反馈修复 | 真实本地销售五族25005均legacy、CURRENT0；20旧DRAFT/90PENDING从独立进度SQL泄漏。九文件41项focused通过，owner已合main fb3837b62f0f0fe02ff6053f53c276ecd7554406；历史空stage包含旧草稿/红冲、DTO及UI只读合同补齐。 | 源码已整合，用户实际加载和页面验收另核。保留原status/closed/数量/金额/日期/审批与本机草稿，没有重导或伪推进流程。 |
+| 首页/生产队列另两项 | 首页裸JDBC指标误入90历史销售；生产兼容view/String FROM误入302历史PLAN、owner空使badge0。两服务+一新增测试独立delta，真实28PASS=2认证PG接口+26单元。 | H/local-sales-readonly-review/current-queues-fix-v1仅CODE_READY/待owner合并和激活，不能和销售九文件已合状态混写。原生PLAN/ANALYSIS及历史详情保留。 |
+| 两JPEG媒体 | 已实际公司私有staging、ClamAV INSTREAM两次stream:OK、前后SHA同；195757B+58888B=254645B。 | 尚无live publish/legacy read flag/runtime UID实际读取或页面可见票。 |
+| 正式交付剩余阶段 | 新V930包/工具、最终fence保全工具已准备。 | 正式签包/最终CI、company normal930、930 ACL真角色验收、维护窗、最终fresh安全审计保全/新GPG实解、完整DR恢复演练、正式旧库替换及成功后受管旧测试备份清理，全部待Root按真实票终填。 |
+
+H=`D:/uten_legacy_reimport_20261024/archive_only_handover_20261025`；新事实全SHA/路径见 `SOURCE_FACT_PINS_V4.json`，剩余项见 `ROOT_FINAL_FACTS_TO_FILL_V4.md`。ROOT_NOW顶部02:20(北京)仍曾写crypto回读RUNNING，而真实后继02:22:19(北京)回执及521cb Java proof已成功；以较新实际结果为准，不重放成功阶段。
+
+
+# V4实际增补：A、加密与独立页面查询（正式切换仍待终填）
+
+本增补只核已落盘的实际回执，不连接数据库、网络、CI或运行服务。H为 `D:/uten_legacy_reimport_20261024/archive_only_handover_20261025`。各人读时间均显示(北京)，机器ISO及原回执字节保留。下列SID/OID、版本、SHA、run/crypto ID是本轮事实定位，下一轮必须重新核准，不能当默认执行参数。
+
+## 1. A覆盖已真实完成，先前失败仍原样保留
+
+2026-10-26 01:40:46(北京)，registry-v3 A事务真实COMMIT、exit0、stderr0。SQL完整SHA `db027e186087b99bf7839581bbc6a667a63704036344dc8356ba6e72ae6d8251`，实际回执 `H/transfer-private/company-overlay-gen2-a-registry-v3/ACTUAL_A_REGISTRY_V3_PROCESS_RECEIPT.json`。执行对象仅公司离线candidate `uten_imp_archive_candidate_20261025_company` / OID1801072 / SID7672666251697880435，旧正式OID1685044未改。
+
+01:42:57(北京)，独立新RR/READ ONLY、无XID读回真实通过：`H/transfer-private/company-overlay-independent-readbacks/a-registry-v3-readback.RECEIPT.json`，验证SQL完整SHA `1ef7f1449aeeeca077b7af2e61c54511aa1b95bcfa6faf18e865bc65270f2f05`。526表受保护事实、目录/正式855迁移历史、五类登记与预期28序列均通过；36公司用户、5个身份历史锚及私有保全schema实际存在，保全GPG仍为4c804。源193名册及库存8684行、95维计量hold保留。公司198名员工包含本次5个身份锚，不能把该差量说成新增旧业务导入或替换原193名册。
+
+先前两次失败分别保留：525 descriptor漏Flyway描述而526 fingerprint包含它，属于检查范围不一致；V279实际 `owner_domain=EMPLOYEE`，`MASTER_EMPLOYEE`是另一字段的namespace key。修的是计划/期望/筛选与真实DDL合同，没有修改原触发器或业务数据来迎合工具。scope-v2整笔行/目录回滚已由526完整FP确认，但非事务审计序列1244018→1244019保留；不得setval回拨。registry-v3以该真实观测作新baseline，单次合法维护审计后为1244020，保留独立旧失败收据。
+
+后续合法crypto已改变受审PII/HMAC字段，不能再重跑A那份“所有字段仍等before”的旧后验，误报后再重做A。每个后继模块使用独立fresh前像或明确合法差量的完整逆向验证。
+
+## 2. Windows SQL文字写入破坏PGP字面量的实际故障闭环
+
+第一份crypto apply在2026-10-26 02:04:11(北京)首组CAS报 `CRYPTO_GROUPED_OLD_ROW_CAS_FAILED`，整笔失败。现场Asia/Shanghai下原完整row SHA、PG内置SHA/pgcrypto及全部8个proof旧字段均正确；UTC会改变timestamp序列化后的整行SHA，不能因此随意改时区。现场再次读取证明6个PGP旧字段在SQL中已变为CRLF字面量而全部不等，两个无折行HMAC仍相等。
+
+根因是Windows `open(..., encoding='utf-8').write(text)`把**SQL字符串字面量内部**base64密文的LF也转成CRLF。不是来源漂移、密钥错误或crypto plan错误。先独立核真实RTO：`H/transfer-private/company-overlay-gen2-a-v1/ACTUAL_CRYPTO_CAS_V1_ROLLBACK_RRRO_GZIP_V1.json`（注意此文件位于company-overlay-gen2-a-v1，不能误找company-crypto-actual-v1）。02:12:12(北京)实际全526表FP/目录一致、私有保全schema仍存在、28序列全部精确，audit仍1244020。原CAS失败处在末尾nextval之前，但仍以真实全序列读回为准，不能只凭事务回滚推断。
+
+最小修复只将apply/readback两个emitter的最终落盘改成binary UTF8：`open('xb')`后写`text.encode('utf-8')`。SQL构造、CAS条件、旧新密文、1034个PGP及365个HMAC项、196 row groups、原计划和crypto ID `46ab2d3c-a240-4a77-8743-85a926d860fd`全部不变；没有重新随机加密、改公司key或重做A/base。
+
+完整逐字节重构证明：fresh UTF8不含真实CR；fresh全部LF→CRLF后的**整个文件**与实际旧文件精确相同；只去writer新增CR后整个文件与fresh精确相同。因而可只上传受审builder和2161B manifest，在服务器create-only生成root0600新文件，不原地改旧文件、不重传大包。
+
+| 文件 | 旧完整SHA/字节 | binary UTF8新完整SHA/字节 |
+|---|---|---|
+| apply | aa29ccb8203ce0b5117318465d480e3b716bb56d03396db40014108c19c66398 / 92244693 | f1d03ac1037ff47b563d68fd6e23ee108cfc4e14b722d04a38b2919c7be1c770 / 92238854 |
+| 独立逆向readback | bc60e6ad8003c40c51bcf6f33bfda0af80e47cddb70c5b197705edaf2e339ed3 / 46582086 | 866ef4ae951f59f8f2414f254f786cc4a680f9b385fa3c20c750cb83df588355 / 46579565 |
+
+apply只减少5839个writer CR、readback只减少2521个writer CR。禁止将这次结论泛化成“把业务数据全部normalize换行”；如果fresh原本含真实CR，当前工具必须拒绝，改为受审精确offset方案。原SQL、intent、proof、日志均保留。说明和真实PG16.15五项验证见 `H/company_crypto_literal_bytes_v2/README.md` 与 `NATIVE-LITERAL-UTF8-TEST-RECEIPT.json`（f8ca4f248eaf0f9ca6c93ce4f9e5fdc07de563e580940e0f5b98f91aa22fb286）。fixture验证的是写入字节、旧CAS失败/回滚、新CAS提交、独立明文/逆向整行SHA/真实CRLF备注保留及旧readback失配，不能冒公司实际验收。
+
+02:19:28(北京)，新f1d03文件在新独占intent下实际单事务COMMIT、exit0、stderr0，`ACTUAL_CRYPTO_LITERAL_V2_PROCESS_RECEIPT.json`留证。02:22:19(北京)，866独立RRRO完整逆向SHA/受保护事实验证真实通过，`crypto-literal-v2-readback.RECEIPT.json`留证。随后真实严格855 Java `--mode verify-after`读回证明SHA `521cb7c534bf3599d0fe93464ea862b1bf6f9132fec6cdd3c5c94a01698618cd`：196行组、1034 PGP cells（旧PGP剩0）、365持久HMAC均已为公司值、21个NULL blind index保留；canonicalHistoryVerified=true，数据库读事务readOnly=true/xid=NULL，helper写入0、无明文/密钥输出。文件路径 `H/transfer-private/company-crypto-actual-v1/crypto-verify-after-v1.private.json`。
+
+Java证明中的 `READONLY_CRYPTO_VERIFIED_CANDIDATE_NOT_APPLIED`说明该**只读验证工具**没有执行写入；真正crypto提交由f1d03 process回执证明。不能把该状态误读为“crypto尚未apply”而重放已成功CAS。公司.env、数据密钥及旧正式库未被替换。
+
+## 3. 销售旧草稿/进行中显示：分类和每个读取入口分别验收
+
+用户现场反馈销售管理还有20草稿、90进行中。真实只读核对本地4072623（当时已由用户正常启动到856/head930）：销售五族总25005全部legacy、CURRENT=0；底层来源分类正确。泄漏来自独立进度SQL family，不是漏设历史flag或需重导。
+
+实际入口是 `/sales/tasks?group=progress` → `SalesOrderProgressPage` → repository.progress → `/api/sales/orders/progress`。它不走已经正确的普通 `SalesDocListPage`。独立 `SalesOrderService.progressGroupedSql` 未带origin，影响progress、facets、stage-counts和task counts；历史空stage分支又排除了原草稿/红冲。前端进度DTO没有历史只读字段，旧DRAFT仍可能去编辑，历史状态文字/在途提示也按旧流程显示。
+
+本次九文件最小修复：list/facets显式CURRENT或ALL；stage/task counts强制CURRENT，即使传ALL也不能放大待办；历史进口行投影stage=CLOSED并追加legacyImported/historyReadOnly，数据库原status、closed、数量、金额、日期和审批原像全部不改。前端共享归档身份解析优先，统一“历史已结案 · 只读”/success；历史行不允许选择删除、编辑、取消、去发货或双击编辑，只打开详情；原数量和本机草稿保留。在途原数字可核账，但不再显示为待办。
+
+Root后端16项、前端25项共41项focused测试通过；owner已按正常流程合入main `fb3837b62f0f0fe02ff6053f53c276ecd7554406`（组件b913af60bfeb6fb90216b21198cf94e67982f1d2）。本草稿实际只读核到主树HEAD为fb3837；这说明源码已整合，不证明用户运行实例已经重新加载。Root已请用户自行重启其后端及Flutter profile前端；本任务未启动、停止或替用户刷新服务，修复后的实际页面/UAT须再留证。
+
+早先Root自起45948已按用户要求关闭的事实仍有效；后来用户自行启动过50456与53764 profile前端，属于后继时间线。不得继续把旧“keepStopped”或PID50456写成永远当前状态。没有旧前端缓存证据，不把缓存当默认原因。本机草稿存于用户IndexedDB，与数据库导入不同；未实际检查到的本机条目不能假定存在，更不能清除用户草稿。草稿/进行中分类按钮仍保留供今后新业务，按钮存在本身不是旧数据泄漏。
+
+## 4. 首页与生产当前列表另两类遗漏：源码待owner整合
+
+进一步真实读取发现：`DashboardOverviewService.addSalesCards`另写JDBC当前指标，计入90个全为legacy的旧订单；`ProductionExecutionWorkbenchService`从兼容view拼`String from`，当前列表显示302个全为legacy的PLAN根，现代执行段为0。生产owner为空令徽章计数0，所以“徽章0”不能证明列表无旧数据。
+
+独立增量只改两服务及一个真实认证PG测试，`H/local-sales-readonly-review/current-queues-fix-v1/INCREMENT-MANIFEST.json`（7de8fc67040af09c7d0f157e22fa6dc96084af9016032d5e6fb2c694c087d866），patch SHA `37d975c8d385c2458a89e3f7517c2f1d77308ddbbc0ffc35c23b41afd2cb60ee`。真实28PASS=2个全迁移PostgreSQL/真实Bearer登录接口用例+26个Dashboard单元，fail/error/skip=0，Maven exit0；不是28个数据库场景，也不是全CI。
+
+真实根类型是PLAN/ANALYSIS，修复只排除来源为历史的根，原生PLAN/ANALYSIS必须保留，不能凭名称把PLAN一并隐藏或造WORK_ORDER/MO discriminator。既有详情/history reader和全部原header/item JSON不改。首轮技术超管403发生在业务资格守卫；仅将fixture改为真实员工、明确有效授权和fresh login，未放宽生产权限。旧v1失败源/报告留存。
+
+**此增量在本V4冻结时仅为CODE_READY及focused验证，待owner正常合并、用户/正式实例加载及页面验收。Root终稿须填写真实后续结果，不能沿用前九文件已合并的状态。**
+
+## 5. 下次最少执行逐路由的读取与操作验收
+
+| 路由/读取族 | 当前集合与历史检索 | 操作与原像检查 |
+|---|---|---|
+| 销售普通五族列表/分面/状态counts/草稿workspace | CURRENT只含新原生；ALL/LEGACY可查raw0/-1/1，显式日期/关键字保留 | 历史只详情/打印/导出；本机填写草稿单独保留；原生新单有正向操作控制 |
+| `/api/sales/orders/progress`及`/facets` | 列表/桶同scope；历史空stage不丢旧DRAFT或REVERSED，全部时间可查 | DTO归档标记、文字/颜色/行菜单/选择删除/双击路由一起核；禁止只改列表一条SQL |
+| progress stage-counts/task counts/模块徽章 | 强制CURRENT；传ALL/LEGACY不能把历史变待办 | 直接核响应计数与列表实际集合；不只看红/黄徽章 |
+| `/api/dashboard/overview` sales-active | 固定CURRENT，原生新单阳性保留 | 与独立销售列表/任务进度逐项对照，不能以一处0替代全部 |
+| `/api/production/execution-workbench`、`/facets`、`/count` | 三者统一CURRENT，原生PLAN/ANALYSIS仍在，历史参数不能放大 | 与真实owner/权限下列表同时核；历史plan详情/`/history`可读且原JSON不变 |
+| 委外六族独立历史、采购/仓库/财务历史与来源候选 | 验证真正路由/base URL/目标库，区分current source与历史报表余额 | 不能补造order_item FK、审批/收发/成本或清空历史AR/AP来让页面看起来“干净” |
+
+覆盖29个业务root与真实父子/typed闭包的来源保护后，仍要查独立JDBC、兼容view、UNION、动态FROM、计数聚合和DTO投影。机械替换表名字漏掉的family，修共用查询基座并加真认证正反例。UI按真实登录会话进入用户入口，核list/facets/count/action一致；开发测试、主树合并、用户加载、公司正式包、服务激活与部门UAT分别记录。历史页面可按已批准的近三个月默认显示，但必须明确时间条件并可切“全部”；底层已导全历史不能因隐藏状态/日期条件漏单。
+
+## 6. 保留基线与下一阶段边界
+
+原逐模块来源量、导入量、年份、排除原因、soft-delete/archive差异、委外六族数量和八部门核查清单全部沿用有证原表，不因本次页面修复重算或改写。25005销售为五族总量；20/90是修复前独立进度误入的子集；302是生产兼容根集合，不能与7552生产计划总量或平台7105731行相加。8684库存原账/95维92货品持久hold保留，不把源账精确等同实盘已准，不猜单位或补主档后放行。
+
+本轮后续仍由Root终填：正式签包与最终CI、正式normal930→856/head930迁移/validate/repeat0、公司新930 runtime ACL真MIG/真UTE正反例、媒体live只读/flag/实际UID读取、正式维护窗口fence/新鲜旧库安全审计补采、新最终GPG实际解密/完整恢复演练、公司旧1685044替换/正常激活、新正式DR保障与受管旧测试备份清理。不得把本次A/crypto闭环扩写成公司正式上线或所有部门验收完成。
+
+局部失败先判是否COMMIT、独立核回滚/非事务序列与保护范围，再修最窄模块并新建受审intent；保持跨模块UUID/FK/typed来源、量金额、库存与财务守恒。提交已成功仅后验失败时走verification-only修复，不全量重导。下一轮新源若只增加几天，也须fresh全文件SHA/截止时刻/新增修改删除与依赖分析；正式使用后的新原生业务、真实盘点、已采信实际成本及GL不得被旧ERP快照覆盖。
+
+
+---
+
+## 以下为较早过程快照，保留原日期/计数/排除，不作当前执行状态
+
 更新：2026-10-25 19:32:30(北京)。**以下三份新文档为当前执行依据；本页后面的旧索引仅保留历史原文，不继续执行旧v13 RUNNING、重新BAK/清库、旧920/916或配对备份动作。** 原README和旧手册完整字节/SHA另封H/documentation/preimages.json。
 
 - [当前执行手册](重建彩排与正式导入执行手册.md)：最新授权、全历史只读合同、正式canonical/data-only、单位hold、安全保留和维护窗顺序。
 - [本轮详细执行记录](2026-10-25-历史只读归档与公司交接执行记录.md)：逐模块来源/导入/年份/排除/软删、部门检查清单、委外根因、95维计量待核、错误V918与恢复失败解决、真实证据和待办。
 - [新任务完整提示词](下一轮全面导入任务提示词.md)：复用已经完整成功的相同11输入来源，不重复BAK导入/旧失败工具；先核真实最新receipt再续接。
 
-**当前源码目录：V930/856**。V926 将全部旧业务保护为只读归档，V927 将物料流转的精确生产事件守卫限定于生产来源，完整核对物理身份的手工 DRAW/WDRAW 保持可用，V928 增加计量待核 hold，V929 登记结束与余量重建审计，V930 补齐计量 hold 的审计策略；这是本次受审源码清单，不代表公司数据库已执行或发布已激活。离线首导映射由 `mapping-version.txt` 单独版本化，`verify_candidate.py` 对受审源码、发布 checksum manifest 与目标历史逐文件核验；仍须核对目标库名、集群身份和首导批准，不替代顶部真实执行手册与物理收据。
+**当前源码目录：V934/860**。V926 将全部旧业务保护为只读归档，V927 将物料流转的精确生产事件守卫限定于生产来源，完整核对物理身份的手工 DRAW/WDRAW 保持可用，V928 增加计量待核 hold，V929 登记结束与余量重建审计，V930 补齐计量 hold 的审计策略；这是本次受审源码清单，不代表公司数据库已执行或发布已激活。V931 增加公司资料条目独立访问和口令设置，并通过既有部门授权保留访问；V932 将计量待核库存纳入主档引用及货品编码使用证据；V933 将旧业务来源判定改为单次调用内逐身份遍历，V934 通过真实关系 OID 查找归档保护触发器，保留逐层来源判断与失败关闭边界。离线首导映射由 `mapping-version.txt` 单独版本化，`verify_candidate.py` 对受审源码、发布 checksum manifest 与目标历史逐文件核验；仍须核对目标库名、集群身份和首导批准，不替代顶部真实执行手册与物理收据。
 
 最新政策：所有旧业务单据包括旧草稿/进行中/未审核都“历史已结案·只读”，不改原status/closed伪完成，不造审核、收发、结转、实际成本/GL；基础资料/BOM/当前库存独立保留。来源截止2026-10-23 19:59:16(北京)，这几日新增无更新来源，不能称已含。本地委外11190回货/11057发料真实存在、行orderFK全空、正式旧订单2张；公司仍旧测试数据且旧页面有路由/过滤缺陷，两者不能混淆。
 
@@ -15,6 +117,8 @@
 公司替换和成功后旧测试备份清理已获范围授权，执行由总合并/数据owner协调；**本页更新时公司切换、最终恢复/页面验收和旧备份清理均待执行**。CODE_READY/编译/fixture不等公司上线。保护D:/uten_legacy_inputs、storage/密钥/真实证据；已取消的D盘清理不重启。
 
 ---
+
+Root 收口说明（2026-10-26(北京)）：最终签名源码、同一提交 CI、正式迁移与公司换库仍分别验收，当前目录说明不等于已上线。用户新授权的五金车间内料仓身份修正由数据 owner 独占执行，须保留 8/15/8 条与金额、原单据身份及历史残差，待其实际事务与独立读回收据后补入最终记录；不能把准备方案写成已完成。
 
 ## 以下为历史索引原文，仅用于追溯
 
@@ -785,7 +889,6 @@ V901 为颜色主档新增可空备注列，旧记录与旧客户端省略字段
 
 V902 将收付款类别的行内编辑、批量状态路径纳入既有个人操作历史识别，不新增表、不改变授权、审计或清空分类。见 [V902 说明](V902-收付款类别行内历史.md)。以上为源码目录状态，不代表服务器已安装。
 
+## V3详细经验入口
 
-### 本轮Root实际执行结果追加
-
-最新数据镜像/正常855/历史与库存核验、跨host bootstrap/运行ACL、完整载体恢复后验、分段续传、媒体与新备份代次边界，见[Root实际执行补记](2026-10-25-历史只读归档与公司交接执行记录.md#root实际执行补记2026-10-25北京持续更新)。本地候选技术通过与正式换库/业务验收不同，源输入和原证据保持；最终状态以该记录最后实际收据为准。
+A scope 525/526和V279 EMPLOYEE根因、非事务sequence新baseline、模块级恢复、下一轮fresh来源及部门口径覆盖，详见[执行记录V3](2026-10-25-历史只读归档与公司交接执行记录.md#v3补记a模块两次失败的最小修复不重导base)。

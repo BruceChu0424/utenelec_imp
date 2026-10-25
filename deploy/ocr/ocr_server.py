@@ -42,7 +42,7 @@ def engine():
                     options[f"{kind}_model_name"] = name
                     options[f"{kind}_model_dir"] = str(model_dir)
                 _engine = PaddleOCR(
-                    lang="ch", ocr_version="PP-OCRv5", device="cpu",
+                    device="cpu",
                     use_doc_orientation_classify=False, use_doc_unwarping=False,
                     use_textline_orientation=True, enable_mkldnn=False,
                     **options,

@@ -21,6 +21,26 @@ class _CellProbeState extends State<_CellProbe> {
   Widget build(BuildContext context) => Text('ROW-${widget.value}');
 }
 
+class _InlineEditableCell extends StatefulWidget {
+  const _InlineEditableCell({super.key});
+
+  @override
+  State<_InlineEditableCell> createState() => _InlineEditableCellState();
+}
+
+class _InlineEditableCellState extends State<_InlineEditableCell> {
+  final input = TextEditingController();
+
+  @override
+  void dispose() {
+    input.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => TextField(controller: input);
+}
+
 class _EditableBody extends StatefulWidget {
   const _EditableBody({
     super.key,
@@ -28,11 +48,13 @@ class _EditableBody extends StatefulWidget {
     required this.fieldKey,
     required this.cellKey,
     this.fullscreen = false,
+    this.editableFirstRow = false,
   });
   final GlobalKey tableKey;
   final GlobalKey fieldKey;
   final GlobalKey cellKey;
   final bool fullscreen;
+  final bool editableFirstRow;
   @override
   State<_EditableBody> createState() => _EditableBodyState();
 }
@@ -86,10 +108,12 @@ class _EditableBodyState extends State<_EditableBody> {
               label: '记录',
               width: 280,
               value: (row) => 'ROW-$row',
-              cellBuilder: (_, row) => _CellProbe(
-                key: row == 0 ? widget.cellKey : ValueKey(row),
-                value: row,
-              ),
+              cellBuilder: (_, row) => widget.editableFirstRow && row == 0
+                  ? _InlineEditableCell(key: widget.cellKey)
+                  : _CellProbe(
+                      key: row == 0 ? widget.cellKey : ValueKey(row),
+                      value: row,
+                    ),
             ),
           ],
         ),
@@ -312,6 +336,78 @@ void main() {
       [for (var i = 0; i < 80; i++) i],
     );
   });
+
+  for (final zoom in [1.0, 2.0]) {
+    testWidgets(
+      'primary fullscreen retains live cell text, selection and controller ($zoom)',
+      (tester) async {
+        tester.view.physicalSize = const Size(1600, 1600);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final cellKey = GlobalKey<_InlineEditableCellState>();
+        final tableKey = GlobalKey();
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (_, child) =>
+                UtenDisplayZoomBox(fontFactor: zoom, child: child!),
+            home: Scaffold(
+              body: UtenCollapsingHeaderScrollView(
+                collapsingHeader: const SizedBox(height: 96),
+                body: _EditableBody(
+                  tableKey: tableKey,
+                  fieldKey: GlobalKey(),
+                  cellKey: cellKey,
+                  fullscreen: true,
+                  editableFirstRow: true,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final editor = cellKey.currentState!;
+        final controller = editor.input;
+        final editorFinder = find.descendant(
+          of: find.byKey(cellKey),
+          matching: find.byType(TextField),
+        );
+        const editing = TextEditingValue(
+          text: 'Unsubmitted 12.3456789',
+          selection: TextSelection(baseOffset: 3, extentOffset: 6),
+          composing: TextRange(start: 1, end: 8),
+        );
+        await tester.showKeyboard(editorFinder);
+        tester.testTextInput.updateEditingValue(editing);
+        await tester.pumpAndSettle();
+        expect(controller.value, editing);
+
+        for (final toggle in [
+          find.byKey(const ValueKey('master-table-fullscreen-toggle')),
+          find.text('退出全屏'),
+        ]) {
+          await tester.ensureVisible(toggle);
+          await tester.pumpAndSettle();
+          await tester.tap(toggle);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          expect(cellKey.currentState, same(editor));
+          expect(cellKey.currentState!.input, same(controller));
+          expect(controller.text, editing.text);
+          expect(controller.selection, editing.selection);
+        }
+        const continued = TextEditingValue(
+          text: 'Unsubmitted 12.34567890',
+          selection: TextSelection.collapsed(offset: 22),
+        );
+        await tester.showKeyboard(editorFinder);
+        tester.testTextInput.updateEditingValue(continued);
+        await tester.pumpAndSettle();
+        expect(controller.value, continued);
+        expect(cellKey.currentState, same(editor));
+      },
+    );
+  }
 
   testWidgets(
     'explicit primary borrower reattaches a foreign position safely',

@@ -4813,9 +4813,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
 
     final list = ListView.builder(
-      controller: _usesPrimaryScroll ? null : _bodyV,
+      // Borrow the coordinator explicitly. Toggling ListView.primary inserts
+      // or removes PrimaryScrollController.none and remounts the row editors.
+      controller: _verticalScrollController,
       scrollCacheExtent: _rowScrollCache(context),
-      primary: _usesPrimaryScroll,
+      primary: false,
       shrinkWrap:
           widget.primary ||
               widget.virtualized ||

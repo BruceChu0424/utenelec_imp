@@ -318,7 +318,19 @@ class LegacyMigrationSafetyContractTest {
             assertThat(row[3]).as(deleted).isEqualTo("DROP");
             assertThat(row[4] + row[5] + row[6]).as("a dropped warehouse names no target: " + deleted).isEmpty();
         }
-        assertThat(targetCodes).containsExactly("XW01", "XW02", "XW03");
+        // The reviewed correction retired the synthetic XW03 ordinary target.
+        // Workshop references require an actually opened bin and their own
+        // exact approval; they must never recreate the ordinary WH9 identity.
+        assertThat(targetCodes).containsExactly("XW01", "XW02");
+        assertThat(executable(LEGACY_ROOT.resolve("reviewed_workshop_stock_location.sql")))
+                .contains("fn_imported_business_document_maintenance_allowed()")
+                .contains("target_database_oid")
+                .contains("pg_control_system()")
+                .contains("bin_row_sha256")
+                .contains("b.opened_by=a.opened_by")
+                .contains("b.opened_at=a.opened_at")
+                .contains("d.code='ws_wjtz'")
+                .contains("s.periodic_enabled");
 
         String warehouse = executable(LEGACY_ROOT.resolve("migrate_warehouse.sql"));
         assertThat(warehouse)

@@ -64,6 +64,7 @@ public class AuditEventInterpreter {
             Map.entry("view_ai_provider_history_detail", "查看 AI 服务配置历史"),
             Map.entry("view_ai_chat_action_proposal_detail", "查看 AI 操作确认卡"),
             Map.entry("view_attachment_history_detail", "查看附件历史"),
+            Map.entry("view_company_file_detail", "查看公司资料详情"),
             Map.entry("view_platform_field_history_detail", "查看业务扩展字段历史"),
             Map.entry("view_master_record_history_detail", "查看基础资料操作历史"),
             Map.entry("view_sales_quote_detail", "查看销售报价详情"),

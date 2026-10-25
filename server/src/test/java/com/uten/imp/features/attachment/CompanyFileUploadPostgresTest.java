@@ -142,7 +142,8 @@ class CompanyFileUploadPostgresTest {
                 new AttachmentDownloadVerifier(providers,properties),mock(AuditActorDirectory.class)));
         when(access.listVisible(anyString(),any(UUID.class))).thenAnswer(invocation->attachmentService.listVisible(invocation.getArgument(0),invocation.getArgument(1)));
         mvc=MockMvcBuilders.standaloneSetup(new AttachmentController(attachmentService,mock(AttachmentReconciliationService.class),
-                        mock(AttachmentPreviewService.class),mock(com.uten.imp.audit.AuditDetailViewRecorder.class)),new CompanyFileController(library))
+                        mock(AttachmentPreviewService.class),mock(com.uten.imp.audit.AuditDetailViewRecorder.class)),
+                        new CompanyFileController(library,new com.uten.imp.audit.AuditDetailViewRecorder(audit,current)))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
     void login(Set<String> permissions,UUID sid) {

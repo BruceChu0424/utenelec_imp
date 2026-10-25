@@ -156,7 +156,7 @@
         <dependency>
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
-            <version>5.5.1</version>
+            <version>6.0.0</version>
         </dependency>
 
         <!-- 客户文件识别(ADR-134): 只读 PDF 文字层(不渲染、不执行脚本); 读取有页数/内存/时长上限,

@@ -62,6 +62,8 @@ class ProcurementInspectionQuantityProjectionPostgresTest {
             jdbc.execute("CREATE TABLE " + prefix + "_receipts(id uuid PRIMARY KEY, legacy_id integer, is_deleted boolean)");
             jdbc.update("INSERT INTO " + prefix + "_receipts VALUES (?, NULL, FALSE)", RECEIPT);
         }
+        com.uten.imp.support.MigratedProjectionSchema.installImportedDocumentPolicy(jdbc,
+                "purchase_receipts", "subcontract_receipts");
         jdbc.update("INSERT INTO units VALUES (?, '个'), (?, '箱')", BASE_UNIT, SOURCE_UNIT);
         jdbc.update("INSERT INTO goods VALUES (?, 'G-BOX', '盒装零件', ?)", GOODS, BASE_UNIT);
         var factory = new LocalContainerEntityManagerFactoryBean();

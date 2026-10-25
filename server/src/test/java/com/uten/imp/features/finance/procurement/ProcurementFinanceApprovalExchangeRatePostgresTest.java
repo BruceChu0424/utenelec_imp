@@ -380,6 +380,8 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
     private static void schema(JdbcTemplate jdbc) {
         jdbc.execute("""
                 CREATE TABLE procurement_order_approval_cases(id uuid PRIMARY KEY,order_type text,order_id uuid,
+                  request_type text NOT NULL DEFAULT 'ORDER' CHECK(request_type IN ('ORDER','CLOSE','CLOSE_AND_REORDER')),
+                  replacement_order_id uuid,decided_txid bigint,
                   attempt int,bill_no_snapshot text,amount_snapshot numeric,submission_snapshot jsonb,display_snapshot jsonb,snapshot_hash text,
                   submitted_by_user_id uuid,submitted_by_employee_id uuid,assignee_user_id uuid,assignee_employee_id uuid,
                   assignee_name_snapshot text,status text,version bigint,submitted_at timestamptz DEFAULT now(),
@@ -387,7 +389,6 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
                   updated_at timestamptz, finance_tax_rate numeric);
                 CREATE TABLE procurement_order_approval_events(id uuid,case_id uuid,event_type text,actor_user_id uuid,
                   actor_employee_id uuid,from_assignee_user_id uuid,to_assignee_user_id uuid,reason text,event_snapshot jsonb,created_at timestamptz DEFAULT now());
-                CREATE TABLE procurement_order_qty_change_logs(order_type text,order_item_id uuid,old_qty numeric,new_qty numeric,changed_at timestamptz,changed_by_employee_id uuid,case_id uuid);
                 CREATE TABLE inbound_expectations(id uuid,order_type text,order_id uuid,approval_case_id uuid,
                   bill_no_snapshot text,supplier_id uuid,warehouse_id uuid,expected_date date,owner_employee_id uuid,
                   status text,created_by uuid);
@@ -403,11 +404,15 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
                 CREATE TABLE colors(id uuid,name text,remark text);
                 CREATE TABLE units(id uuid,name text);
                 """);
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(jdbc, "procurement_order_qty_change_logs");
+        jdbc.execute("ALTER TABLE procurement_order_qty_change_logs ADD FOREIGN KEY(case_id) REFERENCES procurement_order_approval_cases(id)");
         for (String prefix : List.of("purchase", "subcontract")) {
             jdbc.execute("CREATE TABLE " + prefix + "_receipts(id uuid,status smallint,exchange_rate numeric,tax_rate numeric,is_deleted boolean DEFAULT FALSE)");
             jdbc.execute("CREATE TABLE " + prefix + "_receipt_items(id uuid,receipt_id uuid,order_item_id uuid,is_deleted boolean DEFAULT FALSE)");
-            jdbc.execute("CREATE TABLE " + prefix + "_orders(id uuid,supplier_id uuid,warehouse_id uuid,currency_id uuid,settlement_method_id uuid,purchaser_id uuid,maker_id uuid,remark text,deliver_date date,status smallint DEFAULT 0,is_deleted boolean DEFAULT FALSE)");
+            jdbc.execute("CREATE TABLE " + prefix + "_orders(id uuid,supplier_id uuid,warehouse_id uuid,currency_id uuid,settlement_method_id uuid,purchaser_id uuid,maker_id uuid,remark text,deliver_date date,status smallint DEFAULT 0,is_deleted boolean DEFAULT FALSE,bill_no text,termination_case_id uuid,legacy_id integer)");
             jdbc.execute("CREATE TABLE " + prefix + "_order_items(id uuid,order_id uuid,line_no int,goods_id uuid,color_id uuid,unit_id uuid,goods_code_snapshot text,goods_name_snapshot text,weight numeric(18,4),remark text,source_doc_no text,is_deleted boolean DEFAULT FALSE)");
         }
+        com.uten.imp.support.MigratedProjectionSchema.installImportedDocumentPolicy(
+                jdbc, "procurement_order_approval_cases", "procurement_order_qty_change_logs", "purchase_orders", "subcontract_orders");
     }
 }

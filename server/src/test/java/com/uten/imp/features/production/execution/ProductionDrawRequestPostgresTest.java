@@ -86,6 +86,7 @@ class ProductionDrawRequestPostgresTest {
         String receiving=Files.readString(Path.of("src/main/resources/db/migration/V618__production_material_return_receiving_warehouse.sql"));
         int effective=receiving.indexOf("CREATE FUNCTION fn_production_draw_item_effective_qty(");
         jdbc.execute(receiving.substring(effective,receiving.indexOf("$$;",effective)+3));
+        com.uten.imp.support.MigratedProjectionSchema.installImportedDocumentPolicy(jdbc, "production_plans");
         var fixtureConfiguration = new Configuration()
                 .setProperty("hibernate.hbm2ddl.auto", "none");
         fixtureConfiguration.getProperties().put("hibernate.connection.datasource", jdbc.getDataSource());

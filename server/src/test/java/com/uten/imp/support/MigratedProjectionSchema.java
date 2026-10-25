@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -26,7 +27,8 @@ public final class MigratedProjectionSchema {
     private static final String CURRENT = "current";
     private static final Map<String, Catalog> CATALOGS = new ConcurrentHashMap<>();
     private record Shape(List<String> columns, List<String> keys) { }
-    private record Catalog(Map<String, Shape> tables, Map<String, List<String>> functions) { }
+    private record Catalog(Map<String, Shape> tables, Map<String, List<String>> functions,
+            Set<String> importedDocumentTables, Map<String, String> views) { }
 
     private MigratedProjectionSchema() { }
 
@@ -82,6 +84,48 @@ public final class MigratedProjectionSchema {
             List<String> definitions = catalog.functions().get(name);
             if (definitions == null) throw new IllegalArgumentException("No migrated function: " + name);
             definitions.forEach(target::execute);
+        }
+    }
+
+    /** Uses actual migrated view SQL, after callers model its real relations/functions. */
+    public static void createCurrentViews(JdbcTemplate target, String... names) {
+        Catalog catalog = CATALOGS.computeIfAbsent(CURRENT, MigratedProjectionSchema::readCatalog);
+        for (String name : names) {
+            String definition = catalog.views().get(name);
+            if (definition == null) throw new IllegalArgumentException("No migrated view: " + name);
+            target.execute("CREATE OR REPLACE VIEW public." + identifier(name) + " AS " + definition);
+        }
+    }
+
+    /** Installs the real current imported-document policy for explicitly modeled projection tables.
+     * Source ownership FKs remain the fixture's responsibility; this is not a full-chain schema.
+     * Real marker triggers are essential: the production lookup rejects unregistered table names. */
+    public static void installImportedDocumentPolicy(JdbcTemplate target, String... guardedTables) {
+        Catalog catalog = CATALOGS.computeIfAbsent(CURRENT, MigratedProjectionSchema::readCatalog);
+        for (String table : guardedTables) {
+            identifier(table);
+            if (!catalog.importedDocumentTables().contains(table)) {
+                throw new IllegalArgumentException("Not a migrated imported-document relation: " + table);
+            }
+        }
+        createCurrentFunctions(target,
+                "fn_imported_business_document_roots",
+                "fn_imported_business_document_maintenance_allowed",
+                "fn_imported_business_document_table",
+                "fn_imported_business_document_scope_table",
+                "fn_imported_business_document_row_internal",
+                "fn_imported_business_document_row",
+                "fn_imported_business_document",
+                "fn_guard_imported_business_document_archive",
+                "fn_guard_imported_business_document_truncate");
+        for (String table : guardedTables) {
+            String relation = "public." + identifier(table);
+            target.execute("CREATE TRIGGER trg_00_imported_business_archive_only BEFORE INSERT OR UPDATE OR DELETE ON "
+                    + relation + " FOR EACH ROW EXECUTE FUNCTION public.fn_guard_imported_business_document_archive()");
+            target.execute("ALTER TABLE " + relation + " ENABLE ALWAYS TRIGGER trg_00_imported_business_archive_only");
+            target.execute("CREATE TRIGGER trg_00_imported_business_archive_truncate BEFORE TRUNCATE ON "
+                    + relation + " FOR EACH STATEMENT EXECUTE FUNCTION public.fn_guard_imported_business_document_truncate()");
+            target.execute("ALTER TABLE " + relation + " ENABLE ALWAYS TRIGGER trg_00_imported_business_archive_truncate");
         }
     }
 
@@ -161,7 +205,18 @@ public final class MigratedProjectionSchema {
                 functions.computeIfAbsent(row.getString(1), ignored -> new ArrayList<>()).add(row.getString(2));
             });
             functions.replaceAll((name, definitions) -> List.copyOf(definitions));
-            return new Catalog(Map.copyOf(shapes), Map.copyOf(functions));
+            Set<String> importedDocumentTables = Set.copyOf(db.queryForList("""
+                    SELECT relation.relname FROM pg_trigger trigger_row
+                    JOIN pg_class relation ON relation.oid=trigger_row.tgrelid
+                    JOIN pg_namespace namespace ON namespace.oid=relation.relnamespace
+                    WHERE namespace.nspname='public' AND NOT trigger_row.tgisinternal
+                      AND trigger_row.tgname='trg_00_imported_business_archive_only'
+                    """, String.class));
+            Map<String, String> views = new LinkedHashMap<>();
+            db.query("SELECT viewname,definition FROM pg_views WHERE schemaname='public' ORDER BY viewname",
+                    (org.springframework.jdbc.core.RowCallbackHandler)
+                            row -> views.put(row.getString(1), row.getString(2)));
+            return new Catalog(Map.copyOf(shapes), Map.copyOf(functions), importedDocumentTables, Map.copyOf(views));
         }
     }
 

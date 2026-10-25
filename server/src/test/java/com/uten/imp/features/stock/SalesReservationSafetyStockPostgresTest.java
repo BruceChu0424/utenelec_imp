@@ -1,10 +1,10 @@
 package com.uten.imp.features.stock;
 
+import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -41,28 +41,16 @@ class SalesReservationSafetyStockPostgresTest {
     private static final java.util.concurrent.atomic.AtomicInteger CLIENT_CODE_SEQUENCE =
             new java.util.concurrent.atomic.AtomicInteger(920_000);
 
-    private static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:16-alpine")
-                    .withDatabaseName("uten_imp")
-                    .withUsername("fixture_admin")
-                    .withPassword("uten");
+    private static MigratedSchemaBaseline.ScopedDatabase POSTGRES;
 
     @BeforeAll
-    static void migrate() {
-        POSTGRES.start();
-        com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
+    static void migrate() throws Exception {
+        POSTGRES = MigratedSchemaBaseline.openDatabase("measurement_7f0296da10ea");
     }
 
     @AfterAll
-    static void stopPostgres() {
-        POSTGRES.stop();
+    static void stopPostgres() throws Exception {
+        if (POSTGRES != null) POSTGRES.close();
     }
 
     // ====================================================================
@@ -251,13 +239,18 @@ class SalesReservationSafetyStockPostgresTest {
     // ============================ 插入助手 ============================
 
     private static void insertGoods(Connection c, UUID id, String code, double minQty) throws Exception {
+        UUID unitId=UUID.randomUUID();
+        try(var unit=c.prepareStatement("INSERT INTO units(id,code,name) VALUES(?,?,'piece')")) {
+            unit.setObject(1,unitId);unit.setString(2,"U-"+unitId);unit.executeUpdate();
+        }
         try (PreparedStatement ps = c.prepareStatement(
-                "INSERT INTO goods(id, code, name, min_qty, code_sequence) "
+                "INSERT INTO goods(id, code, name, min_qty, code_sequence,unit_id) "
                         + "VALUES (?, ?, 'V178 safety-stock test goods', ?, "
-                        + "(SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods))")) {
+                        + "(SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods),?)")) {
             ps.setObject(1, id);
             ps.setString(2, code);
             ps.setDouble(3, minQty);
+            ps.setObject(4, unitId);
             ps.executeUpdate();
         }
     }

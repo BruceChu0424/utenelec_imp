@@ -27,14 +27,17 @@ import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static com.uten.imp.migration.MigrationRehearsalSupport.CURRENT_HEAD_VERSION;
 import static com.uten.imp.migration.MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT;
 
 /**
- * Executes the reviewed bootstrap SQL against the current Flyway schema with empty staging
- * tables. This is deliberately a schema-compatibility proof, not a real-data reconciliation.
+ * Exercises independently composed modules with empty synthetic stages. Finance
+ * without its separately reviewed source policy is an expected early refusal,
+ * never evidence of a successful complete bootstrap or real-data reconciliation.
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class LegacyBootstrapSchemaCompatibilityPostgresTest {
@@ -108,7 +111,7 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
     }
 
     @Test
-    void bootstrapSqlStillExecutesAgainstTheCurrentSchema() throws Exception {
+    void preparedModulesUseTheCurrentSchemaWhileUnpreparedFinanceRefusesWithoutMutation() throws Exception {
         String preservedAdministrator = seedPreservedAdministratorLogin();
         List<String> scripts = bootstrapSqlScripts();
         assertFalse(scripts.isEmpty(), "bootstrap-all must resolve at least one SQL script");
@@ -124,6 +127,10 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
                             (3,'002','美金',0,'使用'),
                             (4,'003','港币',0,'使用');
                         """));
+            } else if ("migrate_finance.sql".equals(filename)) {
+                // The exact-three-row source policy is deliberately absent in
+                // this header-only fixture. Do not manufacture its source proof.
+                executeScript(filename, Map.of(), true);
             } else {
                 executeScript(filename);
             }
@@ -133,7 +140,7 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
                 JOIN users account ON account.employee_id=employee.id
                 WHERE employee.code='ADMIN' AND employee.status='active' AND NOT employee.is_deleted
                   AND account.is_super_admin AND account.status='active' AND NOT account.is_deleted
-                """), "the reviewed current administrator must remain preserved through all modules");
+                """), "the current administrator must survive schema-only modules and the refused finance attempt");
         try (Connection connection = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
             assertFlywayHead(connection);
@@ -411,6 +418,11 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
 
     private static void executeScript(String filename, Map<String, String> copyInjections)
             throws Exception {
+        executeScript(filename, copyInjections, false);
+    }
+
+    private static void executeScript(String filename, Map<String, String> copyInjections,
+            boolean expectedMissingFinancePolicy) throws Exception {
         Path path = LEGACY_ROOT.resolve(filename);
         StringBuilder jdbcSql = new StringBuilder();
         StringBuilder syntheticSources = new StringBuilder();
@@ -451,6 +463,7 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
                 .replace(":'pgp_key'", "'legacy-schema-test-key'")
                 .replace(":'pgp_ver'", "'test-v1'")
                 .replace(":'hmac_key'", "'legacy-schema-test-hmac-key'") + "\nCOMMIT;\n";
+        String beforeFinance = expectedMissingFinancePolicy ? financeAndAuditFacts() : null;
         String remote = "/tmp/uten-legacy-schema-test-" + filename;
         POSTGRES.copyFileToContainer(
                 Transferable.of(sql.getBytes(StandardCharsets.UTF_8), 0600), remote);
@@ -458,10 +471,32 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
                 "psql", "-v", "ON_ERROR_STOP=1",
                 "-U", POSTGRES.getUsername(), "-d", POSTGRES.getDatabaseName(),
                 "-f", remote);
+        if (expectedMissingFinancePolicy) {
+            assertEquals("migrate_finance.sql", filename);
+            assertNotEquals(0, result.getExitCode(), "A missing independent policy cannot authorize the finance module");
+            assertTrue(result.getStderr().contains("bootstrap_finance_cash_policy"), result.getStderr());
+            assertEquals(beforeFinance, financeAndAuditFacts(), "A refused policy-less module must preserve money and audit rows");
+            return;
+        }
         if (result.getExitCode() != 0) {
             fail(filename + " is incompatible with the current Flyway schema:\n"
                     + result.getStderr());
         }
+    }
+
+    private static String financeAndAuditFacts() throws SQLException {
+        return scalar("""
+                SELECT jsonb_build_object(
+                    'receipts',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb) FROM finance_receipts t),
+                    'payments',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb) FROM finance_payments t),
+                    'expenses',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb) FROM finance_expenses t),
+                    'incomes',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb) FROM finance_other_incomes t),
+                    'accounts',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb) FROM accounts t),
+                    'proofs',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb) FROM legacy_finance_import_sources t),
+                    'vouchers',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb) FROM gl_vouchers t),
+                    'entries',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb) FROM gl_entries t),
+                    'audit_sha',(SELECT encode(digest(COALESCE(string_agg(to_jsonb(t)::text,E'\\n' ORDER BY id),''),'sha256'),'hex') FROM audit_log t))::text
+                """);
     }
 
     private static List<String> composedScriptLines(Path loader) throws Exception {

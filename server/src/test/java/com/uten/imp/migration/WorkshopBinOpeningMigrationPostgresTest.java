@@ -180,9 +180,11 @@ class WorkshopBinOpeningMigrationPostgresTest {
 
     private static UUID goods(JdbcTemplate jdbc, String label, UUID owner) {
         UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO goods(id,code,name,owning_warehouse_id,code_sequence) "
-                        + "VALUES (?,?,?,?,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
-                id, "V802-" + label, label, owner);
+        UUID unitId=UUID.randomUUID();
+        jdbc.update("INSERT INTO units(id,code,name) VALUES(?,?,'piece')",unitId,"V802-U-"+unitId);
+        jdbc.update("INSERT INTO goods(id,code,name,owning_warehouse_id,code_sequence,unit_id) "
+                        + "VALUES (?,?,?,?,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods),?)",
+                id, "V802-" + label, label, owner, unitId);
         return id;
     }
 

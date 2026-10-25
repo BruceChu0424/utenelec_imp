@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.order;
 
+import com.uten.imp.support.MigratedSchemaBaseline;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.sales.order.dto.OrderChangeQtyRequest;
@@ -10,7 +11,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.postgresql.util.PSQLException;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.lang.reflect.InvocationTargetException;
 import java.math.BigDecimal;
@@ -41,28 +41,16 @@ class ExecutionSegmentSalesAllocationPostgresTest {
             new java.util.concurrent.atomic.AtomicInteger();
 
     private static final String CHECK_VIOLATION = "23514";
-    private static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:16-alpine")
-                    .withDatabaseName("uten_imp")
-                    .withUsername("fixture_admin")
-                    .withPassword("uten");
+    private static MigratedSchemaBaseline.ScopedDatabase POSTGRES;
 
     @BeforeAll
-    static void migrate() {
-        POSTGRES.start();
-        com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
+    static void migrate() throws Exception {
+        POSTGRES = MigratedSchemaBaseline.openDatabase("measurement_96824e55b83b");
     }
 
     @AfterAll
-    static void stopPostgres() {
-        POSTGRES.stop();
+    static void stopPostgres() throws Exception {
+        if (POSTGRES != null) POSTGRES.close();
     }
 
     @Test
@@ -274,14 +262,14 @@ class ExecutionSegmentSalesAllocationPostgresTest {
         String planNo = businessIdentifier("SJ", billDate);
 
         insert(connection, """
-                INSERT INTO goods(id, code, name, code_sequence)
-                VALUES(?, ?, 'V157 test product',
-                       (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods))
-                """, goods, "V157-G-" + goods);
-        insert(connection, """
                 INSERT INTO units(id, code, name)
                 VALUES(?, ?, 'V157 test unit')
                 """, unit, "V157-U-" + unit);
+        insert(connection, """
+                INSERT INTO goods(id, code, name, code_sequence,unit_id)
+                VALUES(?, ?, 'V157 test product',
+                       (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods),?)
+                """, goods, "V157-G-" + goods, unit);
         insert(connection, """
                 INSERT INTO warehouses(id, code, name)
                 VALUES(?, ?, 'V157 test warehouse')
@@ -292,9 +280,9 @@ class ExecutionSegmentSalesAllocationPostgresTest {
                     (SELECT COALESCE(MAX(code_sequence),0)+1 FROM clients))
                 """,client,"V157-C-"+client);
         insert(connection,"""
-                INSERT INTO goods(id,code,name,min_qty,code_sequence)
-                VALUES(?,?,'Execution allocation material',0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))
-                """,material,"V157-M-"+material);
+                INSERT INTO goods(id,code,name,min_qty,code_sequence,unit_id)
+                VALUES(?,?,'Execution allocation material',0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods),?)
+                """,material,"V157-M-"+material,unit);
         insert(connection,"INSERT INTO stock_balances(id,warehouse_id,goods_id,qty) VALUES(?,?,?,10)",balance,warehouse,material);
         insert(connection, """
                 INSERT INTO production_plans(

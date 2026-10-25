@@ -226,6 +226,14 @@ class StockInventoryScopePostgresTest {
     @Test void pendingInspectionAndPendingStockInNeverBecomeBalanceAndGlobalPlanIgnoresWarehouseScope() throws Exception {
         World w=world();
         try(var seed=new StockReadSideSeed(dataSource)) {
+            UUID nativePlan=UUID.randomUUID();
+            String nativePlanNo=beans.getBean(com.uten.imp.common.docnumber.DocNumberService.class)
+                    .nextNumber(com.uten.imp.common.docnumber.DocNumberPrefix.PRODUCTION_PLAN);
+            LocalDate nativePlanDate=com.uten.imp.common.time.BusinessTime.today();
+            seed.jdbc().update("""
+                    INSERT INTO production_plans(id,bill_no,bill_date,status,is_closed,is_stopped)
+                    VALUES(?,?,?,1,false,false)
+                    """,nativePlan,nativePlanNo,nativePlanDate);
             seed.jdbc().update("""
                     INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,receipt_item_id,warehouse_id,
                         goods_id,color_id,unit_id,unit_rate,received_base_qty,passed_base_qty,failed_base_qty,status)
@@ -234,8 +242,16 @@ class StockInventoryScopePostgresTest {
             seed.jdbc().update("""
                     INSERT INTO production_plan_items(id,plan_id,bill_no,bill_date,product_no,goods_id,color_id,
                         unit_id,unit_rate,qty,oqty,iqty,lqty,allowed_overproduction_rate)
-                    VALUES(?,?,?,CURRENT_DATE,?,?,?,?,1,20,2,3,0,0)
-                    """,UUID.randomUUID(),UUID.randomUUID(),"SCOPE-PLAN-"+w.goods(),"SCOPE-PROD-"+w.goods(),w.goods(),w.red(),w.unit());
+                    VALUES(?,?,?,?,?,?,?,?,1,20,2,3,0,0)
+                    """,UUID.randomUUID(),nativePlan,nativePlanNo,nativePlanDate,
+                    "SCOPE-PROD-"+w.goods(),w.goods(),w.red(),w.unit());
+            // A dangling read-side row has no approved native plan and must not add supply.
+            seed.jdbc().update("""
+                    INSERT INTO production_plan_items(id,plan_id,bill_no,bill_date,product_no,goods_id,color_id,
+                        unit_id,unit_rate,qty,oqty,iqty,lqty,allowed_overproduction_rate)
+                    VALUES(?,?,?,CURRENT_DATE,?,?,?,?,1,999,0,0,0,0)
+                    """,UUID.randomUUID(),UUID.randomUUID(),"SCOPE-ORPHAN-"+w.goods(),
+                    "SCOPE-ORPHAN-PROD-"+w.goods(),w.goods(),w.red(),w.unit());
         }
         JsonNode item=read(context(w.goods()),viewer,scope(w.normal(),w.red(),false,true,true,false),200).path("items").get(0);
         decimal(item.path("qty"),"10");decimal(item.path("pendingQty"),"4");decimal(item.path("pendingStockInQty"),"3");

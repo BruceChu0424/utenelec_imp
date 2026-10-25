@@ -150,7 +150,13 @@ class RdMaterialIssuePostgresTest {
 
     @Test void existingQuantityFactsAndConflictingLegacyBridgesRemainBlocked() {
         UUID withHistory=bomOnlyGoods(), unit=unit(null), warehouse=warehouse();
-        jdbc.update("INSERT INTO stock_balances(warehouse_id,goods_id,qty) VALUES(?,?,3)",warehouse,withHistory);
+        // Unknown-unit stock cannot be introduced on the current schema. Preserve that guard,
+        // then use a real unresolved draft quantity reference for the initial-unit safety test.
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->jdbc.update(
+                "INSERT INTO stock_balances(warehouse_id,goods_id,qty) VALUES(?,?,3)",warehouse,withHistory))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class).hasMessageContaining("计量待核");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM stock_balances WHERE goods_id=?",Integer.class,withHistory)).isZero();
+        quantityReference(withHistory,3);
         UUID task=task(withHistory);
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.reconcileBasicUnit(task,
                 new RdTaskContracts.InitialBasicUnitRequest(1L,unit,"原始资料核对")))
@@ -223,12 +229,10 @@ class RdMaterialIssuePostgresTest {
 
     @Test void concurrentQuantityReferenceWinsBeforeRepairAndItsRollbackAllowsRepair() throws Exception {
         for(boolean commit:List.of(true,false)) {
-            UUID goods=bomOnlyGoods(),unit=unit(null),task=task(goods),warehouse=warehouse();
+            UUID goods=bomOnlyGoods(),unit=unit(null),task=task(goods);
             try(var reference=dataSource.getConnection();var workers=java.util.concurrent.Executors.newSingleThreadExecutor()) {
                 reference.setAutoCommit(false);
-                try(var statement=reference.prepareStatement("INSERT INTO stock_balances(warehouse_id,goods_id,qty) VALUES(?,?,4)")) {
-                    statement.setObject(1,warehouse);statement.setObject(2,goods);statement.executeUpdate();
-                }
+                quantityReference(reference,goods,4);
                 var started=new java.util.concurrent.CountDownLatch(1);
                 var repair=workers.submit(()->{
                     started.countDown();
@@ -302,6 +306,31 @@ class RdMaterialIssuePostgresTest {
         // The committed receipt remains replayable after a later dictionary retirement.
         service.reconcileBasicUnit(task,new RdTaskContracts.InitialBasicUnitRequest(1L,unit,"原始资料核对"));
         assertThat(jdbc.queryForObject("SELECT row_version FROM rd_tasks WHERE id=?",Long.class,task)).isEqualTo(2L);
+    }
+
+    private void quantityReference(UUID goods,int quantity) {
+        jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection->{
+            quantityReference(connection,goods,quantity);
+            return null;
+        });
+    }
+
+    /** A real document quantity keeps its unknown unit; it never enters operational stock. */
+    private void quantityReference(java.sql.Connection connection,UUID goods,int quantity) throws java.sql.SQLException {
+        UUID quote=UUID.randomUUID();
+        try(var header=connection.prepareStatement("""
+                INSERT INTO sales_quotes(id,bill_no,bill_date,status)
+                VALUES(?,'XB'||to_char(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai','YYYYMMDD')||?,
+                    (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date,0)
+                """)) {
+            header.setObject(1,quote);header.setString(2,"%06d".formatted(TASK_SEQUENCE.incrementAndGet()));header.executeUpdate();
+        }
+        try(var line=connection.prepareStatement("""
+                INSERT INTO sales_quote_items(id,quote_id,bill_no,bill_date,line_no,goods_id,unit_rate,qty,goods_snapshot_source)
+                SELECT ?,id,bill_no,bill_date,1,?,1,?,'MASTER_AT_SAVE' FROM sales_quotes WHERE id=?
+                """)) {
+            line.setObject(1,UUID.randomUUID());line.setObject(2,goods);line.setInt(3,quantity);line.setObject(4,quote);line.executeUpdate();
+        }
     }
 
     private UUID unit(Integer legacy) {

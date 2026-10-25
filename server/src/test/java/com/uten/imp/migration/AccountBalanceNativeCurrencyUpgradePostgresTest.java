@@ -116,6 +116,7 @@ class AccountBalanceNativeCurrencyUpgradePostgresTest {
             com.uten.imp.testsupport.TestFlyway.configure()
                     .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                     .locations("classpath:db/migration")
+                    .target("401")
                     .load()
                     .migrate();
 
@@ -136,6 +137,12 @@ class AccountBalanceNativeCurrencyUpgradePostgresTest {
                     assertEquals("70.0000", row.getBigDecimal(4).toPlainString());
                 }
 
+                // V401 classifies the frozen rows. The independent UUID authority,
+                // account/currency match and immutable primary-key guards below
+                // are the actual V403/V404/V405 extension window.
+                com.uten.imp.testsupport.TestFlyway.configure()
+                        .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                        .locations("classpath:db/migration").target("405").load().migrate();
                 assertEquals(1, scalar(connection, """
                         SELECT COUNT(*) FROM currencies
                         WHERE is_base_currency AND legacy_id=1

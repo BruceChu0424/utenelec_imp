@@ -11,6 +11,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.Statement;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -43,33 +44,8 @@ class ProductionDailyReportCommandPostgresTest {
     static void migrateAndSeedActor() throws Exception {
         POSTGRES.start();
         com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .target("408")
-                .load()
-                .migrate();
-        UUID legacyReportId = UUID.randomUUID();
-        try (Connection connection = connection()) {
-            insertReport(connection, legacyReportId, "legacy-before-v409");
-        }
-        com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
-        assertEquals(0, count("""
-                SELECT row_version
-                FROM production_daily_reports
-                WHERE id=?
-                """, legacyReportId));
-        assertEquals(0, count(
-                "SELECT count(*) FROM production_daily_report_commands"));
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").load().migrate();
 
         try (Connection connection = connection()) {
             UUID departmentId = scalarUuid(connection, """
@@ -98,6 +74,40 @@ class ProductionDailyReportCommandPostgresTest {
     @AfterAll
     static void stopPostgres() {
         POSTGRES.stop();
+    }
+
+    @Test
+    void v409BackfillsAnExistingReportWithinItsActualMigrationWindow() throws Exception {
+        try (var historical = new PostgreSQLContainer("postgres:16-alpine")
+                .withUsername("fixture_admin").withPassword("uten")) {
+            historical.start();
+            var configuration = com.uten.imp.testsupport.TestFlyway.configure()
+                    .dataSource(historical.getJdbcUrl(), historical.getUsername(), historical.getPassword())
+                    .locations("classpath:db/migration");
+            configuration.target("408").load().migrate();
+            UUID reportId = UUID.randomUUID();
+            try (Connection connection = DriverManager.getConnection(
+                    historical.getJdbcUrl(), historical.getUsername(), historical.getPassword())) {
+                insertReport(connection, reportId, "legacy-before-v409");
+            }
+            assertEquals(1, configuration.target("409").load().migrate().migrationsExecuted);
+            try (Connection connection = DriverManager.getConnection(
+                    historical.getJdbcUrl(), historical.getUsername(), historical.getPassword());
+                 PreparedStatement query = connection.prepareStatement(
+                         "SELECT row_version FROM production_daily_reports WHERE id=?")) {
+                query.setObject(1, reportId);
+                try (ResultSet row = query.executeQuery()) {
+                    assertTrue(row.next());
+                    assertEquals(0, row.getLong(1));
+                }
+                try (Statement queryCommands = connection.createStatement();
+                     ResultSet rows = queryCommands.executeQuery(
+                             "SELECT count(*) FROM production_daily_report_commands")) {
+                    assertTrue(rows.next());
+                    assertEquals(0, rows.getLong(1));
+                }
+            }
+        }
     }
 
     @Test

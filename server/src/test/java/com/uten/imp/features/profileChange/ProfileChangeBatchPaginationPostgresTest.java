@@ -57,7 +57,9 @@ import static org.mockito.Mockito.*;
         "spring.jpa.show-sql=false",
         "logging.level.org.hibernate.SQL=OFF"
 })
-@Import({JpaAuditingConfig.class, com.uten.imp.security.SecurityContextCurrentUser.class})
+@Import({JpaAuditingConfig.class, com.uten.imp.security.SecurityContextCurrentUser.class,
+        com.uten.imp.migration.AppliedMigrationCompatibilityCallback.class,
+        com.uten.imp.migration.AuditFreshStartGuardCallback.class})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class ProfileChangeBatchPaginationPostgresTest {
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")

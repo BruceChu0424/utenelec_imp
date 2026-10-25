@@ -61,13 +61,16 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
                     category_id uuid,model text,spec text,c_number text,series text,material text,name_en text,stock_place text,
                     status text DEFAULT '使用', is_deleted boolean DEFAULT false, issue_method text DEFAULT 'ORDER',
                     bulk_package_qty numeric, periodic_cost_basis text, owning_warehouse_id uuid, min_qty float8 DEFAULT 0, client_goods_name text);
-                CREATE TABLE stock_balances(warehouse_id uuid, goods_id uuid, color_id uuid, qty numeric);
                 CREATE TABLE stock_reservations(warehouse_id uuid, goods_id uuid, color_id uuid, qty numeric,
                     consumed_qty numeric DEFAULT 0, released_qty numeric DEFAULT 0,
                     is_deleted boolean DEFAULT false, status integer DEFAULT 0);
                 CREATE TABLE v_workshop_material_bin_ledger(bin_warehouse_id uuid, goods_id uuid, color_id uuid);
                 """);
-        MigratedProjectionSchema.createCurrentTables(db, "material_categories");
+        MigratedProjectionSchema.createCurrentTables(db, "material_categories", "stock_balances", "stock_measurement_holds");
+        db.execute("ALTER TABLE units ADD COLUMN legacy_id integer");
+        db.execute("ALTER TABLE goods ADD COLUMN unit_legacy_id integer, ADD COLUMN auto_created boolean DEFAULT false");
+        MigratedProjectionSchema.createCurrentFunctions(db, "fn_stock_has_resolved_base_unit", "fn_stock_measurement_usable");
+        MigratedProjectionSchema.createCurrentViews(db, "v_stock_operable_balances");
         try (var resource = getClass().getResourceAsStream("/db/migration/V613__operational_warehouse_leaf_identity.sql")) {
             String migration = new String(resource.readAllBytes(), StandardCharsets.UTF_8);
             db.execute(migration.substring(0, migration.indexOf("DO $migration$")));
@@ -76,7 +79,6 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
         // 按仓可用量(V801)与开通表原样取自迁移文件。
         db.execute("""
                 ALTER TABLE warehouses ADD COLUMN is_defective boolean DEFAULT false;
-                ALTER TABLE stock_balances ADD COLUMN weight numeric;
                 CREATE TABLE workshop_bins(workshop_department_id uuid PRIMARY KEY, bin_warehouse_id uuid,
                     source_warehouse_id uuid, opened_by uuid, opened_at timestamptz DEFAULT now(),
                     updated_by uuid, updated_at timestamptz DEFAULT now(), row_version bigint DEFAULT 0);
@@ -385,6 +387,6 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
         db.update("INSERT INTO warehouses(id,name,parent_id,is_line_side) VALUES (?,?,?,?)", id, name, parent, lineSide);
     }
     private void balance(UUID warehouse, UUID goods, UUID color, String qty) {
-        db.update("INSERT INTO stock_balances VALUES (?,?,?,?)", warehouse, goods, color, new BigDecimal(qty));
+        db.update("INSERT INTO stock_balances(warehouse_id,goods_id,color_id,qty) VALUES (?,?,?,?)", warehouse, goods, color, new BigDecimal(qty));
     }
 }

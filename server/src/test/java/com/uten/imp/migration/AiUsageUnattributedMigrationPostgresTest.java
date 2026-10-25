@@ -130,6 +130,9 @@ class AiUsageUnattributedMigrationPostgresTest {
         var config = com.uten.imp.testsupport.TestFlyway.configureWithInitSql("SET search_path = pg_catalog, public, pg_temp")
                 .dataSource(url, DB.getUsername(), DB.getPassword()).defaultSchema("public")
                 .locations("classpath:db/migration").target(target).cleanDisabled(true);
+        // The negative control excludes only the compatibility under test; the audit reset
+        // boundary remains active on both paths, as does the production connection policy.
+        config.callbacks(new AuditFreshStartGuardCallback());
         if (compatible) config.callbacks(new AppliedMigrationCompatibilityCallback(), new AuditFreshStartGuardCallback());
         return config.load();
     }

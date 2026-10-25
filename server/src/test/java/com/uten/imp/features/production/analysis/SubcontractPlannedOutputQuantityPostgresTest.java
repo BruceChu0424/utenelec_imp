@@ -33,6 +33,9 @@ class SubcontractPlannedOutputQuantityPostgresTest {
         DB.start();connection=DriverManager.getConnection(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword());
         db=new JdbcTemplate(new SingleConnectionDataSource(connection,true));
         MigratedProjectionSchema.createCurrentTables(db,TABLES.toArray(String[]::new));
+        MigratedProjectionSchema.installImportedDocumentPolicy(db,
+                "subcontract_application_items", "subcontract_order_items", "subcontract_orders",
+                "subcontract_receipt_items", "subcontract_receipts");
         db.execute("""
                 CREATE TEMP TABLE subcontract_draw_adapter(goods_id uuid PRIMARY KEY,enabled boolean NOT NULL);
                 CREATE FUNCTION fn_subcontract_draw_edges(uuid) RETURNS SETOF uuid LANGUAGE sql AS

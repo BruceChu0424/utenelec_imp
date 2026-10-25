@@ -102,22 +102,22 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
             inactiveSettlement = UUID.randomUUID();
             exec(connection, "INSERT INTO settlement_methods(id,code,name,status) VALUES('"
                     + inactiveSettlement + "','V438-SET-X','停用测试结算','禁用')");
+            materialUnit = UUID.randomUUID();
+            exec(connection, "INSERT INTO units(id,code,name) VALUES('"
+                    + materialUnit + "','V438-U','V438单位')");
             goods = UUID.randomUUID();
             exec(connection, """
                     INSERT INTO goods(
-                        id,code,name,status,category_id,code_sequence,code_managed)
-                    SELECT '%s','V438-G','V438货品','使用',category.id,
+                        id,code,name,status,category_id,unit_id,code_sequence,code_managed)
+                    SELECT '%s','V438-G','V438货品','使用',category.id,'%s',
                            (SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods),FALSE
                     FROM material_categories category
                     ORDER BY category.id LIMIT 1
-                    """.formatted(goods));
+                    """.formatted(goods,materialUnit));
             warehouse = UUID.randomUUID();
             exec(connection, "INSERT INTO warehouses(id,code,name,status) VALUES('"
                     + warehouse + "','WH990001','V438锁序仓','使用')");
             // ADR-143: 委外件发外的是它的直属物料; 委外回厂只能核销按冻结单耗领出的直属物料。
-            materialUnit = UUID.randomUUID();
-            exec(connection, "INSERT INTO units(id,code,name) VALUES('"
-                    + materialUnit + "','V438-U','V438单位')");
             directMaterial = UUID.randomUUID();
             exec(connection, """
                     INSERT INTO goods(

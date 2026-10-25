@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.ret;
 
+import com.uten.imp.support.MigratedSchemaBaseline;
 import com.uten.imp.application.port.SubcontractOutboundWakePort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -30,7 +31,6 @@ import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -79,11 +79,7 @@ class SalesReturnQualityIdempotencyPostgresTest {
     private static final java.util.concurrent.atomic.AtomicInteger CLIENT_CODE_SEQUENCE =
             new java.util.concurrent.atomic.AtomicInteger(910_000);
 
-    private static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:16-alpine")
-                    .withDatabaseName("uten_imp")
-                    .withUsername("fixture_admin")
-                    .withPassword("uten");
+    private static MigratedSchemaBaseline.ScopedDatabase POSTGRES;
     private static final UUID ACTOR_ID =
             UUID.fromString("10000000-0000-0000-0000-000000000001");
     private static final BigDecimal FIXTURE_UNIT_BOOK_COST = BigDecimal.ONE;
@@ -99,16 +95,8 @@ class SalesReturnQualityIdempotencyPostgresTest {
     private Consumer<StockService.MovementRequest> movementHook;
 
     @BeforeAll
-    static void migrateAndCreateHarness() {
-        POSTGRES.start();
-        com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
+    static void migrateAndCreateHarness() throws Exception {
+        POSTGRES = MigratedSchemaBaseline.openDatabase("measurement_673cfdc30c40");
 
         DriverManagerDataSource dataSource = new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(),
@@ -137,11 +125,11 @@ class SalesReturnQualityIdempotencyPostgresTest {
     }
 
     @AfterAll
-    static void stopPostgres() {
+    static void stopPostgres() throws Exception {
         if (entityManagerFactory != null) {
             entityManagerFactory.close();
         }
-        POSTGRES.stop();
+        if (POSTGRES != null) POSTGRES.close();
     }
 
     @BeforeEach
@@ -242,6 +230,16 @@ class SalesReturnQualityIdempotencyPostgresTest {
                 any(), any(), any(), any(), any(), any(),
                 org.mockito.ArgumentMatchers.anyBoolean(), any());
 
+        // This adapter reads the real qualification decision instead of Mockito's default false.
+        when(balanceRepository.measurementUsable(any(), any(), any()))
+                .thenAnswer(invocation -> entityManager.createNativeQuery(
+                                "SELECT fn_stock_measurement_usable(:wid,:gid,CAST(:cid AS uuid))",
+                                Boolean.class)
+                        .setParameter("wid", invocation.getArgument(0, UUID.class))
+                        .setParameter("gid", invocation.getArgument(1, UUID.class))
+                        .setParameter("cid", invocation.getArgument(2, UUID.class))
+                        .getSingleResult());
+
         // DIR_OUT（良品释放撤回）会读本仓余额：让 mock 仓库读真实 stock_balances。
         when(balanceRepository.readPhysicalSnapshot(
                 any(), any(), any()))
@@ -311,6 +309,24 @@ class SalesReturnQualityIdempotencyPostgresTest {
                             new com.uten.imp.features.stock.FulfillmentInventoryMutationAdapter(
                                 new InventoryMutationLock(entityManager)))),
                 mock(com.uten.imp.application.port.SalesReturnInventoryValuePort.class));
+    }
+
+    @Test
+    void unresolvedMeasurementCannotReleaseQualityOrCreateInventoryEffects() {
+        Fixture fixture = seedFixture(false);
+        AtomicBoolean touchedStock = new AtomicBoolean();
+        movementHook = ignored -> touchedStock.set(true);
+
+        ApiException refused = assertThrows(ApiException.class, () -> dispose(fixture,
+                request("GOOD_RELEASE", "2", "inspection-pass", "quality-measurement-pending")));
+
+        assertTrue(refused.getMessage().contains("计量待核"));
+        assertFalse(touchedStock.get());
+        assertEquals(0L, stockEffectCount(fixture.returnId()));
+        assertEquals(0L, dispositionEventCount(fixture.qualityItemId()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(balanceQuantity(fixture)));
+        assertEquals(0, BigDecimal.ZERO.compareTo(releasedQuantity(fixture.qualityItemId())));
+        assertNull(jdbc.queryForObject("SELECT unit_id FROM goods WHERE id=?", UUID.class, fixture.goodsId()));
     }
 
     @Test
@@ -611,12 +627,17 @@ class SalesReturnQualityIdempotencyPostgresTest {
     }
 
     private Fixture seedFixture() {
+        return seedFixture(true);
+    }
+
+    private Fixture seedFixture(boolean resolvedMeasurement) {
         UUID returnId = UUID.randomUUID();
         UUID returnItemId = UUID.randomUUID();
         UUID qualityItemId = UUID.randomUUID();
         UUID clientId = UUID.randomUUID();
         UUID warehouseId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
         String suffix = returnId.toString().substring(0, 8);
         String billNo = businessIdentifier("XT");
         int clientCodeSequence = CLIENT_CODE_SEQUENCE.incrementAndGet();
@@ -633,12 +654,14 @@ class SalesReturnQualityIdempotencyPostgresTest {
                 warehouseId,
                 "QW-" + suffix,
                 "Quality test warehouse " + suffix);
+        jdbc.update("INSERT INTO units(id,code,name) VALUES(?,?,'piece')",
+                unitId,"QU-"+suffix);
         jdbc.update(
-                "INSERT INTO goods(id, code, name, code_sequence) "
-                        + "VALUES (?, ?, ?, (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods))",
+                "INSERT INTO goods(id, code, name, code_sequence,unit_id) "
+                        + "VALUES (?, ?, ?, (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods),?)",
                 goodsId,
                 "QG-" + suffix,
-                "Quality test goods " + suffix);
+                "Quality test goods " + suffix, resolvedMeasurement ? unitId : null);
         jdbc.update("""
                 INSERT INTO sales_returns (
                     id, bill_no, bill_date, client_id, warehouse_id,

@@ -258,7 +258,7 @@ class InternalAttachmentLifecyclePostgresTest {
         assertThat(json(HttpMethod.POST,"/api/attachments/confirm",confirm,HttpStatus.OK).path("sizeBytes").asLong()).isEqualTo(bytes.length);
     }
 
-    @Test void explicitTestingResetClearsRetainedBusinessOriginalsButKeepsHumanFilesAndRequiresRelogin() throws Exception {
+    @Test void retiredResetRoutesCannotDeleteRetainedOriginalsOrInvalidateTheSession() throws Exception {
         byte[] humanBytes="human original remains".getBytes(StandardCharsets.UTF_8);
         Upload human=upload("human-preserved.txt","text/plain",humanBytes);
         UUID client=UUID.randomUUID(),order=UUID.randomUUID();
@@ -277,37 +277,18 @@ class InternalAttachmentLifecyclePostgresTest {
         for(int i=0;i<50 && outbox.processNext();i++) { /* ordinary deletion retains the original */ }
         assertThat(jdbc.queryForObject("SELECT lifecycle_state FROM attachments WHERE id=?",String.class,attachment)).isEqualTo("RETAINED_HISTORY");
         try(var retained=storage.openFinal(businessKey,version)){assertThat(retained.readAllBytes()).isEqualTo(businessBytes);}
-        // The dialog preview over real HTTP: the JSON field names the Flutter client reads (ADR-155).
-        JsonNode preview=json(HttpMethod.GET,"/api/system-test/business-data/preview",null,HttpStatus.OK);
-        assertThat(preview.path("refusals").isArray()).isTrue();
-        assertThat(preview.path("refusals")).isEmpty();
-        assertThat(preview.path("inspectionComplete").asBoolean()).isTrue();
-        assertThat(preview.path("allListedMissing").asBoolean()).isFalse();
-        assertThat(preview.path("presentFiles").asLong()).isPositive();
-        assertThat(preview.path("inspectedObjects").asLong()).isEqualTo(preview.path("locations").asLong());
-        assertThat(preview.has("absentFiles")).isTrue();
-        assertThat(preview.path("deadBackgroundEvents").isArray()).isTrue();
-        assertThat(preview.path("kinds").findValuesAsText("label")).contains("业务附件");
-        assertThat(preview.path("kinds").get(0).path("files").asLong()).isPositive();
-        assertThat(preview.has("refused")).as("derived by the client, not serialized").isFalse();
+        String orderBefore=jdbc.queryForObject("SELECT to_jsonb(o)::text FROM sales_orders o WHERE id=?",String.class,order);
+        String attachmentBefore=jdbc.queryForObject("SELECT to_jsonb(a)::text FROM attachments a WHERE id=?",String.class,attachment);
+        // V919 permanently retired every reset route; retained originals must survive attempts.
+        json(HttpMethod.GET,"/api/system-test/business-data/preview",null,HttpStatus.NOT_FOUND);
         UUID attempt=UUID.randomUUID();
-        JsonNode result=stepUpJson(HttpMethod.POST,"/api/system-test/business-data/reset",
-                Map.of("confirm","清空业务数据","attemptId",attempt.toString()),HttpStatus.OK);
-        assertThat(result.path("deletedAttachmentFiles").asLong()).isPositive();
-        assertThat(result.has("deadBackgroundEventsCleared")).isTrue();
-        assertThat(http.exchange("/api/auth/me",HttpMethod.GET,new HttpEntity<>(headers()),JsonNode.class).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_orders",Long.class)).isZero();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM attachments WHERE id=?",Long.class,attachment)).isZero();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_upload_sessions WHERE storage_key=?",Long.class,businessKey)).isZero();
-        assertThatThrownBy(()->{try(var ignored=storage.openFinal(businessKey,version)) {}})
-                .isInstanceOf(IllegalStateException.class).hasRootCauseInstanceOf(java.nio.file.NoSuchFileException.class);
-        login();
-        var receipt=json(HttpMethod.GET,"/api/system-test/business-data/last-result?attemptId="+attempt,null,HttpStatus.OK);
-        assertThat(receipt.path("available").asBoolean()).isTrue();assertThat(receipt.path("attemptId").asText()).isEqualTo(attempt.toString());
-        assertThat(receipt.path("deletedAttachmentFiles").asLong()).isEqualTo(result.path("deletedAttachmentFiles").asLong());
-        assertThat(receipt.has("deadBackgroundEventsCleared")).isTrue();
-        assertThat(receipt.path("attemptFailed").asBoolean()).isFalse();
-        assertThat(receipt.has("attemptDeletedAttachmentFiles")).isTrue();
+        json(HttpMethod.POST,"/api/system-test/business-data/reset",
+                Map.of("confirm","清空业务数据","attemptId",attempt.toString()),HttpStatus.NOT_FOUND);
+        json(HttpMethod.GET,"/api/system-test/business-data/last-result?attemptId="+attempt,null,HttpStatus.NOT_FOUND);
+        assertThat(http.exchange("/api/auth/me",HttpMethod.GET,new HttpEntity<>(headers()),JsonNode.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(jdbc.queryForObject("SELECT to_jsonb(o)::text FROM sales_orders o WHERE id=?",String.class,order)).isEqualTo(orderBefore);
+        assertThat(jdbc.queryForObject("SELECT to_jsonb(a)::text FROM attachments a WHERE id=?",String.class,attachment)).isEqualTo(attachmentBefore);
+        try(var retained=storage.openFinal(businessKey,version)){assertThat(retained.readAllBytes()).isEqualTo(businessBytes);}
         var original=http.exchange("/api/attachments/raw/"+human.key,HttpMethod.GET,new HttpEntity<>(headers()),byte[].class);
         assertThat(original.getStatusCode()).isEqualTo(HttpStatus.OK);assertThat(original.getBody()).isEqualTo(humanBytes);
     }

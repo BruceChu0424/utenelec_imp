@@ -43,7 +43,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({CategoryDrivenCodeService.class, MasterIdentifierAvailabilityService.class, MasterCodeService.class,
-        com.uten.imp.features.master.history.MasterIdentifierVersionRestorer.class})
+        com.uten.imp.features.master.history.MasterIdentifierVersionRestorer.class,
+        com.uten.imp.migration.AppliedMigrationCompatibilityCallback.class,
+        com.uten.imp.migration.AuditFreshStartGuardCallback.class})
 class CategoryDrivenCodeServicePostgresTest {
 
     private static final PostgreSQLContainer POSTGRES =

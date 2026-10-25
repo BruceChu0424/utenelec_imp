@@ -66,47 +66,11 @@ class SecurityPermissionMigrationTest {
     @BeforeAll
     static void migrate() throws Exception {
         POSTGRES.start();
+        // Current security behavior is a genuinely fresh full-chain proof.
+        // The V147 placeholder repair is exercised independently below.
         com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .target("147")
-                .load()
-                .migrate();
-
-        try (Connection connection = DriverManager.getConnection(
-                POSTGRES.getJdbcUrl(),
-                POSTGRES.getUsername(),
-                POSTGRES.getPassword());
-             Statement statement = connection.createStatement()) {
-            statement.execute("""
-                    CREATE TABLE audit_log_archive
-                        (LIKE audit_log INCLUDING DEFAULTS INCLUDING INDEXES);
-                    ALTER TABLE clients DROP CONSTRAINT IF EXISTS clients_status_chk;
-                    ALTER TABLE suppliers DROP CONSTRAINT IF EXISTS suppliers_status_chk;
-                    INSERT INTO clients (legacy_id, code, name, status, remark) VALUES
-                        (9001, 'LEGACY-FIN-CL-9001', '??????????', '??', '????'),
-                        (9002, 'LEGACY-FIN-CL-9002', 'Manual client', chr(31105) || chr(29992), 'Manual remark'),
-                        (9004, 'LEGACY-FIN-CL-ARCHIVE-9004', '??????????',
-                            chr(31105) || chr(29992), '????'),
-                        (NULL, 'LEGACY-FIN-CL-NO-LEGACY-ID', '??????????', NULL, 'Manual remark');
-                    INSERT INTO suppliers (legacy_id, code, name, status, remark) VALUES
-                        (9003, 'LEGACY-FIN-SP-9003', '??????????', '??', '????'),
-                        (9005, 'LEGACY-FIN-SP-ARCHIVE-9005', '??????????',
-                            chr(31105) || chr(29992), '????');
-                    """);
-        }
-
-        com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").load().migrate();
     }
 
     @AfterAll
@@ -541,49 +505,81 @@ class SecurityPermissionMigrationTest {
 
     @Test
     void repairsOnlyUntouchedFinancePlaceholderParties() throws Exception {
-        try (Connection connection = openConnection();
-             Statement statement = connection.createStatement()) {
-            assertEquals(
-                    "\u94b1\u6d41\u5386\u53f2\u5ba2\u6237\uff08\u539fID 9001\uff09",
-                    scalarString(statement,
-                            "select name from clients where legacy_id = 9001"));
-            assertEquals(
-                    "\u7981\u7528",
-                    scalarString(statement,
-                            "select status from clients where legacy_id = 9001"));
-            assertEquals(
-                    "Manual client",
-                    scalarString(statement,
-                            "select name from clients where legacy_id = 9002"));
-            assertEquals(
-                    "Manual remark",
-                    scalarString(statement,
-                            "select remark from clients where legacy_id = 9002"));
-            assertEquals(
-                    "\u94b1\u6d41\u5386\u53f2\u4f9b\u5e94\u5546\uff08\u539fID 9003\uff09",
-                    scalarString(statement,
-                            "select name from suppliers where legacy_id = 9003"));
-            assertEquals(
-                    "\u94b1\u6d41\u5386\u53f2\u5ba2\u6237\uff08\u539fID 9004\uff09",
-                    scalarString(statement,
-                            "select name from clients where legacy_id = 9004"),
-                    "V165 must repair untouched placeholder clients missed by V148");
-            assertEquals(
-                    "\u94b1\u6d41\u5386\u53f2\u4f9b\u5e94\u5546\uff08\u539fID 9005\uff09",
-                    scalarString(statement,
-                            "select name from suppliers where legacy_id = 9005"),
-                    "V165 must repair untouched placeholder suppliers missed by V148");
-            assertEquals(
-                    "??????????",
-                    scalarString(statement,
-                            "select name from clients where code = 'LEGACY-FIN-CL-NO-LEGACY-ID'"),
-                    "V165 must not null out placeholder names when legacy_id is absent");
-            assertEquals(2, scalarLong(statement, """
-                    select count(*)
-                    from pg_constraint
-                    where conname in ('clients_status_chk', 'suppliers_status_chk')
-                      and convalidated
-                    """));
+        try (var historical = new PostgreSQLContainer("postgres:16-alpine")
+                .withUsername("fixture_admin").withPassword("uten")) {
+            historical.start();
+            var configuration = com.uten.imp.testsupport.TestFlyway.configure()
+                    .dataSource(historical.getJdbcUrl(), historical.getUsername(), historical.getPassword())
+                    .locations("classpath:db/migration");
+            configuration.target("147").load().migrate();
+            try (Connection connection = DriverManager.getConnection(
+                    historical.getJdbcUrl(), historical.getUsername(), historical.getPassword());
+                 Statement statement = connection.createStatement()) {
+                statement.execute("""
+                        CREATE TABLE audit_log_archive
+                            (LIKE audit_log INCLUDING DEFAULTS INCLUDING INDEXES);
+                        ALTER TABLE clients DROP CONSTRAINT IF EXISTS clients_status_chk;
+                        ALTER TABLE suppliers DROP CONSTRAINT IF EXISTS suppliers_status_chk;
+                        INSERT INTO clients (legacy_id, code, name, status, remark) VALUES
+                            (9001, 'LEGACY-FIN-CL-9001', '??????????', '??', '????'),
+                            (9002, 'LEGACY-FIN-CL-9002', 'Manual client', chr(31105) || chr(29992), 'Manual remark'),
+                            (9004, 'LEGACY-FIN-CL-ARCHIVE-9004', '??????????',
+                                chr(31105) || chr(29992), '????'),
+                            (NULL, 'LEGACY-FIN-CL-NO-LEGACY-ID', '??????????', NULL, 'Manual remark');
+                        INSERT INTO suppliers (legacy_id, code, name, status, remark) VALUES
+                            (9003, 'LEGACY-FIN-SP-9003', '??????????', '??', '????'),
+                            (9005, 'LEGACY-FIN-SP-ARCHIVE-9005', '??????????',
+                                chr(31105) || chr(29992), '????');
+                        """);
+            }
+            // The actual repair finishes at V165. Do not cross the destructive
+            // V425 fresh-start boundary with pre-existing business/audit rows.
+            configuration.target("165").load().migrate();
+            try (Connection connection = DriverManager.getConnection(
+                    historical.getJdbcUrl(), historical.getUsername(), historical.getPassword());
+                 Statement statement = connection.createStatement()) {
+                assertEquals(
+                        "\u94b1\u6d41\u5386\u53f2\u5ba2\u6237\uff08\u539fID 9001\uff09",
+                        scalarString(statement,
+                                "select name from clients where legacy_id = 9001"));
+                assertEquals(
+                        "\u7981\u7528",
+                        scalarString(statement,
+                                "select status from clients where legacy_id = 9001"));
+                assertEquals(
+                        "Manual client",
+                        scalarString(statement,
+                                "select name from clients where legacy_id = 9002"));
+                assertEquals(
+                        "Manual remark",
+                        scalarString(statement,
+                                "select remark from clients where legacy_id = 9002"));
+                assertEquals(
+                        "\u94b1\u6d41\u5386\u53f2\u4f9b\u5e94\u5546\uff08\u539fID 9003\uff09",
+                        scalarString(statement,
+                                "select name from suppliers where legacy_id = 9003"));
+                assertEquals(
+                        "\u94b1\u6d41\u5386\u53f2\u5ba2\u6237\uff08\u539fID 9004\uff09",
+                        scalarString(statement,
+                                "select name from clients where legacy_id = 9004"),
+                        "V165 must repair untouched placeholder clients missed by V148");
+                assertEquals(
+                        "\u94b1\u6d41\u5386\u53f2\u4f9b\u5e94\u5546\uff08\u539fID 9005\uff09",
+                        scalarString(statement,
+                                "select name from suppliers where legacy_id = 9005"),
+                        "V165 must repair untouched placeholder suppliers missed by V148");
+                assertEquals(
+                        "??????????",
+                        scalarString(statement,
+                                "select name from clients where code = 'LEGACY-FIN-CL-NO-LEGACY-ID'"),
+                        "V165 must not null out placeholder names when legacy_id is absent");
+                assertEquals(2, scalarLong(statement, """
+                        select count(*)
+                        from pg_constraint
+                        where conname in ('clients_status_chk', 'suppliers_status_chk')
+                          and convalidated
+                        """));
+            }
         }
     }
 

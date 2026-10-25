@@ -166,7 +166,8 @@ class FrozenAnalysisLabelMigrationPostgresTest {
                 .dataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword())
                 .locations("filesystem:" + migrations.toAbsolutePath())
                 .baselineVersion("718").baselineOnMigrate(true).cleanDisabled(true);
-        if (compatible) configuration.callbacks(new AppliedMigrationCompatibilityCallback());
+        configuration.callbacks(new AuditFreshStartGuardCallback());
+        if (compatible) configuration.callbacks(new AppliedMigrationCompatibilityCallback(), new AuditFreshStartGuardCallback());
         return configuration.load();
     }
 

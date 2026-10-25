@@ -1,10 +1,10 @@
 package com.uten.imp.features.stock;
 
+import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -25,28 +25,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class StockReservationSalesCompatibilityPostgresTest {
 
-    private static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:16-alpine")
-                    .withDatabaseName("uten_imp")
-                    .withUsername("fixture_admin")
-                    .withPassword("uten");
+    private static MigratedSchemaBaseline.ScopedDatabase POSTGRES;
 
     @BeforeAll
-    static void migrate() {
-        POSTGRES.start();
-        com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
+    static void migrate() throws Exception {
+        POSTGRES = MigratedSchemaBaseline.openDatabase("measurement_c5ca839bf159");
     }
 
     @AfterAll
-    static void stopPostgres() {
-        POSTGRES.stop();
+    static void stopPostgres() throws Exception {
+        if (POSTGRES != null) POSTGRES.close();
     }
 
     @Test
@@ -57,11 +45,15 @@ class StockReservationSalesCompatibilityPostgresTest {
                 UUID warehouseId = UUID.randomUUID();
                 UUID orderItemId = UUID.randomUUID();
                 UUID reservationId = UUID.randomUUID();
+                UUID unitId = UUID.randomUUID();
+                try(var unit=connection.prepareStatement("INSERT INTO units(id,code,name) VALUES(?,?,'piece')")) {
+                    unit.setObject(1,unitId);unit.setString(2,"U-"+unitId);unit.executeUpdate();
+                }
 
                 try (PreparedStatement goods = connection.prepareStatement("""
-                        insert into goods(id, code, name, min_qty, code_sequence)
+                        insert into goods(id, code, name, min_qty, code_sequence,unit_id)
                         values (?, ?, 'sales compatibility material', 0,
-                                (select coalesce(max(code_sequence), 0) + 1 from goods))
+                                (select coalesce(max(code_sequence), 0) + 1 from goods),?)
                         """);
                      PreparedStatement warehouse = connection.prepareStatement("""
                              insert into warehouses(id, code, name)
@@ -69,6 +61,7 @@ class StockReservationSalesCompatibilityPostgresTest {
                              """)) {
                     goods.setObject(1, goodsId);
                     goods.setString(2, "GOODS-" + goodsId);
+                    goods.setObject(3, unitId);
                     goods.executeUpdate();
 
                     warehouse.setObject(1, warehouseId);

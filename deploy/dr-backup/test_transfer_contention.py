@@ -24,6 +24,9 @@ class TransferContentionTest(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.root.chmod(0o700)
+        mounted = patch.object(snapshot_chunks.os.path, 'ismount', return_value=True)
+        mounted.start()
+        self.addCleanup(mounted.stop)
 
     def holder(self, path=None):
         path = path or self.root / 'barrier'
@@ -127,7 +130,9 @@ class TransferContentionTest(unittest.TestCase):
         chunk_key = self.root / 'chunk-key'
         chunk_key.write_bytes(b'x' * 32)
         chunk_key.chmod(0o600)
+        (self.root / 'exports').mkdir(mode=0o700)
         return {'state_directory': str(state), 'paired_helper': str(helper),
+                'snapshot_spool_mountpoint': str(self.root),
                 'paired_config': str(config_file), 'sealed_helper': str(sealed),
                 'source_export_directory': str(self.root / 'exports'),
                 'recipient_file': str(recipient), 'recipient_fingerprint': 'A' * 40,

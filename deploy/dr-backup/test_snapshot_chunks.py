@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import subprocess
+import resource
 import tarfile
 from datetime import timedelta
 from unittest.mock import patch
@@ -211,6 +212,68 @@ class EncryptedChunkSnapshotTest(unittest.TestCase):
         self.assertEqual({'manifest.gpg','references.json','target-receipt.json','source-receipt.json',
             'source-signature.sshsig','objects/'+obj['opaqueId']+'.gpg'},names)
         with self.assertRaises(ValueError):self.send({'format':base.FORMAT,'operation':'bundle','snapshotId':receipt['snapshotId']})
+
+    def test_more_than_five_hundred_chunks_export_under_sixty_four_descriptor_limit(self):
+        objects = [self.object(f'{index:064x}') for index in range(501)]
+        receipt = self.send(self.point(objects), self.manifest)
+        previous = resource.getrlimit(resource.RLIMIT_NOFILE)
+        try:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (64, previous[1]))
+            output = io.BytesIO()
+            chunks.bundle(self.config, receipt['snapshotId'], output, base)
+        finally:
+            resource.setrlimit(resource.RLIMIT_NOFILE, previous)
+        with tarfile.open(fileobj=io.BytesIO(output.getvalue()), mode='r:') as archive:
+            self.assertEqual(506, len(archive.getmembers()))
+        self.assertFalse(any((self.storage / '.bundle-leases').iterdir()))
+
+    def test_active_bundle_lease_protects_old_point_and_closure_during_unlocked_stream(self):
+        old_object = self.object('d' * 64)
+        old = self.send(self.point([old_object], age=50), self.manifest)
+        old['receivedAt'] = (base.now() - timedelta(days=50)).isoformat()
+        old_path = self.storage / 'snapshots' / old['snapshotId']
+        base.atomic_json(old_path / 'target-receipt.json', old)
+        for _ in range(3):
+            self.send(self.point([self.object()]), self.manifest)
+        original = old_path / 'manifest.gpg'
+        inspected = []
+        class Output(io.BytesIO):
+            def write(stream, raw):
+                if not inspected:
+                    inspected.append(base.retain(self.config))
+                    self.assertTrue(original.exists())
+                return super().write(raw)
+        output = Output()
+        chunks.bundle(self.config, old['snapshotId'], output, base)
+        self.assertEqual(4, inspected[0]['completedSnapshots'])
+        after = base.retain(self.config)
+        self.assertEqual(3, after['completedSnapshots'])
+        self.assertFalse(old_path.exists())
+
+    def test_status_checks_outside_returned_window_and_catalog_cap_is_explicit(self):
+        obj = self.object()
+        oldest = self.send(self.point([obj], age=50), self.manifest)
+        oldest['receivedAt'] = (base.now() - timedelta(days=50)).isoformat()
+        old_path = self.storage / 'snapshots' / oldest['snapshotId']
+        base.atomic_json(old_path / 'target-receipt.json', oldest)
+        for _ in range(3):
+            self.send(self.point([obj]), self.manifest)
+        with patch.object(chunks, 'CATALOG_WINDOW', 2):
+            status = chunks.status(self.config, base)
+            self.assertEqual(4, status['completedSnapshots'])
+            self.assertEqual(2, len(status['snapshotRecoveryPoints']))
+            self.assertTrue(status['snapshotCatalogTruncated'])
+            (old_path / 'references.json').write_bytes(b'[]')
+            with self.assertRaises(ValueError):
+                chunks.status(self.config, base)
+        with patch.object(chunks, 'MAX_CATALOG_POINTS', 1):
+            # Use the first valid points only; count overflow is a visible
+            # resource rejection, never a silently truncated healthy catalog.
+            (old_path / 'references.json').write_bytes(chunks.canonical([
+                {key: obj[key] for key in ('opaqueId', 'cipherSha256', 'cipherBytes')}]))
+            with self.assertRaises(base.TransferFailure) as failure:
+                chunks.status(self.config, base)
+            self.assertEqual('CATALOG_RESOURCE_LIMIT', failure.exception.code)
 
 
 if __name__ == '__main__':unittest.main()

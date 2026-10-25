@@ -16,7 +16,7 @@
 
 上传身份 `uten-dr-ingest` 使用专用 SSH key、固定强制命令和精确 sudo 规则；不提供任意 shell、端口转发、删除或恢复命令。云端没有备份解密私钥。分块 ID 使用公司端独立随机 HMAC key，避免用公开业务原文哈希作为云端对象名。每个新块随机 GPG 加密，私有清单绑定顺序、大小、摘要、随机 nonce 和成套 manifest；公司独立 Ed25519 签名由管理机固定公钥验证。
 
-保留策略是最近 7 天全部完整点、30 天每天一个点、至少 3 个完整点。云端设 **10 GiB 本链预算和 10 GiB 磁盘空闲保留**，容量不够时拒绝新上传，不删除受保护历史来伪造成功。该策略不等于容量已证明足够：实际数据库 dump 变化可能使大量块发生位移，不能按单次低增量估算长期空间。整包约 42.3 MB/小时，分块首次约 27.8 MB，后续实测从约 0.1 MB 到约 26 MB/点不等；上线后应依据实际增长扩容。
+历史保留策略是最近 7 天全部完整点、30 天每天一个点、至少 3 个完整点。云端原配置 **10 GiB 本链预算和 10 GiB 磁盘空闲保留**，容量不够时拒绝新上传，不删除受保护历史来伪造成功。2026-10-23的42.3MB整包/27.8MB首次分块仅是旧数据快照；2026-10-25新的business-only真实包已594507370字节，尚不含完整schema和所有媒体，不能沿用旧数估算当前容量。扩容、保留频率与策略需单独批准和验收，本轮资源上界修复不改变生产策略。
 
 这是离散、完整的一致性恢复点。`snapshotRpo15MinutesFresh=true` 只表示最近完整成套点未超过 15 分钟；连续 WAL、任意时刻原件历史、任意 PITR 均尚未完成。市场缓存与客户端发布状态在当前线上 paired helper 中未纳入，状态明确标为 false。云盘目前没有 OSS WORM，root 失陷仍可删除云盘；上传账号受限不等于不可变存储。
 
@@ -25,7 +25,7 @@
 ### 采集、传输和保留任务互斥
 
 小时整包与五分钟分块任务各自持有作业锁，防止同一种任务重入；两者仅在创建成套备份、
-采集一致原件与必要恢复材料期间共用 `.source.lock`。完整私有密文或内存快照形成后立即释放
+采集一致原件与必要恢复材料期间共用 `.source.lock`。完整私有密文或备份卷上的私有chunk spool形成后立即释放
 采集锁，网络上传、加密后续处理与接收端保留等待不会继续占用它。采集锁最多等待六十秒，
 接收端写入与保留共用的互斥锁最多等待三十秒，均计入原有服务总预算；四分钟/三十五分钟的
 服务限时保持原值。采集锁排队耗尽时明确记录 `DEFERRED/SOURCE_BUSY`、`health=DEGRADED` 和
@@ -42,8 +42,9 @@
 `RECEIVER_BUSY`、`RECEIVER_CAPACITY_LIMIT` 等明确原因；随后的管道关闭不再覆盖它。
 没有可信回执、截断、错误摘要或非零退出仍失败，原始 SSH stderr、路径和配置值不会公开。
 流式传输使用非阻塞读写，连续六十秒没有本机管道 I/O 进展时失败；有进展的慢传可以继续，
-总耗时仍受从作业开始计算的小时三十五分钟、快照四分钟绝对期限约束。快照所有分块 RPC
-共享剩余期限，不为每块重新分配四分钟。提前拒绝或写入失败会先关闭输入再读回执，超时与
+总耗时受显式有界profile约束，所有分块 RPC共享剩余期限，不按块重新计时。仓库默认4/35分钟外层
+预算各留30秒清理；已有现场snapshot 15分钟drop-in必须保留，并用870/900秒显式profile与实际单元核对。
+提前拒绝或写入失败会先关闭输入再读回执，超时与
 异常均终止并回收本次子进程和管道，不在内存中一次装入整个密文包。
 
 此修复需要公司端与云端将同一提交的 `continuous_backup.py` 和 `snapshot_chunks.py` 成套安装，
@@ -51,6 +52,58 @@
 按现有 root 属主/私有权限原子安装并核对摘要，再恢复原先启用的 timer。不要强杀正在生成的
 一致性备份或删除锁文件；回退也应等待所有任务完成后成套恢复旧脚本。四个 DR service 的
 `LimitCORE=0` 必须从实际单元与 drop-in 读回确认，避免持有恢复材料的进程生成 core dump。
+
+### 大包资源合同与安装前置
+
+快照采集不把完整dump或全部唯一块放进RAM：512KiB固定块流式落到
+`<source_export_directory>/.snapshot-spool/.snapshot-<随机ID>/plain/`，目录root0700、文件0600；
+保留固定源集的锁在私有capture完成后释放，锁外逐块加密/传输。完成、异常或SIGTERM清理本次spool；
+SIGKILL残留只能凭本工具inode绑定lease在下次同一job锁内回收，未知租约保留并明确失败，不能持续生成新明文。
+
+资源硬界：两条恢复路径的plain总量2GiB；full cipher封装3GiB（包含tar/密钥/metadata开销）；
+snapshot每块512KiB、8192唯一块、manifest4MiB不变，cipher bundle上界由plain加每块/manifest/tar开销派生。
+full生产前在固定源集锁内检查plain与64MiB export inventory界限；真实GPG子进程继承RLIMIT_FSIZE，
+在生成过程中限制最大cipher文件，失败走原helper临时目录清理，不只在上传后拒收。source与receiver必须一起设同一3GiB包限额。
+
+源端新增配置仅合并到现有root私有JSON，不覆盖其密钥/来源字段：
+
+```json
+{
+  "max_snapshot_plain_bytes": 2147483648,
+  "max_archive_bytes": 3221225472,
+  "snapshot_spool_mountpoint": "/srv/uten-backup",
+  "snapshot_spool_min_free_bytes": 1073741824,
+  "snapshot_budget_seconds": 870,
+  "snapshot_unit_timeout_seconds": 900,
+  "archive_budget_seconds": 2070,
+  "archive_unit_timeout_seconds": 2100
+}
+```
+
+该例对应已验证的15/35分钟现场外层预算，不是增加timeout。未配置时仍按仓库240/2100秒框架、
+内部210/2070秒工作期限执行。预算字段只允许固定键和整数，必须小于声明unit预算至少30秒；
+安装者还必须对照systemd effective值，状态回执公开实际budget、reviewedUnitTimeout和阶段耗时。
+
+**先验收卷，再安装单元：** 核对`findmnt`、固定UUID、挂载选项与可用空间，确认
+`/srv/uten-backup/dr-continuous-exports`已是受审root私有备份卷目录，再预建其`.snapshot-spool`为root0700。
+单元`RequiresMountsFor`包含既有备份挂载/导出根，`ReadWritePaths`只增加该精确spool路径；
+路径缺失会在Python前产生NAMESPACE失败，不能等启动失败后再猜原因。安装后读回实际unit/drop-in与RW路径，
+验证源程序的mount检查、同设备和no-link策略。卷缺失必须失败，不得回落/tmp或系统盘。
+源spool开始前检查整个输入+manifest/cipher余量+1GiB reserve，逐块继续检查空间；原MemoryMax768MiB不抬高。
+
+恢复两CLI必须显式提供已存在的私有`--spool-directory`，cipher tar与重构文件流式落盘，单块解密并直接流式送给
+既有隔离恢复容器；`--budget-seconds`总上限3600并留30秒清理。旧v1签名、HMAC、nonce、路径与源清单绑定不变，
+旧受控调用包装器需要同步新参数。恢复卷建议预留至少10GiB并按实际cipher+plain+1GiB核验；
+现有PGDATA tmpfs2GiB/容器memory3GiB没有因此扩大，真实压缩dump展开量、完整恢复和时效仍需单独验收。
+
+admin bundle不再以500refs或全部文件FD为界；root-only活跃OS租约保护准确点及其闭包，锁外单FD流式tar，
+崩溃释放OS锁后由受控GC清理inactive lease。目录/状态逐点保持完整性检查，仅返回最新100点与明确truncated/count标记；
+publisher仍只上报100点元数据，不放大控制面128KiB body。每次GC的unique验证图上限100000、目录点10000、
+bundle lease256，超限明确`CATALOG_RESOURCE_LIMIT`且不删除受保护恢复点，不以省校验伪健康。
+
+600MiB合成数据可在160MiB地址空间中捕获/重构，仅证明资源有界。首次新块池仍可能需要上千次SSH/GPG RPC，
+不能据此承诺15分钟RPO。先测paired捕获、首次seed、正常复用与最差dump位移的阶段耗时；
+必要的独立受控初始化窗口另行制定。partial对象不算完整恢复点，容量/过期告警保持。
 
 公司服务器以已有管理员 SSH 身份执行：
 

@@ -14,6 +14,11 @@ import io
 import json
 import os
 from pathlib import Path
+from pathlib import PurePosixPath
+import shutil
+import stat
+import resource
+import fcntl
 import re
 import shlex
 import struct
@@ -22,9 +27,225 @@ import sys
 import tarfile
 import time
 import uuid
+import tempfile
+from contextlib import contextmanager
 
 PHASE = "INITIALIZING"
 SAFE_COUNTS = {}
+MAX_METADATA_BYTES = 64 * 1024**2
+MAX_PLAIN_BYTES = 2 * 1024**3
+MAX_ARCHIVE_CIPHER_BYTES = 3 * 1024**3
+MAX_RECOVERY_WORKSPACES = 4
+
+
+def remaining_budget(deadline):
+    if deadline is None:return None
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:raise TimeoutError('Recovery job budget exceeded')
+    return remaining
+
+
+def phase_timeout(deadline, maximum):
+    remaining = remaining_budget(deadline)
+    return maximum if remaining is None else min(maximum, remaining)
+
+
+class DeadlineReader:
+    def __init__(self, stream, deadline):
+        self.stream, self.deadline = stream, deadline
+
+    def read(self, size=-1):
+        remaining_budget(self.deadline)
+        return self.stream.read(size)
+
+    def __getattr__(self, key):
+        return getattr(self.stream, key)
+
+
+@contextmanager
+def content_stream(value):
+    if isinstance(value, (bytes, bytearray)):
+        with io.BytesIO(value) as stream:
+            yield stream
+    elif isinstance(value, Path):
+        if value.is_symlink() or not value.is_file():
+            raise ValueError('Recovery input must be a regular file')
+        with value.open('rb') as stream:
+            yield stream
+    else:
+        raise ValueError('Unsupported recovery input')
+
+
+def content_bytes(value, maximum=MAX_METADATA_BYTES):
+    with content_stream(value) as stream:
+        raw = stream.read(maximum + 1)
+    if len(raw) > maximum:
+        raise ValueError('Recovery metadata exceeds its bounded budget')
+    return raw
+
+
+def content_identity(value, maximum=MAX_PLAIN_BYTES, *, deadline=None):
+    size, digest = 0, hashlib.sha256()
+    with content_stream(value) as stream:
+        while block := stream.read(1024 * 1024):
+            remaining_budget(deadline)
+            size += len(block)
+            if size > maximum:
+                raise ValueError('Recovery file exceeds the plaintext budget')
+            digest.update(block)
+    return size, digest.hexdigest()
+
+
+def json_lines(value, *, deadline=None):
+    total = 0
+    with content_stream(value) as stream:
+        while line := stream.readline(1024 * 1024 + 1):
+            remaining_budget(deadline)
+            total += len(line)
+            if total > MAX_METADATA_BYTES or len(line) > 1024 * 1024:
+                raise ValueError('Recovery inventory exceeds its metadata budget')
+            yield json.loads(line)
+
+
+def private_directory(path):
+    path = Path(path)
+    if not path.is_absolute() or '..' in path.parts:raise ValueError('Recovery spool must be absolute')
+    if any(parent.is_symlink() for parent in (path, *path.parents)):
+        raise ValueError('Linked recovery spool is forbidden')
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+        raise ValueError('Recovery spool is not private')
+    return path
+
+
+def process_start_token(pid):
+    try:return Path('/proc').joinpath(str(pid),'stat').read_text().rsplit(')',1)[1].split()[19]
+    except FileNotFoundError:return None
+
+
+def remove_abandoned_recovery_spools(parent):
+    """Only stale, inode-bound leases created by this recovery implementation."""
+    retained = 0
+    for directory in parent.iterdir():
+        if not re.fullmatch(r'\.uten-(?:full-)?recovery-[a-z0-9_]+',directory.name):continue
+        private_directory(directory)
+        marker=directory/'.recovery-lease.json'
+        if not marker.exists():
+            if any(directory.iterdir()):
+                raise ValueError('Unknown nonempty recovery spool prevents new allocation')
+            retained += 1
+            continue
+        if marker.is_symlink():raise ValueError('Linked recovery lease is forbidden')
+        info=marker.stat()
+        if info.st_uid != os.geteuid() or info.st_mode & 0o077:raise ValueError('Recovery lease is not private')
+        lease=json.loads(content_bytes(marker,16384));current=directory.stat()
+        if (set(lease)!={'format','pid','start','uid','device','inode'}
+                or lease['format']!='uten-private-recovery-spool-v1' or lease['uid']!=os.geteuid()
+                or (lease['device'],lease['inode'])!=(current.st_dev,current.st_ino)
+                or type(lease['pid']) is not int or lease['pid']<=0
+                or not isinstance(lease['start'],str) or not lease['start'].isdigit()):
+            raise ValueError('Recovery lease identity is invalid')
+        if process_start_token(lease['pid'])==lease['start']:
+            retained += 1
+            continue
+        shutil.rmtree(directory)
+    return retained
+
+
+@contextmanager
+def recovery_workspace(parent, *, required_bytes=0, prefix='.uten-recovery-'):
+    parent=private_directory(parent)
+    if prefix not in ('.uten-recovery-','.uten-full-recovery-'):raise ValueError('Invalid recovery namespace')
+    temporary = None
+    # Lock the existing directory itself, leaving no persistent lock file. The
+    # count, cleanup, mkdir and lease publication form one bounded allocation.
+    parent_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        try:fcntl.flock(parent_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError('Recovery spool allocation is already in progress') from None
+        if remove_abandoned_recovery_spools(parent) >= MAX_RECOVERY_WORKSPACES:
+            raise ValueError('Recovery workspace concurrency limit reached')
+        if required_bytes<0 or shutil.disk_usage(parent).free < required_bytes+1024**3:
+            raise ValueError('Recovery spool free-space reserve would be crossed')
+        temporary = tempfile.TemporaryDirectory(prefix=prefix,dir=parent)
+        root=Path(temporary.name);root.chmod(0o700);info=root.stat()
+        marker=root/'.recovery-lease.json'
+        fd=os.open(marker,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+        with os.fdopen(fd,'w',encoding='utf-8') as output:
+            json.dump({'format':'uten-private-recovery-spool-v1','pid':os.getpid(),
+                'start':process_start_token(os.getpid()),'uid':os.geteuid(),
+                'device':info.st_dev,'inode':info.st_ino},output)
+            output.flush();os.fsync(output.fileno())
+    except BaseException:
+        if temporary is not None:temporary.cleanup()
+        raise
+    finally:
+        os.close(parent_fd)
+    with temporary:
+        yield root
+
+
+def extract_verified_tar(path, directory, *, deadline=None):
+    """Called only after the sealed inventory and GPG authentication are verified."""
+    directory = private_directory(directory)
+    if any(directory.iterdir()):raise ValueError('Recovery target must be empty')
+    result, total = {}, 0
+    with tarfile.open(path, mode='r|') as archive:
+        for member in archive:
+            remaining_budget(deadline)
+            name = member.name;relative = PurePosixPath(name)
+            if (member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE) or name in result
+                    or relative.is_absolute() or str(relative) != name or '..' in relative.parts
+                    or '\\' in name or ':' in name or len(name.encode('utf-8')) > 4096
+                    or any(ord(char) < 32 or ord(char) == 127 for char in name)
+                    or any(part.endswith(('.', ' ')) for part in relative.parts)
+                    or not 0 <= member.size <= MAX_PLAIN_BYTES or len(result) >= 201024):
+                raise ValueError('Invalid verified plaintext tar member')
+            total += member.size
+            # The export inventory is metadata in addition to the paired payload.
+            if total > MAX_PLAIN_BYTES + MAX_METADATA_BYTES:
+                raise ValueError('Verified plaintext tar exceeds its spool budget')
+            target = directory
+            for part in relative.parts[:-1]:
+                target = target / part
+                if not target.exists():target.mkdir(mode=0o700)
+                private_directory(target)
+            target = target / relative.name
+            fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            size = 0
+            with os.fdopen(fd, 'wb') as output, archive.extractfile(member) as original:
+                while block := original.read(1024 * 1024):
+                    remaining_budget(deadline)
+                    size += len(block)
+                    if size > member.size:raise ValueError('Plaintext tar member grew')
+                    output.write(block)
+            if size != member.size:raise ValueError('Plaintext tar member is truncated')
+            result[name] = target
+    return result
+
+
+def run_isolated_command(arguments, data=None, timeout=180, spool_directory=None, *, deadline=None):
+    """Stream file input; cap private command output before it can fill a volume."""
+    maximum = 2 * 1024**2
+    timeout = phase_timeout(deadline, timeout)
+    def output_limit():
+        inherited = resource.getrlimit(resource.RLIMIT_FSIZE)[1]
+        limit = maximum + 1 if inherited == resource.RLIM_INFINITY else min(maximum + 1,inherited)
+        resource.setrlimit(resource.RLIMIT_FSIZE, (limit, limit))
+    with tempfile.TemporaryFile(dir=spool_directory) as output:
+        if isinstance(data, Path):
+            with content_stream(data) as stream:
+                result = subprocess.run(arguments, stdin=stream, stdout=output,
+                    stderr=subprocess.DEVNULL, timeout=timeout, preexec_fn=output_limit)
+        else:
+            result = subprocess.run(arguments, input=data, stdout=output,
+                stderr=subprocess.DEVNULL, timeout=timeout, preexec_fn=output_limit)
+        if result.returncode:
+            raise RuntimeError('Isolated restore command failed')
+        output.seek(0);raw = output.read(maximum + 1)
+        if len(raw) > maximum:raise ValueError('Isolated query output exceeds its bounded budget')
+        return raw
 
 
 def sql_literal(value):
@@ -46,12 +267,12 @@ def parse_env(raw):
     return result
 
 
-def validate_media(contents, prefix, manifest):
-    objects = [json.loads(line) for line in contents[prefix + "objects.jsonl"].splitlines()]
-    references = [json.loads(line) for line in contents[prefix + "references.jsonl"].splitlines()]
-    if hashlib.sha256(contents[prefix + "objects.jsonl"]).hexdigest() != manifest["objects_manifest_sha256"]:
+def validate_media(contents, prefix, manifest, *, deadline=None):
+    objects = list(json_lines(contents[prefix + "objects.jsonl"], deadline=deadline))
+    references = list(json_lines(contents[prefix + "references.jsonl"], deadline=deadline))
+    if content_identity(contents[prefix + "objects.jsonl"],deadline=deadline)[1] != manifest["objects_manifest_sha256"]:
         raise ValueError("Object inventory binding failed")
-    if hashlib.sha256(contents[prefix + "references.jsonl"]).hexdigest() != manifest["references_manifest_sha256"]:
+    if content_identity(contents[prefix + "references.jsonl"],deadline=deadline)[1] != manifest["references_manifest_sha256"]:
         raise ValueError("Reference inventory binding failed")
     identities = lambda values: {tuple(row.get(k) for k in ("storage_provider", "storage_key", "storage_version",
         "sha256", "size_bytes")) for row in values}
@@ -59,37 +280,54 @@ def validate_media(contents, prefix, manifest):
         raise ValueError("Logical original references are incomplete")
     for row in objects:
         folder = "media/local/final/" if row["storage_provider"] == "local" else "media/final/"
-        raw = contents[prefix + folder + row["relative_path"]]
-        if hashlib.sha256(raw).hexdigest() != row["storage_sha256"] or len(raw) != row["stored_size_bytes"]:
+        value = contents[prefix + folder + row["relative_path"]]
+        stored_size, stored_digest = content_identity(value,deadline=deadline)
+        if stored_digest != row["storage_sha256"] or stored_size != row["stored_size_bytes"]:
             raise ValueError("Stored original binding failed")
-        if row["storage_provider"] == "internal":
-            magic, codec, original_size, stored_size, expected = struct.unpack(">8sBqq32s", raw[:57])
-            if magic != b"UTENINT\x01" or codec not in (0, 1) or stored_size != len(raw) - 57:
-                raise ValueError("Internal original envelope is invalid")
-            original = gzip.decompress(raw[57:]) if codec else raw[57:]
-            if len(original) != original_size or hashlib.sha256(original).digest() != expected:
-                raise ValueError("Decoded original binding failed")
-        else:
-            original = raw
-        if len(original) != row["size_bytes"] or hashlib.sha256(original).hexdigest() != row["sha256"]:
+        original_size, original_digest = 0, hashlib.sha256()
+        with content_stream(value) as stream:
+            decoded = stream
+            expected = None
+            if row["storage_provider"] == "internal":
+                header = stream.read(57)
+                if len(header) != 57:raise ValueError('Internal original header is truncated')
+                magic, codec, declared_size, encoded_size, expected = struct.unpack('>8sBqq32s', header)
+                if (magic != b'UTENINT\x01' or codec not in (0, 1) or encoded_size != stored_size - 57
+                        or not 0 <= declared_size <= MAX_PLAIN_BYTES):
+                    raise ValueError('Internal original envelope is invalid')
+                if codec:decoded = gzip.GzipFile(fileobj=stream)
+            try:
+                while block := decoded.read(1024 * 1024):
+                    remaining_budget(deadline)
+                    original_size += len(block)
+                    if original_size > row['size_bytes'] or original_size > MAX_PLAIN_BYTES:
+                        raise ValueError('Decoded original exceeds its bounded size')
+                    original_digest.update(block)
+            finally:
+                if decoded is not stream:decoded.close()
+        if expected is not None and (original_size != declared_size or original_digest.digest() != expected):
+            raise ValueError('Decoded original binding failed')
+        if original_size != row["size_bytes"] or original_digest.hexdigest() != row["sha256"]:
             raise ValueError("Original plaintext binding failed")
     return {"mediaObjectsVerified": len(objects), "logicalReferencesVerified": len(references)}
 
 
-def restore_contents(contents, source_set_id, docker, candidate_options=None):
-    """All plaintext remains in memory, stdin pipes, and disposable container tmpfs."""
+def restore_contents(contents, source_set_id, docker, candidate_options=None, *, spool_directory=None, deadline=None):
+    """Consume verified bytes or private disk files without buffering the dump."""
     global PHASE, SAFE_COUNTS
     started = time.monotonic()
     PHASE = "DATABASE_ARCHIVE_BINDING"
     prefix = "paired/" + source_set_id + "/"
-    manifest = json.loads(contents[prefix + "manifest.json"])
+    manifest = json.loads(content_bytes(contents[prefix + "manifest.json"]))
     dump = contents[prefix + "database.dump"]
-    if not dump.startswith(b"PGDMP") or hashlib.sha256(dump).hexdigest() != manifest["database_dump_sha256"]:
+    with content_stream(dump) as stream:
+        magic = stream.read(5)
+    if magic != b"PGDMP" or content_identity(dump,deadline=deadline)[1] != manifest["database_dump_sha256"]:
         raise ValueError("PostgreSQL archive binding failed")
     PHASE = "MEDIA_REFERENCE_BINDING"
-    media = validate_media(contents, prefix, manifest)
+    media = validate_media(contents, prefix, manifest,deadline=deadline)
     PHASE = "RECOVERY_ENVIRONMENT_PARSING"
-    environment = parse_env(contents["recovery/etc/uten-imp/server.env"])
+    environment = parse_env(content_bytes(contents["recovery/etc/uten-imp/server.env"]))
     current_version = environment.get("UTEN_PGP_KEY_VERSION", "1")
     keyring = {match.group(1): value for key, value in environment.items()
                if (match := re.fullmatch(r"UTEN_CRYPTO_PGPLEGACYKEYS_([A-Za-z0-9_.-]+)", key))}
@@ -102,10 +340,9 @@ def restore_contents(contents, source_set_id, docker, candidate_options=None):
     name = "uten-drill-" + uuid.uuid4().hex[:12]
     common = [str(docker)]
     def command(arguments, data=None, timeout=180):
-        result = subprocess.run(common + arguments, input=data, capture_output=True, timeout=timeout)
-        if result.returncode:
-            raise RuntimeError("Isolated restore command failed")
-        return result.stdout
+        # Error output can contain database values: discard it, and bound the
+        # deliberate query results independently of the size of the dump.
+        return run_isolated_command(common + arguments, data, timeout, spool_directory,deadline=deadline)
     try:
         PHASE = "ISOLATED_CONTAINER_START"
         command(["run", "--pull", "never", "--detach", "--rm", "--name", name,
@@ -117,10 +354,10 @@ def restore_contents(contents, source_set_id, docker, candidate_options=None):
             "--env", "POSTGRES_HOST_AUTH_METHOD=trust", "--env", "POSTGRES_DB=drill", "postgres:16",
             "-c", "listen_addresses=", "-c", "shared_buffers=64MB", "-c", "max_connections=20",
             "-c", "max_wal_size=256MB", "-c", "log_statement=none", "-c", "log_min_error_statement=panic"])
-        deadline = time.monotonic() + 90
-        while time.monotonic() < deadline:
+        startup_deadline = time.monotonic() + phase_timeout(deadline,90)
+        while time.monotonic() < startup_deadline:
             result = subprocess.run(common + ["exec", name, "pg_isready", "-q", "-U", "postgres", "-d", "drill"],
-                                    capture_output=True, timeout=10)
+                                    capture_output=True, timeout=phase_timeout(deadline,10))
             if result.returncode == 0:
                 break
             time.sleep(.5)
@@ -134,7 +371,7 @@ def restore_contents(contents, source_set_id, docker, candidate_options=None):
         command(["exec", "--interactive", name, "pg_restore", "--exit-on-error", "--no-owner", "--no-privileges",
                  "--username", "postgres", "--dbname", "drill"], dump, timeout=600)
         PHASE = "RESTORED_DATABASE_ORIGINAL_REFERENCES"
-        references = [json.loads(line) for line in contents[prefix + "references.jsonl"].splitlines()]
+        references = list(json_lines(contents[prefix + "references.jsonl"],deadline=deadline))
         allowed_tables = {"attachments", "goods_cost_imports", "sales_quote_template_candidates",
             "sales_quote_template_versions", "sales_quote_template_candidate_history", "ai_input_originals"}
         for row in references:
@@ -224,13 +461,15 @@ SELECT json_build_object('tables',(SELECT count(*) FROM information_schema.table
                           "ISOLATED_RESTORE_WITH_HISTORICAL_HMAC_GAPS"), "sourceSetId": source_set_id,
             "databaseRestored": True, "attachmentsVerified": True, "corePgpVerified": True,
             "corePgpAndHmacVerified": hmac_verified, "keysVerified": hmac_verified,
-            "isolated": True, "sideEffectsDisabled": True, "plaintextWrittenOutsideTmpfs": False,
+            "isolated": True, "sideEffectsDisabled": True,
+            "plaintextWrittenOutsideTmpfs": any(isinstance(value, Path) for value in contents.values()),
             "durationSeconds": round(time.monotonic() - started, 3), **media, **stats,
             "knownAncillaryCredentialIssuesCleared": False,
             "reasonCode": "CORE_PGP_HMAC_VERIFIED" if hmac_verified else "HISTORICAL_HMAC_MISMATCH"}
-        report['sourceManifestSha256']=hashlib.sha256(contents[prefix+'manifest.json']).hexdigest()
-        inventory=[{'path':path,'size':len(value),'sha256':hashlib.sha256(value).hexdigest()}
-                   for path,value in sorted(contents.items())]
+        report['sourceManifestSha256']=content_identity(contents[prefix+'manifest.json'],deadline=deadline)[1]
+        inventory=[]
+        for path,value in sorted(contents.items()):
+            size,digest=content_identity(value,deadline=deadline);inventory.append({'path':path,'size':size,'sha256':digest})
         report['pairedRecoveryInputBindingSha256']=hashlib.sha256(json.dumps(inventory,sort_keys=True,
             separators=(',',':')).encode()).hexdigest()
         if candidate_options is not None:
@@ -239,20 +478,28 @@ SELECT json_build_object('tables',(SELECT count(*) FROM information_schema.table
                 Path(__file__).with_name('clone_integrity_candidate.py'))
             candidate=importlib.util.module_from_spec(spec);spec.loader.exec_module(candidate)
             inspection=json.loads(command(['inspect',name]))[0]
-            def run_sql(query):return command(psql,query.encode(),timeout=120)
+            def run_sql(query):
+                # The optional candidate performs one bounded Node step (30s,
+                # plus at most 5s for wslpath) after collecting its SQL inputs.
+                # Preserve that remaining budget without changing its module.
+                remaining = remaining_budget(deadline)
+                if remaining is not None and remaining <= 35:
+                    raise TimeoutError('Insufficient integrity-candidate budget')
+                timeout = 120 if remaining is None else min(120, remaining - 35)
+                return command(psql,query.encode(),timeout=timeout)
             def seal_proposal(raw):
                 output=candidate_options['preimage']
                 result=subprocess.run(['/usr/bin/gpg','--no-options','--batch','--no-tty','--homedir',
                     str(candidate_options['gpg_home']),'--trust-model','always','--recipient',
                     candidate_options['recipient'],'--compress-algo','zlib','--encrypt'],
-                    input=raw,capture_output=True,timeout=60)
+                    input=raw,capture_output=True,timeout=phase_timeout(deadline,60))
                 if result.returncode or not result.stdout:raise ValueError('Candidate preimage encryption failed')
                 with output.open('xb') as stream:
                     stream.write(result.stdout);stream.flush();os.fsync(stream.fileno())
                 return hashlib.sha256(result.stdout).hexdigest()
             report['integrityCandidate']=candidate.exercise(run_sql,inspection,name,environment,
                 candidate_options['legacy_hmac'],candidate_options['node'],
-                hashlib.sha256(contents['recovery/etc/uten-imp/server.env']).hexdigest(),seal_proposal,
+                content_identity(contents['recovery/etc/uten-imp/server.env'],deadline=deadline)[1],seal_proposal,
                 ai_only=candidate_options.get('ai_only',False))
         clone=json.loads(command(psql,b"SELECT json_build_object('cloneDatabaseSystemIdentifier',"
             b"(pg_control_system()).system_identifier::text,'cloneRestoredLsn',pg_current_wal_lsn()::text);").decode().strip())
@@ -271,32 +518,48 @@ def main():
     parser.add_argument("--gpg-home", required=True, type=Path)
     parser.add_argument("--docker", required=True, type=Path)
     parser.add_argument("--report", required=True, type=Path)
+    parser.add_argument('--spool-directory', required=True, type=Path,
+                        help='Existing private recovery-workstation directory with at least 6GiB available')
+    parser.add_argument('--budget-seconds',type=int,default=3600,
+                        help='One total 60..3600 second recovery budget with 30 seconds reserved for cleanup')
     args = parser.parse_args()
+    if not 60 <= args.budget_seconds <= 3600:raise ValueError('Recovery budget must be 60..3600 seconds')
+    deadline = time.monotonic() + args.budget_seconds - 30
     os.umask(0o077)
     secret = sys.stdin.buffer.read(256).strip()
     PHASE = "CIPHERTEXT_BINDING"
     source_receipt = json.loads(args.source_receipt.read_text())
-    if hashlib.sha256(args.archive.read_bytes()).hexdigest() != source_receipt["ciphertextSha256"]:
+    cipher_size, cipher_digest = content_identity(args.archive, MAX_ARCHIVE_CIPHER_BYTES,deadline=deadline)
+    if cipher_digest != source_receipt["ciphertextSha256"] or cipher_size != source_receipt['ciphertextBytes']:
         raise ValueError("Ciphertext receipt mismatch")
     PHASE = "AUTHENTICATED_DECRYPTION"
-    key_fd = os.memfd_create("uten-drill-passphrase", os.MFD_CLOEXEC)
-    try:
-        os.write(key_fd, secret + b"\n"); os.lseek(key_fd, 0, os.SEEK_SET)
-        result = subprocess.run(["/usr/bin/gpg", "--no-options", "--batch", "--no-tty", "--homedir", str(args.gpg_home),
-            "--pinentry-mode", "loopback", "--passphrase-fd", str(key_fd), "--decrypt", str(args.archive)],
-            capture_output=True, pass_fds=(key_fd,), timeout=120)
-        if result.returncode or len(result.stdout) > 512 * 1024**2:
-            raise ValueError("Authenticated archive decryption failed")
-    finally:
-        os.close(key_fd)
-    helper = Path(__file__).resolve().parents[1] / "postgres/backup/sealed_paired_export.py"
-    spec = importlib.util.spec_from_file_location("uten_drill_sealed_verify", helper)
-    sealed = importlib.util.module_from_spec(spec); spec.loader.exec_module(sealed)
-    PHASE = "DECRYPTED_INVENTORY_VALIDATION"
-    sealed.verify_plaintext_tar(io.BytesIO(result.stdout), source_receipt)
-    with tarfile.open(fileobj=io.BytesIO(result.stdout)) as archive:
-        contents = {member.name: archive.extractfile(member).read() for member in archive.getmembers()}
-    report = restore_contents(contents, source_receipt["sourceSetId"], args.docker)
+    parent = private_directory(args.spool_directory)
+    with recovery_workspace(parent,required_bytes=MAX_ARCHIVE_CIPHER_BYTES+MAX_PLAIN_BYTES,
+                            prefix='.uten-full-recovery-') as workspace:
+        plaintext_tar = workspace / 'authenticated.tar'
+        key_fd = os.memfd_create("uten-drill-passphrase", os.MFD_CLOEXEC)
+        try:
+            os.write(key_fd, secret + b"\n"); os.lseek(key_fd, 0, os.SEEK_SET)
+            with plaintext_tar.open('xb') as output:
+                result = subprocess.run(["/usr/bin/gpg", "--no-options", "--batch", "--no-tty", "--homedir", str(args.gpg_home),
+                    "--pinentry-mode", "loopback", "--passphrase-fd", str(key_fd), '--max-output', str(MAX_ARCHIVE_CIPHER_BYTES),
+                    "--decrypt", str(args.archive)], stdout=output, stderr=subprocess.DEVNULL,
+                    pass_fds=(key_fd,), timeout=phase_timeout(deadline,120))
+            if result.returncode or plaintext_tar.stat().st_size > MAX_ARCHIVE_CIPHER_BYTES:
+                raise ValueError("Authenticated archive decryption failed")
+        finally:
+            os.close(key_fd)
+        helper = Path(__file__).resolve().parents[1] / "postgres/backup/sealed_paired_export.py"
+        spec = importlib.util.spec_from_file_location("uten_drill_sealed_verify", helper)
+        sealed = importlib.util.module_from_spec(spec); spec.loader.exec_module(sealed)
+        PHASE = "DECRYPTED_INVENTORY_VALIDATION"
+        with plaintext_tar.open('rb') as stream:sealed.verify_plaintext_tar(DeadlineReader(stream,deadline), source_receipt)
+        plain_root = workspace / 'plain';plain_root.mkdir(mode=0o700)
+        contents = extract_verified_tar(plaintext_tar, plain_root,deadline=deadline)
+        report = restore_contents(contents, source_receipt["sourceSetId"], args.docker,
+                                  spool_directory=workspace,deadline=deadline)
+        report['restoreInputMode'] = 'PRIVATE_DISK'
+        report.update(recoveryBudgetSeconds=args.budget_seconds,cleanupReservedSeconds=30)
     report["ciphertextSha256"] = source_receipt["ciphertextSha256"]
     with args.report.open("x", encoding="utf-8") as stream:
         json.dump(report, stream, indent=2); stream.write("\n")

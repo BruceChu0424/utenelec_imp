@@ -2783,6 +2783,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 数据变了(列集合不变)：待本帧之后补量新值、需要时加宽。
   bool _widthGrowthPending = false;
   bool _widthGrowthScheduled = false;
+  Timer? _widthGrowthContinuation;
   List<T>? _widthGrowthPool;
   int _widthGrowthOffset = 0;
   int _widthGrowthColumn = 0;
@@ -4129,10 +4130,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   /// 数据刷新后的增量量宽：挪到本帧之后执行，只量新出现的值；有列需要加宽才重建一次。
-  void _scheduleWidthGrowth() {
+  void _scheduleWidthGrowth({bool afterFrame = true}) {
     if (_widthGrowthScheduled) return;
     _widthGrowthScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    void measureSlice() {
+      _widthGrowthContinuation = null;
       _widthGrowthScheduled = false;
       if (!mounted || !_widthGrowthPending) return;
       final textScaler = MediaQuery.textScalerOf(context);
@@ -4185,14 +4187,21 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _widthGrowthPending =
           _columns.isNotEmpty && _widthGrowthOffset < pool.length;
       if (_widthGrowthPending) {
-        _scheduleWidthGrowth();
-        WidgetsBinding.instance.ensureVisualUpdate();
+        // Yield between bounded slices without rendering an unchanged table.
+        // Actual width growth already schedules its required layout above.
+        _scheduleWidthGrowth(afterFrame: false);
       } else {
         _widthGrowthPool = null;
         _widthGrowthOffset = 0;
         _widthGrowthColumn = 0;
       }
-    });
+    }
+
+    if (afterFrame) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => measureSlice());
+    } else {
+      _widthGrowthContinuation = Timer(Duration.zero, measureSlice);
+    }
   }
 
   void _requestInputWidth(
@@ -4283,6 +4292,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _dragAutoScroll?.cancel();
     _dragHoverTimer?.cancel();
     _dragRetracking?.cancel();
+    _widthGrowthContinuation?.cancel();
     if (_dragKeyHandlerInstalled) {
       _dragKeyHandlerInstalled = false;
       HardwareKeyboard.instance.removeHandler(_handleRowDragKeyEvent);

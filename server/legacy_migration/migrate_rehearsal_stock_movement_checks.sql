@@ -41,7 +41,13 @@ SELECT s.doc_type,s.legacy_id AS item_legacy_id,s.bill_legacy_id AS document_leg
        source_side.warehouse_id AS source_warehouse_id,target_side.warehouse_id AS target_warehouse_id,
        source_side.action AS source_action,target_side.action AS target_action,s.goods_legacy_id,
        CASE WHEN source_side.action='SPLIT' OR target_side.action='SPLIT' THEN
-         COALESCE(CASE WHEN fn_warehouse_is_good_stock_leaf(g.owning_warehouse_id) THEN g.owning_warehouse_id END,
+         COALESCE((SELECT opening.bin_warehouse_id FROM workshop_stock_location_crosswalk_stage reviewed
+                   JOIN workshop_stock_location_authority_stage authority ON authority.authority_sha256=reviewed.authority_sha256
+                   JOIN workshop_bins opening ON opening.workshop_department_id=authority.workshop_department_id
+                     AND opening.bin_warehouse_id=reviewed.bin_warehouse_id
+                   WHERE reviewed.goods_legacy_id=s.goods_legacy_id AND reviewed.goods_code=g.code AND reviewed.goods_name=g.name
+                     AND encode(sha256(convert_to(to_jsonb(opening)::text,'UTF8')),'hex')=authority.bin_row_sha256),
+            CASE WHEN fn_warehouse_is_good_stock_leaf(g.owning_warehouse_id) THEN g.owning_warehouse_id END,
             (SELECT w.id FROM warehouses w WHERE w.code=NULLIF(current_setting('uten.legacy_unassigned_warehouse_code',true),'') AND NOT w.is_deleted))
        END AS expected_item_warehouse_id,
        g.id AS goods_id,c.id AS color_id,u.id AS unit_id,

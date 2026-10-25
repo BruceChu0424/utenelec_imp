@@ -3,6 +3,10 @@
 """
 产品列表 Excel 移植脚本（新 ERP → uten_imp 平台）
 
+当前车间位置口径：无真实旧仓身份的「五金车间」仅为WS_WJTZ车间引用，
+不得创建/匹配旧XW03普通仓或直接填内料仓为goods所属仓。原文另出复核CSV；
+历史库存必须另消费统一开通事实+显式受审location crosswalk，本工具不搬库存。
+
 整库重建请用 prepare_clean_master_data.py + prepare_goods_excel.py 离线派生后
 导入：本脚本保留为既有库的补空工具，不创建 Excel 新货品，不能代表全量导入。
 prepare_goods_excel.py 保留原始编码/legacy 身份，在 BOM/交易前导入最新非空
@@ -84,6 +88,8 @@ from pathlib import Path
 
 import psycopg2
 import xlrd
+from prepare_clean_master_data import (ordinary_warehouse_targets, classify_owning_warehouse,
+                                      workshop_warehouse_reference)
 
 # ----- 默认路径：环境变量 UTEN_LEGACY_INPUT_DIR 下的 product lists 目录 -----
 # 原始 Excel 含业务数据, 2026-09-23 起不放在代码仓库里; 未设置变量时必须显式传 --data-dir。
@@ -144,17 +150,14 @@ def excel_owning_by_name(rows: list[dict]) -> tuple[dict[str, str], set[str]]:
 
 def emit_owning_csv(rows: list[dict], legacy_goods_csv: Path, crosswalk_csv: Path, out: Path) -> int:
     """全量导入前置(ADR-145)：老库货品 legacy id → 所属子仓编号，不连数据库。"""
-    targets: dict[str, str] = {}
     with crosswalk_csv.open(encoding="utf-8-sig", newline="") as fh:
-        for row in csv.DictReader(fh, delimiter="|"):
-            if row["action"] in ("KEEP", "MERGE", "TARGET") and row["target_defective"] == "false":
-                targets[warehouse_name_key(row["target_name"])] = row["target_code"]
+        targets = ordinary_warehouse_targets(list(csv.DictReader(fh, delimiter="|")))
     by_name, conflicts = excel_owning_by_name(rows)
-    unknown = sorted({wh for wh in by_name.values() if warehouse_name_key(wh) not in targets})
+    unknown = sorted({wh for wh in by_name.values() if classify_owning_warehouse(wh, targets)[0] == "UNMAPPED"})
     if unknown:
         raise SystemExit("Excel 所属仓库在 warehouse_crosswalk.csv 里没有可选的良品子仓，"
                          "请先补对照表：" + "、".join(unknown))
-    written = 0
+    written, references = 0, []
     with legacy_goods_csv.open(encoding="utf-8-sig", newline="") as fh, \
             out.open("w", encoding="utf-8", newline="") as sink:
         writer = csv.writer(sink, delimiter="|", lineterminator="\n")
@@ -164,8 +167,18 @@ def emit_owning_csv(rows: list[dict], legacy_goods_csv: Path, crosswalk_csv: Pat
             legacy_id = (row.get("legacy_id") or row.get("ID") or "").strip()
             if not target or not legacy_id:
                 continue
-            writer.writerow([legacy_id, targets[warehouse_name_key(target)]])
+            kind, target_code, reference = classify_owning_warehouse(target, targets)
+            if kind == "WORKSHOP_REFERENCE":
+                references.append([legacy_id, row.get("code") or row.get("ANumber") or "",
+                                   row.get("name") or row.get("Goods_Name") or "", target,
+                                   reference["workshop_code"], "OWNER_NULL_REVIEWED_OPEN_BIN_CROSSWALK_REQUIRED"])
+                continue
+            writer.writerow([legacy_id, target_code])
             written += 1
+    with out.with_name(out.stem + "_workshop_references.csv").open("w", encoding="utf-8", newline="") as handle:
+        review = csv.writer(handle, delimiter="|", lineterminator="\n")
+        review.writerow(["goods_legacy_id", "goods_code", "goods_name", "original_owning_warehouse", "workshop_code", "resolution"])
+        review.writerows(references)
     print(f"所属仓库清单：Excel 去重名称 {len(by_name)}(丢弃冲突名 {len(conflicts)})；"
           f"写出老库货品 {written} 条 → {out}")
     return written
@@ -547,6 +560,7 @@ def main() -> None:
     wh_updates = 0
     wh_unmatched: list[tuple[str, str]] = []
     wh_name_unmatched: list[tuple[str, int]] = []
+    wh_workshop_references = []
     cur.execute("""
         SELECT 1 FROM information_schema.columns
          WHERE table_name = 'goods' AND column_name = 'owning_warehouse_id'
@@ -564,19 +578,20 @@ def main() -> None:
 
         # ---- 平台侧(ADR-145)：只认主仓 001 下的可选良品子仓 ----
         cur.execute("""
-            SELECT id FROM warehouses
-             WHERE code = %s AND NOT is_deleted AND parent_id IS NULL
-        """, (MAIN_WAREHOUSE_CODE,))
+            SELECT fn_warehouse_root_id()
+        """)
         root_row = cur.fetchone()
-        if root_row is None:
-            raise SystemExit("找不到主仓(编号 001)，请先用 migrate.sh --warehouse-data 按仓库对照表建好仓库主档")
+        if root_row is None or root_row[0] is None:
+            raise SystemExit("找不到唯一主仓，请先完成受审普通仓主档阶段；不按过时001或名称自动建仓")
         warehouse_root = root_row[0]
         cur.execute("""
-            SELECT id, name FROM warehouses
+            SELECT id, name, legacy_id FROM warehouses
              WHERE parent_id = %s AND fn_warehouse_is_good_stock_leaf(id)
         """, (warehouse_root,))
         warehouse_by_name = {}
-        for wid, wname in cur.fetchall():
+        for wid, wname, legacy_id in cur.fetchall():
+            if workshop_warehouse_reference(wname or "") and legacy_id is None:
+                continue
             clean = warehouse_name_key(wname or "")
             if clean and clean not in warehouse_by_name:
                 warehouse_by_name[clean] = wid
@@ -597,6 +612,14 @@ def main() -> None:
             if not target_name:
                 continue
             matched_names.add(key)
+            kind, _, reference = classify_owning_warehouse(target_name, warehouse_by_name)
+            if kind == "WORKSHOP_REFERENCE":
+                stats["所属仓库-车间引用待核"] += 1
+                wh_workshop_references.append((str(gid), gname, target_name, reference["workshop_code"],
+                                               "" if current_warehouse is None else str(current_warehouse),
+                                               "PRESERVE_EXISTING_OWNER_FOR_SEPARATE_REVIEW" if current_warehouse is not None
+                                               else "OWNER_NULL_REVIEWED_OPEN_BIN_CROSSWALK_REQUIRED"))
+                continue
             if current_warehouse is not None and not args.overwrite_warehouse:
                 stats["所属仓库-已有值不动"] += 1
                 continue
@@ -620,7 +643,8 @@ def main() -> None:
             if key not in matched_names:
                 wh_unmatched.append((key, wh))
         # Excel 写的仓库名在库里找不到可选子仓 —— 必须先处理(改对照表/仓库资料)，不补建存根。
-        missing_names = Counter(wh for wh in wh_by_name.values() if find_warehouse(wh) is None)
+        missing_names = Counter(wh for wh in wh_by_name.values()
+                                if classify_owning_warehouse(wh, warehouse_by_name)[0] == "UNMAPPED")
         wh_name_unmatched = sorted(missing_names.items())
 
         print(f"所属仓库：Excel 去重名称 {len(wh_by_name)}(丢弃冲突名 {len(wh_conflicts)})；"
@@ -663,6 +687,9 @@ def main() -> None:
     write_csv("warehouse_name_unmatched.csv",
               ["Excel所属仓库", "货品条数"],
               wh_name_unmatched)
+    write_csv("warehouse_workshop_references.csv",
+              ["goods_uuid", "goods_name", "original_owning_warehouse", "workshop_code", "existing_owner_uuid", "resolution"],
+              wh_workshop_references)
     write_csv("workshop_unmatched.csv",
               ["文件", "行号", "产品编号", "产品名称", "Excel生产车间"],
               sorted(workshop_unmatched))

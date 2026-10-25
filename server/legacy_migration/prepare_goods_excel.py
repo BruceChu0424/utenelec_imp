@@ -19,8 +19,10 @@ import re
 
 import xlrd
 
-from prepare_clean_master_data import color_name, unit_name
+from prepare_clean_master_data import (color_name, unit_name, ordinary_warehouse_targets,
+                                      classify_owning_warehouse)
 from audit_goods_quantity_units import audit as audit_quantity_units
+from prepare_workshop_stock_location_policy import CROSSWALK_COLUMNS, AUTHORITY_COLUMNS
 
 
 ROLE_MAP = {"自制件": "自制", "外购件": "采购", "委外件": "委外"}
@@ -37,7 +39,7 @@ DIRECT_FIELDS = {**TEXT_FIELDS, "产品编号": "code", "基本单位": "unit_le
                  "主采购供应商": "vend_legacy_id (purchase_role)", "主委外供应商": "vend_legacy_id (subcontract_role)",
                  "供应商": "vend_legacy_id (generic_fallback)", "原ERP备注": "require_remark",
                  "默认销售折扣": "zk", "单重（克）": "m_weight", "建议售价": "price", "启用状态": "status"}
-SQL_FIELDS = {"产品角色": "source_type", "所属仓库": "owning_warehouse_id",
+SQL_FIELDS = {"产品角色": "source_type", "所属仓库": "ordinary_owning_warehouse_id_or_preserved_workshop_reference_review",
               "生产车间": "owning_workshop_department_id", "采购入库超量上限(%)": "purchase_allowed_over_receipt_pct",
               "最小采购量": "min_order_qty", "最小包装量": "order_multiple_qty"}
 # These source policies deliberately do not activate new-system workflow gates.
@@ -427,13 +429,8 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
     inputs.append(source_dir / "goods_categories.csv")
     pick_category = category_picker(categories)
     _, warehouse_rows = read_csv(crosswalk)
-    warehouses = {}
-    for row in warehouse_rows:
-        if row["action"] in ("KEEP", "MERGE", "TARGET") and row["target_defective"].lower() == "false":
-            name = key(row["target_name"])
-            if name in warehouses and warehouses[name] != row["target_code"]:
-                raise ValueError(f"Ambiguous target warehouse name: {row['target_name']}")
-            warehouses[name] = row["target_code"]
+    warehouses = ordinary_warehouse_targets(warehouse_rows)
+    workshop_references = []
     ids = stable_new_ids([row["values"]["产品编号"] for row in coded if key(row["values"]["产品编号"]) not in by_code], set(original))
     changes, identities, issues, owning, attributes, continuation = [], [], [], [], [], []
     quantity_unit_candidates = []
@@ -546,9 +543,18 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
         assign("require_remark", "\n".join(note for note in notes if note))
         warehouse = values.get("所属仓库", "")
         if warehouse:
-            if key(warehouse) not in warehouses:
+            kind, warehouse_code, reference = classify_owning_warehouse(warehouse, warehouses)
+            if kind == "UNMAPPED":
                 raise ValueError(f"Unmapped Excel owning warehouse: {warehouse}")
-            owning.append({"goods_legacy_id": identity, "warehouse_code": warehouses[key(warehouse)]})
+            if kind == "ORDINARY":
+                owning.append({"goods_legacy_id": identity, "warehouse_code": warehouse_code})
+            else:
+                workshop_references.append({"goods_legacy_id": identity,
+                    "goods_code": values["产品编号"], "goods_name": values["产品名称"],
+                    "original_owning_warehouse": warehouse, **reference,
+                    "owning_warehouse": "", "resolution": "OWNER_NULL_REVIEWED_OPEN_BIN_CROSSWALK_REQUIRED",
+                    "source_file": rec["file"], "source_row": rec["row"]})
+                issue(rec, "所属仓库", warehouse, "workshop_reference_preserved_no_ordinary_owner")
         workshop = values.get("生产车间", "")
         if workshop and workshop not in WORKSHOPS:
             raise ValueError(f"Unmapped production workshop: {workshop}")
@@ -566,20 +572,25 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
     # Preserve reviewed legacy ownership for goods absent from the Excel code
     # list only where every exact-name Excel candidate agrees on one warehouse.
     name_warehouses = defaultdict(set)
+    reference_ids = {row["goods_legacy_id"] for row in workshop_references}
     for rec in coded:
         value = rec["values"]
         if value.get("所属仓库"):
-            name_warehouses[key(value["产品名称"])].add(warehouses[key(value["所属仓库"])])
+            kind, warehouse_code, _ = classify_owning_warehouse(value["所属仓库"], warehouses)
+            if kind == "ORDINARY":
+                name_warehouses[key(value["产品名称"])].add(warehouse_code)
     owned = {row["goods_legacy_id"] for row in owning}
     for row in goods:
         identity = row[fields["legacy_id"]]
         candidates = name_warehouses.get(key(row[fields["name"]]), set())
-        if identity not in owned and len(candidates) == 1:
+        if identity not in owned and identity not in reference_ids and len(candidates) == 1:
             owning.append({"goods_legacy_id": identity, "warehouse_code": next(iter(candidates))})
             stats["warehouse_exact_name_consensus"] += 1
             owned.add(identity)
     corroborated, ownership_audit, ownership_inputs = corroborated_warehouse_ownership(
         source_dir, goods, fields, owning, identities, warehouse_rows, unit_names)
+    corroborated = [row for row in corroborated if row["goods_legacy_id"] not in reference_ids]
+    ownership_audit = [row for row in ownership_audit if row["goods_legacy_id"] not in reference_ids]
     owning.extend(corroborated)
     inputs.extend(ownership_inputs)
     stats["warehouse_corroborated_distinct_sources"] = len(corroborated)
@@ -618,6 +629,14 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
     output_goods = output_dir / "goods.csv"
     write_csv(output_goods, headers, goods)
     write_csv(output_dir / "goods_owning_warehouse.csv", ["goods_legacy_id", "warehouse_code"], owning)
+    write_csv(output_dir / "goods_workshop_stock_location_review.csv",
+              ["goods_legacy_id", "goods_code", "goods_name", "original_owning_warehouse",
+               "workshop_code", "workshop_name", "owning_warehouse", "resolution", "source_file", "source_row"],
+              workshop_references)
+    # Empty means NOT AUTHORIZED, not an instruction to drop/fallback inventory.
+    # The stock consumer rejects these placeholders when workshop references exist.
+    write_csv(output_dir / "workshop_stock_location_crosswalk.csv", CROSSWALK_COLUMNS, [])
+    write_csv(output_dir / "workshop_stock_location_authority.csv", AUTHORITY_COLUMNS, [])
     write_csv(output_dir / "goods_owning_warehouse_corroborated.csv",
               ["goods_legacy_id", "warehouse_code"], corroborated)
     (output_dir / "goods_owning_warehouse_corroborated_audit.json").write_text(
@@ -655,13 +674,17 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
     stats.update({"legacy_goods_rows": len(original), "derived_goods_rows": len(goods), "excel_rows": len(excel),
                   "excel_coded_rows": len(coded), "price_strategy_rows_archived": len(continuation), "owning_warehouse_rows": len(owning),
                   "issues": len(issues), "source_roles": len(attributes), "source_engineering_review": len(source_review),
+                  "workshop_warehouse_references": len(workshop_references),
                   "quantity_unit_review_goods": quantity_summary["candidate_goods"]})
-    manifest = {"formatVersion": 1, "kind": "derived_excel_goods_overlay", "policy": "excel-authority-preserve-quantity-units-corroborated-warehouse-current-default-integrity-v4",
+    manifest = {"formatVersion": 1, "kind": "derived_excel_goods_overlay", "policy": "excel-authority-preserve-quantity-units-reviewed-workshop-location-v5",
                 "generators": [{"file": path.name, "sha256": digest(path)} for path in
-                               (Path(__file__), Path(__file__).with_name("prepare_clean_master_data.py"), Path(__file__).with_name("audit_goods_quantity_units.py"))],
+                               (Path(__file__), Path(__file__).with_name("prepare_clean_master_data.py"), Path(__file__).with_name("audit_goods_quantity_units.py"),
+                                Path(__file__).with_name("prepare_workshop_stock_location_policy.py"))],
                 "sourceInputs": [{"path": str(path.resolve()), "sha256": digest(path)} for path in inputs], "workbooks": workbooks,
                 "statistics": dict(stats), "outputs": [{"file": path.name, "sha256": digest(path), "bytes": path.stat().st_size}
-                  for path in sorted(output_dir.glob("goods*")) if path.is_file() and path.name != "goods_excel_manifest.json"]}
+                  for path in sorted(output_dir.iterdir()) if path.is_file() and
+                  (path.name.startswith("goods") or path.name in ("workshop_stock_location_crosswalk.csv", "workshop_stock_location_authority.csv"))
+                  and path.name != "goods_excel_manifest.json"]}
     (output_dir / "goods_excel_manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return manifest
 

@@ -9,7 +9,7 @@
 --     KEEP   老库在用仓 → 同编号子仓
 --     MERGE  老库已禁用仓 → 并入在用的目标仓(不单独建行；目标仓状态取「使用」)
 --     DROP   老库已删除仓 → 不建仓、不写目标；落在它上面的单据与余额不迁(写对账清单，见各模块脚本)
---     TARGET 新 ERP 子仓(老库没有对应仓，如塑胶仓库/包材仓库/五金车间)
+--     TARGET 明确普通子仓(老库没有对应仓，如塑胶仓库/包材仓库；车间标签不在此创建)
 -- 规则：
 --   - 不再 DELETE FROM warehouses：按编号增量写入目标仓，重导不会把层级打平，也不会把用户
 --     启用的仓改回禁用；状态一律取目标值「使用」；
@@ -57,6 +57,15 @@ BEGIN
      WHERE action IS NULL OR action NOT IN ('SPLIT', 'KEEP', 'MERGE', 'DROP', 'TARGET');
     IF problem IS NOT NULL THEN
         RAISE EXCEPTION 'warehouse crosswalk has unknown actions: %', problem;
+    END IF;
+    IF EXISTS(SELECT 1 FROM warehouse_crosswalk_stage
+       WHERE target_code IN('XW03','WH000009')
+          OR (action='TARGET' AND regexp_replace(target_name,'\s+','','g')='五金车间')) THEN
+        RAISE EXCEPTION 'Retired WH9/workshop-reference TARGET cannot create or replace an ordinary warehouse';
+    END IF;
+    IF EXISTS(SELECT 1 FROM warehouse_crosswalk_stage c JOIN warehouses w ON w.code=c.target_code
+              WHERE c.action<>'DROP' AND w.is_line_side) THEN
+        RAISE EXCEPTION 'Ordinary warehouse crosswalk must not claim or resequence a unified line-side bin';
     END IF;
     IF EXISTS (SELECT 1 FROM warehouse_crosswalk_stage
                 WHERE (action = 'TARGET') <> (legacy_id IS NULL)

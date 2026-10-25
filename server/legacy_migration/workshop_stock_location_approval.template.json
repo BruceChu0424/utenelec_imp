@@ -1,0 +1,31 @@
+{
+  "format": "REVIEWED_OPEN_BIN_STOCK_LOCATION_APPROVAL_V1",
+  "approved_by_root": false,
+  "purpose": "FOUR_EXACT_HISTORICAL_GOODS_LOCATION_ONLY",
+  "review_csv_sha256": null,
+  "opening_snapshot_sha256": null,
+  "quantity_policy": "SOURCE_VALUES_UNCHANGED",
+  "change_periodic_settings": false,
+  "identity_scope": [
+    {
+      "goods_legacy_id": "65919",
+      "goods_code": "GD2056",
+      "goods_name": "B款暗装轨道E极铜条（90型）"
+    },
+    {
+      "goods_legacy_id": "65920",
+      "goods_code": "GD2057",
+      "goods_name": "B款暗装轨道LN极铜条（90型  磨床切割）"
+    },
+    {
+      "goods_legacy_id": "65921",
+      "goods_code": "GD2058",
+      "goods_name": "B款暗装轨道PVC线槽（90型）"
+    },
+    {
+      "goods_legacy_id": "65923",
+      "goods_code": "GD2060",
+      "goods_name": "B款暗装铝合金轨道90型（铣床加工）"
+    }
+  ]
+}

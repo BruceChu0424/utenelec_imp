@@ -29,6 +29,53 @@ WAREHOUSE_NAMES = {
     "仓库（14年版）": "主仓库", "原材料不良仓（14年版）": "原材料不良品仓库",
     "成品不良品仓": "成品不良品仓库", "轨道车间": "轨道车间仓库",
 }
+WORKSHOP_WAREHOUSE_REFERENCES = {
+    "五金车间": {"workshop_code": "WS_WJTZ", "workshop_name": "五金铜铸车间"},
+}
+RETIRED_WAREHOUSE_CODES = {"WH000009"}
+STABLE_WAREHOUSE_CODES = dict(zip(
+    ("001", "002", "01", "C01", "C04", "C0401", "XW01", "XW02"),
+    (f"WH{index:06d}" for index in range(1, 9))))
+
+
+def warehouse_label_key(value):
+    return re.sub(r"\s+", "", clean(value)).replace("（", "(").replace("）", ")").casefold()
+
+
+def workshop_warehouse_reference(value):
+    return next((dict(reference) for label, reference in WORKSHOP_WAREHOUSE_REFERENCES.items()
+                 if warehouse_label_key(label) == warehouse_label_key(value)), None)
+
+
+def ordinary_warehouse_targets(records):
+    """Reviewed real warehouses win; a workshop hint never creates a TARGET."""
+    result = {}
+    for row in records:
+        if row["action"] not in ("KEEP", "MERGE", "TARGET"):
+            continue
+        if row["target_code"] in RETIRED_WAREHOUSE_CODES | {"XW03"}:
+            raise ValueError("Retired WH000009/XW03 cannot be reused as an import target")
+        if row["action"] == "TARGET" and workshop_warehouse_reference(row["target_name"]):
+            raise ValueError("Workshop reference requires unified bin opening, not a synthetic ordinary TARGET")
+        if workshop_warehouse_reference(row["target_name"]) and not row.get("legacy_id"):
+            raise ValueError("An ordinary workshop-named warehouse needs an actual reviewed legacy identity")
+        if row.get("target_defective", "false").lower() != "false":
+            continue
+        key = warehouse_label_key(row["target_name"])
+        if key in result and result[key] != row["target_code"]:
+            raise ValueError("Ambiguous target warehouse name: " + row["target_name"])
+        result[key] = row["target_code"]
+    return result
+
+
+def classify_owning_warehouse(value, ordinary):
+    key = warehouse_label_key(value)
+    if key in ordinary:
+        return "ORDINARY", ordinary[key], None
+    reference = workshop_warehouse_reference(value)
+    if reference:
+        return "WORKSHOP_REFERENCE", None, reference
+    return "UNMAPPED", None, None
 
 
 def digest(path: Path) -> str:
@@ -179,18 +226,35 @@ def goods_unit_map(source: Path, facts: dict, units: list[dict], unit_map: dict)
 
 def warehouse_crosswalk(path: Path):
     records = list(rows(path))
+    ordinary_warehouse_targets(records)
     root = [row for row in records if row["action"] == "SPLIT"]
     if len(root) != 1:
         raise ValueError("warehouse crosswalk must contain exactly one SPLIT")
     targets = {row["target_code"] for row in records if row["action"] != "DROP"}
     ordered = [root[0]["target_code"]] + sorted(targets - {root[0]["target_code"]})
-    codes = {old: f"WH{index:06d}" for index, old in enumerate(ordered, 1)}
+    if any(old in STABLE_WAREHOUSE_CODES or old in STABLE_WAREHOUSE_CODES.values() for old in ordered):
+        codes = {old: STABLE_WAREHOUSE_CODES.get(old, old) for old in ordered
+                 if old in STABLE_WAREHOUSE_CODES or old in STABLE_WAREHOUSE_CODES.values()}
+        next_code = 10
+        for old in ordered:
+            if old not in codes:
+                while f"WH{next_code:06d}" in set(codes.values()) | RETIRED_WAREHOUSE_CODES:
+                    next_code += 1
+                codes[old] = f"WH{next_code:06d}"
+                next_code += 1
+    else:
+        codes, next_code = {}, 1
+        for old in ordered:
+            while f"WH{next_code:06d}" in RETIRED_WAREHOUSE_CODES:
+                next_code += 1
+            codes[old] = f"WH{next_code:06d}"
+            next_code += 1
     for row in records:
         if row["action"] != "DROP":
             row["target_code"] = codes[row["target_code"]]
             row["target_name"] = WAREHOUSE_NAMES.get(row["target_name"], row["target_name"])
-    # Distinct warehouse and workshop stock locations are intentional; do not
-    # merge 五金车间 into 五金仓库 just because both contain 五金.
+    # Real old warehouses retain their identities. Workshop-reference labels
+    # are preserved separately; they never imply an ordinary or opened bin.
     hardware = {row["target_code"] for row in records if row["target_name"] == "五金仓库"}
     if len(hardware) != 1:
         raise ValueError("crosswalk must define exactly one 五金仓库")

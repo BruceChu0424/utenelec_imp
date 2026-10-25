@@ -213,9 +213,19 @@ def validate_sql(sql: str) -> None:
         raise ValueError("loader must terminate its final SQL statement explicitly")
 
 
+def reviewed_loader_content(content: bytes, name: str) -> bytes:
+    if name == "migrate_stock_docs.sql":
+        helper = pathlib.Path(__file__).with_name("reviewed_workshop_stock_location.sql").read_bytes() + b"\n"
+        validate_sql(helper.decode("utf-8"))
+        if not content.startswith(helper):
+            content = helper + content
+    return content
+
+
 def compose(content: bytes, name: str) -> bytes:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*[.]sql", name):
         raise ValueError("invalid reviewed loader filename")
+    content = reviewed_loader_content(content, name)
     validate_sql(content.decode("utf-8"))
     custody_modules = {"migrate_client_data.sql", "migrate_supplier_data.sql", "migrate_client_owner.sql",
                        "migrate_goods_owner.sql", "migrate_sales_owner.sql"}

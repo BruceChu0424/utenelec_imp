@@ -195,10 +195,18 @@ class StockMovementCompositionTest(unittest.TestCase):
         self.assertGreater(importer.MODULES.index(importer.MODULES[-1]),importer.MODULES.index('migrate_rehearsal_code_sequences.sql'))
         with tempfile.TemporaryDirectory() as temporary:
             directory=Path(temporary)
+            (directory/'mapping-version.txt').write_bytes((importer.HERE/'mapping-version.txt').read_bytes())
             for name in importer.MODULES: (directory/name).write_bytes(b'SELECT 1;\n')
             (directory/'migrate_rehearsal_stock_checks.sql').write_bytes(b'-- BALANCE_CHECK_UNCHANGED\nSELECT 1;\n')
             (directory/'migrate_rehearsal_stock_movement_checks.sql').write_bytes(b'-- MOVEMENT_SOURCE_CHECK\nSELECT 1;\n')
-            with patch.object(importer,'HERE',directory): modules=dict(importer.executable_modules(directory))
+            # This unit test composes fake SELECT-only modules. Keep the real
+            # current version and verify that its independent finance producer
+            # is invoked, without inventing an approved source-policy package.
+            with patch.object(importer,'HERE',directory), patch.object(
+                    importer.cash_policy,'render_sql',return_value='-- FINANCE_COMPOSITION_STUB\nSELECT 1;') as finance:
+                modules=dict(importer.executable_modules(directory))
+            finance.assert_called_once_with(directory)
+            self.assertIn(b'FINANCE_COMPOSITION_STUB',modules['migrate_finance.sql'])
             self.assertIn(b'BALANCE_CHECK_UNCHANGED',modules['migrate_stock_docs.sql'])
             self.assertIn(b'MOVEMENT_SOURCE_CHECK',modules['migrate_stock_docs.sql'])
             self.assertLess(modules['migrate_stock_docs.sql'].index(b'BALANCE_CHECK_UNCHANGED'),modules['migrate_stock_docs.sql'].index(b'MOVEMENT_SOURCE_CHECK'))

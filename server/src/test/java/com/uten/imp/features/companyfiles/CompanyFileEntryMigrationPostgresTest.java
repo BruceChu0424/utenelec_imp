@@ -52,7 +52,7 @@ class CompanyFileEntryMigrationPostgresTest {
         // Three independent histories prove the conditional compatibility and fail-closed oracle.
         db.execute("CREATE DATABASE company_file_no_baseline TEMPLATE "+POSTGRES.getDatabaseName());
         db.execute("CREATE DATABASE company_file_altered_contract TEMPLATE "+POSTGRES.getDatabaseName());
-        var outcome=TestFlyway.configure().dataSource(source).locations("classpath:db/migration").load().migrate();
+        var outcome=TestFlyway.configure().dataSource(source).locations("classpath:db/migration").target("931").load().migrate();
         assertThat(outcome.migrationsExecuted).isEqualTo(1);
     }
     @AfterAll static void stop(){POSTGRES.stop();}
@@ -120,7 +120,7 @@ class CompanyFileEntryMigrationPostgresTest {
         var other=isolated("company_file_no_baseline");var jdbc=new JdbcTemplate(other);
         jdbc.update("UPDATE permissions SET baseline=false WHERE code='company_file:view'");
         jdbc.update("DELETE FROM department_permissions WHERE permission_id=(SELECT id FROM permissions WHERE code='company_file:view')");
-        assertThat(TestFlyway.configure().dataSource(other).locations("classpath:db/migration").load().migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(TestFlyway.configure().dataSource(other).locations("classpath:db/migration").target("931").load().migrate().migrationsExecuted).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM department_permissions p JOIN permissions permission ON permission.id=p.permission_id WHERE permission.code='company_file:view'",Integer.class)).isZero();
         assertThat(jdbc.queryForList("SELECT effect FROM user_permission_overrides p JOIN permissions permission ON permission.id=p.permission_id WHERE permission.code='company_file:view'",String.class)).containsExactly("revoke");
         pendingPassword(jdbc);
@@ -130,7 +130,7 @@ class CompanyFileEntryMigrationPostgresTest {
         String constraint=jdbc.queryForObject("SELECT conname FROM pg_constraint WHERE conrelid='company_file_nodes'::regclass AND contype='c' AND pg_get_constraintdef(oid) LIKE '%password_hash%'",String.class);
         // Name came from PostgreSQL, quoted as a SQL identifier before use.
         jdbc.execute("ALTER TABLE company_file_nodes DROP CONSTRAINT \""+constraint.replace("\"","\"\"")+"\"");
-        assertThatThrownBy(()->TestFlyway.configure().dataSource(other).locations("classpath:db/migration").load().migrate()).hasStackTraceContaining("Unreviewed company file kind-state constraint");
+        assertThatThrownBy(()->TestFlyway.configure().dataSource(other).locations("classpath:db/migration").target("931").load().migrate()).hasStackTraceContaining("Unreviewed company file kind-state constraint");
         assertThat(jdbc.queryForObject("SELECT baseline FROM permissions WHERE code='company_file:view'",Boolean.class)).isTrue();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE version='931'",Integer.class)).isZero();
     }

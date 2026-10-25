@@ -93,6 +93,7 @@ public class MasterReferenceGuard {
         SUPPLIER_CLAIM("还有没收回的供应商索赔款", "请先收回或核销这些索赔款"),
         SUPPLIER_SETTLEMENT("还有没对完的供应商对账", "请先完成或撤销这些对账"),
         STOCK("仓库里还有库存", "请先把库存出完或盘平"),
+        STOCK_MEASUREMENT_HOLD("库存计量依据仍待核实", "请先核实原始计量凭据；普通盘点不能解除计量待核记录"),
         RESERVATION("还有没释放的库存预留", "请先释放这些预留"),
         ANALYSIS("还有进行中的物料分析", "请先完成或取消这些物料分析"),
         RD_TASK("还有进行中的研发任务", "请先完成或取消这些研发任务"),

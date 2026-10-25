@@ -126,6 +126,39 @@ class MasterReferenceCatalogCoverageTest {
     }
 
     @Test
+    void measurementHoldLifetimeUpgradeRejectsConditionalAndDeferredExistingTriggers() throws Exception {
+        String migration = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/resources/db/migration/V932__stock_measurement_hold_master_lifetime.sql"));
+        try (Connection connection = connection(); var statement = connection.createStatement()) {
+            connection.setAutoCommit(false);
+            try {
+                statement.execute(migration); // The genuine installed shape remains idempotent.
+                for (String replacement : List.of(
+                        "CREATE TRIGGER trg_track_goods_code_usage AFTER INSERT OR UPDATE OR DELETE "
+                                + "ON stock_measurement_holds FOR EACH ROW WHEN (false) "
+                                + "EXECUTE FUNCTION fn_capture_goods_code_use('U:goods_id')",
+                        "CREATE CONSTRAINT TRIGGER trg_track_goods_code_usage AFTER INSERT OR UPDATE OR DELETE "
+                                + "ON stock_measurement_holds DEFERRABLE INITIALLY DEFERRED FOR EACH ROW "
+                                + "EXECUTE FUNCTION fn_capture_goods_code_use('U:goods_id')")) {
+                    var original = connection.setSavepoint();
+                    try {
+                        statement.execute("DROP TRIGGER trg_track_goods_code_usage ON stock_measurement_holds");
+                        statement.execute(replacement);
+                        org.assertj.core.api.Assertions.assertThatThrownBy(() -> statement.execute(migration))
+                                .isInstanceOf(SQLException.class)
+                                .satisfies(error -> assertThat(((SQLException) error).getSQLState()).isEqualTo("23514"))
+                                .hasMessageContaining("Unreviewed measurement hold lifetime trigger");
+                    } finally {
+                        connection.rollback(original);
+                    }
+                }
+            } finally {
+                connection.rollback();
+            }
+        }
+    }
+
+    @Test
     void goodsCodeUsageTracksBusinessIdentityColumnsAndClassifiesJsonSnapshotsExplicitly() throws SQLException {
         Set<String> tracked = new TreeSet<>();
         try (Connection connection = connection(); var statement = connection.createStatement();
@@ -202,6 +235,63 @@ class MasterReferenceCatalogCoverageTest {
                 record("kind", kind.name(),
                         "branches", MasterReferenceCatalog.references(kind).size(),
                         "emptySchemaMillis", Math.round(millis * 10) / 10.0);
+            }
+        }
+    }
+
+    /** Root, current BOM and frozen historical component references remain bounded to the supplied targets. */
+    @Test
+    void pendingMeasurementEvidenceBlocksMasterChangesEvenWhenQuantityIsZero() throws SQLException {
+        UUID goods = UUID.randomUUID(), warehouse = UUID.randomUUID(), color = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try {
+                // A read-query oracle using real migrated column shapes; it is
+                // not a stock posting or a fabricated measurement resolution.
+                try (var statement = connection.createStatement()) {
+                    statement.execute("CREATE TEMP TABLE goods ON COMMIT DROP AS SELECT * FROM public.goods WITH NO DATA");
+                    statement.execute("CREATE TEMP TABLE warehouses ON COMMIT DROP AS SELECT * FROM public.warehouses WITH NO DATA");
+                    statement.execute("CREATE TEMP TABLE stock_measurement_holds ON COMMIT DROP AS SELECT * FROM public.stock_measurement_holds WITH NO DATA");
+                }
+                try (var insert = connection.prepareStatement("INSERT INTO goods(id,code,name) VALUES (?,'HOLD-ORACLE','计量待核货品')")) {
+                    insert.setObject(1, goods);
+                    insert.executeUpdate();
+                }
+                try (var insert = connection.prepareStatement("INSERT INTO warehouses(id,code,name) VALUES (?,'HOLD-WH','待核仓')")) {
+                    insert.setObject(1, warehouse);
+                    insert.executeUpdate();
+                }
+                try (var insert = connection.prepareStatement("""
+                        INSERT INTO stock_measurement_holds(id,stock_balance_id,warehouse_id,goods_id,color_id,
+                            captured_qty,captured_amount_local,captured_weight_estimated,reason,captured_at)
+                        VALUES (?,?,?,?,?,0,17,false,'LEGACY_QUANTITY_BASIS_UNPROVEN',now())
+                        """)) {
+                    insert.setObject(1, UUID.randomUUID());
+                    insert.setObject(2, UUID.randomUUID());
+                    insert.setObject(3, warehouse);
+                    insert.setObject(4, goods);
+                    insert.setObject(5, color);
+                    insert.executeUpdate();
+                }
+                for (var target : Map.of(MasterEntityKind.GOODS, goods,
+                        MasterEntityKind.WAREHOUSE, warehouse, MasterEntityKind.COLOR, color).entrySet()) {
+                    var reference = MasterReferenceCatalog.references(target.getKey()).stream()
+                            .filter(ref -> ref.table().equals("stock_measurement_holds"))
+                            .findFirst().orElseThrow();
+                    String sql = "WITH targets(id) AS (VALUES(CAST(? AS uuid))) %s"
+                            .formatted(reference.sql());
+                    try (var statement = connection.prepareStatement(sql)) {
+                        statement.setObject(1, target.getValue());
+                        try (var rows = statement.executeQuery()) {
+                            assertThat(rows.next()).as("pending zero-quantity evidence still owns its master identity").isTrue();
+                            assertThat(rows.getString(2)).isEqualTo("STOCK_MEASUREMENT_HOLD");
+                            assertThat(rows.getString(4)).doesNotContain("17");
+                            assertThat(rows.next()).isFalse();
+                        }
+                    }
+                }
+            } finally {
+                connection.rollback();
             }
         }
     }

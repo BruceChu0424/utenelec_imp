@@ -296,6 +296,15 @@ final class MasterReferenceCatalog {
                     WHERE b.%1$s %6$s AND b.qty <> 0"""
                     .formatted(col.column(), label, QTY.formatted("b.qty"), owner, scope, TARGETS)));
             String open = "r.qty - COALESCE(r.consumed_qty, 0) - COALESCE(r.released_qty, 0)";
+            out.add(new Reference(col.target(), "stock_measurement_holds", col.column(),
+                    RefKind.STOCK_MEASUREMENT_HOLD, """
+                    SELECT h.%1$s, 'STOCK_MEASUREMENT_HOLD', CAST(h.id AS text),
+                           %2$s, %3$s, '%4$s'
+                    FROM stock_measurement_holds h
+                    JOIN warehouses w ON w.id=h.warehouse_id
+                    JOIN goods g ON g.id=h.goods_id
+                    WHERE h.%1$s %5$s AND h.released_at IS NULL"""
+                    .formatted(col.column(), label, owner, scope, TARGETS)));
             String reservationLabel = col.target() == GOODS ? "COALESCE(w.name, '不限仓库')" : GOODS_LABEL;
             out.add(new Reference(col.target(), "stock_reservations", col.column(), RefKind.RESERVATION, """
                     SELECT r.%1$s, 'RESERVATION', CAST(r.id AS text), %2$s || ' ' || %3$s, %4$s, '%5$s'
@@ -571,6 +580,9 @@ final class MasterReferenceCatalog {
 
     private static List<Exemption> buildExemptions() {
         List<Exemption> out = new ArrayList<>();
+        exempt(out, ExemptReason.HISTORY,
+                "仅在核验完成后记录的证据单位；当前单位依赖由货品及库存检查，历史核验 UUID 保留",
+                "stock_measurement_holds", "verified_unit_id");
         exempt(out, ExemptReason.HISTORY, "货品编号完整生命周期证明，不是业务在办引用", "goods_code_lifecycles", "goods_id");
         exempt(out, ExemptReason.HISTORY, "货品终身业务使用证据，跨软删和清业务保留", "goods_code_usage_facts", "goods_id");
         exempt(out, ExemptReason.HISTORY, "未使用货品编号复用归属证据，旧新 UUID 独立保留", "goods_code_reuse_releases", "old_goods_id", "new_goods_id");

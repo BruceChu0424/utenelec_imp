@@ -240,6 +240,9 @@ public class StockService {
         // Re-entrant when the top-level document already batch-locked its keys;
         // mandatory as a safe fallback for future single-movement callers.
         inventoryLock.lock(new InventoryKey(req.goodsId(), req.colorId()));
+        if (Boolean.FALSE.equals(balanceRepo.measurementUsable(req.warehouseId(),req.goodsId(),req.colorId()))) {
+            throw new ApiException(ErrorCode.CONFLICT,"库存计量待核，账面数仅供核对；请先按原始证据核实数量单位，补主档单位不能解除待核");
+        }
         if (req.direction() == DIR_IN) {
             // The prefix has already frozen all inventory keys for multi-document commands.
             // Lock their goods rows once in PostgreSQL order, independently of display/line order.

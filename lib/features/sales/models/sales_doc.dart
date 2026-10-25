@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/business_columns/business_column.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 // 销售单据模型（5 单据统一超集，对应后端 *ListItem/*Detail/*ItemDto）。
@@ -781,7 +782,7 @@ class SalesDocListItem {
     requotedToId: json['requotedToId'] as String?,
     requotedAt: json['requotedAt'] as String?,
     readOnlyReason: json['readOnlyReason'] as String?,
-    historyReadOnly: json['historyReadOnly'] == true,
+    historyReadOnly: importedBusinessDocument(json),
     canReject: (json['canReject'] as bool?) ?? false,
     shipmentPolicy: json['shipmentPolicy'] as String?,
     partialShipmentConfirmedAt: json['partialShipmentConfirmedAt'] as String?,
@@ -1362,7 +1363,7 @@ class SalesDocDetail {
     requotedToId: json['requotedToId'] as String?,
     requotedAt: json['requotedAt'] as String?,
     readOnlyReason: json['readOnlyReason'] as String?,
-    historyReadOnly: json['historyReadOnly'] == true,
+    historyReadOnly: importedBusinessDocument(json),
     canReject: (json['canReject'] as bool?) ?? false,
     shipmentPolicy: json['shipmentPolicy'] as String?,
     partialShipmentConfirmedAt: json['partialShipmentConfirmedAt'] as String?,

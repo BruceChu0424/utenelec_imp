@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 // 钱流单据列表页（按 docType 参数化，5 单据通用）。
 //
@@ -219,6 +220,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
   /// 当前分段/表头筛选组装查询条件（_fetch 与单号桶共用；[withBillNo] = false
   /// 供桶拉取——桶不算单号列自身的值筛选，2026-09-25 单号列统一）。
   FinanceDocFilter _docFilter({bool withBillNo = true}) => FinanceDocFilter(
+    origin: _historyMode ? BusinessDocumentOrigin.all : null,
     keyword: _list.normalizedKeyword,
     partyId: _cfg.hasParty ? _partyIdFilter : null,
     accountId: _cfg.type == FinanceDocType.bankTransfer
@@ -422,20 +424,23 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         key: 'status',
         label: '状态',
         width: 72,
-        value: (it) =>
-            widget.docType == FinanceDocType.expense &&
-                !it.legacyImported &&
-                it.status == kFinanceStatusApproved &&
-                it.glStatus == 1
+        value: (it) => it.legacyImported
+            ? importedBusinessHistoryLabel
+            : widget.docType == FinanceDocType.expense &&
+                  !it.legacyImported &&
+                  it.status == kFinanceStatusApproved &&
+                  it.glStatus == 1
             ? '待财务确认'
             : financeStatusLabel(it.status),
         // 状态分类色（草稿中性/已审绿/红冲红）铺整格底色，替代原格内胶囊
         // （2026-09-27 用户口径）；value 仍是纯文本供列宽/排序/筛选。
         cellColor: (context, it) => utenStatusBadgeCellColor(
-          widget.docType == FinanceDocType.expense &&
-                  !it.legacyImported &&
-                  it.status == kFinanceStatusApproved &&
-                  it.glStatus == 1
+          it.legacyImported
+              ? UtenStatusBadgeType.neutral
+              : widget.docType == FinanceDocType.expense &&
+                    !it.legacyImported &&
+                    it.status == kFinanceStatusApproved &&
+                    it.glStatus == 1
               ? UtenStatusBadgeType.warning
               : docStatusBadgeType(it.status),
         ),

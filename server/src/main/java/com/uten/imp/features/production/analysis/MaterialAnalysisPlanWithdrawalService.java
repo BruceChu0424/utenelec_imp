@@ -56,7 +56,7 @@ public class MaterialAnalysisPlanWithdrawalService {
                 SELECT plan.status, plan.is_deleted, plan.is_canceled, source.source_type,
                        EXISTS(SELECT 1 FROM preplan_aggregate_batches batch
                            WHERE batch.plan_id=plan.id OR batch.anchor_analysis_item_id=source.id)
-                FROM production_plans plan
+                FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
                 JOIN production_material_analysis_items source
                   ON source.id=plan.material_analysis_item_id AND source.analysis_id=plan.material_analysis_id
                 JOIN production_material_analysis_plan_links link

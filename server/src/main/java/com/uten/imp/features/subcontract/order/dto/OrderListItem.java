@@ -32,4 +32,7 @@ public class OrderListItem extends com.uten.imp.common.history.DocumentHistoryMe
     }
 
     public String getTotalLocalExact() { return priceMasked ? null : com.uten.imp.common.util.DecimalText.of(totalLocal); }
+
+
+    public FinanceApproval getFinanceApproval() { return isHistoryReadOnly() && financeApproval != null ? financeApproval.readOnly() : financeApproval; }
 }

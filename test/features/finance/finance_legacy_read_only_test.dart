@@ -96,6 +96,7 @@ void main() {
           final api = _HistoryApi(status: status);
           await _pump(tester, api, type: type);
           expect(find.text(financeLegacyReadOnlyMessage), findsOneWidget);
+          expect(find.text('历史已结案 · 只读'), findsWidgets);
           for (final action in ['编辑', '删除', '审核', '反审', '财务确认']) {
             expect(find.text(action), findsNothing);
           }
@@ -115,7 +116,7 @@ void main() {
   }
 
   testWidgets(
-    'list labels original money as read-only without relabeling its approved status',
+    'list shows archive disposition while retaining original approval status',
     (tester) async {
       final router = GoRouter(
         initialLocation: '/finance/receipts',
@@ -133,7 +134,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('历史记录（只读）'), findsOneWidget);
       expect(find.text('历史收款类型待核实'), findsOneWidget);
-      expect(find.text('已审'), findsWidgets);
+      expect(find.text('历史已结案 · 只读'), findsWidgets);
+      final table = tester.widget<MasterDataTableView<FinanceDocListItem>>(
+        find.byType(MasterDataTableView<FinanceDocListItem>),
+      );
+      expect(table.items.single.status, 1);
       expect(tester.takeException(), isNull);
     },
   );

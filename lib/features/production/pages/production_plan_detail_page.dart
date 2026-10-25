@@ -20,6 +20,7 @@ import '../../../shared/documents/document_unapproval.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/widgets/imported_document_status_badge.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -132,10 +133,14 @@ class _ProductionPlanDetailPageState
     }
   }
 
-  bool get _ordinaryWritable => documentOwnerCanWrite(
-    ref.read(documentScopeCapabilityProvider(DocumentDataScope.productionPlan)),
-    _detail?.makerId,
-  );
+  bool get _ordinaryWritable =>
+      !(_detail?.legacyImported ?? false) &&
+      documentOwnerCanWrite(
+        ref.read(
+          documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
+        ),
+        _detail?.makerId,
+      );
 
   bool get _canEdit =>
       _ordinaryWritable &&
@@ -176,6 +181,7 @@ class _ProductionPlanDetailPageState
           false);
 
   bool _serverAllowsPlanAction(String action) {
+    if (_detail?.legacyImported ?? false) return false;
     final actions = _detail?.allowedActions ?? const <String>[];
     return actions.contains(action);
   }
@@ -183,6 +189,7 @@ class _ProductionPlanDetailPageState
   bool get _commandBusy => _busy || _executionBusy;
 
   bool _hasPermission(String code) =>
+      !(_detail?.legacyImported ?? false) &&
       ref.read(currentPermissionsProvider).contains(code);
 
   bool get _canCancelPlanningPackage =>
@@ -204,6 +211,7 @@ class _ProductionPlanDetailPageState
       _hasPermission(Perm.productionExecutionReleaseDefer);
   bool get _canStartExecution => _hasPermission(Perm.productionExecutionStart);
   bool get _canReport {
+    if (_detail?.legacyImported ?? false) return false;
     final permissions = ref.read(currentPermissionsProvider);
     return permissions.contains(Perm.productionDailyReportView) &&
         permissions.contains(Perm.productionDailyReportCreate);
@@ -1193,18 +1201,19 @@ class _ProductionPlanDetailPageState
                         ],
                         // ② 主体区：执行子计划卡自带标题与状态计数，不再另加区块标题。
                         const SizedBox(height: UtenSpacing.s16),
-                        ProductionExecutionSegmentsCard(
-                          key: ValueKey(
-                            '${widget.id}|$_executionSegmentsRevision',
+                        if (!_detail!.legacyImported)
+                          ProductionExecutionSegmentsCard(
+                            key: ValueKey(
+                              '${widget.id}|$_executionSegmentsRevision',
+                            ),
+                            planId: widget.id,
+                            canAssign: _canAssignExecution,
+                            canReleaseDefer: _canReleaseExecutionDefer,
+                            canReport: _canReport,
+                            canStart: _canStartExecution,
+                            initialSegmentId: _focusedExecutionSegmentId,
+                            onChanged: _loadSubplans,
                           ),
-                          planId: widget.id,
-                          canAssign: _canAssignExecution,
-                          canReleaseDefer: _canReleaseExecutionDefer,
-                          canReport: _canReport,
-                          canStart: _canStartExecution,
-                          initialSegmentId: _focusedExecutionSegmentId,
-                          onChanged: _loadSubplans,
-                        ),
                         // ③ 参考区（默认折叠）。
                         ..._referenceSections(theme),
                       ],
@@ -1712,12 +1721,14 @@ class _ProductionPlanDetailPageState
     return UtenDetailSummaryCard(
       key: const Key('production-plan-summary-hero'),
       heading: UtenSummaryField(label: '单据号', value: d.billNo, emphasis: true),
-      status: ProductionStatusBadge(
-        status: d.status,
-        closed: d.closed,
-        stopped: d.stopped,
-        canceled: d.canceled,
-      ),
+      status: d.legacyImported
+          ? const ImportedDocumentStatusBadge()
+          : ProductionStatusBadge(
+              status: d.status,
+              closed: d.closed,
+              stopped: d.stopped,
+              canceled: d.canceled,
+            ),
       primary: [
         UtenSummaryField(label: '计划数量', value: totalQty, emphasis: true),
         UtenSummaryField(label: '交货日', value: delivery),

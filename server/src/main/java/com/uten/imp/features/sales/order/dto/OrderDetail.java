@@ -116,4 +116,8 @@ public class OrderDetail extends com.uten.imp.common.history.DocumentHistoryMeta
         super.copyHistoryFrom(source);
         if (requotedToId != null) setHistoryReadOnly(true);
     }
+
+
+    public boolean isWritable() { return !isHistoryReadOnly() && writable; }
+    public String getReadOnlyReason() { return isLegacyImported() ? com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.READ_ONLY_REASON : readOnlyReason; }
 }

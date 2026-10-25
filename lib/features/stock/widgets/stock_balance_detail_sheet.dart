@@ -9,6 +9,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../models/stock_query.dart';
+import '../../../shared/stock_inventory/measurement_hold.dart';
 
 /// Returns true only when the user asks to open the inventory count page.
 Future<bool?> showStockBalanceDetailSheet({
@@ -56,8 +57,10 @@ class _StockBalanceDetailSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final permissions = ref.watch(currentPermissionsProvider);
     final canCount =
-        ref.watch(isSuperAdminProvider) ||
-        permissions.contains(Perm.stockCountSubmit);
+        !balance.measurementPending &&
+        balance.availableKnown &&
+        (ref.watch(isSuperAdminProvider) ||
+            permissions.contains(Perm.stockCountSubmit));
     final display = ref.watch(warehouseWeightUnitsPrefsProvider).display;
     final theme = Theme.of(context);
     final qty = balance.qty == null
@@ -90,8 +93,17 @@ class _StockBalanceDetailSheet extends ConsumerWidget {
                 _info('货品', goodsName),
                 _info('仓库', warehouseName),
                 _info('颜色', colorName),
-                _info('基本单位', unitName),
-                _info('当前数量', qty),
+                _info(
+                  '基本单位',
+                  balance.measurementPending
+                      ? measurementHoldLabel(balance.measurementHoldReason)
+                      : unitName,
+                ),
+                _info(balance.measurementPending ? '账面数量' : '当前数量', qty),
+                if (balance.measurementPending)
+                  Text(
+                    '${balance.measurementNotice}。主档补单位不代表原账计量已经核验，需真实核验后解除。',
+                  ),
                 _info(
                   '库存重量',
                   formatWeightValue(
@@ -102,14 +114,19 @@ class _StockBalanceDetailSheet extends ConsumerWidget {
                 ),
                 if (balance.weightEstimated)
                   const Text('库存重量包含估算值；如需修正，请记录实盘重量并送审。'),
-                if (weightExact) const Text('此货品按重量计量，库存重量随数量和单位换算。'),
+                if (weightExact && !balance.measurementPending)
+                  const Text('此货品按重量计量，库存重量随数量和单位换算。'),
                 if (balance.lastMovementDate != null)
                   _info(
                     '最后变动',
                     balance.lastMovementDate!.replaceFirst('T', ' '),
                   ),
                 const SizedBox(height: UtenSpacing.s16),
-                const Text('数量和重量变更由盘点审批处理。普通仓由财务审核，车间内料仓由仓库审核，批准前库存保持不变。'),
+                Text(
+                  balance.measurementPending
+                      ? '该历史账面数的计量依据待核，普通盘点差量不能自动确认原单位或解除计量待核。'
+                      : '数量和重量变更由盘点审批处理。普通仓由财务审核，车间内料仓由仓库审核，批准前库存保持不变。',
+                ),
               ],
             ),
           ),

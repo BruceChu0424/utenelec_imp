@@ -12,7 +12,7 @@ import java.util.UUID;
 @Getter
 @AllArgsConstructor
 public class MaterialReturnDetail extends com.uten.imp.common.history.DocumentHistoryMetadata
-        implements com.uten.imp.common.web.StandardDocumentLifecycleCapabilities {
+        implements com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities {
     private UUID id;
     private Integer legacyId;
     private String billNo;

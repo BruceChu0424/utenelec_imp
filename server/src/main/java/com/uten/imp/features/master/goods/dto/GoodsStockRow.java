@@ -27,4 +27,13 @@ public class GoodsStockRow {
     private boolean lineSide;
     /** 不良品仓(ADR-146)：照常列出(前端标「不良品」)，不计入货品合计。 */
     private boolean defective;
+    @lombok.Setter private boolean measurementPending;
+    @lombok.Setter private String measurementHoldReason;
+    @lombok.Setter private boolean availableKnown = true;
+
+    public GoodsStockRow(UUID warehouseId,String warehouseCode,String warehouseName,UUID colorId,String colorName,
+            BigDecimal qty,BigDecimal weight,boolean weightEstimated,boolean lineSide,boolean defective) {
+        this(warehouseId,warehouseCode,warehouseName,colorId,colorName,qty,weight,weightEstimated,lineSide,defective,
+                false,null,true);
+    }
 }

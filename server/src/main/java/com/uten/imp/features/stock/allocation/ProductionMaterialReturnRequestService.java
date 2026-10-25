@@ -190,6 +190,7 @@ public class ProductionMaterialReturnRequestService {
                 Source source = sources.get(sourceKey(selected));
                 StockDocumentItem original = documentItems.findById(source.drawItemId())
                         .orElseThrow(() -> conflict("原领料行不存在"));
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_document_items",original);
                 StockDocumentItem item = new StockDocumentItem();
                 item.setDocId(document.getId());item.setBillType("WDRAW");item.setBillNo(document.getBillNo());
                 item.setBillDate(document.getBillDate());item.setLineNo(++lineNo);

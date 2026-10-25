@@ -152,13 +152,15 @@ public class ProductionDailyReportService {
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
 
     @Transactional(readOnly = true)
-    public PageResponse<DailyReportListItem> list(DailyReportQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<DailyReportListItem> list(DailyReportQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final DailyReportQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return list(f, page, size, sort, order, false, false);
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<DailyReportListItem> list(DailyReportQueryFilter f, int page, int size, String sort, String order,
+    public PageResponse<DailyReportListItem> list(DailyReportQueryFilter originalFilter, int page, int size, String sort, String order,
                                                 boolean includeDeleted, boolean onlyDeleted) {
+        final DailyReportQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope(
                 "production_daily_report:approve",
                 "production_daily_report:reverse");
@@ -166,6 +168,7 @@ public class ProductionDailyReportService {
                                                      jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                      CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (onlyDeleted) ps.add(cb.isTrue(root.get("deleted")));
             else if (!includeDeleted) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -188,7 +191,7 @@ public class ProductionDailyReportService {
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
             if (f.departmentId() != null) ps.add(cb.equal(root.get("departmentId"), f.departmentId()));
             if (f.workerId() != null) ps.add(cb.equal(root.get("workerId"), f.workerId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
@@ -198,7 +201,7 @@ public class ProductionDailyReportService {
         var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
         Page<ProductionDailyReport> p = reportRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<DailyReportListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
-        return includeDeleted || onlyDeleted ? retainedRecords.page(result, "production_daily_reports", p.getContent()) : result;
+        return retainedRecords.page(result, "production_daily_reports", p.getContent());
     }
 
 
@@ -238,7 +241,7 @@ public class ProductionDailyReportService {
         populateExecutionContext(r, items);
         DailyReportDetail result = toDetail(r, items, history ? List.of() : allowedActions(r, rows),
                 DailyReportOutputGroups.of(items, outputLots(rows)));
-        return history ? retainedRecords.detail(result, "production_daily_reports", id, r.isDeleted(), r.getDeletedAt(), true) : result;
+        return retainedRecords.detail(result, "production_daily_reports", id, r.isDeleted(), r.getDeletedAt(), history);
     }
 
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
@@ -410,13 +413,16 @@ public class ProductionDailyReportService {
             guardWorkshopMaterialPeriods(req.getBillDate(), requestSegmentIds(req.getItems()), WorkshopMaterialReportGuardPort.Operation.SAVE);
         }
         ProductionDailyReport r = requireReportForUpdate(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责的生产日报");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_daily_reports",r);
         requireExpectedVersion(req == null ? null : req.getExpectedVersion(),
                 r.getRowVersion());
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         var existingProofs=itemRepo.findByReportIdOrderByLineNoAsc(id).stream()
                 .filter(item->item.getFqcRecoveryAuthorizationId()==null).map(ProductionDailyReportItem::getSupplementProofId)
                 .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_daily_report_items",existingProofs);
         var submittedProofs=req.getItems().stream().filter(Objects::nonNull)
                 .filter(item->item.getFqcRecoveryAuthorizationId()==null).map(DailyReportItemLine::getSupplementProofId)
                 .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
@@ -444,7 +450,9 @@ public class ProductionDailyReportService {
     public void delete(UUID id) {
         tx.bind();
         ProductionDailyReport r = requireReportForUpdate(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责的生产日报");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_daily_reports",r);
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
@@ -498,9 +506,11 @@ public class ProductionDailyReportService {
         guardWorkshopMaterialPeriods(periodFacts.billDate(), periodFacts.segmentIds(), WorkshopMaterialReportGuardPort.Operation.APPROVE);
         var sourceGuard = mutationFootprint.beginReport(id);
         ProductionDailyReport r = requireReportForUpdate(id);
+
         access.requireWritable(
                 r.getMakerId(), "无权审核此生产日报",
                 "production_daily_report:approve");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_daily_reports",r);
         // 状态闸绝不放宽——它是唯一挡住重复副作用的东西(fqty 累加与直送单都是纯增量)。
         // 只把错误码从 BUSINESS(400) 换成 CONFLICT(409)：客户端据此知道该刷新而不是当校验失败。
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
@@ -886,10 +896,12 @@ public class ProductionDailyReportService {
         guardWorkshopMaterialPeriods(periodFacts.billDate(), periodFacts.segmentIds(), WorkshopMaterialReportGuardPort.Operation.REVERSE);
         var sourceGuard = mutationFootprint.beginReport(id);
         ProductionDailyReport r = requireReportForUpdate(id);
+
         qualityInspection.prelockForReportReversal(r.getId());
         access.requireWritable(
                 r.getMakerId(), "无权红冲此生产日报",
                 "production_daily_report:reverse");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_daily_reports",r);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);
@@ -972,6 +984,7 @@ public class ProductionDailyReportService {
             StockDocument linkedDocument = em.find(
                     StockDocument.class, (UUID) d[0],
                     jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_documents",linkedDocument);
             if (linkedDocument == null || linkedDocument.isDeleted()) continue;
             short st = linkedDocument.getStatus() == null
                     ? Short.MIN_VALUE : linkedDocument.getStatus();
@@ -992,6 +1005,7 @@ public class ProductionDailyReportService {
             ProductionPlan remakePlan = em.find(
                     ProductionPlan.class, (UUID) p[0],
                     jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_plans",remakePlan);
             if (remakePlan == null || remakePlan.isDeleted()) continue;
             short st = remakePlan.getStatus() == null
                     ? Short.MIN_VALUE : remakePlan.getStatus();

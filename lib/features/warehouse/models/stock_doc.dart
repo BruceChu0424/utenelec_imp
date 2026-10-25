@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 // 仓库单据模型（8 类现行业务 + 旧损耗单只读兼容，对应后端 /api/stock/docs）。
 // 与采购单据模型同构（主从表 + 状态机）；UUID=String，金额/数量=(json as num?)，日期=ISO 串。
 
@@ -264,6 +265,7 @@ class StockDocItem {
 class StockDocDetail {
   const StockDocDetail({
     required this.id,
+    this.historyReadOnly = false,
     this.docType,
     this.billNo,
     this.billDate,
@@ -302,6 +304,7 @@ class StockDocDetail {
     this.finishedLots = const [],
   });
   final String id;
+  final bool historyReadOnly;
   final String? docType;
   final String? billNo;
   final String? billDate;
@@ -398,6 +401,7 @@ class StockDocDetail {
     workerName: workerName,
     createdAt: createdAt,
     items: selectedItems,
+    historyReadOnly: historyReadOnly,
     productionLinked: productionLinked,
     productionMaterialReturn: productionMaterialReturn,
     materialReturnSourceWarehouseId: materialReturnSourceWarehouseId,
@@ -412,6 +416,7 @@ class StockDocDetail {
 
   factory StockDocDetail.fromJson(Map<String, dynamic> json) => StockDocDetail(
     id: json['id'] as String,
+    historyReadOnly: importedBusinessDocument(json),
     docType: json['docType'] as String?,
     billNo: json['billNo'] as String?,
     billDate: json['billDate'] as String?,

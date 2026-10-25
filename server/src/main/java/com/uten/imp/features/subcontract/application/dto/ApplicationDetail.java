@@ -44,4 +44,10 @@ public class ApplicationDetail extends com.uten.imp.common.history.DocumentHisto
         canDelete = false;
         canReverse = false;
     }
+
+
+    public boolean isCanEdit() { return !isHistoryReadOnly() && canEdit; }
+    public boolean isCanDelete() { return !isHistoryReadOnly() && canDelete; }
+    public boolean isCanReverse() { return !isHistoryReadOnly() && canReverse; }
+    public String getRestrictionReason() { return isLegacyImported() ? com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.READ_ONLY_REASON : restrictionReason; }
 }

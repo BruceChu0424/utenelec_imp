@@ -55,4 +55,8 @@ public class PlanDetail extends com.uten.imp.common.history.DocumentHistoryMetad
     private List<PlanTraceLink> traceDailyReports;
 
     @Override public void disableHistoryActions() { allowedActions = List.of(); }
+
+
+
+    public List<String> getAllowedActions() { return isHistoryReadOnly() ? List.of() : allowedActions; }
 }

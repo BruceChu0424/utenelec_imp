@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 // 委外业务列表页族（共用 _SubcontractBusinessListPage，按 _ListPresentation 参数化）。
 //
@@ -59,6 +60,28 @@ import '../providers/subcontract_providers.dart';
 import '../repositories/subcontract_repository.dart';
 
 /// 委外订货与全链路工作页：两种来源汇合后，从财务审批跟到 IQC 与结案。
+/// Old receipts/issues are independent records: they need no modern order FK.
+class SubcontractLegacyHistoryPage extends StatelessWidget {
+  const SubcontractLegacyHistoryPage({super.key, required this.type});
+  final SubcontractDocType type;
+
+  @override
+  Widget build(BuildContext context) => _SubcontractBusinessListPage(
+    archiveOnly: true,
+    presentation: _ListPresentation(
+      type: type,
+      title: '旧系统历史 · ${SubcontractDocConfig.by(type).label}',
+      icon: Icons.history_outlined,
+      emptyMessage: '暂无旧系统历史记录',
+      columns: (names, commercial) => _baseColumns(
+        names: names,
+        warehouse: type != SubcontractDocType.order,
+        commercial: commercial,
+      ),
+    ),
+  );
+}
+
 class SubcontractOrderWorkspacePage extends StatelessWidget {
   const SubcontractOrderWorkspacePage({
     super.key,
@@ -271,10 +294,12 @@ class _SubcontractBusinessListPage extends ConsumerStatefulWidget {
     required this.presentation,
     this.initialStatus,
     this.embedded = false,
+    this.archiveOnly = false,
   });
 
   final _ListPresentation presentation;
   final bool embedded;
+  final bool archiveOnly;
 
   /// 深链预选（路由 `?status=draft`）：新建页「草稿(N)」按钮进来时直接落在草稿段。
   final String? initialStatus;
@@ -355,6 +380,7 @@ class _SubcontractBusinessListPageState
   _BizSeg get _draftSeg => _BizSeg.stage(0, _isOrder ? 'NONE' : null);
 
   bool get _draftDeleteEnabled =>
+      !widget.archiveOnly &&
       _cfg.draftKind != null &&
       _seg == _draftSeg &&
       _cfg.deletePerm != null &&
@@ -425,7 +451,9 @@ class _SubcontractBusinessListPageState
   /// 余料退回/损耗按状态分桶(订货另有等待财审 / 财务已退回桶), 一次请求; 其余单据无
   /// hub 徽章, 沿用 list(size:1) 草稿数。
   DocumentStatusScope? get _statusScope =>
-      _cfg.draftKind == null ? null : DocumentStatusScope(_cfg.draftKind!);
+      widget.archiveOnly || _cfg.draftKind == null
+      ? null
+      : DocumentStatusScope(_cfg.draftKind!);
 
   /// 待处理段：其余=草稿（待提交/待审）。历史兼容页（历史发料/询价）无待办
   /// 语义，不挂徽章。
@@ -444,6 +472,10 @@ class _SubcontractBusinessListPageState
   @override
   void initState() {
     super.initState();
+    if (widget.archiveOnly) {
+      _seg = const _BizSeg.history();
+      _historyTime = const UtenHistoryTimeValue.all();
+    }
     listenReadOwner(ref, _readerChanged);
     // 深链 ?status=draft：直接落在「草稿」段（新建页「草稿(N)」按钮的落点）。
     if (isDraftStatusQuery(widget.initialStatus)) {
@@ -461,11 +493,16 @@ class _SubcontractBusinessListPageState
   void didUpdateWidget(covariant _SubcontractBusinessListPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.presentation.type == _p.type &&
+        oldWidget.archiveOnly == widget.archiveOnly &&
         oldWidget.initialStatus == widget.initialStatus) {
       return;
     }
     _resetReadState();
-    _seg = isDraftStatusQuery(widget.initialStatus) ? _draftSeg : null;
+    _seg = widget.archiveOnly
+        ? const _BizSeg.history()
+        : isDraftStatusQuery(widget.initialStatus)
+        ? _draftSeg
+        : null;
     _location = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -520,6 +557,7 @@ class _SubcontractBusinessListPageState
         .list(
           page: _controller.pageNum,
           filter: SubcontractDocFilter(
+            origin: widget.archiveOnly ? BusinessDocumentOrigin.legacy : null,
             keyword: _controller.keyword.trim(),
             supplierId: _supplierIdFilter,
             warehouseId: _warehouseIdFilter,
@@ -553,6 +591,9 @@ class _SubcontractBusinessListPageState
             .read(subcontractRepositoryProvider(_p.type))
             .billNoFacets(
               filter: SubcontractDocFilter(
+                origin: widget.archiveOnly
+                    ? BusinessDocumentOrigin.legacy
+                    : null,
                 columnSearch: _columnFilters.values,
                 keyword: _controller.keyword.trim(),
                 supplierId: _supplierIdFilter,
@@ -770,6 +811,7 @@ class _SubcontractBusinessListPageState
   /// 「等待财务审核」=status=0 且在审（PENDING）——在审单已交由财务处理，
   /// 不再算草稿（与 hub 红徽章/服务端草稿计数同一口径）。
   Future<void> _loadBadge() async {
+    if (widget.archiveOnly) return;
     final requestId = ++_badgeRequestId;
     final type = _p.type;
     // 订货/成品退回/余料退回/损耗: 分段计数走 documentStatusCountsProvider(全部桶一次
@@ -836,7 +878,11 @@ class _SubcontractBusinessListPageState
     // 2026-09-06 页头动作进工具条 trailing：与分类分段/搜索同一行
     // （紧凑断点自动换行到搜索下方），不再单独占一行。
     final action = _p.primaryAction;
-    final actionReady = _seg != _draftSeg && action != null && _canUse(action);
+    final actionReady =
+        !widget.archiveOnly &&
+        _seg != _draftSeg &&
+        action != null &&
+        _canUse(action);
     final page = Scaffold(
       appBar: UtenAppBar(
         title: _p.title,
@@ -875,19 +921,25 @@ class _SubcontractBusinessListPageState
                       ),
                       // 进行中同时含黄(待财审/执行中)与红(财务退回)，各与子类同源。
                       segments: [
-                        UtenFilterSegment(
-                          value: _draftSeg,
-                          label: '草稿',
-                          count: staged
-                              ? bucket(DocumentStatusBucket.draft)
-                              : (_actionableStatus == 0
-                                    ? _actionableCount
-                                    : null),
-                          countForm: staged
-                              ? UtenSegmentCountForm.actionable
-                              : UtenSegmentCountForm.browsing,
-                        ),
-                        if (!widget.embedded && _isOrder)
+                        if (widget.archiveOnly)
+                          const UtenFilterSegment(
+                            value: _BizSeg.history(),
+                            label: '旧系统历史',
+                          ),
+                        if (!widget.archiveOnly)
+                          UtenFilterSegment(
+                            value: _draftSeg,
+                            label: '草稿',
+                            count: staged
+                                ? bucket(DocumentStatusBucket.draft)
+                                : (_actionableStatus == 0
+                                      ? _actionableCount
+                                      : null),
+                            countForm: staged
+                                ? UtenSegmentCountForm.actionable
+                                : UtenSegmentCountForm.browsing,
+                          ),
+                        if (!widget.archiveOnly && !widget.embedded && _isOrder)
                           UtenFilterSegment(
                             value: const _BizSeg.inProgress(),
                             label: '进行中',
@@ -895,7 +947,7 @@ class _SubcontractBusinessListPageState
                             countForm: UtenSegmentCountForm.actionable,
                             inProgressCount: ongoingCount,
                           ),
-                        if (!widget.embedded)
+                        if (!widget.archiveOnly && !widget.embedded)
                           const UtenFilterSegment(
                             value: _BizSeg.history(),
                             label: '历史记录',
@@ -922,33 +974,35 @@ class _SubcontractBusinessListPageState
                           : null,
                     ),
                     if (seg?.history == true) ...[
-                      const SizedBox(height: UtenSpacing.s8),
-                      UtenFilterToolbar<_BizSeg>(
-                        segmentsKey: Key(
-                          'subcontract-biz-history-stages-${_p.type.name}',
-                        ),
-                        segments: [
-                          if (_isOrder)
-                            const UtenFilterSegment(
-                              value: _BizSeg.history(1, true),
-                              label: '已结案',
-                            )
-                          else
-                            UtenFilterSegment(
-                              value: const _BizSeg.history(1),
-                              label: '已审',
-                              count: bucket(DocumentStatusBucket.approved),
-                            ),
-                          UtenFilterSegment(
-                            value: const _BizSeg.history(-1),
-                            label: '已反审',
-                            count: bucket(DocumentStatusBucket.reversed),
+                      if (!widget.archiveOnly) ...[
+                        const SizedBox(height: UtenSpacing.s8),
+                        UtenFilterToolbar<_BizSeg>(
+                          segmentsKey: Key(
+                            'subcontract-biz-history-stages-${_p.type.name}',
                           ),
-                        ],
-                        selected: seg == primarySeg ? const {} : {seg!},
-                        onSelectionChanged: _selectSeg,
-                        trailing: _clearSubstageAction(),
-                      ),
+                          segments: [
+                            if (_isOrder)
+                              const UtenFilterSegment(
+                                value: _BizSeg.history(1, true),
+                                label: '已结案',
+                              )
+                            else
+                              UtenFilterSegment(
+                                value: const _BizSeg.history(1),
+                                label: '已审',
+                                count: bucket(DocumentStatusBucket.approved),
+                              ),
+                            UtenFilterSegment(
+                              value: const _BizSeg.history(-1),
+                              label: '已反审',
+                              count: bucket(DocumentStatusBucket.reversed),
+                            ),
+                          ],
+                          selected: seg == primarySeg ? const {} : {seg!},
+                          onSelectionChanged: _selectSeg,
+                          trailing: _clearSubstageAction(),
+                        ),
+                      ],
                       const SizedBox(height: UtenSpacing.s8),
                       UtenHistoryTimeFilter(
                         key: Key(
@@ -1099,11 +1153,16 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
     key: 'status',
     label: statusLabel,
     width: 72,
-    value: (row) => row.statusOverride ?? subcontractStatusLabel(row.status),
+    value: (row) => row.legacyImported
+        ? importedBusinessHistoryLabel
+        : row.statusOverride ?? subcontractStatusLabel(row.status),
     // 状态分类色铺整格底色（2026-09-27 用户口径「格内胶囊改单元格背景色」，
     // 草稿中性/已审绿/红冲红）；value 仍是纯文本供列宽/排序/筛选。
-    cellColor: (context, row) =>
-        utenStatusBadgeCellColor(docStatusBadgeType(row.status)),
+    cellColor: (context, row) => utenStatusBadgeCellColor(
+      row.legacyImported
+          ? UtenStatusBadgeType.neutral
+          : docStatusBadgeType(row.status),
+    ),
   ),
   MasterColumnDef(
     // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
@@ -1164,7 +1223,11 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
       key: 'closed',
       label: '链路结案',
       width: 120,
-      value: (row) => row.closed ? '已结案' : (row.status == 1 ? '执行中' : '—'),
+      value: (row) => row.legacyImported
+          ? importedBusinessHistoryLabel
+          : row.closed
+          ? '已结案'
+          : (row.status == 1 ? '执行中' : '—'),
     ),
 ];
 
@@ -1194,6 +1257,7 @@ List<MasterColumnDef<SubcontractDocListItem>> _orderColumns(
 }
 
 String _orderStatusText(SubcontractDocListItem row) {
+  if (row.legacyImported) return importedBusinessHistoryLabel;
   if (row.status == -1) return '已反审';
   final approval = row.financeApproval;
   if (row.status == 1) {
@@ -1208,6 +1272,7 @@ String _orderStatusText(SubcontractDocListItem row) {
 }
 
 UtenStatusBadgeType _orderStatusBadgeType(SubcontractDocListItem row) {
+  if (row.legacyImported) return UtenStatusBadgeType.neutral;
   if (row.status == -1) return UtenStatusBadgeType.danger;
   if (row.status == 1) {
     if (row.financeApproval?.isPending == true) {

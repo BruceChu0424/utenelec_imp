@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 import 'dart:convert';
 import '../../../shared/search/keyword_search.dart';
 
@@ -58,6 +59,7 @@ import '../models/reportable_plan_line.dart';
 class ProductionPlanFilter {
   const ProductionPlanFilter({
     this.keyword,
+    this.origin,
     this.departmentId,
     this.status,
     this.closed,
@@ -66,6 +68,7 @@ class ProductionPlanFilter {
     this.dateTo,
   });
 
+  final BusinessDocumentOrigin? origin;
   final String? keyword; // 模糊匹配 bill_no
   final String? departmentId;
   final int? status; // 0/1/-1
@@ -75,6 +78,7 @@ class ProductionPlanFilter {
   final String? dateTo;
 
   Map<String, dynamic> toQuery() => <String, dynamic>{
+    'originScope': ?origin?.apiValue,
     if (keyword != null && keyword!.trim().isNotEmpty)
       'keyword': keyword!.trim(),
     if (departmentId != null) 'departmentId': departmentId,

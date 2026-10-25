@@ -43,7 +43,11 @@ public final class AppliedMigrationCompatibilityCallback implements Callback {
         MigrationInfo migration = context.getMigrationInfo();
         return migration != null
                 && migration.getVersion() != null
-                && (USAGE_OWNER_MIGRATION.equals(migration.getVersion().getVersion())
+                && (event == Event.BEFORE_EACH_MIGRATE && "919".equals(migration.getVersion().getVersion())
+                    || event == Event.AFTER_EACH_MIGRATE && "919".equals(migration.getVersion().getVersion())
+                    || event == Event.BEFORE_EACH_MIGRATE && "920".equals(migration.getVersion().getVersion())
+                    || event == Event.AFTER_EACH_MIGRATE && "920".equals(migration.getVersion().getVersion())
+                    || USAGE_OWNER_MIGRATION.equals(migration.getVersion().getVersion())
                     || LABEL_MIGRATIONS.contains(migration.getVersion().getVersion())
                     || event == Event.BEFORE_EACH_MIGRATE
                         && (GUARDED_MIGRATIONS.contains(migration.getVersion().getVersion())
@@ -59,6 +63,82 @@ public final class AppliedMigrationCompatibilityCallback implements Callback {
     public void handle(Event event, Context context) {
         try (Statement statement = context.getConnection().createStatement()) {
             String version = context.getMigrationInfo().getVersion().getVersion();
+            if (event == Event.BEFORE_EACH_MIGRATE && "919".equals(version)) {
+                // Capture the real reset owner while that original object still
+                // exists. Session scope survives 919/920 transaction boundaries;
+                // database/backend/role binding prevents another connection's use.
+                statement.execute("""
+                        SELECT set_config('uten.retired_refresh_owner_evidence',jsonb_build_object(
+                         'format','uten-retired-refresh-owner-v1','kind','PRE_919_DIRECT_CATALOG',
+                         'owner_oid',entry.proowner::bigint,'owner_name',pg_get_userbyid(entry.proowner),
+                         'database_name',current_database(),'database_oid',(SELECT oid::bigint FROM pg_database WHERE datname=current_database()),
+                         'database_owner_oid',(SELECT datdba::bigint FROM pg_database WHERE datname=current_database()),
+                         'system_identifier',(SELECT system_identifier::text FROM pg_control_system()),
+                         'backend_pid',pg_backend_pid(),'session_user',session_user,'old_reset_oid',entry.oid::bigint,
+                         'old_reset_definition_md5',md5(pg_get_functiondef(entry.oid)))::text,false)
+                        FROM pg_proc entry WHERE entry.oid='public.business_data_reset()'::regprocedure
+                        """);
+                return;
+            }
+            if (event == Event.AFTER_EACH_MIGRATE && "919".equals(version)) {
+                statement.execute("""
+                        DO $retain_original_owner$
+                        DECLARE evidence jsonb;entry record;description text;
+                        BEGIN
+                         evidence:=NULLIF(current_setting('uten.retired_refresh_owner_evidence',true),'')::jsonb;
+                         IF evidence IS NULL OR evidence->>'format' IS DISTINCT FROM 'uten-retired-refresh-owner-v1'
+                         OR evidence->>'kind' IS DISTINCT FROM 'PRE_919_DIRECT_CATALOG'
+                         OR evidence->>'system_identifier' IS DISTINCT FROM (SELECT system_identifier::text FROM pg_control_system())
+                         OR (evidence->>'database_oid')::oid IS DISTINCT FROM (SELECT oid FROM pg_database WHERE datname=current_database())
+                         OR evidence->>'database_name' IS DISTINCT FROM current_database()
+                         OR evidence->>'session_user' IS DISTINCT FROM session_user
+                         OR (evidence->>'backend_pid')::int IS DISTINCT FROM pg_backend_pid() THEN
+                          RAISE EXCEPTION 'Original maintenance owner was not directly captured on this 919 migration connection';
+                         END IF;
+                         SELECT oid,proowner INTO STRICT entry FROM pg_proc WHERE oid='public.fn_require_runtime_refresh()'::regprocedure;
+                         description:=obj_description(entry.oid,'pg_proc');
+                         IF description IS NOT NULL THEN RAISE EXCEPTION 'The new refresh helper already has unrelated owner metadata'; END IF;
+                         evidence:=evidence||jsonb_build_object('retained_helper_oid',entry.oid::bigint,
+                          'retained_helper_owner_oid',entry.proowner::bigint,'original_capture_backend_pid',pg_backend_pid());
+                         EXECUTE format('COMMENT ON FUNCTION public.fn_require_runtime_refresh() IS %L',
+                          'uten-retired-refresh-owner-v1:'||evidence::text);
+                        END $retain_original_owner$
+                        """);
+                return;
+            }
+            if (event == Event.BEFORE_EACH_MIGRATE && "920".equals(version)) {
+                statement.execute("""
+                        DO $recover_original_owner$
+                        DECLARE evidence jsonb;entry record;description text;prefix constant text:='uten-retired-refresh-owner-v1:';
+                        BEGIN
+                         IF NULLIF(current_setting('uten.retired_refresh_owner_evidence',true),'') IS NOT NULL THEN RETURN; END IF;
+                         SELECT oid,proowner INTO STRICT entry FROM pg_proc WHERE oid='public.fn_require_runtime_refresh()'::regprocedure;
+                         description:=obj_description(entry.oid,'pg_proc');
+                         IF description IS NULL OR left(description,length(prefix))<>prefix THEN RETURN; END IF;
+                         evidence:=substring(description FROM length(prefix)+1)::jsonb;
+                         IF evidence->>'format' IS DISTINCT FROM 'uten-retired-refresh-owner-v1'
+                         OR evidence->>'kind' IS DISTINCT FROM 'PRE_919_DIRECT_CATALOG'
+                         OR evidence->>'database_name' IS DISTINCT FROM current_database()
+                         OR (evidence->>'database_oid')::oid IS DISTINCT FROM (SELECT oid FROM pg_database WHERE datname=current_database())
+                         OR (evidence->>'database_owner_oid')::oid IS DISTINCT FROM (SELECT datdba FROM pg_database WHERE datname=current_database())
+                         OR evidence->>'system_identifier' IS DISTINCT FROM (SELECT system_identifier::text FROM pg_control_system())
+                         OR evidence->>'session_user' IS DISTINCT FROM session_user
+                         OR (evidence->>'retained_helper_oid')::oid IS DISTINCT FROM entry.oid
+                         OR (evidence->>'retained_helper_owner_oid')::oid IS DISTINCT FROM entry.proowner
+                         OR NOT EXISTS(SELECT 1 FROM pg_roles WHERE oid=(evidence->>'owner_oid')::oid AND rolname=evidence->>'owner_name') THEN
+                          RAISE EXCEPTION 'Retained original owner capture does not belong to this unchanged 919 database/helper';
+                         END IF;
+                         -- This is the saved exact pre-drop capture, not a new ownership inference.
+                         evidence:=evidence||jsonb_build_object('backend_pid',pg_backend_pid(),'rehydrated_from_retained_capture',true);
+                         PERFORM set_config('uten.retired_refresh_owner_evidence',evidence::text,false);
+                        END $recover_original_owner$
+                        """);
+                return;
+            }
+            if (event == Event.AFTER_EACH_MIGRATE && "920".equals(version)) {
+                statement.execute("SELECT set_config('uten.retired_refresh_owner_evidence', '', false)");
+                return;
+            }
             if (event == Event.BEFORE_EACH_MIGRATE && AUDIT_OVERLOAD_MIGRATIONS.contains(version)) {
                 // Older installations can retain V670's defaulted six-argument overload
                 // beside V830's current seven-argument entry. Immutable V846/V851 use

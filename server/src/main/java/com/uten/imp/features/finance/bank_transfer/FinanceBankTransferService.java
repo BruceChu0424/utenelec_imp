@@ -90,31 +90,34 @@ public class FinanceBankTransferService {
     private final AccountFlowLedgerService accountFlowLedger;
 
     @Transactional(readOnly = true)
-    public PageResponse<FinanceBankTransferListItem> list(FinanceBankTransferQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<FinanceBankTransferListItem> list(FinanceBankTransferQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final FinanceBankTransferQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         Specification<FinanceBankTransfer> spec = transferSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
         Page<FinanceBankTransfer> p = transferRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<FinanceBankTransferListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
-        return p.stream().noneMatch(FinanceBankTransfer::isDeleted) ? result
-                : retainedRecords.page(result, "finance_bank_transfers", p.getContent());
+        return retainedRecords.page(result, "finance_bank_transfers", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
-    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(FinanceBankTransferQueryFilter f) {
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(FinanceBankTransferQueryFilter originalFilter) {
+        final FinanceBankTransferQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, FinanceBankTransfer.class, transferSpec(f), "billNo"));
     }
 
     /** 列表谓词（list 与 facets 共用，2026-09-25 单号列统一抽出；billNo=表头单据号精确匹配）。 */
-    private Specification<FinanceBankTransfer> transferSpec(FinanceBankTransferQueryFilter f) {
+    private Specification<FinanceBankTransfer> transferSpec(FinanceBankTransferQueryFilter originalFilter) {
+        final FinanceBankTransferQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope();
         return (Root<FinanceBankTransfer> root,
                 jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -148,7 +151,7 @@ public class FinanceBankTransferService {
                 }));
             }
             if (f.outAccountId() != null) ps.add(cb.equal(root.get("outAccountId"), f.outAccountId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             // 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配。
@@ -197,7 +200,9 @@ public class FinanceBankTransferService {
     public FinanceBankTransferDetail update(UUID id, FinanceBankTransferSaveRequest req) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
+
         access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_bank_transfers",t);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(t.getLegacyId());
         if (t.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
@@ -216,7 +221,9 @@ public class FinanceBankTransferService {
     public void delete(UUID id) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
+
         access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_bank_transfers",t);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(t.getLegacyId());
         if (t.getStatus() == null || t.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可删除；已审核单据请红冲");
@@ -232,8 +239,10 @@ public class FinanceBankTransferService {
     public FinanceBankTransferDetail approve(UUID id) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
+
         access.requireScopedOperationWritable(t.getMakerId(), "只能操作本人负责或已交接的银行存取款单",
                 "finance_bank_transfer:approve");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_bank_transfers",t);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(t.getLegacyId());
         if (t.getStatus() == null || t.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -259,6 +268,7 @@ public class FinanceBankTransferService {
     public FinanceBankTransferDetail reverse(UUID id) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_bank_transfers",t);
         requireUnapprovalHeader(t);
         glPosting.removeAutoProjection("BANK_TRANSFER", t.getId(), t.getBillNo(), t.getBillDate());
         List<FinanceBankTransferLine> lines = lineRepo.findByTransferIdOrderByLineNoAsc(id);
@@ -592,7 +602,6 @@ public class FinanceBankTransferService {
     }
 
     private FinanceBankTransferDetail finishHistory(FinanceBankTransferDetail view, FinanceBankTransfer entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "finance_bank_transfers", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

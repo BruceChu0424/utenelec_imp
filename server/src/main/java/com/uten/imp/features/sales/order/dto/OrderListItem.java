@@ -57,4 +57,8 @@ public class OrderListItem extends com.uten.imp.common.history.DocumentHistoryMe
 
     public String getTotalOriginalExact() { return priceMasked ? null : com.uten.imp.common.util.DecimalText.of(totalOriginal); }
     public String getTotalLocalExact() { return priceMasked ? null : com.uten.imp.common.util.DecimalText.of(totalLocal); }
+
+
+    public boolean isWritable() { return !isHistoryReadOnly() && writable; }
+    public String getReadOnlyReason() { return isLegacyImported() ? com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.READ_ONLY_REASON : readOnlyReason; }
 }

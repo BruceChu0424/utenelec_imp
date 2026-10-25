@@ -36,6 +36,15 @@ public class RetainedRecordReader {
             value.setHistoryReadOnly(historyReadOnly || ref.deleted());
             result.put(ref.id(), value);
         }
+        if (!documents.isEmpty()) {
+            if (!table.matches("[a-z][a-z0-9_]*")) throw new IllegalArgumentException("Invalid internal history table");
+            @SuppressWarnings("unchecked")
+            List<Object[]> origins = em.createNativeQuery("SELECT id, fn_imported_business_document(:table,id) "
+                    + "FROM public." + table + " WHERE id IN (:ids)")
+                    .setParameter("table", table)
+                    .setParameter("ids", documents.stream().map(DocumentRef::id).toList()).getResultList();
+            for (Object[] origin : origins) result.get((UUID) origin[0]).setLegacyImported(Boolean.TRUE.equals(origin[1]));
+        }
         List<String> ids = documents.stream().filter(DocumentRef::deleted)
                 .map(ref -> ref.id().toString()).distinct().toList();
         if (ids.isEmpty()) return result;

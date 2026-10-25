@@ -81,7 +81,22 @@ public class StockQueryService {
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "lastMovementDate"), BALANCE_ALLOWED_SORT));
         Page<StockBalance> p = balanceRepo.findAll(spec, pageable);
         boolean canViewCost = costMasker.canView();
-        return new PageResponse<>(p.map(balance -> toBalanceRow(balance, canViewCost)).getContent(), page, size,
+        Map<UUID,Object[]> measurement = new java.util.HashMap<>();
+        if (!p.isEmpty()) {
+            @SuppressWarnings("unchecked")
+            List<Object[]> facts = em.createNativeQuery("""
+                    SELECT b.id,(h.id IS NOT NULL OR u.id IS NULL) AS measurement_pending,
+                        CASE WHEN h.id IS NOT NULL THEN h.reason
+                             WHEN u.id IS NULL THEN 'MISSING_BASE_UNIT' END AS measurement_hold_reason
+                    FROM stock_balances b JOIN goods g ON g.id=b.goods_id
+                    LEFT JOIN stock_measurement_holds h ON h.stock_balance_id=b.id AND h.released_at IS NULL
+                    LEFT JOIN units u ON NOT u.is_deleted AND NULLIF(btrim(u.name),'') IS NOT NULL AND
+                        (u.id=g.unit_id OR (g.unit_id IS NULL AND u.legacy_id=NULLIF(g.unit_legacy_id,0)))
+                    WHERE b.id IN (:ids)
+                    """).setParameter("ids",p.getContent().stream().map(StockBalance::getId).toList()).getResultList();
+            for (Object[] fact:facts) measurement.put((UUID)fact[0],fact);
+        }
+        return new PageResponse<>(p.map(balance -> toBalanceRow(balance, canViewCost,measurement.get(balance.getId()))).getContent(), page, size,
                 p.getTotalElements(), p.getTotalPages());
     }
 
@@ -432,8 +447,15 @@ public class StockQueryService {
                     r[23] == null ? null : r[23].toString(),
                     !canViewCost,
                     (UUID) r[37], (String) r[38], decimal(r[39]));
-            if (!KeywordSearch.terms(sql.filter().keyword()).isEmpty()) {
-                // unit_id remains at index 40 for grouped totals; new metadata is appended.
+            boolean searched = !KeywordSearch.terms(sql.filter().keyword()).isEmpty();
+            int measurementIndex = searched ? 42 : 41;
+            if (r.length > measurementIndex + 2) {
+                item.setMeasurementPending(Boolean.TRUE.equals(r[measurementIndex]));
+                item.setMeasurementHoldReason((String)r[measurementIndex+1]);
+                item.setAvailableKnown(Boolean.TRUE.equals(r[measurementIndex+2]));
+            }
+            if (searched) {
+                // unit_id stays at 40 and search rank at 41; measurement metadata follows.
                 int rank = ((Number) r[41]).intValue();
                 item.setSearchRank(rank);
                 item.setSearchMatchKind(rank < GoodsSearchPolicy.RELATED_RANK_OFFSET ? "PRIMARY" : "RELATED");
@@ -566,7 +588,7 @@ public class StockQueryService {
             goodsWhere.append(" AND g.series = :series");
         }
         if (filter.unitId() != null) {
-            goodsWhere.append(" AND u.id = :unitId");
+            goodsWhere.append(" AND u.id = :unitId AND NOT COALESCE(base.measurement_pending,false)");
         }
 
         // 递归 CTE：仅 categoryId 过滤时才声明（锚为参数，无过滤时整段不出现，计划更简）。
@@ -592,7 +614,7 @@ public class StockQueryService {
         String core = cte + """
                 SELECT g.id AS goods_id, base.color_id AS color_id, mc.name AS category_name,
                        g.model, g.c_number, g.name, g.spec,
-                       c.name AS color_name, u.name AS unit_name, g.paper AS remark,
+                       c.name AS color_name, CASE WHEN COALESCE(base.measurement_pending,false) THEN NULL ELSE u.name END AS unit_name, g.paper AS remark,
                        CASE WHEN base.goods_id IS NULL THEN 0 ELSE base.weight END AS weight,
                        COALESCE(base.qty, 0) AS qty,
                 """ + costExpression + """
@@ -623,7 +645,7 @@ public class StockQueryService {
                        CASE WHEN COALESCE(base.qty, 0) <> 0 AND base.weight IS NOT NULL
                            AND COALESCE(base.weight_estimated, false)
                            THEN 1 ELSE 0 END AS stocked_weight_estimated_rows,
-                       CASE WHEN u.id IS NULL OR NULLIF(BTRIM(u.name), '') IS NULL
+                       CASE WHEN COALESCE(base.measurement_pending,false) OR u.id IS NULL OR NULLIF(BTRIM(u.name), '') IS NULL
                            THEN 1 ELSE 0 END AS missing_unit_rows,
                        CASE WHEN COALESCE(base.qty, 0) <= 0 AND COALESCE(iqc.pending_qty, 0) > 0
                            THEN 1 ELSE 0 END AS nonpositive_pending_inspection_rows,
@@ -633,8 +655,12 @@ public class StockQueryService {
                        COALESCE(base.negative_balance_rows, 0) AS negative_balance_rows,
                        g.owning_warehouse_id, ow.name AS owning_warehouse_name,
                        COALESCE(base.defective_qty, 0) AS defective_qty,
-                       u.id AS unit_id
+                       CASE WHEN COALESCE(base.measurement_pending,false) THEN NULL ELSE u.id END AS unit_id
                 """ + relevanceProjection + """
+                       , (COALESCE(base.measurement_pending,false) OR u.id IS NULL) AS measurement_pending,
+                       CASE WHEN COALESCE(base.measurement_pending,false) THEN 'LEGACY_QUANTITY_BASIS_UNPROVEN'
+                            WHEN u.id IS NULL THEN 'MISSING_BASE_UNIT' END AS measurement_hold_reason,
+                       (NOT COALESCE(base.measurement_pending,false) AND u.id IS NOT NULL) AS available_known
                 FROM goods g
                 LEFT JOIN (
                     SELECT u.goods_id, u.color_id,
@@ -644,24 +670,27 @@ public class StockQueryService {
                            COALESCE(bool_or(u.weight_estimated), false) AS weight_estimated,
                            SUM(u.amount_local) AS amount_local,
                            SUM(CASE WHEN u.qty < 0 THEN 1 ELSE 0 END) AS negative_balance_rows,
-                           SUM(CASE WHEN u.defective THEN u.qty ELSE 0 END) AS defective_qty
+                           SUM(CASE WHEN u.defective THEN u.qty ELSE 0 END) AS defective_qty,
+                           bool_or(u.measurement_pending) AS measurement_pending
                     FROM (
                         (SELECT b.goods_id, b.color_id, b.qty, b.weight, b.weight_estimated, b.amount_local,
-                                w.is_defective AS defective
+                                w.is_defective AS defective,
+                                EXISTS(SELECT 1 FROM stock_measurement_holds hold WHERE hold.stock_balance_id=b.id
+                                    AND hold.released_at IS NULL) AS measurement_pending
                          FROM stock_balances b
                          JOIN warehouses w ON w.id = b.warehouse_id
                 """ + balWhere + """
                         )
                         UNION ALL
                         -- 待检品尚无余额行：并入 0 量占位行，保证「货在待检」在即时库存可见(行粒度=货品×颜色)。
-                        (SELECT i.goods_id, i.color_id, 0, CAST(NULL AS NUMERIC), false, 0, false
+                        (SELECT i.goods_id, i.color_id, 0, CAST(NULL AS NUMERIC), false, 0, false, false
                          FROM procurement_inspection_items i
                          JOIN warehouses w ON w.id = COALESCE(i.pre_stocked_warehouse_id, i.warehouse_id)
                 """ + iqcWhere + """
                         )
                         UNION ALL
                         -- 品质已放行但仓库尚未确认：仍无余额行，也必须留在即时库存视图。
-                        (SELECT i.goods_id, i.color_id, 0, CAST(NULL AS NUMERIC), false, 0, false
+                        (SELECT i.goods_id, i.color_id, 0, CAST(NULL AS NUMERIC), false, 0, false, false
                          FROM procurement_inspection_items i
                          JOIN warehouses w ON w.id = i.warehouse_id
                 """ + stockInWhere + """
@@ -673,7 +702,7 @@ public class StockQueryService {
                 LEFT JOIN warehouses ow ON ow.id = g.owning_warehouse_id
                 LEFT JOIN colors c ON c.id = base.color_id
                 LEFT JOIN units u
-                  ON (u.id = g.unit_id
+                  ON NOT u.is_deleted AND NULLIF(BTRIM(u.name), '') IS NOT NULL AND (u.id = g.unit_id
                       OR (g.unit_id IS NULL
                           AND u.legacy_id = NULLIF(g.unit_legacy_id, 0)))
                 LEFT JOIN goods_weight_estimates est ON est.goods_id = g.id AND est.supplier_id IS NULL
@@ -696,12 +725,17 @@ public class StockQueryService {
                 ) stock_in ON stock_in.goods_id = g.id
                     AND stock_in.color_id IS NOT DISTINCT FROM base.color_id
                 LEFT JOIN (
-                    SELECT goods_id, color_id,
-                           SUM(CASE WHEN qty - oqty > iqty THEN qty - oqty - iqty ELSE 0 END) AS more_qty
-                    FROM production_plan_items
-                    WHERE is_deleted = false AND qty > oqty AND qty - lqty > iqty
-                """ + (filter.goodsId() == null ? "" : " AND goods_id = :goodsId\n") + """
-                    GROUP BY goods_id, color_id
+                    SELECT pi.goods_id, pi.color_id,
+                           SUM(CASE WHEN pi.qty - pi.oqty > pi.iqty
+                                    THEN pi.qty - pi.oqty - pi.iqty ELSE 0 END) AS more_qty
+                    FROM production_plan_items pi
+                    JOIN production_plans ph ON ph.id = pi.plan_id
+                    WHERE pi.is_deleted = false AND ph.is_deleted = false
+                      AND ph.legacy_id IS NULL AND ph.status = 1
+                      AND ph.is_closed = false AND ph.is_stopped = false
+                      AND pi.qty > pi.oqty AND pi.qty - pi.lqty > pi.iqty
+                """ + (filter.goodsId() == null ? "" : " AND pi.goods_id = :goodsId\n") + """
+                    GROUP BY pi.goods_id, pi.color_id
                 ) pm ON pm.goods_id = g.id AND pm.color_id IS NOT DISTINCT FROM base.color_id
                 """ + goodsWhere;
         // A selected color with no rows still exposes the master and true zero stock under that color.
@@ -782,7 +816,7 @@ public class StockQueryService {
                     inventoryCount("stocked_weight_known_rows", "有库存且重量已知项数"),
                     inventoryCount("stocked_weight_unknown_rows", "有库存且重量未知项数"),
                     inventoryCount("stocked_weight_estimated_rows", "有库存且重量含估算项数"),
-                    inventoryCount("missing_unit_rows", "单位未维护项数"),
+                    inventoryCount("missing_unit_rows", "计量待核项数"),
                     inventoryCount("nonpositive_pending_inspection_rows", "库存不大于零且待检项数"),
                     inventoryCount("nonpositive_pending_stock_in_rows", "库存不大于零且合格待入库项数"),
                     inventoryCount("negative_balance_rows", "单仓负库存处数"));
@@ -887,9 +921,15 @@ public class StockQueryService {
         return out;
     }
 
-    private BalanceRow toBalanceRow(StockBalance b, boolean canViewCost) {
-        return new BalanceRow(b.getId(), b.getWarehouseId(), b.getGoodsId(), b.getColorId(),
+    private BalanceRow toBalanceRow(StockBalance b, boolean canViewCost,Object[] measurement) {
+        BalanceRow row = new BalanceRow(b.getId(), b.getWarehouseId(), b.getGoodsId(), b.getColorId(),
                 b.getQty(), canViewCost ? b.getAmountLocal() : null,
                 b.getWeight(), b.isWeightEstimated(), b.getLastMovementDate(), !canViewCost);
+        if (measurement != null) {
+            row.setMeasurementPending(Boolean.TRUE.equals(measurement[1]));
+            row.setMeasurementHoldReason((String)measurement[2]);
+            row.setAvailableKnown(!row.isMeasurementPending());
+        }
+        return row;
     }
 }

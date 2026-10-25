@@ -88,7 +88,7 @@ public class ProductionMaterialDiscoveryService {
                     AND previous.product_color_id IS NOT DISTINCT FROM target.product_color_id
                     AND previous.product_unit_id=target.product_unit_id
                     AND previous.workshop_department_id IS NOT DISTINCT FROM target.workshop_department_id
-                JOIN production_plans plan ON plan.id=previous.plan_id
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=previous.plan_id
                 JOIN production_planning_packages package ON package.id=previous.package_id
                 JOIN production_material_discovery_requests request ON request.execution_segment_id=previous.id
                 WHERE target.id=:id AND previous.id<>target.id AND NOT previous.is_deleted
@@ -250,7 +250,7 @@ public class ProductionMaterialDiscoveryService {
                 INSERT INTO production_execution_segment_events(execution_segment_id,action,idempotency_key,request_hash,
                     expected_version,resulting_version,created_by,draw_document_ids,draw_item_quantities)
                 SELECT :segment,'DRAW_REQUEST',:key,:hash,:version,:result,:actor,CAST(:documents AS uuid[]),
-                    (SELECT jsonb_object_agg(item.id::text,item.qty) FROM stock_document_items item
+                    (SELECT jsonb_object_agg(item.id::text,item.qty) FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item
                      WHERE item.doc_id=ANY(CAST(:documents AS uuid[])) AND NOT item.is_deleted)
                 """).setParameter("segment",segment.id()).setParameter("key","DISCOVERY:"+id).setParameter("hash",hash)
                 .setParameter("version",segment.version()).setParameter("result",segment.version()+1).setParameter("actor",currentUser.requireId())
@@ -263,7 +263,7 @@ public class ProductionMaterialDiscoveryService {
                 SELECT request.id,segment.id,segment.segment_code,plan.bill_no,goods.code,goods.name,segment.planned_qty,
                        unit.name,department.name,request.status,request.row_version,request.request_no
                 FROM production_material_discovery_requests request JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
-                JOIN production_plans plan ON plan.id=segment.plan_id JOIN goods ON goods.id=segment.product_goods_id
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=segment.plan_id JOIN goods ON goods.id=segment.product_goods_id
                 LEFT JOIN units unit ON unit.id=segment.product_unit_id LEFT JOIN departments department ON department.id=segment.workshop_department_id
                 WHERE request.id=:id
                 """,id);
@@ -285,7 +285,7 @@ public class ProductionMaterialDiscoveryService {
                 SELECT DISTINCT document.id,document.bill_no,document.warehouse_id,warehouse.name
                 FROM production_material_discovery_lines line
                 JOIN production_planning_package_document_items mapping ON mapping.demand_id=line.demand_id AND mapping.document_type='DRAW'
-                JOIN stock_documents document ON document.id=mapping.document_id
+                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document ON document.id=mapping.document_id
                 LEFT JOIN warehouses warehouse ON warehouse.id=document.warehouse_id
                 WHERE line.request_id=:id ORDER BY document.id
                 """,id).stream().map(row->new DrawDocument((UUID)row[0],(String)row[1],(UUID)row[2],(String)row[3])).toList();
@@ -305,7 +305,7 @@ public class ProductionMaterialDiscoveryService {
         if(!List.of("PENDING","CONFIGURED","CANCELLED").contains(filter))throw validation("申请状态不正确");
         int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));
         WarehouseTaskScope scope=warehouseScopes.current(null);
-        String predicate=" FROM production_material_discovery_requests request JOIN production_execution_segments segment ON segment.id=request.execution_segment_id JOIN production_plans plan ON plan.id=segment.plan_id WHERE request.status=:status AND NOT segment.is_deleted AND segment.status NOT IN('CANCELLED','REVERSED') AND NOT plan.is_deleted AND NOT plan.is_canceled AND NOT plan.is_closed";
+        String predicate=" FROM production_material_discovery_requests request JOIN production_execution_segments segment ON segment.id=request.execution_segment_id JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=segment.plan_id WHERE request.status=:status AND NOT segment.is_deleted AND segment.status NOT IN('CANCELLED','REVERSED') AND NOT plan.is_deleted AND NOT plan.is_canceled AND NOT plan.is_closed";
         if("PENDING".equals(filter))predicate+=" AND segment.status IN('WAITING','READY','DISPATCHED') AND plan.status=1 AND NOT plan.is_stopped";
         predicate+=" AND "+warehouseRequestPredicate(scope);
         var count=em.createNativeQuery("SELECT count(*)"+predicate).setParameter("status",filter);
@@ -356,9 +356,9 @@ public class ProductionMaterialDiscoveryService {
                         AND NOT (%s)
                         AND NOT segment.is_deleted AND plan.status=1 AND NOT plan.is_deleted AND NOT plan.is_closed
                         AND NOT plan.is_canceled AND NOT plan.is_stopped AND package.status='CONFIRMED' AND NOT package.is_deleted
-                        AND NOT EXISTS(SELECT 1 FROM production_daily_report_items report WHERE report.execution_segment_id=segment.id)),
+                        AND NOT EXISTS(SELECT 1 FROM (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_report_items',archive_origin.id)) report WHERE report.execution_segment_id=segment.id)),
                        fn_segment_bin_material_state(segment.id)
-                FROM production_execution_segments segment JOIN production_plans plan ON plan.id=segment.plan_id
+                FROM production_execution_segments segment JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=segment.plan_id
                 JOIN production_planning_packages package ON package.id=segment.package_id WHERE segment.id=:id
                 """.formatted(ProductionOrderMaterialGate.unresolvedSql("segment.id"))+(lock?" FOR UPDATE OF segment":""),id);
         if(rows.isEmpty())throw notFound();Object[] r=rows.getFirst();return new Segment((UUID)r[0],(UUID)r[1],(UUID)r[2],(UUID)r[3],(UUID)r[4],(UUID)r[5],(UUID)r[6],(UUID)r[7],((Number)r[8]).longValue(),decimal(r[9]),Boolean.TRUE.equals(r[10]),Boolean.TRUE.equals(r[11]),(String)r[12]);

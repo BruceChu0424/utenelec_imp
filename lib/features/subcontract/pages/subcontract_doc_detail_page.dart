@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../../../shared/documents/document_unapproval.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
@@ -118,6 +119,10 @@ class _SubcontractDocDetailPageState
 
   bool _hasPermission(String? code) =>
       code != null &&
+      importedDocumentPermissionAllowed(
+        code,
+        _detail?.legacyImported ?? false,
+      ) &&
       nativeReadAccessConfirmed &&
       ((code.endsWith(':view') ||
               code.contains(':view:') ||
@@ -132,6 +137,7 @@ class _SubcontractDocDetailPageState
 
   bool get _ordinaryWritable =>
       nativeReadCanWrite &&
+      !(_detail?.legacyImported ?? false) &&
       !_historicalReceipt &&
       !widget.forceReadOnly &&
       (widget.docType == SubcontractDocType.application ||
@@ -661,7 +667,8 @@ class _SubcontractDocDetailPageState
                                   child: Text(historicalReceiptReadOnlyMessage),
                                 ),
                               ),
-                            if (widget.forceReadOnly) ...[
+                            if (widget.forceReadOnly ||
+                                (_detail?.legacyImported ?? false)) ...[
                               _readOnlyBusinessNotice(theme),
                               const SizedBox(height: UtenSpacing.s12),
                             ],
@@ -807,6 +814,7 @@ class _SubcontractDocDetailPageState
   );
 
   String _orderStatusText(SubcontractDocDetail detail) {
+    if (detail.legacyImported) return importedBusinessHistoryLabel;
     if (detail.status == kSubcontractStatusReversed) return '已反审';
     final approval = detail.financeApproval;
     if (approval?.isPending == true) {
@@ -916,13 +924,16 @@ class _SubcontractDocDetailPageState
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       _KV(
         '状态',
-        widget.docType == SubcontractDocType.application && d.status == 1
+        d.legacyImported
+            ? importedBusinessHistoryLabel
+            : widget.docType == SubcontractDocType.application && d.status == 1
             ? '计划已下达，等待委外分解'
             : widget.docType == SubcontractDocType.order
             ? _orderStatusText(d)
             : null,
         badge:
-            widget.docType == SubcontractDocType.application ||
+            d.legacyImported ||
+                widget.docType == SubcontractDocType.application ||
                 widget.docType == SubcontractDocType.order
             ? null
             : SubcontractStatusBadge(

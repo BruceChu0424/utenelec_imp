@@ -70,14 +70,15 @@ class _InstantInventoryOverviewPageState
     'AWAITING_STOCK_IN': '优先确认入库清单',
     'AWAITING_INSPECTION': '待检跟进清单',
     'UNKNOWN_WEIGHT': '库存重量待完善清单',
-    'MISSING_UNIT': '计量单位待完善清单',
+    'MISSING_UNIT': '计量待核清单',
   };
   static const _riskBasis = {
     'NEGATIVE_BALANCE': '至少一个仓库余额为负。下方数量是所选范围的汇总，可能为正，请进入货品查看各仓余额和流水。',
     'AWAITING_STOCK_IN': '汇总库存不大于零，同时有合格待入库货物。先核实入库任务和实物；这些货物尚未计入库存。',
     'AWAITING_INSPECTION': '汇总库存不大于零，同时有待检货物。结合实际需求跟进检验，检验放行前不能作为可用供应。',
     'UNKNOWN_WEIGHT': '非零库存中仍有重量未知。先核对对应仓库的称重与盘点记录，未称部分未计入重量总数。',
-    'MISSING_UNIT': '基本单位未维护。先确认货品计量方式，避免数量比较或补货计算使用错误单位。',
+    'MISSING_UNIT':
+        '计量依据尚未核实，账面数仅供核对，不能作为可用供应。请按原始证据核验计量依据；主档补单位或普通盘点差量不会自动解除历史计量待核。',
   };
 
   @override
@@ -331,7 +332,7 @@ class _InstantInventoryOverviewPageState
     final number = NumberFormat('#,##0.####', 'zh_CN');
     String qty(double? value, String? unit) => value == null
         ? '未提供'
-        : '${number.format(value)} ${unit?.trim().isNotEmpty == true ? unit : '单位未维护'}';
+        : '${number.format(value)} ${unit?.trim().isNotEmpty == true ? unit : '计量待核'}';
     final page = _riskPage;
     return UtenCard(
       key: const Key('inventory-risk-details'),
@@ -399,11 +400,20 @@ class _InstantInventoryOverviewPageState
                   spacing: UtenSpacing.s16,
                   runSpacing: UtenSpacing.s8,
                   children: [
-                    Text('库存 ${qty(row.qty, row.unitName)}'),
+                    Text(
+                      row.measurementPending
+                          ? '账面库存 ${qty(row.qty, null)}'
+                          : '库存 ${qty(row.qty, row.unitName)}',
+                    ),
+                    if (row.measurementPending) Text(row.measurementNotice),
                     if (risk == 'AWAITING_STOCK_IN')
-                      Text('合格待入库 ${qty(row.pendingStockInQty, row.unitName)}'),
+                      Text(
+                        '合格待入库 ${qty(row.pendingStockInQty, row.measurementPending ? null : row.unitName)}',
+                      ),
                     if (risk == 'AWAITING_INSPECTION')
-                      Text('待检 ${qty(row.pendingQty, row.unitName)}'),
+                      Text(
+                        '待检 ${qty(row.pendingQty, row.measurementPending ? null : row.unitName)}',
+                      ),
                     if (risk == 'UNKNOWN_WEIGHT')
                       WeightText(
                         kg: row.weight,

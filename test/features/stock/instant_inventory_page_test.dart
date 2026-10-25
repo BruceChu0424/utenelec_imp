@@ -62,6 +62,39 @@ void main() {
   }
 
   testWidgets(
+    'persistent measurement hold keeps book values and ignores a later master unit',
+    (tester) async {
+      final row = InstantInventoryRow.fromJson({
+        'goodsId': 'legacy-unit-unproven',
+        'name': '待核库存',
+        'unitName': 'kg',
+        'qty': 17.5,
+        'costAmount': 123.45,
+        'measurementPending': true,
+        'measurementHoldReason': 'LEGACY_QUANTITY_BASIS_UNPROVEN',
+        'availableKnown': true,
+      });
+      expect(row.availableKnown, isFalse);
+      expect(row.qty, 17.5);
+      expect(row.costAmount, 123.45);
+      await pumpPage(tester, stock: _RecordingStockRepository(rows: [row]));
+      final table = tester.widget<MasterDataTableView<InstantInventoryRow>>(
+        find.byType(MasterDataTableView<InstantInventoryRow>),
+      );
+      final qty = table.columns
+          .singleWhere((column) => column.key == 'qty')
+          .value(row);
+      expect(qty, contains('17.5'));
+      expect(qty, contains('历史计量待核'));
+      expect(qty, contains('账面数仅核对'));
+      expect(qty, isNot(contains('kg')));
+      expect(find.text('历史计量待核 · 账面数仅核对'), findsWidgets);
+      expect(find.text('17.5 kg'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'inventory actual row retains the smallest stored quantity with its unit',
     (tester) async {
       final row = InstantInventoryRow.fromJson({

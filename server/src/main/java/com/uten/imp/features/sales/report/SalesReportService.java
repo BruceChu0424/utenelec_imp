@@ -927,8 +927,8 @@ public class SalesReportService {
                            THEN i.amount_original
                                * (i.qty - i.shipped_qty + i.returned_qty - i.flag_qty) / i.qty
                            ELSE 0 END) AS pending_amt
-                FROM sales_order_items i
-                JOIN sales_orders o ON o.id = i.order_id
+                FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i
+                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o ON o.id = i.order_id
                 WHERE COALESCE(i.is_deleted,false)=false
                   AND COALESCE(o.is_deleted,false)=false
                 """ + ownerPredicate

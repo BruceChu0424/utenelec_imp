@@ -35,4 +35,7 @@ public class ReturnListItem extends com.uten.imp.common.history.DocumentHistoryM
     }
 
     public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
+
+
+    public boolean isWritable() { return !isHistoryReadOnly() && writable; }
 }

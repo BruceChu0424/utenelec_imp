@@ -126,6 +126,14 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     for (final seg in const ['orders', 'returns', 'material-returns', 'wastes'])
       '/subcontract/$seg/new',
     '/subcontract/material-issues',
+    for (final seg in const [
+      'orders',
+      'receipts',
+      'returns',
+      'material-returns',
+      'wastes',
+    ])
+      '/subcontract/$seg',
     for (final kind in const ['detail', 'summary', 'in-out-status'])
       '${RouteName.subcontractReport}/$kind',
   ],

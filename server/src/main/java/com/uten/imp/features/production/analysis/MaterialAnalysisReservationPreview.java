@@ -67,8 +67,8 @@ final class MaterialAnalysisReservationPreview {
                         SELECT plan.status,item.qty,segment.id,segment.planned_qty,
                                segment.continuous_supply,fn_execution_route_allows_auto_promote(segment.id),
                                segment.auto_promote_when_ready,segment.product_unit_rate
-                        FROM production_plans plan
-                        JOIN production_plan_items item ON item.plan_id=plan.id AND NOT item.is_deleted
+                        FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
+                        JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item ON item.plan_id=plan.id AND NOT item.is_deleted
                         LEFT JOIN production_execution_segments segment ON segment.plan_id=plan.id AND NOT segment.is_deleted
                         WHERE plan.id=:plan
                         ORDER BY segment.segment_no,segment.id LIMIT 1

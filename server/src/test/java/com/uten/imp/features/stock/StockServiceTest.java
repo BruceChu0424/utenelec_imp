@@ -29,6 +29,25 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class StockServiceTest {
+    @org.junit.jupiter.api.BeforeEach void resolvedMeasurementForExistingQuantityScenarios() {
+        org.mockito.Mockito.lenient().when(balanceRepo.measurementUsable(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.nullable(UUID.class))).thenReturn(true);
+    }
+
+    @Test void pendingMeasurementRejectsInboundAndOutboundBeforeValuationOrBalanceWrites() {
+        UUID warehouse=UUID.randomUUID(),goods=UUID.randomUUID();
+        when(balanceRepo.measurementUsable(warehouse,goods,null)).thenReturn(false);
+        var valuation=org.mockito.Mockito.mock(com.uten.imp.features.stock.valuation.StockValuationCoordinator.class);
+        var inventory=service(valuation,noWake());
+        for(short direction:new short[]{StockService.DIR_IN,StockService.DIR_OUT}) {
+            ApiException error=assertThrows(ApiException.class,()->inventory.recordMovement(request(warehouse,goods,direction,"1")));
+            org.assertj.core.api.Assertions.assertThat(error.getMessage()).contains("计量待核");
+        }
+        verify(balanceRepo,never()).readPhysicalSnapshot(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any());
+        verify(movementRepo,never()).save(org.mockito.ArgumentMatchers.any());
+        verifyNoBalanceUpsert();
+        org.mockito.Mockito.verifyNoInteractions(valuation);
+    }
     private static StockBalanceRepository.PhysicalSnapshot snapshot(StockBalance balance){
         return new StockBalanceRepository.PhysicalSnapshot(){
             @Override public BigDecimal getQty(){return balance.getQty();}

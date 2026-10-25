@@ -162,6 +162,22 @@ class SubcontractHubPage extends ConsumerWidget {
           location: k.route,
         ),
     ]);
+    final archiveEntries = visible([
+      for (final config in const [
+        SubcontractDocConfig.order,
+        SubcontractDocConfig.receipt,
+        SubcontractDocConfig.materialIssue,
+        SubcontractDocConfig.returnDoc,
+        SubcontractDocConfig.materialReturn,
+        SubcontractDocConfig.waste,
+      ])
+        _Entry(
+          icon: Icons.history_outlined,
+          label: config.label,
+          description: '旧系统历史 · 全部年份 · 只读查询',
+          location: '${config.listLocation}?origin=legacy',
+        ),
+    ]);
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.subcontractHubTitle,
@@ -200,6 +216,8 @@ class SubcontractHubPage extends ConsumerWidget {
               _section(context, theme, '新建单据', docEntries),
               const SizedBox(height: UtenSpacing.s16),
               _section(context, theme, '出仓单据', issueEntries),
+              const SizedBox(height: UtenSpacing.s16),
+              _section(context, theme, '旧系统历史', archiveEntries),
               const SizedBox(height: UtenSpacing.s16),
               _section(context, theme, '报表中心', reportEntries),
             ],

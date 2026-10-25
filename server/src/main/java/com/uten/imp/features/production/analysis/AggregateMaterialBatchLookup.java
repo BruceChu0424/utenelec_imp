@@ -29,7 +29,7 @@ public class AggregateMaterialBatchLookup {
                 SELECT batch.id,batch.action_id,batch.anchor_analysis_item_id,batch.plan_id,batch.row_version,
                        action.requested_qty+action.public_surplus_qty
                 FROM preplan_aggregate_batches batch JOIN preplan_supply_actions action ON action.id=batch.action_id
-                LEFT JOIN production_plans plan ON plan.id=batch.plan_id
+                LEFT JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=batch.plan_id
                 WHERE batch.analysis_id=:analysis AND batch.compatibility_key=:key AND action.status<>'CANCELLED' AND
                 """+eligible+" ORDER BY batch.created_at DESC,batch.id DESC LIMIT 1"+(lock?" FOR UPDATE OF batch,action":""))
                 .setParameter("analysis",analysisId).setParameter("key",key);

@@ -510,8 +510,8 @@ public class SubcontractDrawQueryService {
                 SELECT issue.id, issue.bill_no, issue.warehouse_id, warehouse.name, COUNT(item.id),
                        issue.created_at, creator_employee.full_name,
                 """ + SubcontractMaterialPlanService.DRAFT_EDITED_BY_WAREHOUSE + """
-                FROM subcontract_material_issues issue
-                JOIN subcontract_material_issue_items item ON item.issue_id = issue.id
+                FROM (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issues',archive_origin.id)) issue
+                JOIN (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) item ON item.issue_id = issue.id
                  AND NOT item.is_deleted AND item.plan_item_id IS NOT NULL
                  AND item.order_item_id = :draftItemId
                 LEFT JOIN warehouses warehouse ON warehouse.id = issue.warehouse_id

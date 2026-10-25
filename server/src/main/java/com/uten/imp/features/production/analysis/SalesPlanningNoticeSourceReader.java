@@ -16,7 +16,7 @@ public class SalesPlanningNoticeSourceReader implements SalesPlanningNoticeReadP
             AND NOT o.finance_rejected AND o.requoted_to_id IS NULL
             AND NOT EXISTS (
                 SELECT 1 FROM production_material_analysis_items taken
-                JOIN sales_order_items original ON original.id=taken.sales_order_item_id
+                JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) original ON original.id=taken.sales_order_item_id
                 WHERE original.order_id=o.id AND taken.source_type='SALES_ORDER_ITEM')
             """;
 

@@ -5,6 +5,7 @@ import '../../../features/report/shared/report_total.dart';
 import '../../../features/stock/models/stock_query.dart';
 import '../../measurement/weight_unit.dart';
 import '../../models/paged_result.dart';
+import '../../stock_inventory/measurement_hold.dart';
 
 /// Master data is displayed once, apart from warehouse × color balances.
 /// Quantities come only from the server's full scoped totals, never page sums.
@@ -58,6 +59,20 @@ class GoodsStockInventoryOverview extends StatelessWidget {
     final page = data;
     if (page == null || page.items.isEmpty) return const SizedBox.shrink();
     final goods = page.items.first;
+    var measurementPending = false;
+    String? holdReason;
+    for (final row in page.items.where((row) => row.measurementPending)) {
+      measurementPending = true;
+      holdReason = row.measurementHoldReason;
+      if (holdReason == historicalMeasurementHold) break;
+    }
+    measurementPending =
+        measurementPending ||
+        page.totals.any(
+          (total) =>
+              total.key == 'missing_unit_rows' &&
+              total.groups.any((group) => group.value > 0),
+        );
     final facts = <(String, String?)>[
       ('名称', goods.name),
       ('编号', goods.goodsCode),
@@ -66,7 +81,10 @@ class GoodsStockInventoryOverview extends StatelessWidget {
       ('型号', goods.model),
       ('客户型号', goods.cNumber),
       ('规格', goods.spec),
-      ('基本单位', goods.unitName),
+      (
+        '基本单位',
+        measurementPending ? measurementHoldLabel(holdReason) : goods.unitName,
+      ),
 
       ('货品备注', goods.remark),
     ];
@@ -94,20 +112,28 @@ class GoodsStockInventoryOverview extends StatelessWidget {
           ),
           if (showQuantities) ...[
             const SizedBox(height: UtenSpacing.s8),
+            if (measurementPending) Text(measurementHoldNotice(holdReason)),
             UtenTotalsSummaryBar(
               key: const ValueKey('stock-scoped-totals'),
               compact: true,
               density: true,
               entries: reportTotalEntries(
                 page.totals.where(
-                  (t) => const {
-                    'qty',
-                    'weight',
-                    'weight_unknown_rows',
-                    'weight_estimated_rows',
-                    'pending_qty',
-                    'pending_stock_in_qty',
-                  }.contains(t.key),
+                  (t) =>
+                      const {
+                        'qty',
+                        'weight',
+                        'weight_unknown_rows',
+                        'weight_estimated_rows',
+                        'pending_qty',
+                        'pending_stock_in_qty',
+                      }.contains(t.key) &&
+                      !(measurementPending &&
+                          const {
+                            'qty',
+                            'pending_qty',
+                            'pending_stock_in_qty',
+                          }.contains(t.key)),
                 ),
                 weightDisplay: weightDisplay,
               ),

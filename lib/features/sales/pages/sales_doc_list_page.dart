@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 // 销售单据列表页（按 docType 参数化）。
 //
@@ -531,6 +532,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   SalesDocFilter _docFilter({bool withBillNo = true}) {
     final range = _isHistory ? _historyTime.range : null;
     return SalesDocFilter(
+      origin: _isHistory ? BusinessDocumentOrigin.all : null,
       keyword: _list.normalizedKeyword,
       clientId: _isShipment ? _clientIdFilter : null,
       financeAudit: _isShipment ? _financeAuditFilter : null,
@@ -683,6 +685,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       !it.stopped;
 
   String _statusText(SalesDocListItem it, AppLocalizations? l10n) {
+    if (it.historyReadOnly || it.legacyId != null) {
+      return importedBusinessHistoryLabel;
+    }
     if (_quoteStaged && l10n != null) {
       final text = salesQuoteStatusText(
         l10n,

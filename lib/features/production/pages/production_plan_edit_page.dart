@@ -187,6 +187,7 @@ class _ProductionPlanEditPageState
         final d = await repo.detail(widget.id!);
         if (!isCurrent()) return;
         final writable =
+            !d.legacyImported &&
             d.allowedActions.contains('EDIT') &&
             await loadDocumentOwnerCanWrite(
               ref,

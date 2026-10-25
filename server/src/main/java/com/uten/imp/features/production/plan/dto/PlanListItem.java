@@ -25,4 +25,6 @@ public class PlanListItem extends com.uten.imp.common.history.DocumentHistoryMet
     private boolean stopped;
     private boolean canceled;
     private Integer legacyId;
+
+
 }

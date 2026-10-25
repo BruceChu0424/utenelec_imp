@@ -83,30 +83,33 @@ public class FinanceOtherIncomeService {
     private final AccountFlowLedgerService accountFlowLedger;
 
     @Transactional(readOnly = true)
-    public PageResponse<FinanceOtherIncomeListItem> list(FinanceOtherIncomeQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<FinanceOtherIncomeListItem> list(FinanceOtherIncomeQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final FinanceOtherIncomeQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         Specification<FinanceOtherIncome> spec = incomeSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
         Page<FinanceOtherIncome> p = incomeRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<FinanceOtherIncomeListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
-        return p.stream().noneMatch(FinanceOtherIncome::isDeleted) ? result
-                : retainedRecords.page(result, "finance_other_incomes", p.getContent());
+        return retainedRecords.page(result, "finance_other_incomes", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
-    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(FinanceOtherIncomeQueryFilter f) {
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(FinanceOtherIncomeQueryFilter originalFilter) {
+        final FinanceOtherIncomeQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, FinanceOtherIncome.class, incomeSpec(f), "billNo"));
     }
 
     /** 列表谓词（list 与 facets 共用，2026-09-25 单号列统一抽出；billNo=表头单据号精确匹配）。 */
-    private Specification<FinanceOtherIncome> incomeSpec(FinanceOtherIncomeQueryFilter f) {
+    private Specification<FinanceOtherIncome> incomeSpec(FinanceOtherIncomeQueryFilter originalFilter) {
+        final FinanceOtherIncomeQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope();
         return (Root<FinanceOtherIncome> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -124,7 +127,7 @@ public class FinanceOtherIncomeService {
                 }));
             }
             if (f.accountId() != null) ps.add(cb.equal(root.get("accountId"), f.accountId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             // departmentId 走明细表，本期略（前端报表侧按部门汇总）。
@@ -185,7 +188,9 @@ public class FinanceOtherIncomeService {
             PaymentStyleHierarchyLock.lock(em);
         }
         FinanceOtherIncome o = lockActive(id);
+
         access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_other_incomes",o);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(o.getLegacyId());
         if (o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
@@ -205,7 +210,9 @@ public class FinanceOtherIncomeService {
     public void delete(UUID id) {
         tx.bind();
         FinanceOtherIncome o = lockActive(id);
+
         access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_other_incomes",o);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(o.getLegacyId());
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可删除；已审核单据请红冲");
@@ -221,8 +228,10 @@ public class FinanceOtherIncomeService {
     public FinanceOtherIncomeDetail approve(UUID id) {
         tx.bind();
         FinanceOtherIncome o = lockActive(id);
+
         access.requireScopedOperationWritable(o.getMakerId(), "只能操作本人负责或已交接的其它收入单",
                 "finance_other_income:approve");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_other_incomes",o);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(o.getLegacyId());
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -267,6 +276,7 @@ public class FinanceOtherIncomeService {
     public FinanceOtherIncomeDetail reverse(UUID id) {
         tx.bind();
         FinanceOtherIncome o = lockActive(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_other_incomes",o);
         requireUnapprovalHeader(o);
         glPosting.removeAutoProjection(RECON_SOURCE, o.getId(), o.getBillNo(), o.getBillDate());
         // 账户余额与流水由账本按原始流水一并冲回。
@@ -480,7 +490,6 @@ public class FinanceOtherIncomeService {
     }
 
     private FinanceOtherIncomeDetail finishHistory(FinanceOtherIncomeDetail view, FinanceOtherIncome entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "finance_other_incomes", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

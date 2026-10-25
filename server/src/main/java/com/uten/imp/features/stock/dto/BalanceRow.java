@@ -25,6 +25,17 @@ public class BalanceRow {
     /** 当前用户无 goods:cost:view 时金额已由服务端置空。 */
     private boolean costMasked;
 
+    @lombok.Setter private boolean measurementPending;
+    @lombok.Setter private String measurementHoldReason;
+    @lombok.Setter private boolean availableKnown = true;
+
+    public BalanceRow(UUID id, UUID warehouseId, UUID goodsId, UUID colorId, BigDecimal qty,
+            BigDecimal amountLocal, BigDecimal weight, boolean weightEstimated,
+            OffsetDateTime lastMovementDate, boolean costMasked) {
+        this(id,warehouseId,goodsId,colorId,qty,amountLocal,weight,weightEstimated,lastMovementDate,costMasked,
+                false,null,true);
+    }
+
     /** Lossless JSON companions; existing numeric fields and constructor remain compatible. */
     public String getQtyExact() { return qty == null ? null : qty.toPlainString(); }
 }

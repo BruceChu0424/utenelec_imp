@@ -46,7 +46,7 @@ public class CustomerShipmentInventoryService implements CustomerShipmentInvento
                     SELECT
                       fn_stock_global_usable(:goods, CAST(:color AS uuid)),
                       GREATEST(COALESCE((SELECT balance.qty-GREATEST(COALESCE(CAST(goods.min_qty AS NUMERIC),0),0)
-                          FROM stock_balances balance JOIN goods ON goods.id=balance.goods_id
+                          FROM v_stock_operable_balances balance JOIN goods ON goods.id=balance.goods_id
                           WHERE balance.warehouse_id=:warehouse AND balance.goods_id=:goods
                             AND balance.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)),0)
                         -COALESCE((SELECT SUM(qty-consumed_qty-released_qty) FROM stock_reservations
@@ -68,7 +68,7 @@ public class CustomerShipmentInventoryService implements CustomerShipmentInvento
                 SELECT gen_random_uuid(),'CUSTOMER_SHIPMENT_ITEM',item.id,'CUSTOMER_SHIPMENT_ITEM',item.goods_id,item.color_id,
                     :warehouse,ROUND(item.qty*COALESCE(NULLIF(item.unit_rate,0),1),4),0,0,0,0,'SALES_SHIPMENT',:shipment,
                     'STOCK_BALANCE',balance.id,:attempt||':'||item.id::text,:actor,:actor
-                FROM sales_shipment_items item JOIN stock_balances balance
+                FROM sales_shipment_items item JOIN v_stock_operable_balances balance
                   ON balance.warehouse_id=:warehouse AND balance.goods_id=item.goods_id AND balance.color_id IS NOT DISTINCT FROM item.color_id
                 WHERE item.id=:item AND item.shipment_id=:shipment AND NOT item.is_deleted
                 """).setParameter("shipment",shipmentId).setParameter("item",line.itemId()).setParameter("warehouse",line.warehouseId())

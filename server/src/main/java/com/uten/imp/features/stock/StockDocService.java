@@ -190,13 +190,15 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     // ===== 列表 =====
 
     @Transactional(readOnly = true)
-    public PageResponse<StockDocListItem> list(StockDocQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<StockDocListItem> list(StockDocQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final StockDocQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return list(f, page, size, sort, order, false, false);
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<StockDocListItem> list(StockDocQueryFilter f, int page, int size, String sort, String order,
+    public PageResponse<StockDocListItem> list(StockDocQueryFilter originalFilter, int page, int size, String sort, String order,
                                             boolean includeDeleted, boolean onlyDeleted) {
+        final StockDocQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         if ("total".equals(sort)) {
             throw new ApiException(
                     ErrorCode.FORBIDDEN,
@@ -211,27 +213,31 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         Page<StockDocument> p = docRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<StockDocListItem> result = new PageResponse<>(p.map(this::toList).getContent(), page, size,
                 p.getTotalElements(), p.getTotalPages());
-        return includeDeleted || onlyDeleted ? retainedRecords.page(result, "stock_documents", p.getContent()) : result;
+        return retainedRecords.page(result, "stock_documents", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数（docType 维度）。 */
     @Transactional(readOnly = true)
-    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(StockDocQueryFilter f) {
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(StockDocQueryFilter originalFilter) {
+        final StockDocQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return facets(f, false, false);
     }
 
     @Transactional(readOnly = true)
-    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(StockDocQueryFilter f, boolean includeDeleted, boolean onlyDeleted) {
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(StockDocQueryFilter originalFilter, boolean includeDeleted, boolean onlyDeleted) {
+        final StockDocQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, StockDocument.class, docSpec(f, includeDeleted, onlyDeleted), "billNo"));
     }
 
     /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）：可见范围 + docType + 表头过滤。 */
-    private Specification<StockDocument> docSpec(StockDocQueryFilter f) {
+    private Specification<StockDocument> docSpec(StockDocQueryFilter originalFilter) {
+        final StockDocQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return docSpec(f, false, false);
     }
 
-    private Specification<StockDocument> docSpec(StockDocQueryFilter f, boolean includeDeleted, boolean onlyDeleted) {
+    private Specification<StockDocument> docSpec(StockDocQueryFilter originalFilter, boolean includeDeleted, boolean onlyDeleted) {
+        final StockDocQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope();
         // 本人默认范围里自己还没提交的草稿不论仓都算(ADR-149); 车间余料退库申请(待仓库实收)是仓库的任务,
         // 不是制单人的草稿, 与它的待办计数一样只按仓库范围。
@@ -243,6 +249,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                                              jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (onlyDeleted) ps.add(cb.isTrue(root.get("deleted")));
             else if (!includeDeleted) ps.add(cb.isFalse(root.get("deleted")));
             // A request slice can be fully issued while the frozen instruction still has
@@ -261,12 +268,13 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             }
             Predicate activeWorkflow = cb.and(cb.isFalse(root.get("deleted")),cb.isFalse(root.get("closed")),
                     cb.or(cb.equal(root.get("status"),(short)0),approvedDraw));
-            ps.add("HISTORY".equals(f.view()) ? cb.not(activeWorkflow) : activeWorkflow);
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,
+                    "HISTORY".equals(f.view()) ? cb.not(activeWorkflow) : activeWorkflow));
             // 草稿工作区与 stockDocument 徽章同口径；历史开关也不能把已删/已审/生产任务混回。
             // 仅附加收敛条件，下面既有的归属、查看权限、生产请求与仓库范围判定全部保留。
             if (Boolean.TRUE.equals(f.standaloneDrafts())) {
                 ps.add(cb.isFalse(root.get("deleted")));
-                ps.add(cb.equal(root.get("status"), (short) 0));
+                ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), (short) 0)));
                 ps.add(cb.isFalse(cb.function("fn_is_production_linked_stock_document", Boolean.class, root.get("id"))));
             }
             Predicate ownerReadable = access.readablePredicate(root, cb, "makerId", readScope);
@@ -279,9 +287,10 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                         cb.isTrue(cb.function("fn_stock_document_has_history_provenance", Boolean.class, root.get("id")))));
             }
             ps.add(readable);
-            ps.add(cb.or(cb.notEqual(root.get("docType"), "DRAW"),
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,
+                    cb.or(cb.notEqual(root.get("docType"), "DRAW"),
                     cb.isTrue(cb.function("fn_production_draw_requested", Boolean.class, root.get("id"))),
-                    includeDeleted || onlyDeleted ? cb.isTrue(root.get("deleted")) : cb.disjunction()));
+                    includeDeleted || onlyDeleted ? cb.isTrue(root.get("deleted")) : cb.disjunction())));
             if (f.docType() != null && !f.docType().isBlank()) {
                 ps.add(cb.equal(root.get("docType"), f.docType()));
             }
@@ -307,7 +316,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                         root.get("id"), cb.literal(f.warehouseScope().idsCsv()),
                         cb.literal(f.warehouseScope().includeUnassigned()), cb.literal(ownDraftMaker))));
             }
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             if (f.departmentId() != null) ps.add(cb.equal(root.get("departmentId"), f.departmentId()));
@@ -342,7 +351,8 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         Map<UUID, IssuedWeight> issuedWeights = issuedWeights(d, entities);
         List<StockDocItemDto> items = entities.stream()
                 .map(item -> toItemDto(item, issuedWeights.get(item.getId()))).toList();
-        return toDetail(d, items);
+        return retainedRecords.detail(toDetail(d, items), "stock_documents", id,
+                d.isDeleted(), d.getDeletedAt(), false);
     }
 
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
@@ -442,6 +452,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public StockDocOutboundReview reviewOutbound(UUID id) {
         StockDocument document = requireDocForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_documents",document);
         StockDocDetail reviewed = detail(id); // Existing read/object scope and cost masking.
         StockDocOutboundReviewFingerprint.requireOutboundType(document);
         String token = StockDocOutboundReviewFingerprint.of(document,
@@ -453,6 +464,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public StockDocOutboundReview reviewNative(UUID id) {
         StockDocument document = requireDocForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_documents",document);
         StockDocDetail reviewed = detail(id);
         StockDocOutboundReviewFingerprint.requireNativeType(document, reviewed.isProductionLinked());
         return new StockDocOutboundReview(reviewed, StockDocOutboundReviewFingerprint.of(document,
@@ -627,7 +639,9 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     @PreAuthorize("hasAuthority('stock_doc:edit')")
     public void lockDraftInputsForPlatform(UUID id,StockDocSaveRequest request) {
         if(id==null)return;StockDocument document=requireDocForUpdate(id);
+
         access.requireWritable(document.getMakerId(),"只能操作本人负责的仓库单据");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_documents",document);
     }
 
     @Transactional(readOnly=true)
@@ -642,7 +656,9 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     public void delete(UUID id) {
         tx.bind();
         StockDocument d = requireDocForUpdate(id);
+
         access.requireWritable(d.getMakerId(), "只能操作本人负责的仓库单据");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_documents",d);
         if (isAuthorizedBalanceAdjustment(d)) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
@@ -1202,8 +1218,10 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         tx.bind();
         UUID maker = currentUser.requireEmployeeId();
         var replay = docRepo.findByMakerIdAndChannelRequestKey(maker, req.requestKey());
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_documents",replay);
         if (replay.isPresent()) {
             StockDocument original = replay.get();
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_documents",original);
             if (!kind.name().equals(original.getTransferKind())
                     || !Objects.equals(original.getWarehouseId(), req.fromWarehouseId())
                     || !Objects.equals(original.getToWarehouseId(), req.toWarehouseId())
@@ -1245,6 +1263,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         prelockProductionDocument(d.getId());
         approveDocumentAfterPrelock(d.getId(), false, false, null);
         StockDocument posted = requireDoc(d.getId());
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_documents",posted);
         return new com.uten.imp.features.stock.dto.StockDefectiveMoveResult(detailOf(posted),
                 quarantineWarnings(posted));
     }
@@ -1364,7 +1383,9 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         lockFinishedInboundBatchAllocationGraph(List.of(id));
         lockFinishedInboundBatchDocuments(List.of(id));
         StockDocument document=requireDocForUpdate(id);
+
         requireOperationWritable(document,"stock_doc:approve","无权确认此车间余料收货");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_documents",document);
         com.uten.imp.common.validation.ExactDocumentSelection.requireComplete(request.itemIds(),
                 itemRepo.findByDocIdOrderByLineNoAsc(id).stream().map(StockDocumentItem::getId).toList());
         UUID sourceWarehouse=materialReturnSourceWarehouse(id);
@@ -1508,7 +1529,9 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     public StockDocDetail approveReviewed(UUID id, StockDocReviewedApproveRequest request) {
         prelockProductionDocument(id);
         StockDocument document = requireDocForUpdate(id);
+
         requireOperationWritable(document, "stock_doc:approve", "无权审核此仓库单据");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_documents",document);
         StockDocOutboundReviewFingerprint.requireNativeType(document,
                 ("OTHER_IN".equals(document.getDocType()) || "FINISHED_IN".equals(document.getDocType())) && isProductionLinked(id));
         com.uten.imp.common.validation.ExactDocumentSelection.requireComplete(request == null ? null : request.itemIds(),
@@ -1936,6 +1959,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     public StockDocDetail approveAndIssue(UUID id, StockDocIssueRequest req) {
         var mutationGuard = lockProductionDocuments(List.of(id));
         StockDocument document = requireDocForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_documents",document);
         if (!"DRAW".equals(document.getDocType())
                 || document.getStatus() == null) {
             throw new ApiException(ErrorCode.CONFLICT, "只有草稿生产领料单可以直接出库");
@@ -2650,6 +2674,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                     issueState.add(line.getItemId()+":"+line.getQty().stripTrailingZeros().toPlainString()));
             request.setIdempotencyKey("WORKSHOP-DRAW:"+drawId+":"+CanonicalFingerprint.sha256(issueState));
             StockDocument draw = requireDocForUpdate(drawId);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_documents",draw);
             // 生产领料单是草稿，出库前必须先审核 —— 与仓库那条「审核并出库」一段式端点
             // 同一条路径，只是授权走直送这条窄路。
             // 守卫必须一动作一取。审核会更新状态/主档快照，但不释放本调用已取得的
@@ -3027,8 +3052,10 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         }
         var mutationGuard = lockProductionDocuments(List.of(id));
         StockDocument d = requireDrawForIssue(id);
+
         requireOperationWritable(
                 d, "stock_doc:reverse_issue", "无权取消此生产领料单出库");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_documents",d);
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
         req=canonicalIssueRequest(req,items,true);
         requireReverseIssueDimensions(d, items, req);
@@ -3049,6 +3076,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         Map<UUID,UUID> materialMovements=new LinkedHashMap<>();
         for (StockDocIssueRequest.Line line : req.getLines()) {
             StockDocumentItem item = findItem(items, line.getItemId());
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_document_items",item);
             // 取消出库不带重量: 库存账按本行已出库流水的重量镜像退回; 领料观测从最近一次起倒序红冲到覆盖取消数量。
             materialMovements.put(item.getId(),movementIdOf(applyIssueMovement(d, item, line.getQty(), ts, -1, null, null)));
             reverseDrawObservations(item.getId(), line.getQty().multiply(unitRateOrOne(item.getUnitRate())));
@@ -3058,6 +3086,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         stockService.bindProductionMovements(prepared.eventId(),materialMovements);
         for (StockDocIssueRequest.Line line : req.getLines()) {
             StockDocumentItem item = findItem(items, line.getItemId());
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_document_items",item);
             item.setIssuedQty(item.getIssuedQty().subtract(line.getQty()));
             itemRepo.save(item);
         }

@@ -84,4 +84,9 @@ public class QuoteDetail extends com.uten.imp.common.history.DocumentHistoryMeta
         writable = false;
         allowedActions = java.util.List.of();
     }
+
+
+    public boolean isWritable() { return !isHistoryReadOnly() && writable; }
+
+    public List<String> getAllowedActions() { return isHistoryReadOnly() ? List.of() : allowedActions; }
 }

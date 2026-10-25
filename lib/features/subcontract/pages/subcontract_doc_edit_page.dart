@@ -284,7 +284,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         final repo = ref.read(subcontractRepositoryProvider(widget.docType));
         final d = await repo.detail(widget.id!);
         if (!accepts()) return;
-        if (widget.docType == SubcontractDocType.receipt && d.legacyImported) {
+        if (d.legacyImported) {
           if (!mounted) return;
           context.appWarning(historicalReceiptReadOnlyMessage, force: true);
           context.replace(

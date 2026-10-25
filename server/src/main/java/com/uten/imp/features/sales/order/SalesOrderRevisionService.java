@@ -107,7 +107,7 @@ public class SalesOrderRevisionService {
                 SELECT CAST(log.before_snapshot AS text), CAST(log.after_snapshot AS text),
                        COALESCE(employee.full_name, ''), log.changed_at
                 FROM sales_order_revision_logs log
-                JOIN sales_orders o ON o.id = log.order_id
+                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o ON o.id = log.order_id
                 LEFT JOIN employees employee ON employee.id = log.changed_by_employee_id
                 WHERE log.order_id = :id
                   AND log.changed_at > COALESCE(o.finance_confirmed_at, to_timestamp(0))
@@ -124,7 +124,7 @@ public class SalesOrderRevisionService {
         List<Object[]> quantityRows = em.createNativeQuery("""
                 SELECT changes.order_item_id, changes.old_qty, changes.new_qty, changes.changed_at
                 FROM sales_order_qty_change_logs changes
-                JOIN sales_orders orders ON orders.id = changes.order_id
+                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) orders ON orders.id = changes.order_id
                 WHERE changes.order_id = :id
                   AND changes.changed_at > COALESCE(orders.finance_confirmed_at, to_timestamp(0))
                 ORDER BY changes.changed_at, changes.id

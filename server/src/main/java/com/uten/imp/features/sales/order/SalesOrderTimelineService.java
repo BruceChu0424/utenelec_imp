@@ -381,7 +381,7 @@ public class SalesOrderTimelineService {
             UUID orderId, boolean hasPlans, List<OrderProgressTimelineEvent> events) {
         List<Object[]> rows = objectRows(em.createNativeQuery("""
                 SELECT COALESCE(SUM(i.qty), 0), COALESCE(SUM(i.produced_qty), 0)
-                FROM sales_order_items i
+                FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i
                 WHERE i.order_id = :oid AND i.is_deleted = FALSE
                 """).setParameter("oid", orderId));
         if (rows.isEmpty()) return;

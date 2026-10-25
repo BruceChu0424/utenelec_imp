@@ -159,7 +159,8 @@ public class SubcontractMaterialIssueService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<MaterialIssueListItem> list(MaterialIssueQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<MaterialIssueListItem> list(MaterialIssueQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final MaterialIssueQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         boolean priceMasked = subcontractPriceMasked();
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
@@ -167,25 +168,27 @@ public class SubcontractMaterialIssueService {
         Page<SubcontractMaterialIssue> p = issueRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<MaterialIssueListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
-        return p.stream().noneMatch(SubcontractMaterialIssue::isDeleted) ? result
-                : retainedRecords.page(result, "subcontract_material_issues", p.getContent());
+        return retainedRecords.page(result, "subcontract_material_issues", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
-    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(MaterialIssueQueryFilter f) {
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(MaterialIssueQueryFilter originalFilter) {
+        final MaterialIssueQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, SubcontractMaterialIssue.class, issueSpec(f), "billNo"));
     }
 
     /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）：个人归属 + 委外出仓池。 */
-    private Specification<SubcontractMaterialIssue> issueSpec(MaterialIssueQueryFilter f) {
+    private Specification<SubcontractMaterialIssue> issueSpec(MaterialIssueQueryFilter originalFilter) {
+        final MaterialIssueQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope();
         boolean outboundPool = access.hasAuthority(OUTBOUND_VIEW);
         return (Root<SubcontractMaterialIssue> root,
                                                         jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                         CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             Predicate owned = access.readablePredicate(root, cb, "makerId", readScope);
@@ -198,7 +201,7 @@ public class SubcontractMaterialIssueService {
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             // 2026-09-25 单号列统一：单据号表头值筛选（精确匹配）。
@@ -235,7 +238,7 @@ public class SubcontractMaterialIssueService {
     public void lockPlatformColumnSave(UUID id, MaterialIssueSaveRequest request) {
         tx.bind();
         var guard = lockIssueRequest(id, request);
-        requireIssueForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_material_issues",requireIssueForUpdate(id));
         if (request != null && request.getItemIds() != null) {
             com.uten.imp.common.validation.ExactDocumentSelection.requireComplete(request.getItemIds(),
                     itemRepo.findByIssueIdOrderByLineNoAsc(id).stream().map(SubcontractMaterialIssueItem::getId).toList());
@@ -250,7 +253,9 @@ public class SubcontractMaterialIssueService {
         tx.bind();
         var mutationGuard=lockIssueRequest(id,req);
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
+
         Set<UUID> existingPlanItemIds = requireIssueWritable(r, "subcontract_material_issue:edit");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_material_issues",r);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -302,7 +307,9 @@ public class SubcontractMaterialIssueService {
         tx.bind();
         var mutationGuard=mutationLocks.materialIssue(id);
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
+
         Set<UUID> planItemIds = requireIssueWritable(r, "subcontract_material_issue:delete");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_material_issues",r);
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         if (!planItemIds.isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT,
@@ -422,12 +429,14 @@ public class SubcontractMaterialIssueService {
         tx.bind();
         var mutationGuard=mutationLocks.materialIssue(id);
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
+
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
         // 幂等/状态门禁只依赖已加锁的单据头，必须先于权限所需的计划明细读取，
         // 避免重复审核触碰任何明细，更不能重复产生库存移动。
         requireIssueWritable(r, "subcontract_material_issue:approve");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_material_issues",r);
         mutationGuard.verifyUnchanged();
         if (r.getWarehouseId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "发料单需指定发出仓");
@@ -590,6 +599,7 @@ public class SubcontractMaterialIssueService {
         tx.bind();
         var mutationGuard=mutationLocks.materialIssue(id);
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_material_issues",r);
         mutationGuard.verifyUnchanged();
         List<SubcontractMaterialIssueItem> items = itemRepo.findByIssueIdOrderByLineNoAsc(id);
         requireIssueReversible(r,items);
@@ -995,7 +1005,6 @@ public class SubcontractMaterialIssueService {
     }
 
     private MaterialIssueDetail finishHistory(MaterialIssueDetail view, SubcontractMaterialIssue entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "subcontract_material_issues", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

@@ -108,7 +108,8 @@ public class PurchaseReturnService {
     private CommercialPriceVisibility commercialPriceVisibility;
 
     @Transactional(readOnly = true)
-    public PageResponse<ReturnListItem> list(ReturnQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<ReturnListItem> list(ReturnQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final ReturnQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         boolean priceMasked = purchasePriceMasked();
         Specification<PurchaseReturn> spec = returnSpec(f);
         // 列排序：sort 命中白名单(日期/金额/单据号)才按实体属性排序，否则默认 billDate DESC。
@@ -122,23 +123,25 @@ public class PurchaseReturnService {
         Page<PurchaseReturn> p = returnRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<ReturnListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
-        return p.stream().noneMatch(PurchaseReturn::isDeleted) ? result
-                : retainedRecords.page(result, "purchase_returns", p.getContent());
+        return retainedRecords.page(result, "purchase_returns", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
-    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(ReturnQueryFilter f) {
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(ReturnQueryFilter originalFilter) {
+        final ReturnQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, PurchaseReturn.class, returnSpec(f), "billNo"));
     }
 
     /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）。 */
-    private Specification<PurchaseReturn> returnSpec(ReturnQueryFilter f) {
+    private Specification<PurchaseReturn> returnSpec(ReturnQueryFilter originalFilter) {
+        final ReturnQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope();
         return (Root<PurchaseReturn> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                               CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -159,7 +162,7 @@ public class PurchaseReturnService {
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             // 2026-09-25 单号列统一：单据号表头值筛选（精确匹配）。
@@ -212,7 +215,7 @@ public class PurchaseReturnService {
     public void lockPlatformColumnSave(UUID id, ReturnSaveRequest request) {
         tx.bind();
         var guard = lockReturnRequest(id, request);
-        requireReturnForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_returns",requireReturnForUpdate(id));
         guard.verifyUnchanged();
     }
 
@@ -223,7 +226,9 @@ public class PurchaseReturnService {
         tx.bind();
         var mutationGuard=lockReturnRequest(id,req);
         PurchaseReturn r = requireReturnForUpdate(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_returns",r);
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         mutationGuard.verifyUnchanged();
         if(req.isConfirmGiftSemantics())r.setQuantitySemantics(com.uten.imp.common.finance.ProcurementQuantities.EXTRA_GIFT);
@@ -241,7 +246,9 @@ public class PurchaseReturnService {
         tx.bind();
         var mutationGuard=mutationLocks.productReturn("PURCHASE",id);
         PurchaseReturn r = requireReturnForUpdate(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_returns",r);
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         mutationGuard.verifyUnchanged();
         r.setDeleted(true);
@@ -268,11 +275,13 @@ public class PurchaseReturnService {
         periodIdentityGuard.requireOpenAtBillDate(periodIdentity, "采购退货审核");
         var mutationGuard=mutationLocks.productReturn("PURCHASE",id);
         PurchaseReturn r = requireReturnForUpdate(id);
+
         mutationGuard.verifyUnchanged();
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_returns",r);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (r.getWarehouseId() == null) throw new ApiException(ErrorCode.BUSINESS, "退货单需指定仓库");
@@ -411,6 +420,7 @@ public class PurchaseReturnService {
         periodIdentityGuard.requireOpenToday(periodIdentity, "采购退货红冲");
         var mutationGuard=mutationLocks.productReturn("PURCHASE",id);
         PurchaseReturn r = requireReturnForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_returns",r);
         mutationGuard.verifyUnchanged();
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
@@ -778,7 +788,6 @@ public class PurchaseReturnService {
     }
 
     private ReturnDetail finishHistory(ReturnDetail view, PurchaseReturn entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "purchase_returns", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

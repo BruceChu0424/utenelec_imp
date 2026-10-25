@@ -172,7 +172,7 @@ public class SalesQuoteFinanceService {
             return Map.of("pending", 0L);
         }
         Number n = (Number) em.createNativeQuery(
-                "SELECT COUNT(*) FROM sales_quotes o WHERE o.is_deleted = FALSE AND o.status = 2")
+                "SELECT COUNT(*) FROM (SELECT * FROM sales_quotes archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_quotes',archive_origin.id)) o WHERE o.is_deleted = FALSE AND o.status = 2")
                 .getSingleResult();
         return Map.of("pending", n.longValue());
     }
@@ -340,6 +340,7 @@ public class SalesQuoteFinanceService {
         tx.bind();
         requireEligibleReviewer();
         SalesQuote q = lockForDecision(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         requirePendingFinance(q);
         SalesQuoteService.requireRevision(q, req.expectedRevision());
         claimGuard.requireActiveClaimByMe(TARGET, id.toString(), req.expectedClaimId());
@@ -361,6 +362,7 @@ public class SalesQuoteFinanceService {
         List<UUID> needMaster = new ArrayList<>();
         for (QuoteFinanceEditRequest.Line edit : edits) {
             SalesQuoteItem item = byId.get(edit.itemId());
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quote_items",item);
             if (item == null) {
                 throw new ApiException(ErrorCode.CONFLICT, "报价明细已变化, 请刷新后再核价");
             }
@@ -386,6 +388,7 @@ public class SalesQuoteFinanceService {
         boolean baseCurrency = quotes.isBaseCurrency(q.getCurrencyId());
         for (QuoteFinanceEditRequest.Line edit : edits) {
             SalesQuoteItem item = byId.get(edit.itemId());
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quote_items",item);
             String label = lineLabel(item);
             if (edit.discount() != null) {
                 if (item.getPrice() == null) {
@@ -435,6 +438,7 @@ public class SalesQuoteFinanceService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请写明退回原因, 告诉销售要改什么");
         }
         SalesQuote q = lockForDecision(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         requirePendingFinance(q);
         SalesQuoteService.requireRevision(q, req.expectedRevision());
         claimGuard.requireActiveClaimByMe(TARGET, id.toString(), req.expectedClaimId());
@@ -463,6 +467,7 @@ public class SalesQuoteFinanceService {
         tx.bind();
         requireEligibleReviewer();
         SalesQuote q = lockForDecision(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         requirePendingFinance(q);
         SalesQuoteService.requireRevision(q, req == null ? null : req.expectedRevision());
         claimGuard.requireActiveClaimByMe(TARGET, id.toString(), req.expectedClaimId());
@@ -507,6 +512,7 @@ public class SalesQuoteFinanceService {
                     "无法重新核价：请核对账号是否启用、员工是否在职，以及报价核价查看和重新核价权限");
         }
         SalesQuote q = lockForDecision(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         if (q.getStatus() == null || q.getStatus() != SalesQuoteService.STATUS_CONFIRMED
                 || q.getFinanceConfirmedAt() == null) {
             throw new ApiException(ErrorCode.CONFLICT, "只有已确认的报价可以重新核价");

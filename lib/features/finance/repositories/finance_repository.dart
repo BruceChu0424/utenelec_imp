@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/documents/document_unapproval.dart';
 // 钱流仓库（5 单据统一 + 应收应付台账 + 账户流水 + 报表）。
 //
@@ -47,6 +48,7 @@ enum FinanceRecordOrigin {
 class FinanceDocFilter {
   const FinanceDocFilter({
     this.keyword,
+    this.origin,
     this.partyId, // receipt→clientId / payment→supplierId
     this.accountId,
     this.outAccountId, // bankTransfer
@@ -59,6 +61,7 @@ class FinanceDocFilter {
     this.billNo,
     this.view,
   });
+  final BusinessDocumentOrigin? origin;
   final String? keyword;
   final String? partyId;
   final String? accountId;
@@ -102,6 +105,7 @@ class FinanceRepository {
     final query = <String, dynamic>{
       'page': page,
       'size': size,
+      'originScope': ?filter.origin?.apiValue,
       if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
         'keyword': filter.keyword!.trim(),
       if (filter.partyId != null) _partyKey: filter.partyId,
@@ -137,6 +141,7 @@ class FinanceRepository {
     FinanceDocFilter filter = const FinanceDocFilter(),
   }) async {
     final query = <String, dynamic>{
+      'originScope': ?filter.origin?.apiValue,
       if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
         'keyword': filter.keyword!.trim(),
       if (filter.partyId != null) _partyKey: filter.partyId,

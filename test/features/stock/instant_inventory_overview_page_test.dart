@@ -31,6 +31,51 @@ const _scope = InstantInventoryScope(
 );
 
 void main() {
+  testWidgets('计量待核沿既有关注项筛查，后补主档单位也不贴到历史账面数', (tester) async {
+    final api = _api();
+    api.onInventory = (query) async {
+      if (query['attention'] == 'MISSING_UNIT') {
+        return <String, dynamic>{
+          'items': <Map<String, dynamic>>[
+            {
+              'goodsId': 'held',
+              'name': '历史计量待核货品',
+              'qty': 17.5,
+              'unitName': 'kg',
+              'measurementPending': true,
+              'measurementHoldReason': 'LEGACY_QUANTITY_BASIS_UNPROVEN',
+              'availableKnown': false,
+            },
+          ],
+          'page': 1,
+          'size': 8,
+          'total': 1,
+          'totalPages': 1,
+        };
+      }
+      final response = api.response();
+      final missing = (response['totals'] as List)
+          .cast<Map<String, dynamic>>()
+          .singleWhere((total) => total['key'] == 'missing_unit_rows');
+      ((missing['groups'] as List).single as Map<String, dynamic>)['value'] = 2;
+      return response;
+    };
+    await _pump(tester, api: api);
+    await _selectRisk(tester, 'MISSING_UNIT');
+    expect(api.inventoryRequests.last['attention'], 'MISSING_UNIT');
+    expect(find.text('计量待核清单'), findsOneWidget);
+    expect(
+      find.text('历史计量待核 · 账面数仅核对'),
+      findsWidgets,
+      reason: tester
+          .widgetList<Text>(find.byType(Text))
+          .map((text) => text.data)
+          .whereType<String>()
+          .join('\n'),
+    );
+    expect(find.text('17.5 kg'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('总览直达和刷新重建全部筛选，风险明细使用相同范围', (tester) async {
     final api = _api();
     final router = await _pump(tester, api: api, scope: _scope);

@@ -176,7 +176,7 @@ public class ProductionExecutionSegmentService {
     private void synchronizeUnissuedDrawAssignments(
             UUID segmentId, SegmentAssignmentRequest request, long resultingVersion) {
         List<UUID> documents = NativeQueryResults.typedRows(em.createNativeQuery("""
-                SELECT document.id FROM stock_documents document
+                SELECT document.id FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document
                 WHERE fn_execution_draw_assignment_syncable(document.id,:segment)
                   AND (document.department_id IS DISTINCT FROM CAST(:workshop AS uuid)
                     OR document.worker_id IS DISTINCT FROM CAST(:employee AS uuid))
@@ -738,7 +738,7 @@ public class ProductionExecutionSegmentService {
                                 JOIN production_planning_packages p
                                   ON p.id = s.package_id
                                  AND p.is_deleted = FALSE
-                                JOIN production_plans plan
+                                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
                                   ON plan.id = s.plan_id
                                  AND plan.is_deleted = FALSE
                                 WHERE s.id = :segmentId
@@ -990,13 +990,13 @@ public class ProductionExecutionSegmentService {
                         FROM v_production_execution_segments s
                         JOIN production_execution_segments base
                           ON base.id = s.id
-                        JOIN production_plans plan ON plan.id=s.plan_id
+                        JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=s.plan_id
                         JOIN production_planning_packages package ON package.id=s.package_id
                         LEFT JOIN LATERAL (
                             SELECT COALESCE(bool_and(fn_production_draw_fully_requested(document.id)),FALSE) AS fully_requested,
                                    COALESCE(bool_or(NOT fn_production_draw_fully_requested(document.id)),FALSE) AS has_unrequested
                             FROM production_planning_package_documents mapping
-                            JOIN stock_documents document ON document.id=mapping.document_id
+                            JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document ON document.id=mapping.document_id
                             WHERE mapping.execution_segment_id=s.id AND mapping.document_type='DRAW'
                               AND NOT document.is_deleted AND document.status IN (0,1)
                         ) draw_request ON TRUE
@@ -1011,8 +1011,8 @@ public class ProductionExecutionSegmentService {
                                        WHERE adjustment.source_report_item_id =
                                              item.id
                                    )), 0) AS effective_reported_qty
-                            FROM production_daily_report_items item
-                            JOIN production_daily_reports report
+                            FROM (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_report_items',archive_origin.id)) item
+                            JOIN (SELECT * FROM production_daily_reports archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_reports',archive_origin.id)) report
                               ON report.id = item.report_id
                             WHERE item.execution_segment_id = s.id
                               AND report.is_deleted = FALSE
@@ -1060,9 +1060,9 @@ public class ProductionExecutionSegmentService {
                                              AND rejected_residual.is_deleted =
                                                  FALSE), 0)
                                        AS rejected_qty
-                             FROM stock_document_items item
-                             LEFT JOIN production_daily_report_items source ON source.id = item.source_daily_report_item_id
-                             JOIN stock_documents document
+                             FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item
+                             LEFT JOIN (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_report_items',archive_origin.id)) source ON source.id = item.source_daily_report_item_id
+                             JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document
                               ON document.id = item.doc_id
                               AND document.doc_type = 'FINISHED_IN'
                               AND document.is_deleted = FALSE
@@ -1076,7 +1076,7 @@ public class ProductionExecutionSegmentService {
                                  confirmation.id
                              AND confirmation_item.stock_document_item_id =
                                  item.id
-                            LEFT JOIN stock_documents rejected_residual
+                            LEFT JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) rejected_residual
                               ON rejected_residual.id =
                                  confirmation.residual_stock_document_id
                              WHERE item.execution_segment_id = s.id
@@ -1150,7 +1150,7 @@ public class ProductionExecutionSegmentService {
     private UUID requirePlanOwner(UUID planId) {
         List<?> owners = em.createNativeQuery("""
                         SELECT maker_id
-                        FROM production_plans
+                        FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) production_plans
                         WHERE id = :id AND is_deleted = FALSE
                         """)
                 .setParameter("id", planId)

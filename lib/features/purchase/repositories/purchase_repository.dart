@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/documents/document_unapproval.dart';
 // 采购单据仓库（4 单据统一，按 docType 切端点）。
 //
@@ -18,6 +19,7 @@ import '../models/purchase_order_print_document.dart';
 class PurchaseDocFilter {
   const PurchaseDocFilter({
     this.keyword,
+    this.origin,
     this.supplierId,
     this.warehouseId,
     this.status,
@@ -28,6 +30,7 @@ class PurchaseDocFilter {
     this.billNo,
     this.columnSearch = const {},
   });
+  final BusinessDocumentOrigin? origin;
   final String? keyword;
   final String? supplierId;
   final String? warehouseId;
@@ -70,6 +73,7 @@ class PurchaseRepository {
       ...filter.columnSearchQuery,
       'page': page,
       'size': size,
+      'originScope': ?filter.origin?.apiValue,
       if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
         'keyword': filter.keyword!.trim(),
       if (filter.supplierId != null) 'supplierId': filter.supplierId,
@@ -95,6 +99,7 @@ class PurchaseRepository {
   }) async {
     final query = <String, dynamic>{
       ...filter.columnSearchQuery,
+      'originScope': ?filter.origin?.apiValue,
       if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
         'keyword': filter.keyword!.trim(),
       if (filter.supplierId != null) 'supplierId': filter.supplierId,

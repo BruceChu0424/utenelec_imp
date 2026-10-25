@@ -88,4 +88,9 @@ public class StockDocDetail extends com.uten.imp.common.history.DocumentHistoryM
         canDelete = false;
         restrictionReason = isDeleted() ? "已删除单据历史只读，原始数量及来源保留" : "历史查看只读";
     }
+
+
+    public boolean isCanEdit() { return !isHistoryReadOnly() && canEdit; }
+    public boolean isCanDelete() { return !isHistoryReadOnly() && canDelete; }
+    public String getRestrictionReason() { return isLegacyImported() ? com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.READ_ONLY_REASON : restrictionReason; }
 }

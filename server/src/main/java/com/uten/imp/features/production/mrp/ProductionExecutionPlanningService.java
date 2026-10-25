@@ -70,7 +70,7 @@ public class ProductionExecutionPlanningService {
     public boolean fromMaterialAnalysis(UUID planId) {
         Number count = (Number) em.createNativeQuery("""
                         SELECT COUNT(*)
-                        FROM production_plans
+                        FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) production_plans
                         WHERE id = :planId
                           AND material_analysis_id IS NOT NULL
                           AND is_deleted = FALSE
@@ -303,8 +303,8 @@ public class ProductionExecutionPlanningService {
                                        component.code,
                                        component.name,
                                        component.issue_method
-                                FROM production_plan_items i
-                                JOIN production_plans p
+                                FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) i
+                                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) p
                                   ON p.id = i.plan_id
                                  AND p.is_deleted = FALSE
                                 JOIN goods product
@@ -383,7 +383,7 @@ public class ProductionExecutionPlanningService {
         @SuppressWarnings("unchecked")
         List<UUID> allSourceItemIds = ((List<UUID>) em.createNativeQuery("""
                         SELECT id
-                        FROM production_plan_items
+                        FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) production_plan_items
                         WHERE plan_id = :planId
                           AND is_deleted = FALSE
                           AND COALESCE(qty, 0) > 0
@@ -575,8 +575,8 @@ public class ProductionExecutionPlanningService {
                        i.plan_begin_date, i.plan_end_date, p.worker_id,
                        g.code, g.name, i.updated_at,
                        p.material_analysis_id
-                FROM production_plan_items i
-                JOIN production_plans p ON p.id = i.plan_id
+                FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) i
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) p ON p.id = i.plan_id
                                        AND p.is_deleted = FALSE
                 JOIN goods g ON g.id = i.goods_id AND g.is_deleted = FALSE
                 WHERE i.plan_id = :planId AND i.id IN (:ids)
@@ -643,7 +643,7 @@ public class ProductionExecutionPlanningService {
         List<Object[]> analysisIdentity = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                         SELECT material_analysis_id, material_analysis_item_id
-                        FROM production_plans
+                        FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) production_plans
                         WHERE id = :planId AND is_deleted = FALSE
                           AND material_analysis_id IS NOT NULL
                         """).setParameter("planId", planId));

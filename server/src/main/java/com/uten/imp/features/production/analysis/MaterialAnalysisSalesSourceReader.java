@@ -39,7 +39,7 @@ final class MaterialAnalysisSalesSourceReader {
             for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                     SELECT i.id,i.goods_id,i.color_id,i.unit_id,COALESCE(i.deliver_date,o.deliver_date),
                            o.status,o.is_stopped,o.is_closed,o.is_deleted,i.is_deleted,o.finance_confirmed
-                    FROM sales_order_items i JOIN sales_orders o ON o.id=i.order_id
+                    FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o ON o.id=i.order_id
                     JOIN goods g ON g.id=i.goods_id
                     WHERE i.id IN (:ids) ORDER BY i.id
                     """).setParameter("ids",batch))) {

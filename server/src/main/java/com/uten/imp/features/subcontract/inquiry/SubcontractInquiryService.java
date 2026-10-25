@@ -81,7 +81,8 @@ public class SubcontractInquiryService {
     private final CommercialPriceVisibility commercialPriceVisibility;
 
     @Transactional(readOnly = true)
-    public PageResponse<InquiryListItem> list(InquiryQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<InquiryListItem> list(InquiryQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final InquiryQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         boolean priceMasked = subcontractPriceMasked();
         // 2026-09-25 单号列统一：billNo 进两分支白名单（价格遮蔽只挡金额排序）。
         Pageable pageable = Pageables.of(page, size,
@@ -93,24 +94,26 @@ public class SubcontractInquiryService {
         Page<SubcontractInquiry> p = inquiryRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<InquiryListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
-        return p.stream().noneMatch(SubcontractInquiry::isDeleted) ? result
-                : retainedRecords.page(result, "subcontract_inquiries", p.getContent());
+        return retainedRecords.page(result, "subcontract_inquiries", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
-    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(InquiryQueryFilter f) {
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(InquiryQueryFilter originalFilter) {
+        final InquiryQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, SubcontractInquiry.class, inquirySpec(f), "billNo"));
     }
 
     /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）。 */
-    private Specification<SubcontractInquiry> inquirySpec(InquiryQueryFilter f) {
+    private Specification<SubcontractInquiry> inquirySpec(InquiryQueryFilter originalFilter) {
+        final InquiryQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope();
         return (Root<SubcontractInquiry> root,
                                                   jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                   CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -120,7 +123,7 @@ public class SubcontractInquiryService {
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             // 2026-09-25 单号列统一：单据号表头值筛选（精确匹配）。
@@ -171,7 +174,9 @@ public class SubcontractInquiryService {
     public InquiryDetail update(UUID id, InquirySaveRequest req) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外询价单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_inquiries",r);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -188,7 +193,9 @@ public class SubcontractInquiryService {
     public void delete(UUID id) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外询价单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_inquiries",r);
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
@@ -201,7 +208,9 @@ public class SubcontractInquiryService {
     public InquiryDetail approve(UUID id) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外询价单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_inquiries",r);
         em.refresh(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 锁行并重读最新状态，防陈旧快照绕过状态守卫（TOCTOU，对齐 M28）
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -243,6 +252,7 @@ public class SubcontractInquiryService {
     public InquiryDetail reverse(UUID id) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_inquiries",r);
         em.refresh(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // Same row lock and refreshed state as the original reversal.
         requireInquiryReversible(r);
         r.setStatus(STATUS_REVERSED);
@@ -397,7 +407,6 @@ public class SubcontractInquiryService {
     }
 
     private InquiryDetail finishHistory(InquiryDetail view, SubcontractInquiry entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "subcontract_inquiries", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

@@ -335,10 +335,10 @@ public class PreplanInboundAllocationProjectionService
                 JOIN procurement_inspection_items inspection
                   ON inspection.id=event.inspection_item_id
                 LEFT JOIN warehouses warehouse ON warehouse.id=inspection.warehouse_id
-                LEFT JOIN purchase_receipt_items purchase_item
+                LEFT JOIN (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipt_items',archive_origin.id)) purchase_item
                   ON inspection.receipt_type='PURCHASE'
                  AND purchase_item.id=inspection.receipt_item_id
-                LEFT JOIN subcontract_receipt_items subcontract_item
+                LEFT JOIN (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) subcontract_item
                   ON inspection.receipt_type='SUBCONTRACT'
                  AND subcontract_item.id=inspection.receipt_item_id
                 LEFT JOIN LATERAL (
@@ -530,7 +530,7 @@ public class PreplanInboundAllocationProjectionService
                            segment.responsible_employee_id AS responsible_id,
                            responsible.full_name AS responsible_name
                     FROM production_material_analysis_plan_links link
-                    JOIN production_plans plan ON plan.id=link.plan_id
+                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=link.plan_id
                      AND plan.status=1 AND plan.is_deleted=FALSE
                      AND plan.is_canceled=FALSE
                     JOIN production_planning_packages package
@@ -603,7 +603,7 @@ public class PreplanInboundAllocationProjectionService
                  AND demand.is_deleted=FALSE
                 JOIN production_planning_packages package ON package.id=demand.package_id
                  AND package.status='CONFIRMED' AND package.is_deleted=FALSE
-                JOIN production_plans plan ON plan.id=demand.plan_id
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=demand.plan_id
                 LEFT JOIN production_execution_segments segment
                   ON segment.id=demand.execution_segment_id
                  AND segment.is_deleted=FALSE
@@ -644,10 +644,10 @@ public class PreplanInboundAllocationProjectionService
                   ON batch.id=item.batch_id
                 JOIN procurement_inspection_items inspection
                   ON inspection.id=item.inspection_item_id
-                LEFT JOIN purchase_receipt_items purchase_item
+                LEFT JOIN (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipt_items',archive_origin.id)) purchase_item
                   ON inspection.receipt_type='PURCHASE'
                  AND purchase_item.id=inspection.receipt_item_id
-                LEFT JOIN subcontract_receipt_items subcontract_item
+                LEFT JOIN (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) subcontract_item
                   ON inspection.receipt_type='SUBCONTRACT'
                  AND subcontract_item.id=inspection.receipt_item_id
                 LEFT JOIN warehouses warehouse ON warehouse.id=item.warehouse_id
@@ -678,10 +678,10 @@ public class PreplanInboundAllocationProjectionService
                 JOIN procurement_iqc_stock_in_batches batch ON batch.id=item.batch_id
                 JOIN procurement_inspection_items inspection
                   ON inspection.id=item.inspection_item_id
-                LEFT JOIN purchase_receipt_items purchase_item
+                LEFT JOIN (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipt_items',archive_origin.id)) purchase_item
                   ON inspection.receipt_type='PURCHASE'
                  AND purchase_item.id=inspection.receipt_item_id
-                LEFT JOIN subcontract_receipt_items subcontract_item
+                LEFT JOIN (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) subcontract_item
                   ON inspection.receipt_type='SUBCONTRACT'
                  AND subcontract_item.id=inspection.receipt_item_id
                 LEFT JOIN warehouses warehouse ON warehouse.id=item.warehouse_id
@@ -800,7 +800,7 @@ public class PreplanInboundAllocationProjectionService
                 FROM %s allocation
                 JOIN production_material_demands demand
                   ON demand.id=allocation.demand_id
-                JOIN production_plans plan ON plan.id=demand.plan_id
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=demand.plan_id
                 LEFT JOIN production_execution_segments segment
                   ON segment.id=demand.execution_segment_id
                 LEFT JOIN warehouses warehouse ON warehouse.id=demand.warehouse_id
@@ -891,7 +891,7 @@ public class PreplanInboundAllocationProjectionService
                 JOIN stock_reservations target_reservation
                   ON target_reservation.id=formal.target_stock_reservation_id
                  AND target_reservation.demand_id=demand.id
-                JOIN production_plans plan ON plan.id=demand.plan_id
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=demand.plan_id
                 LEFT JOIN production_execution_segments segment
                   ON segment.id=demand.execution_segment_id
                 JOIN production_material_analysis_materials material

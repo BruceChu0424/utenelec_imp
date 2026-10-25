@@ -501,6 +501,7 @@ class _SubcontractOrderEditPageState
           .detail(widget.id!);
       if (!mounted || !formDraftIdentityIsCurrent) return;
       final writable =
+          !d.legacyImported &&
           d.status == kSubcontractStatusDraft &&
           d.canEdit &&
           await loadDocumentOwnerCanWrite(

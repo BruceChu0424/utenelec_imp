@@ -44,6 +44,7 @@ public class ProductionPlanningDraftService {
             GeneratePlanningPackageRequest request) {
         tx.bind();
         ProductionPlan plan = lockDraftPlan(planId);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_plans",plan);
         String requestHash =
                 ProductionExecutionPackageCommandService.requestHash(request);
 

@@ -87,7 +87,7 @@ public class MaterialAnalysisOverproductionRateService {
                 """).setParameter("analysis",analysis).setParameter("sources",sources).getSingleResult()).longValue();
         if(found!=sources.size())throw new ApiException(ErrorCode.NOT_FOUND,"分析来源不存在或不可见");
         return NativeQueryResults.typedRows(em.createNativeQuery("""
-                SELECT id FROM production_plans WHERE material_analysis_id=:analysis
+                SELECT id FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) production_plans WHERE material_analysis_id=:analysis
                     AND material_analysis_item_id IN (:sources) AND NOT is_deleted
                     AND status IN(0,1) AND NOT is_canceled ORDER BY id
                 """).setParameter("analysis",analysis).setParameter("sources",sources),UUID.class);

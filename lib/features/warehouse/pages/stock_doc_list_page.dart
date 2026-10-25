@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 // 仓库单据列表页（按 docType 参数化）：标题行 + 状态筛选 + 主档表格（tap→详情）。
@@ -212,6 +213,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
         .list(
           page: _list.pageNum,
           filter: StockDocFilter(
+            origin: seg.history ? BusinessDocumentOrigin.all : null,
             view: seg.history
                 ? WarehouseTaskView.history
                 : WarehouseTaskView.active,
@@ -245,6 +247,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
             .read(stockDocRepositoryProvider(widget.docType))
             .billNoFacets(
               filter: StockDocFilter(
+                origin: seg.history ? BusinessDocumentOrigin.all : null,
                 view: seg.history
                     ? WarehouseTaskView.history
                     : WarehouseTaskView.active,
@@ -389,7 +392,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
         key: 'status',
         label: '状态',
         width: 72,
-        value: (it) => stockStatusLabel(it.status),
+        value: (it) => it.legacyId != null
+            ? importedBusinessHistoryLabel
+            : stockStatusLabel(it.status),
         // 状态分类色铺整格底色（ADR-169）：0/1/-1 与采购单据列表同款
         // docStatusBadgeType（草稿灰/已审绿/红冲红）。
         cellColor: (context, it) =>

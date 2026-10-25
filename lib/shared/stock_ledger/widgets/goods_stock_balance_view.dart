@@ -161,6 +161,7 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
   }
 
   Future<void> _openDefectiveMove(BalanceRow row, String kind) async {
+    if (row.measurementPending || !row.availableKnown) return;
     final names = ref.read(masterNameServiceProvider);
     final goods = names.goodsInfo(widget.goodsId);
     final posted = await showDefectiveMoveSheet(
@@ -271,6 +272,7 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
         value: (row) {
           final text = _formatQty(row.qty);
           if (text == null) return '—';
+          if (row.measurementPending) return '$text（${row.measurementNotice}）';
           return unitName.isEmpty ? text : '$text $unitName';
         },
       ),
@@ -315,9 +317,11 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
               '查看流水',
               () => widget.onViewLedger(row.warehouseId, row.colorId),
             ),
-            if (_canCount)
+            if (_canCount && !row.measurementPending && row.availableKnown)
               _action('balance-count-${row.id}', '盘点送审', _openCount),
-            if ((row.qty ?? 0) > 0 &&
+            if (!row.measurementPending &&
+                row.availableKnown &&
+                (row.qty ?? 0) > 0 &&
                 !defective(row) &&
                 channels.contains(DefectiveMoveKind.toDefective))
               _action(
@@ -325,7 +329,9 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
                 l10n.defectiveMoveToDefective,
                 () => _openDefectiveMove(row, DefectiveMoveKind.toDefective),
               ),
-            if ((row.qty ?? 0) > 0 &&
+            if (!row.measurementPending &&
+                row.availableKnown &&
+                (row.qty ?? 0) > 0 &&
                 defective(row) &&
                 channels.contains(DefectiveMoveKind.release))
               _action(

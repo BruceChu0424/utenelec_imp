@@ -958,7 +958,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
             .read(salesRepositoryProvider(widget.docType))
             .detail(widget.id!);
         if (!mounted || !isCurrent()) return;
-        if (!d.writable) {
+        if (d.historyReadOnly || !d.writable) {
           context.appInfo('该单据不在你的可写数据范围内，已切换为只读详情');
           context.replace(
             SalesRoutePath.docDetail(_cfg.type.pathSegment, widget.id!),

@@ -114,7 +114,7 @@ public class AnalysisLinkedSalesOrderService {
                 JOIN production_material_analyses analysis
                   ON analysis.id = analysis_item.analysis_id
                  AND analysis.is_deleted = FALSE
-                JOIN sales_order_items sales_item
+                JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) sales_item
                   ON sales_item.id = analysis_item.sales_order_item_id
                 WHERE analysis_item.analysis_id = :analysisId
                   AND analysis_item.is_deleted = FALSE
@@ -141,7 +141,7 @@ public class AnalysisLinkedSalesOrderService {
                 SELECT o.bill_no, o.bill_date, o.deliver_date, o.client_id, c.name,
                        seller.full_name, o.status, COALESCE(o.finance_confirmed, FALSE),
                        COALESCE(o.is_closed, FALSE), COALESCE(o.is_stopped, FALSE)
-                FROM sales_orders o
+                FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN employees seller
                        ON seller.id = o.seller_id
@@ -177,8 +177,8 @@ public class AnalysisLinkedSalesOrderService {
                            WHERE analysis_item.analysis_id = :analysisId
                              AND analysis_item.sales_order_item_id = i.id
                              AND analysis_item.is_deleted = FALSE) AS in_analysis
-                FROM sales_order_items i
-                JOIN sales_orders o ON o.id = i.order_id
+                FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i
+                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o ON o.id = i.order_id
                 JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units u ON u.id = i.unit_id

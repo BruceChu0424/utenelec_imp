@@ -160,15 +160,15 @@ public class ProductionMaterialIncrementService {
         if(!current.canCancel()||current.rowVersion()!=request.expectedVersion())throw conflict("补料仍有实际领用、结耗、待退料或下游供给，请先按领退料反向链处理");
         List<UUID> documents=NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT DISTINCT document.id FROM production_planning_package_document_items mapping
-                JOIN stock_documents document ON document.id=mapping.document_id AND document.doc_type='DRAW' AND NOT document.is_deleted
+                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document ON document.id=mapping.document_id AND document.doc_type='DRAW' AND NOT document.is_deleted
                 WHERE mapping.demand_id=:demand AND mapping.document_type='DRAW' ORDER BY document.id
                 """).setParameter("demand",current.authorizedDemandId()),UUID.class);
-        if(!documents.isEmpty())em.createNativeQuery("SELECT id FROM stock_documents WHERE id IN(:ids) ORDER BY id FOR UPDATE").setParameter("ids",documents).getResultList();
+        if(!documents.isEmpty())em.createNativeQuery("SELECT id FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) stock_documents WHERE id IN(:ids) ORDER BY id FOR UPDATE").setParameter("ids",documents).getResultList();
         List<Object[]> instructions=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT item.id,GREATEST(fn_production_draw_item_effective_qty(item.id)-COALESCE(item.issued_qty,0),0)
                 FROM production_planning_package_document_items mapping
-                JOIN stock_document_items item ON item.id=mapping.document_item_id AND NOT item.is_deleted
-                JOIN stock_documents document ON document.id=item.doc_id AND document.doc_type='DRAW' AND document.status IN(0,1) AND NOT document.is_deleted
+                JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item ON item.id=mapping.document_item_id AND NOT item.is_deleted
+                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document ON document.id=item.doc_id AND document.doc_type='DRAW' AND document.status IN(0,1) AND NOT document.is_deleted
                 WHERE mapping.demand_id=:demand AND mapping.document_type='DRAW' ORDER BY item.id FOR UPDATE OF item
                 """).setParameter("demand",current.authorizedDemandId()));
         footprint.verifyUnchanged();
@@ -194,7 +194,7 @@ public class ProductionMaterialIncrementService {
                         AND target.material_requirement_mode='DEMANDED' AND plan.status=1 AND NOT plan.is_deleted
                         AND NOT plan.is_closed AND NOT plan.is_canceled AND NOT plan.is_stopped
                         AND package.status='CONFIRMED' AND NOT package.is_deleted),proof.id,COALESCE(proof.source_execution_segment_id,target.id)
-                FROM production_execution_segments target JOIN production_plans plan ON plan.id=target.plan_id
+                FROM production_execution_segments target JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=target.plan_id
                 JOIN production_planning_packages package ON package.id=target.package_id
                 LEFT JOIN production_actual_output_supplement_proofs proof ON proof.supplement_execution_segment_id=target.id
                     AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_reversals reversed WHERE reversed.proof_id=proof.id)

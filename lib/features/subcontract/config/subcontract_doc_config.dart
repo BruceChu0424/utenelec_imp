@@ -28,7 +28,7 @@ import '../../../shared/providers/draft_counts_provider.dart';
 import '../models/subcontract_doc.dart';
 
 const kSubcontractMaterialIssueHistoricalCompatibilityNote =
-    '历史已审核发料保留只读查看与红冲兼容，并可继续作为材料退、损耗单的来源。';
+    '旧系统历史发料仅供查询，不再红冲或作为新业务单据的来源。';
 
 class SubcontractDocConfig {
   const SubcontractDocConfig({

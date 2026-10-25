@@ -22,4 +22,8 @@ public class GoodsStockSummary {
     private boolean weightEstimated;      // 合计含估算重量
     private List<GoodsStockRow> rows;     // 按仓库×颜色展开(含线边仓行、不良品仓行)
     private BigDecimal defectiveQty;      // 不良品仓余量合计(不计入 totalQty)
+
+    /** Totals remain book evidence; consumers must not attach a current unit while any basis is pending. */
+    public boolean isMeasurementPending() { return rows != null && rows.stream().anyMatch(GoodsStockRow::isMeasurementPending); }
+    public boolean isAvailableKnown() { return !isMeasurementPending(); }
 }

@@ -666,7 +666,7 @@ class _WeightCoverage extends StatelessWidget {
             _count(summary.count('stocked_weight_unknown_rows')),
           ),
           const Divider(height: UtenSpacing.s24),
-          _ValueRow('单位未维护', _count(summary.count('missing_unit_rows'))),
+          _ValueRow('计量待核', _count(summary.count('missing_unit_rows'))),
           const SizedBox(height: UtenSpacing.s8),
           Text(
             '覆盖率表示数据完整度，不代表称重准确率。未称部分不会作为零重量参与合计。',
@@ -738,8 +738,11 @@ class _UnitQuantities extends StatelessWidget {
   Widget build(BuildContext context) {
     final rows = summary.units;
     final formatter = NumberFormat('#,##0.####', 'zh_CN');
-    String number(double? value) =>
-        value == null ? '未提供' : formatter.format(value);
+    String number(double? value, {bool unverified = false}) => unverified
+        ? '待核，不作合计'
+        : value == null
+        ? '未提供'
+        : formatter.format(value);
     final theme = Theme.of(context);
     Widget cell(BuildContext cellContext, String text, {bool danger = false}) {
       final scope = MasterDataTableCellScope.maybeOf(cellContext);
@@ -762,8 +765,8 @@ class _UnitQuantities extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (rows.isEmpty) const Text('暂无非零数量汇总'),
-          if (rows.where((row) => row.missingUnit).length > 1) ...[
-            const Text('未维护单位的原始分组分别列示，补全单位后再比较；这些数量不能直接相加。'),
+          if (rows.any((row) => row.missingUnit)) ...[
+            const Text('计量待核组不作数量合计，账面数请按明细核对。主档补单位不会自动解除历史计量待核。'),
             const SizedBox(height: UtenSpacing.s12),
           ],
           if (rows.isNotEmpty)
@@ -798,17 +801,26 @@ class _UnitQuantities extends StatelessWidget {
                               const SizedBox(height: UtenSpacing.s8),
                               _ValueRow(
                                 '库存数量',
-                                number(row.quantity),
+                                number(
+                                  row.quantity,
+                                  unverified: row.missingUnit,
+                                ),
                                 danger: (row.quantity ?? 0) < 0,
                               ),
                               _ValueRow(
                                 '待检量',
-                                number(row.pending),
+                                number(
+                                  row.pending,
+                                  unverified: row.missingUnit,
+                                ),
                                 danger: (row.pending ?? 0) < 0,
                               ),
                               _ValueRow(
                                 '合格待入库',
-                                number(row.pendingStockIn),
+                                number(
+                                  row.pendingStockIn,
+                                  unverified: row.missingUnit,
+                                ),
                                 danger: (row.pendingStockIn ?? 0) < 0,
                               ),
                             ],
@@ -841,10 +853,11 @@ class _UnitQuantities extends StatelessWidget {
                       label: '库存数量',
                       width: 180,
                       emphasized: true,
-                      value: (row) => number(row.quantity),
+                      value: (row) =>
+                          number(row.quantity, unverified: row.missingUnit),
                       cellBuilder: (ctx, row) => cell(
                         ctx,
-                        number(row.quantity),
+                        number(row.quantity, unverified: row.missingUnit),
                         danger: (row.quantity ?? 0) < 0,
                       ),
                     ),
@@ -853,10 +866,11 @@ class _UnitQuantities extends StatelessWidget {
                       label: '待检量',
                       width: 180,
                       emphasized: true,
-                      value: (row) => number(row.pending),
+                      value: (row) =>
+                          number(row.pending, unverified: row.missingUnit),
                       cellBuilder: (ctx, row) => cell(
                         ctx,
-                        number(row.pending),
+                        number(row.pending, unverified: row.missingUnit),
                         danger: (row.pending ?? 0) < 0,
                       ),
                     ),
@@ -865,10 +879,13 @@ class _UnitQuantities extends StatelessWidget {
                       label: '合格待入库',
                       width: 180,
                       emphasized: true,
-                      value: (row) => number(row.pendingStockIn),
+                      value: (row) => number(
+                        row.pendingStockIn,
+                        unverified: row.missingUnit,
+                      ),
                       cellBuilder: (ctx, row) => cell(
                         ctx,
-                        number(row.pendingStockIn),
+                        number(row.pendingStockIn, unverified: row.missingUnit),
                         danger: (row.pendingStockIn ?? 0) < 0,
                       ),
                     ),

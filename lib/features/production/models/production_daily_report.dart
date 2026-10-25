@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 // 生产日报 model（生产管理 · 空结构保未来）。
 //
 // 对应后端 server/src/main/java/com/uten/imp/features/production/dailyreport/：
@@ -561,6 +562,7 @@ class ProductionDailyReportDetail {
   const ProductionDailyReportDetail({
     required this.id,
     this.legacyId,
+    this.historyReadOnly = false,
     this.billNo,
     this.billDate,
     this.warehouseId,
@@ -598,6 +600,8 @@ class ProductionDailyReportDetail {
 
   final String id;
   final int? legacyId;
+  final bool historyReadOnly;
+  bool get legacyImported => historyReadOnly || legacyId != null;
   final String? billNo;
   final String? billDate;
   final String? warehouseId;
@@ -611,7 +615,8 @@ class ProductionDailyReportDetail {
 
   static const approveAction = 'APPROVE';
 
-  bool get canApprove => allowedActions.contains(approveAction);
+  bool get canApprove =>
+      !legacyImported && allowedActions.contains(approveAction);
 
   /// 整张日报的生产参与人员；不证明行级贡献或计件工资归属。
   final List<String> workerIds;
@@ -686,6 +691,7 @@ class ProductionDailyReportDetail {
   ) => ProductionDailyReportDetail(
     id: json['id'] as String,
     legacyId: _asInt(json['legacyId']),
+    historyReadOnly: importedBusinessDocument(json),
     billNo: json['billNo'] as String?,
     billDate: json['billDate'] as String?,
     warehouseId: json['warehouseId'] as String?,

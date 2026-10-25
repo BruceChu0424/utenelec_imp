@@ -6,6 +6,7 @@
 // 服务端计算和落库不经过二进制浮点，也不对金额做破坏聚合/约束的字段级随机加密。
 
 import 'master_facet.dart';
+import '../../../shared/stock_inventory/measurement_hold.dart';
 
 /// Where goods.name_en came from (ADR-134): typed by a person, or learned when
 /// sales saved a customer file. null = no English name yet.
@@ -504,6 +505,17 @@ class GoodsDetail {
   /// 重量合计含估算 (显示「≈」)。
   final bool stockWeightEstimated;
   final List<GoodsStockRow> stockByWarehouse; // 按仓库（×颜色）展开
+  bool get stockMeasurementPending =>
+      stockByWarehouse.any((row) => row.measurementPending);
+  String get stockMeasurementNotice => measurementHoldNotice(
+    stockByWarehouse.any(
+          (row) =>
+              row.measurementPending &&
+              row.measurementHoldReason == historicalMeasurementHold,
+        )
+        ? historicalMeasurementHold
+        : null,
+  );
 
   final String? series; // 物料系列（如塑胶件/五金件）
   final String? stockPlace; // 库位号（仓库摆放位置）
@@ -787,7 +799,10 @@ class GoodsStockRow {
     this.weightEstimated = false,
     this.lineSide = false,
     this.defective = false,
-  });
+    this.measurementPending = false,
+    this.measurementHoldReason,
+    bool availableKnown = true,
+  }) : availableKnown = availableKnown && !measurementPending;
 
   final String? warehouseId;
   final String? warehouseCode;
@@ -807,6 +822,10 @@ class GoodsStockRow {
 
   /// 不良品仓行(ADR-146): 只列出并标「不良品」, 不计入合计。
   final bool defective;
+  final bool measurementPending;
+  final String? measurementHoldReason;
+  final bool availableKnown;
+  String get measurementNotice => measurementHoldNotice(measurementHoldReason);
 
   factory GoodsStockRow.fromJson(Map<String, dynamic> json) => GoodsStockRow(
     warehouseId: json['warehouseId'] as String?,
@@ -819,6 +838,9 @@ class GoodsStockRow {
     weightEstimated: json['weightEstimated'] == true,
     lineSide: json['lineSide'] == true,
     defective: json['defective'] == true,
+    measurementPending: json['measurementPending'] == true,
+    measurementHoldReason: json['measurementHoldReason'] as String?,
+    availableKnown: json['availableKnown'] != false,
   );
 }
 

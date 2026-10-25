@@ -352,7 +352,7 @@ public class MaterialAnalysisService {
         @SuppressWarnings("unchecked")
         List<UUID> orderIds = em.createNativeQuery(
                 """
-                SELECT DISTINCT i.order_id FROM sales_order_items i
+                SELECT DISTINCT i.order_id FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i
                 WHERE i.id IN (:ids)
                 """)
                 .setParameter("ids", salesOrderItemIds)
@@ -398,8 +398,8 @@ public class MaterialAnalysisService {
                  JOIN goods goods ON goods.id=source.goods_id
                  LEFT JOIN colors product_color ON product_color.id=COALESCE(source.color_id,goods.color_id)
                      AND product_color.is_deleted=FALSE
-                 LEFT JOIN sales_order_items sales_item ON sales_item.id=source.sales_order_item_id
-                 LEFT JOIN sales_orders sales_order ON sales_order.id=sales_item.order_id
+                 LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) sales_item ON sales_item.id=source.sales_order_item_id
+                 LEFT JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) sales_order ON sales_order.id=sales_item.order_id
                  WHERE source.analysis_id=analysis.id AND source.is_deleted=FALSE
                    AND (:sourceType='' OR source.source_type=:sourceType)
                 """;
@@ -420,9 +420,9 @@ public class MaterialAnalysisService {
                       SELECT 1
                       FROM production_material_analysis_items source
                       JOIN goods goods ON goods.id = source.goods_id
-                      LEFT JOIN sales_order_items sales_item
+                      LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) sales_item
                         ON sales_item.id = source.sales_order_item_id
-                      LEFT JOIN sales_orders sales_order
+                      LEFT JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) sales_order
                         ON sales_order.id = sales_item.order_id
                       WHERE source.analysis_id = analysis.id
                         AND source.is_deleted = FALSE
@@ -485,8 +485,8 @@ public class MaterialAnalysisService {
                     LEFT JOIN colors product_color
                       ON product_color.id = COALESCE(source.color_id, goods.color_id)
                      AND product_color.is_deleted = FALSE
-                    LEFT JOIN sales_order_items sales_item ON sales_item.id = source.sales_order_item_id
-                    LEFT JOIN sales_orders sales_order ON sales_order.id = sales_item.order_id
+                    LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) sales_item ON sales_item.id = source.sales_order_item_id
+                    LEFT JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) sales_order ON sales_order.id = sales_item.order_id
                     WHERE source.analysis_id = analysis.id AND source.is_deleted = FALSE
                 ) summary
                 ORDER BY analysis.search_rank, analysis.analyzed_at DESC, analysis.id DESC
@@ -1188,8 +1188,8 @@ public class MaterialAnalysisService {
                        active_analysis.analysis_id,
                        active_analysis.status,
                        active_analysis.version
-                FROM sales_orders o
-                JOIN sales_order_items i ON i.order_id = o.id AND i.is_deleted = FALSE
+                FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o
+                JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i ON i.order_id = o.id AND i.is_deleted = FALSE
                 JOIN goods g ON g.id = i.goods_id AND g.is_deleted = FALSE
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN colors col ON col.id = i.color_id
@@ -1200,8 +1200,8 @@ public class MaterialAnalysisService {
                     SELECT SUM(CASE
                         WHEN link.id IS NOT NULL THEN link.submitted_qty
                         ELSE pi.qty END) AS qty
-                    FROM production_plan_items pi
-                    JOIN production_plans p ON p.id = pi.plan_id
+                    FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) pi
+                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) p ON p.id = pi.plan_id
                     LEFT JOIN production_material_analysis_plan_links link
                       ON link.plan_id = p.id
                      AND link.analysis_id = p.material_analysis_id
@@ -1397,8 +1397,8 @@ public class MaterialAnalysisService {
         // unfulfilled linked plan permits reopening through an authorized command.
         return Boolean.TRUE.equals(em.createNativeQuery("""
                 SELECT EXISTS (
-                    SELECT 1 FROM production_plans plan
-                    JOIN production_plan_items item ON item.plan_id=plan.id
+                    SELECT 1 FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
+                    JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item ON item.plan_id=plan.id
                     WHERE plan.material_analysis_id=:analysisId
                       AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
                       AND plan.status IN (0,1) AND item.is_deleted=FALSE
@@ -1424,8 +1424,8 @@ public class MaterialAnalysisService {
                 SET status='PARTIALLY_PLANNED',updated_at=now()
                 WHERE analysis.id=:analysisId AND analysis.status='COMPLETED'
                   AND EXISTS (
-                    SELECT 1 FROM production_plans plan
-                    JOIN production_plan_items item ON item.plan_id=plan.id
+                    SELECT 1 FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
+                    JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item ON item.plan_id=plan.id
                     WHERE plan.material_analysis_id=analysis.id
                       AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
                       AND plan.status IN (0,1) AND item.is_deleted=FALSE
@@ -2202,7 +2202,7 @@ public class MaterialAnalysisService {
      */
     private static final String SUBCONTRACT_ACTION_SETTLED_SQL = """
             (EXISTS (
-                SELECT 1 FROM subcontract_applications application
+                SELECT 1 FROM (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) application
                 WHERE application.id = action.external_document_id
                   AND application.is_deleted = FALSE
                   AND application.status IN (0,1)
@@ -2210,10 +2210,10 @@ public class MaterialAnalysisService {
              AND EXISTS (
                 SELECT 1
                 FROM subcontract_order_item_sources src
-                JOIN subcontract_order_items order_item
+                JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) order_item
                   ON order_item.id = src.order_item_id
                  AND order_item.is_deleted = FALSE
-                JOIN subcontract_orders subcontract_order
+                JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) subcontract_order
                   ON subcontract_order.id = order_item.order_id
                  AND subcontract_order.status = 1
                  AND subcontract_order.is_deleted = FALSE
@@ -2223,10 +2223,10 @@ public class MaterialAnalysisService {
              AND NOT EXISTS (
                 SELECT 1
                 FROM subcontract_order_item_sources src
-                JOIN subcontract_order_items order_item
+                JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) order_item
                   ON order_item.id = src.order_item_id
                  AND order_item.is_deleted = FALSE
-                JOIN subcontract_orders subcontract_order
+                JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) subcontract_order
                   ON subcontract_order.id = order_item.order_id
                  AND subcontract_order.status = 1
                  AND subcontract_order.is_deleted = FALSE
@@ -2237,13 +2237,13 @@ public class MaterialAnalysisService {
              AND NOT EXISTS (
                 SELECT 1
                 FROM subcontract_order_item_sources src
-                JOIN subcontract_order_items order_item
+                JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) order_item
                   ON order_item.id = src.order_item_id
                  AND order_item.is_deleted = FALSE
-                JOIN subcontract_receipt_items receipt_item
+                JOIN (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) receipt_item
                   ON receipt_item.order_item_id = order_item.id
                  AND receipt_item.is_deleted = FALSE
-                JOIN subcontract_receipts receipt
+                JOIN (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipts',archive_origin.id)) receipt
                   ON receipt.id = receipt_item.receipt_id
                  AND receipt.status = 1
                  AND receipt.is_deleted = FALSE
@@ -2323,8 +2323,8 @@ public class MaterialAnalysisService {
                         OR EXISTS (
                             SELECT 1 FROM preplan_supply_action_allocations allocation
                             WHERE allocation.action_id = action.id AND NOT EXISTS (
-                                SELECT 1 FROM purchase_request_items item
-                                JOIN purchase_requests request ON request.id = item.request_id
+                                SELECT 1 FROM (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_request_items',archive_origin.id)) item
+                                JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_requests',archive_origin.id)) request ON request.id = item.request_id
                                 WHERE item.id = allocation.external_item_id
                                   AND item.is_deleted = FALSE
                                   AND request.id = action.external_document_id
@@ -2332,8 +2332,8 @@ public class MaterialAnalysisService {
                                   AND request.status IN (0,1)
                                   AND request.is_stopped = FALSE))))
                       OR (action.public_surplus_qty > 0 AND NOT EXISTS (
-                        SELECT 1 FROM purchase_request_items item
-                        JOIN purchase_requests request ON request.id = item.request_id
+                        SELECT 1 FROM (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_request_items',archive_origin.id)) item
+                        JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_requests',archive_origin.id)) request ON request.id = item.request_id
                         WHERE item.id = action.public_surplus_external_item_id
                           AND item.is_deleted = FALSE
                           AND request.id = action.external_document_id
@@ -2348,16 +2348,16 @@ public class MaterialAnalysisService {
                         OR EXISTS (
                             SELECT 1 FROM preplan_supply_action_allocations allocation
                             WHERE allocation.action_id = action.id AND NOT EXISTS (
-                                SELECT 1 FROM subcontract_application_items item
-                                JOIN subcontract_applications application ON application.id = item.application_id
+                                SELECT 1 FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) item
+                                JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) application ON application.id = item.application_id
                                 WHERE item.id = allocation.external_item_id
                                   AND item.is_deleted = FALSE
                                   AND application.id = action.external_document_id
                                   AND application.is_deleted = FALSE
                                   AND application.status IN (0,1)))))
                       OR (action.public_surplus_qty > 0 AND NOT EXISTS (
-                        SELECT 1 FROM subcontract_application_items item
-                        JOIN subcontract_applications application ON application.id = item.application_id
+                        SELECT 1 FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) item
+                        JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) application ON application.id = item.application_id
                         WHERE item.id = action.public_surplus_external_item_id
                           AND item.is_deleted = FALSE
                           AND application.id = action.external_document_id
@@ -2395,7 +2395,7 @@ public class MaterialAnalysisService {
                   AND action.external_document_type = 'PURCHASE_REQUEST'
                   AND action.safety_replenishment_qty > 0
                   AND EXISTS (
-                      SELECT 1 FROM purchase_requests request
+                      SELECT 1 FROM (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_requests',archive_origin.id)) request
                       WHERE request.id = action.external_document_id
                         AND request.is_deleted = FALSE
                         AND request.status IN (0,1)
@@ -2433,7 +2433,7 @@ public class MaterialAnalysisService {
                   AND action.status IN ('CREATED','IN_PROGRESS','DONE')
                   AND action.external_document_type='PURCHASE_REQUEST'
                   AND (action.safety_replenishment_qty=0 OR action.public_surplus_qty>0)
-                  AND EXISTS (SELECT 1 FROM purchase_requests request WHERE request.id=action.external_document_id
+                  AND EXISTS (SELECT 1 FROM (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_requests',archive_origin.id)) request WHERE request.id=action.external_document_id
                       AND NOT request.is_deleted AND request.status IN (0,1) AND NOT request.is_stopped AND request.is_closed)
                   AND action.requested_qty+action.public_surplus_qty > (
                 """ + REGULAR_STOCKED_BASE_SQL + """
@@ -2461,7 +2461,7 @@ public class MaterialAnalysisService {
                   AND action.external_document_type = 'SUBCONTRACT_APPLICATION'
                   AND EXISTS (
                       SELECT 1
-                      FROM subcontract_applications application
+                      FROM (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) application
                       WHERE application.id = action.external_document_id
                         AND application.is_deleted = FALSE
                         AND application.status IN (0,1)
@@ -2480,8 +2480,8 @@ public class MaterialAnalysisService {
                                       THEN inspection.warehouse_stocked_base_qty
                                       ELSE 0
                                   END)
-                                  FROM subcontract_receipt_items receipt_item
-                                  JOIN subcontract_receipts receipt
+                                  FROM (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) receipt_item
+                                  JOIN (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipts',archive_origin.id)) receipt
                                     ON receipt.id = receipt_item.receipt_id
                                    AND receipt.status = 1
                                    AND receipt.is_deleted = FALSE
@@ -2493,10 +2493,10 @@ public class MaterialAnalysisService {
                               ),0) - COALESCE(order_item.returned_qty,0)
                                   * COALESCE(order_item.unit_rate,1), 0)))
                       FROM subcontract_order_item_sources src
-                      JOIN subcontract_order_items order_item
+                      JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) order_item
                         ON order_item.id = src.order_item_id
                        AND order_item.is_deleted = FALSE
-                      JOIN subcontract_orders subcontract_order
+                      JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) subcontract_order
                         ON subcontract_order.id = order_item.order_id
                        AND subcontract_order.status = 1
                        AND subcontract_order.is_deleted = FALSE
@@ -2511,17 +2511,17 @@ public class MaterialAnalysisService {
                   AND EXISTS (
                       SELECT 1
                       FROM subcontract_order_item_sources src
-                      JOIN subcontract_order_items order_item
+                      JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) order_item
                         ON order_item.id = src.order_item_id
                        AND order_item.is_deleted = FALSE
-                      JOIN subcontract_orders subcontract_order
+                      JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) subcontract_order
                         ON subcontract_order.id = order_item.order_id
                        AND subcontract_order.status = 1
                        AND subcontract_order.is_deleted = FALSE
-                      JOIN subcontract_receipt_items receipt_item
+                      JOIN (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) receipt_item
                         ON receipt_item.order_item_id = order_item.id
                        AND receipt_item.is_deleted = FALSE
-                      JOIN subcontract_receipts receipt
+                      JOIN (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipts',archive_origin.id)) receipt
                         ON receipt.id = receipt_item.receipt_id
                        AND receipt.status = 1
                        AND receipt.is_deleted = FALSE
@@ -2536,10 +2536,10 @@ public class MaterialAnalysisService {
                   AND NOT EXISTS (
                       SELECT 1
                       FROM subcontract_order_item_sources src
-                      JOIN subcontract_order_items order_item
+                      JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) order_item
                         ON order_item.id = src.order_item_id
                        AND order_item.is_deleted = FALSE
-                      JOIN subcontract_orders subcontract_order
+                      JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) subcontract_order
                         ON subcontract_order.id = order_item.order_id
                        AND subcontract_order.status = 1
                        AND subcontract_order.is_deleted = FALSE
@@ -2550,13 +2550,13 @@ public class MaterialAnalysisService {
                   AND NOT EXISTS (
                       SELECT 1
                       FROM subcontract_order_item_sources src
-                      JOIN subcontract_order_items order_item
+                      JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) order_item
                         ON order_item.id = src.order_item_id
                        AND order_item.is_deleted = FALSE
-                      JOIN subcontract_receipt_items receipt_item
+                      JOIN (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) receipt_item
                         ON receipt_item.order_item_id = order_item.id
                        AND receipt_item.is_deleted = FALSE
-                      JOIN subcontract_receipts receipt
+                      JOIN (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipts',archive_origin.id)) receipt
                         ON receipt.id = receipt_item.receipt_id
                        AND receipt.status = 1
                        AND receipt.is_deleted = FALSE
@@ -2626,10 +2626,10 @@ public class MaterialAnalysisService {
                 """ + SUBCONTRACT_ACTION_SETTLED_SQL + """
                   AND (action.status = 'DONE' OR EXISTS (
                       SELECT 1 FROM subcontract_order_item_sources src
-                      JOIN subcontract_order_items item
+                      JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) item
                         ON item.id = src.order_item_id
                        AND item.is_deleted = FALSE
-                      JOIN subcontract_orders subcontract_order
+                      JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) subcontract_order
                         ON subcontract_order.id = item.order_id
                        AND subcontract_order.status = 1
                        AND subcontract_order.is_deleted = FALSE
@@ -2667,12 +2667,12 @@ public class MaterialAnalysisService {
                                 SELECT SUM(GREATEST(
                                     plan_item.qty-COALESCE(plan_item.iqty,0),0))
                                 FROM production_material_analysis_plan_links analysis_link
-                                JOIN production_plans plan
+                                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
                                   ON plan.id = analysis_link.plan_id
                                  AND plan.status = 1
                                  AND plan.is_deleted = FALSE
                                  AND plan.is_canceled = FALSE
-                                JOIN production_plan_items plan_item
+                                JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) plan_item
                                   ON plan_item.plan_id = plan.id
                                  AND plan_item.is_deleted = FALSE
                                 WHERE analysis_link.analysis_item_id = child.id
@@ -2750,12 +2750,12 @@ public class MaterialAnalysisService {
                                 SELECT SUM(GREATEST(
                                     plan_item.qty-COALESCE(plan_item.iqty,0),0))
                                 FROM production_material_analysis_plan_links analysis_link
-                                JOIN production_plans plan
+                                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
                                   ON plan.id = analysis_link.plan_id
                                  AND plan.status = 1
                                  AND plan.is_deleted = FALSE
                                  AND plan.is_canceled = FALSE
-                                JOIN production_plan_items plan_item
+                                JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) plan_item
                                   ON plan_item.plan_id = plan.id
                                  AND plan_item.is_deleted = FALSE
                                 WHERE analysis_link.analysis_item_id = child.id
@@ -3144,7 +3144,7 @@ public class MaterialAnalysisService {
                     SELECT c.goods_id, c.color_id, c.unit_id,
                            GREATEST(c.qty - COALESCE((
                                SELECT SUM(GREATEST(formal.qty-formal.released_qty,0))
-                               FROM production_plans plan
+                               FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
                                JOIN production_material_demands demand
                                  ON demand.plan_id=plan.id AND demand.is_deleted=FALSE
                                  AND demand.status NOT IN ('RELEASED','REVERSED')
@@ -3474,18 +3474,18 @@ public class MaterialAnalysisService {
                            * COALESCE(segment.product_unit_rate,plan_item.unit_rate,1)
                          ELSE NULL END
                 FROM production_material_demands demand
-                JOIN production_plans plan ON plan.id=demand.plan_id
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=demand.plan_id
                   AND plan.material_analysis_id=:analysisId
                   AND plan.status=1 AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
                 JOIN production_material_analysis_items source
                   ON source.id=plan.material_analysis_item_id AND source.is_deleted=FALSE
-                JOIN production_plan_items plan_item ON plan_item.plan_id=plan.id
+                JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) plan_item ON plan_item.plan_id=plan.id
                   AND plan_item.is_deleted=FALSE
                   AND (demand.source_plan_item_id IS NULL OR plan_item.id=demand.source_plan_item_id)
                 LEFT JOIN production_execution_segments segment ON segment.id=demand.execution_segment_id
                 LEFT JOIN LATERAL (
-                  SELECT SUM(item.qty) AS qty FROM stock_document_items item
-                  JOIN stock_documents document ON document.id=item.doc_id
+                  SELECT SUM(item.qty) AS qty FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item
+                  JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document ON document.id=item.doc_id
                     AND document.doc_type='FINISHED_IN' AND document.status=1
                     AND document.is_deleted=FALSE
                   WHERE item.execution_segment_id=segment.id AND item.is_deleted=FALSE
@@ -3564,8 +3564,8 @@ public class MaterialAnalysisService {
                            -COALESCE(finished.qty,item.iqty,0),0)
                          ELSE COALESCE(segment.planned_qty,item.qty) END * COALESCE(item.unit_rate,1),
                        plan.id
-                FROM production_plans plan
-                JOIN production_plan_items item ON item.plan_id=plan.id AND item.is_deleted=FALSE
+                FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
+                JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item ON item.plan_id=plan.id AND item.is_deleted=FALSE
                 JOIN production_material_analysis_items source
                   ON source.id=plan.material_analysis_item_id AND source.is_deleted=FALSE
                 LEFT JOIN production_material_analysis_materials parent
@@ -3575,8 +3575,8 @@ public class MaterialAnalysisService {
                   AND segment.status NOT IN ('CANCELLED','REVERSED')
                 LEFT JOIN LATERAL (
                   SELECT COALESCE(SUM(output.qty),0) AS qty
-                  FROM stock_document_items output
-                  JOIN stock_documents document ON document.id=output.doc_id
+                  FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) output
+                  JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document ON document.id=output.doc_id
                     AND document.doc_type='FINISHED_IN' AND document.status=1
                     AND document.is_deleted=FALSE
                   WHERE segment.id IS NOT NULL AND output.execution_segment_id=segment.id
@@ -5544,11 +5544,11 @@ public class MaterialAnalysisService {
         // No physical balance means no route can create a physical reservation. Keep the
         // large empty-stock planning case at one indexed existence query, not one lookup per plan.
         boolean physicalStock = approveNow && Boolean.TRUE.equals(em.createNativeQuery("""
-                SELECT EXISTS(SELECT 1 FROM stock_balances stock WHERE stock.qty>0 AND (
+                SELECT EXISTS(SELECT 1 FROM v_stock_operable_balances stock WHERE stock.qty>0 AND (
                     EXISTS(SELECT 1 FROM production_material_analysis_materials material
                         WHERE material.analysis_id=:analysis AND material.active AND material.goods_id=stock.goods_id
                           AND material.color_id IS NOT DISTINCT FROM stock.color_id)
-                    OR EXISTS(SELECT 1 FROM production_plans plan JOIN production_material_demands demand ON demand.plan_id=plan.id
+                    OR EXISTS(SELECT 1 FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan JOIN production_material_demands demand ON demand.plan_id=plan.id
                         WHERE plan.material_analysis_id=:analysis AND NOT plan.is_deleted AND NOT demand.is_deleted
                           AND demand.goods_id=stock.goods_id AND demand.color_id IS NOT DISTINCT FROM stock.color_id)))
                 """).setParameter("analysis",analysisId).getSingleResult());
@@ -5935,8 +5935,8 @@ public class MaterialAnalysisService {
         List<UUID> sorted = ids.stream().filter(Objects::nonNull).distinct().sorted().toList();
         List<?> locked = em.createNativeQuery("""
                 SELECT i.id
-                FROM sales_order_items i
-                JOIN sales_orders o ON o.id = i.order_id
+                FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i
+                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o ON o.id = i.order_id
                 WHERE i.id IN (:ids)
                 ORDER BY o.id, i.id
                 FOR UPDATE OF o, i
@@ -6021,7 +6021,7 @@ public class MaterialAnalysisService {
                        COALESCE(so.finance_confirmed, FALSE),
                        ai.root_material_id, CASE WHEN ai.source_type='AGGREGATE_MAKE' THEN COALESCE((
                          SELECT SUM(shared_item.iqty*shared_item.unit_rate)
-                         FROM production_plan_items shared_item JOIN production_plans shared_plan ON shared_plan.id=shared_item.plan_id
+                         FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) shared_item JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) shared_plan ON shared_plan.id=shared_item.plan_id
                          WHERE shared_plan.material_analysis_item_id=ai.id AND NOT shared_plan.is_deleted
                            AND shared_plan.status=1 AND NOT shared_plan.is_canceled AND NOT shared_item.is_deleted),0)
                          ELSE ai.root_fulfilled_qty END, root_material.confirmed_route,
@@ -6068,8 +6068,8 @@ public class MaterialAnalysisService {
                   ON owning_workshop.id = g.owning_workshop_department_id
                  AND owning_workshop.is_deleted = FALSE
                 LEFT JOIN colors col ON col.id = ai.color_id
-                LEFT JOIN sales_order_items soi ON soi.id = ai.sales_order_item_id
-                LEFT JOIN sales_orders so ON so.id = soi.order_id
+                LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) soi ON soi.id = ai.sales_order_item_id
+                LEFT JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) so ON so.id = soi.order_id
                 LEFT JOIN clients c ON c.id = so.client_id
                 LEFT JOIN LATERAL (
                     -- 2026-09-15（V588 单计划超量）：分析来源的草稿计划只把
@@ -6081,8 +6081,8 @@ public class MaterialAnalysisService {
                     SELECT SUM(CASE
                         WHEN link.id IS NOT NULL THEN link.submitted_qty
                         ELSE pi.qty END) AS qty
-                    FROM production_plan_items pi
-                    JOIN production_plans p ON p.id = pi.plan_id
+                    FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) pi
+                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) p ON p.id = pi.plan_id
                     LEFT JOIN production_material_analysis_plan_links link
                       ON link.plan_id = p.id
                      AND link.analysis_id = p.material_analysis_id
@@ -6699,18 +6699,18 @@ public class MaterialAnalysisService {
                            fn_procurement_order_source_remaining_qty(
                                'PURCHASE', i.id, src.request_item_id)::numeric AS open_qty
                     FROM action_caps cap
-                    JOIN purchase_request_items request_item
+                    JOIN (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_request_items',archive_origin.id)) request_item
                       ON request_item.id = cap.external_item_id
                      AND request_item.is_deleted = FALSE
-                    JOIN purchase_requests request
+                    JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_requests',archive_origin.id)) request
                       ON request.id = request_item.request_id
                      AND request.is_deleted = FALSE
                      AND request.status IN (0,1)
                      AND request.is_stopped = FALSE
                     JOIN purchase_order_item_sources src
                       ON src.request_item_id = cap.external_item_id
-                    JOIN purchase_order_items i ON i.id = src.order_item_id
-                    JOIN purchase_orders o ON o.id = i.order_id
+                    JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_order_items',archive_origin.id)) i ON i.id = src.order_item_id
+                    JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_orders',archive_origin.id)) o ON o.id = i.order_id
                     WHERE cap.external_document_type IN (
                               'PURCHASE_REQUEST','PURCHASE_SAFETY')
                       AND o.status = 1 AND o.is_deleted = FALSE AND o.is_closed = FALSE
@@ -6726,18 +6726,18 @@ public class MaterialAnalysisService {
                            fn_procurement_order_source_remaining_qty(
                                'SUBCONTRACT', i.id, src.application_item_id)::numeric
                     FROM action_caps cap
-                    JOIN subcontract_application_items application_item
+                    JOIN (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) application_item
                       ON application_item.id = cap.external_item_id
                      AND application_item.is_deleted = FALSE
-                    JOIN subcontract_applications application
+                    JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) application
                       ON application.id = application_item.application_id
                      AND application.is_deleted = FALSE
                      AND application.status IN (0,1)
                     JOIN subcontract_order_item_sources src
                       ON src.application_item_id = cap.external_item_id
-                    JOIN subcontract_order_items i
+                    JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) i
                       ON i.id = src.order_item_id
-                    JOIN subcontract_orders o ON o.id = i.order_id
+                    JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) o ON o.id = i.order_id
                     WHERE cap.external_document_type = 'SUBCONTRACT_APPLICATION'
                       AND o.status = 1 AND o.is_deleted = FALSE AND o.is_closed = FALSE
                       AND i.is_deleted = FALSE
@@ -6755,12 +6755,12 @@ public class MaterialAnalysisService {
                     JOIN production_material_analysis_plan_links analysis_link
                       ON analysis_link.analysis_item_id = cap.external_item_id
                      AND analysis_link.allocation_status = 'APPROVED'
-                    JOIN production_plans plan
+                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
                       ON plan.id = analysis_link.plan_id
                      AND plan.status = 1
                      AND plan.is_deleted = FALSE
                      AND plan.is_canceled = FALSE
-                    JOIN production_plan_items plan_item
+                    JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) plan_item
                       ON plan_item.plan_id = plan.id
                      AND plan_item.is_deleted = FALSE
                     WHERE cap.external_document_type = 'PREPLAN_MAKE_TASK'
@@ -6964,7 +6964,7 @@ public class MaterialAnalysisService {
                            MAX(link.created_at) AS created_at,
                            BOOL_OR(link.allocation_status = 'APPROVED') AS approved
                     FROM production_material_analysis_plan_links link
-                    JOIN production_plans plan
+                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
                       ON plan.id = link.plan_id
                      AND plan.is_deleted = FALSE
                      AND plan.is_canceled = FALSE
@@ -7000,7 +7000,7 @@ public class MaterialAnalysisService {
                                FILTER (WHERE plan_item.id IS NOT NULL), FALSE)
                              AS all_complete
                     FROM plan_ids ids
-                    LEFT JOIN production_plan_items plan_item
+                    LEFT JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) plan_item
                       ON plan_item.plan_id = ids.plan_id
                      AND plan_item.is_deleted = FALSE
                     GROUP BY ids.plan_id
@@ -7025,7 +7025,7 @@ public class MaterialAnalysisService {
                            CASE WHEN COUNT(DISTINCT segment.workshop_department_id)=1 THEN MIN(segment.workshop_department_id::text)::uuid END AS workshop_id,
                            CASE WHEN COUNT(DISTINCT segment.responsible_employee_id)=1 THEN MIN(segment.responsible_employee_id::text)::uuid END AS responsible_id
                     FROM plan_ids ids
-                    LEFT JOIN production_plan_items plan_item
+                    LEFT JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) plan_item
                       ON plan_item.plan_id = ids.plan_id
                      AND plan_item.is_deleted = FALSE
                     LEFT JOIN effective_segments segment
@@ -7041,16 +7041,16 @@ public class MaterialAnalysisService {
                     SELECT ids.plan_id,
                            COALESCE(SUM(report_item.qty), 0) AS reported_qty
                     FROM plan_ids ids
-                    LEFT JOIN production_plan_items plan_item
+                    LEFT JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) plan_item
                       ON plan_item.plan_id = ids.plan_id
                      AND plan_item.is_deleted = FALSE
                     LEFT JOIN effective_segments segment
                       ON segment.source_plan_item_id = plan_item.id
                      AND segment.plan_id = plan_item.plan_id
-                    LEFT JOIN production_daily_report_items report_item
+                    LEFT JOIN (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_report_items',archive_origin.id)) report_item
                       ON report_item.execution_segment_id = segment.id
                      AND report_item.is_deleted = FALSE
-                    LEFT JOIN production_daily_reports report
+                    LEFT JOIN (SELECT * FROM production_daily_reports archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_reports',archive_origin.id)) report
                       ON report.id = report_item.report_id
                      AND report.is_deleted = FALSE
                      AND report.status = 1
@@ -7090,7 +7090,7 @@ public class MaterialAnalysisService {
                         CAST(jsonb_agg(jsonb_build_object('planId',plan.id,'planNo',plan.bill_no,'status',plan.status)
                             ORDER BY link.created_at DESC,plan.id DESC) AS text) AS plan_references
                 FROM active_links link
-                JOIN production_plans plan
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
                   ON plan.id = link.plan_id
                 LEFT JOIN departments plan_department ON plan_department.id=plan.department_id
                 LEFT JOIN employees plan_worker ON plan_worker.id=plan.worker_id
@@ -7168,10 +7168,10 @@ public class MaterialAnalysisService {
                            AS external_document_maker_id,
                        source_state.claim_external_item_id
                 FROM fn_preplan_public_surplus_sources(:analysisId) source_state
-                LEFT JOIN purchase_requests purchase_request
+                LEFT JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_requests',archive_origin.id)) purchase_request
                   ON source_state.route = 'BUY'
                  AND purchase_request.id = source_state.external_document_id
-                LEFT JOIN subcontract_applications subcontract_application
+                LEFT JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) subcontract_application
                   ON source_state.route = 'SUBCONTRACT'
                  AND subcontract_application.id = source_state.external_document_id
                 WHERE fn_warehouse_same_main(source_state.warehouse_id,:warehouseId)
@@ -7314,16 +7314,16 @@ public class MaterialAnalysisService {
                                GREATEST(application_item.qty * COALESCE(application_item.unit_rate,1)
                                    - COALESCE(SUM(ordered.ordered_base),0), 0) AS unordered_qty,
                                COALESCE(SUM(ordered.open_qty), 0) AS ordered_open_qty
-                        FROM subcontract_application_items application_item
+                        FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) application_item
                         LEFT JOIN LATERAL (
                             SELECT src.alloc_qty * COALESCE(order_item.unit_rate,1) AS ordered_base,
                                    fn_procurement_order_source_remaining_qty(
                                        'SUBCONTRACT', order_item.id, src.application_item_id) AS open_qty
                             FROM subcontract_order_item_sources src
-                            JOIN subcontract_order_items order_item
+                            JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) order_item
                               ON order_item.id = src.order_item_id
                              AND order_item.is_deleted = FALSE
-                            JOIN subcontract_orders subcontract_order
+                            JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) subcontract_order
                               ON subcontract_order.id = order_item.order_id
                              AND subcontract_order.status = 1
                              AND subcontract_order.is_deleted = FALSE
@@ -7565,7 +7565,7 @@ public class MaterialAnalysisService {
                       AND child.source_type='MAKE_COMPONENT' AND NOT child.is_deleted
                     JOIN production_material_analysis_plan_links link ON link.analysis_item_id=child.id
                       AND link.allocation_status IN('SUBMITTED','APPROVED')
-                    JOIN production_plans plan ON plan.id=link.plan_id AND plan.status IN(0,1)
+                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=link.plan_id AND plan.status IN(0,1)
                       AND NOT plan.is_deleted AND NOT plan.is_canceled
                     UNION ALL
                     SELECT 1 FROM sources
@@ -7812,7 +7812,7 @@ public class MaterialAnalysisService {
                                COALESCE(plan_item.iqty, 0),
                                GREATEST(COALESCE(plan_item.qty, 0), 0)), 0)), 0)
                              AS inbound_qty
-                    FROM production_plan_items plan_item
+                    FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) plan_item
                     WHERE plan_item.plan_id = link.plan_id
                 ) done ON TRUE
                 WHERE link.analysis_id = :analysisId
@@ -8321,13 +8321,13 @@ public class MaterialAnalysisService {
                 LEFT JOIN preplan_analysis_stock_exact_pegs exact
                   ON exact.id = COALESCE(
                       event.source_exact_peg_id, source_lot.source_exact_peg_id)
-                LEFT JOIN purchase_receipts purchase
+                LEFT JOIN (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipts',archive_origin.id)) purchase
                   ON exact.source_receipt_type = 'PURCHASE'
                  AND purchase.id = exact.source_receipt_id
-                LEFT JOIN subcontract_receipts subcontract
+                LEFT JOIN (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipts',archive_origin.id)) subcontract
                   ON exact.source_receipt_type = 'SUBCONTRACT'
                  AND subcontract.id = exact.source_receipt_id
-                LEFT JOIN stock_documents stock
+                LEFT JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) stock
                   ON exact.source_receipt_type = 'MAKE'
                  AND stock.id = exact.source_stock_document_id
                 WHERE event.reallocation_id IN (SELECT unnest(CAST(string_to_array(:ids, ',') AS uuid[])))
@@ -8801,8 +8801,8 @@ public class MaterialAnalysisService {
         Object[] row = oneRow(em.createNativeQuery("""
                 SELECT id, warehouse_id,
                        CASE WHEN status='COMPLETED' AND EXISTS (
-                         SELECT 1 FROM production_plans plan
-                         JOIN production_plan_items item ON item.plan_id=plan.id
+                         SELECT 1 FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
+                         JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item ON item.plan_id=plan.id
                          WHERE plan.material_analysis_id=production_material_analyses.id
                            AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
                            AND plan.status IN (0,1) AND item.is_deleted=FALSE

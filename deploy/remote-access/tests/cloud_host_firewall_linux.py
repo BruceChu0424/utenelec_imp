@@ -177,11 +177,18 @@ def inside(nft, parent_namespace):
             class Manager:
                 enabled = False
                 timer_active = False
+                preapply_connection = None
+                preapply_process = None
+                fail_postcapture = False
 
                 def __call__(self, args, **kwargs):
                     if args[0] == module.SYSTEMD_RUN:
                         self.timer_active = True
+                        if self.preapply_connection is None:
+                            self.preapply_process, self.preapply_connection = persistent(admin)
                         return subprocess.CompletedProcess(args, 0, "", "")
+                    if args[0] == module.SS and "all" in args and self.fail_postcapture:
+                        return subprocess.CompletedProcess(args, 1, "", "test post-apply capture failure")
                     if args[0] == module.SYSTEMCTL:
                         op = args[1]
                         if op == "is-enabled":
@@ -204,6 +211,12 @@ def inside(nft, parent_namespace):
                          "admin_ipv4_cidrs": [ADMIN + "/32"], "wireguard_ipv4_cidrs": ["0.0.0.0/0"]}
             trial = controller.trial(candidate, old_connection, recovery_verified=True)
             assert not controller.active.exists() and manager.timer_active
+            try:
+                controller.confirm(trial["token"], manager.preapply_connection)
+                raise AssertionError("a TCP connection created while the timer armed confirmed the new policy")
+            except module.UnsafeChange:
+                pass
+            assert not controller.active.exists() and manager.timer_active
             assert probe(admin, 22) and probe(admin, 443) and probe(other, 443)
             assert not probe(other, 22), "unapproved NEW SSH remained reachable"
             for port in set(TCP_PORTS) - {22, 443}:
@@ -217,7 +230,7 @@ def inside(nft, parent_namespace):
             assert not probe(admin, 443, target="fd77::10", ipv6=True), "unaudited public IPv6 application ingress opened"
             neighbors = command(admin + ["ip", "-6", "neigh", "show"]).stdout
             assert "fd77::10" in neighbors and "FAILED" not in neighbors, "necessary IPv6 neighbor discovery broke"
-            for process in (current_admin, prior_other):
+            for process in (current_admin, prior_other, manager.preapply_process):
                 output, error = process.communicate(input="continue\n", timeout=5)
                 assert process.returncode == 0 and "PRESERVED" in output, error
             # Re-open an independently new management TCP connection after trial.
@@ -259,7 +272,7 @@ assert m.Controller(Path({str(controller.state)!r}),runner).rollback({pending['t
             _, error = rollback.communicate(timeout=10)
             assert rollback.returncode == 0, error
             assert probe(other, 51820, udp=True), "rollback did not recover prior WireGuard ingress"
-            assert json.loads(controller.active.read_text()) == candidate
+            assert json.loads(controller.active.read_text())["policy"] == candidate
             assert before_remote == command([nft, "list", "table", "inet", "uten_remote"]).stdout
             assert before_operator == command([nft, "list", "table", "inet", "operator_existing"]).stdout
             # The alternative mode intentionally leaves SSH SOURCE enforcement
@@ -271,6 +284,44 @@ assert m.Controller(Path({str(controller.state)!r}),runner).rollback({pending['t
             assert not probe(other, 5432), "delegating SSH opened an unrelated service"
             third, delegated_connection = persistent(admin)
             assert controller.confirm(delegated_trial["token"], delegated_connection)["state"] == "CONFIRMED"
+            # A confirmed boot receipt is bound to exact rendered bytes and
+            # the reviewed implementation. A mutable template cannot silently
+            # remove SSH at the next start.
+            bound_active = controller.active.read_bytes()
+            bound_table = command([nft, "list", "table", "inet", module.TABLE]).stdout
+            original_template = module.TEMPLATE.read_bytes()
+            module.TEMPLATE.write_bytes(original_template.replace(b"@@SSH_RULE@@", b"# @@SSH_RULE@@"))
+            try:
+                controller.boot()
+                raise AssertionError("an unreviewed boot template was accepted")
+            except module.UnsafeChange:
+                pass
+            assert controller.active.read_bytes() == bound_active
+            assert command([nft, "list", "table", "inet", module.TABLE]).stdout == bound_table
+            module.TEMPLATE.write_bytes(original_template)
+            assert controller.boot()["state"] == "CONFIRMED_POLICY_LOADED"
+
+            manager.fail_postcapture = True
+            try:
+                controller.trial({**delegated, "dhcpv4": True}, delegated_connection,
+                                 security_group_console_verified=True)
+                raise AssertionError("failed post-apply TCP capture reported a successful trial")
+            except module.UnsafeChange:
+                pass
+            failed_pending = json.loads(controller.pending.read_text())
+            assert failed_pending["confirmation_ready"] is False and manager.timer_active
+            assert controller.active.read_bytes() == bound_active
+            manager.fail_postcapture = False
+            fourth, failed_connection = persistent(admin)
+            try:
+                controller.confirm(failed_pending["token"], failed_connection)
+                raise AssertionError("an incomplete trial was confirmed from a later valid TCP connection")
+            except module.UnsafeChange:
+                pass
+            controller.rollback(failed_pending["token"])
+            assert controller.active.read_bytes() == bound_active
+            output, error = fourth.communicate(input="continue\n", timeout=5)
+            assert fourth.returncode == 0 and "PRESERVED" in output, error
             output, error = third.communicate(input="continue\n", timeout=5)
             assert third.returncode == 0 and "PRESERVED" in output, error
             output, error = second.communicate(input="continue\n", timeout=5)
@@ -282,6 +333,8 @@ assert m.Controller(Path({str(controller.state)!r}),runner).rollback({pending['t
                               "loopbackAndIPv6NeighborDiscoveryPreserved": True, "explicitDHCPPolicyVerified": True,
                               "otherTablesPreserved": True, "atomicFailurePreservedLiveTable": True,
                               "newTCPConfirmationVerified": True, "independentTimedRollbackExecuted": True,
+                              "preapplyTCPRejected": True, "postApplyCaptureFailureUnconfirmable": True,
+                              "confirmedBootTemplateDriftRejectedWithoutMutation": True,
                               "systemdManagerCommandsStubbed": True}))
     finally:
         for listener in listeners:
@@ -303,7 +356,10 @@ def main():
     if os.name != "posix" or os.geteuid() != 0 or not args.nft.is_absolute():
         raise SystemExit("requires Linux root and an absolute trusted nft executable")
     if args.inside is None:
-        result = command(["unshare", "--net", "--", sys.executable, str(Path(__file__).resolve()),
+        # Docker deliberately makes its inherited /proc/sys read-only. A new
+        # private mount namespace and proc mount let this fresh network
+        # namespace configure forwarding without changing the container parent.
+        result = command(["unshare", "--net", "--mount", "--mount-proc", "--", sys.executable, str(Path(__file__).resolve()),
                           "--nft", str(args.nft), "--inside", str(os.stat("/proc/self/ns/net").st_ino)], timeout=120)
         print(result.stdout, end="")
     else:

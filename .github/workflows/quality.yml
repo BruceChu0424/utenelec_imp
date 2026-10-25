@@ -413,6 +413,9 @@ jobs:
           python3 -m unittest discover -s deploy/monitoring -p "test*.py" -v
           python3 -m unittest discover -s deploy/aliyun-oidc -p "test*.py" -v
           python3 -m unittest discover -s deploy/remote-access -p "test*.py" -v
+          # Exercise private root-owned receipts and the guarded firewall state
+          # machine as the production identity; non-root discovery skips them.
+          sudo /usr/bin/python3 -I -m unittest discover -s deploy/remote-access -p "test_cloud_host_firewall.py" -v
           python3 -m unittest discover -s deploy/client -p "test*.py" -v
       - name: Verify complete disaster recovery and backup contracts in isolated Linux
         shell: bash
@@ -439,6 +442,10 @@ jobs:
             --sysctl net.ipv4.ip_forward=1 \
             --mount "type=bind,source=$GITHUB_WORKSPACE/deploy/remote-access,target=/src,readonly" \
             uten-remote-contract:ci python3 tests/network_isolation_linux.py
+          docker run --rm --network none --cap-add NET_ADMIN --cap-add SYS_ADMIN \
+            --security-opt apparmor=unconfined \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/deploy/remote-access,target=/src,readonly" \
+            uten-remote-contract:ci python3 tests/cloud_host_firewall_linux.py --nft /usr/sbin/nft
           docker run --rm --network none \
             --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace,readonly" \
             uten-remote-contract:ci python3 /workspace/deploy/client/nginx_client_updates_integration.py

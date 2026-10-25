@@ -35,6 +35,7 @@ HELPER = "/usr/local/lib/uten-remote/cloud_host_firewall.py"
 UNIT = "uten-cloud-host-firewall.service"
 STATE = Path("/var/lib/uten-remote/cloud-host-firewall")
 MAX_JSON = 128 * 1024
+ACTIVE_FORMAT = "uten-cloud-host-firewall-confirmed-v1"
 
 
 class UnsafeChange(ValueError):
@@ -161,6 +162,27 @@ def transaction(content, exists):
     return (f"delete table inet {TABLE}\n" if exists else "") + (content or "")
 
 
+def active_receipt(value):
+    """Validate the durable decision without trusting the current template."""
+    fields = {"format", "policy", "rendered", "rendered_sha256", "helper_sha256", "template_sha256"}
+    if not isinstance(value, dict) or set(value) != fields or value["format"] != ACTIVE_FORMAT:
+        raise UnsafeChange("active receipt is unbound or unsupported; a new guarded trial is required")
+    policy = validate_policy(value["policy"])
+    validate_table(value["rendered"])
+    for field in ("rendered_sha256", "helper_sha256", "template_sha256"):
+        if not isinstance(value[field], str) or not re.fullmatch(r"[0-9a-f]{64}", value[field]):
+            raise UnsafeChange("invalid confirmed receipt digest")
+    if hashlib.sha256(value["rendered"].encode("utf-8")).hexdigest() != value["rendered_sha256"]:
+        raise UnsafeChange("confirmed receipt bytes do not match their digest")
+    return {**value, "policy": policy}
+
+
+def previous_active(value):
+    # A pre-binding policy may be retained as rollback evidence during an
+    # explicit upgrade trial. It is never accepted by the boot loader.
+    return active_receipt(value) if isinstance(value, dict) and "format" in value else validate_policy(value)
+
+
 def ssh_session(raw):
     parts = raw.split() if isinstance(raw, str) else []
     try:
@@ -263,11 +285,13 @@ class Controller:
             self.run([NFT, "--check", "-f", "-"], input=batch)
             self.run([NFT, "-f", "-"], input=batch)
 
-    def sessions(self):
-        output = self.run([SS, "-4", "-Htn", "state", "established", "( sport = :22 )"]).stdout
+    def sessions(self, *, include_incomplete=False):
+        output = self.run([SS, "-4", "-Htn", "state", "all" if include_incomplete else "established", "( sport = :22 )"]).stdout
         result = []
         for line in output.splitlines():
             parts = line.split()
+            if parts and parts[0] == "LISTEN":
+                continue
             if len(parts) < 4:
                 raise UnsafeChange("cannot inspect existing SSH sessions")
             local, peer = parts[-2].rsplit(":", 1), parts[-1].rsplit(":", 1)
@@ -302,7 +326,7 @@ class Controller:
         if value["previous_table"] is not None:
             validate_table(value["previous_table"])
         if value["previous_active"] is not None:
-            validate_policy(value["previous_active"])
+            previous_active(value["previous_active"])
         if type(value["previous_enabled"]) is not bool or not math.isfinite(value["deadline"]):
             raise UnsafeChange("invalid pending trial state")
         return value
@@ -322,6 +346,10 @@ class Controller:
             raise UnsafeChange("rollback interval must be 120..600 seconds")
         with self.locked():
             if self.pending.exists() or self.pending.is_symlink():
+                pending = decode(private_file(self.pending))
+                if (pending.get("status") == "trial"
+                        and pending.get("boot_id") != Path("/proc/sys/kernel/random/boot_id").read_text().strip()):
+                    raise UnsafeChange("unconfirmed trial is from an earlier boot; inspect current rules and explicitly roll back its token before retrying")
                 raise UnsafeChange("finish or roll back the previous trial first")
             # The installed helper is the timer's recovery authority, not a
             # mutable checkout path or command supplied by the SSH client.
@@ -333,10 +361,13 @@ class Controller:
                 raise UnsafeChange("SSH_CONNECTION is not an established server-side TCP session")
             value = {"schema_version": 1, "token": uuid.uuid4().hex, "status": "trial", "policy": policy,
                      "helper_sha256": hashlib.sha256(private_file(Path(HELPER))).hexdigest(),
+                     "template_sha256": hashlib.sha256(private_file(TEMPLATE)).hexdigest(),
+                     "rendered": content,
                      "rendered_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
                      "previous_table": self.current_table(),
-                     "previous_active": validate_policy(decode(private_file(self.active))) if self.active.exists() or self.active.is_symlink() else None,
+                     "previous_active": previous_active(decode(private_file(self.active))) if self.active.exists() or self.active.is_symlink() else None,
                      "previous_enabled": self.unit_enabled(), "existing_sessions": peers,
+                     "confirmation_ready": False,
                      "applied_table": None,
                      "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
                      "deadline": time.monotonic() + rollback_seconds}
@@ -354,6 +385,13 @@ class Controller:
             value["applied_table"] = self.current_table()
             if value["applied_table"] is None:
                 raise UnsafeChange("the trial table was not installed")
+            # Arming/checking/applying is a real time window: a second TCP
+            # connection can arrive under the old policy after the first
+            # snapshot. Exclude every visible server:22 tuple after commit,
+            # including half-open/closing sockets, before enabling confirmation.
+            cutoff = self.sessions(include_incomplete=True)
+            value["existing_sessions"] = [list(peer) for peer in sorted({tuple(peer) for peer in [*peers, *cutoff]})]
+            value["confirmation_ready"] = True
             atomic_json(self.pending, value)
             return {"state": "TRIAL", "token": value["token"], "rollbackAfterSeconds": rollback_seconds,
                     "requiresNewSSHConnection": True, "persistent": False}
@@ -389,6 +427,8 @@ class Controller:
         session = ssh_session(connection)
         with self.locked():
             value = self.load_pending(token)
+            if value.get("confirmation_ready") is not True:
+                raise UnsafeChange("trial did not complete its post-apply TCP capture/receipt; leave rollback armed")
             if value["status"] != "trial" or value["boot_id"] != Path("/proc/sys/kernel/random/boot_id").read_text().strip() or time.monotonic() >= value["deadline"]:
                 raise UnsafeChange("trial expired or belongs to a different boot")
             approve_session(value["policy"], session)
@@ -400,9 +440,12 @@ class Controller:
             if current is None or current != value["applied_table"]:
                 raise UnsafeChange("the trial table is missing or changed; roll back and revalidate")
             if (hashlib.sha256(private_file(Path(HELPER))).hexdigest() != value["helper_sha256"]
+                    or hashlib.sha256(private_file(TEMPLATE)).hexdigest() != value["template_sha256"]
                     or hashlib.sha256(self.reviewed_content(value["policy"]).encode("utf-8")).hexdigest() != value["rendered_sha256"]):
                 raise UnsafeChange("the reviewed helper/template changed during trial")
-            atomic_json(self.active, value["policy"])
+            confirmed = active_receipt({"format": ACTIVE_FORMAT,
+                **{field: value[field] for field in ("policy", "rendered", "rendered_sha256", "helper_sha256", "template_sha256")}})
+            atomic_json(self.active, confirmed)
             self.run([SYSTEMCTL, "enable", UNIT])
             value["status"] = "confirmed"
             atomic_json(self.pending, value)
@@ -413,16 +456,26 @@ class Controller:
 
     def boot(self):
         with self.locked(wait=True):
+            pending = None
             if self.pending.exists():
                 value = decode(private_file(self.pending))
                 value = self.load_pending(value["token"])
                 if value["status"] == "trial":
                     return self._rollback(value)
-                self.stop_timer(value["token"])
-                atomic_json(self.state / "last-change.json", value)
+                pending = value
+            confirmed = active_receipt(decode(private_file(self.active)))
+            if (hashlib.sha256(private_file(Path(HELPER))).hexdigest() != confirmed["helper_sha256"]
+                    or hashlib.sha256(private_file(TEMPLATE)).hexdigest() != confirmed["template_sha256"]):
+                raise UnsafeChange("confirmed helper/template identity changed; a new guarded trial is required")
+            if self.reviewed_content(confirmed["policy"]) != confirmed["rendered"]:
+                raise UnsafeChange("confirmed policy and rendered receipt are inconsistent")
+            # Replay only the already-confirmed bytes. Never derive boot rules
+            # from a mutable template and treat that as a prior acceptance.
+            self.replace(confirmed["rendered"])
+            if pending is not None:
+                self.stop_timer(pending["token"])
+                atomic_json(self.state / "last-change.json", pending)
                 self.pending.unlink()
-            policy = validate_policy(decode(private_file(self.active)))
-            self.replace(self.reviewed_content(policy))
             return {"state": "CONFIRMED_POLICY_LOADED"}
 
 

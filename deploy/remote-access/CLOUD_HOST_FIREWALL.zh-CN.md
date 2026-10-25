@@ -14,6 +14,9 @@
 `security-group` 模式必须使用空 `admin_ipv4_cidrs`，避免旧profile中的地址看起来有效却不再属于当前维护人。
 它不能单独证明SSH已限制：若云安全组仍允许22来自任何IPv4，则SSH来源仍公开。
 应在云控制台把22收紧为实际管理出口的精确来源，并用新的SSH TCP连接复验；不要同时盲改两层规则。
+SSH 还承载公司备份上传和受限救援代理。收紧前须根据真实认证记录核对这些固定作业的出口及身份，
+为其保留独立、精确的来源规则；不能只放行管理员出口而阻断公司 `ingest` / `broker` 新连接。
+动态公司出口变更也须由独立云控制台维护；不要为省维护直接扩大成整个运营商网段。
 还需检查同安全组内网默认互通、其他绑定安全组/网卡、来源优先级及Workbench来源，不能只看一条规则。
 不为使用本工具强迫启用Session Manager、新增长期权限或设置新的OS密码。
 
@@ -30,6 +33,7 @@ WireGuard可以对显式公司公网`/32`开放；公司出口动态时可仅UDP
 
 选择`security-group`时，先确保用户可从独立浏览器登录实际ECS所属云账号并维护该实例的安全组。
 安全组变更先新增精确来源、保持已有连接，再移除22的泛来源，随后在禁用SSH复用的全新连接中验证。
+管理员新连接与公司备份/代理各自的新连接都必须通过；已有长连接仍在线不能证明新规则允许其重连。
 该步骤由拥有云控制台的维护人执行，源码生成、占位配置或旧截图都不能代替实际读回。
 VNC到达登录提示只证明控制台链路可达；Session Manager按钮可见也不证明它已启用。
 
@@ -58,7 +62,10 @@ python3 cloud_host_firewall.py render \
 
 状态目录 `/var/lib/uten-remote/cloud-host-firewall` 必须是root:root 0700。安装前确认没有pending事务，
 不要在回退timer依赖旧helper时更换它。用同目录`.next`文件加原子rename，避免把正在被回退服务读取的源码写到一半。
-helper或模板升级也应在维护窗口重新trial/确认，不得把“已有active策略”当成新模板已验收；确认会拒绝试用中改变的helper/模板。
+helper或模板升级也应在维护窗口重新trial/确认，不得把“已有active策略”当成新模板已验收。
+`active.json`是版本化确认收据，原子绑定policy、已确认rendered字节/摘要及helper/template身份；禁止直接编辑。
+正常boot先校验这些绑定，只加载原已确认字节。试用中或确认后发生的实现/模板漂移都会拒绝加载，保留当前表与active原字节。
+旧版仅policy的active文件不算已绑定验收，只能在显式新trial中作为原状回退证据；新TCP确认后才升级为绑定收据。
 安装后执行 `systemctl daemon-reload` 和针对该unit的 `systemd-analyze verify`，确认本机发行版无依赖/路径错误。
 **此时不要enable/start主机防火墙unit**；首次trial仍须保持原网络状态与可回退性。
 
@@ -77,25 +84,37 @@ python3 /usr/local/lib/uten-remote/cloud_host_firewall.py trial \
 `host-allowlist`改用`--recovery-access-verified`，仅在真实救援shell已验收后使用。
 工具核对服务器端真实已建立SSH四元组；先写root私有回退收据，独立启动systemd timer并确认active，
 然后`nft --check`，再在一个事务中仅替换`uten_cloud_host`。首次试用不写active策略、不enable开机unit。
-检查失败保留pending及回退授权，不允许直接开启下一次试用掩盖失败。
+应用成功后再次采集server:22非LISTEN的TCP四元组（包括半开/关闭中的可见socket），合并初始集合并原子保存后，
+才标记确认就绪。timer启动、检查或应用期间建立的第二连接不能充当“新规则允许新SSH”的证据。
+后采样或收据写入失败会保留未就绪pending及回退授权；即使之后出现新连接也不能确认或持久化。
+不得直接开启下一次试用掩盖失败。
 
-保留原SSH窗口，立即从另一窗口建立**新的TCP连接**，例如：
+保留原SSH窗口，看到成功的TRIAL回执后再从另一窗口建立**新的TCP连接**，例如：
 
 ```text
 ssh -o ControlMaster=no -o ControlPath=none -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes -i <原有已核验私钥> root@<已核验EIP>
 ```
 
-工具拒绝原连接、ControlMaster复用及试用前已有的第二连接。新连接中核对HTTPS、WireGuard握手/业务入口、
+工具拒绝原连接、ControlMaster复用及应用后截止采样中已有的第二连接。新连接中核对HTTPS、WireGuard握手/业务入口、
 真实监听端口的外部可达性及其他防火墙表保留情况，再用trial返回的token确认：
 
 ```bash
 python3 /usr/local/lib/uten-remote/cloud_host_firewall.py confirm --token <trial返回的token>
 ```
 
-只有确认成功才保存active策略、enable开机unit并撤销回退timer。未确认则到期只恢复本表及先前active/unit状态。
+只有确认成功才保存绑定active收据、enable开机unit并撤销回退timer。
+同一启动周期内未确认则由仍存活的timer到期只恢复本表及先前active/unit状态。
 确认后可独立执行 `systemctl start uten-cloud-host-firewall.service` 验证真实unit入口，再做一次新SSH/HTTPS验证。
 enabled、真实unit启动成功、实际重启后验收是三种不同证据；不得仅凭unit文件声称开机自启已验收。
 停止unit不会删除防火墙规则，避免服务异常导致意外开放。
+
+**未确认试用遇到主机重启：**内存nft规则和transient timer会丢失。若unit尚未enabled或active条件未满足，
+systemd不会调用boot入口；首次trial的正常状态正是disabled且没有active。因此pending可能留在磁盘，
+不会自动收尾。管理员必须先只读核对当前nft表、SG、SSH通路及pending记录，再使用对应token显式rollback清理，
+不能手删pending或把直接调用`boot()`的测试当成真实开机恢复。
+已有确认收据且unit已enabled时，boot入口才有真实调度条件；它可恢复后续未确认trial记录的原状，再按绑定收据加载。
+boot拒绝漂移只代表拒绝加载该候选；`Before=`不等价于网络必须等待它成功，不能据此声称整机已fail-closed。
+启动后仍须读回本表、验证新SSH/HTTPS和云SG限制。
 
 手动放弃未确认试用：
 
@@ -116,6 +135,7 @@ sudo python3 -S deploy/remote-access/tests/cloud_host_firewall_linux.py --nft /u
 第二条自行进入全新network namespace；里面没有对外网卡/默认公网路由，只创建隔离veth、合成TCP/UDP服务和
 受控nft表。覆盖既有连接、新SSH来源控制、SG委托模式、HTTPS/WG、其他端口/转发、loopback、IPv6邻居发现、
 DHCP、后续base-chain drop、失败事务保留旧表及独立定时进程执行真实回退。systemd管理命令在该测试中stub，
+另验证预应用第二连接拒绝、后采样失败不准确认、绑定收据阻止确认后模板漂移。
 不能代替云主机实际timer与unit验收；合成22端口监听也不是sshd认证测试。
 
 依据：[nft链与最终drop行为](https://wiki.nftables.org/wiki-nftables/index.php/Configuring_chains)、

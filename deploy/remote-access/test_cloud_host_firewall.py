@@ -144,6 +144,7 @@ class FakeHost:
         self.tables = {"uten_remote": "table inet uten_remote {\n set sentinel { type inet_service; elements = { 8443 }; }\n}\n",
                        "operator_existing": "table inet operator_existing {}\n"}
         self.sessions = [OLD_SSH.split()]
+        self.incomplete_sessions = []
         self.enabled = False
         self.timer_active = False
         self.fail_timer = False
@@ -169,7 +170,12 @@ class FakeHost:
             else:
                 raise AssertionError(command)
         elif command[0] == host.SS:
-            output = "\n".join(f"0 0 {s[2]}:{s[3]} {s[0]}:{s[1]}" for s in self.sessions)
+            if "all" in command:
+                rows = [("ESTAB", s) for s in self.sessions] + self.incomplete_sessions
+                output = "LISTEN 0 128 0.0.0.0:22 0.0.0.0:*\n" + "\n".join(
+                    f"{state} 0 0 {s[2]}:{s[3]} {s[0]}:{s[1]}" for state, s in rows)
+            else:
+                output = "\n".join(f"0 0 {s[2]}:{s[3]} {s[0]}:{s[1]}" for s in self.sessions)
         elif command[0] == host.SYSTEMD_RUN:
             status = int(self.fail_timer)
             self.timer_active = not self.fail_timer
@@ -268,6 +274,102 @@ class GuardedChangeTests(unittest.TestCase):
         self.assertTrue(self.kernel.timer_active)
         self.assertFalse(self.controller.active.exists())
 
+    def assert_connection_before_cutoff_is_rejected(self, stage):
+        original = self.kernel.__call__
+        injected = []
+
+        def inject(command, **kwargs):
+            matches = ((stage == "timer" and command[0] == host.SYSTEMD_RUN)
+                       or (stage == "check" and command == [host.NFT, "--check", "-f", "-"])
+                       or (stage == "apply" and command == [host.NFT, "-f", "-"])
+                       or (stage == "readback" and command == [host.NFT, "list", "table", "inet", host.TABLE]))
+            if matches and not injected:
+                injected.append(host.TABLE in self.kernel.tables)
+                self.kernel.sessions.append(NEW_SSH.split())
+            return original(command, **kwargs)
+
+        self.controller.runner = inject
+        trial = self.trial()
+        self.assertEqual([stage == "readback"], injected)
+        with self.assertRaisesRegex(host.UnsafeChange, "new SSH"):
+            self.controller.confirm(trial["token"], NEW_SSH)
+        self.assertTrue(self.kernel.timer_active)
+        self.assertFalse(self.controller.active.exists())
+        later = "8.8.8.8 40002 10.0.0.5 22"
+        self.kernel.sessions.append(later.split())
+        self.assertEqual("CONFIRMED", self.controller.confirm(trial["token"], later)["state"])
+
+    def test_connection_created_while_timer_arms_is_not_new_policy_proof(self):
+        self.assert_connection_before_cutoff_is_rejected("timer")
+
+    def test_connection_created_during_nft_check_is_not_new_policy_proof(self):
+        self.assert_connection_before_cutoff_is_rejected("check")
+
+    def test_connection_created_just_before_atomic_apply_is_not_new_policy_proof(self):
+        self.assert_connection_before_cutoff_is_rejected("apply")
+
+    def test_connection_present_at_post_apply_readback_is_conservatively_excluded(self):
+        self.assert_connection_before_cutoff_is_rejected("readback")
+
+    def test_preexisting_half_open_tcp_cannot_finish_later_and_count_as_new(self):
+        original = self.kernel.__call__
+
+        def inject(command, **kwargs):
+            if command[0] == host.SYSTEMD_RUN:
+                self.kernel.incomplete_sessions.append(("SYN-RECV", NEW_SSH.split()))
+            return original(command, **kwargs)
+
+        self.controller.runner = inject
+        trial = self.trial()
+        self.kernel.incomplete_sessions.clear()
+        self.kernel.sessions.append(NEW_SSH.split())
+        with self.assertRaisesRegex(host.UnsafeChange, "new SSH"):
+            self.controller.confirm(trial["token"], NEW_SSH)
+        self.assertTrue(self.kernel.timer_active)
+
+    def test_failed_post_apply_tcp_capture_cannot_be_confirmed_or_persisted(self):
+        original = self.kernel.__call__
+        blocked = [True]
+
+        def fail_capture(command, **kwargs):
+            if command[0] == host.SS and host.TABLE in self.kernel.tables and blocked[0]:
+                return subprocess.CompletedProcess(command, 1, "", "test readback failure")
+            return original(command, **kwargs)
+
+        self.controller.runner = fail_capture
+        with self.assertRaises(host.UnsafeChange):
+            self.trial()
+        pending = json.loads(self.controller.pending.read_text())
+        self.assertFalse(pending["confirmation_ready"])
+        blocked[0] = False
+        self.kernel.sessions.append(NEW_SSH.split())
+        with self.assertRaisesRegex(host.UnsafeChange, "did not complete"):
+            self.controller.confirm(pending["token"], NEW_SSH)
+        self.assertFalse(self.controller.active.exists())
+        self.assertFalse(self.kernel.enabled)
+        self.assertTrue(self.kernel.timer_active)
+        self.controller.rollback(pending["token"])
+        self.assertNotIn(host.TABLE, self.kernel.tables)
+
+    def test_failed_post_apply_receipt_write_retains_an_unconfirmable_trial(self):
+        original = host.atomic_json
+
+        def fail_ready(path, value):
+            if path == self.controller.pending and value.get("confirmation_ready") is True:
+                raise OSError("test ready receipt write failure")
+            return original(path, value)
+
+        with patch.object(host, "atomic_json", side_effect=fail_ready):
+            with self.assertRaisesRegex(OSError, "receipt write"):
+                self.trial()
+        pending = json.loads(self.controller.pending.read_text())
+        self.assertFalse(pending["confirmation_ready"])
+        self.kernel.sessions.append(NEW_SSH.split())
+        with self.assertRaisesRegex(host.UnsafeChange, "did not complete"):
+            self.controller.confirm(pending["token"], NEW_SSH)
+        self.assertFalse(self.controller.active.exists())
+        self.assertTrue(self.kernel.timer_active)
+
     def test_new_ssh_confirms_then_and_only_then_persists_boot_policy(self):
         trial = self.trial()
         self.kernel.sessions.append(NEW_SSH.split())
@@ -276,7 +378,99 @@ class GuardedChangeTests(unittest.TestCase):
         self.assertTrue(self.kernel.enabled)
         self.assertFalse(self.kernel.timer_active)
         self.assertFalse(self.controller.pending.exists())
-        self.assertEqual(host.validate_policy(policy()), json.loads(self.controller.active.read_text()))
+        active = json.loads(self.controller.active.read_text())
+        self.assertEqual(host.validate_policy(policy()), active["policy"])
+        self.assertEqual(host.ACTIVE_FORMAT, active["format"])
+        self.assertEqual("CONFIRMED_POLICY_LOADED", self.controller.boot()["state"])
+
+    def confirm_first_policy(self):
+        trial = self.trial()
+        self.kernel.sessions.append(NEW_SSH.split())
+        self.controller.confirm(trial["token"], NEW_SSH)
+
+    def test_confirmed_template_drift_cannot_generate_unreviewed_boot_rules(self):
+        self.confirm_first_policy()
+        before_table, before_active = self.kernel.tables[host.TABLE], self.controller.active.read_bytes()
+        host.TEMPLATE.write_text(host.TEMPLATE.read_text().replace("@@SSH_RULE@@", "# @@SSH_RULE@@"))
+        with self.assertRaisesRegex(host.UnsafeChange, "identity|template|receipt"):
+            self.controller.boot()
+        self.assertEqual(before_table, self.kernel.tables[host.TABLE])
+        self.assertEqual(before_active, self.controller.active.read_bytes())
+
+    def test_confirmed_helper_drift_cannot_load_a_previous_policy_as_newly_reviewed(self):
+        self.confirm_first_policy()
+        before_table, before_active = self.kernel.tables[host.TABLE], self.controller.active.read_bytes()
+        Path(host.HELPER).write_bytes(Path(host.HELPER).read_bytes() + b"\n# unreviewed helper upgrade\n")
+        with self.assertRaisesRegex(host.UnsafeChange, "identity|helper|receipt"):
+            self.controller.boot()
+        self.assertEqual(before_table, self.kernel.tables[host.TABLE])
+        self.assertEqual(before_active, self.controller.active.read_bytes())
+
+    def test_bound_active_receipt_rejects_digest_or_policy_byte_inconsistency(self):
+        import hashlib
+        self.confirm_first_policy()
+        original = json.loads(self.controller.active.read_text())
+        before_table = self.kernel.tables[host.TABLE]
+        variants = []
+        changed = copy.deepcopy(original)
+        changed["rendered"] = changed["rendered"].replace("tcp dport 22", "tcp dport 2222")
+        variants.append(changed)
+        changed = copy.deepcopy(changed)
+        changed["rendered_sha256"] = hashlib.sha256(changed["rendered"].encode()).hexdigest()
+        variants.append(changed)
+        changed = copy.deepcopy(original)
+        changed["policy"]["dhcpv4"] = not changed["policy"]["dhcpv4"]
+        variants.append(changed)
+        for changed in variants:
+            with self.subTest(fields=list(changed)):
+                host.atomic_json(self.controller.active, changed)
+                active_bytes = self.controller.active.read_bytes()
+                with self.assertRaises(host.UnsafeChange):
+                    self.controller.boot()
+                self.assertEqual(before_table, self.kernel.tables[host.TABLE])
+                self.assertEqual(active_bytes, self.controller.active.read_bytes())
+
+    def test_template_upgrade_requires_a_new_trial_before_it_can_be_loaded_at_boot(self):
+        self.confirm_first_policy()
+        host.TEMPLATE.write_bytes(host.TEMPLATE.read_bytes() + b"\n# reviewed template upgrade candidate\n")
+        with self.assertRaises(host.UnsafeChange):
+            self.controller.boot()
+        trial = self.trial()
+        later = "8.8.8.8 40003 10.0.0.5 22"
+        self.kernel.sessions.append(later.split())
+        self.controller.confirm(trial["token"], later)
+        self.assertEqual("CONFIRMED_POLICY_LOADED", self.controller.boot()["state"])
+
+    def test_reviewed_helper_upgrade_requires_a_new_trial_using_the_new_implementation(self):
+        self.confirm_first_policy()
+        upgraded_path = Path(host.HELPER)
+        upgraded_path.write_bytes(upgraded_path.read_bytes() + b"\n# reviewed helper upgrade fixture\n")
+        upgraded_spec = importlib.util.spec_from_file_location("upgraded_cloud_host_fixture", upgraded_path)
+        upgraded = importlib.util.module_from_spec(upgraded_spec)
+        upgraded_spec.loader.exec_module(upgraded)
+        upgraded.HELPER, upgraded.TEMPLATE = str(upgraded_path), host.TEMPLATE
+        controller = upgraded.Controller(self.controller.state, self.kernel)
+        with self.assertRaisesRegex(upgraded.UnsafeChange, "identity"):
+            controller.boot()
+        trial = controller.trial(policy(), OLD_SSH, recovery_verified=True)
+        later = "8.8.8.8 40004 10.0.0.5 22"
+        self.kernel.sessions.append(later.split())
+        controller.confirm(trial["token"], later)
+        self.assertEqual("CONFIRMED_POLICY_LOADED", controller.boot()["state"])
+
+    def test_legacy_unbound_active_policy_is_evidence_until_a_new_trial_confirms_it(self):
+        self.controller.state.mkdir(mode=0o700)
+        host.atomic_json(self.controller.active, policy())
+        self.kernel.tables[host.TABLE] = host.render_policy(policy())
+        original_table, original_active = self.kernel.tables[host.TABLE], self.controller.active.read_bytes()
+        with self.assertRaisesRegex(host.UnsafeChange, "unbound"):
+            self.controller.boot()
+        self.assertEqual(original_table, self.kernel.tables[host.TABLE])
+        self.assertEqual(original_active, self.controller.active.read_bytes())
+        trial = self.trial()
+        self.kernel.sessions.append(NEW_SSH.split())
+        self.controller.confirm(trial["token"], NEW_SSH)
+        self.assertEqual(host.ACTIVE_FORMAT, json.loads(self.controller.active.read_text())["format"])
         self.assertEqual("CONFIRMED_POLICY_LOADED", self.controller.boot()["state"])
 
     def test_timeout_missing_table_or_drift_cannot_be_confirmed(self):
@@ -332,11 +526,37 @@ class GuardedChangeTests(unittest.TestCase):
         self.assertNotIn(host.TABLE, self.kernel.tables)
         self.assertFalse(self.kernel.enabled)
 
-    def test_boot_recovers_an_unconfirmed_trial_without_transient_timer(self):
+    def test_first_trial_reboot_has_no_enabled_boot_entry_and_needs_explicit_rollback(self):
         trial = self.trial()
+        self.assertFalse(self.kernel.enabled)
+        self.assertFalse(self.controller.active.exists())
+        unit = (ROOT / "units/uten-cloud-host-firewall.service").read_text()
+        self.assertIn("ConditionPathExists=/var/lib/uten-remote/cloud-host-firewall/active.json", unit)
+        pending = json.loads(self.controller.pending.read_text())
+        pending["boot_id"] = "a-previous-boot"
+        host.atomic_json(self.controller.pending, pending)
         self.kernel.timer_active = False
-        self.assertEqual("ROLLED_BACK", self.controller.boot()["state"])
+        self.kernel.tables.pop(host.TABLE)
+        # The actual enabled+ConditionPathExists gate is false. Do not call
+        # boot() and pretend systemd would dispatch this first unconfirmed run.
+        self.assertFalse(self.kernel.enabled and self.controller.active.exists())
+        self.assertTrue(self.controller.pending.exists())
+        with self.assertRaisesRegex(host.UnsafeChange, "earlier boot"):
+            self.trial()
+        self.assertEqual("ROLLED_BACK", self.controller.rollback(trial["token"])["state"])
+        self.assertFalse(self.controller.pending.exists())
         self.assertNotIn(host.TABLE, self.kernel.tables)
+
+    def test_enabled_confirmed_boot_entry_recovers_a_later_unconfirmed_trial(self):
+        self.confirm_first_policy()
+        confirmed_active = self.controller.active.read_bytes()
+        trial = self.controller.trial({**policy(), "dhcpv4": False}, OLD_SSH, recovery_verified=True)
+        self.kernel.timer_active = False
+        self.kernel.tables.pop(host.TABLE)
+        self.assertTrue(self.kernel.enabled and self.controller.active.exists())
+        self.assertEqual("ROLLED_BACK", self.controller.boot()["state"])
+        self.assertIn(host.TABLE, self.kernel.tables)
+        self.assertEqual(json.loads(confirmed_active), json.loads(self.controller.active.read_text()))
         self.assertFalse(self.controller.pending.exists())
         self.assertEqual("NO_PENDING_TRIAL", self.controller.rollback(trial["token"])["state"])
 

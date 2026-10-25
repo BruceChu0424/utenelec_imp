@@ -7,7 +7,7 @@ RUN printf '%s\n' \
       'path-include=/usr/share/man/man1/nodejs.1.gz' \
       > /etc/dpkg/dpkg.cfg.d/uten-dr-node-manual \
     && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    python3 python3-venv nodejs openssh-client ca-certificates util-linux \
+    python3 python3-venv nodejs openssh-client gnupg ca-certificates util-linux \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --user-group --no-create-home --shell /usr/sbin/nologin uten-dr-control
 RUN test -s /usr/share/man/man1/node.1.gz \

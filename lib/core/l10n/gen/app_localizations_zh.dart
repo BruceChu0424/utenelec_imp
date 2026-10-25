@@ -12201,10 +12201,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get companyFilesRestore => '还原';
 
   @override
-  String get companyFilesAccess => '文件夹权限';
+  String get companyFilesAccess => '访问权限';
 
   @override
-  String get companyFilesPassword => '文件夹密码';
+  String get companyFilesPassword => '访问密码';
 
   @override
   String get companyFilesUnlock => '解锁';
@@ -12231,7 +12231,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get companyFilesEmpty => '这个文件夹还没有资料';
 
   @override
-  String get companyFilesEmptyHint => '有上传或创建权限时，可以从上方添加资料，也可以将文件拖到这里。';
+  String get companyFilesEmptyHint => '有上传或创建权限时，可用右下角按钮添加资料，也可右键空白处或拖入文件。';
 
   @override
   String get companyFilesNoResults => '没有找到匹配的资料';
@@ -12282,16 +12282,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get companyFilesProtected => '密码保护';
 
   @override
-  String get companyFilesLocked => '此文件夹需要密码';
+  String get companyFilesLocked => '此资料需要密码';
 
   @override
-  String get companyFilesLockedHint => '目录权限仍然有效。解锁只在当前登录会话中临时生效。';
+  String get companyFilesLockedHint => '独立访问范围仍然有效。解锁只在当前登录会话中临时生效。';
 
   @override
   String get companyFilesDeleteHint => '文件夹及其全部子项将一起移到回收站，原件保留。还原后仍按当前权限访问。';
 
   @override
-  String get companyFilesPasswordHint => '密码只作为额外保护，不能替代人员授权。设置或修改后，所有临时解锁会失效。';
+  String get companyFilesPasswordHint =>
+      '密码是当前资料的额外保护，不代替人员或部门授权。修改密码后，所有临时解锁失效。';
 
   @override
   String get companyFilesNewPassword => '新密码';
@@ -12322,7 +12323,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get companyFilesAccessHint =>
-      '操作同时受总权限和文件夹规则约束。拒绝规则优先；继承开启时，上级规则继续生效。';
+      '这些规则只适用于当前资料及其继承项，不会修改系统授权。拒绝规则优先；操作仍需已获授的使用资格。';
 
   @override
   String get companyFilesInherit => '继承上级权限';
@@ -12455,4 +12456,119 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get companyFilesKeepExtension => '重命名时请保留原扩展名，避免改变文件的打开方式。';
+
+  @override
+  String get companyFilesEntryAccessTitle => '资料访问权限';
+
+  @override
+  String get companyFilesEntryAccessHint => '仅影响这份文件或文件夹，不会修改系统总权限。';
+
+  @override
+  String get companyFilesWhoCanRead => '谁可以查看';
+
+  @override
+  String get companyFilesInheritEntryAccess => '继承所在文件夹的访问范围';
+
+  @override
+  String get companyFilesSpecificReaders => '指定人员或部门';
+
+  @override
+  String get companyFilesSpecificReadersHint =>
+      '向指定人员及部门开放阅读，所选部门包含下级。上级拒绝仍有效，创建者保留原本已有的操作权限。';
+
+  @override
+  String get companyFilesAllowedReaders => '允许查看';
+
+  @override
+  String get companyFilesDeniedReaders => '禁止查看';
+
+  @override
+  String get companyFilesAddReader => '添加人员或部门';
+
+  @override
+  String get companyFilesNoReadersSelected => '尚未指定其他阅读人员或部门';
+
+  @override
+  String get companyFilesEntryPasswordTitle => '资料密码';
+
+  @override
+  String get companyFilesSetInitialPassword => '添加密码保护';
+
+  @override
+  String get companyFilesEntryPasswordHint => '密码是额外保护，仍会检查本资料的人员和部门访问范围。';
+
+  @override
+  String get companyFilesPasswordByteLimit => '密码至少 8 个字符，UTF-8 长度不超过 72 字节';
+
+  @override
+  String get companyFilesUploadAccessTitle => '上传文件的访问设置';
+
+  @override
+  String get companyFilesUploadAccessHint => '此设置会分别保存到本次选择的每份文件，之后可单独修改。';
+
+  @override
+  String get companyFilesSelectedFiles => '已选文件';
+
+  @override
+  String get companyFilesCreateAccessHint => '名称、访问范围和密码将一并保存，创建成功后才会显示资料。';
+
+  @override
+  String get companyFilesAccessOperationsHint => '这些规则只限制本资料的操作范围，不会授予系统功能权限。';
+
+  @override
+  String get companyFilesAccessRuleLimit => '每份资料最多设置 100 条访问规则';
+
+  @override
+  String get companyFilesPasteCopyTitle => '粘贴文件副本';
+
+  @override
+  String get companyFilesPasteCopyHint => '副本会按目标文件夹重新设置访问范围和密码，不会复制原文件的保护设置。';
+
+  @override
+  String get companyFilesNameTooLong => '名称最多 180 个字符';
+
+  @override
+  String get companyFilesDescriptionTooLong => '说明最多 2000 个字符';
+
+  @override
+  String get companyFilesCopy => '复制文件';
+
+  @override
+  String get companyFilesCut => '剪切';
+
+  @override
+  String get companyFilesPaste => '粘贴';
+
+  @override
+  String get companyFilesClearClipboard => '取消复制或剪切';
+
+  @override
+  String get companyFilesCopySuffix => '副本';
+
+  @override
+  String get companyFilesCopied => '已复制，可到目标文件夹粘贴';
+
+  @override
+  String get companyFilesCutReady => '已剪切，粘贴后移动到目标文件夹';
+
+  @override
+  String get companyFilesClipboardUnavailable => '来源资料已变化或无权访问，请重新选择';
+
+  @override
+  String get companyFilesSameFolder => '资料已在当前文件夹';
+
+  @override
+  String get companyFilesShowDirectory => '展开目录';
+
+  @override
+  String get companyFilesHideDirectory => '收起目录';
+
+  @override
+  String get companyFilesDirectory => '目录';
+
+  @override
+  String get companyFilesMore => '更多操作';
+
+  @override
+  String get companyFilesPreview => '预览文件';
 }

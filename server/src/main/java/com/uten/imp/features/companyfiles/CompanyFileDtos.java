@@ -49,11 +49,22 @@ public final class CompanyFileDtos {
             UUID parentId,
             @NotBlank @Size(max = 180) String name,
             @Size(max = 2000) String description,
-            UUID requestId) {
+            UUID requestId,
+            @Valid InitialAccess access) {
         public Create(UUID parentId, String name, String description) {
-            this(parentId, name, description, null);
+            this(parentId, name, description, null, null);
+        }
+
+        public Create(UUID parentId, String name, String description, UUID requestId) {
+            this(parentId, name, description, requestId, null);
         }
     }
+
+    /** New-object read policy only; it never configures system permissions. */
+    public record InitialAccess(
+            @NotNull Boolean inheritPermissions,
+            @NotNull @Size(max = 100) List<@Valid Rule> rules,
+            @Size(max = 128) String password) {}
 
     public record Edit(
             @NotBlank @Size(max = 180) String name,

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../models/company_file.dart';
+import '../models/company_file_access_draft.dart';
 
 class CompanyFileRepository {
   const CompanyFileRepository(this.api);
@@ -38,10 +39,16 @@ class CompanyFileRepository {
     String? parentId,
     required String name,
     String? description,
+    CompanyFileInitialAccessDraft? access,
   }) async => CompanyFile.fromJson(
     await api.post(
       '$base/folders',
-      body: {'parentId': parentId, 'name': name, 'description': description},
+      body: {
+        'parentId': parentId,
+        'name': name,
+        'description': description,
+        if (access != null) 'access': access.toJson(),
+      },
     ),
   );
 
@@ -49,10 +56,16 @@ class CompanyFileRepository {
     String? parentId,
     required String name,
     required String requestId,
+    CompanyFileInitialAccessDraft? access,
   }) async => CompanyFile.fromJson(
     await api.post(
       '$base/files',
-      body: {'parentId': parentId, 'name': name, 'requestId': requestId},
+      body: {
+        'parentId': parentId,
+        'name': name,
+        'requestId': requestId,
+        if (access != null) 'access': access.toJson(),
+      },
     ),
   );
 

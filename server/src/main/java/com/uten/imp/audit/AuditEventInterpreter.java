@@ -389,11 +389,11 @@ public class AuditEventInterpreter {
             case "company_file_reorder", "company_file.reorder" -> "调整公司资料顺序";
             case "company_file_recycle", "company_file.delete" -> "移入公司资料回收站";
             case "company_file_restore", "company_file.restore" -> "还原公司资料";
-            case "company_file_permissions_set", "company_file.set_permissions" -> "设置公司目录权限";
-            case "company_file_password_set", "company_file.set_password" -> "设置公司目录密码";
-            case "company_file_password_clear" -> "清除公司目录密码";
-            case "company_file_unlock", "company_file.unlock" -> "解锁公司目录";
-            case "company_file_lock", "company_file.lock" -> "重新锁定公司目录";
+            case "company_file_permissions_set", "company_file.set_permissions" -> "设置公司资料访问权限";
+            case "company_file_password_set", "company_file.set_password" -> "设置公司资料密码";
+            case "company_file_password_clear" -> "清除公司资料密码";
+            case "company_file_unlock", "company_file.unlock" -> "解锁公司资料";
+            case "company_file_lock", "company_file.lock" -> "重新锁定公司资料";
             default -> null;
         };
     }

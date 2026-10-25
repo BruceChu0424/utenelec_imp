@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,7 +7,6 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/authenticated_request_scope.dart';
@@ -13,57 +14,51 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/attachments/attachment_file_rules.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/company_file.dart';
+import '../models/company_file_access_draft.dart';
 import '../repositories/company_file_repository.dart';
+import 'company_file_access_editor.dart';
+
+export 'company_file_access_editor.dart' show CompanyFileScopeBoundary;
 
 String companyFileError(Object error, AppLocalizations l) =>
     error is ApiException ? error.message : l.companyFilesLoadFailed;
 
-/// Navigator overlays outlive their launching page. Keep every editor and
-/// picker tied to the original, sticky command identity.
-class CompanyFileScopeBoundary extends ConsumerWidget {
-  const CompanyFileScopeBoundary({
-    super.key,
-    required this.boundary,
-    required this.child,
-    this.scope,
-    this.isCurrent,
-  });
-  final SensitiveReadBoundary boundary;
-  final AuthenticatedRequestScope? scope;
-  final Widget child;
-  final bool Function()? isCurrent;
-  @override
-  Widget build(BuildContext context, WidgetRef ref) =>
-      ref.watch(sensitiveReadBoundaryProvider) == boundary &&
-          (scope?.isCurrent ?? true) &&
-          (isCurrent?.call() ?? true)
-      ? child
-      : UtenAlertDialog(
-          title: Text(
-            AppLocalizations.of(context).companyFilesPermissionDenied,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(AppLocalizations.of(context).companyFilesClose),
-            ),
-          ],
-        );
+bool _validateAndReveal(GlobalKey<FormState> form, BuildContext context) {
+  final invalid = form.currentState!.validateGranularly();
+  if (invalid.isEmpty) return true;
+  Scrollable.ensureVisible(
+    invalid.first.context,
+    alignment: .1,
+    duration: MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 150),
+  );
+  return false;
 }
 
 class CompanyFileNameDialog extends StatefulWidget {
-  const CompanyFileNameDialog({super.key, this.entry});
+  const CompanyFileNameDialog({
+    super.key,
+    this.entry,
+    this.initialName,
+    this.copy = false,
+  });
   final CompanyFile? entry;
+  final String? initialName;
+  final bool copy;
   @override
   State<CompanyFileNameDialog> createState() => _CompanyFileNameDialogState();
 }
 
 class _CompanyFileNameDialogState extends State<CompanyFileNameDialog> {
   final _form = GlobalKey<FormState>();
-  late final _name = TextEditingController(text: widget.entry?.name ?? '');
-  late final _description = TextEditingController(
-    text: widget.entry?.description ?? '',
+  late final _name = TextEditingController(
+    text: widget.initialName ?? widget.entry?.name ?? '',
   );
+  late final _description = TextEditingController(
+    text: widget.copy ? '' : widget.entry?.description ?? '',
+  );
+  bool _saving = false;
   @override
   void dispose() {
     _name.dispose();
@@ -75,17 +70,23 @@ class _CompanyFileNameDialogState extends State<CompanyFileNameDialog> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     void save() {
-      if (_form.currentState!.validate()) {
+      if (_saving) return;
+      if (_validateAndReveal(_form, context)) {
+        setState(() => _saving = true);
         Navigator.pop(context, (
           name: _name.text.trim(),
-          description: _description.text.trim(),
+          description: widget.copy ? '' : _description.text.trim(),
         ));
       }
     }
 
     return UtenAlertDialog(
       title: Text(
-        widget.entry == null ? l.companyFilesNewFolder : l.companyFilesRename,
+        widget.copy
+            ? l.companyFilesPasteCopyTitle
+            : widget.entry == null
+            ? l.companyFilesNewFolder
+            : l.companyFilesRename,
       ),
       content: SizedBox(
         width: 440,
@@ -101,6 +102,9 @@ class _CompanyFileNameDialogState extends State<CompanyFileNameDialog> {
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) {
                     return l.companyFilesRequiredName;
+                  }
+                  if (v.trim().runes.length > 180) {
+                    return l.companyFilesNameTooLong;
                   }
                   final entry = widget.entry;
                   if (entry != null &&
@@ -118,11 +122,14 @@ class _CompanyFileNameDialogState extends State<CompanyFileNameDialog> {
                 Text(l.companyFilesKeepExtension),
                 const SizedBox(height: UtenSpacing.s16),
               ],
-              UtenInput(
-                label: l.companyFilesDescription,
-                controller: _description,
-                maxLines: 3,
-              ),
+              if (widget.copy)
+                Text(l.companyFilesPasteCopyHint)
+              else
+                UtenInput(
+                  label: l.companyFilesDescription,
+                  controller: _description,
+                  maxLines: 3,
+                ),
               if (widget.entry == null) ...[
                 const SizedBox(height: UtenSpacing.s16),
                 Text(
@@ -138,11 +145,249 @@ class _CompanyFileNameDialogState extends State<CompanyFileNameDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: _saving ? null : () => Navigator.pop(context),
           child: Text(l.companyFilesCancel),
         ),
-        UtenButton(onPressed: save, child: Text(l.companyFilesSave)),
+        UtenButton(
+          onPressed: _saving ? null : save,
+          child: Text(widget.copy ? l.companyFilesPaste : l.companyFilesSave),
+        ),
       ],
+    );
+  }
+}
+
+class CompanyFileCreateFolderDialog extends StatelessWidget {
+  const CompanyFileCreateFolderDialog({
+    super.key,
+    required this.repository,
+    required this.scope,
+    required this.boundary,
+    this.initialName = '',
+    this.initialDescription = '',
+    this.initialAccess = const CompanyFileInitialAccessDraft.inherited(),
+  });
+
+  final CompanyFileRepository repository;
+  final AuthenticatedRequestScope scope;
+  final SensitiveReadBoundary boundary;
+  final String initialName;
+  final String initialDescription;
+  final CompanyFileInitialAccessDraft initialAccess;
+
+  @override
+  Widget build(BuildContext context) => CompanyFileScopeBoundary(
+    boundary: boundary,
+    scope: scope,
+    child: _CompanyFileInitialEntryDialog(
+      repository: repository,
+      scope: scope,
+      boundary: boundary,
+      initialName: initialName,
+      initialDescription: initialDescription,
+      initialAccess: initialAccess,
+    ),
+  );
+}
+
+class CompanyFileUploadAccessDialog extends StatelessWidget {
+  const CompanyFileUploadAccessDialog({
+    super.key,
+    required this.repository,
+    required this.scope,
+    required this.boundary,
+    required this.selectedNames,
+    this.initialAccess = const CompanyFileInitialAccessDraft.inherited(),
+  });
+
+  final CompanyFileRepository repository;
+  final AuthenticatedRequestScope scope;
+  final SensitiveReadBoundary boundary;
+  final List<String> selectedNames;
+  final CompanyFileInitialAccessDraft initialAccess;
+
+  @override
+  Widget build(BuildContext context) => CompanyFileScopeBoundary(
+    boundary: boundary,
+    scope: scope,
+    child: _CompanyFileInitialEntryDialog(
+      repository: repository,
+      scope: scope,
+      boundary: boundary,
+      selectedNames: selectedNames,
+      initialAccess: initialAccess,
+    ),
+  );
+}
+
+class _CompanyFileInitialEntryDialog extends StatefulWidget {
+  const _CompanyFileInitialEntryDialog({
+    required this.repository,
+    required this.scope,
+    required this.boundary,
+    required this.initialAccess,
+    this.selectedNames,
+    this.initialName = '',
+    this.initialDescription = '',
+  });
+
+  final CompanyFileRepository repository;
+  final AuthenticatedRequestScope scope;
+  final SensitiveReadBoundary boundary;
+  final CompanyFileInitialAccessDraft initialAccess;
+  final List<String>? selectedNames;
+  final String initialName;
+  final String initialDescription;
+
+  @override
+  State<_CompanyFileInitialEntryDialog> createState() =>
+      _CompanyFileInitialEntryDialogState();
+}
+
+class _CompanyFileInitialEntryDialogState
+    extends State<_CompanyFileInitialEntryDialog> {
+  final _form = GlobalKey<FormState>();
+  late final _name = TextEditingController(text: widget.initialName);
+  late final _description = TextEditingController(
+    text: widget.initialDescription,
+  );
+  late CompanyFileInitialAccessDraft _access = widget.initialAccess;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _name.clear();
+    _description.clear();
+    _name.dispose();
+    _description.dispose();
+    _access = const CompanyFileInitialAccessDraft.inherited();
+    super.dispose();
+  }
+
+  void _save() {
+    if (_saving || !widget.scope.isCurrent) return;
+    if (!_validateAndReveal(_form, context)) return;
+    setState(() => _saving = true);
+    Navigator.pop(
+      context,
+      widget.selectedNames == null
+          ? CompanyFileCreateFolderDraft(
+              name: _name.text.trim(),
+              description: _description.text.trim(),
+              access: _access,
+            )
+          : _access,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final names = widget.selectedNames;
+    return PopScope(
+      canPop: !_saving,
+      child: UtenAlertDialog(
+        maxWidth: 640,
+        title: Text(
+          names == null
+              ? l.companyFilesNewFolder
+              : l.companyFilesUploadAccessTitle,
+        ),
+        content: Form(
+          key: _form,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                names == null
+                    ? l.companyFilesCreateAccessHint
+                    : l.companyFilesUploadAccessHint,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: UtenSpacing.s16),
+              if (names == null) ...[
+                UtenInput(
+                  key: const ValueKey('company-folder-name'),
+                  label: l.companyFilesName,
+                  controller: _name,
+                  required: true,
+                  enabled: !_saving,
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return l.companyFilesRequiredName;
+                    }
+                    return v.trim().runes.length > 180
+                        ? l.companyFilesNameTooLong
+                        : null;
+                  },
+                ),
+                const SizedBox(height: UtenSpacing.s16),
+                UtenInput(
+                  label: l.companyFilesDescription,
+                  controller: _description,
+                  enabled: !_saving,
+                  maxLines: 3,
+                  validator: (v) => (v ?? '').runes.length > 2000
+                      ? l.companyFilesDescriptionTooLong
+                      : null,
+                ),
+                const Divider(height: UtenSpacing.s32),
+              ] else ...[
+                Text(
+                  '${l.companyFilesSelectedFiles} (${names.length})',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 120),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final name in names)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: UtenSpacing.s4,
+                            ),
+                            child: Text(name, overflow: TextOverflow.ellipsis),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const Divider(height: UtenSpacing.s32),
+              ],
+              Text(
+                l.companyFilesEntryAccessHint,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+              CompanyFileInitialAccessEditor(
+                repository: widget.repository,
+                scope: widget.scope,
+                boundary: widget.boundary,
+                initialValue: widget.initialAccess,
+                enabled: !_saving,
+                onChanged: (value) => _access = value,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: _saving ? null : () => Navigator.pop(context),
+            child: Text(l.companyFilesCancel),
+          ),
+          UtenButton(
+            key: const ValueKey('company-initial-access-confirm'),
+            onPressed: _saving ? null : _save,
+            child: Text(
+              names == null ? l.companyFilesCreate : l.companyFilesUpload,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -170,6 +415,7 @@ class _CompanyFilePasswordDialogState extends State<CompanyFilePasswordDialog> {
   final _password = TextEditingController();
   final _repeat = TextEditingController();
   bool _remove = false;
+  bool _saving = false;
   @override
   void dispose() {
     _password.clear();
@@ -184,7 +430,7 @@ class _CompanyFilePasswordDialogState extends State<CompanyFilePasswordDialog> {
     final l = AppLocalizations.of(context);
     return UtenAlertDialog(
       title: Text(
-        widget.unlock ? l.companyFilesUnlock : l.companyFilesPassword,
+        widget.unlock ? l.companyFilesUnlock : l.companyFilesEntryPasswordTitle,
       ),
       content: SizedBox(
         width: 440,
@@ -202,7 +448,7 @@ class _CompanyFilePasswordDialogState extends State<CompanyFilePasswordDialog> {
               Text(
                 widget.unlock
                     ? l.companyFilesLockedHint
-                    : l.companyFilesPasswordHint,
+                    : l.companyFilesEntryPasswordHint,
               ),
               const SizedBox(height: UtenSpacing.s16),
               if (!widget.unlock && widget.entry.passwordProtected)
@@ -215,15 +461,24 @@ class _CompanyFilePasswordDialogState extends State<CompanyFilePasswordDialog> {
               if (!_remove) ...[
                 UtenInput(
                   label: widget.unlock
-                      ? l.companyFilesPassword
+                      ? l.companyFilesEntryPasswordTitle
                       : l.companyFilesNewPassword,
                   controller: _password,
                   isPassword: true,
                   aiSensitive: true,
-                  validator: (v) =>
-                      v == null || (widget.unlock ? v.isEmpty : v.length < 8)
-                      ? l.companyFilesPasswordLength
-                      : null,
+                  validator: (v) {
+                    if (widget.unlock) {
+                      return v == null || v.isEmpty
+                          ? l.companyFilesPasswordLength
+                          : null;
+                    }
+                    return v == null ||
+                            v.trim().isEmpty ||
+                            v.runes.length < 8 ||
+                            utf8.encode(v).length > 72
+                        ? l.companyFilesPasswordByteLimit
+                        : null;
+                  },
                 ),
                 if (!widget.unlock) ...[
                   const SizedBox(height: UtenSpacing.s16),
@@ -244,18 +499,24 @@ class _CompanyFilePasswordDialogState extends State<CompanyFilePasswordDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: _saving ? null : () => Navigator.pop(context),
           child: Text(l.companyFilesCancel),
         ),
         UtenButton(
-          onPressed: () {
-            if (_remove || _form.currentState!.validate()) {
-              Navigator.pop(
-                context,
-                CompanyFilePasswordChoice(_remove ? null : _password.text),
-              );
-            }
-          },
+          onPressed: _saving
+              ? null
+              : () {
+                  if (_saving) return;
+                  if (_remove || _validateAndReveal(_form, context)) {
+                    setState(() => _saving = true);
+                    Navigator.pop(
+                      context,
+                      CompanyFilePasswordChoice(
+                        _remove ? null : _password.text,
+                      ),
+                    );
+                  }
+                },
           child: Text(
             widget.unlock ? l.companyFilesUnlock : l.companyFilesSave,
           ),
@@ -288,18 +549,32 @@ class _CompanyFileAccessDialogState
   List<CompanyFileAccessRule> _rules = [];
   bool _inherit = true;
   bool _busy = false;
+  bool _picking = false;
+  bool _invalidated = false;
   Object? _error;
   bool get _current =>
       mounted &&
+      !_invalidated &&
       widget.scope.isCurrent &&
       ref.read(sensitiveReadBoundaryProvider) == widget.boundary;
   @override
   void initState() {
     super.initState();
+    ref.listenManual(sensitiveReadBoundaryProvider, (_, next) {
+      if (next != widget.boundary && !_invalidated && mounted) {
+        setState(() {
+          _invalidated = true;
+          _access = null;
+          _rules = [];
+          _error = null;
+        });
+      }
+    });
     _load();
   }
 
   Future<void> _load() async {
+    if (!_current) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -322,7 +597,7 @@ class _CompanyFileAccessDialogState
   }
 
   Future<void> _save() async {
-    if (_busy || !_current || _access == null) return;
+    if (_busy || _picking || !_current || _access == null) return;
     if (_rules.any((r) => r.actions.isEmpty)) {
       setState(
         () => _error = ApiException(
@@ -336,6 +611,7 @@ class _CompanyFileAccessDialogState
       _busy = true;
       _error = null;
     });
+    var completed = false;
     try {
       await widget.scope.run(
         () => widget.repository.saveAccess(
@@ -345,30 +621,47 @@ class _CompanyFileAccessDialogState
           rules: _rules,
         ),
       );
-      if (mounted && _current) Navigator.pop(context, true);
+      if (mounted && _current) {
+        completed = true;
+        Navigator.pop(context, true);
+      }
     } catch (e) {
       if (_current) setState(() => _error = e);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && !completed) setState(() => _busy = false);
     }
   }
 
   Future<void> _add() async {
-    final principal = await showDialog<CompanyFilePrincipal>(
-      context: context,
-      builder: (_) => CompanyFileScopeBoundary(
-        boundary: widget.boundary,
-        scope: widget.scope,
-        child: _CompanyFilePrincipalDialog(
-          repository: widget.repository,
-          scope: widget.scope,
+    if (_busy || _picking || !_current) return;
+    if (_rules.length >= 100) {
+      setState(
+        () => _error = ApiException(
+          'RULE_LIMIT',
+          AppLocalizations.of(context).companyFilesAccessRuleLimit,
         ),
-      ),
-    );
+      );
+      return;
+    }
+    setState(() => _picking = true);
+    CompanyFilePrincipal? principal;
+    try {
+      principal = await showCompanyFilePrincipalPicker(
+        context,
+        repository: widget.repository,
+        scope: widget.scope,
+        boundary: widget.boundary,
+      );
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
     if (!_current || principal == null) return;
+    final selectedPrincipal = principal;
     final existing = _rules
         .where(
-          (r) => r.subjectType == principal.type && r.subjectId == principal.id,
+          (r) =>
+              r.subjectType == selectedPrincipal.type &&
+              r.subjectId == selectedPrincipal.id,
         )
         .toList();
     if (existing.length >= 2) {
@@ -384,9 +677,9 @@ class _CompanyFileAccessDialogState
       _error = null;
       _rules.add(
         CompanyFileAccessRule(
-          subjectType: principal.type,
-          subjectId: principal.id,
-          subjectName: principal.name,
+          subjectType: selectedPrincipal.type,
+          subjectId: selectedPrincipal.id,
+          subjectName: selectedPrincipal.name,
           effect: existing.any((r) => r.effect == 'ALLOW') ? 'DENY' : 'ALLOW',
         ),
       );
@@ -397,7 +690,8 @@ class _CompanyFileAccessDialogState
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final boundary = ref.watch(sensitiveReadBoundaryProvider);
-    final current = boundary == widget.boundary && widget.scope.isCurrent;
+    final current =
+        !_invalidated && boundary == widget.boundary && widget.scope.isCurrent;
     final actions = <String, String>{
       'view': l.companyFilesRead,
       'download': l.companyFilesDownload,
@@ -412,7 +706,7 @@ class _CompanyFileAccessDialogState
     return PopScope(
       canPop: !_busy,
       child: UtenAlertDialog(
-        title: Text(l.companyFilesAccess),
+        title: Text(l.companyFilesEntryAccessTitle),
         content: SizedBox(
           width: 650,
           child: !current
@@ -434,7 +728,9 @@ class _CompanyFileAccessDialogState
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: UtenSpacing.s12),
-                    Text(l.companyFilesAccessHint),
+                    Text(l.companyFilesEntryAccessHint),
+                    const SizedBox(height: UtenSpacing.s8),
+                    Text(l.companyFilesAccessOperationsHint),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(l.companyFilesInherit),
@@ -568,7 +864,7 @@ class _CompanyFileAccessDialogState
                       child: UtenButton(
                         type: UtenButtonType.secondary,
                         icon: Icons.add,
-                        onPressed: _busy ? null : _add,
+                        onPressed: _busy || _picking ? null : _add,
                         child: Text(l.companyFilesAddRule),
                       ),
                     ),
@@ -598,134 +894,6 @@ class _CompanyFileAccessDialogState
             ),
         ],
       ),
-    );
-  }
-}
-
-class _CompanyFilePrincipalDialog extends StatefulWidget {
-  const _CompanyFilePrincipalDialog({
-    required this.repository,
-    required this.scope,
-  });
-  final CompanyFileRepository repository;
-  final AuthenticatedRequestScope scope;
-  @override
-  State<_CompanyFilePrincipalDialog> createState() =>
-      _CompanyFilePrincipalDialogState();
-}
-
-class _CompanyFilePrincipalDialogState
-    extends State<_CompanyFilePrincipalDialog> {
-  String _type = 'USER', _search = '';
-  int _request = 0;
-  List<CompanyFilePrincipal>? _items;
-  Object? _error;
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final request = ++_request;
-    setState(() {
-      _items = null;
-      _error = null;
-    });
-    try {
-      final rows = await widget.scope.run(
-        () => widget.repository.principals(type: _type, search: _search),
-      );
-      if (mounted && widget.scope.isCurrent && request == _request) {
-        setState(() => _items = rows);
-      }
-    } catch (e) {
-      if (mounted && request == _request) setState(() => _error = e);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    return UtenAlertDialog(
-      title: Text(l.companyFilesAddRule),
-      content: SizedBox(
-        width: 480,
-        height: (MediaQuery.sizeOf(context).height * .5).clamp(200, 500),
-        child: Column(
-          children: [
-            Wrap(
-              spacing: UtenSpacing.s8,
-              children: [
-                ChoiceChip(
-                  label: Text(l.companyFilesUser),
-                  selected: _type == 'USER',
-                  onSelected: (_) {
-                    _type = 'USER';
-                    _load();
-                  },
-                ),
-                ChoiceChip(
-                  label: Text(l.companyFilesDepartment),
-                  selected: _type == 'DEPARTMENT',
-                  onSelected: (_) {
-                    _type = 'DEPARTMENT';
-                    _load();
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            UtenSearchBar(
-              hint: l.companyFilesPrincipalSearch,
-              onInputChanged: (_) {
-                ++_request;
-              },
-              onChanged: (v) {
-                _search = v;
-                _load();
-              },
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            Expanded(
-              child: !widget.scope.isCurrent
-                  ? Text(l.companyFilesPermissionDenied)
-                  : _error != null
-                  ? UtenEmpty.error(
-                      message: companyFileError(_error!, l),
-                      actionLabel: l.companyFilesRetry,
-                      onAction: _load,
-                    )
-                  : _items == null
-                  ? const Center(child: CircularProgressIndicator())
-                  : _items!.isEmpty
-                  ? UtenEmpty(message: l.companyFilesNoResults)
-                  : ListView.builder(
-                      itemCount: _items!.length,
-                      itemBuilder: (_, i) {
-                        final p = _items![i];
-                        return ListTile(
-                          leading: Icon(
-                            p.type == 'USER'
-                                ? Icons.person_outline
-                                : Icons.groups_outlined,
-                          ),
-                          title: Text(p.name),
-                          subtitle: p.detail.isEmpty ? null : Text(p.detail),
-                          onTap: () => Navigator.pop(context, p),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(l.companyFilesCancel),
-        ),
-      ],
     );
   }
 }

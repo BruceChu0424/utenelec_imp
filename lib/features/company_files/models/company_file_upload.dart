@@ -9,6 +9,7 @@ import '../../../shared/attachments/attachment.dart';
 import '../../../shared/attachments/attachment_service.dart';
 import '../repositories/company_file_repository.dart';
 import 'company_file.dart';
+import 'company_file_access_draft.dart';
 
 enum CompanyFileUploadState {
   waiting,
@@ -69,12 +70,16 @@ class CompanyFileUpload {
     required this.bytes,
     required this.contentType,
     this.entry,
+    this.initialAccess,
   }) : requestId = const Uuid().v4();
   final String name;
   final Uint8List bytes;
   final String contentType;
   final String requestId;
   CompanyFile? entry;
+  // Retained only until the reservation is acknowledged (including uncertain
+  // retries), so the idempotency fingerprint always describes the same command.
+  CompanyFileInitialAccessDraft? initialAccess;
   PresignResult? presign;
   Attachment? confirmed;
   CompanyFileUploadState state = CompanyFileUploadState.waiting;
@@ -107,9 +112,11 @@ class CompanyFileUpload {
               parentId: parentId,
               name: name,
               requestId: requestId,
+              access: initialAccess,
             ),
           );
           reservationUnknown = false;
+          initialAccess = null;
         } catch (e) {
           reservationUnknown = _uncertain(e);
           rethrow;

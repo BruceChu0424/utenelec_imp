@@ -443,13 +443,14 @@ def retain_locked(config, base):
     return apply_retention_plan_locked(retention_plan_locked(config, base), base)
 
 
-def bundle(config, snapshot_id, outgoing, base):
+def bundle(config, snapshot_id, outgoing, base, *, verification_budget_seconds=None):
     """Root management CLI only: stream exact ciphertext closure, never an RPC capability."""
     if not isinstance(snapshot_id, str) or not SNAPSHOT.fullmatch(snapshot_id):
         raise ValueError("A fixed registered snapshot identity is required")
     root, objects, points = directories(config, base)
-    budget = config.get('bundle_budget_seconds', 600)
-    if type(budget) is not int or not 30 <= budget <= 3600:
+    budget = config.get('bundle_budget_seconds', 600) if verification_budget_seconds is None else verification_budget_seconds
+    maximum_budget = 3600 if verification_budget_seconds is None else 10800
+    if type(budget) is not int or not 30 <= budget <= maximum_budget:
         raise ValueError('Invalid bounded bundle budget')
     deadline = base.time.monotonic() + budget
     lease = None

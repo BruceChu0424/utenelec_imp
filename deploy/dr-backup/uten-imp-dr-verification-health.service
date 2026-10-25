@@ -1,0 +1,34 @@
+[Unit]
+Description=Check Uten IMP restore-proof expiry, failures and missed weekly verification
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/srv/uten-backup
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/uten-imp-dr-backup/verification_runner.py check --config /etc/uten-imp-dr-backup/verifier.json
+TimeoutStartSec=3min
+TimeoutStopSec=30s
+Restart=no
+LoadCredentialEncrypted=verifier-ssh-key:/etc/credstore.encrypted/uten-dr-verifier-ssh-key.cred
+RuntimeDirectory=uten-imp-dr-verification-health
+RuntimeDirectoryMode=0700
+StateDirectory=uten-imp-dr-verification
+StateDirectoryMode=0700
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectControlGroups=no
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+LimitCORE=0
+MemoryMax=256M
+MemorySwapMax=0
+CPUQuota=25%
+ReadWritePaths=/var/lib/containers /run/containers /run/libpod /sys/fs/cgroup /run/uten-imp-dr-recovery

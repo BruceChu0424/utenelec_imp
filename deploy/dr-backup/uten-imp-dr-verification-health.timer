@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Uten IMP recovery-proof freshness and failure check
+
+[Timer]
+OnCalendar=*-*-* 07:30:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=5min
+Unit=uten-imp-dr-verification-health.service
+
+[Install]
+WantedBy=timers.target

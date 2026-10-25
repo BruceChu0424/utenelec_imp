@@ -186,3 +186,6 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest test_continuous_backup test_snapsh
 ## 显式云端单恢复点策略
 
 用户选择不增加云费用时，可采用独立 opt-in 的 [`latest_snapshot` 策略](LATEST_ONLY.zh-CN.md)。默认 history 与公司本地历史不变；先完整验证新点、真实恢复与凭据 commissioning，再跨两格式轮换。该候选未自动修改任何现场配置。
+# 周期真实恢复与证明续期
+
+显式 large-memory profile、贯穿全过程的真实FD point租约、公司root encrypted credentials、每周真实PG16/原件/PGP-HMAC/AI验证与expiry告警，见 [可执行运维交接](VERIFICATION_RUNNER.zh-CN.md)。默认small/600秒/history与本地双仓14d不变；现场完整恢复验收前不称GO。

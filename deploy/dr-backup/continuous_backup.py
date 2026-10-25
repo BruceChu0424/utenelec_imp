@@ -374,6 +374,8 @@ def build_status(config):
         result.update(latest_module().status(config, sys.modules[__name__], chunks_module()))
         if (not result['latestRotationCommissioned'] or result['latestRotationCleanupState'] != 'COMPLETE'):
             result['health'] = 'DEGRADED'
+        if result.get('latestRotationProofHealth', 'CURRENT') != 'CURRENT':
+            result['health'] = 'DEGRADED'
     return result
 
 

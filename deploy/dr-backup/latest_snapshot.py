@@ -614,8 +614,39 @@ def status(config, base, chunks):
             if directory.name not in referenced:
                 orphan_count += 1
                 orphan_bytes += row['cipherBytes']
+    remaining = int((base.instant(proof['expiresAt']) - base.now()).total_seconds()) if proof else None
+    proof_health = activation if activation != 'ACTIVE' else 'CURRENT'
+    if proof:
+        if remaining <= 86400:proof_health = 'PROOF_EXPIRY_CRITICAL_1D'
+        elif remaining <= 3 * 86400:proof_health = 'PROOF_EXPIRY_HIGH_3D'
+        elif remaining <= 7 * 86400:proof_health = 'PROOF_EXPIRY_WARNING_7D'
+        if (base.now() - base.instant(proof['acceptedAt'])).total_seconds() > 8 * 86400:
+            proof_health = 'WEEKLY_RESTORE_OVERDUE'
+    job_path = root / '.verification-status.json'
+    job = base.read_json(base.private_path(job_path), maximum=16384) if job_path.exists() else {}
+    if job:
+        if (job.get('format') != 'uten-dr-verification-session-v1' or job.get('state') not in {'VERIFIED', 'FAILED'}
+                or base.instant(job['observedAt']) > base.now() + timedelta(seconds=5)):
+            raise ValueError('Malformed or future verification status blocks healthy publication')
+        if job['state'] == 'FAILED' and (not proof or base.instant(job['observedAt']) >= base.instant(proof['acceptedAt'])):
+            proof_health = 'VERIFICATION_FAILED'
+    # Expired evidence remains visible; it is never extended/replayed to green.
+    raw_proof = proof
+    if raw_proof is None and (root / '.latest-commissioning.json').exists():
+        raw_proof = base.read_json(base.private_path(root / '.latest-commissioning.json'), maximum=16384)
+        remaining = int((base.instant(raw_proof['expiresAt']) - base.now()).total_seconds())
+    expiry_severity = ('UNKNOWN' if remaining is None else 'EXPIRED' if remaining <= 0 else
+        'CRITICAL' if remaining <= 86400 else 'HIGH' if remaining <= 3 * 86400 else
+        'WARNING' if remaining <= 7 * 86400 else 'CURRENT')
     return {'retentionMode': MODE, 'latestRotationActivationState': activation,
             'latestRotationCommissioned': bool(proof) and activation == 'ACTIVE', 'latestRotationCleanupState': cleanup.get('cleanupState', 'NOT_RUN'),
+            'latestRotationProofHealth': proof_health,
+            'latestRotationProofExpirySeverity': expiry_severity,
+            'latestRotationCommissioningExpiresAt': raw_proof['expiresAt'] if raw_proof else None,
+            'latestRotationCommissioningRemainingSeconds': remaining,
+            'latestRotationLastRealRestoreAt': raw_proof['acceptedAt'] if raw_proof else None,
+            'latestRotationVerificationLastState': job.get('state', 'NOT_RUN'),
+            'latestRotationVerificationLastObservedAt': job.get('observedAt'),
             'latestRotationProtectedExportCount': len(active_full) + len(active_snapshots),
             'latestRotationActiveUploadExpiresAt': lease['expiresAt'] if lease else None,
             'latestRotationOrphanGraceSeconds': ORPHAN_GRACE_SECONDS,

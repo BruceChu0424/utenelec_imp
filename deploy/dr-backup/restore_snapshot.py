@@ -28,8 +28,9 @@ def sibling(name):
 base=sibling('continuous_backup')
 chunks=sibling('snapshot_chunks')
 restore_drill=sibling('restore_drill')
-remote_spec=importlib.util.spec_from_file_location('uten_remote_recovery_catalog',
-    Path(__file__).resolve().parents[1]/'postgres/backup/remote_recovery_catalog.py')
+catalog_path = Path(__file__).with_name('remote_recovery_catalog.py')
+if not catalog_path.exists():catalog_path = Path(__file__).resolve().parents[1]/'postgres/backup/remote_recovery_catalog.py'
+remote_spec=importlib.util.spec_from_file_location('uten_remote_recovery_catalog', catalog_path)
 remote_catalog=importlib.util.module_from_spec(remote_spec);remote_spec.loader.exec_module(remote_catalog)
 
 
@@ -248,6 +249,11 @@ def restore_bundle(args, secret, candidate_options=None):
                 or any(target.get(key)!=value for key,value in receipt.items())
                 or target.get('state')!='SNAPSHOT_CIPHERTEXT_COMPLETE'):
             raise ValueError('Requested recovery point differs from signed receipt')
+        for key, argument in (('snapshotId', 'expected_snapshot_id'), ('manifestCipherSha256', 'expected_cipher_sha'),
+                              ('referenceListSha256', 'expected_reference_sha')):
+            expected = getattr(args, argument, None)
+            if expected is not None and receipt.get(key) != expected:
+                raise ValueError('The fixed leased recovery point differs from the bundle')
         if restore_drill.remaining_budget(deadline) < 15:raise TimeoutError('Insufficient signature verification budget')
         chunks.verify_source_signature(receipt,data['source-signature.sshsig'],args.allowed_signers,base)
         references=chunks.reference_list(base.decode_json(
@@ -293,7 +299,10 @@ def restore_bundle(args, secret, candidate_options=None):
             return restore_drill.content_bytes(path,chunks.CHUNK_BYTES)
         contents=reconstruct_to_directory(manifest,references,read_plain,receipt,plain_root,deadline=deadline)
         report=restore_drill.restore_contents(contents,receipt['sourceSetId'],args.docker,candidate_options,
-                                            spool_directory=workspace,deadline=deadline)
+                                            spool_directory=workspace,deadline=deadline,
+                                            restore_profile=getattr(args,'restore_profile','small'),
+                                            image=getattr(args,'image',restore_drill.DEFAULT_POSTGRES_IMAGE),
+                                            runtime=getattr(args,'runtime','docker'))
         if 'configurationVersion' in receipt:
             report['configurationVersion'] = receipt['configurationVersion']
         report.update(snapshotId=receipt['snapshotId'],sourceSignatureVerified=True,chunksVerified=len(references),
@@ -314,6 +323,9 @@ def main():
         help='Existing private directory on the trusted recovery workstation; never a production path')
     parser.add_argument('--budget-seconds',type=int,default=3600,
         help='One total 60..3600 second recovery budget, including a 30-second cleanup reserve')
+    parser.add_argument('--restore-profile',choices=tuple(restore_drill.RESOURCE_PROFILES),default='small')
+    parser.add_argument('--image',type=restore_drill.official_postgres_image,default=restore_drill.DEFAULT_POSTGRES_IMAGE)
+    parser.add_argument('--runtime',choices=('docker','podman'),default='docker')
     parser.add_argument('--exercise-historical-integrity-candidate',action='store_true',
         help='Only mutate the already isolated disposable clone; reads protected credentials as stdin JSON')
     parser.add_argument('--candidate-node',type=Path)

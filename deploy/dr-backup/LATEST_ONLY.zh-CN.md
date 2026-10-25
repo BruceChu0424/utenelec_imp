@@ -81,3 +81,6 @@ commissioning 只授权**已验 profile 与恢复配置**轮换，不把后续�
 7. 回退应两端协调恢复 `retention_mode=history`、原配置与已验同批 helper；保持新解码器可读取含配置绑定的新点。history 恢复 7/30/min3 与两天 orphan grace；已经合法轮换删除的云旧历史不会凭回退重现，公司本地历史始终未改。不要自动重启 full timer，先确认原容量预算足够。未知 staging/retired slot 需核查身份，禁止宽泛 rm/手工改 receipt 来“修绿”。
 
 实际生产密钥、profile 和策略由主发布流程统一应用。本文件及合成测试只证明候选实现的边界，不证明新的真实大库已完成 GPG/PGDATA 恢复、15 分钟源 RPO 或公网下载时限验收。
+# 无人值守 commissioning 续期
+
+周恢复执行器与受限 verifier 角色的完整安装、资源/namespace前置、首seed窗口、真实FD租约、失败回退和每周续证，见 [VERIFICATION_RUNNER.zh-CN.md](VERIFICATION_RUNNER.zh-CN.md)。普通drill默认false不变；新执行器消费实际恢复/AI与配置实证，不复制旧JSON或改expiry。云不保存解密材料，解密能力在公司root的独立受保护新代次credential，PC escrow仍独立，物理离线副本不是既成事实。

@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly real Uten IMP disaster-recovery verification
+
+[Timer]
+OnCalendar=Sun *-*-* 03:00:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=15min
+AccuracySec=1min
+Unit=uten-imp-dr-verification.service
+
+[Install]
+WantedBy=timers.target

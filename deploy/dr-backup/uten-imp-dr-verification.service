@@ -1,0 +1,48 @@
+[Unit]
+Description=Weekly real isolated Uten IMP recovery and bound commissioning renewal
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/srv/uten-backup
+StartLimitIntervalSec=1h
+StartLimitBurst=2
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/uten-imp-dr-backup/verification_runner.py run --config /etc/uten-imp-dr-backup/verifier.json
+TimeoutStartSec=4h
+TimeoutStopSec=45s
+Restart=no
+KillMode=control-group
+LoadCredentialEncrypted=verifier-ssh-key:/etc/credstore.encrypted/uten-dr-verifier-ssh-key.cred
+LoadCredentialEncrypted=recovery-private-key:/etc/credstore.encrypted/uten-dr-generation2-private-key.cred
+LoadCredentialEncrypted=recovery-passphrase:/etc/credstore.encrypted/uten-dr-generation2-passphrase.cred
+RuntimeDirectory=uten-imp-dr-verification
+RuntimeDirectoryMode=0700
+StateDirectory=uten-imp-dr-verification
+StateDirectoryMode=0700
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+# Rootful daemonless Podman needs its own storage/mount/cgroup operations.
+# The restored container independently has zero capabilities and no host mounts.
+ProtectControlGroups=no
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+LimitCORE=0
+MemoryMax=22G
+MemorySwapMax=0
+CPUQuota=100%
+Nice=15
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+# All paths MUST be pre-created after the verified backup volume mounts.
+ReadWritePaths=/srv/uten-backup/dr-verification /run/uten-imp-dr-recovery
+ReadWritePaths=/var/lib/containers /run/containers /run/libpod /sys/fs/cgroup

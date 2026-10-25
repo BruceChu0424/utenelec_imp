@@ -227,6 +227,7 @@ public class AuditEventInterpreter {
 
     public InterpretedEvent interpret(AuditLog value) {
         value = PlatformFieldAuditProjection.presentation(value);
+        value = StockMeasurementHoldAuditProjection.presentation(value);
         String action = normalized(value.getAction());
         String target = normalized(value.getTargetType());
         String path = normalized(firstNonBlank(value.getHttpPath(), value.getTargetId()));
@@ -1291,6 +1292,7 @@ public class AuditEventInterpreter {
         values.put("ai_input_original_bindings", "单据原件来源关系");
         values.put("stock_document_items", "库存单据明细");
         values.put("stock_balances", "即时库存");
+        values.put("stock_measurement_holds", "库存原计量核验凭据");
         values.put("stock_movements", "库存流水");
         values.put("stock_movements_pt", "库存流水");
         values.put("stock_reservations", "库存预留");
@@ -1678,6 +1680,13 @@ public class AuditEventInterpreter {
         reconcileApplies.put("started_at", "开始时间");
         reconcileApplies.put("finished_at", "结束时间");
         Map<String, Map<String, String>> values = new LinkedHashMap<>();
+        values.put("stock_measurement_holds", Map.ofEntries(
+                Map.entry("stock_balance_id", "原库存账身份"), Map.entry("warehouse_id", "仓库"),
+                Map.entry("goods_id", "货品"), Map.entry("color_id", "颜色"),
+                Map.entry("reason", "计量待核原因"), Map.entry("captured_at", "原账捕获时间"),
+                Map.entry("released_at", "原计量核验完成时间"), Map.entry("verified_unit_id", "核实的原计量单位"),
+                Map.entry("verified_by", "原计量依据核验人"), Map.entry("evidence_reference", "原计量依据引用"),
+                Map.entry("evidence_sha256", "原计量依据摘要"), Map.entry("resolution_note", "原计量核验说明")));
         values.put("company_file_nodes", Map.ofEntries(
                 Map.entry("parent_id", "上级文件夹"), Map.entry("kind", "资料类型"),
                 Map.entry("position", "排列位置"), Map.entry("inherit_permissions", "继承上级权限"),

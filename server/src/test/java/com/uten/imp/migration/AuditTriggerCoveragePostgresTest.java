@@ -80,6 +80,17 @@ class AuditTriggerCoveragePostgresTest {
                 """, Long.class, ACTOR);
         terminationHistoryBefore = db.queryForObject("SELECT to_jsonb(audit_log)::text FROM audit_log WHERE id=?",
                 String.class, terminationHistoryId);
+        // V926 legitimately adds independent archive guards. Capture the complete
+        // V929 preimage after those normal forward migrations, without filtering
+        // those guards out of the immutable/FK/quantity comparison.
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
+                .locations("classpath:db/migration").target("928").load().migrate();
+        for (String table : List.of("procurement_order_termination_sources", "procurement_order_termination_peg_changes")) {
+            assertEquals(2, rowAuditTriggerCount(table));
+            assertEquals(2, db.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgrelid=CAST(? AS regclass) "
+                    + "AND tgname IN ('trg_00_imported_business_archive_only','trg_00_imported_business_archive_truncate') "
+                    + "AND tgenabled='A'", Integer.class, table));
+        }
         terminationGuardsBefore = terminationGuardDefinitions();
         terminationFunctionsBefore = terminationGuardFunctions();
         com.uten.imp.testsupport.TestFlyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
@@ -206,13 +217,15 @@ class AuditTriggerCoveragePostgresTest {
         List<Map<String, Object>> triggers = db.queryForList("""
                 SELECT c.relname, t.tgname, t.tgtype, t.tgqual IS NOT NULL AS has_when, t.tgenabled::text AS enabled,
                        t.tgnargs, encode(t.tgargs, 'escape') AS args,
+                       'public.'||p.proname||'()' AS function,
                        (SELECT string_agg(a.attname, ',' ORDER BY k.ord)
                           FROM unnest(t.tgattr) WITH ORDINALITY k(attnum, ord)
                           JOIN pg_attribute a ON a.attrelid = t.tgrelid AND a.attnum = k.attnum) AS columns
-                FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+                FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_proc p ON p.oid=t.tgfoid
                 WHERE NOT t.tgisinternal AND t.tgparentid = 0
                   AND t.tgfoid IN ('public.fn_audit()'::regprocedure,
-                                   'public.fn_audit_route_columns()'::regprocedure)
+                                   'public.fn_audit_route_columns()'::regprocedure,
+                                   'public.fn_audit_stock_measurement_hold_columns()'::regprocedure)
                 """);
         Map<String, List<Map<String, Object>>> byTable = new HashMap<>();
         triggers.forEach(row -> byTable.computeIfAbsent((String) row.get("relname"), ignored -> new ArrayList<>()).add(row));
@@ -245,12 +258,21 @@ class AuditTriggerCoveragePostgresTest {
             }
             var policy = scoped.get(table);
             String columns = String.join(",", policy.columns());
+            String genericArgs = policy.category()+"\\000plain\\000"
+                    + policy.columns().stream().map(column -> column+"\\000").collect(java.util.stream.Collectors.joining());
+            String updateFn = policy.updateFn()==null ? "public.fn_audit()" : policy.updateFn();
+            String rowFn = policy.rowFn()==null ? "public.fn_audit()" : policy.rowFn();
+            String updateArgs = policy.updateFn()==null ? genericArgs : "";
+            String rowArgs = policy.rowFn()==null ? genericArgs : "";
             // UPDATE 审计触发器核对列清单与 WHEN; 通用 fn_audit 与专用窄函数(如 V830 的
             // fn_audit_route_columns)同型同核, 专用函数触发器不许逃过形状核对。
             boolean updateTrigger = rows.stream().anyMatch(row -> ((Number) row.get("tgtype")).intValue() == (1 | 16)
                     && (Boolean) row.get("has_when") && columns.equals(row.get("columns"))
+                    && updateFn.equals(row.get("function")) && updateArgs.equals(row.get("args"))
                     && "A".equals(row.get("enabled")));
-            boolean rowTrigger = rows.stream().anyMatch(row -> ((Number) row.get("tgtype")).intValue() == (1 | 4 | 8));
+            boolean rowTrigger = rows.stream().anyMatch(row -> ((Number) row.get("tgtype")).intValue() == (1 | 4 | 8)
+                    && rowFn.equals(row.get("function")) && rowArgs.equals(row.get("args"))
+                    && !(Boolean)row.get("has_when") && "A".equals(row.get("enabled")));
             if (!updateTrigger || rowTrigger != policy.insertDelete() || rows.size() != (policy.insertDelete() ? 2 : 1)) {
                 problems.add(table + " COLUMN_SCOPED shape " + rows);
             }

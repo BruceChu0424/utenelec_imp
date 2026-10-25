@@ -62,7 +62,8 @@ class AuditTriggerCoverageMigrationContractTest {
             "(?s)fn_audit_track_table\\(t, 'FULL', '([a-z_]+)', (true|false)\\)\\s+FROM unnest\\(ARRAY\\[(.*?)]\\) AS t;");
     private static final Pattern SCOPED_CALL = Pattern.compile(
             "(?s)fn_audit_track_table\\(\\s*'([a-z_][a-z0-9_]*)'\\s*,\\s*'COLUMN_SCOPED'\\s*,\\s*'([a-z_]+)'\\s*,\\s*(true|false)\\s*,\\s*"
-                    + "ARRAY\\s*\\[(.*?)]\\s*,\\s*(true|false)\\s*(?:,\\s*(?:'([a-z_][a-z0-9_.]*\\(\\))'|(?i:NULL(?:\\s*::\\s*text)?)))?\\s*\\);");
+                    + "ARRAY\\s*\\[(.*?)]\\s*,\\s*(true|false)\\s*(?:,\\s*(?:'([a-z_][a-z0-9_.]*\\(\\))'|(?i:NULL(?:\\s*::\\s*text)?)))?"
+                    + "(?:,\\s*(?:'([a-z_][a-z0-9_.]*\\(\\))'|(?i:NULL(?:\\s*::\\s*text)?)))?\\s*\\);");
     private static final Pattern REGISTRATION = Pattern.compile(
             "fn_audit_track_table\\(\\s*'([a-z_][a-z0-9_]*)'\\s*,\\s*'(FULL|COLUMN_SCOPED|NONE)'");
     private static final Pattern QUOTED = Pattern.compile("'([a-z_][a-z0-9_]*)'");
@@ -74,10 +75,15 @@ class AuditTriggerCoverageMigrationContractTest {
     }
 
     record ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
-                       String reason, String updateFn) {
+                       String reason, String updateFn, String rowFn) {
         ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
                     String reason) {
-            this(table, category, insertDelete, columns, reason, null);
+            this(table, category, insertDelete, columns, reason, null, null);
+        }
+
+        ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
+                    String reason, String updateFn) {
+            this(table, category, insertDelete, columns, reason, updateFn, null);
         }
     }
 
@@ -257,6 +263,11 @@ class AuditTriggerCoverageMigrationContractTest {
 
     /** COLUMN_SCOPED: 只审计人为决定的列; 派生列的变化不留行审计。 */
     static final List<ScopedTable> COLUMN_SCOPED = List.of(
+            new ScopedTable("stock_measurement_holds", "data_change", true,
+                    List.of("released_at", "verified_unit_id", "verified_by", "evidence_reference", "evidence_sha256", "resolution_note"),
+                    "V930: 原数量/金额/重量快照不可改，但原计量依据的一次真实核验会更新六列，不能归只追加或NONE；"
+                            + "实际新capture留最小身份，resolution只留变化；依据引用/说明仅记变化列名，数量金额重量和原文不复制",
+                    "public.fn_audit_stock_measurement_hold_columns()", "public.fn_audit_stock_measurement_hold_columns()"),
             new ScopedTable("staff_mfa", "system", false, List.of("enabled_at"),
                     "V873: audit enrollment state only; encrypted secrets, pending sessions, counters and INSERT/DELETE snapshots stay out of row audit"),
             new ScopedTable("remote_access_policy", "system", false, List.of("enabled", "max_users", "version"),
@@ -765,7 +776,7 @@ class AuditTriggerCoverageMigrationContractTest {
                 ScopedTable expected = scopedTables().get(scoped.group(1));
                 registeredScoped.put(scoped.group(1), new ScopedTable(scoped.group(1), scoped.group(2),
                         Boolean.parseBoolean(scoped.group(5)), columns,
-                        expected == null ? "" : expected.reason(), scoped.group(6)));
+                        expected == null ? "" : expected.reason(), scoped.group(6), scoped.group(7)));
             }
         }
         // 基线之后新建的 COLUMN_SCOPED 表: 建表迁移里的类别、列清单与插入/删除开关必须与清单逐项一致。
@@ -809,7 +820,7 @@ class AuditTriggerCoverageMigrationContractTest {
                     columns.add(column.group(1));
                 }
                 declaredScoped.put(scoped.group(1), new ScopedTable(scoped.group(1), scoped.group(2),
-                        Boolean.parseBoolean(scoped.group(5)), columns, expected.reason(), scoped.group(6)));
+                        Boolean.parseBoolean(scoped.group(5)), columns, expected.reason(), scoped.group(6), scoped.group(7)));
             }
         }
         Map<String, ScopedTable> listed = new LinkedHashMap<>(scopedTables());
@@ -855,6 +866,10 @@ class AuditTriggerCoverageMigrationContractTest {
         Matcher narrow = SCOPED_CALL.matcher(registration + ", 'public.fn_audit_route_columns()');");
         assertTrue(narrow.matches());
         assertEquals("public.fn_audit_route_columns()", narrow.group(6));
+        Matcher projectedRow = SCOPED_CALL.matcher(registration + ", NULL::text, 'public.fn_audit_stock_measurement_hold_columns()');");
+        assertTrue(projectedRow.matches());
+        assertNull(projectedRow.group(6));
+        assertEquals("public.fn_audit_stock_measurement_hold_columns()", projectedRow.group(7));
         assertFalse(SCOPED_CALL.matcher(registration + ", NULL::integer);").matches(),
                 "unsupported function argument types must not silently become generic audit");
     }

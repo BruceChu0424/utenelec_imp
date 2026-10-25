@@ -69,7 +69,9 @@ public final class AuditClassifier {
             "supplier_settlements", "subcontract_loss_claims", "procurement_payables",
             "procurement_iqc_rejection_cases",
             "procurement_arrival_exceptions", "expense_claims", "fixed_assets",
-            "deferred_expenses", "finance_asset_posting_runs");
+            "deferred_expenses", "finance_asset_posting_runs",
+            // Registered warehouse/stock detail readers; this grades evidence, not business access.
+            "warehouses", "stock_documents", "stock_count_requests", "stock_measurement_holds");
 
     /** 语义写事件里属于授权治理的资源(控制器)。 */
     private static final Set<String> AUTHORIZATION_RESOURCES = Set.of(

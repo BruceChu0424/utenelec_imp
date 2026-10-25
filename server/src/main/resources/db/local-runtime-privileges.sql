@@ -31,7 +31,8 @@ DECLARE
         'business_data_reset','fn_require_runtime_maintenance','fn_require_runtime_refresh',
         'fn_business_test_reset_verify_purged','fn_clear_business_test_object_metadata',
         'fn_audit_track_table','fn_audit_seal_privileges','fn_migrate_financial_amount_columns',
-        'fn_capture_stock_measurement_holds','fn_verify_stock_original_measurement_basis'];
+        'fn_capture_stock_measurement_holds','fn_verify_stock_original_measurement_basis',
+        'fn_audit_stock_measurement_hold_columns'];
 BEGIN
     IF current_user<>'uten_migrator' OR session_user<>current_user
        OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname=current_user

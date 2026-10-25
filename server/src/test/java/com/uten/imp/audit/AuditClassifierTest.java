@@ -91,6 +91,19 @@ class AuditClassifierTest {
     }
 
     @Test
+    void registeredWarehouseAndStockDetailHistoryAreSensitiveWithoutOpeningUnknownTargets() {
+        for (String target : new String[]{"warehouses", "stock_documents", "stock_count_requests", "stock_measurement_holds"}) {
+            for (String action : new String[]{"view_stock_document_detail", "view_stock_document_detail_history"}) {
+                assertEquals(new AuditClassifier.Classification("medium", "business"),
+                        classify("business", action, target, null, "success", 200));
+            }
+        }
+        assertEquals("low",classify("business","view_stock_document_detail_history",
+                "stock_measurement_holds_unknown",null,"success",200).riskLevel());
+        assertFalse(AuditClassifier.SENSITIVE_DETAIL_TARGETS.contains("stock_measurement_holds_unknown"));
+    }
+
+    @Test
     void securityAndSystemEventsKeepTheirOwnVocabulary() {
         assertEquals(new AuditClassifier.Classification("medium", "security"),
                 classify("security", "access_denied", "api_request", "/api/notices", "unauthorized", 401));

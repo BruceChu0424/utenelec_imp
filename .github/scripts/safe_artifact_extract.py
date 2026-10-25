@@ -26,7 +26,11 @@ MAX_ARCHIVE_BYTES = 3 * 1024**3
 MAX_MEMBER_BYTES = 2 * 1024**3
 MAX_TOTAL_BYTES = 8 * 1024**3
 MAX_MEMBERS = 100_000
-SHARD_NAME = re.compile(r"backend-test-results-([0-3])\Z")
+# The current reviewed workflow schedules eight partitions. Keep raw names and
+# ZIP ownership in the same finite pool; the workflow-boundary test pins it.
+SHARD_IDS = tuple(str(number) for number in range(8))
+SHARD_DIRECTORIES = frozenset("shard-" + number for number in SHARD_IDS)
+SHARD_NAME = re.compile(r"backend-test-results-(" + "|".join(SHARD_IDS) + r")\Z")
 RESERVED = re.compile(r"(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?\Z", re.I)
 
 
@@ -148,11 +152,11 @@ def extract_artifacts(raw, artifact, *, workspace=ROOT, runner_temp=None):
                     raise ValueError("duplicate artifact member or merged overwrite")
                 known[key] = directory
                 if artifact == "backend-test-results-*":
-                    if not re.fullmatch(r"shard-[0-3]", parts[0]) or (
+                    if parts[0] not in SHARD_DIRECTORIES or (
                         len(parts) == 1 and not directory
                     ):
                         raise ValueError("unexpected report member ownership")
-                    archive_shards.add(parts[0][-1])
+                    archive_shards.add(parts[0].removeprefix("shard-"))
                 members.append((archive_path, info, parts, directory))
         if artifact == "backend-test-results-*":
             if len(archive_shards) != 1 or (

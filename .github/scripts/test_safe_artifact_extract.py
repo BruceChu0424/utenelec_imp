@@ -82,6 +82,29 @@ class ArtifactExtractionTests(unittest.TestCase):
         self.assertTrue(verified["complete"], verified["errors"])
         self.assertEqual(4, sum(sum(shard["method_counts"].values()) for shard in verified["shards"]))
 
+    def test_eight_current_partitions_keep_authenticated_ownership_and_complete_inventory(self):
+        manifest = fixtures.plan([fixtures.test_class("example.Partition" + str(i) + "Test") for i in range(8)], shards=8)
+        for shard in manifest["shards"]:
+            number = shard["id"]
+            source = self.root / f"producer-{number}"
+            fixtures.save_report(source, manifest, number, [fixtures.testcase(classname=name) for name in shard["classes"]])
+            self.archive([(f"shard-{number}/" + file.relative_to(source).as_posix(), file.read_bytes())
+                          for file in source.rglob("*") if file.is_file()], folder=f"backend-test-results-{number}")
+        result = self.extract("backend-test-results-*")
+        self.assertEqual(8, result["archives"])
+        destination = self.server / "target-ci-reports"
+        self.assertEqual({f"shard-{i}" for i in range(8)}, {path.name for path in destination.iterdir()})
+        verified = runner.verify_reports(manifest, destination)
+        self.assertTrue(verified["complete"], verified["errors"])
+        self.assertEqual(8, sum(sum(shard["method_counts"].values()) for shard in verified["shards"]))
+
+    def test_single_sdk_match_cannot_hide_an_out_of_pool_member(self):
+        for shard in ("8", "08", "-1", "7-extra"):
+            with self.subTest(shard=shard):
+                archive = self.archive([(f"shard-{shard}/report.json", "{}")])
+                self.assert_rejected("backend-test-results-*")
+                archive.unlink()
+
     def test_sdk_single_pattern_match_is_in_raw_root_and_remains_one_shard(self):
         self.archive([("shard-2/report.json", "{}"), ("shard-2/surefire-reports/TEST-example.xml", "<testsuite/>")])
         self.extract("backend-test-results-*")
@@ -191,6 +214,7 @@ class ArtifactExtractionTests(unittest.TestCase):
 
     def test_report_artifact_names_and_zip_shard_ownership_must_agree(self):
         for folder, members in (("unrelated", [("shard-0/a", "x")]),
+                                ("backend-test-results-8", [("shard-8/a", "x")]),
                                 ("backend-test-results-4", [("shard-0/a", "x")]),
                                 ("backend-test-results-0", [("shard-1/a", "x")]),
                                 ("backend-test-results-0", [("shard-0/a", "x"), ("shard-1/b", "x")]),
@@ -241,6 +265,13 @@ class ArtifactExtractionTests(unittest.TestCase):
 
 
 class AuthenticatedWorkflowBoundaryTests(unittest.TestCase):
+    def test_reviewed_extraction_pool_matches_the_current_workflow_matrix(self):
+        source = (unpack.ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
+        matrix = re.search(r"^        shard: \[([0-9, ]+)\]$", source, re.M)
+        self.assertIsNotNone(matrix)
+        self.assertEqual(tuple(str(int(value.strip())) for value in matrix[1].split(",")), unpack.SHARD_IDS)
+        self.assertIn("--shards " + str(len(unpack.SHARD_IDS)), source)
+
     def test_all_quality_downloads_keep_official_runtime_scope_and_hard_digest_gate(self):
         source = (unpack.ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
         steps = re.findall(r"^      - (.*?)(?=^      - |\Z)", source, re.M | re.S)

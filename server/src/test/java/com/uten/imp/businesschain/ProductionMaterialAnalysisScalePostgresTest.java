@@ -284,6 +284,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
             routed = analysis.detail(routed.analysisId());
             assertActionConservation(routed.analysisId());
             assertNoInventoryOrSalesCompletion(scenario);
+            assertSupplyProvenanceIsBoundedByPhysicalReferences(routed.analysisId());
         }
         // ADR-143 §4.5: every subcontract node (with direct materials) is notified straight into a subcontract
         // application; one action per source path, no in-house preparation task and no repeated child expansion.
@@ -349,7 +350,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
         finally { ProductionJdbcMeasurement.end(); }
         double previewMillis = (System.nanoTime() - started) / 1_000_000.0;
         long issueStarted = System.nanoTime();
-        commands.issueWorkshopPlans(view.analysisId(), issue);
+        GenerateResult generated = commands.issueWorkshopPlans(view.analysisId(), issue);
         double issueMillis = (System.nanoTime() - issueStarted) / 1_000_000.0;
         Map<String, Object> previewEvidence = new LinkedHashMap<>(sample.result());
         previewEvidence.putAll(Map.of("event", "issue-preview", "plans", 30, "materialRows", preview.flatMaterials().size(),
@@ -364,6 +365,104 @@ class ProductionMaterialAnalysisScalePostgresTest {
         var mismatches = MaterialAnalysisPreviewParity.mismatches(
                 preview, analysis.detail(view.analysisId()), java.util.Set.of());
         assertTrue(mismatches.isEmpty(), "预览与真实下达后详情不一致:\n" + String.join("\n", mismatches));
+        assertPromotionProvenanceUsesOnlyTheSelectedPlan(generated.plans().getFirst().planId());
+    }
+
+    /** Real production SQL, valid committed sources, and transaction-local PG counters.
+     * Roll back every probe; no native result is replaced or inferred by the fixture. */
+    private void assertSupplyProvenanceIsBoundedByPhysicalReferences(UUID analysisId) throws Exception {
+        long references = jdbc.queryForObject("""
+                SELECT (SELECT count(*) FROM preplan_supply_action_allocations allocation
+                         JOIN preplan_supply_actions action ON action.id=allocation.action_id
+                         WHERE action.analysis_id=? AND action.status IN ('CREATED','IN_PROGRESS')
+                           AND action.external_document_type IN ('PURCHASE_REQUEST','SUBCONTRACT_APPLICATION')
+                           AND action.requested_qty>0)
+                     + (SELECT count(*) FROM preplan_supply_actions action
+                         WHERE action.analysis_id=? AND action.status IN ('CREATED','IN_PROGRESS')
+                           AND action.external_document_type IN ('PURCHASE_REQUEST','SUBCONTRACT_APPLICATION')
+                           AND action.public_surplus_qty>0)
+                """, Long.class, analysisId, analysisId);
+        assertTrue(references > 0, "the real BUY/SUBCONTRACT scenario must contain physical source references");
+        String sql = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                MaterialAnalysisService.class, "supplyActionInvalidationSql");
+        assertNotNull(sql);
+        UUID actor = assertInstanceOf(com.uten.imp.security.AuthUser.class,
+                SecurityContextHolder.getContext().getAuthentication().getPrincipal()).getId();
+        String previousTracking = jdbc.queryForObject("SHOW track_functions", String.class);
+        Map<String, Object> evidence = new LinkedHashMap<>();
+        new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            try {
+                jdbc.execute("SET LOCAL track_functions='all'");
+                String beforeActions = supplyActionFingerprint(analysisId);
+                long before = transactionProvenanceCalls();
+                var plan = provenancePlan(em.createNativeQuery("EXPLAIN (ANALYZE,BUFFERS,TIMING OFF,FORMAT JSON) " + sql)
+                        .setParameter("analysisId", analysisId).setParameter("actorId", actor).getSingleResult().toString());
+                long calls = transactionProvenanceCalls() - before;
+                evidence.putAll(Map.of("event", "provenance-scope-probe", "kind", "supply-cancellation",
+                        "references", references, "classifierCalls", calls));
+                assertEquals(beforeActions, supplyActionFingerprint(analysisId),
+                        "valid original physical item/header links and action facts must remain unchanged");
+                assertTrue(calls > 0 && calls <= references * 2,
+                        "each physical item/header may be classified at most once per reference; calls=" + calls + ", references=" + references);
+                saveProvenancePlan("supply-" + references, plan);
+            } finally { status.setRollbackOnly(); }
+        });
+        assertEquals(previousTracking, jdbc.queryForObject("SHOW track_functions", String.class));
+        emit(evidence);
+    }
+
+    private void assertPromotionProvenanceUsesOnlyTheSelectedPlan(UUID planId) throws Exception {
+        UUID segment = jdbc.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=?", UUID.class, planId);
+        String sql = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.class, "promotionSegmentSql");
+        assertNotNull(sql);
+        String previousTracking = jdbc.queryForObject("SHOW track_functions", String.class);
+        Map<String, Object> evidence = new LinkedHashMap<>();
+        new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            try {
+                jdbc.execute("SET LOCAL track_functions='all'");
+                long before = transactionProvenanceCalls();
+                var plan = provenancePlan(em.createNativeQuery("EXPLAIN (ANALYZE,BUFFERS,TIMING OFF,FORMAT JSON) " + sql)
+                        .setParameter("segmentId", segment).setParameter("incrementOnly", false).getSingleResult().toString());
+                int rows = plan.path("Plan").path("Actual Rows").asInt();
+                long calls = transactionProvenanceCalls() - before;
+                evidence.putAll(Map.of("event", "provenance-scope-probe", "kind", "promotion-segment",
+                        "selectedSegments", 1, "classifierCalls", calls, "selectedRows", rows));
+                assertEquals(1, rows, "the same confirmed segment/package/plan remains eligible");
+                assertEquals(1, calls, "unrelated approved plans must not enter the native classifier");
+                saveProvenancePlan("promotion-one-plan", plan);
+            } finally { status.setRollbackOnly(); }
+        });
+        assertEquals(previousTracking, jdbc.queryForObject("SHOW track_functions", String.class));
+        emit(evidence);
+    }
+
+    private long transactionProvenanceCalls() {
+        return jdbc.queryForObject("""
+                SELECT COALESCE(sum(calls),0) FROM pg_stat_xact_user_functions
+                WHERE schemaname='public' AND funcname='fn_imported_business_document'
+                """, Long.class);
+    }
+
+    private String supplyActionFingerprint(UUID analysisId) {
+        return jdbc.queryForObject("""
+                SELECT md5(string_agg(to_jsonb(action)::text,'' ORDER BY action.id))
+                FROM preplan_supply_actions action WHERE analysis_id=?
+                """, String.class, analysisId);
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode provenancePlan(String value) {
+        try { return json.readTree(value).get(0); }
+        catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+    }
+
+    private void saveProvenancePlan(String name, com.fasterxml.jackson.databind.JsonNode plan) {
+        try {
+            Path directory = Path.of(System.getProperty("uten.production.provenanceEvidence",
+                    Path.of(System.getProperty("uten.build.directory", "target"), "provenance-scope-plans").toString()));
+            Files.createDirectories(directory);
+            json.writerWithDefaultPrettyPrinter().writeValue(directory.resolve(name + ".json").toFile(), plan);
+        } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
     }
 
     @Test

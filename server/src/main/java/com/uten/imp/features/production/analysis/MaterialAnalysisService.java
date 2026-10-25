@@ -2258,6 +2258,127 @@ public class MaterialAnalysisService {
                 )))
             """;
 
+    /** Bind each allocation/public slice to its physical item/header PK before provenance evaluation.
+     * The correlated materialization remains statement-local and retains every lifecycle/source guard. */
+    private static String supplyActionInvalidationSql() {
+        return """
+                UPDATE preplan_supply_actions action
+                SET status = 'CANCELLED', cancelled_by = :actorId,
+                    cancelled_at = now(),
+                    cancellation_reason = '下游单据已删除、红冲或中止，刷新物料分析时自动失效',
+                    updated_at = now()
+                WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND NOT fn_preplan_action_has_shared_claims(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
+                  AND action.status IN ('CREATED','IN_PROGRESS')
+                  AND (
+                    (action.external_document_type = 'PURCHASE_REQUEST' AND (NOT EXISTS (
+                        SELECT 1
+                        FROM v_preplan_buy_action_slice_progress progress
+                        WHERE progress.action_id = action.id
+                          AND progress.demand_source_valid = TRUE
+                          AND progress.safety_source_valid = TRUE)
+                      OR (action.requested_qty > 0 AND (
+                        NOT EXISTS (SELECT 1 FROM preplan_supply_action_allocations allocation
+                                    WHERE allocation.action_id = action.id)
+                        OR EXISTS (
+                            SELECT 1 FROM preplan_supply_action_allocations allocation
+                            WHERE allocation.action_id = action.id AND NOT EXISTS (
+                                WITH selected_item AS MATERIALIZED (
+                                    SELECT item.* FROM purchase_request_items item WHERE item.id=allocation.external_item_id
+                                ), selected_request AS MATERIALIZED (
+                                    SELECT request.* FROM purchase_requests request WHERE request.id=action.external_document_id
+                                )
+                                SELECT 1 FROM selected_item item
+                                JOIN selected_request request ON request.id = item.request_id
+                                WHERE item.id = allocation.external_item_id
+                                  AND item.is_deleted = FALSE
+                                  AND NULLIF(to_jsonb(item)->>'legacy_id','') IS NULL
+                                  AND NULLIF(to_jsonb(item)->>'legacy_import_run_id','') IS NULL
+                                  AND NOT fn_imported_business_document('purchase_request_items',item.id)
+                                  AND request.id = action.external_document_id
+                                  AND request.is_deleted = FALSE
+                                  AND NULLIF(to_jsonb(request)->>'legacy_id','') IS NULL
+                                  AND NULLIF(to_jsonb(request)->>'legacy_import_run_id','') IS NULL
+                                  AND NOT fn_imported_business_document('purchase_requests',request.id)
+                                  AND request.status IN (0,1)
+                                  AND request.is_stopped = FALSE))))
+                      OR (action.public_surplus_qty > 0 AND NOT EXISTS (
+                        WITH selected_item AS MATERIALIZED (
+                            SELECT item.* FROM purchase_request_items item WHERE item.id=action.public_surplus_external_item_id
+                        ), selected_request AS MATERIALIZED (
+                            SELECT request.* FROM purchase_requests request WHERE request.id=action.external_document_id
+                        )
+                        SELECT 1 FROM selected_item item
+                        JOIN selected_request request ON request.id = item.request_id
+                        WHERE item.id = action.public_surplus_external_item_id
+                          AND item.is_deleted = FALSE
+                          AND NULLIF(to_jsonb(item)->>'legacy_id','') IS NULL
+                          AND NULLIF(to_jsonb(item)->>'legacy_import_run_id','') IS NULL
+                          AND NOT fn_imported_business_document('purchase_request_items',item.id)
+                          AND request.id = action.external_document_id
+                          AND request.is_deleted = FALSE
+                          AND NULLIF(to_jsonb(request)->>'legacy_id','') IS NULL
+                          AND NULLIF(to_jsonb(request)->>'legacy_import_run_id','') IS NULL
+                          AND NOT fn_imported_business_document('purchase_requests',request.id)
+                          AND request.status IN (0,1)
+                          AND request.is_stopped = FALSE))))
+                    OR
+                    (action.external_document_type = 'SUBCONTRACT_APPLICATION' AND (
+                      (action.requested_qty > 0 AND (
+                        NOT EXISTS (SELECT 1 FROM preplan_supply_action_allocations allocation
+                                    WHERE allocation.action_id = action.id)
+                        OR EXISTS (
+                            SELECT 1 FROM preplan_supply_action_allocations allocation
+                            WHERE allocation.action_id = action.id AND NOT EXISTS (
+                                WITH selected_item AS MATERIALIZED (
+                                    SELECT item.* FROM subcontract_application_items item WHERE item.id=allocation.external_item_id
+                                ), selected_application AS MATERIALIZED (
+                                    SELECT application.* FROM subcontract_applications application WHERE application.id=action.external_document_id
+                                )
+                                SELECT 1 FROM selected_item item
+                                JOIN selected_application application ON application.id = item.application_id
+                                WHERE item.id = allocation.external_item_id
+                                  AND item.is_deleted = FALSE
+                                  AND NULLIF(to_jsonb(item)->>'legacy_id','') IS NULL
+                                  AND NULLIF(to_jsonb(item)->>'legacy_import_run_id','') IS NULL
+                                  AND NOT fn_imported_business_document('subcontract_application_items',item.id)
+                                  AND application.id = action.external_document_id
+                                  AND application.is_deleted = FALSE
+                                  AND NULLIF(to_jsonb(application)->>'legacy_id','') IS NULL
+                                  AND NULLIF(to_jsonb(application)->>'legacy_import_run_id','') IS NULL
+                                  AND NOT fn_imported_business_document('subcontract_applications',application.id)
+                                  AND application.status IN (0,1)))))
+                      OR (action.public_surplus_qty > 0 AND NOT EXISTS (
+                        WITH selected_item AS MATERIALIZED (
+                            SELECT item.* FROM subcontract_application_items item WHERE item.id=action.public_surplus_external_item_id
+                        ), selected_application AS MATERIALIZED (
+                            SELECT application.* FROM subcontract_applications application WHERE application.id=action.external_document_id
+                        )
+                        SELECT 1 FROM selected_item item
+                        JOIN selected_application application ON application.id = item.application_id
+                        WHERE item.id = action.public_surplus_external_item_id
+                          AND item.is_deleted = FALSE
+                          AND NULLIF(to_jsonb(item)->>'legacy_id','') IS NULL
+                          AND NULLIF(to_jsonb(item)->>'legacy_import_run_id','') IS NULL
+                          AND NOT fn_imported_business_document('subcontract_application_items',item.id)
+                          AND application.id = action.external_document_id
+                          AND application.is_deleted = FALSE
+                          AND NULLIF(to_jsonb(application)->>'legacy_id','') IS NULL
+                          AND NULLIF(to_jsonb(application)->>'legacy_import_run_id','') IS NULL
+                          AND NOT fn_imported_business_document('subcontract_applications',application.id)
+                          AND application.status IN (0,1)))))
+                    OR
+                    (action.external_document_type = 'PREPLAN_MAKE_TASK' AND NOT EXISTS (
+                        SELECT 1 FROM production_material_analysis_items child
+                        WHERE child.id = action.external_document_id
+                          AND child.analysis_id = action.analysis_id
+                          AND (child.source_type = 'MAKE_COMPONENT' OR
+                            (child.source_type='AGGREGATE_MAKE' AND EXISTS(SELECT 1 FROM preplan_aggregate_batches shared
+                              WHERE shared.action_id=action.id AND shared.anchor_analysis_item_id=child.id AND shared.analysis_id=action.analysis_id)))
+                          AND child.is_deleted = FALSE))
+                  )
+                """;
+    }
+
     /** Reconcile actionable coverage from authoritative downstream lifecycle facts. */
     private void reconcileSupplyActionStatuses(UUID analysisId) {
         // The analysis is already locked. These updates change status only, so source kinds
@@ -2302,78 +2423,7 @@ public class MaterialAnalysisService {
             // one surviving private item must not conceal another missing item (the BUY
             // progress view intentionally omits null item references). Closed, fully
             // ordered documents remain valid; the later execution/IQC guards own them.
-            em.createNativeQuery("""
-                UPDATE preplan_supply_actions action
-                SET status = 'CANCELLED', cancelled_by = :actorId,
-                    cancelled_at = now(),
-                    cancellation_reason = '下游单据已删除、红冲或中止，刷新物料分析时自动失效',
-                    updated_at = now()
-                WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND NOT fn_preplan_action_has_shared_claims(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
-                  AND action.status IN ('CREATED','IN_PROGRESS')
-                  AND (
-                    (action.external_document_type = 'PURCHASE_REQUEST' AND (NOT EXISTS (
-                        SELECT 1
-                        FROM v_preplan_buy_action_slice_progress progress
-                        WHERE progress.action_id = action.id
-                          AND progress.demand_source_valid = TRUE
-                          AND progress.safety_source_valid = TRUE)
-                      OR (action.requested_qty > 0 AND (
-                        NOT EXISTS (SELECT 1 FROM preplan_supply_action_allocations allocation
-                                    WHERE allocation.action_id = action.id)
-                        OR EXISTS (
-                            SELECT 1 FROM preplan_supply_action_allocations allocation
-                            WHERE allocation.action_id = action.id AND NOT EXISTS (
-                                SELECT 1 FROM (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_request_items',archive_origin.id)) item
-                                JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_requests',archive_origin.id)) request ON request.id = item.request_id
-                                WHERE item.id = allocation.external_item_id
-                                  AND item.is_deleted = FALSE
-                                  AND request.id = action.external_document_id
-                                  AND request.is_deleted = FALSE
-                                  AND request.status IN (0,1)
-                                  AND request.is_stopped = FALSE))))
-                      OR (action.public_surplus_qty > 0 AND NOT EXISTS (
-                        SELECT 1 FROM (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_request_items',archive_origin.id)) item
-                        JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_requests',archive_origin.id)) request ON request.id = item.request_id
-                        WHERE item.id = action.public_surplus_external_item_id
-                          AND item.is_deleted = FALSE
-                          AND request.id = action.external_document_id
-                          AND request.is_deleted = FALSE
-                          AND request.status IN (0,1)
-                          AND request.is_stopped = FALSE))))
-                    OR
-                    (action.external_document_type = 'SUBCONTRACT_APPLICATION' AND (
-                      (action.requested_qty > 0 AND (
-                        NOT EXISTS (SELECT 1 FROM preplan_supply_action_allocations allocation
-                                    WHERE allocation.action_id = action.id)
-                        OR EXISTS (
-                            SELECT 1 FROM preplan_supply_action_allocations allocation
-                            WHERE allocation.action_id = action.id AND NOT EXISTS (
-                                SELECT 1 FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) item
-                                JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) application ON application.id = item.application_id
-                                WHERE item.id = allocation.external_item_id
-                                  AND item.is_deleted = FALSE
-                                  AND application.id = action.external_document_id
-                                  AND application.is_deleted = FALSE
-                                  AND application.status IN (0,1)))))
-                      OR (action.public_surplus_qty > 0 AND NOT EXISTS (
-                        SELECT 1 FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) item
-                        JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) application ON application.id = item.application_id
-                        WHERE item.id = action.public_surplus_external_item_id
-                          AND item.is_deleted = FALSE
-                          AND application.id = action.external_document_id
-                          AND application.is_deleted = FALSE
-                          AND application.status IN (0,1)))))
-                    OR
-                    (action.external_document_type = 'PREPLAN_MAKE_TASK' AND NOT EXISTS (
-                        SELECT 1 FROM production_material_analysis_items child
-                        WHERE child.id = action.external_document_id
-                          AND child.analysis_id = action.analysis_id
-                          AND (child.source_type = 'MAKE_COMPONENT' OR
-                            (child.source_type='AGGREGATE_MAKE' AND EXISTS(SELECT 1 FROM preplan_aggregate_batches shared
-                              WHERE shared.action_id=action.id AND shared.anchor_analysis_item_id=child.id AND shared.analysis_id=action.analysis_id)))
-                          AND child.is_deleted = FALSE))
-                  )
-                """).setParameter("actorId", actorId)
+            em.createNativeQuery(supplyActionInvalidationSql()).setParameter("actorId", actorId)
                 .setParameter("analysisId", analysisId).executeUpdate();
         }
 

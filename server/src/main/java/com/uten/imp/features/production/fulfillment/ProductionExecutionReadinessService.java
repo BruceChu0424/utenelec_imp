@@ -1272,12 +1272,21 @@ public class ProductionExecutionReadinessService
         return lineSideIssueChecked;
     }
 
-    private boolean tryPromote(UUID segmentId,UUID triggeringReceiptId,UUID expectedWarehouseId,ReceiptKind triggeringKind,
-                            PromotionActor systemActor,boolean tolerateShortage,boolean reclaimReturnedCustody,boolean incrementOnly) {
-        lockExecutionSegmentMaterialDimensions(
-                segmentId, expectedWarehouseId);
-        List<Object[]> segmentRows = NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
+    /** Resolve the exact segment's plan once before the original source predicate.
+     * The outer query still locks the real segment/package rows and rechecks their state. */
+    private static String promotionSegmentSql() {
+        return """
+                                WITH selected_segment AS MATERIALIZED (
+                                    SELECT plan_id FROM production_execution_segments WHERE id=:segmentId
+                                ), selected_plan AS MATERIALIZED (
+                                    SELECT plan.* FROM production_plans plan
+                                    JOIN selected_segment selected ON selected.plan_id=plan.id
+                                ), native_plan AS MATERIALIZED (
+                                    SELECT * FROM selected_plan archive_origin
+                                    WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL
+                                      AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL
+                                      AND NOT fn_imported_business_document('production_plans',archive_origin.id)
+                                )
                                 SELECT segment.package_id,
                                        segment.plan_id,
                                        plan.bill_no,
@@ -1295,7 +1304,7 @@ public class ProductionExecutionReadinessService
                                  AND package.status = 'CONFIRMED'
                                  AND package.execution_model_version = 1
                                  AND package.is_deleted = FALSE
-                                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
+                                JOIN native_plan plan
                                   ON plan.id = segment.plan_id
                                  AND plan.status = 1 AND plan.is_deleted = FALSE
                                  AND COALESCE(plan.is_closed,FALSE) = FALSE
@@ -1307,7 +1316,15 @@ public class ProductionExecutionReadinessService
                                        OR :incrementOnly)
                                   AND segment.is_deleted = FALSE
                                 FOR UPDATE OF segment, package
-                                """)
+                                """;
+    }
+
+    private boolean tryPromote(UUID segmentId,UUID triggeringReceiptId,UUID expectedWarehouseId,ReceiptKind triggeringKind,
+                            PromotionActor systemActor,boolean tolerateShortage,boolean reclaimReturnedCustody,boolean incrementOnly) {
+        lockExecutionSegmentMaterialDimensions(
+                segmentId, expectedWarehouseId);
+        List<Object[]> segmentRows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery(promotionSegmentSql())
                         .setParameter("segmentId", segmentId).setParameter("incrementOnly",incrementOnly));
         if (segmentRows.isEmpty()) {
             return false;

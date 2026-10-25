@@ -612,7 +612,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         requireRowsMatchHeaderSupplier(req);
         requireRowsMatchHeaderCommercial(req);
         var oldItems=itemRepo.findByOrderIdOrderByLineNoAsc(id);
-        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_order_items",oldItems);
+        oldItems.forEach(item -> com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(
+                em,"subcontract_order_items",item));
         requireDecompositionAuthorityForSourceChange(id, req);
         var previousColumns = previousColumns(req.getItems(), oldItems);
         Map<OrderItemLine,SubcontractOrderItem> retained=new java.util.IdentityHashMap<>();

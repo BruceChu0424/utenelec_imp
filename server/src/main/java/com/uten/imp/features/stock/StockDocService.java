@@ -1218,7 +1218,6 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         tx.bind();
         UUID maker = currentUser.requireEmployeeId();
         var replay = docRepo.findByMakerIdAndChannelRequestKey(maker, req.requestKey());
-        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_documents",replay);
         if (replay.isPresent()) {
             StockDocument original = replay.get();
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"stock_documents",original);

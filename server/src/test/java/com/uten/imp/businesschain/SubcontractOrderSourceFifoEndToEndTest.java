@@ -106,6 +106,44 @@ class SubcontractOrderSourceFifoEndToEndTest {
     }
 
     @Test
+    void nativeMultiLineDraftEditsButARetainedLineRejectsTheWholeUpdateBeforeAnyChange() {
+        var w=fixture.seedWorld("subcontract-retained-line-"+UUID.randomUUID());
+        fixture.loginAs(w.superAdminUserId());
+        fixture.ensureSubcontractDirectMaterial(w,w.goodsE());
+        fixture.withSubcontractKitStaged(w,Map.of(w.goodsE(),"20"),()->{
+            var request=order(w);
+            request.setItems(List.of(row(w,1,"2","3",List.of()),row(w,2,"3","7",List.of())));
+            var created=orders.create(request);
+            request.setRemark("native multi-line draft remains editable");
+            var edited=orders.update(created.getId(),request);
+            assertThat(edited.getItems()).hasSize(2);
+            assertThat(edited.getRemark()).isEqualTo(request.getRemark());
+            assertThat(edited.getTotalOriginal()).isEqualByComparingTo("27");
+            UUID retained=edited.getItems().getLast().getId();
+            // Only the isolated database owner installs the retained child fixture.
+            db.update("UPDATE subcontract_order_items SET legacy_id=? WHERE id=?",
+                    940000000+Math.floorMod(retained.hashCode(),1000000),retained);
+            assertThat(db.queryForObject("SELECT fn_imported_business_document('subcontract_order_items',?)",Boolean.class,retained)).isTrue();
+            assertThat(db.queryForObject("SELECT fn_imported_business_document('subcontract_orders',?)",Boolean.class,created.getId())).isFalse();
+            String before=orderAndItemFacts(created.getId());
+            request.setRemark("a retained child must reject the entire edit");
+            assertThatThrownBy(()->orders.update(created.getId(),request))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("历史");
+            assertThat(orderAndItemFacts(created.getId())).isEqualTo(before);
+            return null;
+        });
+    }
+
+    private String orderAndItemFacts(UUID id) {
+        return db.queryForObject("""
+                SELECT jsonb_build_object('header',to_jsonb(document),'items',(
+                    SELECT jsonb_agg(to_jsonb(item) ORDER BY item.line_no,item.id)
+                    FROM subcontract_order_items item WHERE item.order_id=document.id))::text
+                FROM subcontract_orders document WHERE document.id=?
+                """,String.class,id);
+    }
+
+    @Test
     void draftEditsKeepExistingSourcesButRequireAuthorityToAddReplaceOrDetachThem() {
         String tag = "sc-source-edit-" + UUID.randomUUID().toString().substring(0, 8);
         var w = fixture.seedWorld(tag);

@@ -419,10 +419,12 @@ public class ProductionDailyReportService {
         requireExpectedVersion(req == null ? null : req.getExpectedVersion(),
                 r.getRowVersion());
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
-        var existingProofs=itemRepo.findByReportIdOrderByLineNoAsc(id).stream()
+        var existingItems=itemRepo.findByReportIdOrderByLineNoAsc(id);
+        existingItems.forEach(item -> com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(
+                em,"production_daily_report_items",item));
+        var existingProofs=existingItems.stream()
                 .filter(item->item.getFqcRecoveryAuthorizationId()==null).map(ProductionDailyReportItem::getSupplementProofId)
                 .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
-        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_daily_report_items",existingProofs);
         var submittedProofs=req.getItems().stream().filter(Objects::nonNull)
                 .filter(item->item.getFqcRecoveryAuthorizationId()==null).map(DailyReportItemLine::getSupplementProofId)
                 .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());

@@ -704,6 +704,33 @@ class WorkshopPublicSurplusEndToEndTest {
     }
 
     @Test
+    void retainedReportItemRejectsDraftUpdateBeforeChangingHeaderOrOutputRows() {
+        Case c=createStartedTask("wps-retained-report-line",false,"100");
+        var request=reportRequest(c,sources(c).getFirst(),"50","50");
+        var draft=reports.create(request);
+        UUID retained=draft.getItems().getFirst().getId();
+        // The isolated owner installs a legacy child; the runtime still sees a native header.
+        db.update("UPDATE production_daily_report_items SET legacy_id=? WHERE id=?",
+                940000000+Math.floorMod(retained.hashCode(),1000000),retained);
+        assertTrue(db.queryForObject("SELECT fn_imported_business_document('production_daily_report_items',?)",Boolean.class,retained));
+        assertFalse(db.queryForObject("SELECT fn_imported_business_document('production_daily_reports',?)",Boolean.class,draft.getId()));
+        request.setExpectedVersion(reports.detail(draft.getId()).getRowVersion());
+        request.setRemark("retained item must preserve the whole draft");
+        String before=reportAndItemFacts(draft.getId());
+        assertTrue(assertThrows(ApiException.class,()->reports.update(draft.getId(),request)).getMessage().contains("历史"));
+        assertEquals(before,reportAndItemFacts(draft.getId()));
+    }
+
+    private String reportAndItemFacts(UUID id) {
+        return db.queryForObject("""
+                SELECT jsonb_build_object('header',to_jsonb(document),'items',(
+                    SELECT jsonb_agg(to_jsonb(item) ORDER BY item.line_no,item.id)
+                    FROM production_daily_report_items item WHERE item.report_id=document.id))::text
+                FROM production_daily_reports document WHERE document.id=?
+                """,String.class,id);
+    }
+
+    @Test
     void actualSupplementDefaultTenPercentKeepsOriginal100AndCreatesReviewed30WithOneMaterialPosting() {
         Case c=createStartedTask("wps-supplement-100-30",false,"100");
         var source=sources(c).getFirst();
@@ -730,6 +757,15 @@ class WorkshopPublicSurplusEndToEndTest {
         assertTrue(draft.getItems().stream().allMatch(item->approved.proofId().equals(item.getSupplementProofId())));
         assertEquals(1,draft.getItems().stream().map(item->item.getOutputBatchId()).distinct().count());
         for(var item:draft.getItems()){qty("130",item.getOutputBatchQty());assertEquals(c.segment(),item.getOutputSourceExecutionSegmentId());}
+        request.setExpectedVersion(draft.getRowVersion());
+        String beforeProofChange=reportAndItemFacts(draft.getId());
+        request.getItems().getFirst().setSupplementProofId(null);
+        assertTrue(assertThrows(ApiException.class,()->reports.update(draft.getId(),request)).getMessage().contains("不可"));
+        assertEquals(beforeProofChange,reportAndItemFacts(draft.getId()));
+        request.getItems().getFirst().setSupplementProofId(UUID.randomUUID());
+        assertTrue(assertThrows(ApiException.class,()->reports.update(draft.getId(),request)).getMessage().contains("不可"));
+        assertEquals(beforeProofChange,reportAndItemFacts(draft.getId()));
+        request.getItems().getFirst().setSupplementProofId(approved.proofId());
         request.setExpectedVersion(draft.getRowVersion());request.setRemark("草稿复核用料90");request.getMaterialLines().getFirst().setQtyBase(new BigDecimal("90"));
         var edited=reports.update(draft.getId(),request);
         qty("90",edited.getMaterialUsages().getFirst().getQtyBase());

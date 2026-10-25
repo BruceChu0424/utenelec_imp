@@ -83,7 +83,7 @@ class ProductionOverproductionRateEndToEndTest {
 
         // The isolated database owner models a retained report. Its archive policy
         // removes it from action selectors, never from an existing rate's facts.
-        db.update("UPDATE production_daily_reports SET legacy_id=? WHERE id=?",
+        db.update("UPDATE production_daily_reports SET legacy_id=?,row_version=row_version+1 WHERE id=?",
                 940000000+Math.floorMod(report.hashCode(),1000000),report);
         assertTrue(db.queryForObject("SELECT fn_imported_business_document('production_daily_reports',?)",Boolean.class,report));
         var retained=rates.planningRates(Set.of(plan));

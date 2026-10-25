@@ -11,6 +11,7 @@ import uuid
 
 SERVER = Path(__file__).resolve().parents[1]
 POLICY = SERVER / 'src/main/resources/db/local-runtime-privileges.sql'
+ENTRY = SERVER / 'ops/reconcile-runtime-privileges.sql'
 DOCKER = shutil.which('docker')
 
 
@@ -43,6 +44,13 @@ class LocalRuntimePrivilegesTest(unittest.TestCase):
                  'CREATE ROLE uten LOGIN NOSUPERUSER NOINHERIT;'
                  'CREATE DATABASE uten_imp OWNER uten_migrator;', database='postgres')
         cls.psql('ALTER SCHEMA public OWNER TO uten_migrator;')
+        cls.psql('GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO uten_migrator;')
+        subprocess.run([DOCKER, 'exec', cls.container, 'mkdir', '-p',
+                        '/acl/server/ops', '/acl/server/src/main/resources/db'], check=True, capture_output=True)
+        subprocess.run([DOCKER, 'cp', str(POLICY), cls.container + ':/acl/server/src/main/resources/db/local-runtime-privileges.sql'],
+                       check=True, capture_output=True)
+        subprocess.run([DOCKER, 'cp', str(ENTRY), cls.container + ':/acl/server/ops/reconcile-runtime-privileges.sql'],
+                       check=True, capture_output=True)
 
     @classmethod
     def psql(cls, sql, user='postgres', database='uten_imp', check=True):
@@ -62,6 +70,7 @@ class LocalRuntimePrivilegesTest(unittest.TestCase):
           CREATE TABLE business_rows(id serial PRIMARY KEY,value text);
           INSERT INTO business_rows(value) VALUES('preserve me');
           CREATE TABLE legacy_finance_import_sources(id int PRIMARY KEY);
+          CREATE TABLE stock_measurement_holds(id int PRIMARY KEY);
           CREATE TABLE flyway_schema_history(id int PRIMARY KEY);
           CREATE TABLE audit_log(id int,created_month int) PARTITION BY RANGE(created_month);
           CREATE TABLE audit_log_p202610 PARTITION OF audit_log FOR VALUES FROM(202610) TO(202611);
@@ -69,11 +78,15 @@ class LocalRuntimePrivilegesTest(unittest.TestCase):
           CREATE FUNCTION normal_business_read() RETURNS int LANGUAGE sql AS $$ SELECT 7 $$;
           CREATE FUNCTION fn_require_runtime_refresh() RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$;
           CREATE FUNCTION fn_register_legacy_probe() RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$;
+          CREATE FUNCTION fn_capture_stock_measurement_holds() RETURNS int LANGUAGE sql AS $$ SELECT 0 $$;
+          CREATE FUNCTION fn_verify_stock_original_measurement_basis() RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$;
           REVOKE ALL ON FUNCTION fn_require_runtime_refresh(),fn_register_legacy_probe() FROM PUBLIC;
         ''', user='uten_migrator')
 
     def apply(self):
-        return self.psql('BEGIN;\n' + POLICY.read_text(encoding='utf-8') + '\nCOMMIT;', user='uten_migrator')
+        result = self.psql('BEGIN;\n' + POLICY.read_text(encoding='utf-8') + '\nCOMMIT;', user='uten_migrator')
+        self.assertNotIn('WARNING', result.stderr)
+        return result
 
     def scalar(self, sql):
         return self.psql(sql).stdout.strip()
@@ -99,16 +112,109 @@ class LocalRuntimePrivilegesTest(unittest.TestCase):
                     'DELETE FROM audit_log;', 'SELECT * FROM audit_log_p202610;',
                     'SELECT * FROM flyway_schema_history;',
                     'SELECT fn_require_runtime_refresh();', 'SELECT fn_register_legacy_probe();',
+                    'DELETE FROM stock_measurement_holds;',
+                    'SELECT fn_capture_stock_measurement_holds();',
+                    'SELECT fn_verify_stock_original_measurement_basis();',
                     'TRUNCATE business_rows;', 'SET ROLE uten_migrator;'):
             self.assertNotEqual(self.psql(sql, user='uten', check=False).returncode, 0, sql)
         self.psql('SELECT * FROM legacy_finance_import_sources;', user='uten')
         self.psql('INSERT INTO audit_log VALUES(1,202610);', user='uten')
+        self.psql('SELECT * FROM stock_measurement_holds;', user='uten')
 
     def test_future_tables_sequences_and_functions_get_runtime_permissions(self):
         self.apply()
         self.psql('CREATE TABLE later_business(id serial PRIMARY KEY);'
                   'CREATE FUNCTION later_read() RETURNS int LANGUAGE sql AS $$ SELECT 9 $$;', user='uten_migrator')
         self.psql('INSERT INTO later_business DEFAULT VALUES; SELECT later_read();', user='uten')
+        self.assertNotEqual(self.psql("SELECT setval('later_business_id_seq',100);", user='uten', check=False).returncode, 0)
+        self.assertNotEqual(self.psql('SELECT last_value FROM later_business_id_seq;', user='uten', check=False).returncode, 0)
+
+    def test_standard_database_owner_schema_is_accepted_without_ownership_changes(self):
+        self.psql('ALTER SCHEMA public OWNER TO pg_database_owner;')
+        self.apply()
+        self.assertEqual(self.scalar("SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname='public';"),
+                         'pg_database_owner')
+        self.psql("INSERT INTO business_rows(value) VALUES('native runtime append');", user='uten')
+
+    def test_candidate_wrapper_requires_exact_independent_identity_pins(self):
+        candidate = 'uten_acl_candidate_' + uuid.uuid4().hex[:12]
+        self.psql('CREATE DATABASE ' + candidate + ' OWNER uten_migrator TEMPLATE uten_imp;', database='postgres')
+        try:
+            self.psql('ALTER SCHEMA public OWNER TO pg_database_owner;', database=candidate)
+            system_id = self.psql('SELECT system_identifier FROM pg_control_system();',
+                                  user='uten_migrator', database=candidate).stdout.strip()
+            database_oid = self.psql("SELECT oid FROM pg_database WHERE datname=current_database();", database=candidate).stdout.strip()
+            self.assertEqual(self.psql("SELECT has_database_privilege('uten',current_database(),'CONNECT');", database=candidate).stdout.strip(), 't')
+
+            def run(**overrides):
+                values = dict(expected_database=candidate, expected_database_oid=database_oid,
+                              expected_system_identifier=system_id, expected_owner='uten_migrator',
+                              runtime_acl_confirm='RECONCILE CANDIDATE RUNTIME ACL ' + candidate)
+                values.update(overrides)
+                command = [DOCKER, 'exec', self.container, 'psql', '-XqAt', '-U', 'uten_migrator', '-d', candidate]
+                for key, value in values.items():
+                    command.extend(['-v', key + '=' + value])
+                command.extend(['-f', '/acl/server/ops/reconcile-runtime-privileges.sql'])
+                return subprocess.run(command, capture_output=True, text=True, timeout=30)
+
+            for pins in ({'expected_database': 'uten_another_candidate'},
+                         {'expected_database_oid': '1'}, {'expected_system_identifier': '1'},
+                         {'expected_owner': 'postgres'}, {'runtime_acl_confirm': 'unapproved'}):
+                result = run(**pins)
+                self.assertNotEqual(result.returncode, 0, pins)
+                self.assertNotIn('WARNING', result.stderr)
+                self.assertEqual(self.psql("SELECT has_table_privilege('uten','business_rows','INSERT');", database=candidate).stdout.strip(), 'f')
+            result = run()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn('WARNING', result.stderr)
+            self.assertEqual(self.psql("SELECT has_table_privilege('uten','business_rows','INSERT');", database=candidate).stdout.strip(), 't')
+            self.assertEqual(self.psql("SELECT has_database_privilege('uten',current_database(),'CONNECT');", database=candidate).stdout.strip(), 'f')
+            self.assertNotEqual(self.psql('SELECT 1;', user='uten', database=candidate, check=False).returncode, 0)
+        finally:
+            self.psql('DROP DATABASE ' + candidate + ' WITH (FORCE);', database='postgres')
+
+    def test_ungrantable_admin_functions_are_preserved_and_private_leaks_fail_closed(self):
+        self.psql('CREATE FUNCTION admin_extension_like() RETURNS int LANGUAGE sql AS $$ SELECT 11 $$;')
+        before = self.scalar("SELECT coalesce(proacl::text,'default') FROM pg_proc WHERE oid='admin_extension_like()'::regprocedure;")
+        self.apply()
+        self.assertEqual(self.psql('SELECT admin_extension_like();', user='uten').stdout.strip(), '11')
+        self.assertEqual(self.scalar("SELECT coalesce(proacl::text,'default') FROM pg_proc WHERE oid='admin_extension_like()'::regprocedure;"), before)
+        self.psql('CREATE FUNCTION fn_register_legacy_admin_leak() RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$;')
+        self.psql('REVOKE SELECT ON permission_surfaces FROM uten;', user='uten_migrator')
+        result = self.psql('BEGIN;\n' + POLICY.read_text(encoding='utf-8') + '\nCOMMIT;', user='uten_migrator', check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('WARNING', result.stderr)
+        self.assertEqual(self.scalar("SELECT has_table_privilege('uten','permission_surfaces','SELECT');"), 'f')
+
+    def test_existing_runtime_catalog_information_access_is_preserved_without_policy_grants(self):
+        # Only the owned fixture administrator simulates the independently observed
+        # pre-existing ACL. The canonical helper must neither open nor close it.
+        self.psql('GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO uten;')
+        try:
+            before = self.scalar("SELECT coalesce(proacl::text,'default') FROM pg_proc WHERE oid='pg_catalog.pg_control_system()'::regprocedure;")
+            self.apply()
+            self.assertEqual(self.scalar("SELECT coalesce(proacl::text,'default') FROM pg_proc WHERE oid='pg_catalog.pg_control_system()'::regprocedure;"), before)
+            self.assertEqual(self.scalar("SELECT has_function_privilege('uten','pg_catalog.pg_control_system()','EXECUTE');"), 't')
+        finally:
+            self.psql('REVOKE EXECUTE ON FUNCTION pg_catalog.pg_control_system() FROM uten;')
+
+    def test_unreviewed_database_and_schema_delegation_is_rejected_before_any_grant(self):
+        for grant, undo in (
+                ('GRANT CONNECT ON DATABASE uten_imp TO uten WITH GRANT OPTION;',
+                 'REVOKE GRANT OPTION FOR CONNECT ON DATABASE uten_imp FROM uten RESTRICT;'),
+                ('GRANT TEMPORARY ON DATABASE uten_imp TO uten WITH GRANT OPTION;',
+                 'REVOKE GRANT OPTION FOR TEMPORARY ON DATABASE uten_imp FROM uten RESTRICT;'),
+                ('GRANT USAGE ON SCHEMA public TO uten WITH GRANT OPTION;',
+                 'REVOKE GRANT OPTION FOR USAGE ON SCHEMA public FROM uten RESTRICT;')):
+            self.psql(grant, user='uten_migrator')
+            try:
+                result = self.psql('BEGIN;\n' + POLICY.read_text(encoding='utf-8') + '\nCOMMIT;',
+                                   user='uten_migrator', check=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('delegation is unreviewed', result.stderr)
+                self.assertEqual(self.scalar("SELECT has_table_privilege('uten','permission_surfaces','SELECT');"), 'f')
+            finally:
+                self.psql(undo, user='uten_migrator')
 
     def test_rejects_runtime_owner_or_privileged_runtime_before_acl_changes(self):
         for change, undo in [('ALTER ROLE uten SUPERUSER;', 'ALTER ROLE uten NOSUPERUSER;'),

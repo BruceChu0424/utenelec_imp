@@ -63,7 +63,9 @@ class LocalRuntimePrivilegesPostgresTest {
             // relying on the explicitly registered Flyway instance above.
             owner.execute("REVOKE SELECT ON permission_surfaces,permission_surface_permissions,permissions FROM uten");
             try (var application = new SpringApplicationBuilder(UtenImpApplication.class).profiles("dev").run(
+                    "--spring.profiles.active=dev", "--spring.flyway.enabled=true",
                     "--server.address=127.0.0.1", "--server.port=0",
+                    "--uten.deployment.site=local", "--uten.deployment.local-allowed-cidrs=127.0.0.1/32,::1/128",
                     "--spring.datasource.url=" + postgres.getJdbcUrl(), "--spring.datasource.username=uten",
                     "--spring.datasource.password=" + password, "--spring.flyway.url=" + postgres.getJdbcUrl(),
                     "--spring.flyway.user=uten_migrator", "--spring.flyway.password=" + password,
@@ -74,6 +76,7 @@ class LocalRuntimePrivilegesPostgresTest {
                     "--uten.crypto.hmac-key=runtime-acl-isolated-fixture-hmac-key-at-least-32-bytes",
                     "--uten.bootstrap.admin-login=19900000123", "--uten.bootstrap.admin-password=RuntimeAclFixture789!",
                     "--uten.sms.provider=log", "--uten.crypto.rotation.enabled=false")) {
+                assertThat(application.getEnvironment().getActiveProfiles()).containsExactly("dev");
                 assertThat(application.getBean(JdbcTemplate.class).queryForObject("SELECT current_user", String.class)).isEqualTo("uten");
                 assertThat(application.getBean(PermissionSurfaceRegistry.class).knownKeys()).isNotEmpty();
                 var mappings = application.getBean("requestMappingHandlerMapping", RequestMappingHandlerMapping.class);

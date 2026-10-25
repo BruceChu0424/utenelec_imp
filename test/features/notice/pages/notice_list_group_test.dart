@@ -68,7 +68,7 @@ Notice _notice(
     content: '内容',
     type: type,
     publisher: '系统',
-    publishedAt: publishedAt ?? DateTime(2026, 10, 9, 12),
+    publishedAt: publishedAt ?? DateTime.utc(2026, 10, 9, 12),
     isRead: isRead,
     actionRoute: actionRoute,
     aggregateKind: aggregateKind,
@@ -164,7 +164,7 @@ void main() {
       _notice(
         'receipt',
         actionRoute: '/sales/orders/$_orderA',
-        publishedAt: DateTime(2026, 10, 9, 12),
+        publishedAt: DateTime.utc(2026, 10, 9, 12),
       ),
       _notice(
         'card',
@@ -172,7 +172,7 @@ void main() {
         aggregateKind: 'SALES_ORDER',
         aggregateId: _orderA,
         isRead: true,
-        publishedAt: DateTime(2026, 10, 8, 9),
+        publishedAt: DateTime.utc(2026, 10, 8, 9),
       ),
       // 无锚点公告：普通单卡。
       _notice('broadcast', type: NoticeType.announcement),
@@ -216,7 +216,7 @@ void main() {
       final label = scenario.age.inDays < 7
           ? '${scenario.age.inDays} 天前'
           : '${published.year}-${published.month.toString().padLeft(2, '0')}-'
-                '${published.day.toString().padLeft(2, '0')}';
+                '${published.day.toString().padLeft(2, '0')}(北京)';
       final repository = _FakeNoticeRepository([
         _notice(
           'receipt',

@@ -504,11 +504,10 @@ void main() {
   );
 
   testWidgets(
-    'order-stage segment offers no checkboxes or batch generate action',
+    'order-stage shared selection cannot generate another purchase order',
     (tester) async {
       // 已进入订货/收货阶段的行（生产上唯一可见形态：已生成的订货单）不能
-      // 再「生成采购订货单」（补货走原订单，V466 收口）——这些段不渲染
-      // 勾选与悬浮按钮，避免用户勾选后对着永远点不动的按钮报障。
+      // 再生成采购订货单。通用选中可用于申请结束，但不授予生成或结束权限。
       await tester.binding.setSurfaceSize(const Size(1400, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       const orderStageTask = OperationsWorkbenchTask(
@@ -595,7 +594,25 @@ void main() {
         find.byKey(const Key('operations-workbench-selection-bar')),
         findsNothing,
       );
-      expect(find.byType(Checkbox), findsNothing);
+      final table = _table(tester);
+      expect(table.selectable, isTrue);
+      expect(table.items.map((row) => table.idOf!(row)), ['order-doc-1']);
+      table.onSelectedIdsChanged!({'order-doc-1'});
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('operations-workbench-purchase-batch')),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(
+                const Key('procurement-order-closure-selection-action'),
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
       expect(find.text('所选任务已进入采购订单或收货阶段'), findsNothing);
     },
   );
@@ -848,7 +865,27 @@ void main() {
         find.byKey(const Key('operations-workbench-selection-bar')),
         findsNothing,
       );
-      expect(find.byType(Checkbox), findsNothing);
+      final table = _table(tester);
+      expect(table.items.map((row) => table.idOf!(row)), ['task-restricted']);
+      table.onSelectedIdsChanged!({'task-restricted'});
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('operations-workbench-purchase-batch')),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(
+                const Key('procurement-order-closure-selection-action'),
+              ),
+            )
+            .onPressed,
+        isNull,
+        reason:
+            'shared row selection cannot recover restricted document metadata or actions',
+      );
+      expect(find.text('无权查看关联单据'), findsOneWidget);
     },
   );
 

@@ -24,6 +24,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -244,35 +245,47 @@ class _FinanceReportTablePageState
     final reports = <int, ReportData>{};
     final api = ref.read(apiClientProvider);
     Future<PagedResult<Map<String, dynamic>>> fetchPage(int targetPage) async {
-      final query = <String, dynamic>{
-        ..._variant.fixedParams,
-        'dateFrom': _fmt(_from),
-        'dateTo': _fmt(_to),
-        if (_clientId != null) 'clientId': _clientId,
-        if (_keyword.isNotEmpty) 'keyword': _keyword,
-        'page': targetPage,
-        'size': _size,
-        for (final e in _filters.entries) 'f.${e.key}': e.value,
-        ...sortQueryParams(_sortKey, _sortAsc),
-      };
-      final json = await api.get(_variant.endpoint, query: query);
-      if (!current()) throw StateError('Report query changed');
-      final report = await parseReportResponseResponsive(
-        json,
-        targetPage,
-        isCurrent: current,
-      );
-      if (!current()) throw StateError('Report query changed');
-      reports[report.page] = report;
-      return PagedResult(
-        items: report.rows,
-        page: report.page,
-        size: _size,
-        total: report.total,
-        totalPages: report.totalPages,
-        totals: report.totals,
-        facets: report.facets,
-      );
+      try {
+        final query = <String, dynamic>{
+          ..._variant.fixedParams,
+          'dateFrom': _fmt(_from),
+          'dateTo': _fmt(_to),
+          if (_clientId != null) 'clientId': _clientId,
+          if (_keyword.isNotEmpty) 'keyword': _keyword,
+          'page': targetPage,
+          'size': _size,
+          for (final e in _filters.entries) 'f.${e.key}': e.value,
+          ...sortQueryParams(_sortKey, _sortAsc),
+        };
+        final json = await api.get(_variant.endpoint, query: query);
+        if (!current()) throw StateError('Report query changed');
+        final report = await parseReportResponseResponsive(
+          json,
+          targetPage,
+          isCurrent: current,
+        );
+        if (!current()) throw StateError('Report query changed');
+        reports[report.page] = report;
+        return PagedResult(
+          items: report.rows,
+          page: report.page,
+          size: _size,
+          total: report.total,
+          totalPages: report.totalPages,
+          totals: report.totals,
+          facets: report.facets,
+        );
+      } on ApiException {
+        // Preserve authoritative rejection reasons and access-denial handling.
+        rethrow;
+      } catch (_) {
+        if (!mounted || !current()) rethrow;
+        // Keep report-specific recovery guidance through the shared page window.
+        throw ApiException(
+          'REPORT_LOAD_FAILED',
+          AppLocalizations.of(context).financeReportLoadFailed,
+        );
+      }
     }
 
     final pending = _reportPages.load(

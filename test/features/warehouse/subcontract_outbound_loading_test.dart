@@ -100,7 +100,7 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byType(WarehouseTaskCenterScaffold)),
     );
-    // 只进去看了一眼就返回(期间本端没有写、未满 30 秒): 不重拉(ADR-108)。
+    // 每次真实返回都重新校验；其它设备的写入不能由本机修订号或短 TTL 排除。
     container.read(pageResumeProvider.notifier).state = (
       location: '/warehouse/subcontract-outbound/issue-1',
       tick: 2,
@@ -111,8 +111,8 @@ void main() {
       tick: 3,
     );
     await tester.pumpAndSettle();
-    expect(find.text('revision:0'), findsOneWidget);
-    // 在出仓页办了出仓(网络层推进写修订号)后返回: 第一次真正的返回就立即重拉。
+    expect(find.text('revision:1'), findsOneWidget);
+    // 在出仓页办了出仓后返回，同样只执行一次返回刷新。
     container.read(pageResumeProvider.notifier).state = (
       location: '/warehouse/subcontract-outbound/issue-1',
       tick: 4,
@@ -124,7 +124,7 @@ void main() {
       tick: 5,
     );
     await tester.pumpAndSettle();
-    expect(find.text('revision:1'), findsOneWidget);
+    expect(find.text('revision:2'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

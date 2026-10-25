@@ -249,7 +249,14 @@ void _expectCurrentLocation(
   String expectedPath,
   String expectedReturnTo,
 ) {
-  final uri = router.routeInformationProvider.value.uri;
+  // goFrom retains the hub with push. The browser route-information URI can
+  // remain at that declarative source; the top route state owns the destination.
+  final uri = router.state.uri;
   expect(uri.path, expectedPath);
   expect(uri.queryParameters['returnTo'], expectedReturnTo);
+  expect(
+    router.canPop(),
+    isTrue,
+    reason: 'the source hub remains on the stack',
+  );
 }

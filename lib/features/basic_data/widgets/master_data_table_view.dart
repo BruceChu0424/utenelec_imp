@@ -2248,9 +2248,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   late final ScrollController _bodyH;
   // 表体竖向滚动：翻页时 jumpTo(0) 回顶（从第一条开始）。
   late final ScrollController _bodyV;
+  final _borrowedPrimaryControllers =
+      Map<ScrollController, _BorrowedPrimaryTableController>.identity();
   bool get _usesPrimaryScroll => widget.primary && !_fullscreen;
-  ScrollController? get _verticalScrollController =>
-      _usesPrimaryScroll ? PrimaryScrollController.maybeOf(context) : _bodyV;
+  ScrollController? get _verticalScrollController {
+    if (!_usesPrimaryScroll) return _bodyV;
+    final parent = PrimaryScrollController.maybeOf(context);
+    if (parent == null) return null;
+    return _borrowedPrimaryControllers.putIfAbsent(
+      parent,
+      () => _BorrowedPrimaryTableController(parent),
+    );
+  }
+
   int? _pendingScrollToEnd;
   int _scrollToEndAttempts = 0;
   bool _scrollToEndScheduled = false;
@@ -4291,6 +4301,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _headerH.dispose();
     _bodyH.dispose();
     _bodyV.dispose();
+    for (final controller in _borrowedPrimaryControllers.values) {
+      controller.dispose();
+    }
     _overlayH.dispose();
     _hBarY.dispose();
     _pageCtrl.dispose();
@@ -5153,40 +5166,51 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       );
     }
 
-    final list = ListView.builder(
-      // Borrow the coordinator explicitly. Toggling ListView.primary inserts
-      // or removes PrimaryScrollController.none and remounts the row editors.
-      controller: _verticalScrollController,
-      scrollCacheExtent: _rowScrollCache(context),
-      primary: false,
-      shrinkWrap:
-          widget.primary ||
-              widget.virtualized ||
-              (_automaticPagination && !widget.embedded)
-          ? false
-          : true,
-      physics: _prependAnchor.wrap(
-        widget.primary
-            ? const AlwaysScrollableScrollPhysics()
-            : const ClampingScrollPhysics(),
+    final verticalController = _verticalScrollController;
+    final list = ScrollConfiguration(
+      behavior: _PrimaryOwnerTableScrollBehavior(
+        ScrollConfiguration.of(context),
+        verticalController is _BorrowedPrimaryTableController
+            ? verticalController.parent
+            : verticalController,
       ),
-      findChildIndexCallback:
-          window != null ||
-              (indexes == null && dragSlotIndexes == null && appendRows.isEmpty)
-          ? null
-          : childIndex,
-      padding: EdgeInsets.only(bottom: _bodyBottomPad + _prependBottomSpace),
-      itemCount: window == null ? itemCount : 1,
-      itemBuilder: window == null
-          ? buildFallbackRow
-          : (context, _) => UtenAncestorRowWindow<_MasterWindowSlot>(
-              controller: _localRowWindow,
-              rows: window,
-              viewportOnly: true,
-              preserveRowAnchorOnSourceChange: false,
-              estimatedRowExtent: estimatedRowExtent,
-              rowBuilder: (context, _, index) => buildRow(context, index),
-            ),
+      child: ListView.builder(
+        // Borrow the coordinator explicitly. Toggling ListView.primary inserts
+        // or removes PrimaryScrollController.none and remounts the row editors.
+        controller: verticalController,
+        scrollCacheExtent: _rowScrollCache(context),
+        primary: false,
+        shrinkWrap:
+            widget.primary ||
+                widget.virtualized ||
+                (_automaticPagination && !widget.embedded)
+            ? false
+            : true,
+        physics: _prependAnchor.wrap(
+          widget.primary
+              ? const AlwaysScrollableScrollPhysics()
+              : const ClampingScrollPhysics(),
+        ),
+        findChildIndexCallback:
+            window != null ||
+                (indexes == null &&
+                    dragSlotIndexes == null &&
+                    appendRows.isEmpty)
+            ? null
+            : childIndex,
+        padding: EdgeInsets.only(bottom: _bodyBottomPad + _prependBottomSpace),
+        itemCount: window == null ? itemCount : 1,
+        itemBuilder: window == null
+            ? buildFallbackRow
+            : (context, _) => UtenAncestorRowWindow<_MasterWindowSlot>(
+                controller: _localRowWindow,
+                rows: window,
+                viewportOnly: true,
+                preserveRowAnchorOnSourceChange: false,
+                estimatedRowExtent: estimatedRowExtent,
+                rowBuilder: (context, _, index) => buildRow(context, index),
+              ),
+      ),
     );
     final hArea = SingleChildScrollView(
       key: _bodyHorizontalKey,
@@ -9152,6 +9176,106 @@ class _RowDragIndicatorGeometry {
   final double height;
   final UtenTableRowDropMode mode;
   final String? label;
+}
+
+/// Primary owners can change without changing the controller's runtime type.
+/// Notify the existing Scrollable to recreate its position for the new owner,
+/// while delegating the application's gesture, physics and decoration policy.
+class _PrimaryOwnerTableScrollBehavior extends ScrollBehavior {
+  const _PrimaryOwnerTableScrollBehavior(this.delegate, this.owner);
+
+  final ScrollBehavior delegate;
+  final ScrollController? owner;
+
+  @override
+  bool shouldNotify(ScrollBehavior oldDelegate) =>
+      oldDelegate is! _PrimaryOwnerTableScrollBehavior ||
+      !identical(owner, oldDelegate.owner) ||
+      delegate.runtimeType != oldDelegate.delegate.runtimeType ||
+      delegate.shouldNotify(oldDelegate.delegate);
+
+  @override
+  TargetPlatform getPlatform(BuildContext context) =>
+      delegate.getPlatform(context);
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => delegate.dragDevices;
+
+  @override
+  Set<LogicalKeyboardKey> get pointerAxisModifiers =>
+      delegate.pointerAxisModifiers;
+
+  @override
+  MultitouchDragStrategy getMultitouchDragStrategy(BuildContext context) =>
+      delegate.getMultitouchDragStrategy(context);
+
+  @override
+  ScrollViewKeyboardDismissBehavior getKeyboardDismissBehavior(
+    BuildContext context,
+  ) => delegate.getKeyboardDismissBehavior(context);
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) =>
+      delegate.getScrollPhysics(context);
+
+  @override
+  GestureVelocityTrackerBuilder velocityTrackerBuilder(BuildContext context) =>
+      delegate.velocityTrackerBuilder(context);
+
+  @override
+  Widget buildScrollbar(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) => delegate.buildScrollbar(context, child, details);
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) => delegate.buildOverscrollIndicator(context, child, details);
+}
+
+/// Scrollable hands its old position to a replacement controller before it
+/// asks that controller to create the new position. Keep that transient handoff
+/// local: a NestedScrollView coordinator only accepts positions it created.
+class _BorrowedPrimaryTableController extends ScrollController {
+  _BorrowedPrimaryTableController(this.parent);
+
+  final ScrollController parent;
+  final _created = Expando<bool>('borrowed primary table positions');
+  final _forwarded = Set<ScrollPosition>.identity();
+
+  @override
+  ScrollPosition createScrollPosition(
+    ScrollPhysics physics,
+    ScrollContext context,
+    ScrollPosition? oldPosition,
+  ) {
+    final position = parent.createScrollPosition(
+      physics,
+      context,
+      oldPosition != null && _created[oldPosition] == true ? oldPosition : null,
+    );
+    _created[position] = true;
+    return position;
+  }
+
+  @override
+  void attach(ScrollPosition position) {
+    super.attach(position);
+    if (_created[position] == true) {
+      parent.attach(position);
+      _forwarded.add(position);
+    }
+  }
+
+  @override
+  void detach(ScrollPosition position) {
+    if (_forwarded.remove(position)) parent.detach(position);
+    super.detach(position);
+  }
 }
 
 /// 拖拽拾起的手势来源（判负一方的 cancel 不能误撕另一方的现场）。

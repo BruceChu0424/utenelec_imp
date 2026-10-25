@@ -645,7 +645,7 @@ Future<void> _chooseReplacement(WidgetTester tester) async {
 
 Finder _subjectPickerButton() => find.descendant(
   of: find.byKey(const Key('where-used-query-subject')),
-  matching: find.widgetWithText(TextButton, '选择'),
+  matching: find.byKey(const ValueKey('uten-reference-open-picker')),
 );
 
 String _subjectText(WidgetTester tester) =>
@@ -1650,6 +1650,14 @@ void main() {
           container.read(_livePermissions.notifier).state = {};
         }
         await tester.pumpAndSettle();
+        expect(api.reportGate!.isCompleted, isFalse);
+        expect(
+          find.byType(CircularProgressIndicator),
+          findsNothing,
+          reason:
+              'the replacement reader must not wait for the retired report GET',
+        );
+        expect(_subjectText(tester), isEmpty);
         api.reportGate!.complete();
         await tester.pumpAndSettle();
         expect(_subjectText(tester), isEmpty);

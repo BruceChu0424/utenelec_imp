@@ -30,6 +30,8 @@ import 'package:uten_imp/features/subcontract/models/subcontract_draw.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_decomposition_page.dart';
 import 'package:uten_imp/features/subcontract/repositories/subcontract_kit_repository.dart';
 import 'package:uten_imp/features/subcontract/widgets/subcontract_application_kit_dialog.dart';
+import 'package:uten_imp/features/subcontract/widgets/subcontract_application_detail_dialog.dart'
+    show subcontractWaitingKitHint;
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/subcontract_task_source.dart';
@@ -43,6 +45,93 @@ const _decomposePermissions = {
 };
 
 void main() {
+  testWidgets(
+    'mixed native selection denies order creation while eligible order closure still previews',
+    (tester) async {
+      _desktop(tester, const Size(1700, 1100));
+      final api = _ClosurePreviewApi();
+      final gateway = _Gateway(_kitData());
+      final draw = FakeSubcontractDrawGateway(
+        canSubmitDraw: false,
+        rows: [
+          drawRow(
+            'closure-item',
+            status: 'WAITING_MATERIAL',
+            canDraw: false,
+            drawableQty: 0,
+          ),
+        ],
+      );
+      final drawRoutes = <List<String>>[];
+      final orderRoutes = <List<String>>[];
+      final router = _router(
+        page: SubcontractDecompositionPage(
+          repository: gateway,
+          drawRepository: draw,
+        ),
+        opened: drawRoutes,
+        openedOrders: orderRoutes,
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        _scope(
+          api: api,
+          permissions: {
+            ..._decomposePermissions,
+            Perm.subcontractOrderSubmitFinance,
+          },
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
+      );
+      table.onSelectedIdsChanged!({
+        'task-ready',
+        'task-locked',
+        'draw-closure-item',
+      });
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      final create = find.byKey(
+        const Key('subcontract-decomposition-create-order'),
+      );
+      expect(tester.widget<UtenButton>(create).onPressed, isNull);
+      expect(find.byTooltip(subcontractWaitingKitHint), findsOneWidget);
+      final beforeQueries = gateway.queries.length;
+      await tester.tap(create);
+      await tester.pumpAndSettle();
+      expect(orderRoutes, isEmpty);
+      expect(drawRoutes, isEmpty);
+      expect(draw.previews, isEmpty);
+      expect(draw.submits, isEmpty);
+      expect(gateway.queries, hasLength(beforeQueries));
+      expect(api.requests, hasLength(1));
+      expect(
+        api.requests.single.$1,
+        '/finance/procurement-approvals/order-closures/batch-preview',
+      );
+      expect(api.requests.single.$2['orders'], [
+        {'orderType': 'SUBCONTRACT', 'orderId': 'order-1'},
+      ]);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(
+                const Key('procurement-order-closure-selection-action'),
+              ),
+            )
+            .onPressed,
+        isNotNull,
+        reason:
+            'kit readiness cannot deny a server-approved whole-order closure',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'read-only subcontract browsing does not create operational red or yellow badges',
     (tester) async {
@@ -744,7 +833,7 @@ void main() {
   );
 
   testWidgets(
-    'only the pending segment owns one table selection action across widths',
+    'only pending owns order creation while shared closure selection survives stages and widths',
     (tester) async {
       _desktop(tester, const Size(1400, 1100));
       await tester.pumpWidget(
@@ -780,8 +869,8 @@ void main() {
         Function.apply(select, [segment.value]);
       }
 
-      // 2026-10-08 口径：勾选列与「生成委外订货单」只属于「待处理」段——
-      // 进行中/历史的行都已下单，没有可勾选的行，不摆永远灰着的批量按钮。
+      // Creation belongs to pending applications. Native order-history rows
+      // retain shared selection for the independently authorised closure flow.
       for (final category in ['进行中', '历史记录']) {
         selectStage(category);
         await tester.pumpAndSettle();
@@ -793,10 +882,14 @@ void main() {
         expect(action, findsNothing, reason: category);
         expect(
           find.byType(UtenSelectionSummaryPill),
-          findsNothing,
+          findsOneWidget,
           reason: category,
         );
-        expect(find.byType(Checkbox), findsNothing, reason: category);
+        expect(
+          find.byKey(const Key('procurement-order-closure-selection-action')),
+          findsOneWidget,
+          reason: category,
+        );
       }
       selectStage('待处理');
       await tester.pumpAndSettle();
@@ -852,12 +945,11 @@ void main() {
       // 375px 下分类栏收成「分类」下拉（2026-09-14），统一走共用助手选段。
       await selectFilterSegment(tester, '历史记录');
       await tester.pumpAndSettle();
-      // 2026-10-24 起历史门默认近三个月（再切「全部」看全量）；
-      // 2026-10-08 起历史段不再提供勾选与批量按钮。
+      // The native history category keeps shared selection, but never creation.
       await selectFilterSegment(tester, '全部');
       await tester.pumpAndSettle();
       expect(action, findsNothing);
-      expect(find.byType(UtenSelectionSummaryPill), findsNothing);
+      expect(find.byType(UtenSelectionSummaryPill), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -1010,96 +1102,140 @@ void main() {
       capability: false,
     ),
   ]) {
-    testWidgets('${scenario.name} hides selection and keeps action disabled', (
-      tester,
-    ) async {
-      _desktop(tester, const Size(900, 900));
-      await tester.pumpWidget(
-        _scope(
-          permissions: scenario.permissions,
-          child: MaterialApp(
-            home: SubcontractDecompositionPage(
-              repository: _Gateway(_data(capability: scenario.capability)),
-              // 领料提交权单独授权(ADR-171 修订二)：这两个场景只验证下单侧的
-              // 权限门，领料能力由专门的领料用例覆盖。
-              drawRepository: FakeSubcontractDrawGateway(canSubmitDraw: false),
+    testWidgets(
+      '${scenario.name} denies creation independently of shared selection',
+      (tester) async {
+        _desktop(tester, const Size(900, 900));
+        await tester.pumpWidget(
+          _scope(
+            permissions: scenario.permissions,
+            child: MaterialApp(
+              home: SubcontractDecompositionPage(
+                repository: _Gateway(_data(capability: scenario.capability)),
+                // 领料提交权单独授权(ADR-171 修订二)：这两个场景只验证下单侧的
+                // 权限门，领料能力由专门的领料用例覆盖。
+                drawRepository: FakeSubcontractDrawGateway(
+                  canSubmitDraw: false,
+                ),
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.byType(Checkbox), findsNothing);
-      final action = find.byKey(
-        const Key('subcontract-decomposition-create-order'),
-      );
-      if (scenario.permissions.isEmpty) {
-        expect(action, findsNothing);
-      } else {
-        expect(action, findsOneWidget);
-        expect(tester.widget<UtenButton>(action).onPressed, isNull);
-      }
-      expect(tester.takeException(), isNull);
-    });
+        if (scenario.permissions.isEmpty) {
+          expect(
+            find.byKey(const Key('subcontract-decomposition-create-order')),
+            findsNothing,
+          );
+          expect(
+            find.byKey(const Key('subcontract-decomposition-pending-table')),
+            findsNothing,
+          );
+          expect(tester.takeException(), isNull);
+          return;
+        }
+        final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+          find.byKey(const Key('subcontract-decomposition-pending-table')),
+        );
+        expect(table.selectable, isTrue);
+        table.onSelectedIdsChanged!({'task-1'});
+        await tester.pumpAndSettle();
+        final action = find.byKey(
+          const Key('subcontract-decomposition-create-order'),
+        );
+        if (scenario.permissions.isEmpty) {
+          expect(action, findsNothing);
+        } else {
+          expect(action, findsOneWidget);
+          expect(tester.widget<UtenButton>(action).onPressed, isNull);
+        }
+        expect(
+          tester
+              .widget<UtenButton>(
+                find.byKey(
+                  const Key('procurement-order-closure-selection-action'),
+                ),
+              )
+              .onPressed,
+          isNull,
+          reason:
+              'selecting a row grants neither a server capability nor closure authority',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   group('ADR-143 缺 BOM 的委外申请行', () {
-    testWidgets('red status with the R&D task number, no selection, '
-        'clicking the status reminds R&D and reloads', (tester) async {
-      _desktop(tester, const Size(1600, 1000));
-      final gateway = _Gateway(_bomMissingData());
-      final bom = _BomGapGateway();
-      await tester.pumpWidget(
-        _scope(
-          child: MaterialApp(
-            home: SubcontractDecompositionPage(
-              repository: gateway,
-              drawRepository: FakeSubcontractDrawGateway(),
-              bomGapGateway: bom,
+    testWidgets(
+      'red status with the R&D task number denies creation after selection; '
+      'clicking the status reminds R&D and reloads',
+      (tester) async {
+        _desktop(tester, const Size(1600, 1000));
+        final gateway = _Gateway(_bomMissingData());
+        final bom = _BomGapGateway();
+        await tester.pumpWidget(
+          _scope(
+            child: MaterialApp(
+              home: SubcontractDecompositionPage(
+                repository: gateway,
+                drawRepository: FakeSubcontractDrawGateway(),
+                bomGapGateway: bom,
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('待处理'));
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('待处理'));
+        await tester.pumpAndSettle();
 
-      final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
-        find.byKey(const Key('subcontract-decomposition-pending-table')),
-      );
-      SubcontractApplicationRow applicationRow(String id) => table.items
-          .whereType<SubcontractApplicationRow>()
-          .firstWhere((row) => row.task.taskId == id);
-      final missing = applicationRow('task-bom');
-      // 不能勾选下单；锁死不能往下=深红（ADR-169「不能执行不是等待」，
-      // 行底色已退役）。
-      expect(table.idOf!(missing), isNull);
-      expect(table.rowColor, isNull);
-      final status = table.columns.firstWhere((c) => c.key == 'status');
-      final context = tester.element(find.byType(SubcontractDecompositionPage));
-      expect(
-        status.cellColor!(context, missing),
-        utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
-      );
-      expect(find.text('缺 BOM·已通知研发(RD0007)'), findsWidgets);
-      // 勾选位锁图标悬浮说明为什么不能下单。
-      expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
-      expect(
-        find.byTooltip('委外件还没有 BOM，已通知研发完善(RD0007)；研发保存 BOM 后自动恢复可下单'),
-        findsOneWidget,
-      );
-      // 普通申请行不受影响。
-      expect(table.idOf!(applicationRow('task-1')), 'task-1');
+        final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+          find.byKey(const Key('subcontract-decomposition-pending-table')),
+        );
+        SubcontractApplicationRow applicationRow(String id) => table.items
+            .whereType<SubcontractApplicationRow>()
+            .firstWhere((row) => row.task.taskId == id);
+        final missing = applicationRow('task-bom');
+        // Shared selection is not evidence that a missing BOM can be ordered.
+        expect(table.idOf!(missing), 'task-bom');
+        expect(table.rowColor, isNull);
+        final status = table.columns.firstWhere((c) => c.key == 'status');
+        final context = tester.element(
+          find.byType(SubcontractDecompositionPage),
+        );
+        expect(
+          status.cellColor!(context, missing),
+          utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
+        );
+        expect(find.text('缺 BOM·已通知研发(RD0007)'), findsWidgets);
+        table.onSelectedIdsChanged!({'task-1', 'task-bom'});
+        await tester.pumpAndSettle();
+        final create = find.byKey(
+          const Key('subcontract-decomposition-create-order'),
+        );
+        expect(tester.widget<UtenButton>(create).onPressed, isNull);
+        final beforeDeniedAction = gateway.queries.length;
+        await tester.tap(create);
+        await tester.pumpAndSettle();
+        expect(gateway.queries, hasLength(beforeDeniedAction));
+        expect(
+          find.byTooltip('委外件还没有 BOM，已通知研发完善(RD0007)；研发保存 BOM 后自动恢复可下单'),
+          findsOneWidget,
+        );
+        // 普通申请行不受影响。
+        expect(table.idOf!(applicationRow('task-1')), 'task-1');
 
-      final queries = gateway.queries.length;
-      await tester.ensureVisible(find.byTooltip('点击通知研发完善 BOM'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('点击通知研发完善 BOM'));
-      await tester.pumpAndSettle();
-      expect(bom.forwarded, ['application-item-bom']);
-      expect(gateway.queries.length, greaterThan(queries));
-      expect(tester.takeException(), isNull);
-    });
+        final queries = gateway.queries.length;
+        await tester.ensureVisible(find.byTooltip('点击通知研发完善 BOM'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('点击通知研发完善 BOM'));
+        await tester.pumpAndSettle();
+        expect(bom.forwarded, ['application-item-bom']);
+        expect(gateway.queries.length, greaterThan(queries));
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     testWidgets('server-named missing items are the only ones forwarded', (
       tester,
@@ -1235,9 +1371,8 @@ void main() {
         final locked = applicationRow('task-locked');
         final partial = applicationRow('task-partial');
         final ready = applicationRow('task-ready');
-        // 锁行：不能勾选，深红状态格（锁死不能下单=红，ADR-169；
-        // 整行红底已退役）；可下单=绿（就绪可动手）；可部分下单=紫。
-        expect(table.idOf!(locked), isNull);
+        // Shared selection preserves the independent red readiness status.
+        expect(table.idOf!(locked), 'task-locked');
         expect(table.rowColor, isNull);
         expect(table.idOf!(partial), 'task-partial');
         expect(table.idOf!(ready), 'task-ready');
@@ -1279,6 +1414,14 @@ void main() {
           const Key('subcontract-decomposition-create-order'),
         );
         expect(tester.widget<UtenButton>(action).onPressed, isNull);
+        table.onSelectedIdsChanged!({'task-ready', 'task-locked'});
+        await tester.pumpAndSettle();
+        expect(tester.widget<UtenButton>(action).onPressed, isNull);
+        expect(find.byTooltip(lockedHint), findsOneWidget);
+        await tester.tap(action);
+        await tester.pumpAndSettle();
+        table.onSelectedIdsChanged!({});
+        await tester.pumpAndSettle();
         await tester.tap(find.text('FG-task-partial'));
         await tester.pumpAndSettle();
         await tester.pump(const Duration(milliseconds: 400));
@@ -1291,7 +1434,7 @@ void main() {
     );
 
     testWidgets(
-      'locked rows show a lock in the leading cell and the dialog explains why in red',
+      'shared selection retains the kit lock status and red detail explanation',
       (tester) async {
         _desktop(tester, const Size(1700, 1000));
         await tester.pumpWidget(
@@ -1306,11 +1449,15 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        // 勾选位：锁行换成锁图标(悬浮说明原因)，可下单两行仍是勾选框
-        // (2 个行勾选 + 1 个表头全选)。
-        expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
-        expect(find.byTooltip(lockedHint), findsOneWidget);
-        expect(find.byType(Checkbox), findsNWidgets(3));
+        final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+          find.byKey(const Key('subcontract-decomposition-pending-table')),
+        );
+        expect(table.items.map((row) => table.idOf!(row)), [
+          'task-ready',
+          'task-partial',
+          'task-locked',
+        ]);
+        expect(find.byTooltip('$lockedHint；点击看齐套情况'), findsOneWidget);
 
         await _doubleTapRow(tester, find.text('FG-task-locked'));
         await tester.pumpAndSettle();
@@ -1462,29 +1609,35 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('375 宽同一张表格：锁行图标与说明保留', (tester) async {
-      _desktop(tester, const Size(375, 1400));
-      await tester.pumpWidget(
-        _scope(
-          child: MaterialApp(
-            home: SubcontractDecompositionPage(
-              repository: _Gateway(_kitData()),
-              drawRepository: FakeSubcontractDrawGateway(),
-              kitGateway: _KitGateway(),
+    testWidgets(
+      '375 width keeps shared selection and the kit lock explanation',
+      (tester) async {
+        _desktop(tester, const Size(375, 1400));
+        await tester.pumpWidget(
+          _scope(
+            child: MaterialApp(
+              home: SubcontractDecompositionPage(
+                repository: _Gateway(_kitData()),
+                drawRepository: FakeSubcontractDrawGateway(),
+                kitGateway: _KitGateway(),
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull, reason: '375 宽不溢出');
-      // 2026-10-09 卡片形态退役：窄屏同一张表格。齐套判定改看桌面孪生用例，
-      // 这里锁窄屏不丢的 affordance——表头三态全选 + 两条可下单行勾选框；
-      // 锁行勾选位换锁图标，悬浮说明为什么不能下单（ADR-156）。
-      expect(find.byType(Checkbox), findsNWidgets(3));
-      expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
-      expect(find.byTooltip(lockedHint), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: '375 宽不溢出');
+        final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+          find.byKey(const Key('subcontract-decomposition-pending-table')),
+        );
+        expect(table.items.map((row) => table.idOf!(row)), [
+          'task-ready',
+          'task-partial',
+          'task-locked',
+        ]);
+        expect(find.byTooltip('$lockedHint；点击看齐套情况'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     testWidgets(
       'kit-ready notice deep link lands on pending with the keyword',
@@ -1696,19 +1849,16 @@ void main() {
         final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
           find.byKey(const Key('subcontract-decomposition-pending-table')),
         );
-        // 领料行钉在表格顶部(unpagedItems)；服务端 canDraw 且账号 canSubmitDraw
-        // 的行才可勾选，id 带领料前缀与申请行命名空间分开。
+        // Selection is shared with order closure; draw eligibility is checked
+        // by its own action. Namespaces still preserve every physical identity.
         expect(table.unpagedItems.map((row) => table.idOf!(row)).toList(), [
           'draw-item-full',
           'draw-item-partial',
-          null,
-          null,
-          null,
+          'draw-item-submitted',
+          'draw-item-planning',
+          'draw-item-waiting',
         ]);
-        // 不可领的三行(已提交/等计划/等物料)勾选位换锁图标，悬浮说明下一步
-        // 由谁动手；状态格悬浮同句(两处都在)。
-        expect(find.byIcon(Icons.lock_outline_rounded), findsNWidgets(3));
-        expect(find.byTooltip('已提交 30 个 的领料，等仓库发出'), findsNWidgets(2));
+        expect(find.byTooltip('已提交 30 个 的领料，等仓库发出'), findsOneWidget);
         // 状态列文案 + ADR-169 十档整格底色(绿 / 紫 / 青 / 红 / 红——
         // 等计划安排与等待物料都是「不能领」，同红靠文案区分)。
         expect(find.text('可领 60 个·去领料'), findsOneWidget);
@@ -1819,6 +1969,18 @@ void main() {
         final batch = find.byKey(const Key('subcontract-draw-batch'));
         expect(batch, findsOneWidget);
         expect(tester.widget<UtenButton>(batch).onPressed, isNull);
+        table.onSelectedIdsChanged!({'draw-item-full', 'draw-item-submitted'});
+        await tester.pumpAndSettle();
+        expect(tester.widget<UtenButton>(batch).onPressed, isNull);
+        await tester.tap(batch);
+        await tester.pumpAndSettle();
+        expect(
+          opened,
+          isEmpty,
+          reason: 'mixed eligibility must not open a draw request',
+        );
+        table.onSelectedIdsChanged!({});
+        await tester.pumpAndSettle();
         await tester.tap(find.text('WD-002'));
         await tester.pumpAndSettle();
         await tester.pump(const Duration(milliseconds: 400));
@@ -1887,7 +2049,7 @@ void main() {
     );
 
     testWidgets(
-      'accounts without draw capability see rows but cannot select or draw',
+      'accounts without draw capability may select rows but cannot draw or close',
       (tester) async {
         _desktop(tester, const Size(1700, 1000));
         final draw = FakeSubcontractDrawGateway(
@@ -1910,10 +2072,20 @@ void main() {
         final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
           find.byKey(const Key('subcontract-decomposition-pending-table')),
         );
-        // 账号没有提交领料权限：领料行可见但不可勾选(申请行勾选由下单能力
-        // 另行门控)，悬浮批量按钮只剩「生成委外订货单」。
-        expect(table.selectable, isFalse);
-        expect(table.idOf!(table.unpagedItems.single), isNull);
+        expect(table.selectable, isTrue);
+        expect(table.idOf!(table.unpagedItems.single), 'draw-item-1');
+        table.onSelectedIdsChanged!({'draw-item-1'});
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<UtenButton>(
+                find.byKey(
+                  const Key('procurement-order-closure-selection-action'),
+                ),
+              )
+              .onPressed,
+          isNull,
+        );
         expect(find.byKey(const Key('subcontract-draw-batch')), findsNothing);
         // 只显示可领量，不出现「去领料」入口。
         expect(find.text('可领 40 个'), findsOneWidget);
@@ -2272,6 +2444,7 @@ Widget _scope({
   required Widget child,
   Set<String> permissions = _decomposePermissions,
   Map<String, int>? taskFacts,
+  ApiClient? api,
 }) {
   final home = child is MaterialApp ? child.home : null;
   final repository = home is SubcontractDecompositionPage
@@ -2285,7 +2458,7 @@ Widget _scope({
     overrides: [
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),
-      apiClientProvider.overrideWithValue(_api()),
+      apiClientProvider.overrideWithValue(api ?? _api()),
       fixedBadgeSummaryOverride(
         badgeSummaryFixture(
           facts:
@@ -2309,25 +2482,38 @@ Widget _scope({
   );
 }
 
-GoRouter _router({required Widget page, required List<List<String>> opened}) =>
-    GoRouter(
-      initialLocation: RouteName.operationsSubcontractWorkbench,
-      routes: [
-        GoRoute(
-          path: RouteName.operationsSubcontractWorkbench,
-          builder: (_, _) => page,
-        ),
-        GoRoute(
-          path: RouteName.operationsSubcontractDrawRequest,
-          builder: (_, state) {
-            opened.add(
-              state.uri.queryParameters['orderItemIds']!.split(',').toList(),
-            );
-            return const Scaffold(body: Text('领料页已打开'));
-          },
-        ),
-      ],
-    );
+GoRouter _router({
+  required Widget page,
+  required List<List<String>> opened,
+  List<List<String>>? openedOrders,
+}) => GoRouter(
+  initialLocation: RouteName.operationsSubcontractWorkbench,
+  routes: [
+    GoRoute(
+      path: RouteName.operationsSubcontractWorkbench,
+      builder: (_, _) => page,
+    ),
+    GoRoute(
+      path: RouteName.operationsSubcontractDrawRequest,
+      builder: (_, state) {
+        opened.add(
+          state.uri.queryParameters['orderItemIds']!.split(',').toList(),
+        );
+        return const Scaffold(body: Text('领料页已打开'));
+      },
+    ),
+    if (openedOrders != null)
+      GoRoute(
+        path: '/subcontract/orders/new',
+        builder: (_, state) {
+          openedOrders.add(
+            state.uri.queryParameters['applicationItemIds']!.split(','),
+          );
+          return const Scaffold(body: Text('order editor opened'));
+        },
+      ),
+  ],
+);
 
 /// 双击指定行（两次点按间隔 50ms，落在 350ms 手动双击判定窗内）。
 Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
@@ -2352,6 +2538,47 @@ ApiClient _api() {
     ),
   );
   return ApiClient(dio);
+}
+
+class _ClosurePreviewApi extends ApiClient {
+  _ClosurePreviewApi()
+    : super(Dio(BaseOptions(baseUrl: 'http://localhost:8080/api')));
+  final requests = <(String, Map<String, dynamic>)>[];
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => {};
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => [];
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
+    final request = Map<String, dynamic>.from(body! as Map);
+    requests.add((path, request));
+    if (path != '/finance/procurement-approvals/order-closures/batch-preview') {
+      throw StateError('unexpected mutation: $path');
+    }
+    return {
+      'items': [
+        for (final order
+            in (request['orders'] as List).cast<Map<String, dynamic>>())
+          {
+            ...order,
+            'canSubmit': true,
+            'fingerprint': 'closure-${order['orderId']}',
+            'items': <Object>[],
+          },
+      ],
+    };
+  }
 }
 
 class _Gateway implements OperationsWorkbenchGateway {

@@ -84,7 +84,7 @@ void main() {
       final api = _DraftApi();
       final harness = await _pumpDraft(tester, api, _draftData());
       final row = _table(tester).rows.single.draft;
-      expect(find.text('已恢复本机草稿'), findsOneWidget);
+      expect(find.text('已恢复本机草稿'), findsNothing);
       expect(row.draftItemId, 'current-item-1');
       expect(row.qty.text, '500');
       expect(row.weight.kg, 10);
@@ -134,7 +134,7 @@ void main() {
       ),
     );
 
-    expect(find.text('已恢复本机草稿'), findsOneWidget);
+    expect(find.text('已恢复本机草稿'), findsNothing);
     expect(_table(tester).rows.map((row) => row.draft.qty.text), [
       '500',
       '300',
@@ -253,7 +253,7 @@ Future<void> _expectBlockedThenReloadAndApprove(
   await tester.pumpAndSettle();
 
   expect(find.text('这份草稿暂时无法恢复，原草稿已保留。'), findsNothing);
-  expect(find.text('原本机草稿已保留；已读取最新单据，请核对后继续。'), findsOneWidget);
+  expect(find.text('原本机草稿已保留；已读取最新单据，请核对后继续。'), findsNothing);
   expect(api.taskReads, 2);
   expect(_table(tester).rows.first.draft.qty.text, '1000');
   expect(_table(tester).rows.first.draft.weight.kg, 20);
@@ -492,6 +492,8 @@ class _DraftApi extends ApiClient {
 
   Map<String, dynamic> get document => {
     'id': 'issue-1',
+    'historyReadOnly': false,
+    'legacyImported': false,
     'billNo': 'EC20261001000001',
     'billDate': '2026-09-30',
     'warehouseId': 'actual-leaf',

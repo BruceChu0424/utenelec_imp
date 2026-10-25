@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/pages/production_plan_detail_page.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
@@ -37,6 +38,9 @@ void main() {
             }),
           ],
           child: MaterialApp(
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             builder: (context, child) => Stack(
               children: [
                 child!,
@@ -125,6 +129,9 @@ void main() {
             }),
           ],
           child: const MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ProductionPlanDetailPage(id: 'plan-1'),
           ),
         ),
@@ -165,6 +172,9 @@ void main() {
             }),
           ],
           child: const MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ProductionPlanDetailPage(id: 'plan-1'),
           ),
         ),
@@ -225,7 +235,12 @@ void main() {
             Perm.productionPlanEdit,
           }),
         ],
-        child: const MaterialApp(home: ProductionPlanDetailPage(id: 'plan-1')),
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ProductionPlanDetailPage(id: 'plan-1'),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -257,7 +272,12 @@ void main() {
             Perm.productionPlanDelete,
           }),
         ],
-        child: const MaterialApp(home: ProductionPlanDetailPage(id: 'plan-1')),
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ProductionPlanDetailPage(id: 'plan-1'),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -291,6 +311,9 @@ void main() {
             }),
           ],
           child: MaterialApp(
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             builder: (context, child) => MediaQuery(
               data: MediaQuery.of(
                 context,
@@ -357,7 +380,12 @@ void main() {
             Perm.productionPlanView,
           }),
         ],
-        child: const MaterialApp(home: ProductionPlanDetailPage(id: 'plan-1')),
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ProductionPlanDetailPage(id: 'plan-1'),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -391,6 +419,9 @@ void main() {
             }),
           ],
           child: const MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ProductionPlanDetailPage(id: 'plan-1'),
           ),
         ),
@@ -425,6 +456,9 @@ void main() {
             }),
           ],
           child: const MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ProductionPlanDetailPage(id: 'plan-1'),
           ),
         ),
@@ -453,6 +487,8 @@ void main() {
       final api = _approvedPlanDetailApi(withInProgressSegment: true);
       await tester.pumpWidget(
         ProviderScope(
+          // Each permission scenario owns a fresh reader and API scope.
+          key: UniqueKey(),
           overrides: [
             ...nativeDetailReaderOverrides(),
             productionWriteAllDocumentScope(),
@@ -464,6 +500,9 @@ void main() {
             currentPermissionsProvider.overrideWithValue(permissions),
           ],
           child: const MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: ProductionPlanDetailPage(id: 'plan-1'),
           ),
         ),
@@ -476,13 +515,17 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    await pumpWith(const {
-      Perm.productionPlanView,
-      Perm.productionDailyReportEdit,
-    });
-    expect(find.text('分批报工'), findsNothing);
-    await tester.tap(find.text('关闭'));
-    await tester.pumpAndSettle();
+    for (final denied in const [
+      {Perm.productionPlanView, Perm.productionDailyReportEdit},
+      {Perm.productionPlanView, Perm.productionDailyReportView},
+      {Perm.productionPlanView, Perm.productionDailyReportCreate},
+    ]) {
+      await pumpWith(denied);
+      expect(find.text('分批报工'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+    }
 
     await pumpWith(const {
       Perm.productionPlanView,
@@ -517,6 +560,8 @@ ApiClient _directMakeApprovedPlanDetailApi(
           '/production/plans/plan-1' => <String, dynamic>{
             'id': 'plan-1',
             'makerId': 'maker-1',
+            'historyReadOnly': false,
+            'legacyImported': false,
             'billNo': 'SJ-1',
             'billDate': '2026-08-29',
             'status': 1,
@@ -590,6 +635,8 @@ ApiClient _planDetailApi() {
           '/production/plans/plan-1' => <String, dynamic>{
             'id': 'plan-1',
             'makerId': 'maker-1',
+            'historyReadOnly': false,
+            'legacyImported': false,
             'billNo': 'SJ-1',
             'billDate': '2026-08-08',
             'status': 0,
@@ -637,6 +684,8 @@ ApiClient _plainDraftPlanDetailApi() {
           '/production/plans/plan-1' => <String, dynamic>{
             'id': 'plan-1',
             'makerId': 'maker-1',
+            'historyReadOnly': false,
+            'legacyImported': false,
             'billNo': 'SJ-1',
             'billDate': '2026-08-08',
             'status': 0,
@@ -682,6 +731,8 @@ ApiClient _approvedPlanDetailApi({
           '/production/plans/plan-1' => <String, dynamic>{
             'id': 'plan-1',
             'makerId': 'maker-1',
+            'historyReadOnly': false,
+            'legacyImported': false,
             'billNo': 'SJ-1',
             'billDate': '2026-08-08',
             'status': 1,

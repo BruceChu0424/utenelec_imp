@@ -124,7 +124,7 @@ void main() {
       expect(files.ownerId, 'goods-a');
       expect(files.categories, ['产品图片', '图纸', '规格资料']);
       expectAttachmentUploadAvailable(tester, available: true);
-      expect(find.textContaining('请不要放入价格、成本'), findsOneWidget);
+      expect(find.textContaining('请不要放入价格、成本'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

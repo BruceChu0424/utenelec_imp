@@ -393,7 +393,7 @@ void main() {
   });
 
   testWidgets('服务器核对版本改变则不冻结不发送原子命令', (tester) async {
-    final api = SubcontractOutboundFakeApi();
+    final api = _NativeSubcontractOutboundFakeApi();
     final harness = await _pump(
       tester,
       api,
@@ -412,7 +412,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
   testWidgets('批量拣货保存原来源填写和整单勾选，重新打开不写业务单据', (tester) async {
-    final api = SubcontractOutboundFakeApi();
+    final api = _NativeSubcontractOutboundFakeApi();
     final harness = await _pump(tester, api);
     final table = _table(tester);
     table.rows.first.draft.qty.text = '500';
@@ -427,7 +427,7 @@ void main() {
     await _leave(tester, harness.router);
     unawaited(harness.router.push(draft.resumeLocation));
     await tester.pumpAndSettle();
-    expect(find.text('已恢复本机草稿'), findsOneWidget);
+    expect(find.text('已恢复本机草稿'), findsNothing);
     final restored = _table(tester);
     expect(restored.rows.first.draft.qty.text, '500');
     expect(restored.rows.first.draft.remarkController.text, '中断前核对');
@@ -438,7 +438,8 @@ void main() {
   });
 
   testWidgets('批量审核丢回执后重新打开只读取核对，已出仓单不重复发送', (tester) async {
-    final api = SubcontractOutboundFakeApi()..timeoutAfterSecondApproval = true;
+    final api = _NativeSubcontractOutboundFakeApi()
+      ..timeoutAfterSecondApproval = true;
     final harness = await _pump(tester, api);
     await _confirm(tester);
     final draft = harness.container.read(formDraftsProvider).single;
@@ -611,7 +612,19 @@ class _Snapshot extends SessionSnapshotNotifier {
   Future<SessionSnapshot?> build() async => null;
 }
 
-class _LostSaveApi extends SubcontractOutboundFakeApi {
+/// These fixtures are current warehouse tasks, with explicit native provenance.
+class _NativeSubcontractOutboundFakeApi extends SubcontractOutboundFakeApi {
+  @override
+  void addIssue(int index) {
+    super.addIssue(index);
+    documents['issue-$index']!.addAll({
+      'historyReadOnly': false,
+      'legacyImported': false,
+    });
+  }
+}
+
+class _LostSaveApi extends _NativeSubcontractOutboundFakeApi {
   bool failSave = true;
   @override
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
@@ -624,7 +637,7 @@ class _LostSaveApi extends SubcontractOutboundFakeApi {
   }
 }
 
-class _LostAtomicApi extends SubcontractOutboundFakeApi {
+class _LostAtomicApi extends _NativeSubcontractOutboundFakeApi {
   _LostAtomicApi({required this.afterCommit});
   final bool afterCommit;
   bool fail = true;

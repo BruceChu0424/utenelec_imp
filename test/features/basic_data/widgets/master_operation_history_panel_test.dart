@@ -279,7 +279,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(UtenAlertDialog),
-        matching: find.text('2026-10-16 08:00'),
+        matching: find.text('2026-10-16 08:00(北京)'),
       ),
       findsOneWidget,
     );

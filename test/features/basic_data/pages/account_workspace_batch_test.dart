@@ -45,12 +45,19 @@ class _Session extends SessionNotifier {
 class _Api extends ApiClient {
   _Api(super.dio);
   int captures = 0;
+  Future<void> Function(int capture)? beforeCapture;
   @override
   Future<AuthenticatedRequestScope> captureRequestScope({
     required bool Function() isCurrent,
   }) {
     captures++;
-    return super.captureRequestScope(isCurrent: isCurrent);
+    final captured = super.captureRequestScope(isCurrent: isCurrent);
+    final waiting = beforeCapture?.call(captures);
+    if (waiting == null) return captured;
+    return captured.then((scope) async {
+      await waiting;
+      return scope;
+    });
   }
 }
 
@@ -250,6 +257,48 @@ Future<void> _confirm(WidgetTester tester, String text) async {
 }
 
 void main() {
+  testWidgets(
+    'concurrent clean stale callbacks open one confirmation and write one batch',
+    (tester) async {
+      final wire = _Wire();
+      await _pump(tester, wire);
+      await _select(tester, {'a', 'c'});
+      final staleDelete = _table(tester)
+          .rowMenuBuilder!(_table(tester).items.first)
+          .whereType<UtenMenuItem>()
+          .singleWhere((item) => item.label.startsWith('删除选中'));
+      final capturesBefore = wire.api.captures;
+      final secondScope = Completer<void>();
+      addTearDown(() {
+        if (!secondScope.isCompleted) secondScope.complete();
+      });
+      wire.api.beforeCapture = (capture) => capture == capturesBefore + 2
+          ? secondScope.future
+          : Future<void>.value();
+      final requests = [
+        staleDelete.onTap() as Future<void>,
+        staleDelete.onTap() as Future<void>,
+      ];
+      unawaited(Future.wait(requests));
+      await tester.pumpAndSettle();
+      expect(find.text('批量删除账户'), findsOneWidget);
+      secondScope.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenAlertDialog), findsOneWidget);
+      expect(wire.api.captures, capturesBefore + 1);
+      expect(wire.writes, isEmpty);
+      await _confirm(tester, '删除');
+      await tester.pumpAndSettle();
+      await Future.wait(requests);
+      expect(wire.writes.map((write) => write.path), [
+        '/master/accounts/a',
+        '/master/accounts/c',
+      ]);
+      expect(wire.maxActive, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'checkbox selection uses one floating group with permission-gated batch actions',
     (tester) async {
@@ -465,14 +514,29 @@ void main() {
       editor.controller.setValue('a', field, '未保存名称', originalValue: '一号银行户');
       await tester.pumpAndSettle();
       expect(_button('删除选中'), findsNothing);
+      final capturesBefore = wire.api.captures;
       unawaited(staleDelete.onTap() as Future<void>);
       await tester.pumpAndSettle();
       expect(find.text('放弃未保存的修改？'), findsOneWidget);
       expect(find.text('批量删除账户'), findsNothing);
+      expect(wire.api.captures, capturesBefore);
       await tester.tap(find.widgetWithText(TextButton, '继续编辑'));
       await tester.pumpAndSettle();
       expect(editor.controller.dirty, isTrue);
       expect(wire.writes, isEmpty);
+      unawaited(staleDelete.onTap() as Future<void>);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '放弃修改'));
+      await tester.pumpAndSettle();
+      expect(editor.controller.dirty, isFalse);
+      expect(find.text('批量删除账户'), findsOneWidget);
+      expect(wire.writes, isEmpty);
+      await _confirm(tester, '删除');
+      await tester.pumpAndSettle();
+      expect(wire.writes.map((write) => write.path), [
+        '/master/accounts/a',
+        '/master/accounts/c',
+      ]);
       expect(tester.takeException(), isNull);
     },
   );

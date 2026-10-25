@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -169,7 +170,7 @@ void main() {
     await tester.tap(find.text('上一页'));
     await tester.pumpAndSettle();
     expect(find.text('第 1 页'), findsOneWidget);
-    await tester.tap(find.byType(BackButton));
+    await tester.tap(find.byType(UtenBackButton));
     await tester.pumpAndSettle();
     expect(find.byType(FormDraftHistoryButton), findsOneWidget);
     expect(tester.takeException(), isNull);

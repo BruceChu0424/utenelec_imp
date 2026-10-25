@@ -1247,6 +1247,11 @@ class _SubcontractDecompositionPageState
     )) {
       return '计划申请尚未下达，请刷新后重试';
     }
+    // Selection also serves whole-order closure. It no longer proves that an
+    // application is ready to create an order, so recheck that action's facts.
+    for (final task in selected) {
+      if (!_canOrderTask(task)) return subcontractTaskLockReason(task);
+    }
     return null;
   }
 

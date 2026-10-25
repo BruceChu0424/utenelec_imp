@@ -2219,7 +2219,6 @@ public class SalesOrderService {
         }
         UUID orderId = mutationFootprint.lockOrderItem(orderItemId);
         SalesOrderItem it = em.find(SalesOrderItem.class, orderItemId, LockModeType.PESSIMISTIC_WRITE);
-        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_order_items",it);
         if (it == null || isDeletedOrderItem(orderItemId)) {
             throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在");
         }
@@ -2230,6 +2229,7 @@ public class SalesOrderService {
         accessPolicy.requireWritable(order.getOwnerEmployeeId(), "无权设置该订单行优先级",
                 "sales_order:priority");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",order);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_order_items",it);
         if (order.isFinanceRejected()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
@@ -2269,7 +2269,6 @@ public class SalesOrderService {
         }
         UUID orderId = mutationFootprint.lockOrderItem(orderItemId);
         SalesOrderItem it = em.find(SalesOrderItem.class, orderItemId, LockModeType.PESSIMISTIC_WRITE);
-        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_order_items",it);
         if (it == null || isDeletedOrderItem(orderItemId)) {
             throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在");
         }
@@ -2280,6 +2279,7 @@ public class SalesOrderService {
         accessPolicy.requireWritable(o.getOwnerEmployeeId(), "无权让出该订单行预留",
                 "sales_order:reallocate");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",o);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_order_items",it);
         if (o.isFinanceRejected()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,

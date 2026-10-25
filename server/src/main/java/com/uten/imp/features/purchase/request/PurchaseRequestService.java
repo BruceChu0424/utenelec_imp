@@ -205,10 +205,10 @@ public class PurchaseRequestService {
         }
         PurchaseRequestItem item = itemRepo.findById(itemId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "申请明细不存在"));
-        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_request_items",item);
         if (!requestId.equals(item.getRequestId()) || item.isDeleted()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "申请明细不存在");
         }
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_request_items",item);
         // Same canonical request-head/item/analysis/inventory lock prefix as
         // decomposition/order creation. Refresh after waiting, never edit a
         // persistence-context snapshot loaded before the lock was acquired.

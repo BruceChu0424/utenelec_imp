@@ -276,7 +276,6 @@ public class FinanceOtherIncomeService {
     public FinanceOtherIncomeDetail reverse(UUID id) {
         tx.bind();
         FinanceOtherIncome o = lockActive(id);
-        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_other_incomes",o);
         requireUnapprovalHeader(o);
         glPosting.removeAutoProjection(RECON_SOURCE, o.getId(), o.getBillNo(), o.getBillDate());
         // 账户余额与流水由账本按原始流水一并冲回。
@@ -289,6 +288,7 @@ public class FinanceOtherIncomeService {
     private void requireUnapprovalHeader(FinanceOtherIncome o) {
         access.requireScopedOperationWritable(o.getMakerId(), "只能操作本人负责或已交接的其它收入单",
                 "finance_other_income:reverse");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_other_incomes",o);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(o.getLegacyId());
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");

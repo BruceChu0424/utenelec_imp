@@ -6,8 +6,27 @@ import unittest
 from unittest.mock import patch
 
 import rehearse_local_import as coordinator
+import prepare_workshop_stock_location_policy as workshop_policy
 import validate_source_completeness as gate
+from validate_loader_csv_contract import validate_modules
 from test_validate_source_completeness import Fixture,write_json
+
+
+def empty_workshop_policy(overlay,code):
+    """No workshop references authorize no opening; retain real CSV/SQL shapes."""
+    workshop_policy.write_csv(overlay/workshop_policy.FILES[0],workshop_policy.CROSSWALK_COLUMNS,[])
+    workshop_policy.write_csv(overlay/workshop_policy.FILES[1],workshop_policy.AUTHORITY_COLUMNS,[])
+    workshop_policy.write_csv(overlay/'goods_workshop_stock_location_review.csv',
+        ['goods_legacy_id','goods_code','goods_name','original_owning_warehouse','workshop_code',
+         'workshop_name','owning_warehouse','resolution','source_file','source_row'],[])
+    manifest=overlay/'goods_excel_manifest.json'
+    inventory=json.loads(manifest.read_text(encoding='utf-8'))
+    inventory['outputs'].extend({'file':name} for name in (
+        'goods_workshop_stock_location_review.csv',*workshop_policy.FILES))
+    write_json(manifest,inventory)
+    authority=Path(__file__).with_name('reviewed_workshop_stock_location.sql')
+    shutil.copyfile(authority,code/authority.name)
+    validate_modules([(authority.name,authority.read_bytes())],overlay)
 
 
 class CoordinatorCompletenessTest(unittest.TestCase):
@@ -27,6 +46,7 @@ class CoordinatorCompletenessTest(unittest.TestCase):
         for name,parent in [('warehouse_crosswalk.csv','clean'),('goods_owning_warehouse.csv','overlay'),
             ('goods_excel_attributes.sql','overlay'),('hr_rehearsal.csv','hr'),('hr_managers.csv','hr')]:
             (self.base/parent/name).write_text('id\n',encoding='utf-8')
+        empty_workshop_policy(self.base/'overlay',self.code)
         (self.f.reference/'legacy_injection_machines.csv').write_text('id\n',encoding='utf-8')
         self.arguments=[self.f.raw,self.base/'clean',self.base/'overlay',self.base/'hr',self.base/'final',
                         self.base/'excel',self.f.reference,self.base/'people.xls',self.base/'masters']
@@ -54,7 +74,7 @@ class CoordinatorCompletenessTest(unittest.TestCase):
     def test_prepare_binds_aux_and_policy_shas_without_counting_archived_csv_as_loader_files(self):
         result=self.prepare(self.f.audit);provenance=result['provenance']
         self.assertEqual(provenance['sourceCompleteness']['proof'],self.f.validate())
-        for name in ('source_schema_contract.json','source_profile_contract.json','export_source_completeness_audit.ps1','mapping-version.txt','migrate.sh'):
+        for name in ('source_schema_contract.json','source_profile_contract.json','export_source_completeness_audit.ps1','mapping-version.txt','migrate.sh','reviewed_workshop_stock_location.sql'):
             self.assertEqual(provenance['scripts'][name],gate.digest(self.code/name))
         imported_names={row['file'] for row in result['files']}
         self.assertFalse(imported_names&gate.FILES)

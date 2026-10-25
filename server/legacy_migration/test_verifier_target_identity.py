@@ -71,7 +71,9 @@ class VerifierTargetIdentityPostgresTest(unittest.TestCase):
         subprocess.run(['docker','run','--detach','--network','none','--name',cls.container,
                         '-e','POSTGRES_PASSWORD=isolated-contract-only','postgres:16-alpine'],check=True,capture_output=True)
         for _ in range(120):
-            if subprocess.run(['docker','exec',cls.container,'pg_isready','-U','postgres'],capture_output=True).returncode==0:break
+            # Wait for the final server, not the Unix-only initdb phase. The
+            # verifier itself retains its original pinned local-socket transport.
+            if subprocess.run(['docker','exec',cls.container,'pg_isready','-h','127.0.0.1','-U','postgres'],capture_output=True).returncode==0:break
             time.sleep(.25)
         else:
             subprocess.run(['docker','rm','--force',cls.container],capture_output=True)

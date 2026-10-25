@@ -38,7 +38,9 @@ class BootstrapInventoryPostgresTest(unittest.TestCase):
                         '-e', 'POSTGRES_PASSWORD=isolated-contract-only', 'postgres:16-alpine'],
                        check=True, capture_output=True)
         for _ in range(120):
-            if subprocess.run(['docker', 'exec', cls.container, 'pg_isready', '-U', 'postgres'],
+            # The image's temporary initialization server has only a Unix
+            # socket; require the final TCP server before starting assertions.
+            if subprocess.run(['docker', 'exec', cls.container, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres', '-d', 'postgres'],
                               capture_output=True).returncode == 0:
                 return
             time.sleep(.25)
@@ -64,7 +66,8 @@ class BootstrapInventoryPostgresTest(unittest.TestCase):
             'CREATE TABLE public.' + name + '(id uuid' + (',' + columns[name] if name in columns else '') + ');'
             for name, _ in INVENTORY)
         sql = fixture + '\n' + change + '\n' + GUARD + '\n' + postcheck + '\nROLLBACK;'
-        result = subprocess.run(['docker', 'exec', '-i', self.container, 'psql', '-X', '-q',
+        result = subprocess.run(['docker', 'exec', '-i', '-e', 'PGPASSWORD=isolated-contract-only', self.container,
+                                 'psql', '-h', '127.0.0.1', '-d', 'postgres', '-X', '-q',
                                  '-v', 'ON_ERROR_STOP=1', '-U', 'postgres'], input=sql.encode('utf-8'),
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         diagnostics = result.stderr.decode('utf-8', errors='replace')

@@ -5,6 +5,7 @@ fixtures and every case rolls back. The original stock-balance tests can reuse
 this owned fixture through the validation runner without changing those tests.
 """
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import time
@@ -17,6 +18,12 @@ import compose_bootstrap
 HERE = Path(__file__).resolve().parent
 CHECK = (HERE/'migrate_rehearsal_stock_movement_checks.sql').read_text(encoding='utf-8')
 FINAL = (HERE/'migrate_rehearsal_stock_movement_summary.sql').read_text(encoding='utf-8')
+# These cases have no reviewed workshop opening. Use the actual consumer's
+# empty stages, rather than inventing an authorization or skipping its branch.
+WORKSHOP_SQL = (HERE/'reviewed_workshop_stock_location.sql').read_text(encoding='utf-8')
+EMPTY_WORKSHOP_STAGES = '\n'.join(re.search(
+    r'CREATE TEMP TABLE '+name+r'\s*\(.*?\);', WORKSHOP_SQL, re.S).group()
+    for name in ('workshop_stock_location_crosswalk_stage', 'workshop_stock_location_authority_stage'))
 FIXTURE = """
 BEGIN;
 SET LOCAL uten.bootstrap_run_id='00000000-0000-4000-8000-000000000099';
@@ -26,6 +33,10 @@ CREATE TEMP TABLE warehouses(id uuid,code text,is_deleted boolean);
 CREATE TEMP TABLE goods(id uuid,legacy_id int,unit_id uuid,owning_warehouse_id uuid);
 CREATE TEMP TABLE colors(id uuid,legacy_id int);
 CREATE TEMP TABLE units(id uuid,legacy_id int);
+CREATE TEMP TABLE workshop_bins(workshop_department_id uuid PRIMARY KEY,bin_warehouse_id uuid NOT NULL UNIQUE,
+ source_warehouse_id uuid,opened_by uuid,opened_at timestamptz NOT NULL DEFAULT now(),
+ updated_by uuid,updated_at timestamptz NOT NULL DEFAULT now(),row_version bigint NOT NULL DEFAULT 0);
+"""+EMPTY_WORKSHOP_STAGES+"""
 CREATE TEMP TABLE warehouse_target_stage(legacy_id int,action text,warehouse_id uuid);
 CREATE TEMP TABLE bootstrap_warehouse_exclusions(source_file text,source_row_id text,legacy_warehouse_id int,reason text,goods_legacy_id int,qty numeric,amount numeric);
 CREATE TEMP TABLE doc_stage(legacy_id int,doc_type text,bill_date date,status int,stock_legacy_id int,to_stock_legacy_id int);
@@ -44,6 +55,7 @@ INSERT INTO units VALUES('90000000-0000-4000-8000-000000000001',1);
 INSERT INTO colors VALUES('20000000-0000-4000-8000-000000000345',345);
 INSERT INTO goods SELECT ('10000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,n,
  '90000000-0000-4000-8000-000000000001',('30000000-0000-4000-8000-'||lpad((n+1)::text,12,'0'))::uuid FROM generate_series(1,2)n;
+ALTER TABLE goods ADD COLUMN code text,ADD COLUMN name text;
 INSERT INTO doc_stage VALUES
  (1,'OTHER_IN','2026-07-01',1,126,0),(2,'DRAW','2026-07-01',1,132,0),(3,'TRANSFER','2026-07-01',1,126,132),
  (4,'CHECK','2026-07-01',1,126,0),(5,'CHECK','2026-07-01',1,126,0),

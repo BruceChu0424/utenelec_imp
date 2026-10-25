@@ -21,7 +21,9 @@ class ProductionCostFinalParentTest(unittest.TestCase):
         subprocess.run(['docker','run','--detach','--network','none','--name',cls.container,
                         '-e','POSTGRES_PASSWORD=isolated-contract-only','postgres:16-alpine'],check=True,capture_output=True)
         for _ in range(120):
-            if subprocess.run(['docker','exec',cls.container,'pg_isready','-U','postgres'],capture_output=True).returncode==0:return
+            # The image's initialization server exposes only a temporary Unix
+            # socket. TCP readiness identifies the final server, not that phase.
+            if subprocess.run(['docker','exec',cls.container,'pg_isready','-h','127.0.0.1','-U','postgres','-d','postgres'],capture_output=True).returncode==0:return
             time.sleep(.25)
         subprocess.run(['docker','rm','--force',cls.container],capture_output=True)
         raise RuntimeError('Private PostgreSQL fixture did not start')
@@ -84,7 +86,8 @@ DO $$ BEGIN
 END $$;
 ROLLBACK;
 '''
-        result=subprocess.run(['docker','exec','-i',self.container,'psql','-X','-q','-v','ON_ERROR_STOP=1','-U','postgres'],
+        result=subprocess.run(['docker','exec','-i','-e','PGPASSWORD=isolated-contract-only',self.container,
+                               'psql','-h','127.0.0.1','-d','postgres','-X','-q','-v','ON_ERROR_STOP=1','-U','postgres'],
                               input=(setup+PREPARED+target+INSERT+assertions).encode(),stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         self.assertEqual(result.returncode,0,result.stderr.decode(errors='replace'))
 

@@ -55,8 +55,8 @@ BEGIN
             (SELECT count(*) FROM material_categories), (SELECT count(*) FROM client_categories),
             (SELECT count(*) FROM supplier_categories), (SELECT count(*) FROM mould_categories);
     END IF;
-    -- The V918 root-table inventory remains the V919 inventory: V919 removes
-    -- executable reset functions and permission grants, without adding tables.
+    -- The reviewed inventory includes the later archive/file/measurement schema
+    -- through V934. Future root tables still require explicit classification.
     -- SEED_OR_ADMIN retains the existing explicit master/admin checks above;
     -- it never grants permission to reuse a previous business import.
     CREATE TEMP TABLE bootstrap_target_table_inventory (
@@ -111,6 +111,8 @@ BEGIN
         ('client_visibility_grants','SEED_OR_ADMIN'),
         ('clients','SEED_OR_ADMIN'),
         ('colors','SEED_OR_ADMIN'),
+        ('company_file_acl','EMPTY'),
+        ('company_file_nodes','EMPTY'),
         ('currencies','SEED_OR_ADMIN'),
         ('customer_open_item_offset_batches','EMPTY'),
         ('customer_open_item_offsets','EMPTY'),
@@ -305,6 +307,8 @@ BEGIN
         ('procurement_order_source_revision_allocations','EMPTY'),
         ('procurement_order_source_revision_peg_changes','EMPTY'),
         ('procurement_order_source_revisions','EMPTY'),
+        ('procurement_order_termination_peg_changes','EMPTY'),
+        ('procurement_order_termination_sources','EMPTY'),
         ('procurement_receipt_consideration_parts','EMPTY'),
         ('production_actual_output_supplement_claims','EMPTY'),
         ('production_actual_output_supplement_proofs','EMPTY'),
@@ -470,6 +474,7 @@ BEGIN
         ('stock_document_items','EMPTY'),
         ('stock_documents','EMPTY'),
         ('stock_draw_issue_batches','EMPTY'),
+        ('stock_measurement_holds','EMPTY'),
         ('stock_movements','EMPTY'),
         ('stock_reservations','EMPTY'),
         ('stock_value_acquisition_sources','EMPTY'),

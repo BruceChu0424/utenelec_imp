@@ -62,15 +62,10 @@ class LegacyBootstrapCoordinatorPostgresTest {
                 }
             }
         }
-        // ADR-145: the synthetic candidate reviews its own warehouse crosswalk (the real one
-        // names the company's legacy warehouse ids, which the synthetic export does not use).
-        Files.copy(Path.of("src/test/resources/legacy-bootstrap-fixture/warehouse_crosswalk.csv"),
-                legacy.resolve("warehouse_crosswalk.csv"));
+        // Current child contracts inspect the real mapping and reviewed crosswalk.
+        // Install the deliberately downgraded synthetic inputs only after they pass.
+        Files.copy(Path.of("legacy_migration/warehouse_crosswalk.csv"), legacy.resolve("warehouse_crosswalk.csv"));
         currentMappingVersion = Files.readString(legacy.resolve("mapping-version.txt"), StandardCharsets.UTF_8);
-        // Only this private synthetic downgrade fixture uses v15. With current
-        // V913 it must be rejected, never presented as a supported positive path.
-        // Current v18 Python business import remains a separate acceptance chain.
-        Files.writeString(legacy.resolve("mapping-version.txt"), "bootstrap-v15\n", StandardCharsets.UTF_8);
         var loader = LegacyBootstrapCoordinatorPostgresTest.class.getClassLoader();
         Path migrationDirectory = candidate.resolve("server/src/main/resources/db/migration");
         Files.createDirectories(migrationDirectory);
@@ -158,7 +153,17 @@ class LegacyBootstrapCoordinatorPostgresTest {
                 "UTEN_LEGACY_TEST_PG_USER=" + postgres.getUsername(),
                 "UTEN_LEGACY_TEST_PG_NONCE=" + FIXTURE_NONCE,
                 "bash", "-euc", "cd /bootstrap && exec python3 -m unittest discover -s server/legacy_migration -p 'test_*.py' -v");
+        System.out.print(pythonTests.getStdout());
+        System.out.print(pythonTests.getStderr());
         assertThat(pythonTests.getExitCode()).withFailMessage(pythonTests.getStdout() + pythonTests.getStderr()).isZero();
+        // ADR-145: the subsequent historical negative lane uses its own exact
+        // warehouse identities and v15. Keep this private candidate clean so its
+        // freeze gate still checks the deliberate inputs rather than bypassing it.
+        put(ROOT + "/server/legacy_migration/warehouse_crosswalk.csv",
+                Files.readAllBytes(fixtures.resolve("warehouse_crosswalk.csv")));
+        put(ROOT + "/server/legacy_migration/mapping-version.txt", "bootstrap-v15\n");
+        shell("cd /bootstrap && git add server/legacy_migration/warehouse_crosswalk.csv server/legacy_migration/mapping-version.txt"
+                + " && git commit -qm 'Isolated historical v15 rejection inputs'");
         generateFixture();
     }
 
@@ -212,7 +217,8 @@ class LegacyBootstrapCoordinatorPostgresTest {
         String baselineEmployees = scalar("SELECT count(*) FROM employees");
         var rejected = coordinator();
         assertThat(rejected.getExitCode()).isNotZero();
-        assertThat(rejected.getStdout()).contains("Bootstrap module: migrate_production.sql")
+        assertThat(rejected.getStdout()).withFailMessage(rejected.getStdout() + rejected.getStderr())
+                .contains("Bootstrap module: migrate_production.sql")
                 .doesNotContain("Bootstrap module: migrate_finance.sql");
         assertThat(rejected.getStderr()).contains("23514");
         assertThat(scalar("SELECT status || '|' || mapping_version || '|' || (exit_code IS NOT NULL AND finished_at IS NOT NULL)::text "
@@ -358,6 +364,25 @@ class LegacyBootstrapCoordinatorPostgresTest {
         for (String variant : variants) command.add(fixtures + "/variants/" + variant);
         var generated = postgres.execInContainer(command.toArray(String[]::new));
         assertThat(generated.getExitCode()).withFailMessage(generated.getStdout() + generated.getStderr()).isZero();
+        // Current stock composition requires these manual layers even for the
+        // historical negative lane. Its synthetic goods have no workshop-bin
+        // references: empty reviewed stages authorize no location or opening.
+        var manualLayers = postgres.execInContainer("python3", "-c", """
+                import csv,pathlib,re,shutil,sys
+                legacy=pathlib.Path(sys.argv[1])/'server/legacy_migration'
+                data=legacy/'data'
+                shutil.copyfile(legacy/'warehouse_crosswalk.csv',data/'warehouse_crosswalk.csv')
+                sql=(legacy/'reviewed_workshop_stock_location.sql').read_text(encoding='utf-8')
+                for stage,name in re.findall(r"\\\\copy (\\w+) FROM '/tmp/([^']+)'",sql):
+                    definition=re.search(r'CREATE TEMP TABLE '+stage+r'\\s*\\((.*?)\\);',sql,re.S).group(1)
+                    columns=[column.strip().split()[0] for column in definition.split(',')]
+                    with (data/name).open('w',encoding='utf-8',newline='') as target:
+                        csv.writer(target,delimiter='|',lineterminator='\\n').writerow(columns)
+                sys.path.insert(0,str(legacy))
+                from validate_loader_csv_contract import validate_modules
+                assert validate_modules([('reviewed_workshop_stock_location.sql',sql)],data)['copy_count']==3
+                """, ROOT);
+        assertThat(manualLayers.getExitCode()).withFailMessage(manualLayers.getStdout() + manualLayers.getStderr()).isZero();
         var digest = postgres.execInContainer("sha256sum", ROOT + "/synthetic-source-snapshot.json");
         assertThat(digest.getExitCode()).isZero();
         sourceBackupDigest = digest.getStdout().split(" ")[0];

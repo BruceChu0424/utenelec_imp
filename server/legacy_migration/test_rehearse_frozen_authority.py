@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 import rehearse_local_import as importer
+from test_rehearse_source_completeness import empty_workshop_policy
 
 
 class FrozenExecutionAuthorityTest(unittest.TestCase):
@@ -76,6 +77,7 @@ class FrozenExecutionAuthorityTest(unittest.TestCase):
                 ('hr','hr_rehearsal.csv','emp_code|status\n'),('hr','hr_managers.csv','employee_code\n'),
                 ('reference','legacy_injection_machines.csv','legacy_id\n')):
                 (paths[folder]/name).write_text(data)
+            empty_workshop_policy(paths['overlay'],legacy)
             raw={'files':[],'sourceBackupSha256':'a'*64,'repositoryCommit':'b'*40,'sourceSnapshotAsOfUtc':'2026-07-24T01:28:50Z'}
             audit={'database_updateability':'READ_ONLY','source_export_manifest_sha256':importer.digest(paths['raw']/'export_manifest.json'),
                    'source_backup_sha256':'a'*64}
@@ -96,7 +98,7 @@ class FrozenExecutionAuthorityTest(unittest.TestCase):
             self.assertEqual(manifest['provenance']['sourceTableCoverage'],{'fixture':'tables'})
             self.assertEqual(manifest['provenance']['sourceCompleteness']['proof'],{'fixture':'completeness'})
             for name in ('mapping-version.txt','migrate.sh','source_schema_contract.json',
-                         'source_profile_contract.json','export_source_completeness_audit.ps1'):
+                         'source_profile_contract.json','export_source_completeness_audit.ps1','reviewed_workshop_stock_location.sql'):
                 self.assertEqual(manifest['provenance']['scripts'][name],importer.digest(legacy/name))
 
 

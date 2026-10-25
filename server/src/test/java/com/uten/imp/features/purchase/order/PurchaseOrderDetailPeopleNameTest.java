@@ -4,6 +4,7 @@ import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
 import com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncService;
 import com.uten.imp.features.purchase.order.dto.OrderDetail;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 
@@ -47,8 +48,9 @@ class PurchaseOrderDetailPeopleNameTest {
         when(employeeNames.nameWithCodeOf(purchaser)).thenReturn("李采购(E1024)");
         when(employeeNames.nameWithCodeOf(maker)).thenReturn("朱振炜(E1001)");
 
-        OrderDetail detail = service(orderRepo, itemRepo, access, approvalProjection, employeeNames)
-                .detail(order.getId());
+        PurchaseOrderService service = service(orderRepo, itemRepo, access, approvalProjection, employeeNames);
+        ImportedDocumentFixture.forService(service).document("purchase_orders", order);
+        OrderDetail detail = service.detail(order.getId());
 
         assertEquals(purchaser, detail.getPurchaserId());
         assertEquals("李采购(E1024)", detail.getPurchaserName());
@@ -68,10 +70,11 @@ class PurchaseOrderDetailPeopleNameTest {
         PurchaseDocumentAccessPolicy access = mock(PurchaseDocumentAccessPolicy.class);
         when(access.canRead(org.mockito.ArgumentMatchers.any())).thenReturn(true);
 
-        OrderDetail detail = service(orderRepo, itemRepo, access,
+        PurchaseOrderService service = service(orderRepo, itemRepo, access,
                         mock(com.uten.imp.features.finance.procurement.ProcurementApprovalProjectionQuery.class),
-                        mock(EmployeeNameResolver.class))
-                .detail(order.getId());
+                        mock(EmployeeNameResolver.class));
+        ImportedDocumentFixture.forService(service).document("purchase_orders", order);
+        OrderDetail detail = service.detail(order.getId());
 
         assertNull(detail.getPurchaserId());
         assertNull(detail.getPurchaserName());

@@ -214,7 +214,7 @@ class SalesOrderExchangeRateAuthorityTest {
         OrderItemLine requested = request.getItems().getFirst();
         requested.setPrice(new BigDecimal("7"));
         requested.setDiscount(new BigDecimal("0.75"));
-        SalesOrderItem existing = new SalesOrderItem();
+        SalesOrderItem existing = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("sales_order_items",new SalesOrderItem());
         existing.setOrderId(order.getId());
         existing.setGoodsId(requested.getGoodsId());
         existing.setColorId(requested.getColorId());
@@ -241,7 +241,7 @@ class SalesOrderExchangeRateAuthorityTest {
         // 确保本测试继续钉住「无币种审核仍被拒」这一独立门禁。
         order.setShipmentPolicy(SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL);
         prepareUpdate(order);
-        SalesOrderItem item = new SalesOrderItem();
+        SalesOrderItem item = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("sales_order_items",new SalesOrderItem());
         item.setOrderId(order.getId());
         item.setLineNo(1);
         Query itemLockQuery = mock(Query.class);
@@ -380,6 +380,7 @@ class SalesOrderExchangeRateAuthorityTest {
         order.setTaxRate(BigDecimal.ZERO);
         order.setOwnerEmployeeId(makerId);
         order.setStatus((short) 0);
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("sales_orders",order);
         return order;
     }
 

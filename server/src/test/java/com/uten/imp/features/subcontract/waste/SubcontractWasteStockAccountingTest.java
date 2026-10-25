@@ -173,8 +173,8 @@ class SubcontractWasteStockAccountingTest {
         org.assertj.core.api.Assertions.assertThat(document.isDeductPosted()).isFalse();
     }
 
-    private static SubcontractWaste document(UUID id, short status) {
-        SubcontractWaste document = new SubcontractWaste();
+    private SubcontractWaste document(UUID id, short status) {
+        SubcontractWaste document = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("subcontract_wastes",new SubcontractWaste());
         document.setId(id);
         document.setBillNo("EW202608010001");
         document.setBillDate(LocalDate.of(2026, 8, 1));
@@ -186,8 +186,8 @@ class SubcontractWasteStockAccountingTest {
         return document;
     }
 
-    private static SubcontractWasteItem item(UUID documentId) {
-        SubcontractWasteItem item = new SubcontractWasteItem();
+    private SubcontractWasteItem item(UUID documentId) {
+        SubcontractWasteItem item = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("subcontract_waste_items",new SubcontractWasteItem());
         item.setWasteId(documentId);
         item.setGoodsId(UUID.randomUUID());
         item.setGoodsCodeSnapshot("FIXTURE");

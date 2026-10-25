@@ -11,6 +11,7 @@ import com.uten.imp.features.stock.dto.StockDocSaveRequest;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.Query;
@@ -49,6 +50,7 @@ class StockDocCostVisibilityTest {
     private final StockDocAccessPolicy access = mock(StockDocAccessPolicy.class);
     private final Query nativeQuery = mock(Query.class);
     private final EntityManager entityManager = stubbedEntityManager(nativeQuery);
+    private final ImportedDocumentFixture history = new ImportedDocumentFixture();
 
     @Test
     void viewerWithoutCostPermissionGetsMaskedListAndDetail() {
@@ -198,7 +200,7 @@ class StockDocCostVisibilityTest {
 
     private StockDocService service(boolean canViewCost) {
         when(access.hasAuthority(StockCostMasker.PERMISSION)).thenReturn(canViewCost);
-        return new StockDocService(
+        return history.wire(new StockDocService(
                 documents,
                 balanceAdjustmentCommands,
                 items,
@@ -220,7 +222,7 @@ class StockDocCostVisibilityTest {
                 mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class),
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
                 mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
-                mock(com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.class));
+                mock(com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.class)), entityManager);
     }
 
     private static EntityManager stubbedEntityManager(Query query) {
@@ -249,7 +251,7 @@ class StockDocCostVisibilityTest {
         return line;
     }
 
-    private static StockDocument document() {
+    private StockDocument document() {
         StockDocument document = new StockDocument();
         document.setId(UUID.randomUUID());
         document.setDocType("OTHER_IN");
@@ -259,10 +261,10 @@ class StockDocCostVisibilityTest {
         document.setTotalOriginal(new BigDecimal("100.00"));
         document.setTotalLocal(new BigDecimal("123.45"));
         document.setStatus((short) 0);
-        return document;
+        return history.document("stock_documents", document);
     }
 
-    private static StockDocumentItem item(UUID documentId) {
+    private StockDocumentItem item(UUID documentId) {
         StockDocumentItem item = new StockDocumentItem();
         item.setId(UUID.randomUUID());
         item.setDocId(documentId);
@@ -274,7 +276,7 @@ class StockDocCostVisibilityTest {
         item.setAmountOriginal(new BigDecimal("100.00"));
         item.setAmountLocal(new BigDecimal("123.45"));
         item.setWeight(new BigDecimal("2.5"));
-        return item;
+        return history.document("stock_document_items", item);
     }
 
     private static StockDocQueryFilter emptyFilter() {

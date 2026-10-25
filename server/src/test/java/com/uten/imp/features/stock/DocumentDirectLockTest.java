@@ -82,6 +82,7 @@ class DocumentDirectLockTest {
         when(provenance.setParameter("id", id)).thenReturn(provenance);
         when(provenance.getSingleResult()).thenReturn(false);
 
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("stock_documents",document);
         service.delete(id);
 
         verify(em).find(StockDocument.class, id, LockModeType.PESSIMISTIC_WRITE);
@@ -96,6 +97,7 @@ class DocumentDirectLockTest {
                 .thenReturn(reversed);
         when(provenance.setParameter("id", reversedId)).thenReturn(provenance);
 
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("stock_documents",reversed);
         ApiException denied = assertThrows(ApiException.class,
                 () -> service.delete(reversedId));
 
@@ -172,6 +174,7 @@ class DocumentDirectLockTest {
                 mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
                 mock(com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.class));
 
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("stock_documents",document);
         service.reverse(id);
 
         var ordered = inOrder(completion, documents);
@@ -254,6 +257,7 @@ class DocumentDirectLockTest {
                 mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
                 mock(com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.class));
 
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("stock_documents",document);
         assertThrows(ApiException.class, () -> service.reverse(id));
 
         verify(completion).beforeFinishedInboundReversed(id);
@@ -315,6 +319,7 @@ class DocumentDirectLockTest {
                 mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
                 mock(com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.class));
 
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("stock_documents",document);
         ApiException error = assertThrows(ApiException.class, () -> service.reverse(id));
 
         assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
@@ -367,6 +372,7 @@ class DocumentDirectLockTest {
         when(em.find(ProductionDailyReport.class, id, LockModeType.PESSIMISTIC_WRITE))
                 .thenReturn(report);
 
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("production_daily_reports",report);
         service.delete(id);
 
         verify(em).find(ProductionDailyReport.class, id, LockModeType.PESSIMISTIC_WRITE);
@@ -380,6 +386,7 @@ class DocumentDirectLockTest {
         when(em.find(ProductionDailyReport.class, reversedId, LockModeType.PESSIMISTIC_WRITE))
                 .thenReturn(reversed);
 
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("production_daily_reports",reversed);
         ApiException denied = assertThrows(ApiException.class,
                 () -> service.delete(reversedId));
 

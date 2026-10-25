@@ -129,6 +129,8 @@ class ProcurementDocumentStateLockTest {
                 mock(com.uten.imp.application.port.OrganizationReferencePort.class));
         UUID id = UUID.randomUUID();
         PurchaseRequest committed = new PurchaseRequest();
+        committed.setId(id);
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("purchase_requests",committed);
         committed.setStatus((short) 1);
         when(em.find(PurchaseRequest.class, id, LockModeType.PESSIMISTIC_WRITE))
                 .thenReturn(committed);
@@ -161,6 +163,8 @@ class ProcurementDocumentStateLockTest {
                 org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
         UUID id = UUID.randomUUID();
         SubcontractMaterialIssue committed = new SubcontractMaterialIssue();
+        committed.setId(id);
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("subcontract_material_issues",committed);
         committed.setStatus((short) 1);
         when(em.find(SubcontractMaterialIssue.class, id, LockModeType.PESSIMISTIC_WRITE))
                 .thenReturn(committed);

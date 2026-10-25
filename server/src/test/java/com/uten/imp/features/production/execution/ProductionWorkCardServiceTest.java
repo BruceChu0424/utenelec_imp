@@ -53,6 +53,7 @@ class ProductionWorkCardServiceTest {
                 new ProductionWorkCardService(
                         repository, planRepository, access, em);
 
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("production_plans",plan);
         assertThatThrownBy(() -> service.view(planId, packageId))
                 .isInstanceOf(ApiException.class)
                 .satisfies(error -> assertThat(((ApiException) error).getCode())
@@ -91,6 +92,7 @@ class ProductionWorkCardServiceTest {
                 new ProductionWorkCardService(
                         packageRepository, planRepository, access, em);
 
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("production_plans",plan);
         assertThatThrownBy(() -> service.view(planId, packageId))
                 .isInstanceOf(ApiException.class)
                 .satisfies(error -> assertThat(((ApiException) error).getCode())
@@ -133,6 +135,7 @@ class ProductionWorkCardServiceTest {
                 new ProductionWorkCardService(
                         packageRepository, planRepository, access, em);
 
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("production_plans",plan);
         assertThatThrownBy(() -> service.view(planId, packageId))
                 .isInstanceOf(ApiException.class)
                 .satisfies(error -> assertThat(((ApiException) error).getCode())

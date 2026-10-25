@@ -71,12 +71,12 @@ class SubcontractMaterialIssuePlanAuthorityTest {
     @Test
     void partialPhysicalSelectionCannotDeleteSiblingLinesOrConsumeTheirReservations() {
         UUID id = UUID.randomUUID();
-        var document = new SubcontractMaterialIssue();
+        var document = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("subcontract_material_issues",new SubcontractMaterialIssue());
         document.setId(id);
         document.setStatus((short) 0);
         document.setWarehouseId(UUID.randomUUID());
-        var first = new SubcontractMaterialIssueItem();
-        var sibling = new SubcontractMaterialIssueItem();
+        var first = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("subcontract_material_issue_items",new SubcontractMaterialIssueItem());
+        var sibling = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("subcontract_material_issue_items",new SubcontractMaterialIssueItem());
         first.setIssueId(id);
         sibling.setIssueId(id);
         when(em.find(SubcontractMaterialIssue.class, id, LockModeType.PESSIMISTIC_WRITE)).thenReturn(document);
@@ -101,12 +101,12 @@ class SubcontractMaterialIssuePlanAuthorityTest {
         UUID warehouseId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
         UUID planItemId = UUID.randomUUID();
-        SubcontractMaterialIssue document = new SubcontractMaterialIssue();
+        SubcontractMaterialIssue document = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("subcontract_material_issues",new SubcontractMaterialIssue());
         document.setId(issueId);
         document.setStatus((short) 0);
         document.setBillNo("EC20261001000001");
         document.setWarehouseId(warehouseId);
-        SubcontractMaterialIssueItem item = new SubcontractMaterialIssueItem();
+        SubcontractMaterialIssueItem item = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("subcontract_material_issue_items",new SubcontractMaterialIssueItem());
         item.setIssueId(issueId);
         item.setPlanItemId(planItemId);
         item.setGoodsId(goodsId);
@@ -263,7 +263,7 @@ class SubcontractMaterialIssuePlanAuthorityTest {
     @Test
     void outboundExecuteRevocationBlocksOldUpdateAndApproveEndpoints() {
         UUID issueId = UUID.randomUUID();
-        SubcontractMaterialIssue document = new SubcontractMaterialIssue();
+        SubcontractMaterialIssue document = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("subcontract_material_issues",new SubcontractMaterialIssue());
         document.setId(issueId);
         document.setStatus((short) 0);
         document.setMakerId(null);
@@ -271,7 +271,7 @@ class SubcontractMaterialIssuePlanAuthorityTest {
         when(em.find(SubcontractMaterialIssue.class, issueId, LockModeType.PESSIMISTIC_WRITE))
                 .thenReturn(document);
 
-        SubcontractMaterialIssueItem item = new SubcontractMaterialIssueItem();
+        SubcontractMaterialIssueItem item = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("subcontract_material_issue_items",new SubcontractMaterialIssueItem());
         item.setIssueId(issueId);
         item.setPlanItemId(UUID.randomUUID());
         item.setOrderItemId(UUID.randomUUID());
@@ -298,7 +298,7 @@ class SubcontractMaterialIssuePlanAuthorityTest {
     @Test
     void materialIssueEditRevocationAlsoBlocksPlanDraftUpdateAndApprove() {
         UUID issueId = UUID.randomUUID();
-        SubcontractMaterialIssue document = new SubcontractMaterialIssue();
+        SubcontractMaterialIssue document = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("subcontract_material_issues",new SubcontractMaterialIssue());
         document.setId(issueId);
         document.setStatus((short) 0);
         // 计划生成的发料草稿没有个人归属人，显式属于仓库委外出仓池(V678)。
@@ -308,7 +308,7 @@ class SubcontractMaterialIssuePlanAuthorityTest {
         when(em.find(SubcontractMaterialIssue.class, issueId, LockModeType.PESSIMISTIC_WRITE))
                 .thenReturn(document);
 
-        SubcontractMaterialIssueItem item = new SubcontractMaterialIssueItem();
+        SubcontractMaterialIssueItem item = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("subcontract_material_issue_items",new SubcontractMaterialIssueItem());
         item.setIssueId(issueId);
         item.setPlanItemId(UUID.randomUUID());
         when(itemRepo.findByIssueIdOrderByLineNoAsc(issueId)).thenReturn(List.of(item));

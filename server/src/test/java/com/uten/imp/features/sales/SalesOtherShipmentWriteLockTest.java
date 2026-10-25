@@ -49,6 +49,7 @@ class SalesOtherShipmentWriteLockTest {
             var service = new SalesOtherShipmentService(repository, items, stock, mock(TxSessionVars.class),
                     em, null, mock(SalesDocumentAccessPolicy.class),
                 org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class));
+            com.uten.imp.support.ImportedDocumentFixture.forService(service).document("sales_other_shipments",document);
             assertThrows(ApiException.class, () -> service.reverse(document.getId()));
             verifyNoInteractions(stock);
         }

@@ -65,6 +65,7 @@ class AuthorizedBalanceAdjustmentProtectionTest {
                 true,
                 false)));
 
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("stock_documents",document);
         ApiException error = assertThrows(
                 ApiException.class,
                 () -> service.reverse(documentId));
@@ -89,6 +90,7 @@ class AuthorizedBalanceAdjustmentProtectionTest {
                 documentId,
                 LockModeType.PESSIMISTIC_WRITE)).thenReturn(document);
 
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("stock_documents",document);
         ApiException error = assertThrows(
                 ApiException.class,
                 () -> service.delete(documentId));

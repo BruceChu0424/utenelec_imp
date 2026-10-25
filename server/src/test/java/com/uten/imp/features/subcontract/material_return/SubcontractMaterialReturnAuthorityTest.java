@@ -6,6 +6,7 @@ import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.Query;
@@ -69,6 +70,10 @@ class SubcontractMaterialReturnAuthorityTest {
         UUID id = UUID.randomUUID();
         SubcontractMaterialReturn document = document(id);
         SubcontractMaterialReturnItem item = item(id);
+        ImportedDocumentFixture.forService(service)
+                .document("subcontract_material_returns", document);
+        ImportedDocumentFixture.forService(service)
+                .document("subcontract_material_return_items", item);
         when(query.getResultList()).thenReturn(List.<Object[]>of(new Object[]{
                 item.getMaterialIssueItemId(), item.getGoodsId(), "FIXTURE", "Fixture goods"}));
         when(em.find(

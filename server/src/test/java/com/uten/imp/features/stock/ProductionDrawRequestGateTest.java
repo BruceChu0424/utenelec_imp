@@ -163,6 +163,7 @@ class ProductionDrawRequestGateTest {
         doReturn(gate).when(em).createNativeQuery(contains("fn_production_draw_requested"));
         when(gate.setParameter("documentId", draw.getId())).thenReturn(gate);
         when(gate.getSingleResult()).thenReturn(false);
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("stock_documents",draw);
         return draw;
     }
 }

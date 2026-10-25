@@ -68,7 +68,9 @@ class SalesReturnQualityIdempotencyReplayTest {
     private void stubReplay(UUID returnId, UUID qualityItemId,
                             BigDecimal storedQuantity) {
         SalesReturn salesReturn = new SalesReturn();
+        salesReturn.setId(returnId);
         salesReturn.setOwnerEmployeeId(UUID.randomUUID());
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("sales_returns",salesReturn);
         when(returnRepo.findById(returnId)).thenReturn(Optional.of(salesReturn));
 
         Object[] qualityRow = new Object[13];

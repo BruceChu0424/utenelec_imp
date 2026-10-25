@@ -12,6 +12,7 @@ import com.uten.imp.features.finance.receipt.dto.FinanceReceiptQueryFilter;
 import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Root;
@@ -27,6 +28,7 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -59,6 +61,7 @@ class FinanceReceiptKindFilterTest {
                 ArgumentCaptor.forClass(Specification.class);
         verify(receiptRepo).findAll(captor.capture(), any(Pageable.class));
         Root<FinanceReceipt> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        doReturn(FinanceReceipt.class).when(root).getJavaType();
         CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
         captor.getValue().toPredicate(root, null, cb);
 
@@ -71,7 +74,8 @@ class FinanceReceiptKindFilterTest {
 
     private static FinanceReceiptService service(
             FinanceReceiptRepository receiptRepo, FinanceDocumentAccessPolicy access) {
-        return new FinanceReceiptService(
+        EntityManager em = mock(EntityManager.class);
+        FinanceReceiptService service = new FinanceReceiptService(
                 receiptRepo,
                 mock(FinanceReceiptLineRepository.class),
                 mock(ArApLedgerRepository.class),
@@ -79,11 +83,14 @@ class FinanceReceiptKindFilterTest {
                 mock(TxSessionVars.class),
                 mock(SecurityContextCurrentUser.class),
                 mock(EmployeeNameResolver.class),
-                mock(EntityManager.class),
+                em,
                 mock(DocNumberService.class),
                 access,
                 mock(GlPostingService.class),
                 mock(FinanceReceiptSourceAllocationService.class),
                 mock(AccountFlowLedgerService.class));
+        // This fixture returns an empty native page; the real reader needs no
+        // origin query or invented document identity in that case.
+        return new ImportedDocumentFixture().wire(service, em);
     }
 }

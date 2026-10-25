@@ -7,6 +7,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import org.junit.jupiter.api.Test;
@@ -70,6 +71,10 @@ class SubcontractMaterialIssueSafetyGateTest {
         item.setGoodsId(UUID.randomUUID());
         // orderItemId intentionally left null → must be rejected before inventory is touched.
         when(itemRepo.findByIssueIdOrderByLineNoAsc(id)).thenReturn(List.of(item));
+        ImportedDocumentFixture.forService(service)
+                .document("subcontract_material_issues", document);
+        ImportedDocumentFixture.forService(service)
+                .document("subcontract_material_issue_items", item);
 
         ApiException error = assertThrows(ApiException.class, () -> service.approve(id));
 

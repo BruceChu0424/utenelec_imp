@@ -7,6 +7,7 @@ import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
 import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +44,7 @@ class FinanceBankTransferServiceTest {
     private Query reconciliationInsert;
     private AccountFlowLedgerService accountFlowLedger;
     private FinanceBankTransferService service;
+    private ImportedDocumentFixture documents;
 
     @BeforeEach
     void setUp() {
@@ -55,6 +57,7 @@ class FinanceBankTransferServiceTest {
         FinanceDocumentAccessPolicy access = mock(FinanceDocumentAccessPolicy.class);
         glPosting = mock(GlPostingService.class);
         em = mock(EntityManager.class);
+        documents = new ImportedDocumentFixture();
         // ADR-112: 过账走真实账本(同一个 mock EntityManager), 断言账本写出的余额与流水参数。
         accountFlowLedger = org.mockito.Mockito.spy(new AccountFlowLedgerService(em));
 
@@ -90,6 +93,7 @@ class FinanceBankTransferServiceTest {
         service = new FinanceBankTransferService(
                 transferRepo, lineRepo, tx, currentUser, names, numbers, em, access, glPosting,
                 accountFlowLedger);
+        documents.wire(service, em);
     }
 
     @Test
@@ -227,7 +231,7 @@ class FinanceBankTransferServiceTest {
         assertEquals((short) 0, transfer.getStatus());
     }
 
-    private static FinanceBankTransfer transfer(
+    private FinanceBankTransfer transfer(
             short status,
             UUID outAccount,
             UUID currency,
@@ -239,7 +243,7 @@ class FinanceBankTransferServiceTest {
         transfer.setCurrencyId(currency);
         transfer.setExchangeRate(new BigDecimal(exchangeRate));
         transfer.setStatus(status);
-        return transfer;
+        return documents.document("finance_bank_transfers", transfer);
     }
 
     private static FinanceBankTransferLine line(

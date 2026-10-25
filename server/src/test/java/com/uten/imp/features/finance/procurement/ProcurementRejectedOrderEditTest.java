@@ -14,6 +14,7 @@ import com.uten.imp.features.purchase.order.PurchaseOrderRepository;
 import com.uten.imp.features.purchase.order.PurchaseOrderService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.Query;
@@ -105,6 +106,7 @@ class ProcurementRejectedOrderEditTest {
                         org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
                         org.mockito.Mockito.mock(com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncService.class));
 
+        ImportedDocumentFixture.forService(service).document("purchase_orders", order);
         com.uten.imp.features.purchase.order.dto.OrderSaveRequest request =
                 new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
         request.setBillDate(LocalDate.of(2026, 8, 3));
@@ -205,6 +207,7 @@ class ProcurementRejectedOrderEditTest {
                         org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
                         org.mockito.Mockito.mock(com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncService.class));
 
+        ImportedDocumentFixture.forService(service).document("subcontract_orders", order);
         var request =
                 new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();
         request.setBillDate(LocalDate.of(2026, 8, 3));

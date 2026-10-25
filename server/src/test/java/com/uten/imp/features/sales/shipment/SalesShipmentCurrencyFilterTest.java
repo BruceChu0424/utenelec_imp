@@ -71,6 +71,7 @@ class SalesShipmentCurrencyFilterTest {
         verify(shipmentRepo).findAll(captor.capture(), any(Pageable.class));
         Root<SalesShipment> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
+        org.mockito.Mockito.doReturn(SalesShipment.class).when(root).getJavaType();
         captor.getValue().toPredicate(root, null, cb);
 
         verify(cb).equal(any(), eq(currencyId));
@@ -81,7 +82,7 @@ class SalesShipmentCurrencyFilterTest {
             SalesShipmentRepository shipmentRepo,
             SalesDocumentAccessPolicy access,
             CustomerShipmentPolicy policy) {
-        return new SalesShipmentService(
+        return com.uten.imp.support.ImportedDocumentFixture.prepared(new SalesShipmentService(
                 shipmentRepo,
                 mock(SalesShipmentItemRepository.class),
                 mock(StockService.class),
@@ -100,6 +101,6 @@ class SalesShipmentCurrencyFilterTest {
                 mock(DirectCustomerShipmentCommercialService.class),
                 mock(SalesShipmentReviewSnapshotService.class),
                 mock(com.uten.imp.application.port.CustomerShipmentInventoryPort.class),
-                mock(TaskClaimService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.PartyOpenBalancePort.class));
+                mock(TaskClaimService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.PartyOpenBalancePort.class)));
     }
 }

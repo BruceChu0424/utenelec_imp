@@ -15,6 +15,7 @@ import com.uten.imp.features.finance.receipt.dto.FinanceReceiptLineInput;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.Query;
@@ -256,6 +257,9 @@ class FinanceReceiptSettlementTest {
                 currentUser, names, em, numbers, access, glPosting,
                 sourceAllocation,
                 accountFlowLedger);
+        new ImportedDocumentFixture()
+                .documents("finance_receipts", receipts::values)
+                .wire(service, em);
     }
 
     @Test

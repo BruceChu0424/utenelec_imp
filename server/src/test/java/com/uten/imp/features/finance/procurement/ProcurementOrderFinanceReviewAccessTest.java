@@ -25,6 +25,7 @@ import com.uten.imp.features.subcontract.order.SubcontractOrderService;
 import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import org.junit.jupiter.api.Test;
@@ -299,6 +300,7 @@ class ProcurementOrderFinanceReviewAccessTest {
                         org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.class),
                         org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
                         org.mockito.Mockito.mock(com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncService.class));
+        ImportedDocumentFixture.forService(service).document("purchase_orders", order);
         return new PurchaseFixture(
                 orderId, ownerId, service, orders, items, projection, access);
     }
@@ -349,6 +351,7 @@ class ProcurementOrderFinanceReviewAccessTest {
                         org.mockito.Mockito.mock(com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.class),
                         org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
                         org.mockito.Mockito.mock(com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncService.class));
+        ImportedDocumentFixture.forService(service).document("subcontract_orders", order);
         return new SubcontractFixture(
                 orderId, ownerId, service, orders, items, projection, access);
     }

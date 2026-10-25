@@ -617,6 +617,7 @@ class ProductionPlanServiceTest {
     @Test
     void updateAndDeleteRefreshTheAlreadyPrelockedPlanBeforeStatusCheck() {
         ProductionPlan plan = plan((short) 1);
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("production_plans",plan);
         when(em.find(ProductionPlan.class, plan.getId()))
                 .thenReturn(plan);
 
@@ -653,6 +654,8 @@ class ProductionPlanServiceTest {
     }
 
     private void arrangePlan(ProductionPlan plan, List<ProductionPlanItem> items) {
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("production_plans",plan);
+        items.forEach(item -> com.uten.imp.support.ImportedDocumentFixture.forService(service).document("production_plan_items",item));
         when(em.find(ProductionPlan.class, plan.getId()))
                 .thenReturn(plan);
         when(planRepo.findById(plan.getId())).thenReturn(Optional.of(plan));

@@ -13,6 +13,7 @@ import com.uten.imp.features.purchase.order.PurchaseOrderRepository;
 import com.uten.imp.features.purchase.order.PurchaseOrderService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.Query;
@@ -146,6 +147,9 @@ class PurchaseOrderPendingCapacityTest {
                         org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
                         org.mockito.Mockito.mock(com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncService.class));
 
+        var documents=ImportedDocumentFixture.forService(service);
+        documents.document("purchase_orders", order);
+        documents.document("purchase_order_items", item);
         // 数量超过申请剩余量：不再抛「超过申请剩余量」，送审校验通过。
         assertDoesNotThrow(() -> service.lockAndValidateFinanceSubmission(orderId));
         verify(sourceIntegrity).validatePurchaseOrder(anyList());

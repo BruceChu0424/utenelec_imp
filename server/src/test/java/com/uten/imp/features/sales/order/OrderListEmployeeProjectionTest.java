@@ -43,6 +43,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings({"unchecked", "rawtypes"})
 class OrderListEmployeeProjectionTest {
+    @Mock private jakarta.persistence.EntityManager em;
     @Mock private SalesOrderRepository salesRepository;
     @Mock private PurchaseOrderRepository purchaseRepository;
     @Mock private SubcontractOrderRepository subcontractRepository;
@@ -62,6 +63,9 @@ class OrderListEmployeeProjectionTest {
         lenient().when(salesAccess.scope()).thenReturn(scope);
         lenient().when(purchaseAccess.scope()).thenReturn(scope);
         lenient().when(subcontractAccess.scope()).thenReturn(scope);
+        com.uten.imp.support.ImportedDocumentFixture.prepared(sales);
+        com.uten.imp.support.ImportedDocumentFixture.prepared(purchase);
+        com.uten.imp.support.ImportedDocumentFixture.prepared(subcontract);
         ReflectionTestUtils.setField(purchase, "commercialPriceVisibility", commercialPrices);
         ReflectionTestUtils.setField(subcontract, "commercialPriceVisibility", commercialPrices);
     }
@@ -69,6 +73,7 @@ class OrderListEmployeeProjectionTest {
     @Test void salesResolvesOnlyTheReturnedPageAndKeepsItsOrderNullIdsAndMasking() {
         UUID seller = UUID.randomUUID(), unknown = UUID.randomUUID();
         List<SalesOrder> rows = List.of(sale(seller), sale(null), sale(seller), sale(unknown));
+        rows.forEach(row -> com.uten.imp.support.ImportedDocumentFixture.forService(sales).document("sales_orders",row));
         when(salesRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(rows, PageRequest.of(1, 4), 200));
         // The null-id row must not call get(null) even when an implementation returns Map.of.
@@ -105,6 +110,8 @@ class OrderListEmployeeProjectionTest {
     @Test void purchaseListPassesThroughApprovalSnapshotsWithoutLookingUpEmployees() {
         PurchaseOrder first = new PurchaseOrder(); first.setId(UUID.randomUUID()); first.setStatus((short) 0);
         PurchaseOrder second = new PurchaseOrder(); second.setId(UUID.randomUUID()); second.setStatus((short) 0);
+        com.uten.imp.support.ImportedDocumentFixture.forService(purchase).document("purchase_orders",first);
+        com.uten.imp.support.ImportedDocumentFixture.forService(purchase).document("purchase_orders",second);
         Map<UUID, FinanceApproval> snapshots = Map.of(first.getId(), approval("审批时姓名"), second.getId(), approval(null));
         when(purchaseRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(first, second), PageRequest.of(0, 20), 2));
@@ -120,6 +127,8 @@ class OrderListEmployeeProjectionTest {
     @Test void subcontractListPassesThroughApprovalSnapshotsWithoutLookingUpEmployees() {
         SubcontractOrder first = new SubcontractOrder(); first.setId(UUID.randomUUID()); first.setStatus((short) 0);
         SubcontractOrder second = new SubcontractOrder(); second.setId(UUID.randomUUID()); second.setStatus((short) 0);
+        com.uten.imp.support.ImportedDocumentFixture.forService(subcontract).document("subcontract_orders",first);
+        com.uten.imp.support.ImportedDocumentFixture.forService(subcontract).document("subcontract_orders",second);
         Map<UUID, FinanceApproval> snapshots = Map.of(first.getId(), approval("审批时姓名"), second.getId(), approval(null));
         when(subcontractRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(first, second), PageRequest.of(0, 20), 2));

@@ -14,6 +14,7 @@ import com.uten.imp.features.finance.payment.dto.FinancePaymentSaveRequest;
 import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.BeforeEach;
@@ -189,6 +190,9 @@ class FinancePaymentSettlementTest {
                 currentUser, names, em, numbers, access, glPostingService,
                 accountFlowLedger,
                 mock(com.uten.imp.features.finance.payables.SupplierPayableHoldGuard.class));
+        new ImportedDocumentFixture()
+                .documents("finance_payments", payments::values)
+                .wire(service, em);
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.uten.imp.features.admin.workflow.SalesOrderFinanceConfirmerEligibilit
 import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
@@ -447,6 +448,9 @@ class SalesOrderFinanceConfirmServiceTest {
                         eligibility,
                         mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
                         mock(SalesOrderRevisionService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.PartyOpenBalancePort.class));
+        new ImportedDocumentFixture()
+                .documents("sales_orders", orders::values)
+                .wire(service, entityManager);
         return new Fixture(service, repository, notice, employeeId);
     }
 

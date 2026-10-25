@@ -208,10 +208,11 @@ class ProductionPlanningDraftServiceTest {
         return active;
     }
 
-    private static ProductionPlan plan(UUID id, short status) {
+    private ProductionPlan plan(UUID id, short status) {
         ProductionPlan plan = new ProductionPlan();
         plan.setId(id);
         plan.setStatus(status);
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("production_plans",plan);
         return plan;
     }
 

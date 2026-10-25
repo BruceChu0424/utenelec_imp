@@ -6,6 +6,7 @@ import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,7 @@ class StockDocDetailPeopleNameTest {
     private final EmployeeNameResolver employeeNames = mock(EmployeeNameResolver.class);
     private final EntityManager entityManager = stubbedEntityManager();
     private final Query materialRequestNumbers = mock(Query.class);
+    private final ImportedDocumentFixture history = new ImportedDocumentFixture();
 
     @Test
     void detailCarriesServerResolvedWorkerAndMakerNames() {
@@ -73,6 +75,7 @@ class StockDocDetailPeopleNameTest {
     }
 
     private void stubDocumentReads(StockDocument document) {
+        history.document("stock_documents", document);
         when(documents.findById(document.getId())).thenReturn(Optional.of(document));
         when(items.findByDocIdOrderByLineNoAsc(document.getId())).thenReturn(List.of());
         when(balanceAdjustmentCommands.existsByStockDocumentId(document.getId())).thenReturn(false);
@@ -85,7 +88,7 @@ class StockDocDetailPeopleNameTest {
 
     private StockDocService service() {
         when(access.hasAuthority(StockCostMasker.PERMISSION)).thenReturn(true);
-        return new StockDocService(
+        return history.wire(new StockDocService(
                 documents,
                 balanceAdjustmentCommands,
                 items,
@@ -107,10 +110,10 @@ class StockDocDetailPeopleNameTest {
                 mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class),
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
                 mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
-                mock(com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.class));
+                mock(com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.class)), entityManager);
     }
 
-    /** 其余原生查询一律返回 false/空; DRAW 详情门禁(车间已提交领料申请)放行。 */
+    /** 原有业务查询返回 false/空；来源事实由 history 夹具独立处理，DRAW 申请门放行。 */
     private static EntityManager stubbedEntityManager() {
         Query query = mock(Query.class);
         EntityManager entityManager = mock(EntityManager.class);

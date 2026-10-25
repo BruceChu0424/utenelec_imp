@@ -35,6 +35,7 @@ class StockBalanceWeightQueryTest {
         StockQueryService service = new StockQueryService(
                 balances, mock(EntityManager.class), costMasker);
 
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).measurement(balance.getId(),false,null);
         var result = service.balances(
                 null, null, 1, 20, "weight", "desc");
 

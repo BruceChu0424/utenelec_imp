@@ -35,12 +35,14 @@ import static org.mockito.Mockito.when;
  */
 class StockQueryCostVisibilityTest {
 
+    private final com.uten.imp.support.ImportedDocumentFixture history = new com.uten.imp.support.ImportedDocumentFixture();
     private final StockBalanceRepository balanceRepo = mock(StockBalanceRepository.class);
     private final EntityManager entityManager = mock(EntityManager.class);
 
     @Test
     void viewerWithoutCostPermissionGetsNullBalanceAmounts() {
         StockBalance balance = balance();
+        history.measurement(balance.getId(),false,null);
         when(balanceRepo.findAll(
                 org.mockito.ArgumentMatchers.<Specification<StockBalance>>any(),
                 any(Pageable.class)))
@@ -58,6 +60,7 @@ class StockQueryCostVisibilityTest {
     @Test
     void viewerWithCostPermissionKeepsBalanceAmounts() {
         StockBalance balance = balance();
+        history.measurement(balance.getId(),false,null);
         when(balanceRepo.findAll(
                 org.mockito.ArgumentMatchers.<Specification<StockBalance>>any(),
                 any(Pageable.class)))
@@ -146,7 +149,7 @@ class StockQueryCostVisibilityTest {
     private StockQueryService service(boolean canViewCost) {
         StockCostMasker masker = mock(StockCostMasker.class);
         when(masker.canView()).thenReturn(canViewCost);
-        return new StockQueryService(balanceRepo, entityManager, masker);
+        return history.wire(new StockQueryService(balanceRepo, entityManager, masker),entityManager);
     }
 
     /**

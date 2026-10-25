@@ -69,6 +69,7 @@ class SalesOrderCurrencyFilterTest {
         verify(orderRepo).findAll(captor.capture(), any(Pageable.class));
         Root<SalesOrder> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
+        org.mockito.Mockito.doReturn(SalesOrder.class).when(root).getJavaType();
         captor.getValue().toPredicate(root, null, cb);
 
         verify(cb).equal(any(), eq(currencyId));
@@ -77,7 +78,7 @@ class SalesOrderCurrencyFilterTest {
 
     private static SalesOrderService service(
             SalesOrderRepository orderRepo, SalesDocumentAccessPolicy access) {
-        return new SalesOrderService(
+        return com.uten.imp.support.ImportedDocumentFixture.prepared(new SalesOrderService(
                 orderRepo,
                 mock(SalesOrderItemRepository.class),
                 mock(SalesOrderCostItemRepository.class),
@@ -101,6 +102,6 @@ class SalesOrderCurrencyFilterTest {
                 mock(SalesMutationFootprintService.class),
                 mock(ClientDefaultTermsSyncService.class),
                 mock(com.uten.imp.features.sales.SalesPriceAuthority.class),
-                mock(com.uten.imp.features.sales.SalesIntakeSaveHooks.class));
+                mock(com.uten.imp.features.sales.SalesIntakeSaveHooks.class)));
     }
 }

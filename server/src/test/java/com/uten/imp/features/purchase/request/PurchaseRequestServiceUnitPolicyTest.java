@@ -11,6 +11,7 @@ import com.uten.imp.features.purchase.request.dto.RequestItemLine;
 import com.uten.imp.features.purchase.request.dto.RequestSaveRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.Query;
@@ -54,6 +55,12 @@ class PurchaseRequestServiceUnitPolicyTest {
                 .thenReturn(new PurchaseLineUnitPolicy.ResolvedUnit(
                         baseUnitId, BigDecimal.ONE));
         stubMasterSnapshot(fixture.em, goodsId);
+        when(fixture.requestRepo.save(any(PurchaseRequest.class))).thenAnswer(invocation ->
+                ImportedDocumentFixture.forService(fixture.service)
+                        .document("purchase_requests", invocation.getArgument(0, PurchaseRequest.class)));
+        when(fixture.itemRepo.save(any(PurchaseRequestItem.class))).thenAnswer(invocation ->
+                ImportedDocumentFixture.forService(fixture.service)
+                        .document("purchase_request_items", invocation.getArgument(0, PurchaseRequestItem.class)));
 
         fixture.service.create(request);
 
@@ -84,6 +91,10 @@ class PurchaseRequestServiceUnitPolicyTest {
         item.setLineNo(1);
         item.setGoodsId(goodsId);
         item.setQty(BigDecimal.ONE);
+        ImportedDocumentFixture.forService(fixture.service)
+                .document("purchase_requests", request);
+        ImportedDocumentFixture.forService(fixture.service)
+                .document("purchase_request_items", item);
         when(fixture.em.find(
                 PurchaseRequest.class,
                 requestId,
@@ -126,6 +137,10 @@ class PurchaseRequestServiceUnitPolicyTest {
         item.setQty(new BigDecimal("10"));
         item.setUnitId(UUID.randomUUID()); item.setUnitRate(BigDecimal.ONE);
         item.setOrderedQty(new BigDecimal("4"));
+        ImportedDocumentFixture.forService(fixture.service)
+                .document("purchase_requests", request);
+        ImportedDocumentFixture.forService(fixture.service)
+                .document("purchase_request_items", item);
         when(fixture.requestRepo.findById(requestId))
                 .thenReturn(java.util.Optional.of(request));
         when(fixture.itemRepo.findById(itemId))
@@ -163,6 +178,10 @@ class PurchaseRequestServiceUnitPolicyTest {
         item.setRequestId(requestId);
         item.setQty(new BigDecimal("10"));
         item.setUnitId(UUID.randomUUID()); item.setUnitRate(BigDecimal.ONE);
+        ImportedDocumentFixture.forService(fixture.service)
+                .document("purchase_requests", request);
+        ImportedDocumentFixture.forService(fixture.service)
+                .document("purchase_request_items", item);
         when(fixture.requestRepo.findById(requestId))
                 .thenReturn(java.util.Optional.of(request));
         when(fixture.itemRepo.findById(itemId))
@@ -212,7 +231,7 @@ class PurchaseRequestServiceUnitPolicyTest {
     private static Query stubPendingPhysicalQuantity(EntityManager em, BigDecimal quantity) {
         Query query = mock(Query.class);
         String sql = """
-                SELECT pending.pending_physical_qty FROM purchase_request_items i
+                SELECT pending.pending_physical_qty FROM (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_request_items',archive_origin.id)) i
                 %s WHERE i.id=:itemId AND NOT i.is_deleted
                 """.formatted(PurchaseRequestQuantities.pendingJoin("i"));
         when(em.createNativeQuery(sql)).thenReturn(query);
@@ -263,6 +282,7 @@ class PurchaseRequestServiceUnitPolicyTest {
                 mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
                 mock(com.uten.imp.application.port.OrganizationReferencePort.class));
         {
+            ImportedDocumentFixture.forService(service);
             var locks = mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class);
             var guard = mock(com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard.class);
             when(locks.orderInputs(anyString(), any(), org.mockito.ArgumentMatchers.anyCollection(),

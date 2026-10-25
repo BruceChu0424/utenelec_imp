@@ -13,6 +13,7 @@ import com.uten.imp.features.stock.dto.StockDocQueryFilter;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Root;
@@ -30,6 +31,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -66,6 +68,7 @@ class StockDocToWarehouseFilterTest {
                 ArgumentCaptor.forClass(Specification.class);
         verify(docRepo).findAll(captor.capture(), any(Pageable.class));
         Root<StockDocument> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        doReturn(StockDocument.class).when(root).getJavaType();
         CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
         captor.getValue().toPredicate(root, null, cb);
 
@@ -77,7 +80,7 @@ class StockDocToWarehouseFilterTest {
             StockDocumentRepository docRepo,
             StockDocAccessPolicy access,
             ProductionStockTaskAccessPolicy taskAccess) {
-        return new StockDocService(
+        return ImportedDocumentFixture.prepared(new StockDocService(
                 docRepo,
                 mock(StockBalanceAdjustmentCommandRepository.class),
                 mock(StockDocumentItemRepository.class),
@@ -99,6 +102,6 @@ class StockDocToWarehouseFilterTest {
                 mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class),
                 mock(FulfillmentMutationLocks.class),
                 mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
-                mock(com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.class));
+                mock(com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.class)));
     }
 }

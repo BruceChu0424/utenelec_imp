@@ -35,6 +35,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings({"unchecked", "rawtypes"})
 class SubcontractOrderInProgressFilterTest {
+    @Mock private jakarta.persistence.EntityManager em;
     @Mock private SubcontractOrderRepository repository;
     @Mock private ProcurementApprovalProjectionQuery approvals;
     @Mock private SubcontractDocumentAccessPolicy access;
@@ -59,6 +60,7 @@ class SubcontractOrderInProgressFilterTest {
         var scope = new OwnerVisibility.OwnerScope(false, Set.of(UUID.randomUUID()));
         when(access.scope()).thenReturn(scope);
 
+        com.uten.imp.support.ImportedDocumentFixture.prepared(service);
         service.list(new OrderQueryFilter(null, null, null, null, null, null, null,
                 " in_progress "), 2, 20, "billDate", "asc");
         ArgumentCaptor<Specification<SubcontractOrder>> specification = ArgumentCaptor.forClass(Specification.class);
@@ -74,6 +76,12 @@ class SubcontractOrderInProgressFilterTest {
         Path<Object> id = mock(Path.class);
         Path<Boolean> deleted = mock(Path.class);
         Path<Boolean> closed = mock(Path.class);
+        org.mockito.Mockito.doReturn(SubcontractOrder.class).when(root).getJavaType();
+        when(root.get("id")).thenReturn(id);
+        var imported = mock(jakarta.persistence.criteria.Expression.class);
+        Predicate nativeOnly = mock(Predicate.class);
+        when(cb.function(eq("fn_imported_business_document"),eq(Boolean.class),any(),any())).thenReturn(imported);
+        when(cb.isFalse(imported)).thenReturn(nativeOnly);
         when(root.get("status")).thenReturn(status);
         when(root.<Boolean>get("deleted")).thenReturn(deleted);
         when(root.<Boolean>get("closed")).thenReturn(closed);
@@ -96,7 +104,6 @@ class SubcontractOrderInProgressFilterTest {
         } else {
             Predicate financeReviewable = mock(Predicate.class);
             Predicate belongsToFinance = mock(Predicate.class);
-            when(root.get("id")).thenReturn(id);
             when(status.in((short) 0, (short) 1)).thenReturn(financeReviewable);
             when(id.in(financeIds)).thenReturn(belongsToFinance);
             when(cb.and(financeReviewable, belongsToFinance)).thenReturn(finance);
@@ -105,8 +112,8 @@ class SubcontractOrderInProgressFilterTest {
 
         specification.getValue().toPredicate(root, null, cb);
         verify(cb).or(finance, executing);
-        verify(cb).and(new Predicate[]{active, readable, progress});
-        if (financeIds.isEmpty()) verify(root, never()).get("id");
+        verify(cb).and(new Predicate[]{nativeOnly, active, readable, progress});
+        if (financeIds.isEmpty()) verify(id, never()).in(org.mockito.ArgumentMatchers.anyCollection());
         else verify(status).in((short) 0, (short) 1);
     }
 }

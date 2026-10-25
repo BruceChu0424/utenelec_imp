@@ -102,6 +102,8 @@ class StockDocReviewedOutboundTest {
         when(docRepo.findById(document.getId())).thenReturn(Optional.of(document));
         when(itemRepo.findByDocIdOrderByLineNoAsc(document.getId())).thenReturn(List.of(item));
         when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("stock_documents",document);
+        com.uten.imp.support.ImportedDocumentFixture.forService(service).document("stock_document_items",item);
     }
 
     @AfterEach

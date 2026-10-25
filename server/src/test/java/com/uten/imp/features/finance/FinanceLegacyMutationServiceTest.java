@@ -58,7 +58,9 @@ class FinanceLegacyMutationServiceTest {
                     .map(type->type==UUID.class?id:mock(type)).toArray();
             assertThatThrownBy(()->method.get().invoke(service,args)).as(names[1]+"."+operation)
                     .isInstanceOf(InvocationTargetException.class)
-                    .cause().isInstanceOf(ApiException.class).hasMessageContaining("历史资金记录仅供核对");
+                    .cause().isInstanceOfSatisfying(ApiException.class,error -> assertThat(error.getCode())
+                            .isEqualTo(com.uten.imp.common.web.ErrorCode.BUSINESS))
+                    .hasMessage(com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.READ_ONLY_REASON);
         }
         for (Object dependency:dependencies) {
             assertThat(mockingDetails(dependency).getInvocations()).allSatisfy(invocation -> {

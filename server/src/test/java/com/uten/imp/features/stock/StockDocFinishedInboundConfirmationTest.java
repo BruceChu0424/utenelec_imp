@@ -14,6 +14,7 @@ import com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.Query;
@@ -129,6 +130,9 @@ class StockDocFinishedInboundConfirmationTest {
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
                 mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
                 mock(com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.class));
+        var history=ImportedDocumentFixture.forService(service);
+        history.document("stock_documents", document);
+        history.document("stock_document_items", item);
     }
 
     @Test

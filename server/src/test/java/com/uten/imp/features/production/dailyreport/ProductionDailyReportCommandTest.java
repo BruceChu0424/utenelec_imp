@@ -495,7 +495,7 @@ class ProductionDailyReportCommandTest {
         ArgumentCaptor<ProductionDailyReport> saved =
                 ArgumentCaptor.forClass(ProductionDailyReport.class);
         when(reportRepo.saveAndFlush(saved.capture())).thenAnswer(invocation ->
-                invocation.getArgument(0));
+                com.uten.imp.support.ImportedDocumentFixture.forService(service).document("production_daily_reports",invocation.getArgument(0)));
         when(reportRepo.findById(any())).thenAnswer(invocation ->
                 Optional.of(saved.getValue()));
         when(itemRepo.findByReportIdOrderByLineNoAsc(any())).thenReturn(List.of());
@@ -575,7 +575,7 @@ class ProductionDailyReportCommandTest {
                 java.util.Collections.singletonList(
                         new Object[]{"CREATE", hash, reportId, null, null, null, null}));
         when(currentUser.requireId()).thenReturn(actorId);
-        ProductionDailyReport existing = new ProductionDailyReport();
+        ProductionDailyReport existing = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("production_daily_reports",new ProductionDailyReport());
         existing.setId(reportId);
         existing.setBillNo("SR20260828000001");
         existing.setBillDate(LocalDate.of(2026, 8, 28));
@@ -710,12 +710,12 @@ class ProductionDailyReportCommandTest {
         UUID goodsId = UUID.randomUUID();
         UUID unitId = UUID.randomUUID();
 
-        ProductionDailyReport report = new ProductionDailyReport();
+        ProductionDailyReport report = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("production_daily_reports",new ProductionDailyReport());
         report.setId(reportId);
         report.setBillNo("SR-FULL-FAIL-" + reportId);
         report.setBillDate(LocalDate.of(2026, 8, 28));
         report.setStatus((short) 1);
-        ProductionDailyReportItem item = new ProductionDailyReportItem();
+        ProductionDailyReportItem item = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("production_daily_report_items",new ProductionDailyReportItem());
         item.setId(reportItemId);
         item.setReportId(reportId);
         item.setPlanItemId(planItemId);
@@ -982,8 +982,8 @@ class ProductionDailyReportCommandTest {
         return request;
     }
 
-    private static ProductionDailyReport approvedReport(UUID reportId, UUID makerId) {
-        ProductionDailyReport report = new ProductionDailyReport();
+    private ProductionDailyReport approvedReport(UUID reportId, UUID makerId) {
+        ProductionDailyReport report = com.uten.imp.support.ImportedDocumentFixture.forService(service).document("production_daily_reports",new ProductionDailyReport());
         report.setId(reportId);
         report.setBillNo("SR20260922000005");
         report.setBillDate(LocalDate.of(2026, 9, 22));

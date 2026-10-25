@@ -1,5 +1,6 @@
 package com.uten.imp.features.companyfiles;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.features.companyfiles.CompanyFileDtos.*;
 import com.uten.imp.security.RequiresStepUp;
 
@@ -19,6 +20,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class CompanyFileController {
     private final CompanyFileService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('company_file:view')")
@@ -44,7 +46,11 @@ public class CompanyFileController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('company_file:view')")
     public Entry detail(@PathVariable UUID id) {
-        return service.detail(id);
+        Entry result = service.detail(id);
+        // Record only resolved metadata access; names and document contents stay out of the audit.
+        detailViewAudit.record(
+                "view_company_file_detail", "company_file_nodes", result.id(), null, null, "公司资料");
+        return result;
     }
 
     @PostMapping("/folders")

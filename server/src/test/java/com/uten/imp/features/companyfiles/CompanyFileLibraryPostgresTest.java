@@ -3,6 +3,7 @@ package com.uten.imp.features.companyfiles;
 import com.uten.imp.support.MigratedSchemaBaseline;
 import com.uten.imp.application.port.AttachmentAccessPort;
 import com.uten.imp.audit.AuditService;
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.companyfiles.CompanyFileDtos.*;
 import com.uten.imp.security.AuthUser;
@@ -87,6 +88,88 @@ class CompanyFileLibraryPostgresTest {
         when(attachments.listVisible(CompanyFileService.OWNER_TYPE,pending.id())).thenReturn(List.of(
                 new AttachmentAccessPort.AttachmentView(attachment,CompanyFileService.OWNER_TYPE,pending.id(),"test-only",name,"text/plain",12,Instant.now(),actor,null,null,false)));
         return run(()->service.complete(pending.id(),new Complete(attachment,pending.version())));
+    }
+
+    @Test void detailMetadataNeedsOnlyViewAndAuditsTheViewerRatherThanTheCreator() {
+        Entry parent=create(null,"detail-parent-"+UUID.randomUUID());
+        Entry original=file(parent.id(),"私密客户报价及工资.txt");
+        UUID viewer=UUID.randomUUID(),viewerEmployee=UUID.randomUUID();
+        String account="detail-viewer-"+viewer;
+        update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) "
+                +"SELECT ?,?,'只读资料查看人','其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'",
+                viewerEmployee,"DETAIL-"+viewerEmployee);
+        update("INSERT INTO users(id,employee_id,login_account,password_hash,status,must_change_password) "
+                +"VALUES(?,?,?,'test-only','active',false)",viewer,viewerEmployee,account);
+        AuthUser reader=new AuthUser(viewer,viewerEmployee,account,Set.of("company_file:view"),
+                false,true,false,false,null,UUID.randomUUID());
+        when(current.get()).thenReturn(Optional.of(reader));
+        AuditService detailAudit=mock(AuditService.class);
+        CompanyFileController controller=new CompanyFileController(service,new AuditDetailViewRecorder(detailAudit,current));
+
+        Entry resolved=run(()->controller.detail(original.id()));
+
+        assertThat(resolved.id()).isEqualTo(original.id());
+        assertThat(resolved.allowedActions()).containsExactly("view");
+        assertThat(viewer).isNotEqualTo(actor);
+        verify(detailAudit).logSuccessfulDetailView(viewer,account,"view_company_file_detail",
+                "company_file_nodes",original.id(),"公司资料",null,null);
+        verifyNoMoreInteractions(detailAudit);
+        assertThatThrownBy(()->run(()->{service.requireAttachmentDownload(original.id(),reader);return null;}))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test void detailAuditDoesNotRecordAuthenticationPermissionOrMissingObjectRejections() {
+        Entry available=create(null,"detail-rejected-"+UUID.randomUUID());
+        AuditService detailAudit=mock(AuditService.class);
+        CompanyFileController controller=new CompanyFileController(service,new AuditDetailViewRecorder(detailAudit,current));
+        login(Set.of("company_file:view"),session);
+        assertThatThrownBy(()->run(()->controller.detail(UUID.randomUUID()))).isInstanceOf(ApiException.class);
+        login(Set.of(),session);
+        assertThatThrownBy(()->run(()->controller.detail(available.id()))).isInstanceOf(ApiException.class);
+        when(current.get()).thenReturn(Optional.empty());
+        assertThatThrownBy(()->run(()->controller.detail(available.id()))).isInstanceOf(ApiException.class);
+        verifyNoInteractions(detailAudit);
+    }
+
+    @Test void deniedAncestorStopsDetailBeforeAnySuccessfulAuditCanBeRecorded() {
+        Entry parent=create(null,"detail-acl-"+UUID.randomUUID());
+        Entry child=create(parent.id(),"secret-descendant");
+        run(()->service.setPermissions(parent.id(),new Permissions(true,List.of(
+                new Rule("USER",actor,null,"DENY",List.of("view"))),parent.version())));
+        login(Set.of("company_file:view"),session);
+        AuditService detailAudit=mock(AuditService.class);
+        CompanyFileController controller=new CompanyFileController(service,new AuditDetailViewRecorder(detailAudit,current));
+
+        assertThatThrownBy(()->run(()->controller.detail(parent.id()))).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->run(()->controller.detail(child.id()))).isInstanceOf(ApiException.class);
+
+        verifyNoInteractions(detailAudit);
+    }
+
+    @Test void lockedFolderMetadataIsAuditedButItsDescendantsRequireTheCurrentSessionUnlock() {
+        Entry parent=create(null,"detail-password-"+UUID.randomUUID());
+        Entry child=file(parent.id(),"secret-content.txt");
+        run(()->service.setPassword(parent.id(),new Password("detail-password",parent.version())));
+        login(Set.of("company_file:view"),session);
+        AuditService detailAudit=mock(AuditService.class);
+        CompanyFileController controller=new CompanyFileController(service,new AuditDetailViewRecorder(detailAudit,current));
+
+        Entry locked=run(()->controller.detail(parent.id()));
+        assertThat(locked.locked()).isTrue();
+        verify(detailAudit).logSuccessfulDetailView(actor,"library-security","view_company_file_detail",
+                "company_file_nodes",parent.id(),"公司资料",null,null);
+        clearInvocations(detailAudit);
+        assertThatThrownBy(()->run(()->controller.detail(child.id()))).isInstanceOf(ApiException.class);
+        verifyNoInteractions(detailAudit);
+
+        run(()->service.unlock(parent.id(),new Unlock("detail-password")));
+        assertThat(run(()->controller.detail(child.id())).allowedActions()).containsExactly("view");
+        verify(detailAudit).logSuccessfulDetailView(actor,"library-security","view_company_file_detail",
+                "company_file_nodes",child.id(),"公司资料",null,null);
+        clearInvocations(detailAudit);
+        login(Set.of("company_file:view"),UUID.randomUUID());
+        assertThatThrownBy(()->run(()->controller.detail(child.id()))).isInstanceOf(ApiException.class);
+        verifyNoInteractions(detailAudit);
     }
 
     @Test void actualCatalogContainsIndependentActionsAndOneSynchronizedSurface() {

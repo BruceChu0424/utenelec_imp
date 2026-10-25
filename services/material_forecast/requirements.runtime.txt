@@ -14,7 +14,7 @@ packaging==26.3
 pandas==2.3.3
 patsy==1.0.3
 pyarrow==26.0.0
-python-dateutil==2.9.0.post0
+python-dateutil==3.0.0
 pytz==2026.5
 scipy==1.18.1
 six==1.17.0

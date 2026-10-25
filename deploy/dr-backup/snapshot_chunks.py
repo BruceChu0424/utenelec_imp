@@ -58,6 +58,13 @@ def identity(secret, raw):
     return hmac.new(secret, b"uten-dr-chunk-v1\0" + raw, hashlib.sha256).hexdigest()
 
 
+def recovery_configuration_identity(files, secret):
+    rows = [{'path': row['path'], 'sha256': row['sha256']} for row in files if row['path'].startswith('recovery/')]
+    if not rows or len(secret) != 32:
+        raise ValueError('Recovery configuration inventory is required')
+    return hmac.new(secret, b'uten-dr-configuration-v1\0' + canonical(sorted(rows, key=lambda row: row['path'])), hashlib.sha256).hexdigest()
+
+
 def sign_receipt(receipt, signing_key, base):
     result = subprocess.run(["/usr/bin/ssh-keygen", "-Y", "sign", "-n", SIGNING_NAMESPACE,
                              "-f", str(base.private_path(signing_key))], input=canonical(receipt),
@@ -217,6 +224,26 @@ def capacity(config, additional, base):
 
 
 def receive(header, incoming, outgoing, config, base):
+    latest = base.latest_module() if base.latest_enabled(config) else None
+    root, _, _ = directories(config, base)
+    if latest is None:
+        if header.get('operation') == 'probeChunks':
+            return _receive(header, incoming, outgoing, config, base)
+        with base.lock(root / '.receiver.lock', timeout=base.RECEIVER_WAIT_SECONDS, busy_code='RECEIVER_BUSY'):
+            return _receive(header, incoming, outgoing, config, base)
+    with base.lock(root / '.receiver.lock', timeout=base.RECEIVER_WAIT_SECONDS, busy_code='RECEIVER_BUSY'):
+        if header.get('operation') == 'beginSnapshotUpload':
+            result = latest.begin(header, config, base, sys.modules[__name__])
+            outgoing.write(canonical(result) + b'\n')
+            return
+        latest.cleanup_stages(root, base)
+        lease = latest.require_upload(header, config, base, sys.modules[__name__])
+        clean_header = {key: value for key, value in header.items() if key != 'uploadLease'}
+        with latest.bounded_upload(lease, base):
+            return _receive(clean_header, incoming, outgoing, config, base, latest=latest)
+
+
+def _receive(header, incoming, outgoing, config, base, *, latest=None):
     root, objects, points = directories(config, base)
     operation = header.get("operation")
     if operation == "probeChunks":
@@ -226,90 +253,104 @@ def receive(header, incoming, outgoing, config, base):
         existing = [value for name in header["opaqueIds"] if (value := object_record(objects, name, base))]
         outgoing.write(canonical({"format": FORMAT, "objects": existing}) + b"\n")
         return
-    with base.lock(root / ".receiver.lock", timeout=base.RECEIVER_WAIT_SECONDS, busy_code='RECEIVER_BUSY'):
-        if operation == "putChunk":
-            if set(header) != {"format", "operation", "opaqueId", "cipherSha256", "cipherBytes"}:
-                raise ValueError("Invalid chunk upload header")
-            name = header["opaqueId"]
-            if not OPAQUE.fullmatch(name):
-                raise ValueError("Invalid opaque chunk identity")
-            old = object_record(objects, name, base)
-            if old and (old["cipherSha256"] != header["cipherSha256"] or old["cipherBytes"] != header["cipherBytes"]):
-                raise ValueError("Existing chunk cannot be overwritten")
-            capacity(config, header["cipherBytes"], base)
-            stage = objects / (".incoming-" + uuid.uuid4().hex)
-            stage.mkdir(mode=0o700)
-            try:
-                copy_cipher(incoming, stage / "cipher.gpg", header["cipherBytes"], header["cipherSha256"], MAX_CIPHER_BYTES, base)
-                result = old or {"format": FORMAT, "opaqueId": name, "cipherSha256": header["cipherSha256"],
-                                 "cipherBytes": header["cipherBytes"], "receivedAt": base.now().isoformat()}
-                if old:
-                    shutil.rmtree(stage)
-                else:
-                    base.atomic_json(stage / "receipt.json", result); base.sync_directory(stage)
-                    os.rename(stage, objects / name); base.sync_directory(objects)
-                outgoing.write(canonical(result) + b"\n")
-                return
-            except BaseException:
-                if stage.exists():shutil.rmtree(stage)
-                raise
-        if operation != "commitSnapshot" or set(header) != {"format", "operation", "snapshotReceipt", "references", "sourceSignature"}:
-            raise ValueError("Unsupported chunk protocol operation")
-        receipt = header["snapshotReceipt"]
-        expected = {"format", "snapshotId", "nonce", "sourceSetId", "sourceSnapshotAt", "sourceManifestSha256",
-                    "recipientFingerprint", "manifestCipherSha256", "manifestCipherBytes", "referenceListSha256",
-                    "marketStateIncluded", "clientReleaseStateIncluded"}
-        refs = reference_list(header["references"], base)
-        if (not isinstance(receipt, dict) or set(receipt) != expected or receipt["format"] != FORMAT
-                or not SNAPSHOT.fullmatch(receipt["snapshotId"]) or not base.SET.fullmatch(receipt["sourceSetId"])
-                or not re.fullmatch(r"[a-f0-9]{32}", receipt["nonce"])
-                or receipt["recipientFingerprint"] != config["recipient_fingerprint"]
-                or not base.HASH.fullmatch(receipt["sourceManifestSha256"])
-                or receipt["referenceListSha256"] != hashlib.sha256(canonical(refs)).hexdigest()
-                or type(receipt["marketStateIncluded"]) is not bool
-                or type(receipt["clientReleaseStateIncluded"]) is not bool
-                or base.instant(receipt["sourceSnapshotAt"]) > base.now() + timedelta(minutes=5)):
-            raise ValueError("Snapshot manifest binding failed")
-        named = datetime.strptime(receipt["sourceSetId"].split("-")[0], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
-        if abs((base.instant(receipt["sourceSnapshotAt"]) - named).total_seconds()) >= 1:
-            raise ValueError("Snapshot time differs from its source identity")
-        if (points / receipt["snapshotId"]).exists():
-            raise ValueError("A published snapshot cannot be overwritten")
-        for row in refs:
-            known = object_record(objects, row["opaqueId"], base, verify=True)
-            if known is None or any(known[key] != row[key] for key in ("cipherSha256", "cipherBytes")):
-                raise ValueError("Snapshot dependencies are incomplete")
-        capacity(config, receipt["manifestCipherBytes"] + len(canonical(refs)) + 32768, base)
-        stage = points / (".incoming-" + uuid.uuid4().hex)
-        stage.mkdir(mode=0o700)
+    if operation == "putChunk":
+        if set(header) != {"format", "operation", "opaqueId", "cipherSha256", "cipherBytes"}:
+            raise ValueError("Invalid chunk upload header")
+        name = header["opaqueId"]
+        if not OPAQUE.fullmatch(name):
+            raise ValueError("Invalid opaque chunk identity")
+        old = object_record(objects, name, base)
+        if old and (old["cipherSha256"] != header["cipherSha256"] or old["cipherBytes"] != header["cipherBytes"]):
+            raise ValueError("Existing chunk cannot be overwritten")
+        capacity(config, header["cipherBytes"] + (16384 if latest else 0), base)
+        stage = latest.create_stage(objects, base) if latest else objects / (".incoming-" + uuid.uuid4().hex)
+        if not latest:stage.mkdir(mode=0o700)
         try:
-            signature = header["sourceSignature"]
-            if (not isinstance(signature, str) or len(signature) > 8192
-                    or not signature.startswith("-----BEGIN SSH SIGNATURE-----")):
-                raise ValueError("Invalid source snapshot signature")
-            signature_path = stage / "source-signature.sshsig"
-            fd = os.open(signature_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-            with os.fdopen(fd, "w", encoding="ascii") as stream:
-                stream.write(signature);stream.flush();os.fsync(stream.fileno())
-            verify_source_signature(receipt, signature_path, config["allowed_signers_file"], base)
-            copy_cipher(incoming, stage / "manifest.gpg", receipt["manifestCipherBytes"],
-                        receipt["manifestCipherSha256"], MAX_MANIFEST_BYTES, base)
-            result = {**receipt, "state": "SNAPSHOT_CIPHERTEXT_COMPLETE", "targetId": "cloud-archive",
-                      "receivedAt": base.now().isoformat(), "chunkCount": len(refs), "restoreVerified": False,
-                      "sourceSignatureVerified": True}
-            base.atomic_json(stage / "references.json", refs)
-            base.atomic_json(stage / "source-receipt.json", receipt)
-            base.atomic_json(stage / "target-receipt.json", result)
-            base.sync_directory(stage)
-            os.rename(stage, points / receipt["snapshotId"]); base.sync_directory(points)
-            base.atomic_json(Path(config["status_file"]), base.build_status(config))
+            copy_cipher(incoming, stage / "cipher.gpg", header["cipherBytes"], header["cipherSha256"], MAX_CIPHER_BYTES, base)
+            result = old or {"format": FORMAT, "opaqueId": name, "cipherSha256": header["cipherSha256"],
+                             "cipherBytes": header["cipherBytes"], "receivedAt": base.now().isoformat()}
+            if old:
+                shutil.rmtree(stage)
+            else:
+                base.atomic_json(stage / "receipt.json", result); base.sync_directory(stage)
+                os.rename(stage, objects / name); base.sync_directory(objects)
             outgoing.write(canonical(result) + b"\n")
-        except BaseException:
-            if stage.exists():shutil.rmtree(stage)
+            return
+        except BaseException as error:
+            if stage.exists():
+                try:
+                    latest.discard_stage(stage, base) if latest else shutil.rmtree(stage)
+                except (OSError, ValueError):
+                    error.cleanup_required = True
+                    error.add_note('Receiver cleanup requires identity review')
             raise
+    if operation != "commitSnapshot" or set(header) != {"format", "operation", "snapshotReceipt", "references", "sourceSignature"}:
+        raise ValueError("Unsupported chunk protocol operation")
+    receipt = header["snapshotReceipt"]
+    expected = {"format", "snapshotId", "nonce", "sourceSetId", "sourceSnapshotAt", "sourceManifestSha256",
+                "recipientFingerprint", "manifestCipherSha256", "manifestCipherBytes", "referenceListSha256",
+                "marketStateIncluded", "clientReleaseStateIncluded"}
+    if latest:
+        expected.add('configurationVersion')
+    refs = reference_list(header["references"], base)
+    if (not isinstance(receipt, dict) or set(receipt) != expected or receipt["format"] != FORMAT
+            or not SNAPSHOT.fullmatch(receipt["snapshotId"]) or not base.SET.fullmatch(receipt["sourceSetId"])
+            or not re.fullmatch(r"[a-f0-9]{32}", receipt["nonce"])
+            or receipt["recipientFingerprint"] != config["recipient_fingerprint"]
+            or not base.HASH.fullmatch(receipt["sourceManifestSha256"])
+            or receipt["referenceListSha256"] != hashlib.sha256(canonical(refs)).hexdigest()
+            or type(receipt["marketStateIncluded"]) is not bool
+            or type(receipt["clientReleaseStateIncluded"]) is not bool
+            or base.instant(receipt["sourceSnapshotAt"]) > base.now() + timedelta(minutes=5)):
+        raise ValueError("Snapshot manifest binding failed")
+    named = datetime.strptime(receipt["sourceSetId"].split("-")[0], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+    if abs((base.instant(receipt["sourceSnapshotAt"]) - named).total_seconds()) >= 1:
+        raise ValueError("Snapshot time differs from its source identity")
+    if (points / receipt["snapshotId"]).exists():
+        raise ValueError("A published snapshot cannot be overwritten")
+    for row in refs:
+        known = object_record(objects, row["opaqueId"], base, verify=True)
+        if known is None or any(known[key] != row[key] for key in ("cipherSha256", "cipherBytes")):
+            raise ValueError("Snapshot dependencies are incomplete")
+    capacity(config, receipt["manifestCipherBytes"] + len(canonical(refs)) + 32768, base)
+    stage = latest.create_stage(points, base) if latest else points / (".incoming-" + uuid.uuid4().hex)
+    if not latest:stage.mkdir(mode=0o700)
+    try:
+        signature = header["sourceSignature"]
+        if (not isinstance(signature, str) or len(signature) > 8192
+                or not signature.startswith("-----BEGIN SSH SIGNATURE-----")):
+            raise ValueError("Invalid source snapshot signature")
+        signature_path = stage / "source-signature.sshsig"
+        fd = os.open(signature_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w", encoding="ascii") as stream:
+            stream.write(signature);stream.flush();os.fsync(stream.fileno())
+        verify_source_signature(receipt, signature_path, config["allowed_signers_file"], base)
+        copy_cipher(incoming, stage / "manifest.gpg", receipt["manifestCipherBytes"],
+                    receipt["manifestCipherSha256"], MAX_MANIFEST_BYTES, base)
+        result = {**receipt, "state": "SNAPSHOT_CIPHERTEXT_COMPLETE", "targetId": "cloud-archive",
+                  "receivedAt": base.now().isoformat(), "chunkCount": len(refs), "restoreVerified": False,
+                  "sourceSignatureVerified": True}
+        base.atomic_json(stage / "references.json", refs)
+        base.atomic_json(stage / "source-receipt.json", receipt)
+        base.atomic_json(stage / "target-receipt.json", result)
+        base.sync_directory(stage)
+        os.rename(stage, points / receipt["snapshotId"]); base.sync_directory(points)
+        if latest:
+            result = latest.after_publish(config, base, sys.modules[__name__], result)
+            base.atomic_json(points / receipt["snapshotId"] / "target-receipt.json", result)
+        base.atomic_json(Path(config["status_file"]), base.build_status(config))
+        outgoing.write(canonical(result) + b"\n")
+    except BaseException as error:
+        if stage.exists():
+            try:
+                latest.discard_stage(stage, base) if latest else shutil.rmtree(stage)
+            except (OSError, ValueError):
+                error.cleanup_required = True
+                error.add_note('Receiver cleanup requires identity review')
+        raise
 
 
-def retention_plan_locked(config, base):
+def retention_plan_locked(config, base, *, keep_override=None, protected_rows=(), orphan_grace_seconds=2*86400, verify=False):
     """Prove the complete snapshot/object plan before either format is deleted."""
     _, objects, points = directories(config, base)
     rows = snapshots(config, base, include_references=False)  # Malformed points abort all GC.
@@ -322,6 +363,8 @@ def retention_plan_locked(config, base):
         if timestamp >= moment - timedelta(days=config["hourly_retention_days"]):keep.add(directory)
         if timestamp >= moment - timedelta(days=config["daily_retention_days"]):daily[timestamp.date()] = directory
     keep.update(daily.values())
+    if keep_override is not None:
+        keep = set(keep_override)
     active, stale_leases = bundle_lease_state(objects.parent, base)
     by_name = {path.name: (path, receipt) for path, receipt, _ in rows}
     for marker in active:
@@ -337,15 +380,20 @@ def retention_plan_locked(config, base):
     # Prove the complete retained closure before removing any recovery point.
     needed = {}
     for directory, _, _ in retained:
-        _, refs = snapshot_record(directory, config, base)
+        _, refs = snapshot_record(directory, config, base, verify=verify)
         for row in refs:
             if row['opaqueId'] not in needed and len(needed) >= MAX_CATALOG_UNIQUE_CHUNKS:
                 raise base.TransferFailure('CATALOG_RESOURCE_LIMIT')
             previous = needed.setdefault(row['opaqueId'], row)
             if previous != row:
                 raise ValueError('Retained references disagree about an immutable chunk')
+    for row in protected_rows:
+        if row['opaqueId'] not in needed and len(needed) >= MAX_CATALOG_UNIQUE_CHUNKS:
+            raise base.TransferFailure('CATALOG_RESOURCE_LIMIT')
+        if needed.setdefault(row['opaqueId'], row) != row:
+            raise ValueError('Upload and retained closure disagree')
     for name, row in needed.items():
-        known = object_record(objects, name, base)
+        known = object_record(objects, name, base, verify=verify)
         if known is None or any(known[key] != row[key] for key in ('cipherSha256', 'cipherBytes')):
             raise ValueError('Retained dependency closure blocks GC')
     obsolete_points = []
@@ -356,6 +404,9 @@ def retention_plan_locked(config, base):
         allowed = {"manifest.gpg", "references.json", "target-receipt.json"}
         if receipt.get("sourceSignatureVerified"):
             allowed |= {"source-receipt.json", "source-signature.sshsig"}
+        if (directory / '.upload-stage.json').exists():
+            base.latest_module().checked_stage(directory, base)
+            allowed.add('.upload-stage.json')
         if {p.name for p in directory.iterdir()} != allowed:
             raise ValueError("Unknown snapshot contents block cleanup")
         obsolete_points.append(directory)
@@ -365,9 +416,13 @@ def retention_plan_locked(config, base):
         if not OPAQUE.fullmatch(directory.name):raise ValueError("Unknown chunk entry blocks GC")
         if directory.name in needed:continue
         known = object_record(objects, directory.name, base)
-        if base.instant(known["receivedAt"]) >= moment - timedelta(days=2):continue
+        if base.instant(known["receivedAt"]) >= moment - timedelta(seconds=orphan_grace_seconds):continue
         if directory.parent != objects or directory != directory.resolve():raise ValueError("Chunk GC escaped its root")
-        if {p.name for p in directory.iterdir()} != {"cipher.gpg", "receipt.json"}:raise ValueError("Unknown chunk files block GC")
+        expected_files = {'cipher.gpg', 'receipt.json'}
+        if (directory / '.upload-stage.json').exists():
+            base.latest_module().checked_stage(directory, base)
+            expected_files.add('.upload-stage.json')
+        if {p.name for p in directory.iterdir()} != expected_files:raise ValueError("Unknown chunk files block GC")
         obsolete_objects.append(directory)
     return {'pointsRoot': points, 'objectsRoot': objects,
             'snapshots': tuple(obsolete_points), 'objects': tuple(obsolete_objects), 'staleLeases': tuple(stale_leases)}
@@ -702,6 +757,7 @@ def capture_files(entries, stage, secret, sealed, config, base, *, deadline=None
 
 
 def run_source(config, base):
+    latest_mode = base.latest_enabled(config)
     budget, unit = base.run_budget(config, 'snapshot')
     deadline = base.time.monotonic() + budget
     phases = {}
@@ -745,8 +801,22 @@ def run_source(config, base):
                     source_manifest = base.read_json(root / set_id / "manifest.json")
             # All source bytes and identities are privately spooled; release
             # the source mutex before encryption and receiver/GC backpressure.
+            configuration_version = recovery_configuration_identity(files, secret) if latest_mode else None
             transfer_started = base.time.monotonic()
-            probed = rpc(config, {"format": base.FORMAT, "operation": "probeChunks", "opaqueIds": sorted(captured)}, base,
+            point_id = "snapshot-" + base.now().strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:12]
+            nonce = uuid.uuid4().hex
+            lease_header = {}
+            if latest_mode:
+                leased = rpc(config, {'format': base.FORMAT, 'operation': 'beginSnapshotUpload',
+                    'snapshotId': point_id, 'nonce': nonce, 'sourceSetId': set_id,
+                    'sourceSnapshotAt': source_manifest['started_at'], 'sourceManifestSha256': manifest_digest,
+                    'recipientFingerprint': config['recipient_fingerprint'], 'configurationVersion': configuration_version,
+                    'opaqueIds': sorted(captured)}, base, deadline=deadline)
+                if (leased.get('format') != base.latest_module().LEASE_FORMAT
+                        or not isinstance(leased.get('leaseId'), str) or not re.fullmatch(r'[a-f0-9]{32}', leased['leaseId'])):
+                    raise ValueError('Invalid upload lease acknowledgment')
+                lease_header = {'uploadLease': leased['leaseId']}
+            probed = rpc(config, {"format": base.FORMAT, "operation": "probeChunks", "opaqueIds": sorted(captured), **lease_header}, base,
                          deadline=deadline)
             existing = {row["opaqueId"]: row for row in probed["objects"]}
             refs = [];new_bytes = new_count = 0
@@ -761,7 +831,7 @@ def run_source(config, base):
                     encrypt_bytes(raw, cipher, key_fd, home, sealed)
                     del raw
                     header = {"format": base.FORMAT, "operation": "putChunk", "opaqueId": opaque,
-                              "cipherSha256": base.digest(cipher), "cipherBytes": cipher.stat().st_size}
+                              "cipherSha256": base.digest(cipher), "cipherBytes": cipher.stat().st_size, **lease_header}
                     known = rpc(config, header, base, cipher, deadline=deadline)
                     if any(known.get(key) != header[key] for key in ("opaqueId", "cipherSha256", "cipherBytes")):
                         raise ValueError("Chunk acknowledgment differs")
@@ -769,8 +839,6 @@ def run_source(config, base):
                 refs.append({key: known[key] for key in ("opaqueId", "cipherSha256", "cipherBytes")})
                 captured_chunk['path'].unlink()
             reference_list(refs, base)
-            point_id = "snapshot-" + base.now().strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:12]
-            nonce = uuid.uuid4().hex
             ref_digest = hashlib.sha256(canonical(refs)).hexdigest()
             manifest = {"format": FORMAT, "snapshotId": point_id, "nonce": nonce,
                 "sourceSetId": set_id, "sourceSnapshotAt": source_manifest["started_at"],
@@ -782,6 +850,8 @@ def run_source(config, base):
                     "clientReleaseStateIncluded": bool(summary.get("client_release_state")),
                     "remoteGatewayRecovery": summary.get('remote_recovery'),
                     "arbitraryPitrOriginalHistoryProtected": False}}
+            if latest_mode:
+                manifest['configurationVersion'] = configuration_version
             manifest_bytes = canonical(manifest)
             if len(manifest_bytes) > MAX_MANIFEST_BYTES:
                 raise ValueError('Snapshot manifest exceeds the existing decoder limit')
@@ -790,9 +860,11 @@ def run_source(config, base):
                 "sourceManifestSha256", "recipientFingerprint", "referenceListSha256")}
             receipt.update(manifestCipherSha256=base.digest(cipher), manifestCipherBytes=cipher.stat().st_size,
                 marketStateIncluded=bool(summary.get("market_state")), clientReleaseStateIncluded=bool(summary.get("client_release_state")))
+            if latest_mode:
+                receipt['configurationVersion'] = configuration_version
             signature = sign_receipt(receipt, config["signing_key_file"], base)
             target = rpc(config, {"format": base.FORMAT, "operation": "commitSnapshot", "snapshotReceipt": receipt,
-                                   "references": refs, "sourceSignature": signature}, base, cipher, deadline=deadline)
+                                   "references": refs, "sourceSignature": signature, **lease_header}, base, cipher, deadline=deadline)
             if target.get("snapshotId") != point_id or target.get("manifestCipherSha256") != receipt["manifestCipherSha256"]:
                 raise ValueError("Snapshot commit acknowledgment differs")
             status_value = {"format": FORMAT, "state": "SNAPSHOT_CIPHERTEXT_COMPLETE", "observedAt": base.now().isoformat(),
@@ -802,6 +874,11 @@ def run_source(config, base):
                 "arbitraryPitrOriginalHistoryProtected": False, "restoreVerified": False,
                 'budgetSeconds': budget, 'reviewedUnitTimeoutSeconds': unit,
                 'phaseSeconds': {**phases, 'encryptAndTransfer': round(max(0, base.time.monotonic() - transfer_started), 3)}}
+            if latest_mode:
+                status_value['cleanupState'] = target.get('cleanupState')
+                if target.get('cleanupState') != 'COMPLETE':
+                    status_value.update(health='DEGRADED', state=('SNAPSHOT_COMPLETE_CLEANUP_FAILED'
+                        if target.get('cleanupState') == 'FAILED' else 'SNAPSHOT_COMPLETE_COMMISSIONING_PENDING'))
             base.atomic_json(status_path, status_value)
             return status_value
         except Exception as error:

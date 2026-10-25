@@ -182,3 +182,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest test_continuous_backup test_snapsh
 可单独运行 `python3 deploy/dr-backup/benchmark_retention.py --snapshots 256 --chunks 2048`
 验证约五十二万条共享引用的保留开销。它只在新的系统临时目录创建合成密文和清单，不接受正式目录，
 不会连接服务器或执行生产清理；输出实际核验次数、耗时与保留结果，结束即移除自己的临时夹具。
+
+## 显式云端单恢复点策略
+
+用户选择不增加云费用时，可采用独立 opt-in 的 [`latest_snapshot` 策略](LATEST_ONLY.zh-CN.md)。默认 history 与公司本地历史不变；先完整验证新点、真实恢复与凭据 commissioning，再跨两格式轮换。该候选未自动修改任何现场配置。

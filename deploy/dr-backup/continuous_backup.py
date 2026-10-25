@@ -314,6 +314,24 @@ def chunks_module():
     private_path(path)
     spec = importlib.util.spec_from_file_location("uten_dr_snapshot_chunks", path)
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def latest_enabled(config):
+    mode = config.get('retention_mode', 'history')
+    if mode not in {'history', 'latest_snapshot'}:
+        raise ValueError('Unknown cloud retention mode')
+    return mode == 'latest_snapshot'
+
+
+def latest_module():
+    path = Path(__file__).with_name('latest_snapshot.py')
+    private_path(path)
+    spec = importlib.util.spec_from_file_location('uten_dr_latest_snapshot', path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -352,6 +370,10 @@ def build_status(config):
             result["health"] = "HEALTHY"
         elif snapshot_status["completedSnapshots"]:
             result["health"] = "DEGRADED"
+    if latest_enabled(config):
+        result.update(latest_module().status(config, sys.modules[__name__], chunks_module()))
+        if (not result['latestRotationCommissioned'] or result['latestRotationCleanupState'] != 'COMPLETE'):
+            result['health'] = 'DEGRADED'
     return result
 
 
@@ -365,7 +387,7 @@ def receive(config, incoming, outgoing):
     header = decode_json(raw)
     if not isinstance(header, dict) or header.get("format") != FORMAT:
         raise ValueError("Invalid transfer protocol")
-    if header.get("operation") in {"probeChunks", "putChunk", "commitSnapshot"}:
+    if header.get("operation") in {"probeChunks", "putChunk", "commitSnapshot", "beginSnapshotUpload"}:
         chunks_module().receive(header, incoming, outgoing, config, sys.modules[__name__])
         return
     if header.get("operation") == "status" and set(header) == {"format", "operation"}:
@@ -373,6 +395,8 @@ def receive(config, incoming, outgoing):
         return
     if set(header) != {"format", "operation", "sourceReceipt", "sourceSnapshotAt"} or header["operation"] != "submit":
         raise ValueError("Unsupported transfer operation")
+    if latest_enabled(config):
+        raise ValueError('Periodic full archives are disabled in latest-snapshot cloud mode')
     receipt = source_receipt(header["sourceReceipt"], config)
     snapshot = instant(header["sourceSnapshotAt"])
     named = datetime.strptime(receipt["sourceSetId"].split("-")[0], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
@@ -432,6 +456,17 @@ def receive(config, incoming, outgoing):
 def retain(config):
     root = private_path(config["storage_root"], directory=True)
     with lock(root / ".receiver.lock", timeout=RECEIVER_WAIT_SECONDS, busy_code='RECEIVER_BUSY'):
+        if latest_enabled(config):
+            try:
+                result = latest_module().retain_locked(config, sys.modules[__name__], chunks_module())
+            except Exception as error:
+                atomic_json(root / '.latest-cleanup.json', {'mode': 'latest_snapshot', 'cleanupState': 'FAILED',
+                    'observedAt': now().isoformat(), 'errorCode': failure_record(error)['errorCode']})
+                raise
+            status = build_status(config)
+            status['lastRetention'] = {'at': now().isoformat(), **result}
+            atomic_json(Path(config['status_file']), status)
+            return status
         rows = completed(config)
         keep = {path for path, _, _ in rows[-config["minimum_complete_sets"]:]}
         daily = {}
@@ -670,6 +705,8 @@ def capture_archive(config, state, *, deadline=None, phases=None):
 
 
 def run_source(config):
+    if latest_enabled(config):
+        raise ValueError('Periodic full source must be disabled for latest-snapshot cloud mode')
     budget, unit = run_budget(config, 'archive')
     deadline = time.monotonic() + budget
     phases = {}
@@ -731,9 +768,13 @@ def prune_source_exports(config, newest):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("receive", "retain", "status", "source", "snapshot", "bundle"))
+    parser.add_argument("mode", choices=("receive", "retain", "status", "source", "snapshot", "bundle", "archive-bundle", "commission-latest"))
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--snapshot-id")
+    parser.add_argument('--export-id')
+    parser.add_argument('--restore-report', type=Path)
+    parser.add_argument('--credential-review', type=Path)
+    parser.add_argument('--legacy-exports-drained', action='store_true')
     args = parser.parse_args()
     os.umask(0o077)
     # A peer cannot hold a receiver indefinitely or stream unbounded input.
@@ -743,6 +784,17 @@ def main():
         config = read_json(private_path(args.config))
         if args.mode == "receive":
             receive(config, sys.stdin.buffer, sys.stdout.buffer)
+        elif args.mode == 'commission-latest':
+            value = latest_module().commission(config, sys.modules[__name__], chunks_module(),
+                args.snapshot_id, args.restore_report, credential_review_path=args.credential_review,
+                legacy_exports_drained=args.legacy_exports_drained)
+            print(json.dumps(value))
+        elif args.mode == 'archive-bundle':
+            budget = config.get('bundle_budget_seconds', 600)
+            if type(budget) is not int or not 30 <= budget <= 3600:
+                raise ValueError('Invalid bounded archive bundle budget')
+            signal.alarm(budget)
+            latest_module().archive_bundle(config, sys.modules[__name__], chunks_module(), args.export_id, sys.stdout.buffer)
         elif args.mode == "bundle":
             budget = config.get('bundle_budget_seconds', 600)
             if type(budget) is not int or not 30 <= budget <= 3600:

@@ -221,7 +221,8 @@ public class DashboardOverviewService {
         Long result = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM sales_orders o
                 WHERE o.is_deleted = false AND o.status = 1
-                  AND o.is_closed = false AND o.is_stopped = false AND
+                  AND o.is_closed = false AND o.is_stopped = false
+                  AND NOT fn_imported_business_document('sales_orders', o.id) AND
                 """ + predicate, Long.class, scope.owners().toArray());
         long active = result == null ? 0 : result;
         metrics.add(new MetricCard(

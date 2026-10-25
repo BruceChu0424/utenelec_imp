@@ -41,6 +41,13 @@ public class ProductionExecutionWorkbenchService {
     /** 段级动作：在开工确认表里认料。 */
     static final String ACTION_CHOOSE = "CHOOSE";
     private static final String BIN_STATE_KNOWN = WorkshopMaterialStatePort.KNOWN;
+    /** The ongoing queue never inherits a historical-list originScope request. */
+    private static final String CURRENT_ROOT_PREDICATE = """
+            (CASE root.root_type
+              WHEN 'PLAN' THEN NOT fn_imported_business_document('production_plans', root.root_id)
+              WHEN 'ANALYSIS' THEN NOT fn_imported_business_document('production_material_analyses', root.root_id)
+              ELSE FALSE END)
+            """;
 
     private final EntityManager em;
     private final ProductionDocumentAccessPolicy productionAccess;
@@ -80,7 +87,7 @@ public class ProductionExecutionWorkbenchService {
                 keyword, workshopDepartmentId, mine, employeeId,
                 canSearchClient, salesOrder);
         String from = " FROM v_production_execution_workbench_roots root WHERE ("
-                + scope.predicate() + ") " + filters;
+                + scope.predicate() + ") AND " + CURRENT_ROOT_PREDICATE + filters;
         Query count = em.createNativeQuery("SELECT COUNT(*)" + from);
         scope.bind(count);
         bindRootFilters(count, keyword, workshopDepartmentId, mine, employeeId,
@@ -128,7 +135,7 @@ public class ProductionExecutionWorkbenchService {
         var query = em.createNativeQuery(
                 "SELECT COALESCE(root.sales_order_preview, ''), COUNT(*)"
                 + " FROM v_production_execution_workbench_roots root WHERE ("
-                + scope.predicate() + ") " + filters
+                + scope.predicate() + ") AND " + CURRENT_ROOT_PREDICATE + filters
                 + " GROUP BY 1 HAVING COALESCE(root.sales_order_preview, '') <> ''"
                 + " ORDER BY 1");
         scope.bind(query);
@@ -156,7 +163,8 @@ public class ProductionExecutionWorkbenchService {
                 new com.uten.imp.security.OwnerVisibility.OwnerScope(owners.seeAll(), owners.writableOwners()));
         Query count = em.createNativeQuery(
                 "SELECT COUNT(*) FROM v_production_execution_workbench_roots root"
-                        + " WHERE root.owner_employee_id IS NOT NULL AND (" + scope.predicate() + ")");
+                        + " WHERE root.owner_employee_id IS NOT NULL AND (" + scope.predicate() + ") AND "
+                        + CURRENT_ROOT_PREDICATE);
         scope.bind(count);
         return ((Number) count.getSingleResult()).longValue();
     }

@@ -115,8 +115,9 @@ class _WarehouseQualityResultsPageState
   WarehouseIqcStockInReceiptType? _receiptType;
   _QStatusSeg? _statusSeg = const _QStatusSeg.all();
 
-  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
+  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
+  /// 最近三个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
   String _keyword = '';
 
   /// 状态分段计数（后端全量口径）；null = 尚未返回，分段显示 '—'。
@@ -259,12 +260,19 @@ class _WarehouseQualityResultsPageState
 
   void _selectStatus(_QStatusSeg seg) {
     if (seg == _statusSeg) return;
+    final wasHistory = _statusSeg?.history == true;
     setState(() {
       _statusSeg = seg;
       _selectedIds = {};
       _result = null;
       ++_requestVersion;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
+      // 进历史段重新按默认近三个月加载；历史内换状态筛选保留已选时间
+      // （ADR-180 历史保留原时间范围）；离开历史回 all() 占位。
+      if (seg.history) {
+        if (!wasHistory) _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+      } else {
+        _historyTime = const UtenHistoryTimeValue.all();
+      }
     });
     if (!seg.history || !_historyTime.isNone) _load(1);
   }

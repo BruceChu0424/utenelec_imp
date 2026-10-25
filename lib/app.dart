@@ -137,7 +137,7 @@ class UtenApp extends ConsumerWidget {
                     // 人为输入采集 (不渲染)：用户没在操作时发出的请求不续期服务端会话 (ADR-110)。
                     const UserActivityTracker(),
                     // 登录会话重建门（不渲染）：重新登录时立即重拉全局角标，
-                    // 不再等 60s 轮询/手动刷新（清空业务数据后的重进即新数据）。
+                    // 不再等 60s 轮询/手动刷新。
                     const SessionRehydrateGate(),
                     ClientUpdateHost(
                       key: ValueKey((
@@ -158,6 +158,9 @@ class UtenApp extends ConsumerWidget {
                     // 模拟身份横幅：占顶「固定」、把页面整体下推，不再覆盖 AppBar/返回键。
                     // 非模拟时返回 SizedBox.shrink，自动收起不占空间。
                     const ImpersonationBanner(),
+                    // 连接恢复横幅：占顶「下推」通栏（与模拟身份横幅同形态）。断连期间
+                    // 不再以悬浮卡片盖住页面搜索框/标签页；恢复后整条自动收起不占空间。
+                    const ConnectionRecoveryBanner(),
                     Expanded(
                       child: Builder(
                         builder: (context) {
@@ -185,15 +188,9 @@ class UtenApp extends ConsumerWidget {
                                   right: 0,
                                   child: SafeArea(
                                     bottom: false,
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        ConnectionRecoveryBanner(
-                                          useSafeArea: false,
-                                        ),
-                                        AppNotificationHost(useSafeArea: false),
-                                      ],
-                                    ),
+                                    // 普通通知横幅：瞬时悬浮居中、自动消失。连接横幅
+                                    // 不在此处——它占顶下推，见上方 Column。
+                                    child: AppNotificationHost(useSafeArea: false),
                                   ),
                                 ),
                               ],

@@ -1,6 +1,8 @@
 // 页面偏好与会话快照的竞态回归(ADR-108 修复轮):
 // 某个偏好推送成功后就地更新会话快照, 不能把其它偏好(或同一偏好推送期间的新改动)
 // 冲回快照里的旧值, 更不能再把旧值推上服务端。
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -30,6 +32,7 @@ class _Api extends ApiClient {
   final Map<String, Object?> server = {};
   int meCalls = 0;
   Duration putDelay = const Duration(milliseconds: 50);
+  Completer<void>? meGate;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -38,6 +41,7 @@ class _Api extends ApiClient {
   }) async {
     if (path != ApiEndpoints.authMe) throw StateError('unexpected $path');
     meCalls++;
+    await meGate?.future;
     return {
       'id': 'user-1',
       'session': {
@@ -64,10 +68,13 @@ class _Api extends ApiClient {
   }
 }
 
-Future<(ProviderContainer, _Api)> _boot() async {
+Future<(ProviderContainer, _Api)> _boot({
+  _Api? backend,
+  bool waitForSnapshot = true,
+}) async {
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
-  final api = _Api();
+  final api = backend ?? _Api();
   final container = ProviderContainer(
     overrides: [
       apiClientProvider.overrideWithValue(api),
@@ -80,12 +87,31 @@ Future<(ProviderContainer, _Api)> _boot() async {
   );
   container.listen(instantInventoryPrefsProvider, (_, _) {});
   container.listen(productionBoardSortProvider, (_, _) {});
-  await container.read(sessionSnapshotProvider.future);
+  if (waitForSnapshot) await container.read(sessionSnapshotProvider.future);
   await Future<void>.delayed(Duration.zero);
   return (container, api);
 }
 
 void main() {
+  test('首次同身份快照延迟时保留用户先保存的偏好并同步', () async {
+    final backend = _Api()..meGate = Completer<void>();
+    final (c, api) = await _boot(backend: backend, waitForSnapshot: false);
+    addTearDown(c.dispose);
+
+    c.read(instantInventoryPrefsProvider.notifier).update(true);
+    backend.meGate!.complete();
+    await c.read(sessionSnapshotProvider.future);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(c.read(instantInventoryPrefsProvider), isTrue);
+    await Future<void>.delayed(const Duration(milliseconds: 1000));
+    expect(
+      api.server[ApiEndpoints.userPreference('stock.instantInventory')],
+      isTrue,
+    );
+    expect(api.meCalls, 1);
+  });
+
   test('A 键推送成功不冲掉 B 键还在防抖中的改动, 也不把旧值推上去', () async {
     final (c, api) = await _boot();
     addTearDown(c.dispose);

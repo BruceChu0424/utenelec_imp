@@ -132,8 +132,12 @@ class BootstrapComposerTest(unittest.TestCase):
     def test_cleanup_preserves_only_the_exact_shared_evidence_tables(self):
         suffix = self.assert_preserved("SELECT 1;\n").decode()
         self.assertEqual(composer.PRESERVED_TEMP_TABLES, (
+            "bootstrap_owner_custody_pending",
             "bootstrap_source_master_ids", "bootstrap_legacy_reference_evidence", "bootstrap_bom_exclusions",
-            "bootstrap_warehouse_exclusions", "bootstrap_stock_movement_nonposting"))
+            "bootstrap_warehouse_exclusions", "bootstrap_stock_movement_nonposting",
+            "bootstrap_default_settlement_source_snapshot"))
+        self.assertNotIn('client_stage',composer.PRESERVED_TEMP_TABLES)
+        self.assertNotIn('supplier_stage',composer.PRESERVED_TEMP_TABLES)
         for table in composer.PRESERVED_TEMP_TABLES:
             self.assertIn("'" + table + "'", suffix)
         self.assertIn("relnamespace=pg_my_temp_schema()", suffix)

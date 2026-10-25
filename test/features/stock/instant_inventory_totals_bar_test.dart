@@ -151,7 +151,7 @@ void main() {
         tester,
         const Size(1500, 1000),
         api: api,
-        permissions: const {Perm.stockReportExport},
+        permissions: const {Perm.stockReportExport, Perm.materialCategoryView},
         initialLocation: Uri(
           path: RouteName.stockInstantInventory,
           queryParameters: InstantInventoryNavigationContext(
@@ -511,7 +511,7 @@ Future<GoRouter> _pumpPage(
   bool withAnalysis = true,
   double textScale = 1.0,
   InstantInventoryApiFixture? api,
-  Set<String> permissions = const {},
+  Set<String> permissions = const {Perm.materialCategoryView},
   String? initialLocation,
   InstantInventoryScope? legacyInitialScope,
 }) async {
@@ -585,19 +585,18 @@ Future<GoRouter> _pumpPage(
 }
 
 Future<void> _chooseCategory(WidgetTester tester, String label) async {
-  final field = find.byKey(const Key('instant-inventory-category'));
-  await tester.ensureVisible(field);
-  await tester.pumpAndSettle();
-  await tester.tap(field);
-  await tester.pumpAndSettle();
+  final directory = find.byKey(const Key('instant-inventory-open-categories'));
+  if (directory.evaluate().isNotEmpty) {
+    await tester.ensureVisible(directory);
+    await tester.tap(directory);
+    await tester.pumpAndSettle();
+  }
   await tester.tap(
     find.descendant(
       of: find.byType(UtenCategoryTreeView<ProductCategoryNode>),
       matching: find.text(label),
     ),
   );
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('确定').last);
   await tester.pumpAndSettle();
 }
 

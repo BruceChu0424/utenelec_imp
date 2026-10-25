@@ -159,8 +159,8 @@ class _WarehouseStockDocSegmentState
   /// DRAW 出库进度表头筛选；null = 不附加过滤。
   int? _issueStatus;
 
-  /// 历史单据段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
+  /// 历史单据段的时间门控值；默认近三个月（2026-10-24 用户口径）。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
 
   /// 2026-09-25 单号列统一：单据号表头值筛选 + 服务端桶（共享状态，见
   /// MasterServerColumnFilters）。
@@ -213,6 +213,9 @@ class _WarehouseStockDocSegmentState
           oldWidget.docType != widget.docType) {
         clearDraftSelection();
       }
+      final queryChanged =
+          oldWidget.keyword != widget.keyword ||
+          oldWidget.docType != widget.docType;
       _list.keyword = widget.keyword;
       if (oldWidget.docType != widget.docType) {
         trackRefresh(Future<void>.value(), replaceKey: 'rows');
@@ -220,12 +223,12 @@ class _WarehouseStockDocSegmentState
         _list.keyword = widget.keyword;
         _seg = null;
         _issueStatus = null;
-        _historyTime = const UtenHistoryTimeValue.all();
+        _historyTime = UtenHistoryTimeValue.lastThreeMonths();
         // 2026-09-25 单号列统一：换单据类型时单号筛选/桶随旧命名空间一并重置。
         _columnFilters.reset();
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _reload(1);
+        if (mounted) _reload(queryChanged ? 1 : null, !queryChanged);
       });
     }
   }
@@ -238,7 +241,7 @@ class _WarehouseStockDocSegmentState
         DocumentPermissionAction.create,
       );
 
-  Future<PagedResult<StockDocListItem>> _fetch() {
+  Future<PagedResult<StockDocListItem>> _fetch([int? requestedPage]) {
     final seg = _seg!;
     final range = seg.history ? _historyTime.range : null;
     final showIssue = !seg.history && widget.docType == StockDocType.draw;
@@ -246,7 +249,7 @@ class _WarehouseStockDocSegmentState
     return ref
         .read(stockDocRepositoryProvider(widget.docType))
         .list(
-          page: _list.pageNum,
+          page: requestedPage ?? _list.pageNum,
           filter: StockDocFilter(
             view: seg.history
                 ? WarehouseTaskView.history
@@ -328,6 +331,7 @@ class _WarehouseStockDocSegmentState
       page ?? _list.pageNum,
       silent: silent,
       fetch: _fetch,
+      fetchPage: _fetch,
       isCurrent: captureReadOwner(ref),
     );
     if (!mounted || generation != _reloadGeneration) return;
@@ -426,7 +430,10 @@ class _WarehouseStockDocSegmentState
     setState(() {
       _seg = seg;
       _issueStatus = null;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
+      // 进历史段重新按默认近三个月加载；非历史段回 all() 占位。
+      _historyTime = seg.history
+          ? UtenHistoryTimeValue.lastThreeMonths()
+          : const UtenHistoryTimeValue.all();
     });
     _reload(1);
   }
@@ -574,7 +581,11 @@ class _WarehouseStockDocSegmentState
     // 详情/编辑页保存、审核、红冲成功都会 bump 本 docType 的 tick：宿主任务中心就在
     // 栈顶时据此重拉；被详情页盖着时由宿主返回时的刷新带着重拉(ADR-108)。
     _hostLocation ??= currentLocationOr(context, '');
-    ref.onListRefresh(_hostLocation!, widget.docType.refreshKey, _reload);
+    ref.onListRefresh(
+      _hostLocation!,
+      widget.docType.refreshKey,
+      () => _reload(null, true),
+    );
     // go_router 子页 replace/go 返回时 push Future 可能不完成；回到宿主必须
     // 独立复位导航忙状态。数据刷新仍由宿主/上方精准刷新处理，避免重复请求。
     ref.onPageResume(
@@ -702,7 +713,9 @@ class _WarehouseStockDocSegmentState
               : _withFormDraftRows(
                   MasterDataTableView<StockDocListItem>(
                     rowsController: _tableRows,
-                    paginationRevision: _list.page,
+                    paginationRevision: _list.paginationRevision,
+                    refreshedPages: _list.refreshedPages,
+                    onRetainedPagesChanged: _list.retainPages,
                     tableKey:
                         'features.warehouse.widgets.warehouse_stock_doc_segment.WarehouseStockDocSegmentState.build.1',
                     // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
@@ -840,8 +853,10 @@ class _WarehouseStockDocSegmentState
                     onRowTap: _openStockTask,
                     isLoading: _list.isLoadingFirst,
                     loadingMore: _list.isLoadingMore,
+                    isRefreshing: _list.refreshing,
+                    refreshError: _list.refreshError,
                     error: _list.error,
-                    onRetry: () => _reload(),
+                    onRetry: () => _reload(null, _list.refreshError != null),
                     emptyMessage: seg.history
                         ? '该时间段内暂无${widget.docType.label}'
                         : '暂无${widget.docType.label}',

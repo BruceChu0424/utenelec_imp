@@ -31,7 +31,7 @@ final class GoodsRelatedColumnAdapter implements PlatformColumnResourceAdapter {
     @Override public String scope(){return delegate.scope();} @Override public String label(){return delegate.label();}
     @Override public void requireDefinitionAccess(boolean write){delegate.requireDefinitionAccess(write);}
     @Override public boolean canWrite(){return delegate.canWrite();} @Override public boolean canViewPrice(){return delegate.canViewPrice();}
-    @Override public boolean canCreate(){return delegate.canCreate();} @Override public boolean preserveValuesOnReset(){return delegate.preserveValuesOnReset();}
+    @Override public boolean canCreate(){return delegate.canCreate();}
     @Override public List<FactDefinition> facts(){return delegate.facts();}
     @Override public Map<UUID,RecordAccess> authorize(Set<UUID> ids,boolean write){return delegate.authorize(ids,write);}
     @Override public List<RelationDefinition> relations(){return canViewMoulds()?RELATIONS:List.of();}

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/utils/china_datetime.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/data_display/uten_status_badge.dart';
 import '../../../../components/data_display/uten_status_cell_color.dart';
@@ -244,7 +245,8 @@ class _SubcontractLossClaimPanelState
       key: 'createdAt',
       label: '生成时间',
       width: 170,
-      value: (item) => item.createdAt,
+      value: (item) =>
+          ChinaDateTime.formatIsoInstant(item.createdAt, seconds: true),
     ),
   ];
 

@@ -546,6 +546,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         if(commandReplay(request.commandId(),id,"RECORD_RETURN",requestHash)){
             return detail(id);
         }
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,row.receiptType(),List.of(orderItemId(id)));
         requireVersion(row, request.expectedVersion());
         if (!canViewAllCases()
                 && !currentUser.requireId().equals(row.ownerUserId())) {
@@ -915,6 +916,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         if(commandReplay(request.commandId(),id,"REVERSE",requestHash)){
             return detail(id);
         }
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,row.receiptType(),List.of(orderItemId(id)));
         requireVersion(row, request.expectedVersion());
         if (!"RETURN_RECORDED".equals(row.status())) {
             throw conflict("仅未确认贷项的实物退回记录可以反向");
@@ -1024,6 +1026,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                     WHERE id=:id AND return_recorded_at IS NOT NULL
                     """).setParameter("id",id).getSingleResult()).longValue();
             if(hasReturn!=1)throw conflict("财务异常任务尚无可反向的实物退回事实");
+            com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,row.receiptType(),List.of(orderItemId(id)));
             requireNoActiveReplacementAllocation(id);
             String reason=bounded(request.reason(),2000,"实物退回反向原因");
             int updated=em.createNativeQuery("""
@@ -1486,9 +1489,10 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
     private void publish(
             String eventType, UUID caseId, String receiptType,
             String status, long version, String discriminator) {
+        // A physical return can be reversed and recorded again; each committed version is a new event.
         events.publishOnce(eventType, "PROCUREMENT_IQC_REJECTION", caseId,
                 Map.of("receiptType", receiptType, "status", status, "version", version),
-                eventType + ":" + caseId + ":" + discriminator);
+                eventType + ":" + caseId + ":" + version + ":" + discriminator);
     }
 
     /** Minimal existing-scope projection for the attachment owner policy. */

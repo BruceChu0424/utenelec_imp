@@ -798,7 +798,6 @@ if [[ ! -e "$ENV_FILE" ]]; then
     cat >"$PENDING_ENV" <<EOF
 # PENDING Uten IMP production environment. Root review is required before activation.
 UTEN_PROFILE=prod
-UTEN_BUSINESS_DATA_RESET_ENABLED=false
 UTEN_DEPLOYMENT_SITE=local
 UTEN_LOCAL_ALLOWED_CIDRS=127.0.0.0/8,::1/128,REPLACE_EXACT_OFFICE_CIDR
 SERVER_ADDRESS=127.0.0.1

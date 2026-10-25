@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 /**
  * In-memory record of the last run of every {@code @Scheduled} method.
  *
- * <p>Populated by {@code DrainAwareTaskScheduler} around each execution; nothing is
+ * <p>Populated by {@code ObservedTaskScheduler} around each execution; nothing is
  * persisted and the registry restarts empty with the JVM. Names are derived from the
  * declaring class and method only (no arguments, messages, SQL or paths).</p>
  *

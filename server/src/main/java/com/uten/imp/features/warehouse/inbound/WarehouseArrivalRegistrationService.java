@@ -983,6 +983,7 @@ public class WarehouseArrivalRegistrationService {
                 FROM %s order_item
                 JOIN %s order_doc ON order_doc.id = order_item.order_id
                 WHERE order_item.id IN (%s)
+                  AND order_doc.termination_case_id IS NULL
                 """.formatted(orderItemTable, orderTable, placeholders), (rs, rowNum) -> new OrderHeader(
                 rs.getObject("supplier_id", UUID.class),
                 rs.getObject("currency_id", UUID.class),

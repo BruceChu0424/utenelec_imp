@@ -80,7 +80,7 @@ void main() {
     final source = StateProvider<SensitiveReadBoundary>((ref) => _boundary());
     final changes = <dynamic>[];
     final container = await _host(tester, source, _Moulds(), changes);
-    await tester.tap(find.text('选择'));
+    await tester.tap(find.byKey(const ValueKey('uten-reference-open-picker')));
     await tester.pumpAndSettle();
     final table = tester.widget<MasterDataTableView<MouldListItem>>(
       find.byKey(const Key('mould-picker-results')),
@@ -106,7 +106,7 @@ void main() {
     final held = Completer<PagedResult<MouldListItem>>();
     final changes = <dynamic>[];
     final container = await _host(tester, source, _Moulds(rows: held), changes);
-    await tester.tap(find.text('选择'));
+    await tester.tap(find.byKey(const ValueKey('uten-reference-open-picker')));
     await tester.pump(const Duration(milliseconds: 300));
     container.read(source.notifier).state = _boundary(user: 'B');
     container.read(sensitiveReadBoundaryProvider);

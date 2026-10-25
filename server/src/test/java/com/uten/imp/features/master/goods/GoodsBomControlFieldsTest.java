@@ -165,6 +165,51 @@ class GoodsBomControlFieldsTest {
     }
 
     @Test
+    void replacingComponentUsesItsDefaultPriceWithoutExposingPrivatePrices() {
+        Goods replacement = goods("C-NEW", "新组件");
+        replacement.setPrice(new BigDecimal("5.50"));
+        GoodsBomItem row = new GoodsBomItem();
+        row.setGoods(parent);
+        row.setComponent(component);
+        row.setQty(new BigDecimal("3"));
+        row.setPrice(new BigDecimal("99"));
+        when(goodsRepo.findById(replacement.getId())).thenReturn(Optional.of(replacement));
+        when(bomRepo.findById(row.getId())).thenReturn(Optional.of(row));
+        BomItemSaveRequest request = request();
+        request.setComponentGoodsId(replacement.getId());
+        request.setQty(null);
+
+        var view = service.update(parent.getId(), row.getId(), request);
+
+        assertEquals(replacement.getId(), view.getComponentGoodsId());
+        assertEquals(new BigDecimal("3"), row.getQty());
+        assertEquals(new BigDecimal("5.50"), row.getPrice());
+        assertEquals(new BigDecimal("16.50"), row.getTotal());
+        org.junit.jupiter.api.Assertions.assertNull(view.getPrice());
+        org.junit.jupiter.api.Assertions.assertNull(view.getTotal());
+    }
+
+    @Test
+    void replacingWithAnUnpricedComponentDoesNotCarryTheOldComponentPrice() {
+        Goods replacement = goods("C-NO-PRICE", "未设价格组件");
+        GoodsBomItem row = new GoodsBomItem();
+        row.setGoods(parent);
+        row.setComponent(component);
+        row.setQty(BigDecimal.ONE);
+        row.setPrice(new BigDecimal("99"));
+        row.setTotal(new BigDecimal("99"));
+        when(goodsRepo.findById(replacement.getId())).thenReturn(Optional.of(replacement));
+        when(bomRepo.findById(row.getId())).thenReturn(Optional.of(row));
+        BomItemSaveRequest request = request();
+        request.setComponentGoodsId(replacement.getId());
+
+        service.update(parent.getId(), row.getId(), request);
+
+        org.junit.jupiter.api.Assertions.assertNull(row.getPrice());
+        org.junit.jupiter.api.Assertions.assertNull(row.getTotal());
+    }
+
+    @Test
     void nonPositiveDesignUsageIsRejectedWithTheColumnName() {
         BomItemSaveRequest zero = request();
         zero.setQty(BigDecimal.ZERO);

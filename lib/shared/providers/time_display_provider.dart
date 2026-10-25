@@ -1,7 +1,5 @@
-// 时间展示模式 Provider（北京时间 / 当地时间）
-//
-// 全平台默认北京时间（后缀「（北京）」）；切换到当地时间后按设备时区换算，
-// 后缀变为「（当地 · 城市 UTC±n）」。选择持久化在 SharedPreferences。
+// 业务时间固定为北京时间。旧 local 枚举和存储键只供旧调用兼容，
+// 已保存的当地时间偏好不能再改变业务时间的含义或后缀。
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -23,25 +21,16 @@ class TimeDisplayModeNotifier extends Notifier<TimeDisplayMode> {
   static const _key = 'timeDisplayMode';
 
   @override
-  TimeDisplayMode build() {
-    final prefs = ref.read(sharedPreferencesProvider);
-    final saved = prefs.getString(_key);
-    return TimeDisplayMode.values.firstWhere(
-      (mode) => mode.persistKey == saved,
-      orElse: () => TimeDisplayMode.beijing,
-    );
-  }
+  TimeDisplayMode build() => TimeDisplayMode.beijing;
 
   Future<void> set(TimeDisplayMode mode) async {
-    await ref.read(sharedPreferencesProvider).setString(_key, mode.persistKey);
-    state = mode;
+    await ref
+        .read(sharedPreferencesProvider)
+        .setString(_key, TimeDisplayMode.beijing.persistKey);
+    state = TimeDisplayMode.beijing;
   }
 
-  Future<void> toggle() => set(
-    state == TimeDisplayMode.beijing
-        ? TimeDisplayMode.local
-        : TimeDisplayMode.beijing,
-  );
+  Future<void> toggle() => set(TimeDisplayMode.beijing);
 }
 
 final timeDisplayModeProvider =

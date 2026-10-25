@@ -148,7 +148,7 @@ class DioFinanceProcurementWorkflowRepository
     String status = 'PENDING',
   }) async {
     final json = await api.get(
-      status == 'PENDING'
+      (status == 'PENDING' || status == 'CLOSURE_PENDING')
           ? ApiEndpoints.financeProcurementApprovalTasks
           : '/finance/procurement-approvals/history',
       query: <String, dynamic>{

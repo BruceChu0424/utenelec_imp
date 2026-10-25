@@ -45,6 +45,7 @@ import '../widgets/account_overview_card.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_inline_edit.dart';
 import '../widgets/master_inline_page_mixin.dart';
+import '../widgets/master_inline_create_fields.dart';
 import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/master_batch_feedback.dart';
@@ -621,6 +622,38 @@ class _AccountPageState extends ConsumerState<AccountPage>
     );
   }
 
+  @override
+  MasterInlineCreateConfig get inlineCreation => MasterInlineCreateConfig(
+    namespace: 'accounts',
+    fields: masterInlineCreateFields(
+      _createFields,
+      excluded: {if (!_canStatus) 'status'},
+      options: {
+        'currencyId': () async {
+          if (!await _ensureReferenceOptions()) {
+            throw StateError('币种或会计科目加载失败，请重试');
+          }
+          return _currencyOptions;
+        },
+        'styleId': () async {
+          if (!await _ensureReferenceOptions()) {
+            throw StateError('会计科目加载失败，请重试');
+          }
+          return _styleOptions;
+        },
+      },
+    ),
+    defaults: const {'accountType': 'BANK', 'status': '使用'},
+    canCreate: _canCreate,
+    onCreate: (_, values) async {
+      await ref.read(accountRepositoryProvider).create({
+        'accountType': 'BANK',
+        'status': '使用',
+        ...values,
+      });
+    },
+  );
+
   Future<void> _openAccount(String id, {bool edit = false}) async {
     if (_batchBusy) return;
     if (!await inlineEdit.confirmLeave(context) || !mounted) return;
@@ -1051,6 +1084,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
     MasterInlineEditActions<AccountListItem>(
       controller: inlineEdit,
       canEdit: _canEdit && inlineReadReady && !_batchBusy,
+      canCreate: _canCreate && inlineReadReady && !_batchBusy,
       onSave: saveInline,
       embedded: true,
       additionalActions: [
@@ -1310,6 +1344,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
                         _actionRow(),
                         Expanded(
                           child: MasterDataTableView<AccountListItem>(
+                            appendRowsSource: inlineAppendRowsSource,
                             bottomContentPadding:
                                 (_canCreate ||
                                     _canEdit ||

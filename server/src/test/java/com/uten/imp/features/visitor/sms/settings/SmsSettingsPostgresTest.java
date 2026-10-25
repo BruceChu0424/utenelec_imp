@@ -63,8 +63,6 @@ class SmsSettingsPostgresTest {
     }
     @Test void migrationPreservesDeploymentSourceAndProtectsVersionAndConfigurationFromPhysicalReset() {
         assertThat(service.current().source()).isEqualTo("ENV");assertThat(service.current().version()).isZero();
-        assertThat(jdbc.queryForObject("SELECT pg_get_functiondef('public.business_data_reset()'::regprocedure)",String.class))
-                .contains("('sms_gateway_settings', 'PRESERVE')");
         assertThatThrownBy(()->jdbc.update("DELETE FROM sms_gateway_settings")).isInstanceOf(org.springframework.dao.DataAccessException.class);
         assertThatThrownBy(()->jdbc.update("UPDATE sms_gateway_settings SET version=0")).isInstanceOf(org.springframework.dao.DataAccessException.class);
         assertThat(service.current().version()).isZero();

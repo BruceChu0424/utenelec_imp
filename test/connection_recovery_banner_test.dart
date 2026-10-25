@@ -9,7 +9,7 @@ import 'package:uten_imp/core/ui/connection_recovery_banner.dart';
 import 'package:uten_imp/core/ui/uten_top_banner_card.dart';
 
 void main() {
-  testWidgets('shows one clear 48dp retry action and announces recovery', (
+  testWidgets('shows one compact retry action and announces recovery', (
     tester,
   ) async {
     var reachable = false;
@@ -42,9 +42,12 @@ void main() {
     await tester.pump();
 
     expect(find.text('暂时连不上服务器，系统会继续自动连接'), findsOneWidget);
+    expect(find.text('运行与灾备'), findsOneWidget);
     final retry = find.byKey(const ValueKey('connection-recovery-retry'));
     expect(retry, findsOneWidget);
-    expect(tester.getSize(retry).height, greaterThanOrEqualTo(48));
+    // 视觉 40dp 紧凑按钮；OutlinedButton 默认 MaterialTapTargetSize.padded
+    // 保证命中区仍为 48dp。
+    expect(tester.getSize(retry).height, greaterThanOrEqualTo(40));
 
     reachable = true;
     await tester.tap(retry);
@@ -56,7 +59,7 @@ void main() {
   });
 
   testWidgets(
-    'connection and business banners share one non-overlapping stack',
+    'connection bar docks in-flow above the floating notice card',
     (tester) async {
       final controller = ConnectionRecoveryController(
         probe: () async => true,
@@ -100,11 +103,12 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 250));
 
+      final bar = tester.getRect(find.byType(ConnectionRecoveryBanner));
+      // 连接横幅不再走 UtenTopBannerCard（占顶下推通栏）；悬浮卡片只剩通知弹条。
       final cards = find.byType(UtenTopBannerCard);
-      expect(cards, findsNWidgets(2));
-      final connectionRect = tester.getRect(cards.at(0));
-      final noticeRect = tester.getRect(cards.at(1));
-      expect(noticeRect.top, greaterThanOrEqualTo(connectionRect.bottom));
+      expect(cards, findsOneWidget);
+      final noticeRect = tester.getRect(cards.at(0));
+      expect(noticeRect.top, greaterThanOrEqualTo(bar.bottom));
     },
   );
 }

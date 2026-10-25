@@ -294,13 +294,18 @@ SELECT has_table_privilege('uten','public.audit_log','SELECT,INSERT'),
 
     def test_private_runtime_maintenance_guard_is_not_exposed_by_blanket_grants(self):
         result = self.sql("""CREATE FUNCTION public.fn_require_runtime_maintenance(boolean) RETURNS void LANGUAGE sql AS 'SELECT';
+CREATE FUNCTION public.fn_require_runtime_refresh() RETURNS void LANGUAGE sql AS 'SELECT';
 ALTER FUNCTION public.fn_require_runtime_maintenance(boolean) OWNER TO uten_owner;
+ALTER FUNCTION public.fn_require_runtime_refresh() OWNER TO uten_owner;
 GRANT EXECUTE ON FUNCTION public.fn_require_runtime_maintenance(boolean) TO PUBLIC,uten;
+GRANT EXECUTE ON FUNCTION public.fn_require_runtime_refresh() TO PUBLIC,uten;
 """ + shipped_block("restricted_import_acl") + """
 SELECT has_function_privilege('uten','public.fn_require_runtime_maintenance(boolean)','EXECUTE'),
-       has_function_privilege('uten_owner','public.fn_require_runtime_maintenance(boolean)','EXECUTE');
+       has_function_privilege('uten_owner','public.fn_require_runtime_maintenance(boolean)','EXECUTE'),
+       has_function_privilege('uten','public.fn_require_runtime_refresh()','EXECUTE'),
+       has_function_privilege('uten_owner','public.fn_require_runtime_refresh()','EXECUTE');
 """)
-        self.assertEqual(result, "f|t")
+        self.assertEqual(result, "f|t|f|t")
 
     def test_reset_context_functions_stay_private_after_blanket_grants(self):
         result = self.sql("""CREATE FUNCTION public.fn_business_test_reset_verify_purged() RETURNS void LANGUAGE sql AS 'SELECT';

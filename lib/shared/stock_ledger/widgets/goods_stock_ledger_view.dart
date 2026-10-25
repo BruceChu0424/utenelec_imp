@@ -16,6 +16,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/feedback/uten_date_range_picker.dart';
 import '../../../components/inputs/uten_filter_picker_field.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -180,13 +181,12 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
 
   Future<void> _pickDates() async {
     final today = ChinaDateTime.today();
-    final picked = await showDateRangePicker(
+    final picked = await showUtenDateRangePicker(
       context: context,
       firstDate: DateTime(2010),
       lastDate: DateTime(today.year, today.month, today.day),
       initialDateRange: DateTimeRange(start: _from, end: _to),
       helpText: '选择流水日期范围',
-      saveText: '应用',
     );
     if (picked == null || !mounted) return;
     setState(() {

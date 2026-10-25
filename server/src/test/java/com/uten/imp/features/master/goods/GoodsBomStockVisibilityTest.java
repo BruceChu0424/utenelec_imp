@@ -74,12 +74,17 @@ class GoodsBomStockVisibilityTest {
         verify(rows).findComponentStockQuantities(Set.of(first.getId()));
     }
 
-    @Test void auditingAnExistingHiddenComponentDoesNotQueryOrExposeItsStock() {
+    @Test void auditingAnExistingHiddenComponentKeepsItsMasterFieldsAndStockRedacted() {
         authorize();UUID hiddenOwner=UUID.randomUUID();second.setOwnerEmployeeId(hiddenOwner);
+        second.setMaterial("HIDDEN-PC");
         when(access.visibleGoodsOwner()).thenReturn(owner->!hiddenOwner.equals(owner));
         GoodsBomItem hidden=edge(second);
         when(rows.findById(hidden.getId())).thenReturn(Optional.of(hidden));
         var view=service.setAudited(parent.getId(),hidden.getId(),true,UUID.randomUUID());
+        assertEquals(second.getId(),view.getComponentGoodsId());
+        assertNotNull(view.getAuditedAt());
+        assertNull(view.getComponentCode());
+        assertNull(view.getComponentMaterial());
         assertNull(view.getComponentStockQty());
         verify(rows,never()).findComponentStockQuantities(anyCollection());
     }

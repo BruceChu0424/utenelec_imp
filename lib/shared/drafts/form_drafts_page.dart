@@ -191,6 +191,7 @@ class FormDraftsAppBarButton extends ConsumerWidget {
         onPressed: () => goFrom(
           UtenAppBarActionScope.actionContextOf(context),
           RouteName.formDraftsLocation(categoryId),
+          retainSource: false,
         ),
       ),
     );

@@ -218,6 +218,144 @@ SELECT 'Excel来源' AS verification, g.source_type, count(*) FROM goods g JOIN 
 """)
 
 
+def corroborated_warehouse_ownership(source_dir, goods, fields, owning, identities, crosswalk_rows, unit_names):
+    """Fill missing ownership only from two agreeing, distinct source fields.
+
+    The category vote uses exact-code Excel rows only; inferred siblings never
+    vote again. Quantities and units are preserved, and a deleted/defective or
+    contradictory leaf cannot become a destination.
+    """
+    stock_path = source_dir / "stock_goods.csv"
+    if not stock_path.is_file():
+        return [], [], []
+    _, stocks = read_csv(stock_path)
+    main = [row["legacy_id"] for row in crosswalk_rows if row["action"] == "SPLIT"]
+    if not main:
+        return [], [], [stock_path]
+    if len(main) != 1:
+        raise ValueError("Corroborated warehouse review needs one main source warehouse")
+    leaves = {row["legacy_id"]: row["target_code"] for row in crosswalk_rows
+              if row["legacy_id"] and row["action"] in ("KEEP", "MERGE")
+              and row["target_defective"].lower() == "false"}
+    by_id = {row[fields["legacy_id"]]: row for row in goods}
+    if len(by_id) != len(goods):
+        raise ValueError("Warehouse review requires unique goods identities")
+    owned = {row["goods_legacy_id"]: row["warehouse_code"] for row in owning}
+    exact_excel = {row["legacy_id"]: row for row in identities if row["kind"] == "same_code"}
+    categories = defaultdict(list)
+    all_category_destinations = defaultdict(set)
+    for identity, target in owned.items():
+        row = by_id.get(identity)
+        if row:
+            all_category_destinations[row[fields["parent_legacy"]]].add(target)
+    for identity, source in exact_excel.items():
+        row = by_id.get(identity)
+        if row and identity in owned:
+            category = row[fields["parent_legacy"]]
+            if category not in ("", "0"):
+                categories[category].append({"goods_legacy_id": identity,
+                    "warehouse_code": owned[identity], "source_file": source["source_file"],
+                    "source_row": source["source_row"]})
+    main_facts, other_facts = defaultdict(list), defaultdict(list)
+    for stock in stocks:
+        qty, amount = Decimal(stock["fact_qty"] or "0"), Decimal(stock["total"] or "0")
+        if qty == 0 and amount == 0:
+            continue
+        identity = stock["goods_legacy"]
+        if stock["stock_legacy"] == main[0] and identity not in owned:
+            main_facts[identity].append(stock)
+        elif stock["stock_legacy"] in leaves:
+            # Negative stock is retained but cannot corroborate a normal leaf.
+            other_facts[identity].append(stock)
+    additions, audit = [], []
+    for identity in sorted(main_facts, key=int):
+        row = by_id.get(identity)
+        if row is None or row[fields["unit_legacy_id"]] not in unit_names:
+            continue
+        unit = row[fields["unit_legacy_id"]]
+        siblings = categories.get(row[fields["parent_legacy"]], [])
+        votes = Counter(item["warehouse_code"] for item in siblings)
+        evidence = {}
+        ck = row[fields["ck"]]
+        if ck in leaves:
+            evidence["LEGACY_GOODS_CK_ACTIVE_LEAF"] = {leaves[ck]}
+        if len(votes) == 1 and sum(votes.values()) >= 3:
+            evidence["EXACT_CATEGORY_UNANIMOUS_EXACT_CODE_EXCEL_SIBLINGS"] = set(votes)
+        if other_facts[identity]:
+            # Include every signed leaf as a contradiction check. A negative
+            # leaf cannot vote, and may not be hidden by a positive one.
+            if all(Decimal(item["fact_qty"] or "0") > 0 and
+                   Decimal(item["total"] or "0") >= 0 for item in other_facts[identity]):
+                evidence["OTHER_ACTIVE_LEAF_LATEST_POSITIVE_STOCK"] = {
+                    leaves[item["stock_legacy"]] for item in other_facts[identity]}
+            else:
+                continue
+        destinations = set().union(*evidence.values()) if evidence else set()
+        if len(evidence) < 2 or len(destinations) != 1:
+            continue
+        target = next(iter(destinations))
+        if target not in leaves.values():
+            continue
+        if all_category_destinations[row[fields["parent_legacy"]]] - {target}:
+            continue
+        additions.append({"goods_legacy_id": identity, "warehouse_code": target})
+        audit.append({"goods_legacy_id": identity, "goods_code": row[fields["code"]],
+            "goods_name": row[fields["name"]], "original_owning_warehouse": "",
+            "legacy_goods_ck": ck, "category_legacy_id": row[fields["parent_legacy"]],
+            "original_status": row[fields["status"]], "unit_legacy_id": unit,
+            "unit_name": unit_names[unit], "warehouse_code": target,
+            "reason": "TWO_AGREEING_DISTINCT_SOURCE_FIELDS_NO_CONTRADICTION",
+            "evidence": {name: sorted(values) for name, values in evidence.items()},
+            "exact_code_excel_siblings": siblings, "main_stock_source_rows": main_facts[identity],
+            "other_leaf_stock_source_rows": other_facts[identity],
+            "quantities_changed": False, "unit_changed": False,
+            "status_changed": False})
+    return additions, audit, [stock_path]
+
+
+def normalize_current_default_references(goods, fields, dictionary_identities, original, identities, excel):
+    """Drop an optional default only when its precise current master is absent.
+
+    Called after exact-code Excel/dictionary enrichment. Historical document
+    references are separate anchors and cannot supply a current selectable default.
+    Quantity base units are mandatory evidence and never repaired by clearing.
+    """
+    targets = {"unit_legacy_id": "unit.csv", "color_legacy_id": "color.csv",
+               "mould_legacy_id": "mould.csv", "client_legacy_id": "client.csv",
+               "vend_legacy_id": "supplier.csv", "vend2_legacy_id": "supplier.csv"}
+    exact_excel = defaultdict(list)
+    by_position = {(rec["file"], int(rec["row"])): rec for rec in excel}
+    for identity in identities:
+        record = by_position[(identity["source_file"], int(identity["source_row"]))]
+        exact_excel[identity["legacy_id"]].append(record)
+    records = []
+    for row in goods:
+        # Preserve the complete pre-normalization row even if several defaults fail.
+        prepared_row = row.copy()
+        legacy_id = row[fields["legacy_id"]]
+        original_row = original.get(int(legacy_id))
+        for field, filename in targets.items():
+            value = row[fields[field]]
+            if value in ("", "0") or value in dictionary_identities[filename]:
+                continue
+            if field == "unit_legacy_id":
+                raise ValueError(f"Missing nonzero goods base unit requires source repair: {legacy_id}/{value}")
+            def row_sha(record):
+                return None if record is None else hashlib.sha256(json.dumps(
+                    record, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+            records.append({"goods_legacy_id": legacy_id, "code": row[fields["code"]],
+                "field": field, "original_legacy_id": value, "new_legacy_id": None,
+                "target_dictionary": filename,
+                "reason": "DEFAULT_TARGET_ABSENT_AFTER_EXACT_EXCEL_AND_CURRENT_MASTER_ENRICHMENT",
+                "action": "CLEAR_INVALID_CURRENT_DEFAULT_AND_LEGACY_SHADOW_ONLY",
+                "source_input_row_sha256": row_sha(original_row),
+                "prepared_row_sha256": row_sha(prepared_row),
+                "source_input_row": original_row, "prepared_row": prepared_row,
+                "exact_excel_identity_records": exact_excel.get(legacy_id, [])})
+            row[fields[field]] = ""
+    return records
+
+
 def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: Path, output_dir: Path, files: list[str]):
     source_dir, dictionary_dir, output_dir = source_dir.resolve(), dictionary_dir.resolve(), output_dir.resolve()
     if output_dir in (source_dir, dictionary_dir):
@@ -440,14 +578,55 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
             owning.append({"goods_legacy_id": identity, "warehouse_code": next(iter(candidates))})
             stats["warehouse_exact_name_consensus"] += 1
             owned.add(identity)
+    corroborated, ownership_audit, ownership_inputs = corroborated_warehouse_ownership(
+        source_dir, goods, fields, owning, identities, warehouse_rows, unit_names)
+    owning.extend(corroborated)
+    inputs.extend(ownership_inputs)
+    stats["warehouse_corroborated_distinct_sources"] = len(corroborated)
     for rec in excel:
         if not rec["values"]["产品编号"]:
             if rec["values"].get("产品名称") != "【价格策略】" or not rec["parent_code"]:
                 raise ValueError(f"Unidentified no-code Excel record: {rec['file']}:{rec['row']}")
             continuation.append(rec)
+    default_reference_repairs = normalize_current_default_references(
+        goods, fields, dictionary_identities, original, identities, excel)
+    stats["invalid_optional_defaults_archived_and_cleared"] = len(default_reference_repairs)
+    raw_source_rows, raw_source_evidence = {}, None
+    clean_manifest_path = source_dir / "clean_master_manifest.json"
+    if default_reference_repairs and clean_manifest_path.exists():
+        clean_manifest = json.loads(clean_manifest_path.read_text(encoding="utf-8"))
+        raw_goods = Path(clean_manifest["raw_directory"]) / "goods.csv"
+        raw_sha = next(record["sha256"] for record in clean_manifest["inputs"] if record["file"] == "goods.csv")
+        if digest(raw_goods) != raw_sha:
+            raise ValueError("Original raw goods source drift during default normalization")
+        _, raw_records = read_csv(raw_goods)
+        raw_source_rows = {int(record[fields["legacy_id"]]): record for record in raw_records}
+        raw_source_evidence = {"path": str(raw_goods.resolve()), "sha256": raw_sha,
+                               "clean_manifest_sha256": digest(clean_manifest_path),
+                               "raw_manifest_sha256": clean_manifest["raw_manifest_sha256"]}
+        inputs.append(clean_manifest_path)
+    default_evidence_inputs = [{"path": str(path.resolve()), "sha256": digest(path)} for path in dict.fromkeys(inputs)]
+    with (output_dir / "goods_invalid_default_references.jsonl").open("w", encoding="utf-8", newline="") as handle:
+        for record in default_reference_repairs:
+            raw_row = raw_source_rows.get(int(record["goods_legacy_id"]))
+            record.update({"original_raw_source_row": raw_row,
+                "original_raw_source_row_sha256": None if raw_row is None else hashlib.sha256(json.dumps(
+                    raw_row, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest(),
+                "raw_source_evidence": raw_source_evidence,
+                "evidence_inputs": default_evidence_inputs, "original_excel_workbooks": workbooks})
+            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
     output_goods = output_dir / "goods.csv"
     write_csv(output_goods, headers, goods)
     write_csv(output_dir / "goods_owning_warehouse.csv", ["goods_legacy_id", "warehouse_code"], owning)
+    write_csv(output_dir / "goods_owning_warehouse_corroborated.csv",
+              ["goods_legacy_id", "warehouse_code"], corroborated)
+    (output_dir / "goods_owning_warehouse_corroborated_audit.json").write_text(
+        json.dumps({"format": "goods-warehouse-corroboration-v1",
+                    "policy": "two agreeing distinct source fields; exact-code Excel siblings only; no negative leaf evidence",
+                    "source_inputs": [{"path": str(path.resolve()), "sha256": digest(path)}
+                                      for path in dict.fromkeys([source_dir / "goods.csv", crosswalk, *ownership_inputs])],
+                    "workbooks": workbooks, "accepted": ownership_audit,
+                    "numeric_facts_changed": 0}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     write_csv(output_dir / "goods_excel_attributes.csv", ["legacy_id", "source_type", "workshop_name", "over_receipt", "min_order", "order_multiple"], attributes)
     source_identities = {row["legacy_id"] for row in attributes}
     source_review = [{"legacy_id": row[fields["legacy_id"]], "code": row[fields["code"]],
@@ -477,7 +656,7 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
                   "excel_coded_rows": len(coded), "price_strategy_rows_archived": len(continuation), "owning_warehouse_rows": len(owning),
                   "issues": len(issues), "source_roles": len(attributes), "source_engineering_review": len(source_review),
                   "quantity_unit_review_goods": quantity_summary["candidate_goods"]})
-    manifest = {"formatVersion": 1, "kind": "derived_excel_goods_overlay", "policy": "excel-nonempty-authority-preserve-historical-quantity-units-v2",
+    manifest = {"formatVersion": 1, "kind": "derived_excel_goods_overlay", "policy": "excel-authority-preserve-quantity-units-corroborated-warehouse-current-default-integrity-v4",
                 "generators": [{"file": path.name, "sha256": digest(path)} for path in
                                (Path(__file__), Path(__file__).with_name("prepare_clean_master_data.py"), Path(__file__).with_name("audit_goods_quantity_units.py"))],
                 "sourceInputs": [{"path": str(path.resolve()), "sha256": digest(path)} for path in inputs], "workbooks": workbooks,

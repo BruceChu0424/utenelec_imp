@@ -90,6 +90,9 @@ public class SubcontractOrder extends SoftDeletableEntity {
     @Column(name = "is_closed", nullable = false)
     private boolean closed = false;
 
+    @Column(name = "termination_case_id")
+    private UUID terminationCaseId;
+
     @Column(name = "source_doc_no")
     private String sourceDocNo;
 }

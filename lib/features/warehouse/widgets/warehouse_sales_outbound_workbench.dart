@@ -131,8 +131,8 @@ class _WarehouseSalesOutboundWorkbenchState
   /// 代数（共享状态，见 MasterServerColumnFilters）。
   final _columnFilters = MasterServerColumnFilters();
 
-  /// 历史单据段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
+  /// 历史单据段的时间门控值；默认近三个月（2026-10-24 用户口径）。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
   int _requestVersion = 0;
 
   @override
@@ -283,7 +283,10 @@ class _WarehouseSalesOutboundWorkbenchState
       _result = null;
       _error = null;
       ++_requestVersion;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
+      // 进历史段重新按默认近三个月加载；非历史段回 all() 占位。
+      _historyTime = seg.history
+          ? UtenHistoryTimeValue.lastThreeMonths()
+          : const UtenHistoryTimeValue.all();
       // 分段与表头筛选用同一服务端参数：切段时清表头状态桶与单号筛选
       // （2026-09-25 单号列统一，与仓库作业桶同一重置行为）。
       _workStatusColumnFilter = null;

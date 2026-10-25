@@ -49,6 +49,9 @@ import '../widgets/goods_operation_history_panel.dart';
 import '../widgets/master_record_history_panel.dart';
 import '../widgets/goods_inline_edit.dart';
 import '../widgets/master_inline_edit.dart';
+import '../widgets/master_inline_create_fields.dart';
+import '../widgets/master_edit_dialog.dart';
+import '../providers/color_unit_dict.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_entity_detail_pane.dart';
 import '../widgets/master_batch_feedback.dart';
@@ -565,6 +568,92 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         'unitLegacyId': 'unitRef',
       },
       noun: '货品', // TODO(l10n): 补 arb
+      inlineCreation: (pane) => MasterInlineCreateConfig(
+        namespace: 'goods.${pane.categoryId}',
+        fields: masterInlineCreateFields(
+          [
+            const MasterFieldDef(
+              key: 'code',
+              label: '编号',
+              identifierDomain: 'GOODS',
+              hint: '留空按分类自动生成',
+            ),
+            const MasterFieldDef(key: 'name', label: '货品名称', required: true),
+            const MasterFieldDef(key: 'series', label: '系列'),
+            const MasterFieldDef(key: 'nameEn', label: '英文名称'),
+            const MasterFieldDef(key: 'clientGoodsName', label: '客户货品名称'),
+            const MasterFieldDef(key: 'cNumber', label: '客户型号'),
+            const MasterFieldDef(key: 'model', label: '型号'),
+            const MasterFieldDef(key: 'spec', label: '规格'),
+            const MasterFieldDef(key: 'material', label: '材质'),
+            const MasterFieldDef(
+              key: 'sourceType',
+              label: '来源',
+              type: MasterFieldType.select,
+              required: true,
+              options: kGoodsSourceTypeOptions,
+            ),
+            const MasterFieldDef(key: 'unitId', label: '基本单位', required: true),
+            const MasterFieldDef(key: 'colorId', label: '主颜色'),
+            const MasterFieldDef(key: 'rearInsertCode', label: '后模镶件编号'),
+            const MasterFieldDef(key: 'stockPlace', label: '库位'),
+            const MasterFieldDef(key: 'paper', label: '备注'),
+            const MasterFieldDef(
+              key: 'minOrderQty',
+              label: '最小起订量',
+              type: MasterFieldType.money,
+            ),
+            const MasterFieldDef(
+              key: 'orderMultipleQty',
+              label: '订货倍数',
+              type: MasterFieldType.money,
+            ),
+            if (_perms.contains(Perm.goodsPriceEdit))
+              const MasterFieldDef(
+                key: 'price',
+                label: '价格',
+                type: MasterFieldType.money,
+              ),
+            if (_canStatusMaster)
+              const MasterFieldDef(
+                key: 'status',
+                label: '状态',
+                required: true,
+                type: MasterFieldType.select,
+                options: kMasterStatusOptions,
+              ),
+          ],
+          options: {
+            'unitId': () async => [
+              for (final item in await ref.read(unitDictProvider.future))
+                MasterSelectOption(
+                  value: item.id,
+                  label: item.name ?? item.code ?? item.id,
+                ),
+            ],
+            'colorId': () async => [
+              for (final item in await ref.read(colorDictProvider.future))
+                MasterSelectOption(
+                  value: item.id,
+                  label: item.name ?? item.code ?? item.id,
+                ),
+            ],
+          },
+        ),
+        columnFields: const {
+          'unitLegacyId': 'unitId',
+          'colorLegacyId': 'colorId',
+        },
+        defaults: {'status': '使用', 'categoryId': pane.categoryId},
+        canCreate: _canCreateMaster,
+        onCreate: (_, values) async {
+          await ref.read(goodsRepositoryProvider).create({
+            'status': '使用',
+            ...values,
+            'categoryId': pane.categoryId,
+          });
+        },
+      ),
       icon: Icons.inventory_2_outlined,
       defaultCodePrefix: 'HP',
       columns: _visibleGoodsColumns,

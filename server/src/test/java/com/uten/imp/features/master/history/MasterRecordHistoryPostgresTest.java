@@ -1536,11 +1536,6 @@ class MasterRecordHistoryPostgresTest {
                 }
 
                 @Override
-                public boolean preserveValuesOnReset() {
-                  return true;
-                }
-
-                @Override
                 public Map<UUID, RecordAccess> authorize(Set<UUID> ids, boolean write) {
                   requireDefinitionAccess(write);
                   Map<UUID, RecordAccess> result = new HashMap<>();

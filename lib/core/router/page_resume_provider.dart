@@ -10,8 +10,9 @@
 //
 // 触发规则(2026-09-23 ADR-108 收紧：按「数据变没变」而不是「导航了没有」)：
 //   · 首次进入、从我走进子页、App 启动首次落定都不触发；
-//   · 返回到我时，只有「期间本端成功写过数据(dataWriteRevisionProvider 前进)」或
-//     「距上次刷新已超过 30 秒」才重拉——纯查看详情后返回不再整页重拉；
+//   · 每次返回都后台核对，包含他人在详情浏览期间新增/修改的记录；已加载内容由
+//     页面保留，不再用本端写修订号或等待时长证明服务端没有变化。
+//     特殊页面可显式传 staleAfter 选择有时限的核对策略；
 //   · 重拉推迟到返回转场走完之后([whenRouteTransitionsSettled])，不和动画抢帧；
 //   · 页面登记的 refreshKeys(原 listRefreshTickProvider 精准刷新)只在本页就在栈顶
 //     时立即重拉；被详情页盖着时只记下，返回时再拉——此前两套机制叠加，
@@ -96,8 +97,9 @@ String? topMatchedLocationOf(GoRouter router) {
   return config.last.matchedLocation;
 }
 
-/// 纯查看后返回时, 数据超过这么久才重拉(期间有写操作则不看时长, 一定重拉)。
-const kPageResumeStaleAfter = Duration(seconds: 30);
+/// Default: every return revalidates, including changes made by other users.
+/// A positive explicit staleAfter remains available for special read models.
+const kPageResumeStaleAfter = Duration.zero;
 
 /// 请求「当前可见页」立即重拉一次(断网恢复后由网络层推进)。
 final pageRefreshRequestProvider = StateProvider<int>((ref) => 0);
@@ -107,7 +109,12 @@ class _ResumeState {
 
   DateTime refreshedAt;
   int revision;
-  bool pending = false;
+  int signalled = 0;
+  int acknowledged = 0;
+  bool scheduled = false;
+  bool refreshing = false;
+
+  bool get dirty => signalled != acknowledged;
 }
 
 /// 每个页面(element)按登记的路径各一份刷新记录, 随页面销毁回收
@@ -119,10 +126,14 @@ final Expando<Map<String, _ResumeState>> _resumeStates =
 extension PageResumeX on WidgetRef {
   /// 当 [myLocation] 再次成为当前路径(从其它页面/子页面返回)时按需执行 [refresh]。
   ///
-  /// 只有期间本端写过数据、或数据已超过 [staleAfter] 才重拉, 且推迟到返回转场结束后。
+  /// 默认每次返回都重拉，推迟到返回转场结束后；页面保留已有数据并展示后台更新。
+  /// 显式设置正数 [staleAfter] 时，才允许尚未过期且没有本端写/精准信号的数据跳过核对。
   /// [refreshKeys] 为该页监听的精准刷新信号(bumpListRefresh 的 key): 本页在栈顶时
   /// 收到即重拉, 被盖住时留到返回再拉。[onReturn] 每次返回都执行(不受上述节流),
   /// 只用于复位页内交互状态(如子流程异常退出留下的「进行中」标记), 不要在里面取数。
+  /// 返回实际请求的 Future 时，同一次刷新会一直去重到请求完成，成功后才更新新鲜度；
+  /// 失败保留待刷新标记，供下次返回或刷新信号重试。旧的 void 回调仍可使用，但无法
+  /// 跟踪其内部未返回的异步请求；取数函数应把实际 Future 返回给本接口。
   ///
   /// 用法（build 内，与 ref.listen 同位置；myLocation 建议用页面创建时捕获的
   /// `GoRouterState.of(context).matchedLocation`，不要在 build 里反复现取——
@@ -133,7 +144,7 @@ extension PageResumeX on WidgetRef {
   /// ```
   void onPageResume(
     String myLocation,
-    void Function() refresh, {
+    FutureOr<void> Function() refresh, {
     Iterable<String> refreshKeys = const [],
     Duration staleAfter = kPageResumeStaleAfter,
     void Function()? onReturn,
@@ -145,46 +156,81 @@ extension PageResumeX on WidgetRef {
     );
     final element = this is BuildContext ? this as BuildContext : null;
 
+    bool mounted() => element == null || element.mounted;
+    bool onTop() =>
+        _isTopLocation(read(pageResumeProvider).location, myLocation);
+
     void run({required bool force}) {
-      if (state.pending) return;
+      if (state.scheduled || state.refreshing) return;
       if (!force &&
+          !state.dirty &&
           read(dataWriteRevisionProvider) == state.revision &&
           clock.now().difference(state.refreshedAt) < staleAfter) {
         return;
       }
-      state.pending = true;
+      state.scheduled = true;
       whenRouteTransitionsSettled(() {
-        state.pending = false;
-        if (element != null && !element.mounted) return;
-        state
-          ..refreshedAt = clock.now()
-          ..revision = read(dataWriteRevisionProvider);
-        refresh();
+        state.scheduled = false;
+        // A fast second navigation can cover this page while its first return
+        // transition is settling. Keep the dirty signal for its next return.
+        if (!mounted() || !onTop()) return;
+        state.refreshing = true;
+        final revision = read(dataWriteRevisionProvider);
+        final signalled = state.signalled;
+        Future<void>.sync(refresh).then<void>(
+          (_) {
+            state.refreshing = false;
+            if (!mounted()) return;
+            state
+              ..refreshedAt = clock.now()
+              ..revision = revision
+              ..acknowledged = signalled;
+            // Writes/signals arriving during I/O were not part of this read.
+            // Revalidate them once, after the current read finishes, if visible.
+            if (onTop() &&
+                (state.dirty ||
+                    read(dataWriteRevisionProvider) != state.revision)) {
+              run(force: false);
+            }
+          },
+          onError: (Object error, StackTrace stack) {
+            state.refreshing = false;
+            // The page owns its error presentation. Do not turn a failed read
+            // into apparently fresh data or retry in a tight loop.
+            if (state.signalled == signalled) state.signalled++;
+          },
+        );
       });
     }
-
-    bool onTop() =>
-        _isTopLocation(read(pageResumeProvider).location, myLocation);
 
     listen(pageResumeProvider, (prev, next) {
       if (prev == null) return;
       if (next.location != myLocation) return; // 到达的不是我
       if (prev.location == myLocation) return; // 从我出发/原地通知，不算返回
       if (prev.location.isEmpty) return; // App 启动首次落定，页面刚建已是新数据
+      // The existing read may have captured its snapshot before this detail
+      // visit. Record a new return even while that request is still in flight.
+      if (staleAfter == Duration.zero) state.signalled++;
       if (onReturn != null) {
         whenRouteTransitionsSettled(() {
-          if (element == null || element.mounted) onReturn();
+          if (mounted() && onTop()) onReturn();
         });
       }
       run(force: false);
     });
     for (final key in refreshKeys) {
       listen(listRefreshTickProvider(key), (_, _) {
+        // A precise invalidation is authoritative even when it did not come
+        // from a business HTTP write (or belongs to a test/import integration).
+        state.signalled++;
         if (onTop()) run(force: true);
       });
     }
     listen(pageRefreshRequestProvider, (_, _) {
-      if (onTop()) run(force: true);
+      if (onTop()) {
+        state.signalled++;
+        run(force: true);
+      }
     });
   }
 
@@ -198,7 +244,10 @@ extension PageResumeX on WidgetRef {
         return;
       }
       whenRouteTransitionsSettled(() {
-        if (element == null || element.mounted) refresh();
+        if ((element == null || element.mounted) &&
+            _isTopLocation(read(pageResumeProvider).location, hostLocation)) {
+          refresh();
+        }
       });
     });
   }

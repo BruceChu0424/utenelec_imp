@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/shared/documents/document_unapproval_action.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_doc_detail_page.dart';
@@ -132,6 +134,9 @@ Future<void> _pumpPendingOrder(
         ),
       ],
       child: const MaterialApp(
+        locale: Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: SubcontractDocDetailPage(
           docType: SubcontractDocType.order,
           id: 'order-1',
@@ -143,6 +148,40 @@ Future<void> _pumpPendingOrder(
 }
 
 void main() {
+  for (final closureStatus in ['APPROVED', 'PENDING']) {
+    testWidgets(
+      'subcontract $closureStatus closure hides original order unapproval',
+      (tester) async {
+        final detail = _pendingOrderDetail()
+          ..addAll({
+            'status': 1,
+            'canReverse': true,
+            'financeApproval': {'status': 'APPROVED'},
+            'closureRequest': {
+              'caseId': 'closure-1',
+              'status': closureStatus,
+              'mode': 'CLOSE',
+            },
+          });
+        await _pumpPendingOrder(
+          tester,
+          _api(
+            (request) => request.path.contains('/subcontract/orders/order-1')
+                ? detail
+                : <String, dynamic>{},
+          ),
+          permissions: const {
+            Perm.subcontractOrderView,
+            Perm.subcontractOrderReverse,
+          },
+        );
+        expect(find.byType(DocumentUnapprovalAction), findsNothing);
+        expect(find.text('反审'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'reversed subcontract hides historical rejection correction instructions',
     (tester) async {

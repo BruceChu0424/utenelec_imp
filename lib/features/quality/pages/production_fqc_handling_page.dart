@@ -57,6 +57,7 @@ import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_fqc_inspection.dart';
 import '../providers/production_fqc_capability_provider.dart';
@@ -124,6 +125,16 @@ bool _hasFqcApprovalPermission(WidgetRef ref) =>
     ref
         .read(currentPermissionsProvider)
         .contains(Perm.productionQualityInspectionApprove);
+
+Object _fqcDraftReadBoundary(SensitiveReadBoundary boundary) =>
+    SensitiveReadBoundary(
+      identity: boundary.identity,
+      api: boundary.api,
+      permissions: boundary.permissions.difference({
+        Perm.productionQualityInspectionApprove,
+      }),
+      superAdmin: boundary.superAdmin,
+    );
 
 enum FqcSubmissionState { notSent, rejected, unknown, confirmed }
 
@@ -686,6 +697,10 @@ class ProductionFqcSheetHandlingPage extends ConsumerStatefulWidget {
 class _ProductionFqcSheetHandlingPageState
     extends ConsumerState<ProductionFqcSheetHandlingPage>
     with FormDraftMixin<ProductionFqcSheetHandlingPage> {
+  @override
+  Object formDraftReadBoundaryIdentity(SensitiveReadBoundary boundary) =>
+      _fqcDraftReadBoundary(boundary);
+
   String _draftReason = '';
   final _sheetChromeKey = GlobalKey();
   final _sheetBodyKey = GlobalKey();
@@ -1614,6 +1629,10 @@ class ProductionFqcInspectionPage extends ConsumerStatefulWidget {
 class _ProductionFqcInspectionPageState
     extends ConsumerState<ProductionFqcInspectionPage>
     with FormDraftMixin<ProductionFqcInspectionPage> {
+  @override
+  Object formDraftReadBoundaryIdentity(SensitiveReadBoundary boundary) =>
+      _fqcDraftReadBoundary(boundary);
+
   String _draftReason = '';
   // Decision capability refresh preserves quantities; every send rechecks it.
   @override

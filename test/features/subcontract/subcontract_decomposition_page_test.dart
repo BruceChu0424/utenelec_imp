@@ -786,7 +786,7 @@ void main() {
         selectStage(category);
         await tester.pumpAndSettle();
         if (category == '历史记录') {
-          // 2026-10-04 起历史门默认「全部」：直接进列表。
+          // 2026-10-24 起历史门默认近三个月；这里再切「全部」看全量。
           await selectFilterSegment(tester, '全部');
           await tester.pumpAndSettle();
         }
@@ -852,8 +852,8 @@ void main() {
       // 375px 下分类栏收成「分类」下拉（2026-09-14），统一走共用助手选段。
       await selectFilterSegment(tester, '历史记录');
       await tester.pumpAndSettle();
-      // 2026-10-04 起历史门默认「全部」；2026-10-08 起历史段不再提供勾选与
-      // 批量按钮。
+      // 2026-10-24 起历史门默认近三个月（再切「全部」看全量）；
+      // 2026-10-08 起历史段不再提供勾选与批量按钮。
       await selectFilterSegment(tester, '全部');
       await tester.pumpAndSettle();
       expect(action, findsNothing);

@@ -42,6 +42,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/connection_recovery.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -57,6 +58,11 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/operations_workbench.dart';
 import '../repositories/operations_workbench_repository.dart';
+import '../../../shared/widgets/procurement_order_closure_dialog.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../shared/models/procurement_order_closure.dart';
+import '../../../shared/widgets/procurement_order_closure_batch_dialog.dart';
+import '../../../shared/widgets/procurement_order_closure_selection_action.dart';
 
 /// 阶段分段值：真实任务阶段（code 非空）或历史记录哨兵。
 class _WorkbenchSeg {
@@ -126,9 +132,13 @@ class _OperationsWorkbenchPageState
   Map<String, Object?>? _acceptedCategoryScope;
   String? _error;
   bool _loading = true;
+  bool _backgroundRefresh = false;
   int _page = 1;
   int _requestId = 0;
   int _readerGeneration = 0;
+  int _paginationRevision = 0;
+  List<int> _retainedPages = const [];
+  Map<int, List<OperationsWorkbenchTask>> _refreshedPages = const {};
   String _keyword = '';
 
   /// 当前选中阶段分段；null = 未选择引导态（内容不加载）。
@@ -138,8 +148,9 @@ class _OperationsWorkbenchPageState
   /// 异常表头的专用过滤参数；null = 当前主阶段全部异常与正常任务。
   String? _exception;
 
-  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
+  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
+  /// 最近三个月加载），用户可选「时间段」或「全部」。none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
 
   /// 表头列筛选（服务端 facet key → 值）；repository 以 `f.{key}` 前缀回传。
   final Map<String, String?> _columnFilters = {};
@@ -154,6 +165,7 @@ class _OperationsWorkbenchPageState
   /// 批量导出单据的进度（done/total）；null = 不在导出中。导出期间按钮转
   /// 加载态并显示「导出单据(n/N)」。
   ({int done, int total})? _docExportProgress;
+  bool _closureBusy = false;
 
   /// 批量导出单据一次的上限：print-data 逐单请求 + 前端 PDF 生成都是串行
   /// 重操作，不设上限时一次勾选过百会让按钮长时间转圈且无从 cancel。
@@ -307,6 +319,9 @@ class _OperationsWorkbenchPageState
     'FINANCE_REJECTED' => '财务驳回',
     'FINANCE_REVIEW_PENDING' => '改量待财务复核',
     'FINANCE_REVIEW_REJECTED' => '改量财务退回',
+    'ORDER_CLOSE_PENDING' => '结束待财务审批',
+    'ORDER_CLOSE_REJECTED' => '结束申请已退回',
+    'ORDER_CLOSED' => '已提前结束',
     _ => null,
   };
 
@@ -315,12 +330,14 @@ class _OperationsWorkbenchPageState
   /// 红=被驳回要本人改单重报、绿=申请待分解(可生成订货单, 就绪可动手)与已完成。
   static UtenStatusBadgeType _stageBadgeType(String code) => switch (code) {
     'ORDER_PENDING_APPROVAL' ||
+    'ORDER_CLOSE_PENDING' ||
     'FINANCE_REVIEW_PENDING' => UtenStatusBadgeType.warning,
     'FINANCE_APPROVED' => UtenStatusBadgeType.info,
     'FINANCE_REJECTED' ||
+    'ORDER_CLOSE_REJECTED' ||
     'FINANCE_REVIEW_REJECTED' => UtenStatusBadgeType.danger,
     'WAITING_ORDER' => UtenStatusBadgeType.success,
-    'COMPLETED' => UtenStatusBadgeType.success,
+    'COMPLETED' || 'ORDER_CLOSED' => UtenStatusBadgeType.success,
     _ => UtenStatusBadgeType.neutral,
   };
 
@@ -362,10 +379,14 @@ class _OperationsWorkbenchPageState
   }
 
   void _resetReadState() {
+    _closureBusy = false;
     // The obsolete GET may finish later, but its owner cannot keep the new
     // reader's refresh action busy after the accepted data has been cleared.
     trackRefresh(Future<void>.value(), replaceKey: 'rows');
     _readerGeneration++;
+    _paginationRevision++;
+    _retainedPages = const [];
+    _refreshedPages = const {};
     _requestId++;
     _data = null;
     _acceptedQuery = null;
@@ -373,6 +394,7 @@ class _OperationsWorkbenchPageState
     _acceptedCategoryScope = null;
     _error = null;
     _loading = false;
+    _backgroundRefresh = false;
     _page = 1;
     _keyword = '';
     _exception = null;
@@ -381,7 +403,7 @@ class _OperationsWorkbenchPageState
     _sortAscending = true;
     _selectedIds.clear();
     _masterNames = null;
-    _historyTime = const UtenHistoryTimeValue.all();
+    _historyTime = UtenHistoryTimeValue.lastThreeMonths();
   }
 
   void _readerChanged() {
@@ -429,12 +451,17 @@ class _OperationsWorkbenchPageState
     'exception': _exception,
   };
 
-  Future<void> _load({int? page, int size = 50}) => trackRefresh(
-    _loadRows(page: page, size: size),
-    replaceKey: 'rows',
-  );
+  Future<void> _load({int? page, int size = 50, bool background = false}) =>
+      trackRefresh(
+        _loadRows(page: page, size: size, background: background),
+        replaceKey: 'rows',
+      );
 
-  Future<void> _loadRows({int? page, int size = 50}) async {
+  Future<void> _loadRows({
+    int? page,
+    int size = 50,
+    bool background = false,
+  }) async {
     if (!mounted) return;
     final requestId = ++_requestId;
     final query = _queryIdentity;
@@ -442,6 +469,8 @@ class _OperationsWorkbenchPageState
     final seg = _seg;
     final draft = seg?.code == _draftStage;
     final range = seg?.history == true ? _historyTime.range : null;
+    bool current() =>
+        mounted && requestId == _requestId && mapEquals(query, _queryIdentity);
     setState(() {
       // A category/filter changes before its GET finishes. Accepted rows belong
       // only to their original query; refreshing that same query may retain them.
@@ -453,6 +482,11 @@ class _OperationsWorkbenchPageState
         _categoryCounts = null;
       }
       _loading = !draft;
+      _backgroundRefresh = background && _data != null;
+      if (!_backgroundRefresh) {
+        _paginationRevision++;
+        _refreshedPages = const {};
+      }
       _error = null;
     });
     try {
@@ -461,21 +495,50 @@ class _OperationsWorkbenchPageState
       // 在自己的 Future 里吞掉一切错误——拉不到（离线/测试环境未注入 api）只是
       // 仓库列回退行内叶仓名，绝不能把任务列表拖成加载失败。
       final warehouseNames = _warmWarehouseNames();
-      final next = await _repository.load(
-        department: widget.department,
-        page: page ?? _page,
-        // 未选阶段时只拉 1 条：仅为取 summary 阶段/异常计数，内容区仍显示引导占位。
-        size: _shouldLoad && !draft ? size : 1,
-        keyword: _keyword,
-        status: seg == null || seg.history || draft ? null : seg.code,
-        exception: seg == null || seg.history ? null : _exception,
-        dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
-        dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
-        // 排序键走服务端白名单名(本页列 key 与 facet key 不同名, 见 _serverKeyByColumn)。
-        sort: _sortColumn == null ? null : _serverKeyByColumn[_sortColumn],
-        order: _sortAscending ? 'asc' : 'desc',
-        columnFilters: _columnFilters,
-      );
+      Future<OperationsWorkbenchData> fetchPage(int requestedPage) =>
+          _repository.load(
+            department: widget.department,
+            page: requestedPage,
+            // 未选阶段时只拉 1 条：仅为取 summary 阶段/异常计数，内容区仍显示引导占位。
+            size: _shouldLoad && !draft ? size : 1,
+            keyword: _keyword,
+            status: seg == null || seg.history || draft ? null : seg.code,
+            exception: seg == null || seg.history ? null : _exception,
+            dateFrom: range == null
+                ? null
+                : ChinaDateTime.formatDate(range.start),
+            dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+            // 排序键走服务端白名单名(本页列 key 与 facet key 不同名, 见 _serverKeyByColumn)。
+            sort: _sortColumn == null ? null : _serverKeyByColumn[_sortColumn],
+            order: _sortAscending ? 'asc' : 'desc',
+            columnFilters: _columnFilters,
+          );
+      final requestedPage = page ?? _page;
+      final pages = _backgroundRefresh && _retainedPages.isNotEmpty
+          ? _retainedPages.toList()
+          : [requestedPage];
+      pages.sort();
+      final window = <int, OperationsWorkbenchData>{};
+      OperationsWorkbenchData? latest;
+      for (final number in pages) {
+        if (!current()) return;
+        if (latest != null && number > latest.totalPages && number != 1) {
+          continue;
+        }
+        final result = await fetchPage(number);
+        if (!current()) return;
+        window[number] = result;
+        latest = result;
+      }
+      if (latest == null) return;
+      final lastPage = latest.totalPages < 1 ? 1 : latest.totalPages;
+      final targetPage = requestedPage.clamp(1, lastPage);
+      if (!window.containsKey(targetPage)) {
+        if (!current()) return;
+        window[targetPage] = await fetchPage(targetPage);
+        if (!current()) return;
+      }
+      final next = window[targetPage]!;
       await warehouseNames;
       if (!mounted ||
           requestId != _requestId ||
@@ -489,8 +552,15 @@ class _OperationsWorkbenchPageState
           _data = next;
           _acceptedQuery = query;
           _page = next.page;
+          if (_backgroundRefresh) {
+            _refreshedPages = Map.unmodifiable({
+              for (final entry in window.entries)
+                if (entry.key <= lastPage) entry.key: entry.value.items,
+            });
+          }
         }
         _loading = false;
+        _backgroundRefresh = false;
       });
       // Reconcile after the table has combined any appended pages.
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -510,11 +580,20 @@ class _OperationsWorkbenchPageState
       }
       setState(() {
         if (error is ApiException &&
-            (error.httpStatus == 401 || error.httpStatus == 403)) {
+            (error.httpStatus == 401 ||
+                error.httpStatus == 403 ||
+                error.code == 'UNAUTHORIZED' ||
+                error.code == 'FORBIDDEN')) {
           _categoryCounts = null;
           _acceptedCategoryScope = null;
+          _data = null;
+          _acceptedQuery = null;
+          _selectedIds.clear();
+          _paginationRevision++;
+          _refreshedPages = const {};
         }
         _loading = false;
+        _backgroundRefresh = false;
         _error = error is ApiException ? error.message : '任务工作台加载失败，请稍后重试';
       });
     }
@@ -526,7 +605,10 @@ class _OperationsWorkbenchPageState
       _seg = seg;
       _exception = null;
       _page = 1;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
+      // 进入历史段重新按默认近三个月加载；非历史段不消费时间门控，回 all() 占位。
+      _historyTime = seg.history
+          ? UtenHistoryTimeValue.lastThreeMonths()
+          : const UtenHistoryTimeValue.all();
       _selectedIds.clear();
       // 各阶段的 facet 集合不同（与委外任务中心同口径）：切段时清表头筛选。
       // 排序键同理——「状态」列只在进行中段有意义，换段后按服务端默认序重来。
@@ -908,6 +990,110 @@ class _OperationsWorkbenchPageState
     goFrom(context, document.path);
   }
 
+  bool _canRequestClosure(OperationsWorkbenchTask task) {
+    final document = task.actionDocument;
+    if (widget.department == OperationsWorkbenchDepartment.warehouse ||
+        document?.canView != true ||
+        document?.status != '1' ||
+        task.progressStatus == 'ORDER_CLOSED' ||
+        task.progressStatus == 'ORDER_CLOSE_PENDING' ||
+        !const {
+          'ORDER',
+          'PURCHASE_ORDER',
+          'SUBCONTRACT_ORDER',
+        }.contains(document?.docType.toUpperCase())) {
+      return false;
+    }
+    final permission =
+        widget.department == OperationsWorkbenchDepartment.purchase
+        ? Perm.purchaseOrderSubmitFinance
+        : Perm.subcontractOrderSubmitFinance;
+    return ref.read(isSuperAdminProvider) ||
+        ref.read(currentPermissionsProvider).contains(permission);
+  }
+
+  Future<void> _requestClosure(OperationsWorkbenchTask task) async {
+    if (!_canRequestClosure(task)) return;
+    final generation = _readerGeneration;
+    await showProcurementOrderClosureDialog(
+      context,
+      orderType: widget.department == OperationsWorkbenchDepartment.purchase
+          ? 'PURCHASE'
+          : 'SUBCONTRACT',
+      orderId: task.actionDocument!.id,
+      stillCurrent: () =>
+          mounted &&
+          generation == _readerGeneration &&
+          _canRequestClosure(task),
+    );
+    if (mounted && generation == _readerGeneration) {
+      await _load(background: true);
+    }
+  }
+
+  List<ProcurementOrderClosureTarget?> get _selectedClosureTargets => [
+    for (final task in _selectedTasks)
+      if (task.actionDocument case final document?
+          when const {
+            'ORDER',
+            'PURCHASE_ORDER',
+            'SUBCONTRACT_ORDER',
+          }.contains(document.docType.toUpperCase()))
+        ProcurementOrderClosureTarget(
+          orderType: widget.department == OperationsWorkbenchDepartment.purchase
+              ? 'PURCHASE'
+              : 'SUBCONTRACT',
+          orderId: document.id,
+          billNo: document.number,
+          localRevision:
+              '$_requestId:${task.progressStatus}:${document.status}:${task.updatedAt}',
+        )
+      else
+        null,
+  ];
+
+  Future<void> _requestSelectedClosures(
+    List<ProcurementOrderClosureTarget> orders,
+    int unsupportedRows,
+  ) async {
+    if (_closureBusy) return;
+    final generation = _readerGeneration;
+    setState(() => _closureBusy = true);
+    try {
+      final submitted = await showProcurementOrderClosureBatchDialog(
+        context,
+        orders: orders,
+        unsupportedRowCount: unsupportedRows,
+        unsupportedLabels: [
+          for (final task in _selectedTasks)
+            if (task.actionDocument == null ||
+                !const {
+                  'ORDER',
+                  'PURCHASE_ORDER',
+                  'SUBCONTRACT_ORDER',
+                }.contains(task.actionDocument!.docType.toUpperCase()))
+              task.actionDocument?.number ?? task.planNo,
+        ],
+        stillCurrent: () => mounted && generation == _readerGeneration,
+      );
+      if (mounted && generation == _readerGeneration) {
+        if (submitted == true) setState(_selectedIds.clear);
+        await _load(background: true);
+      }
+    } finally {
+      if (mounted && generation == _readerGeneration) {
+        setState(() => _closureBusy = false);
+      }
+    }
+  }
+
+  Widget _closureSelectionAction() => ProcurementOrderClosureSelectionAction(
+    selectedRowCount: _selectedIds.length,
+    targets: _selectedClosureTargets,
+    onSubmit: _requestSelectedClosures,
+    busy: _closureBusy || _loading || _docExportProgress != null,
+  );
+
   Widget _buildFloatingSelectionAction(_SelectionPrimaryAction action) {
     final disabledReason = action.unavailableReason ?? '当前选择不可执行此操作';
     return Tooltip(
@@ -931,15 +1117,32 @@ class _OperationsWorkbenchPageState
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<int>(
-      connectionRecoveryProvider.select((state) => state.recoveryEpoch),
-      (previous, next) {
-        if (next <= (previous ?? 0)) return;
-        // Recovery must reload the currently visible workbench without asking
-        // older users to leave the page or repeatedly press refresh.
-        Future<void>.microtask(() => _load());
-      },
-    );
+    final location = switch (widget.department) {
+      OperationsWorkbenchDepartment.purchase =>
+        RouteName.operationsPurchaseWorkbench,
+      OperationsWorkbenchDepartment.warehouse =>
+        RouteName.operationsWarehouseWorkbench,
+      OperationsWorkbenchDepartment.subcontract =>
+        RouteName.operationsSubcontractWorkbench,
+    };
+    ref.onPageResume(location, () async {
+      await _load(background: true);
+      // _load owns its visible error; let the scheduler keep failed data dirty.
+      if (_error != null) throw StateError(_error!);
+    });
+    ref.listen<
+      int
+    >(connectionRecoveryProvider.select((state) => state.recoveryEpoch), (
+      previous,
+      next,
+    ) {
+      if (next <= (previous ?? 0)) return;
+      // Recovery must reload the currently visible workbench without asking
+      // older users to leave the page or repeatedly press refresh.
+      // The application gate also broadcasts recovery. Let the same visible
+      // page scheduler coalesce both signals instead of issuing a hidden read.
+      ref.read(pageRefreshRequestProvider.notifier).state++;
+    });
     final selectionAction = _selectionPrimaryAction;
     return Scaffold(
       appBar: UtenAppBar(
@@ -1033,7 +1236,7 @@ class _OperationsWorkbenchPageState
         ),
       );
     }
-    if (_error != null) {
+    if (_error != null && _data == null) {
       return _withInitialStages(
         UtenEmpty.error(
           message: '无法加载${widget.department.label}',
@@ -1078,7 +1281,9 @@ class _OperationsWorkbenchPageState
         );
 
         // 大小屏共用一张表：统一走折叠头+表格，窄屏横向滚动（卡片形态已退役）。
-        final tableSelectable = selectionAction != null;
+        final closureSelection =
+            widget.department != OperationsWorkbenchDepartment.warehouse;
+        final tableSelectable = selectionAction != null || closureSelection;
         {
           // 「顶部折叠 + 表格吸顶内滚」：任意位置上滑先把分类工具条收完，
           // 筛选行随表格上移后钉在顶部常驻，之后表格内部滚动。
@@ -1115,12 +1320,20 @@ class _OperationsWorkbenchPageState
                         _exception,
                         _historyTime,
                       ),
+                      paginationRevision: _paginationRevision,
+                      refreshedPages: _refreshedPages,
+                      onRetainedPagesChanged: (pages) => _retainedPages = pages,
                       items: data.items,
                       selectedIds: _selectedIds,
                       selectable: tableSelectable,
                       loading: _loading,
+                      refreshing: _backgroundRefresh,
+                      refreshError: _error,
+                      onRetry: () => _load(background: true),
                       onSelectedIdsChanged: _setSelectedIds,
                       onOpenTask: _openAction,
+                      canRequestClosure: _canRequestClosure,
+                      onRequestClosure: _requestClosure,
                       onPageChanged: (page) {
                         setState(() => _page = page);
                         _load(page: page);
@@ -1144,18 +1357,13 @@ class _OperationsWorkbenchPageState
                         });
                         _load(page: 1);
                       },
-                      batchActions: selectionAction == null
+                      batchActions: selectionAction == null && !closureSelection
                           ? null
                           : (_, _) => [
-                              _buildFloatingSelectionAction(selectionAction),
+                              if (closureSelection) _closureSelectionAction(),
+                              if (selectionAction != null)
+                                _buildFloatingSelectionAction(selectionAction),
                             ],
-                      selectableIdOf:
-                          _seg?.code == _inProgressStage &&
-                              widget.purchaseOrderBatchExport != null
-                          ? (task) => _exportableOrderDocOf(task) != null
-                                ? task.id
-                                : null
-                          : null,
                     ),
                   ),
               ],
@@ -1214,12 +1422,20 @@ class _DesktopTaskTable extends StatelessWidget {
     required this.data,
     required this.rowsController,
     required this.paginationScope,
+    required this.paginationRevision,
+    required this.refreshedPages,
+    required this.onRetainedPagesChanged,
     required this.items,
     required this.selectedIds,
     required this.selectable,
     required this.loading,
+    this.refreshing = false,
+    this.refreshError,
+    this.onRetry,
     required this.onSelectedIdsChanged,
     required this.onOpenTask,
+    this.canRequestClosure,
+    this.onRequestClosure,
     required this.onPageChanged,
     this.facets = const {},
     this.nullCounts = const {},
@@ -1232,7 +1448,6 @@ class _DesktopTaskTable extends StatelessWidget {
     this.sortAscending = true,
     this.onSortChange,
     this.batchActions,
-    this.selectableIdOf,
     required this.warehouseLabelOf,
     required this.exportQuery,
   });
@@ -1240,12 +1455,20 @@ class _DesktopTaskTable extends StatelessWidget {
   final OperationsWorkbenchData data;
   final MasterDataTableRowsController<OperationsWorkbenchTask> rowsController;
   final Object paginationScope;
+  final int paginationRevision;
+  final Map<int, List<OperationsWorkbenchTask>> refreshedPages;
+  final ValueChanged<List<int>> onRetainedPagesChanged;
   final List<OperationsWorkbenchTask> items;
   final Set<String> selectedIds;
   final bool selectable;
   final bool loading;
+  final bool refreshing;
+  final String? refreshError;
+  final VoidCallback? onRetry;
   final ValueChanged<Set<String>> onSelectedIdsChanged;
   final ValueChanged<OperationsWorkbenchTask> onOpenTask;
+  final bool Function(OperationsWorkbenchTask)? canRequestClosure;
+  final ValueChanged<OperationsWorkbenchTask>? onRequestClosure;
   final ValueChanged<int> onPageChanged;
   final Map<String, List<MasterFacetBucket>> facets;
   final Map<String, int> nullCounts;
@@ -1262,10 +1485,6 @@ class _DesktopTaskTable extends StatelessWidget {
   final void Function(String? column, bool ascending)? onSortChange;
   final List<Widget> Function(BuildContext, Set<String>)? batchActions;
 
-  /// 「进行中」段批量导出的行级勾选门控：null 时全部行可勾选（申请待分解
-  /// 段的既有口径）；非 null 时返回 null 的行不可勾选，勾选位换锁图标。
-  final String? Function(OperationsWorkbenchTask task)? selectableIdOf;
-
   /// 仓库列文案（2026-10-10）：主档字典的「主仓 - 子仓」组合名，未命中回退
   /// 行内叶仓名。由页面侧闭包提供（要读 masterNameServiceProvider）。
   final String Function(OperationsWorkbenchTask task) warehouseLabelOf;
@@ -1277,27 +1496,19 @@ class _DesktopTaskTable extends StatelessWidget {
     // UtenCollapsingHeaderScrollView 注入的 PrimaryScrollController）。
     return MasterDataTableView<OperationsWorkbenchTask>(
       rowsController: rowsController,
-      paginationRevision: data,
+      paginationRevision: paginationRevision,
+      refreshedPages: refreshedPages,
+      onRetainedPagesChanged: onRetainedPagesChanged,
       paginationScope: paginationScope,
       tableKey:
           'features.operations_workbench.pages.operations_workbench_page.DesktopTaskTable.build.1',
       primary: true,
       // 大小屏共用一张表：窄屏同样横向滚动（2026-10-09 卡片形态退役）。
       selectable: selectable,
-      idOf: selectableIdOf ?? (item) => item.id,
+      idOf: (item) => item.id,
       // 勾选门控会让部分行的 idOf 返回 null，行键不能跟着回落下标
       // （筛选/刷新后行复用会错位），恒用任务 id 做行键。
       rowKeyOf: (item) => item.taskId,
-      unselectableLeadingBuilder: selectableIdOf == null
-          ? null
-          : (context, item) => Tooltip(
-              message: '仅财务已通过的采购订货单可导出',
-              child: Icon(
-                Icons.lock_outline_rounded,
-                size: 20,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
       selectedIds: selectable ? selectedIds : const <String>{},
       onSelectedIdsChanged: selectable ? onSelectedIdsChanged : null,
       columns: [
@@ -1515,6 +1726,12 @@ class _DesktopTaskTable extends StatelessWidget {
             icon: Icons.open_in_new_rounded,
             onTap: () => onOpenTask(item),
           ),
+          if (canRequestClosure?.call(item) == true)
+            UtenMenuItem(
+              label: AppLocalizations.of(context).orderClosureAction,
+              icon: Icons.stop_circle_outlined,
+              onTap: () => onRequestClosure?.call(item),
+            ),
         ];
       },
       rowColor: (item) {
@@ -1529,7 +1746,10 @@ class _DesktopTaskTable extends StatelessWidget {
               ).colorScheme.errorContainer.withValues(alpha: 0.35)
             : null;
       },
-      isLoading: loading,
+      isLoading: loading && !refreshing,
+      isRefreshing: refreshing,
+      refreshError: refreshError,
+      onRetry: onRetry,
       emptyMessage: '当前筛选下没有任务',
       currentPage: data.page,
       totalPages: data.totalPages,

@@ -3314,21 +3314,6 @@
       "tests": 2,
       "skipped": 0
     },
-    "com.uten.imp.features.admin.systemtest.BusinessDataResetDrainFilterTest": {
-      "seconds": 0.206,
-      "tests": 3,
-      "skipped": 0
-    },
-    "com.uten.imp.features.admin.systemtest.BusinessDataResetFeatureGateTest": {
-      "seconds": 0.002,
-      "tests": 2,
-      "skipped": 0
-    },
-    "com.uten.imp.features.admin.systemtest.DrainAwareTaskSchedulerTest": {
-      "seconds": 0.311,
-      "tests": 3,
-      "skipped": 0
-    },
     "com.uten.imp.features.admin.DataScopeOwnerCandidateSqlContractTest": {
       "seconds": 0.236,
       "tests": 1,
@@ -5542,11 +5527,6 @@
     "com.uten.imp.audit.AuditAccountMaskTest": {
       "seconds": 0.001,
       "tests": 2,
-      "skipped": 0
-    },
-    "com.uten.imp.ops.BusinessDataResetServicePostgresTest": {
-      "seconds": 34.78,
-      "tests": 4,
       "skipped": 0
     },
     "com.uten.imp.ops.BusinessDataResetSparsePostgresTest": {

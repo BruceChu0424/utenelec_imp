@@ -175,7 +175,7 @@ class PurchaseOrderPrintPaper extends StatelessWidget {
                 '供应商电话：${_shown(d.supplierPhone)}',
                 '公司电话：${_shown(d.companyPhone)}',
               ),
-              if (!d.financeApproved)
+              if (!d.financeApproved || d.statusLabel != '财务已通过')
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: text('单据状态：${_shown(d.statusLabel)}', bold: true),
@@ -303,7 +303,7 @@ Future<Uint8List> buildPurchaseOrderPdf(
           ),
           pw.SizedBox(height: 6),
           pw.Divider(color: PdfColor.fromHex('#0F766E'), thickness: 1.5),
-          if (!d.financeApproved)
+          if (!d.financeApproved || d.statusLabel != '财务已通过')
             text('单据状态：${_shown(d.statusLabel)}', bold: true),
           pw.SizedBox(height: 6),
         ],

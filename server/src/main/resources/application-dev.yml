@@ -1,6 +1,6 @@
 # 开发环境：宽松、详细日志、不强制 HTTPS
 server:
-  # 测试数据清空只允许本机开发；改成非回环监听时门禁自动关闭。
+  # 本地开发默认只监听回环地址。
   address: ${SERVER_ADDRESS:127.0.0.1}
   ssl:
     enabled: false
@@ -45,9 +45,6 @@ logging:
     org.flywaydb.core.internal.command.DbValidate: WARN
 
 uten:
-  features:
-    # 本地开发保留测试入口，还要求回环数据库目标与本地数据库执行授权。
-    business-data-reset-enabled: ${UTEN_BUSINESS_DATA_RESET_ENABLED:true}
   jwt:
     issuer: ${UTEN_JWT_ISSUER:uten-imp-dev}
   security:

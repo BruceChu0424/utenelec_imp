@@ -79,6 +79,12 @@ import '../widgets/subcontract_application_kit_dialog.dart';
 import '../widgets/subcontract_application_detail_dialog.dart';
 import '../widgets/subcontract_draw_status.dart';
 import '../widgets/subcontract_draw_task_detail_dialog.dart';
+import '../../../shared/widgets/procurement_order_closure_dialog.dart';
+import '../../../components/feedback/uten_context_menu.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../shared/models/procurement_order_closure.dart';
+import '../../../shared/widgets/procurement_order_closure_batch_dialog.dart';
+import '../../../shared/widgets/procurement_order_closure_selection_action.dart';
 
 /// 阶段分段值：真实任务阶段（code 非空）或历史记录哨兵。
 class _DecompositionSeg {
@@ -98,6 +104,11 @@ class _DecompositionSeg {
 
 /// 进行中状态格的可点动作(去判定短交 / 去领料)。
 typedef _StatusAction = ({String hint, String buttonLabel, VoidCallback onTap});
+
+class _RetainedRefreshBatch {
+  bool failed = false;
+  final commits = <VoidCallback>[];
+}
 
 class SubcontractDecompositionPage extends ConsumerStatefulWidget {
   const SubcontractDecompositionPage({
@@ -152,6 +163,11 @@ class _SubcontractDecompositionPageState
   Map<String, Object?>? _acceptedCategoryScope;
   String? _error;
   bool _loading = true;
+  bool _backgroundRefresh = false;
+  int _paginationRevision = 0;
+  List<int> _retainedPages = const [];
+  Map<int, List<OperationsWorkbenchTask>> _refreshedPages = const {};
+  Map<int, List<SubcontractPendingRow>> _refreshedPendingPages = const {};
   int _page = 1;
   int _requestId = 0;
   int _readerGeneration = 0;
@@ -170,14 +186,20 @@ class _SubcontractDecompositionPageState
   String? _exception;
   static const _allExceptions = '__ALL_EXCEPTIONS__';
 
-  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
+  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
+  /// 最近三个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
 
   final Set<String> _selectedIds = <String>{};
+  final _taskRows = MasterDataTableRowsController<OperationsWorkbenchTask>();
+  final _pendingRows = MasterDataTableRowsController<SubcontractPendingRow>();
+  bool _closureBusy = false;
 
   // —— 「待处理」领料行(ADR-171 修订二：拍平进待处理表)：独立数据源、独立选择集 ——
   SubcontractDrawTaskList? _drawData;
   bool _drawLoading = false;
+  bool _drawBackgroundRefresh = false;
+  Object? _acceptedDrawQuery;
   String? _drawError;
   int _drawRequestId = 0;
   int _drawCountRequestId = 0;
@@ -220,16 +242,21 @@ class _SubcontractDecompositionPageState
   /// 蓝=财务已通过（已批流转中），青绿=委外商加工中（他方执行中），
   /// 橙=部分回厂（风险中间态），品红=分批等待（分类强调），灰=容差内待结案。
   static UtenStatusBadgeType _progressType(String code) => switch (code) {
-    'WAITING_ORDER' || 'DRAWABLE' || 'COMPLETED' => UtenStatusBadgeType.success,
+    'WAITING_ORDER' ||
+    'DRAWABLE' ||
+    'COMPLETED' ||
+    'ORDER_CLOSED' => UtenStatusBadgeType.success,
     'KIT_PARTIAL' => UtenStatusBadgeType.violet,
     'WAITING_KIT' ||
     'BOM_MISSING' ||
     'FINANCE_REJECTED' ||
     'FINANCE_REVIEW_REJECTED' ||
+    'ORDER_CLOSE_REJECTED' ||
     'SHORT_DELIVERY' ||
     'WAITING_MATERIAL' => UtenStatusBadgeType.danger,
     'ORDER_PENDING_APPROVAL' ||
     'FINANCE_REVIEW_PENDING' ||
+    'ORDER_CLOSE_PENDING' ||
     'RECEIVED_PENDING_STOCK' => UtenStatusBadgeType.warning,
     'DRAW_SUBMITTED' => UtenStatusBadgeType.sky,
     'FINANCE_APPROVED' => UtenStatusBadgeType.info,
@@ -415,6 +442,7 @@ class _SubcontractDecompositionPageState
   }
 
   void _resetReadState() {
+    _closureBusy = false;
     // Reader changes invalidate all three visible GET owners, including a draw
     // list that the next segment no longer needs to request.
     for (final key in ['rows', 'draw-rows', 'draw-count']) {
@@ -426,14 +454,20 @@ class _SubcontractDecompositionPageState
     _drawCountRequestId++;
     _data = null;
     _acceptedQuery = null;
+    _retainedPages = const [];
+    _refreshedPages = const {};
+    _refreshedPendingPages = const {};
     _categoryCounts = null;
     _acceptedCategoryScope = null;
     _drawData = null;
+    _acceptedDrawQuery = null;
     _drawPage = 1;
     _error = null;
     _drawError = null;
     _loading = false;
+    _backgroundRefresh = false;
     _drawLoading = false;
+    _drawBackgroundRefresh = false;
     _drawCount = null;
     _submittedCount = null;
     _drawVisible = true;
@@ -451,7 +485,7 @@ class _SubcontractDecompositionPageState
     _drawApplicationItemIds = const {};
     _drawApplicationId = null;
     _drawApplicationLabel = null;
-    _historyTime = const UtenHistoryTimeValue.all();
+    _historyTime = UtenHistoryTimeValue.lastThreeMonths();
   }
 
   void _readerChanged() {
@@ -546,12 +580,27 @@ class _SubcontractDecompositionPageState
     'exception': _exception,
   };
 
-  Future<void> _load({int? page, int size = 50}) => trackRefresh(
-    _loadRows(page: page, size: size),
+  void _retainPages(List<int> pages) {
+    final sorted = pages.where((page) => page > 0).toSet().toList()..sort();
+    _retainedPages = sorted.take(5).toList(growable: false);
+  }
+
+  Future<void> _load({
+    int? page,
+    int size = 50,
+    bool background = false,
+    _RetainedRefreshBatch? batch,
+  }) => trackRefresh(
+    _loadRows(page: page, size: size, background: background, batch: batch),
     replaceKey: 'rows',
   );
 
-  Future<void> _loadRows({int? page, int size = 50}) async {
+  Future<void> _loadRows({
+    int? page,
+    int size = 50,
+    bool background = false,
+    _RetainedRefreshBatch? batch,
+  }) async {
     if (!mounted) return;
     final requestId = ++_requestId;
     final query = _queryIdentity;
@@ -560,52 +609,130 @@ class _SubcontractDecompositionPageState
     final draft = seg?.code == _draftStage;
     final listing = _shouldLoad && !draft;
     final range = seg?.history == true ? _historyTime.range : null;
+    final retainRows =
+        background && _data != null && mapEquals(_acceptedQuery, query);
+    final requestedPage = page ?? _page;
+    final retainedPages = _retainedPages.isEmpty
+        ? [requestedPage]
+        : List<int>.of(_retainedPages);
+    final keyword = _keyword;
+    final exception = _exception;
+    final sort = _sortColumn;
+    final ascending = _sortAscending;
+    final columnFilters = Map<String, String?>.of(_columnFilters);
+    bool current() =>
+        mounted && requestId == _requestId && mapEquals(query, _queryIdentity);
     setState(() {
       if (!mapEquals(_acceptedQuery, query)) {
         _data = null;
         _selectedIds.clear();
+        _retainedPages = const [];
+        _refreshedPages = const {};
+        _refreshedPendingPages = const {};
       }
       if (!mapEquals(_acceptedCategoryScope, categoryScope)) {
         _categoryCounts = null;
       }
       _loading = !draft;
+      _backgroundRefresh = retainRows && !draft;
       _error = null;
     });
     try {
-      final next = await _repository.load(
+      Future<OperationsWorkbenchData> fetch(int target) => _repository.load(
         department: OperationsWorkbenchDepartment.subcontract,
-        page: page ?? _page,
+        page: target,
         // 未选分类时只拉 1 条：仅为取 summary 阶段/异常计数。
         size: listing ? size : 1,
-        keyword: _keyword,
+        keyword: keyword,
         status: listing && seg != null && !seg.history ? seg.code : null,
-        exception: listing && seg != null && !seg.history ? _exception : null,
+        exception: listing && seg != null && !seg.history ? exception : null,
         dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
         dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
-        sort: _sortColumn,
-        order: _sortAscending ? 'asc' : 'desc',
-        columnFilters: _columnFilters,
+        sort: sort,
+        order: ascending ? 'asc' : 'desc',
+        columnFilters: columnFilters,
       );
-      if (!mounted ||
-          requestId != _requestId ||
-          !mapEquals(query, _queryIdentity)) {
-        return;
+      final results = <int, OperationsWorkbenchData>{};
+      OperationsWorkbenchData next;
+      if (retainRows && listing) {
+        int? lastPage;
+        for (final target in retainedPages) {
+          if (!current()) return;
+          if (lastPage != null && target > lastPage) break;
+          final result = await fetch(target);
+          if (!current()) return;
+          lastPage = result.totalPages;
+          if (result.totalPages == 0) {
+            if (target == 1) {
+              results[1] = result;
+            } else {
+              final firstPage = await fetch(1);
+              if (!current()) return;
+              results[1] = firstPage;
+            }
+            break;
+          }
+          if (result.page <= result.totalPages) results[result.page] = result;
+        }
+        if (results.isEmpty) {
+          if (!current()) return;
+          final result = await fetch(
+            lastPage != null && lastPage > 0 ? lastPage : 1,
+          );
+          if (!current()) return;
+          results[result.page] = result;
+        }
+        next = results[requestedPage] ?? results.values.last;
+        results.removeWhere((page, _) => page > next.totalPages && page != 1);
+      } else {
+        next = await fetch(requestedPage);
       }
-      final visibleIds = next.items
-          .where(_canOrderTask)
-          .map((item) => item.id)
-          .toSet();
-      setState(() {
+      if (!current()) return;
+      final visibleIds =
+          (results.isEmpty
+                  ? next.items
+                  : results.values.expand((result) => result.items))
+              .where(_canOrderTask)
+              .map((item) => item.id)
+              .toSet();
+      void accept() {
         _categoryCounts = Map.unmodifiable(next.summary.statusCounts);
         _acceptedCategoryScope = categoryScope;
         if (!draft) {
           _data = next;
           _acceptedQuery = query;
           _page = next.page;
+          // A background response updates this accepted page in place. Only a
+          // foreground replacement retires the table's loaded page window.
+          if (!retainRows) {
+            _paginationRevision++;
+            _refreshedPages = const {};
+            _refreshedPendingPages = const {};
+          } else if (results.isNotEmpty) {
+            _refreshedPages = Map.unmodifiable({
+              for (final entry in results.entries)
+                entry.key: List<OperationsWorkbenchTask>.unmodifiable(
+                  entry.value.items,
+                ),
+            });
+            _refreshedPendingPages = Map.unmodifiable({
+              for (final entry in _refreshedPages.entries)
+                entry.key: List<SubcontractPendingRow>.unmodifiable(
+                  entry.value.map(SubcontractApplicationRow.new),
+                ),
+            });
+          }
           _selectedIds.removeWhere((id) => !visibleIds.contains(id));
         }
         _loading = false;
-      });
+        _backgroundRefresh = false;
+      }
+
+      if (batch == null) {
+        setState(accept);
+      } else {
+        batch.commits.add(accept);
+      }
     } catch (error) {
       if (!mounted ||
           requestId != _requestId ||
@@ -613,12 +740,32 @@ class _SubcontractDecompositionPageState
         return;
       }
       setState(() {
+        if (batch != null) batch.failed = true;
         if (error is ApiException &&
-            (error.httpStatus == 401 || error.httpStatus == 403)) {
+            (error.httpStatus == 401 ||
+                error.httpStatus == 403 ||
+                error.code == 'UNAUTHORIZED' ||
+                error.code == 'FORBIDDEN')) {
           _categoryCounts = null;
           _acceptedCategoryScope = null;
+          _data = null;
+          _acceptedQuery = null;
+          _retainedPages = const [];
+          _refreshedPages = const {};
+          _refreshedPendingPages = const {};
+          _selectedIds.clear();
+          _drawRequestId++;
+          _drawCountRequestId++;
+          _drawData = null;
+          _acceptedDrawQuery = null;
+          _drawLoading = false;
+          _drawBackgroundRefresh = false;
+          _drawCount = null;
+          _submittedCount = null;
+          _selectedDrawIds.clear();
         }
         _loading = false;
+        _backgroundRefresh = false;
         _error = error is ApiException ? error.message : '委外任务加载失败，请稍后重试';
       });
     }
@@ -642,12 +789,21 @@ class _SubcontractDecompositionPageState
       });
     } on ApiException catch (error) {
       if (!mounted || requestId != _drawCountRequestId) return;
-      final forbidden = error.httpStatus == 403 || error.code == 'FORBIDDEN';
+      final forbidden =
+          error.httpStatus == 401 ||
+          error.httpStatus == 403 ||
+          error.code == 'UNAUTHORIZED' ||
+          error.code == 'FORBIDDEN';
       setState(() {
         _drawCount = null;
         _submittedCount = null;
         if (forbidden) {
           _drawVisible = false;
+          _drawRequestId++;
+          _drawData = null;
+          _acceptedDrawQuery = null;
+          _drawLoading = false;
+          _drawBackgroundRefresh = false;
           _selectedDrawIds.clear();
         }
       });
@@ -661,18 +817,43 @@ class _SubcontractDecompositionPageState
   }
 
   /// 领料行与申请行分别使用真实服务端分页，申请定位先筛范围再计数、分页。
-  Future<void> _loadDraw({int? page}) =>
-      trackRefresh(_loadDrawRows(page: page), replaceKey: 'draw-rows');
+  Object get _drawQueryIdentity => (
+    _keyword,
+    _drawOrderId,
+    _drawOrderItemId,
+    _drawApplicationId,
+    (_drawApplicationItemIds.toList()..sort()).join(','),
+  );
 
-  Future<void> _loadDrawRows({int? page}) async {
+  Future<void> _loadDraw({
+    int? page,
+    bool background = false,
+    _RetainedRefreshBatch? batch,
+  }) => trackRefresh(
+    _loadDrawRows(page: page, background: background, batch: batch),
+    replaceKey: 'draw-rows',
+  );
+
+  Future<void> _loadDrawRows({
+    int? page,
+    bool background = false,
+    _RetainedRefreshBatch? batch,
+  }) async {
     if (!mounted || !_pendingSeg || !_drawVisible) return;
     final requestId = ++_drawRequestId;
     final requestedPage = page ?? _drawPage;
+    final query = _drawQueryIdentity;
+    final retainRows =
+        background &&
+        _drawData != null &&
+        _acceptedDrawQuery == query &&
+        _drawData!.page.page == requestedPage;
     setState(() {
       _drawPage = requestedPage;
       _drawLoading = true;
+      _drawBackgroundRefresh = retainRows;
       _drawError = null;
-      _drawData = null;
+      if (!retainRows) _drawData = null;
     });
     try {
       final next = await _drawRepository.list(
@@ -684,36 +865,61 @@ class _SubcontractDecompositionPageState
         applicationItemIds: _drawApplicationItemIds.toList(growable: false),
         applicationId: _drawApplicationId,
       );
-      if (!mounted || requestId != _drawRequestId) return;
-      if (requestedPage > 1 && next.page.totalPages < requestedPage) {
-        await _loadDraw(page: next.page.totalPages.clamp(1, requestedPage));
+      if (!mounted ||
+          requestId != _drawRequestId ||
+          query != _drawQueryIdentity) {
         return;
       }
-      final selectable = next.canSubmitDraw
-          ? next.page.items
-                .where((row) => row.canDraw)
-                .map((row) => row.orderItemId)
-                .toSet()
-          : const <String>{};
-      setState(() {
+      if (requestedPage > 1 && next.page.totalPages < requestedPage) {
+        await _loadDraw(
+          page: next.page.totalPages.clamp(1, requestedPage),
+          background: background,
+          batch: batch,
+        );
+        return;
+      }
+      final selectable = next.page.items.map((row) => row.orderItemId).toSet();
+      void accept() {
         _drawData = next;
+        _acceptedDrawQuery = query;
         _selectedDrawIds.removeWhere((id) => !selectable.contains(id));
         _drawLoading = false;
-      });
+        _drawBackgroundRefresh = false;
+      }
+
+      if (batch == null) {
+        setState(accept);
+      } else {
+        batch.commits.add(accept);
+      }
     } catch (error) {
-      if (!mounted || requestId != _drawRequestId) return;
+      if (!mounted ||
+          requestId != _drawRequestId ||
+          query != _drawQueryIdentity) {
+        return;
+      }
       // 无订货查看权限(403)与计数口径一致：领料行整体静默隐藏，不向用户报错——
       // 拍平表照常显示申请行。
       final forbidden =
           error is ApiException &&
           (error.httpStatus == 403 || error.code == 'FORBIDDEN');
       setState(() {
+        if (batch != null) batch.failed = true;
         _drawLoading = false;
+        _drawBackgroundRefresh = false;
         if (forbidden) {
           _drawVisible = false;
+          _drawData = null;
+          _acceptedDrawQuery = null;
           _selectedDrawIds.clear();
           _drawError = null;
         } else {
+          if (error is ApiException &&
+              (error.httpStatus == 401 || error.code == 'UNAUTHORIZED')) {
+            _drawData = null;
+            _acceptedDrawQuery = null;
+            _selectedDrawIds.clear();
+          }
           _drawError = error is ApiException
               ? error.message
               : '委外领料任务加载失败，请稍后重试';
@@ -727,12 +933,51 @@ class _SubcontractDecompositionPageState
     _loadDrawCount();
   }
 
-  Future<void> _refreshAll() async {
+  Future<void> _refreshAll({bool background = false}) async {
+    if (background) {
+      final batch = _RetainedRefreshBatch();
+      final reader = _readerGeneration;
+      final query = _queryIdentity;
+      final pending = _pendingSeg;
+      final drawQuery = _drawQueryIdentity;
+      final rows = _load(background: true, batch: batch);
+      final request = _requestId;
+      final draws = pending
+          ? _loadDraw(background: true, batch: batch)
+          : Future<void>.value();
+      final drawRequest = _drawRequestId;
+      await Future.wait([refreshBadges(ref), rows, _loadDrawCount(), draws]);
+      if (!mounted ||
+          reader != _readerGeneration ||
+          request != _requestId ||
+          !mapEquals(query, _queryIdentity)) {
+        return;
+      }
+      final drawCurrent =
+          !pending ||
+          (drawRequest == _drawRequestId && drawQuery == _drawQueryIdentity);
+      setState(() {
+        // The two row sources form one visible pending table. Publish only
+        // after every retained application page and the scoped draw page pass.
+        if (!batch.failed && drawCurrent) {
+          for (final accept in batch.commits) {
+            accept();
+          }
+        }
+        _loading = false;
+        _backgroundRefresh = false;
+        if (drawCurrent) {
+          _drawLoading = false;
+          _drawBackgroundRefresh = false;
+        }
+      });
+      return;
+    }
     await Future.wait([
       refreshBadges(ref),
-      _load(page: 1),
+      _load(page: background ? null : 1, background: background),
       _loadDrawCount(),
-      if (_pendingSeg) _loadDraw(),
+      if (_pendingSeg) _loadDraw(background: background),
     ]);
   }
 
@@ -742,12 +987,17 @@ class _SubcontractDecompositionPageState
       _seg = seg;
       _exception = null;
       _page = 1;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
+      // 进历史段重新按默认近三个月加载；非历史段回 all() 占位。
+      _historyTime = seg.history
+          ? UtenHistoryTimeValue.lastThreeMonths()
+          : const UtenHistoryTimeValue.all();
       _selectedIds.clear();
       _columnFilters.clear();
       _drawRequestId++;
       _drawData = null;
+      _acceptedDrawQuery = null;
       _drawLoading = false;
+      _drawBackgroundRefresh = false;
       _drawPage = 1;
       _selectedDrawIds.clear();
     });
@@ -871,11 +1121,89 @@ class _SubcontractDecompositionPageState
 
   List<OperationsWorkbenchTask> get _selectedTasks {
     final selected = _selectedIds;
-    return _data?.items
-            .where((item) => selected.contains(item.id))
-            .toList(growable: false) ??
-        const [];
+    final rows = _pendingSeg
+        ? _pendingRows.items.whereType<SubcontractApplicationRow>().map(
+            (row) => row.task,
+          )
+        : _taskRows.items;
+    return rows
+        .where((item) => selected.contains(item.id))
+        .toList(growable: false);
   }
+
+  List<ProcurementOrderClosureTarget?> get _selectedClosureTargets => [
+    for (final task in _selectedTasks)
+      if (task.actionDocument case final document?
+          when const {
+            'ORDER',
+            'SUBCONTRACT_ORDER',
+          }.contains(document.docType.toUpperCase()))
+        ProcurementOrderClosureTarget(
+          orderType: 'SUBCONTRACT',
+          orderId: document.id,
+          billNo: document.number,
+          localRevision:
+              '$_requestId:${task.progressStatus}:${document.status}:${task.updatedAt}',
+        )
+      else
+        null,
+    for (final row in _pendingRows.items.whereType<SubcontractPendingDrawRow>())
+      if (_selectedDrawIds.contains(row.row.orderItemId))
+        ProcurementOrderClosureTarget(
+          orderType: 'SUBCONTRACT',
+          orderId: row.row.orderId,
+          billNo: row.row.orderBillNo,
+          localRevision:
+              '${identityHashCode(row.row)}:${row.row.status}:${row.row.drawnQty}:${row.row.pendingQty}',
+        ),
+  ];
+
+  Future<void> _requestSelectedClosures(
+    List<ProcurementOrderClosureTarget> orders,
+    int unsupportedRows,
+  ) async {
+    if (_closureBusy) return;
+    final generation = _readerGeneration;
+    setState(() => _closureBusy = true);
+    try {
+      final submitted = await showProcurementOrderClosureBatchDialog(
+        context,
+        orders: orders,
+        unsupportedRowCount: unsupportedRows,
+        unsupportedLabels: [
+          for (final task in _selectedTasks)
+            if (task.actionDocument == null ||
+                !const {
+                  'ORDER',
+                  'SUBCONTRACT_ORDER',
+                }.contains(task.actionDocument!.docType.toUpperCase()))
+              task.actionDocument?.number ?? task.planNo,
+        ],
+        stillCurrent: () => mounted && generation == _readerGeneration,
+      );
+      if (mounted && generation == _readerGeneration) {
+        if (submitted == true) {
+          setState(() {
+            _selectedIds.clear();
+            _selectedDrawIds.clear();
+          });
+        }
+        await _refreshAll(background: true);
+      }
+    } finally {
+      if (mounted && generation == _readerGeneration) {
+        setState(() => _closureBusy = false);
+      }
+    }
+  }
+
+  Widget _closureSelectionAction() => ProcurementOrderClosureSelectionAction(
+    selectedRowCount:
+        _selectedIds.length + (_pendingSeg ? _selectedDrawIds.length : 0),
+    targets: _selectedClosureTargets,
+    onSubmit: _requestSelectedClosures,
+    busy: _closureBusy || _loading || (_pendingSeg && _drawLoading),
+  );
 
   bool get _hasDecomposePermissions {
     final permissions = ref.read(currentPermissionsProvider);
@@ -973,6 +1301,41 @@ class _SubcontractDecompositionPageState
     _openSource(task);
   }
 
+  bool _canRequestClosure(OperationsWorkbenchTask task) {
+    final document = task.actionDocument;
+    return document?.canView == true &&
+        document?.status == '1' &&
+        const {
+          'ORDER',
+          'SUBCONTRACT_ORDER',
+        }.contains(document?.docType.toUpperCase()) &&
+        !const {
+          'ORDER_CLOSED',
+          'ORDER_CLOSE_PENDING',
+        }.contains(task.progressStatus) &&
+        (ref.read(isSuperAdminProvider) ||
+            ref
+                .read(currentPermissionsProvider)
+                .contains(Perm.subcontractOrderSubmitFinance));
+  }
+
+  Future<void> _requestClosure(OperationsWorkbenchTask task) async {
+    if (!_canRequestClosure(task)) return;
+    final generation = _readerGeneration;
+    await showProcurementOrderClosureDialog(
+      context,
+      orderType: 'SUBCONTRACT',
+      orderId: task.actionDocument!.id,
+      stillCurrent: () =>
+          mounted &&
+          generation == _readerGeneration &&
+          _canRequestClosure(task),
+    );
+    if (mounted && generation == _readerGeneration) {
+      await _load();
+    }
+  }
+
   void _openSource(OperationsWorkbenchTask task) {
     final source = task.actionDocument;
     if (source == null || !source.canView) return;
@@ -1032,6 +1395,13 @@ class _SubcontractDecompositionPageState
     ];
     final issue = ids.isEmpty
         ? '请先勾选可领料的委外任务'
+        : ids.length != _selectedDrawIds.length ||
+              rows.any(
+                (row) =>
+                    _selectedDrawIds.contains(row.orderItemId) &&
+                    !_actionableDraw(row),
+              )
+        ? '所选包含当前不可领料的任务，请重新核对选择'
         : _drawNavigating
         ? '正在打开领料页'
         : null;
@@ -1049,10 +1419,13 @@ class _SubcontractDecompositionPageState
   @override
   Widget build(BuildContext context) {
     // 入库或下单后返回时，重新读取权威事实；首次进入仍只加载一次。
-    ref.onPageResume(RouteName.operationsSubcontractWorkbench, () {
-      _load();
-      _loadDrawCount();
-      if (_pendingSeg) _loadDraw();
+    ref.onPageResume(RouteName.operationsSubcontractWorkbench, () async {
+      await _refreshAll(background: true);
+      // The scheduler keeps failed data dirty. The table presents the error
+      // beside its retained rows, so returning is still immediate.
+      if (_error != null || (_pendingSeg && _drawError != null)) {
+        throw StateError(_error ?? _drawError!);
+      }
     });
     return Scaffold(
       appBar: UtenAppBar(
@@ -1202,7 +1575,7 @@ class _SubcontractDecompositionPageState
         ),
       );
     }
-    if (_error != null) {
+    if (_error != null && _data == null) {
       return _withInitialStages(
         UtenEmpty.error(
           message: '无法加载委外任务',
@@ -1339,6 +1712,7 @@ class _SubcontractDecompositionPageState
         _hasDecomposePermissions &&
         data.capabilities.canCreateSubcontractOrder;
     return MasterDataTableView<OperationsWorkbenchTask>(
+      rowsController: _taskRows,
       tableKey:
           'features.subcontract.pages.subcontract_decomposition_page.SubcontractDecompositionPageState._buildTable.1',
       key: const Key('subcontract-decomposition-table'),
@@ -1487,14 +1861,28 @@ class _SubcontractDecompositionPageState
         _load(page: 1);
       },
       onRowTap: _openTask,
+      canShowRowMenu: (task) => task.actionDocument?.canView == true,
+      rowMenuBuilder: (task) => [
+        UtenMenuItem(
+          label: '打开关联单据',
+          icon: Icons.open_in_new_rounded,
+          onTap: () => _openTask(task),
+        ),
+        if (_canRequestClosure(task))
+          UtenMenuItem(
+            label: AppLocalizations.of(context).orderClosureAction,
+            icon: Icons.stop_circle_outlined,
+            onTap: () => _requestClosure(task),
+          ),
+      ],
       // 整行底色已退役（2026-10-08 用户口径）：状态色只在状态列整格底色，
       // 不能下单的锁行/回厂短交待判定行不再铺红。
       // 待处理行双击 = 申请摘要弹窗；其余行 = 关联申请 / 订货详情。
       canOpenRow: (task) =>
           task.taskStatus == _waitingOrderStage ||
           task.actionDocument?.canView == true,
-      selectable: canOrder,
-      idOf: (task) => _canOrderTask(task) ? task.id : null,
+      selectable: true,
+      idOf: (task) => task.id,
       // idOf 会返回 null 的锁行仍要有稳定行键(否则回落下标键)。
       rowKeyOf: (task) => task.taskId,
       // 锁行的勾选位换锁图标，悬浮说明为什么不能下单(缺 BOM / 等物料齐套)。
@@ -1515,18 +1903,23 @@ class _SubcontractDecompositionPageState
       // 批量按钮随段门控；服务端能力缺失时保留灰按钮兜底解释(能力面问题要能被发现)。
       // 悬浮组只在 selectable 时挂载：行不可选(能力缺失)时灰按钮改驻表头上方
       // 工具条，大小屏同一张表后两态都有入口（2026-10-09）。
-      batchActionsBuilder: !_orderingSeg || !_hasDecomposePermissions
-          ? null
-          : (_, _) => [_createOrderButton()],
+      batchActionsBuilder: (_, _) => [
+        _closureSelectionAction(),
+        if (_orderingSeg && _hasDecomposePermissions) _createOrderButton(),
+      ],
       toolbarActions: !_orderingSeg || !_hasDecomposePermissions || canOrder
           ? null
           : [_createOrderButton()],
-      isLoading: _loading,
-      error: _error,
-      onRetry: () => _load(),
+      isLoading: _loading && !_backgroundRefresh,
+      isRefreshing: _backgroundRefresh,
+      refreshError: _error,
+      onRetry: () => _load(background: true),
       emptyMessage: _seg?.history == true ? '该时间段内暂无委外任务' : '当前筛选下没有委外任务',
       currentPage: data.page,
       totalPages: data.totalPages,
+      paginationRevision: _paginationRevision,
+      refreshedPages: _refreshedPages,
+      onRetainedPagesChanged: _retainPages,
       paginationScope: (
         _readerGeneration,
         _keyword,
@@ -1597,7 +1990,7 @@ class _SubcontractDecompositionPageState
   Widget _buildPendingTable(OperationsWorkbenchData data) {
     final canOrder =
         _hasDecomposePermissions && data.capabilities.canCreateSubcontractOrder;
-    final selectable = canOrder || _canSubmitDraw;
+    const selectable = true;
     final drawRows = [
       if (_drawVisible)
         for (final row
@@ -1608,10 +2001,8 @@ class _SubcontractDecompositionPageState
       for (final task in data.items) SubcontractApplicationRow(task),
     ];
     String rowId(SubcontractPendingRow row) => switch (row) {
-      SubcontractApplicationRow(:final task) =>
-        _canOrderTask(task) ? task.id : '',
-      SubcontractPendingDrawRow(:final row) =>
-        _actionableDraw(row) ? 'draw-${row.orderItemId}' : '',
+      SubcontractApplicationRow(:final task) => task.id,
+      SubcontractPendingDrawRow(:final row) => 'draw-${row.orderItemId}',
     };
     Widget lockLeading(BuildContext context, SubcontractPendingRow row) =>
         Tooltip(
@@ -1629,6 +2020,7 @@ class _SubcontractDecompositionPageState
           ),
         );
     return MasterDataTableView<SubcontractPendingRow>(
+      rowsController: _pendingRows,
       tableKey:
           'features.subcontract.pages.subcontract_decomposition_page.SubcontractDecompositionPageState._buildPendingTable.1',
       key: const Key('subcontract-decomposition-pending-table'),
@@ -1913,25 +2305,30 @@ class _SubcontractDecompositionPageState
       }),
       // 悬浮组双按钮：勾了申请行 → 生成委外订货单；勾了领料行 → 批量领料。
       // 各自按自己的选择数算启用，互不拦截(两类行同时勾选时两个都在)。
-      batchActionsBuilder: !selectable
-          ? null
-          : (_, _) => [
-              if (canOrder) _createOrderButton(),
-              if (_canSubmitDraw) _drawBatchButton(),
-            ],
+      batchActionsBuilder: (_, _) => [
+        _closureSelectionAction(),
+        if (canOrder) _createOrderButton(),
+        if (_canSubmitDraw) _drawBatchButton(),
+      ],
       // 有下单权限但服务端能力缺失时保留灰按钮兜底解释(能力面问题要能被发现)；
       // 连权限都没有的账号不摆死按钮。大小屏同一张表后两态都有入口(2026-10-09)。
       toolbarActions: _orderingSeg && _hasDecomposePermissions && !canOrder
           ? [_createOrderButton()]
           : null,
-      isLoading: _loading || _drawLoading,
-      error: _error ?? _drawError,
-      onRetry: _refreshAll,
+      isLoading:
+          (_loading && !_backgroundRefresh) ||
+          (_drawLoading && !_drawBackgroundRefresh),
+      isRefreshing: _backgroundRefresh || _drawBackgroundRefresh,
+      refreshError: _error ?? _drawError,
+      onRetry: () => _refreshAll(background: true),
       emptyMessage: _drawScoped || _keyword.isNotEmpty
           ? '当前筛选下没有待处理的委外任务'
           : '暂无待处理的委外任务；计划下达的申请与财务批准后的领料任务会出现在这里',
       currentPage: data.page,
       totalPages: data.totalPages,
+      paginationRevision: _paginationRevision,
+      refreshedPages: _refreshedPendingPages,
+      onRetainedPagesChanged: _retainPages,
       paginationScope: (_readerGeneration, _keyword, _seg, _exception),
       onPageChange: (page) {
         setState(() => _page = page);

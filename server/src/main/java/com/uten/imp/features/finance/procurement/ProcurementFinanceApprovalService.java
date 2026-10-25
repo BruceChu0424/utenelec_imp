@@ -67,6 +67,9 @@ public class ProcurementFinanceApprovalService {
     private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
     private final PartyOpenBalancePort partyBalances;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private ProcurementOrderClosureService closures;
+
     public ProcurementFinanceApprovalService(
             List<ProcurementOrderApprovalPort> availablePorts,
             JdbcTemplate jdbc,
@@ -197,8 +200,11 @@ public class ProcurementFinanceApprovalService {
         BigDecimal explicitRate = normalizeFinanceExchangeRate(exchangeRate);
         BigDecimal explicitTax = com.uten.imp.common.finance.ProcurementApprovedTaxRate.normalize(taxRate);
         List<ResolvedBatchItem> items = resolveBatchItems(rawItems);
-        var mutationGuard=mutationLocks.orders(items.stream().map(item ->
-                new com.uten.imp.common.concurrency.ProcurementMutationFootprint.OrderRef(item.orderType(),item.orderId())).toList());
+        var orderRefs=items.stream().map(item ->
+                new com.uten.imp.common.concurrency.ProcurementMutationFootprint.OrderRef(item.orderType(),item.orderId())).toList();
+        boolean releasesHeldStock=closures!=null && items.stream().anyMatch(item ->
+                "SUBCONTRACT".equals(item.orderType()) && closures.isClosureCase(item.caseId()));
+        var mutationGuard=releasesHeldStock ? mutationLocks.ordersWithHeldPreStock(orderRefs) : mutationLocks.orders(orderRefs);
         requireBatchReviewClaims(rawItems);
         mutationGuard.verifyUnchanged();
         List<FinanceApproval> decisions = new ArrayList<>(items.size());
@@ -224,6 +230,9 @@ public class ProcurementFinanceApprovalService {
             BigDecimal rawExchangeRate,
             BigDecimal explicitRate, BigDecimal explicitTax) {
         String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
+        if (closures != null && closures.isClosureCase(expectedCaseId)) {
+            return closures.approve(orderType,orderId,expectedCaseId,expectedVersion,remark);
+        }
         ProcurementOrderApprovalPort port = requirePort(orderType);
         // V486 批准后改量复核：订单已批准时本 case 是「改后待复核」，数量变化
         // 已在 change-qty 事务内生效并完成下游对账；复核通过仅确认，不重复执行
@@ -343,6 +352,9 @@ public class ProcurementFinanceApprovalService {
             UUID expectedCaseId,
             String reason) {
         String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
+        if (closures != null && closures.isClosureCase(expectedCaseId)) {
+            return closures.reject(orderType,orderId,expectedCaseId,expectedVersion,reason);
+        }
         ProcurementOrderApprovalPort port = requirePort(orderType);
         boolean reconfirmation = port.isFinanceApproved(orderId);
         OrderSnapshot currentSnapshot = reconfirmation
@@ -444,7 +456,7 @@ public class ProcurementFinanceApprovalService {
         // (amount_snapshot)——待审 case 的 finance_total_local 恒为空，口径向前兼容。
         List<ApprovalTask> items = jdbc.query("""
                 SELECT c.id AS case_id,
-                       c.order_type, c.status,
+                       c.order_type, c.status,c.request_type,
                        c.order_id,
                        c.bill_no_snapshot,
                        COALESCE(c.finance_total_local, c.amount_snapshot) AS amount_snapshot,
@@ -534,8 +546,8 @@ public class ProcurementFinanceApprovalService {
                         purchase
                             ? rs.getBigDecimal("tolerance_max_purchase")
                             : rs.getBigDecimal("tolerance_max_subcontract"),
-                        "PENDING".equals(normalizedStatus) ? allowedActions : List.of(),
-                        rs.getString("status"));
+                        "PENDING".equals(rs.getString("status")) ? allowedActions : List.of(),
+                        rs.getString("status"),rs.getString("request_type"));
                 },
                 params.toArray());
         int totalPages = total == 0
@@ -583,7 +595,7 @@ public class ProcurementFinanceApprovalService {
 
     static String normalizeQueueStatus(String status) {
         String normalized = status == null || status.isBlank() ? "PENDING" : status.strip().toUpperCase(Locale.ROOT);
-        if (!java.util.Set.of("PENDING", "APPROVED", "REJECTED", "ALL").contains(normalized)) {
+        if (!java.util.Set.of("PENDING", "CLOSURE_PENDING", "APPROVED", "REJECTED", "ALL").contains(normalized)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "审批状态无效");
         }
         return normalized;
@@ -591,6 +603,7 @@ public class ProcurementFinanceApprovalService {
 
     private static String queueStatusFilter(String status) {
         String normalized = normalizeQueueStatus(status);
+        if ("CLOSURE_PENDING".equals(normalized)) return " c.status='PENDING' AND c.request_type<>'ORDER'\n";
         return "ALL".equals(normalized) ? " TRUE\n" : " c.status = '" + normalized + "'\n";
     }
 
@@ -708,8 +721,8 @@ public class ProcurementFinanceApprovalService {
         Map<String, Long> counts = new LinkedHashMap<>();
         jdbc.query("""
                 SELECT order_type, COUNT(*)
-                FROM procurement_order_approval_cases
-                WHERE """ + queueStatusFilter(status).replace("c.status", "status") + " GROUP BY order_type", rs -> {
+                FROM procurement_order_approval_cases c
+                WHERE """ + queueStatusFilter(status) + " GROUP BY order_type", rs -> {
             counts.put(rs.getString(1), rs.getLong(2));
         });
         return counts;
@@ -754,7 +767,7 @@ public class ProcurementFinanceApprovalService {
                     SELECT prior.finance_tax_rate,prior.finance_exchange_rate
                     FROM procurement_order_approval_cases prior
                     WHERE prior.order_type=c.order_type AND prior.order_id=c.order_id
-                      AND prior.attempt<c.attempt AND prior.status='APPROVED'
+                      AND prior.attempt<c.attempt AND prior.status='APPROVED' AND prior.request_type='ORDER'
                       AND c.status='PENDING' AND NOT EXISTS(
                           SELECT 1 FROM procurement_order_approval_cases newer
                           WHERE newer.order_type=c.order_type AND newer.order_id=c.order_id AND newer.attempt>c.attempt)
@@ -852,7 +865,7 @@ public class ProcurementFinanceApprovalService {
             Integer currentApproval = jdbc.queryForObject("""
                     SELECT COUNT(*) FROM procurement_order_approval_cases c
                     JOIN %s orders ON orders.id=c.order_id AND orders.status=1 AND NOT orders.is_deleted
-                    WHERE c.id=? AND c.status='APPROVED'
+                    WHERE c.id=? AND c.status='APPROVED' AND c.request_type='ORDER' AND orders.termination_case_id IS NULL
                       AND NOT EXISTS(SELECT 1 FROM procurement_order_approval_cases newer
                           WHERE newer.order_type=c.order_type AND newer.order_id=c.order_id
                             AND newer.attempt>c.attempt)
@@ -1065,7 +1078,14 @@ public class ProcurementFinanceApprovalService {
     /** Missing keys in a legacy snapshot remain unknown, distinct from recorded JSON null. */
     private Map<String, Object> loadReviewHeader(UUID caseId, boolean previous) {
         List<String> snapshots = jdbc.query("""
-                SELECT CAST(COALESCE(c.display_snapshot, c.submission_snapshot) - 'items' AS text)
+                SELECT CAST((COALESCE(c.display_snapshot, c.submission_snapshot) - 'items')
+                    || jsonb_build_object('requestType',c.request_type)
+                    || CASE WHEN c.request_type='ORDER' THEN '{}'::jsonb ELSE jsonb_build_object('closureRequest',
+                         COALESCE(c.submission_snapshot->'closureRequest','{}'::jsonb) || jsonb_build_object(
+                             'replacementOrderId',c.replacement_order_id,
+                             'replacementBillNo',CASE WHEN c.order_type='PURCHASE' THEN
+                                 (SELECT bill_no FROM purchase_orders WHERE id=c.replacement_order_id)
+                                 ELSE (SELECT bill_no FROM subcontract_orders WHERE id=c.replacement_order_id) END)) END AS text)
                 FROM procurement_order_approval_cases c
                 JOIN procurement_order_approval_cases reviewed
                   ON reviewed.order_type = c.order_type AND reviewed.order_id = c.order_id

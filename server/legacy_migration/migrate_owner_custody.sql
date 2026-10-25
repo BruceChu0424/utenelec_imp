@@ -1,3 +1,7 @@
+-- Bootstrap-only staging avoids repeatedly detoasting large run JSON during source registration.
+CREATE TEMP TABLE IF NOT EXISTS bootstrap_owner_custody_pending(
+ run_id uuid NOT NULL,module_name text NOT NULL,helper_sha text NOT NULL,
+ entries jsonb NOT NULL,PRIMARY KEY(run_id,module_name)) ON COMMIT DROP;
 -- Shared by compose_bootstrap for the owner mappers only. Current ownership
 -- and historical actors have different semantics; never rewrite actor fields.
 CREATE TEMP TABLE legacy_owner_custody (
@@ -59,8 +63,21 @@ BEGIN
   IF cardinality(claim_ids)=1 THEN claim_id:=claim_ids[1]; END IF;
  END IF;
  IF claim_id IS NULL THEN RAISE EXCEPTION 'Legacy ownership custody requires its current import claim'; END IF;
- SELECT reconciliation_summary #> ARRAY['currentOwnerCustody',module_name,'entries'] INTO previous_entries
- FROM legacy_migration_runs WHERE run_id=claim_id AND status='RUNNING';
+ IF NOT EXISTS(SELECT 1 FROM legacy_migration_runs WHERE run_id=claim_id AND status='RUNNING'
+   AND reconciliation_summary->>'targetDatabase'=current_database()) THEN
+  RAISE EXCEPTION 'Legacy ownership custody import claim is not running in this database';
+ END IF;
+ IF current_setting('uten.bootstrap_defer_owner_custody',true)='on' THEN
+  SELECT pending.entries INTO previous_entries FROM pg_temp.bootstrap_owner_custody_pending pending
+   WHERE pending.run_id=claim_id AND pending.module_name=flush_legacy_owner_custody.module_name;
+  IF NOT FOUND THEN
+   SELECT reconciliation_summary #> ARRAY['currentOwnerCustody',module_name,'entries'] INTO previous_entries
+   FROM legacy_migration_runs WHERE run_id=claim_id AND status='RUNNING';
+  END IF;
+ ELSE
+  SELECT reconciliation_summary #> ARRAY['currentOwnerCustody',module_name,'entries'] INTO previous_entries
+  FROM legacy_migration_runs WHERE run_id=claim_id AND status='RUNNING';
+ END IF;
  SELECT COALESCE(jsonb_agg(merged.entry ORDER BY merged.entry->>'target_table',merged.entry->>'target_id'),'[]'::jsonb)
  INTO entries FROM (
   SELECT DISTINCT ON (entry->>'target_table',entry->>'target_id') entry
@@ -69,11 +86,40 @@ BEGIN
   ORDER BY entry->>'target_table',entry->>'target_id',priority DESC
  ) merged;
  entry_count:=jsonb_array_length(entries);
+ IF current_setting('uten.bootstrap_defer_owner_custody',true)='on' THEN
+  IF current_setting('uten.legacy_custody_helper_sha',true) !~ '^[0-9a-f]{64}$' THEN
+   RAISE EXCEPTION 'Deferred ownership custody requires its exact helper identity';
+  END IF;
+  INSERT INTO pg_temp.bootstrap_owner_custody_pending(run_id,module_name,helper_sha,entries)
+  VALUES(claim_id,module_name,current_setting('uten.legacy_custody_helper_sha'),entries)
+  ON CONFLICT ON CONSTRAINT bootstrap_owner_custody_pending_pkey DO UPDATE SET entries=excluded.entries,helper_sha=excluded.helper_sha;
+ ELSE
  UPDATE legacy_migration_runs SET reconciliation_summary=reconciliation_summary || jsonb_build_object(
   'currentOwnerCustody',COALESCE(reconciliation_summary->'currentOwnerCustody','{}'::jsonb) || jsonb_build_object(
    module_name,jsonb_build_object('helperSha256',current_setting('uten.legacy_custody_helper_sha'),
     'pendingHandoverCount',entry_count,'entries',entries)))
  WHERE run_id=claim_id AND status='RUNNING' AND reconciliation_summary->>'targetDatabase'=current_database();
  IF NOT FOUND THEN RAISE EXCEPTION 'Legacy ownership custody import claim is not running in this database'; END IF;
+ END IF;
  RETURN entry_count;
+END $$;
+
+CREATE OR REPLACE FUNCTION pg_temp.flush_bootstrap_owner_custody_pending() RETURNS bigint
+LANGUAGE plpgsql AS $$
+DECLARE claim uuid:=NULLIF(current_setting('uten.bootstrap_run_id',true),'')::uuid;payload jsonb;total bigint;
+BEGIN
+ IF current_setting('uten.bootstrap_defer_owner_custody',true) IS DISTINCT FROM 'on' THEN RETURN 0; END IF;
+ IF claim IS NULL OR EXISTS(SELECT 1 FROM pg_temp.bootstrap_owner_custody_pending p WHERE p.run_id<>claim
+    OR p.module_name NOT IN('migrate_client_data.sql','migrate_supplier_data.sql','migrate_goods_owner.sql','migrate_client_owner.sql','migrate_sales_owner.sql')
+    OR p.helper_sha IS DISTINCT FROM current_setting('uten.legacy_custody_helper_sha')
+    OR jsonb_typeof(p.entries)<>'array') THEN RAISE EXCEPTION 'Deferred ownership custody lineage differs'; END IF;
+ SELECT COALESCE(jsonb_object_agg(module_name,jsonb_build_object('helperSha256',helper_sha,
+   'pendingHandoverCount',jsonb_array_length(entries),'entries',entries) ORDER BY module_name),'{}'::jsonb),
+   COALESCE(sum(jsonb_array_length(entries)),0) INTO payload,total
+ FROM pg_temp.bootstrap_owner_custody_pending WHERE run_id=claim;
+ UPDATE legacy_migration_runs SET reconciliation_summary=reconciliation_summary||jsonb_build_object(
+  'currentOwnerCustody',COALESCE(reconciliation_summary->'currentOwnerCustody','{}'::jsonb)||payload)
+ WHERE run_id=claim AND status='RUNNING' AND reconciliation_summary->>'targetDatabase'=current_database();
+ IF NOT FOUND THEN RAISE EXCEPTION 'Deferred custody finalization requires its exact running claim'; END IF;
+ RETURN total;
 END $$;

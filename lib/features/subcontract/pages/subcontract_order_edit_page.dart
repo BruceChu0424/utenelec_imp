@@ -2052,10 +2052,8 @@ class _SubcontractOrderEditPageState
                     const SizedBox(height: UtenSpacing.s12),
                     UtenButton(
                       icon: Icons.arrow_back_rounded,
-                      onPressed: () => goFrom(
-                        context,
-                        RouteName.operationsSubcontractWorkbench,
-                      ),
+                      onPressed: () =>
+                          context.go(RouteName.operationsSubcontractWorkbench),
                       child: const Text('返回委外任务中心选择'),
                     ),
                   ],

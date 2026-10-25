@@ -16,6 +16,7 @@ import sys
 
 
 PRESERVED_TEMP_TABLES = (
+    "bootstrap_owner_custody_pending",
     "bootstrap_source_master_ids",
     "bootstrap_legacy_reference_evidence",
     "bootstrap_bom_exclusions",
@@ -23,6 +24,8 @@ PRESERVED_TEMP_TABLES = (
     "bootstrap_warehouse_exclusions",
     # Complete zero-event source facts are flushed only after all typed proofs.
     "bootstrap_stock_movement_nonposting",
+    # Minimal original client/supplier defaults survive module stage cleanup.
+    "bootstrap_default_settlement_source_snapshot",
 )
 _IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_$]*"
 _COPY = re.compile(

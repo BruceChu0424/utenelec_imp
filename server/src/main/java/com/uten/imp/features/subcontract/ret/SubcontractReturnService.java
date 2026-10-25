@@ -207,6 +207,10 @@ public class SubcontractReturnService {
     public ReturnDetail create(ReturnSaveRequest req) {
         tx.bind();
         lockReturnRequest(null,req).verifyUnchanged();
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,"SUBCONTRACT",
+                req.getItems().stream().map(ReturnItemLine::getOrderItemId).toList());
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireReceiptItemsMutable(em,"SUBCONTRACT",
+                req.getItems().stream().map(ReturnItemLine::getReceiptItemId).toList());
         SubcontractReturn r = new SubcontractReturn();
         applyHeader(req, r, returnHeader(req));
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
@@ -298,6 +302,8 @@ public class SubcontractReturnService {
             throw new ApiException(ErrorCode.BUSINESS, "退货单需指定委外商");
         }
         List<SubcontractReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,"SUBCONTRACT",
+                items.stream().map(SubcontractReturnItem::getOrderItemId).toList());
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
@@ -387,6 +393,8 @@ public class SubcontractReturnService {
             com.uten.imp.common.finance.ProcurementUnapprovalPreflight.check("DOWNSTREAM_OR_COST_BLOCKED",()->requireReversibleBusiness(r)));
     }
     private void requireUnapprovalHeader(SubcontractReturn r){
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,"SUBCONTRACT",
+                itemRepo.findByReturnIdOrderByLineNoAsc(r.getId()).stream().map(SubcontractReturnItem::getOrderItemId).toList());
         access.requireWritable(r.getMakerId(),"只能操作本人负责的委外退货单");
         com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         if(r.getStatus()==null||r.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");

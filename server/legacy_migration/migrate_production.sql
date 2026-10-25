@@ -66,7 +66,7 @@ CREATE TEMP TABLE item_stage (
     label_no text, plan_app_no text, in_no text, tran_no text, remark text);
 \copy item_stage FROM '/tmp/production_plan_items.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
--- F_PlanCostItem 1.36M 行 / 33 cols（9 个多值溯源号在 export 端已前缀化合并为 source_doc_no）
+-- F_PlanCostItem 全量 / 33 cols（9 个多值溯源号在 export 端已前缀化合并为 source_doc_no）
 CREATE TEMP TABLE cost_stage (
     legacy_id int, bill_item_legacy_id int,
     goods_legacy_id int, color_legacy_id int,
@@ -261,7 +261,7 @@ FROM item_stage s JOIN plan_stage p ON p.legacy_id = s.plan_legacy_id
 LEFT JOIN production_counter_source_stage source_proof ON source_proof.legacy_id=s.legacy_id;
 
 
--- ======================== 5. production_plan_costs（1.36M 行 · 按年分批 INSERT） ========================
+-- ======================== 5. production_plan_costs（全量 · 按年分批 INSERT） ========================
 -- ⭐ 反冗余 bill_date / bill_no 经 cost_stage -> item_stage -> plan_stage 三级链取
 --   （BillID -> F_PlanItem.ID -> F_PlanItem.BillID -> F_Plan.BillDate）。
 -- ⚠ BillID 指向 F_PlanItem.ID（不是 F_Plan.ID！），bill_item_id 经
@@ -273,15 +273,25 @@ LEFT JOIN production_counter_source_stage source_proof ON source_proof.legacy_id
 --   再用 DO 循环 13 个年度（2018-2030）+ 1 个 outlier 批，不提交调用方事务。
 --   单批 ~100k 行级；NOT EXISTS 防重，任一年度失败时整段成本插入回滚。
 
--- 5a. 物化解析好的 cost_prepared（hash JOIN 一次性算完，避免 1.36M 次相关子查询）
+-- 5a. 物化解析好的 cost_prepared（hash JOIN 一次性算完，避免逐行重复相关子查询）
 --     注：bill_item_id 来自 production_plan_items.legacy_id JOIN。若 BillID 找不到对应
 --     plan_item（孤儿），bill_item_id 为 NULL，因 V55 NOT NULL 约束无法 INSERT -> 在
 --     5b 的 INSERT 中过滤掉，校验段报告 "orphan BillID dropped" 计数。
 --     p.bill_date / p.bill_no NULL（链断裂在 F_PlanItem -> F_Plan 那段）时，bill_date
 --     用 '1970-01-01' 兜底，bill_no 用 'LEGACY-ORPHAN-COST-<id>'
 --     兜底，均不影响 INSERT 成功（bill_item_id 仍非空）。
+-- COPY and this module's historical anchors were created inside the same
+-- atomic transaction. Refresh their real cardinalities before the large join.
+ANALYZE plan_stage;
+ANALYZE item_stage;
+ANALYZE cost_stage;
+ANALYZE production_plan_items;
+ANALYZE goods;
+ANALYZE colors;
+ANALYZE suppliers;
+
 CREATE TEMP TABLE cost_prepared AS
-SELECT s.legacy_id,
+SELECT gen_random_uuid() AS id, NULL::uuid AS parent_id, s.legacy_id,
        pi.id  AS bill_item_id,
        COALESCE(p.bill_no, 'LEGACY-ORPHAN-COST-' || s.legacy_id) AS bill_no,
        COALESCE(p.bill_date, '1970-01-01'::date)                 AS bill_date,
@@ -313,7 +323,19 @@ LEFT JOIN suppliers              sup  ON sup.legacy_id  = s.supplier_legacy_id A
 
 CREATE INDEX idx_cost_prepared_date ON cost_prepared (bill_date);
 CREATE INDEX idx_cost_prepared_orphan ON cost_prepared ((bill_item_id IS NULL));
+CREATE UNIQUE INDEX idx_cost_prepared_legacy ON cost_prepared (legacy_id);
 ANALYZE cost_prepared;
+
+-- Resolve final parent UUIDs in the private stage. The same-date rule puts a
+-- parent and child in the same annual INSERT, where the normal immediate FK
+-- validates both. Excluded orphan parents remain NULL exactly as before.
+-- This avoids a second UPDATE of every non-root business row and its guards.
+UPDATE cost_prepared c SET parent_id = p.id
+FROM cost_prepared p
+WHERE c.parent_legacy_id <> 0
+  AND p.legacy_id = c.parent_legacy_id
+  AND p.bill_date = c.bill_date
+  AND p.bill_item_id IS NOT NULL;
 
 -- 5b. 按年分批 INSERT，全部批次属于调用方事务。
 -- 首导协调器在同一事务内执行所有模块；这里禁止内部 COMMIT。
@@ -325,14 +347,14 @@ BEGIN
     -- 正常年份 2018-2030(按年分批只为限制单条语句的转移表大小，与存储无关)
     FOR y IN 2018..2030 LOOP
         INSERT INTO production_plan_costs (
-            legacy_id, bill_item_id, bill_no, bill_date,
+            id, parent_id, legacy_id, bill_item_id, bill_no, bill_date,
             parent_legacy_id, level, node_class,
             goods_id, color_id, master_goods_id, master_color_id, sales_order_cost_item_id,
             qty, dqty, pqty, lqty, slqty, rqty, order_qty, in_qty,
             pdraw_qty, owdraw_qty, pwdraw_qty, eo_qty, ei_qty, ew_qty, mqty, pa_qty,
             price, total, supplier_id, ass_team_legacy_id,
             source_doc_no, lstatus, summary)
-        SELECT legacy_id, bill_item_id, bill_no, bill_date,
+        SELECT id, parent_id, legacy_id, bill_item_id, bill_no, bill_date,
                parent_legacy_id, level, node_class,
                goods_id, color_id, master_goods_id, master_color_id, sales_order_cost_item_id,
                qty, dqty, pqty, lqty, slqty, rqty, order_qty, in_qty,
@@ -341,7 +363,7 @@ BEGIN
                source_doc_no, lstatus, summary
         FROM cost_prepared
         WHERE bill_item_id IS NOT NULL                            -- ⚠ 过滤孤儿 BillID（NOT NULL 约束）
-          AND EXTRACT(YEAR FROM bill_date) = y
+          AND bill_date >= make_date(y,1,1) AND bill_date < make_date(y+1,1,1)
           AND NOT EXISTS (SELECT 1 FROM production_plan_costs pc WHERE pc.legacy_id = cost_prepared.legacy_id);
         GET DIAGNOSTICS n = ROW_COUNT;
         RAISE NOTICE 'Year %: inserted % rows', y, n;
@@ -349,14 +371,14 @@ BEGIN
 
     -- outlier 批：1970 兜底行 + 真实异常日期(<2018 / >2030)
     INSERT INTO production_plan_costs (
-        legacy_id, bill_item_id, bill_no, bill_date,
+        id, parent_id, legacy_id, bill_item_id, bill_no, bill_date,
         parent_legacy_id, level, node_class,
         goods_id, color_id, master_goods_id, master_color_id, sales_order_cost_item_id,
         qty, dqty, pqty, lqty, slqty, rqty, order_qty, in_qty,
         pdraw_qty, owdraw_qty, pwdraw_qty, eo_qty, ei_qty, ew_qty, mqty, pa_qty,
         price, total, supplier_id, ass_team_legacy_id,
         source_doc_no, lstatus, summary)
-    SELECT legacy_id, bill_item_id, bill_no, bill_date,
+    SELECT id, parent_id, legacy_id, bill_item_id, bill_no, bill_date,
            parent_legacy_id, level, node_class,
            goods_id, color_id, master_goods_id, master_color_id, sales_order_cost_item_id,
            qty, dqty, pqty, lqty, slqty, rqty, order_qty, in_qty,
@@ -372,16 +394,9 @@ BEGIN
 END $$;
 
 
--- ======================== 6. parent_id 自引用回填 ========================
--- parent_legacy_id -> 新 UUID(legacy_id 全表唯一；父子 bill_date 必一致，设计不变式)。
---   顶层行 parent_legacy_id = 0 不回填（保持 NULL）。
---   查不到父行（父 legacy 不在结果集）也保持 NULL，校验段报告。
--- V673 起单表 PK = (id)，parent_id 有自引用外键兜底。
-UPDATE production_plan_costs c SET parent_id = p.id
-FROM production_plan_costs p
-WHERE c.parent_legacy_id <> 0
-  AND p.legacy_id = c.parent_legacy_id
-  AND p.bill_date = c.bill_date;
+-- ======================== 6. final parent_id is already in each INSERT ========================
+-- Roots and missing/excluded/different-date parents retain NULL. The original
+-- parent_legacy_id remains queryable and all V673 self-FKs stay enabled.
 
 
 -- ======================== 7. production_daily_reports(+items)：0 行跳过 INSERT ========================
@@ -398,9 +413,9 @@ WHERE c.parent_legacy_id <> 0
 
 
 -- ======================== 8. 校验 ========================
-SELECT '!! 计划单头（应 = 7235）        ' || (SELECT count(*) FROM production_plans) AS r
-UNION ALL SELECT '!! 计划明细（应 = 73388）       ' || (SELECT count(*) FROM production_plan_items)
-UNION ALL SELECT '!! BOM 展开（应 = 1359875）     ' || (SELECT count(*) FROM production_plan_costs)
+SELECT '计划单头（本批实际）            ' || (SELECT count(*) FROM production_plans) AS r
+UNION ALL SELECT '计划明细（本批实际）            ' || (SELECT count(*) FROM production_plan_items)
+UNION ALL SELECT 'BOM 展开（本批实际）            ' || (SELECT count(*) FROM production_plan_costs)
 UNION ALL SELECT '   legacy_id 覆盖（cost）       ' || (SELECT count(*) FROM production_plan_costs WHERE legacy_id IS NOT NULL)
 UNION ALL SELECT '   bill_date 覆盖（cost NOT NULL） ' || (SELECT count(*) FROM production_plan_costs WHERE bill_date IS NOT NULL)
 UNION ALL SELECT '   bill_date 1970 兜底行（链断裂） ' || (SELECT count(*) FROM production_plan_costs WHERE bill_date = '1970-01-01')
@@ -418,14 +433,14 @@ UNION ALL SELECT '   补录颜色                      ' || (SELECT count(*) FRO
 UNION ALL SELECT '   补录单位                      ' || (SELECT count(*) FROM units  WHERE name = '（迁移自动补录）')
 UNION ALL SELECT '   补录供应商                    ' || (SELECT count(*) FROM suppliers WHERE name = '（迁移自动补录）');
 
--- 年度分布(预期集中在 2022-2026；1970 = 链断裂兜底；其余年份 0)
+-- 全来源年度分布；1970 需要另查真实日期与链断裂兜底，不能假定其他年份为空。
 SELECT EXTRACT(YEAR FROM bill_date)::int AS yr, count(*) AS cnt
 FROM production_plan_costs
 GROUP BY 1
 ORDER BY 1;
 
 -- 制单员/审核员冻结名命中（仅按 Sys_Operator.ID 的参考表取名）
-SELECT '!! 计划单头（应 = 7235）        ' || (SELECT count(*) FROM production_plans) AS r
+SELECT '计划单头（本批实际）            ' || (SELECT count(*) FROM production_plans) AS r
 UNION ALL SELECT '   maker_name 命中（冻结名）   ' || (SELECT count(*) FROM production_plans WHERE maker_name IS NOT NULL)
 UNION ALL SELECT '   approver_name 命中（冻结名） ' || (SELECT count(*) FROM production_plans WHERE approver_name IS NOT NULL);
 

@@ -86,6 +86,62 @@ void main() {
     expect(PurchaseOrderPrintDocument.fromJson(json).reviewerName, isEmpty);
   });
 
+  testWidgets(
+    'ended approved order preserves its commercial signature and can print with a visible end status',
+    (tester) async {
+      final json = fixture(status: '已结束(财务批准)')
+        ..['financeApproved'] = true
+        ..['reviewerName'] = '原商业财务审核员';
+      final document = PurchaseOrderPrintDocument.fromJson(json);
+      expect(document.financeApproved, isTrue);
+      expect(document.reviewerName, '原商业财务审核员');
+      var printed = 0;
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () => showPurchaseOrderPrintPreview(
+                    context,
+                    document,
+                    loader: () async => document,
+                    printer: (bytes, _) async {
+                      expect(ascii.decode(bytes.take(5).toList()), '%PDF-');
+                      printed++;
+                      return true;
+                    },
+                  ),
+                  child: const Text('打开已结束采购单'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('打开已结束采购单'));
+      await tester.pumpAndSettle();
+      expect(find.text('审核：原商业财务审核员'), findsOneWidget);
+      expect(find.text('单据状态：已结束(财务批准)'), findsOneWidget);
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const Key('purchase-print-preview-print')));
+        for (var i = 0; i < 100 && printed == 0; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      await tester.pumpAndSettle();
+      expect(printed, 1);
+      final denied = Map<String, dynamic>.from(json)
+        ..['financeApproved'] = false;
+      expect(PurchaseOrderPrintDocument.fromJson(denied).reviewerName, isEmpty);
+      expect(
+        PurchaseOrderPrintDocument.fromJson(denied).financeApproved,
+        isFalse,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final status in ['等待财务审核', '改量待财务复核', '财务退回', '已取消', '已反审', '已审']) {
     test(
       'PDF generation rejects a document without finance approval: $status',

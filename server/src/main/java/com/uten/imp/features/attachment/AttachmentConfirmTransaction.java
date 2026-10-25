@@ -39,7 +39,7 @@ class AttachmentConfirmTransaction {
                        String sha256,
                        ScanResult scan,
                        String category, String storageProvider) {
-        ownerPolicy.requireCanManageForUpdate(grant.ownerId(), user);
+        ownerPolicy.requireCanUploadForUpdate(grant.ownerId(), user);
         jdbc.queryForObject(
                 "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))::text",
                 String.class,

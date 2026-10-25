@@ -62,6 +62,80 @@ Future<void> _pumpRecordEditor(
 );
 
 void main() {
+  test(
+    'required columns resolve create aliases and leave system columns alone',
+    () {
+      final controller = MasterInlineEditController<_Row>();
+      addTearDown(controller.dispose);
+      final columns = [
+        MasterColumnDef<_Row>(
+          key: 'code',
+          label: 'Code',
+          width: 120,
+          value: (_) => '',
+        ),
+        MasterColumnDef<_Row>(
+          key: 'name',
+          label: 'Name',
+          width: 180,
+          value: (row) => row.name,
+        ),
+        MasterColumnDef<_Row>(
+          key: 'days',
+          label: 'Days',
+          width: 120,
+          value: (_) => '',
+        ),
+        MasterColumnDef<_Row>(
+          key: 'unitColumn',
+          label: 'Unit',
+          width: 120,
+          value: (_) => '',
+        ),
+      ];
+      controller.configureCreation(
+        MasterInlineCreateConfig(
+          namespace: 'goods',
+          canCreate: true,
+          fields: const [
+            MasterFieldDef(key: 'unitId', label: 'Unit', required: true),
+            MasterFieldDef(
+              key: 'code',
+              label: 'Code',
+              required: true,
+              readOnly: true,
+            ),
+          ],
+          columnFields: const {'unitColumn': 'unitId'},
+          onCreate: (_, _) async {},
+        ),
+      );
+      final fields = {'name': _name, 'days': _days};
+      expect(
+        controller.requiredColumnKeys(columns: columns, fields: fields),
+        isEmpty,
+      );
+      controller.begin();
+      expect(controller.requiredColumnKeys(columns: columns, fields: fields), [
+        'name',
+        'unitColumn',
+      ]);
+      final edited = controller.columns(
+        columns: columns,
+        idOf: (row) => row.id,
+        fields: fields,
+      );
+      expect(edited.first.headerTrailingBuilder, isNull);
+      expect(edited[1].headerTrailingBuilder, isNotNull);
+      expect(edited.last.headerTrailingBuilder, isNotNull);
+      controller.cancel();
+      expect(
+        controller.requiredColumnKeys(columns: columns, fields: fields),
+        isEmpty,
+      );
+    },
+  );
+
   testWidgets(
     'imperative editor route keeps local dirty confirmation without parent registration',
     (tester) async {

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -784,10 +785,7 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
         if (checkpoint == null || checkpoint.hasUnknownSubmission) {
           throw StateError('原中断记录尚未保存');
         }
-        adoptFormDraftRecoveryCheckpoint(
-          checkpoint,
-          status: '原更正已中断，输入和处理记录已保留',
-        );
+        adoptFormDraftRecoveryCheckpoint(checkpoint);
         _disposeDrafts();
         setState(() {
           _plan = latest;
@@ -1572,10 +1570,6 @@ String _recordStatusLabel(
 
 String _recordTime(String? iso) {
   if (iso == null || iso.isEmpty) return '-';
-  final parsed = DateTime.tryParse(iso);
-  if (parsed == null) return iso;
-  final local = parsed.isUtc ? parsed.toLocal() : parsed;
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${two(local.month)}-${two(local.day)} '
-      '${two(local.hour)}:${two(local.minute)}';
+  final wall = ChinaDateTime.tryParse(iso);
+  return wall == null ? iso : ChinaDateTime.formatDateTime(wall);
 }

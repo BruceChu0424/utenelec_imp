@@ -47,15 +47,13 @@ IconData visitorStatusIcon(VisitorApplicationStatus s) => switch (s) {
   VisitorApplicationStatus.cancelled => Icons.block_rounded,
 };
 
-/// 按北京时间格式化真实时间点并带「（北京）」后缀，默认使用中国大陆区域规则。
+/// 访客模型已解析为北京墙上时间；显示时不再当作 instant 二次加八小时。
 String fmtDateTime(DateTime d, [String locale = 'zh_CN']) {
-  final chinaTime = d.isUtc
-      ? ChinaDateTime.fromInstant(d)
-      : ChinaDateTime.asWallTime(d);
+  final chinaTime = ChinaDateTime.asWallTime(d);
   try {
     return '${DateFormat.yMd(locale).add_Hm().format(chinaTime)}(北京)';
   } catch (_) {
     // locale 数据未初始化时降级为 ISO 格式
-    return '${ChinaDateTime.formatDateTime(chinaTime)}(北京)';
+    return ChinaDateTime.formatDateTime(chinaTime);
   }
 }

@@ -244,7 +244,7 @@ public class MaterialAnalysisSupplyProgressService {
         List<Object[]> caseRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT DISTINCT approval.status, approval.decided_at, approval.decided_by_employee_id
                 FROM procurement_order_approval_cases approval
-                WHERE approval.order_type = :orderType AND approval.order_id IN (:orderIds)
+                WHERE approval.order_type = :orderType AND approval.order_id IN (:orderIds) AND approval.request_type='ORDER'
                 ORDER BY approval.decided_at NULLS LAST
                 """)
                 .setParameter("orderType", purchase ? "PURCHASE" : "SUBCONTRACT")

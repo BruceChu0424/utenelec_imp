@@ -159,9 +159,7 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
     };
     for (final a in apps) {
       if (!active.contains(a.status)) continue;
-      final existing = a.plannedVisitAt.isUtc
-          ? ChinaDateTime.fromInstant(a.plannedVisitAt)
-          : ChinaDateTime.asWallTime(a.plannedVisitAt);
+      final existing = ChinaDateTime.asWallTime(a.plannedVisitAt);
       if (ChinaDateTime.sameWallMinute(existing, picked)) {
         return true;
       }
@@ -379,7 +377,7 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                               child: _visitTime == null
                                   ? null
                                   : Text(
-                                      '${ChinaDateTime.formatDateTime(_visitTime!)}(北京)',
+                                      ChinaDateTime.formatDateTime(_visitTime!),
                                     ),
                             ),
                           ),

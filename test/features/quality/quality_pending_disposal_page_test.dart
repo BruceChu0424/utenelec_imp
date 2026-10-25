@@ -20,6 +20,7 @@ import 'package:uten_imp/shared/drafts/form_draft_catalog.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../../support/detail_summary_tap.dart';
+import '../../support/page_resume_test_bridge.dart';
 
 // 合并版待检处置页（IQC 收货单 + FQC 自制产成品统一队列）的widget 测试：
 // - 混合队列首屏显示所有授权来源，来源/状态筛选由表头承担；
@@ -43,6 +44,50 @@ Future<void> _pumpPage(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
+  final router = GoRouter(
+    initialLocation: RouteName.warehouseInspections,
+    routes: [
+      GoRoute(
+        path: RouteName.warehouseInspections,
+        builder: (_, _) => const QualityPendingDisposalPage(),
+      ),
+      GoRoute(
+        path: RouteName.warehouseInspectionBatchApproval,
+        builder: (_, state) {
+          final selection = state.extra is QualityBatchApprovalSelection
+              ? state.extra! as QualityBatchApprovalSelection
+              : const QualityBatchApprovalSelection();
+          if (onBatchSelection != null) {
+            onBatchSelection(selection);
+            return const Scaffold(body: Text('已进入批量审批'));
+          }
+          return QualityBatchApprovalPage(selection: selection);
+        },
+      ),
+      GoRoute(
+        path: '${RouteName.productionFqcSheetHandlingBase}/:sheetId',
+        builder: (_, state) => ProductionFqcSheetHandlingPage(
+          sheetId: state.pathParameters['sheetId']!,
+        ),
+      ),
+      GoRoute(
+        path: '${RouteName.productionFqcInspectionHandlingBase}/:inspectionId',
+        builder: (_, state) => ProductionFqcInspectionPage(
+          inspectionId: state.pathParameters['inspectionId']!,
+          extra: state.extra,
+        ),
+      ),
+      GoRoute(
+        path: '${RouteName.warehouseInspections}/:receiptType/:receiptId',
+        builder: (_, state) => ProcurementInspectionDetailPage(
+          receiptType: state.pathParameters['receiptType']!,
+          receiptId: state.pathParameters['receiptId']!,
+          extra: state.extra,
+        ),
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -55,45 +100,13 @@ Future<void> _pumpPage(
         sharedPreferencesProvider.overrideWithValue(preferences),
       ],
       // 带路由壳：2026-09-05 起「批量审批」会 push 汇总页。
-      child: MaterialApp.router(
-        locale: const Locale('zh'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        routerConfig: GoRouter(
-          routes: [
-            GoRoute(
-              path: '/',
-              builder: (_, _) => const QualityPendingDisposalPage(),
-            ),
-            GoRoute(
-              path: RouteName.warehouseInspectionBatchApproval,
-              builder: (_, state) {
-                final selection = state.extra is QualityBatchApprovalSelection
-                    ? state.extra! as QualityBatchApprovalSelection
-                    : const QualityBatchApprovalSelection();
-                if (onBatchSelection != null) {
-                  onBatchSelection(selection);
-                  return const Scaffold(body: Text('已进入批量审批'));
-                }
-                return QualityBatchApprovalPage(selection: selection);
-              },
-            ),
-            // 2026-09-12 弹窗改页：FQC 检查单/单任务办理页。
-            GoRoute(
-              path: '${RouteName.productionFqcSheetHandlingBase}/:sheetId',
-              builder: (_, state) => ProductionFqcSheetHandlingPage(
-                sheetId: state.pathParameters['sheetId']!,
-              ),
-            ),
-            GoRoute(
-              path:
-                  '${RouteName.productionFqcInspectionHandlingBase}/:inspectionId',
-              builder: (_, state) => ProductionFqcInspectionPage(
-                inspectionId: state.pathParameters['inspectionId']!,
-                extra: state.extra,
-              ),
-            ),
-          ],
+      child: PageResumeTestBridge(
+        router: router,
+        child: MaterialApp.router(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          routerConfig: router,
         ),
       ),
     ),

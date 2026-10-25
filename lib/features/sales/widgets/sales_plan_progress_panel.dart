@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -807,7 +808,7 @@ class _ProgressList extends ConsumerWidget {
   }
 
   String _dateTime(String value) =>
-      value.replaceFirst('T', ' ').split('.').first;
+      ChinaDateTime.formatIsoInstant(value, fallback: value, seconds: true);
 
   String _ratio(double? value) {
     if (value == null) return '—';

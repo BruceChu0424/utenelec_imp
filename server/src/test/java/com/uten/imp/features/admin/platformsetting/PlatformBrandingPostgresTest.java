@@ -34,13 +34,12 @@ class PlatformBrandingPostgresTest {
     }
     @AfterEach void close() throws Exception { if (database != null) database.close(); }
 
-    @Test void freshBrandingDefaultsAndTestResetPreservationAreExplicit() {
+    @Test void freshBrandingDefaultsAreExplicit() {
         var value = repo.current();
         assertEquals(0, value.version()); assertEquals("中山市优腾电器有限公司", value.companyName());
         assertEquals("优腾综合管理平台", value.platformName()); assertEquals("德国工匠 · 质造开关", value.tagline());
         assertEquals("", value.companyAliases());
         assertFalse(value.hasLogo()); assertTrue(repo.logo(null).isEmpty());
-        assertEquals("PRESERVE", jdbc.queryForObject("SELECT disposition FROM fn_business_reset_table_policy() WHERE table_name='platform_branding'", String.class));
         assertThrows(DataAccessException.class, () -> jdbc.update("INSERT INTO platform_branding SELECT 2,version,company_name,company_aliases,platform_name,tagline,primary_color,secondary_color,login_notice,support_phone,support_email,website,logo_png,logo_sha256,updated_at,updated_by FROM platform_branding"));
     }
 

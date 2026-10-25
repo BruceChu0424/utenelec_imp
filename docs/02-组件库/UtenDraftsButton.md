@@ -139,6 +139,6 @@ SELECT count(*) FROM <表> o
 避免这个字符串在十来个页面里各写一份走样。
 
 
-## 清空测试业务后的本机草稿
+## 历史数据代际与本机草稿
 
-`FormDraftsNotifier` 持久键包含服务端 `businessResetGeneration`，不含普通登录纪元。服务器成功清空业务后，设备重登先对 Native / IndexedDB 存储执行 `synchronizeBusinessReset`：递增围栏、清除旧草稿及其历史和日报审核暂存，然后读取本代草稿。旧标签页晚写被存储层拒绝；其他服务器和其他账号记录不受影响。旧服务端缺字段按 0 兼容，已观察到更高代际的本机存储拒绝回退。
+`FormDraftsNotifier` 持久键包含服务端 `businessResetGeneration`，不含普通登录纪元。业务清空功能已永久删除，见 [ADR-192](../99-决策记录-ADR/ADR-192-业务数据清空功能永久删除.md)；历史代际兼容仍需保留，防止升级重新读出旧草稿。设备重登先对 Native / IndexedDB 存储执行 `synchronizeBusinessReset`，隔离旧草稿及其历史和日报审核暂存，再读取本代草稿。旧标签页晚写被存储层拒绝；其他服务器和其他账号记录不受影响。旧服务端缺字段按 0 兼容，已观察到更高代际的本机存储拒绝回退。

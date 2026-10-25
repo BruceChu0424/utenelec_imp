@@ -799,8 +799,7 @@ String weightObservationExcludedReasonLabel(String? reason) =>
 String? _monthDay(DateTime? value) {
   if (value == null) return null;
   final wall = ChinaDateTime.fromInstant(value);
-  return '${wall.month.toString().padLeft(2, '0')}-'
-      '${wall.day.toString().padLeft(2, '0')}';
+  return '${ChinaDateTime.formatDate(wall).substring(5)}(北京)';
 }
 
 /// 设定单重弹窗结果 ([clear] = 取消人工单重)。

@@ -949,6 +949,15 @@ public class SubcontractMaterialPlanService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void cancelForOrderReversal(UUID orderId) {
+        cancelFutureDraws(orderId,"SUBCONTRACT_ORDER_REVERSED");
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void cancelForOrderTermination(UUID orderId) {
+        cancelFutureDraws(orderId,"SUBCONTRACT_ORDER_FINANCE_TERMINATED");
+    }
+
+    private void cancelFutureDraws(UUID orderId,String releaseReason) {
         List<UUID> items = jdbc.queryForList("""
                 SELECT DISTINCT line.order_item_id
                 FROM subcontract_material_plan_items line
@@ -970,7 +979,7 @@ public class SubcontractMaterialPlanService {
         List<Object[]> released = returning("""
                 UPDATE stock_reservations reservation
                 SET released_qty = reservation.qty - reservation.consumed_qty,
-                    status = 1, release_reason = 'SUBCONTRACT_ORDER_REVERSED',
+                    status = 1, release_reason = :releaseReason,
                     lock_version = reservation.lock_version + 1,
                     updated_at = now(), updated_by = :actorId
                 WHERE reservation.owner_type = 'SUBCONTRACT_OUTBOUND'
@@ -979,7 +988,7 @@ public class SubcontractMaterialPlanService {
                       SELECT line.id FROM subcontract_material_plan_items line
                       WHERE line.plan_id IN (:planIds))
                 RETURNING reservation.goods_id, reservation.color_id
-                """, Map.of("actorId", actorId, "planIds", planIds));
+                """, Map.of("actorId", actorId, "planIds", planIds,"releaseReason",releaseReason));
         em.createNativeQuery("""
                 UPDATE subcontract_material_plans
                 SET status = 'CANCELED', updated_at = now(), updated_by = :actorId

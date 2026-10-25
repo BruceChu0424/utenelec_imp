@@ -43,7 +43,7 @@ public class ProductionPlanningUrgeReconciler {
         this.transactions.setTimeout(30);
     }
 
-    /** 由既有 DrainAwareTaskScheduler 控制清空业务数据期间的准入。 */
+    /** Scheduled executions are recorded by the shared task scheduler. */
     @Scheduled(initialDelay = 120_000, fixedDelay = 300_000)
     public void reconcile() {
         if (enabled) runBatch();

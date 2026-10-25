@@ -11,6 +11,7 @@ import csv
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -198,25 +199,67 @@ def load_inputs(directory, manifest_sha, frozen_commit, finance_seed_baseline=No
         'finance_master_sources': finance_master_source_inventory(directory,records,require=require),
         'finance_flow_sources': finance_flow_source_inventory(directory,records,require=require),
         'finance_seed_baseline':finance_baseline,
+        'finance_cash_source_policy_provenance':provenance.get('financeCashSourcePolicy'),
     }
 
 
 class ReadOnlyDatabase:
-    def __init__(self, database):
+    def __init__(self, database, container='uten-imp-postgres', user='uten',
+                 expected_system_identifier=None, expected_database_oid=None):
         require(re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,62}', database), 'Invalid PostgreSQL database identifier')
+        require(isinstance(container,str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}',container), 'Invalid local container identifier')
+        require(isinstance(user,str) and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,62}',user), 'Invalid PostgreSQL role identifier')
+        require((expected_system_identifier is None)==(expected_database_oid is None), 'Expected cluster and database identities must be supplied together')
+        if expected_system_identifier is not None:
+            require(isinstance(expected_system_identifier,str) and re.fullmatch(r'[0-9]{1,20}',expected_system_identifier), 'Invalid expected PostgreSQL cluster identifier')
+            require(type(expected_database_oid) is int and 0<expected_database_oid<=4294967295, 'Invalid expected PostgreSQL database OID')
         self.database = database
+        self.container,self.user=container,user
+        self.expected_identity=None if expected_system_identifier is None else (expected_system_identifier,expected_database_oid)
+        self.actual_identity=None
+        self.transport=None
+
+    def _pin_transport(self):
+        if self.transport is not None:return self.transport
+        try:
+            override=os.environ.get('DOCKER_HOST')
+            require(not override or override.startswith(('npipe:','unix:')), 'Remote Docker endpoint refused')
+            context=subprocess.check_output(['docker','context','show'],stderr=subprocess.PIPE,text=True,timeout=15).strip()
+            require(re.fullmatch(r'[A-Za-z0-9_.-]+',context), 'Invalid Docker context')
+            endpoint=json.loads(subprocess.check_output(['docker','context','inspect',context],stderr=subprocess.PIPE,text=True,timeout=15))
+            require(len(endpoint)==1 and endpoint[0]['Endpoints']['docker']['Host'].startswith(('npipe:','unix:')), 'Remote Docker context refused')
+            prefix=['docker','--context',context]
+            identity=subprocess.check_output([*prefix,'inspect','--format','{{.Id}}',self.container],stderr=subprocess.PIPE,text=True,timeout=15).strip()
+            require(re.fullmatch(r'[0-9a-f]{64}',identity), 'Local container identity is unavailable')
+            self.transport=[*prefix,'exec','-i',identity]
+            return self.transport
+        except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError):
+            raise VerificationError('Local Docker target could not be pinned; no target query was issued') from None
 
     def query(self, sql):
         require(sql.lstrip().startswith('SELECT '), 'Verifier accepts SELECT statements only')
-        script = "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSET LOCAL search_path=pg_catalog,public;\nSET LOCAL TimeZone='Asia/Shanghai';\nSET LOCAL DateStyle='ISO, YMD';\n" + sql + '\nCOMMIT;\n'
+        transport=self._pin_transport()
+        # Identity and original facts are read within the same RR/READ ONLY
+        # snapshot. A matching run from another local cluster is insufficient.
+        envelope="SELECT jsonb_build_object('database',current_database(),'system_identifier',(SELECT system_identifier::text FROM pg_control_system()),'database_oid',(SELECT oid::bigint FROM pg_database WHERE datname=current_database()),'result',("+sql.strip().rstrip(';')+"));"
+        script = "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSET LOCAL search_path=pg_catalog,public;\nSET LOCAL TimeZone='Asia/Shanghai';\nSET LOCAL DateStyle='ISO, YMD';\n" + envelope + '\nCOMMIT;\n'
         result = subprocess.run(
-            ['docker', 'exec', '-i', 'uten-imp-postgres', 'psql', '-X', '-q', '-At',
-             '-v', 'ON_ERROR_STOP=1', '-U', 'uten', '-d', self.database],
+            [*transport, 'psql', '-X', '-q', '-At',
+             '-v', 'ON_ERROR_STOP=1', '-U', self.user, '-d', self.database],
             input=script.encode('utf-8'), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         require(result.returncode == 0, 'Read-only PostgreSQL query failed; raw SQL and server output were withheld')
         lines = result.stdout.decode('utf-8').strip().splitlines()
         require(len(lines) == 1, 'Read-only query returned an unexpected number of rows')
-        return json.loads(lines[0])
+        record=json.loads(lines[0])
+        require(isinstance(record,dict) and record.get('database')==self.database, 'Read-only query reached a different database')
+        identity=(record.get('system_identifier'),record.get('database_oid'))
+        require(isinstance(identity[0],str) and re.fullmatch(r'[0-9]{1,20}',identity[0])
+                and type(identity[1]) is int and identity[1]>0, 'Read-only physical database identity is unavailable')
+        require(self.expected_identity is None or identity==self.expected_identity, 'Read-only physical database differs from the explicit target')
+        require(self.actual_identity is None or identity==self.actual_identity, 'Read-only physical database changed between snapshots')
+        self.actual_identity=identity
+        require('result' in record, 'Read-only query facts are unavailable')
+        return record['result']
 
 
 def run_sql(run_id):
@@ -364,8 +407,15 @@ def verify_database(database, expected, original, run_id, expected_schema=None, 
     initial_run = database.query(run_sql(run_id))
     validate_run(initial_run, expected, database.database, renamed_from)  # Fail before any account/business queries.
     mapping = re.fullmatch(r'bootstrap-v([0-9]+)', initial_run.get('mapping_version') or '')
+    if mapping is not None and int(mapping[1])>=21:
+        v21_receipt_fee=expected.get('receipt_fee_sources')
+        require(v21_receipt_fee is not None and v21_receipt_fee.get('cash_source_policy') is not None,'V21 requires the exact reviewed live+archive cash source policy')
+        policy=expected.get('finance_cash_source_policy_provenance')
+        require(isinstance(policy,dict) and policy.get('format')=='finance-cash-source-archive-policy-v1' and policy.get('sha256')==v21_receipt_fee['cash_source_policy']['policy_sha256'] and policy.get('evidence_files')==v21_receipt_fee['cash_source_policy']['files'],'V21 cash policy and portable evidence are not sealed in this derived manifest')
     announced_schema = initial_run.get('actual_schema_version')
     require(announced_schema is None or (type(announced_schema) is int and announced_schema > 0), 'Invalid actual schema announcement')
+    if mapping is not None and int(mapping[1])>=21:
+        require(announced_schema is not None and announced_schema>=916,'V21 cash source archive verification requires the actual complete finance schema')
     requires_finance_flow_schema=(expected_schema is not None and expected_schema>=916) or (announced_schema is not None and announced_schema>=916)
     if requires_finance_flow_schema:
         require(mapping is not None and int(mapping[1])>=19,'V916 verification requires bootstrap-v19 finance flow monthly source verification')
@@ -466,7 +516,7 @@ def verify_database(database, expected, original, run_id, expected_schema=None, 
         require(facts['run_files'].get(name) == record, 'Consumed run file identity differs')
     counter_proof = validate_counter_baseline(facts.get('quantity_counter_baseline'), counter_sources) if strict_counters else None
     receipt_reference_proof = validate_receipt_reference_acceptance(facts.get('receipt_order_references'), receipt_order_sources, require=require) if strict_receipt_references else None
-    receipt_fee_proof = validate_receipt_fee_acceptance(facts.get('receipt_fee_styles'), receipt_fee_sources, require=require) if strict_receipt_fee_styles else None
+    receipt_fee_proof = validate_receipt_fee_acceptance(facts.get('receipt_fee_styles'), receipt_fee_sources, require=require, run_id=run_id) if strict_receipt_fee_styles else None
     stock_movement_proof = validate_stock_acceptance(facts.get('stock_movement_checks'), stock_movement_sources, require=require) if strict_stock_movements else None
     production_counter_proof = validate_production_acceptance(facts.get('production_counter_baseline'), production_counter_sources, require=require) if strict_production_counters else None
     finance_master_proof=validate_finance_master_acceptance(facts.get('finance_master_sources'),finance_master_sources,finance_seed_baseline,require=require) if strict_finance_masters else None
@@ -519,6 +569,8 @@ def verify_database(database, expected, original, run_id, expected_schema=None, 
         report['mapping_version'] = initial_run['mapping_version']
     if receipt_fee_proof is not None:
         report['receipt_fee_styles'] = receipt_fee_proof
+        if receipt_fee_proof.get('finance_cash_source_archive') is not None:
+            report['finance_cash_source_archive']=receipt_fee_proof['finance_cash_source_archive']
         report['mapping_version'] = initial_run['mapping_version']
     if stock_movement_proof is not None:
         report['stock_movement_checks'] = stock_movement_proof
@@ -541,6 +593,10 @@ def parser():
     result.add_argument('--admin-snapshot', type=Path, required=True)
     result.add_argument('--run-id', required=True)
     result.add_argument('--database', required=True)
+    result.add_argument('--container',default='uten-imp-postgres')
+    result.add_argument('--user',default='uten')
+    result.add_argument('--expected-system-identifier')
+    result.add_argument('--expected-database-oid',type=int)
     result.add_argument('--manifest-sha256', required=True)
     result.add_argument('--frozen-commit', required=True)
     result.add_argument('--output', type=Path, required=True)
@@ -562,7 +618,7 @@ def main(argv=None):
         require(bool(args.finance_seed_baseline)==bool(args.finance_seed_baseline_sha256),'Finance seed baseline file and root-held SHA must be supplied together')
         expected = load_inputs(args.inputs, args.manifest_sha256, args.frozen_commit,args.finance_seed_baseline,args.finance_seed_baseline_sha256)
         run_id = str(uuid.UUID(args.run_id))
-        database = ReadOnlyDatabase(args.database)
+        database = ReadOnlyDatabase(args.database,args.container,args.user,args.expected_system_identifier,args.expected_database_oid)
         if args.offline_only:
             report = {'status': 'INPUTS_VERIFIED_TARGET_NOT_QUERIED', 'run_id': run_id,
                       'expected_counts': {key: expected[key] for key in ('employees', 'employee_statuses', 'regular_goods', 'bom_items', 'material_identities', 'attachments')},

@@ -13,6 +13,7 @@
 // medium+ 外壳（MainShellPage）已收敛内容区，页面不再重复套容器；
 // 窄屏表格横向滚动即可。
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/retained_async_page.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart'
@@ -212,7 +213,4 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
   ),
 ];
 
-String _formatTime(DateTime t) {
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
-}
+String _formatTime(DateTime t) => ChinaDateTime.formatDateTime(t);

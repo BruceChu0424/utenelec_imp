@@ -9,6 +9,18 @@ import '../repositories/goods_repository.dart';
 import '../repositories/product_category_repository.dart';
 import 'uten_goods_picker.dart';
 
+final bomComponentSinglePickerProvider =
+    Provider<Future<GoodsListItem?> Function(BuildContext, WidgetRef)>(
+      (ref) =>
+          (context, widgetRef) => showUtenGoodsPicker(
+            context,
+            widgetRef,
+            scope: UtenGoodsPickerScope.component,
+            readBoundary: widgetRef.read(sensitiveReadBoundaryProvider),
+            confirmOnDoubleTap: true,
+          ),
+    );
+
 final bomComponentPickerProvider =
     Provider<Future<List<GoodsListItem>> Function(BuildContext, WidgetRef)>(
       (ref) =>

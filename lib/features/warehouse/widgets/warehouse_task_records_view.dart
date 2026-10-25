@@ -10,6 +10,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_date_range_picker.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/authenticated_request_scope.dart';
@@ -734,7 +735,7 @@ class _WarehouseTaskRecordsViewState
   }
 
   Future<void> _pickDates() async {
-    final range = await showDateRangePicker(
+    final range = await showUtenDateRangePicker(
       context: context,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),

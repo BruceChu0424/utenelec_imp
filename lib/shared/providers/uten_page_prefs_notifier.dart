@@ -125,7 +125,10 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
     _saveTimer = null;
     _localAhead = false;
     _localRevision = 0;
-    _adoptedScope = null;
+    // The local cache and any edits before the first snapshot already belong
+    // to this identity. A delayed first snapshot must not treat them as edits
+    // from a previous account and overwrite them.
+    _adoptedScope = _ownerScope;
     _adoptedGeneration = null;
     ref.onDispose(() {
       if (lifecycle != _lifecycle) return;
@@ -171,9 +174,9 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
   T? _loadFromCache() {
     final prefs = _sharedPrefsOrNull();
     if (prefs == null) return null;
-    final raw = prefs.getString(_scopedCacheKey);
-    if (raw == null || raw.isEmpty) return null;
     try {
+      final raw = prefs.getString(_scopedCacheKey);
+      if (raw == null || raw.isEmpty) return null;
       return decode(jsonDecode(raw));
     } catch (_) {
       return null; // 缓存损坏就当没有

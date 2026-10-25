@@ -139,10 +139,9 @@ class GoodsMaterialIdentityEvidencePostgresTest {
         assertFalse(bool("SELECT fn_goods_has_bom(?)", product));
     }
 
-    @Test void businessResetPreservesTheRelationshipProvenanceAndImportRun() throws Exception {
+    @Test void relationshipProvenanceAndImportRunRemainIndependentOfRemovedReset() throws Exception {
         UUID identity = identity(product, material, null);
-        assertEquals("PRESERVE", text("SELECT disposition FROM fn_business_reset_table_policy() WHERE table_name='goods_material_identity_evidence'"));
-        sql("SELECT * FROM business_data_reset()");
+        assertEquals(0, number("SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='business_data_reset'"));
         assertEquals(1, number("SELECT count(*) FROM goods_material_identity_evidence WHERE id=? AND import_run_id=? AND provenance->>'rule'='EXACT_E15'", identity, run));
         assertEquals(1, number("SELECT count(*) FROM legacy_migration_runs WHERE run_id=?", run));
         assertFalse(bool("SELECT fn_goods_has_bom(?)", product));

@@ -33,6 +33,11 @@ public final class PermissionDependencyCatalog {
         actions(hard, catalog, "sales_shipment_finance", "approve", "reject");
         actions(hard, catalog, "production_quality_inspection", "approve");
         actions(hard, catalog, "website", "content_edit", "product_edit", "media_manage", "publish", "rollback");
+        actions(hard, catalog, "company_file", "download", "upload", "create", "edit", "move", "delete", "restore", "manage_permissions");
+        add(hard, catalog, "company_file:upload", "attachment:view");
+        add(hard, catalog, "company_file:upload", "attachment:upload");
+        add(hard, catalog, "company_file:download", "attachment:view");
+        add(hard, catalog, "company_file:download", "attachment:download");
         add(hard, catalog, "goods:price_analysis:view", "goods:view");
         add(hard, catalog, "production_material_analysis:forward_rd", "production_material_analysis:view");
         // Import preview legitimately edits cost inputs without general goods browsing.

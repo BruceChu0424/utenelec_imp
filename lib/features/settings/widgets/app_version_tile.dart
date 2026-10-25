@@ -74,7 +74,6 @@ class _ReleaseNotesDialog extends StatelessWidget {
         l10n.release253Materials,
         l10n.release253Ai,
         l10n.release253Notices,
-        l10n.release253Reset,
         l10n.release253Maintenance,
       ],
       // v2.5.7 与 v2.5.6 同批发布(含并行收尾), 说明共用; 下一个版本再另立条目。
@@ -84,7 +83,6 @@ class _ReleaseNotesDialog extends StatelessWidget {
         l10n.release253Materials,
         l10n.release253Ai,
         l10n.release253Notices,
-        l10n.release253Reset,
         l10n.release253Maintenance,
         l10n.release254QuantityPrecision,
         l10n.release254AiAuthorization,

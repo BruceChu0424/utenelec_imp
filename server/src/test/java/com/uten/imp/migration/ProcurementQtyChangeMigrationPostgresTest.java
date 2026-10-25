@@ -139,21 +139,6 @@ class ProcurementQtyChangeMigrationPostgresTest {
         }
     }
 
-    @Test
-    void resetPolicyCoversQtyChangeLedger() throws Exception {
-        try (Connection connection = DriverManager.getConnection(
-                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
-                POSTGRES.getPassword());
-             Statement statement = connection.createStatement()) {
-            assertEquals(1, scalar(statement, """
-                    select count(*) from pg_get_functiondef(
-                        'business_data_reset()'::regprocedure)
-                    where pg_get_functiondef('business_data_reset()'::regprocedure)
-                        like '%procurement_order_qty_change_logs%, ''CLEAR''%'
-                    """));
-        }
-    }
-
     private static long scalar(Statement statement, String sql) throws Exception {
         try (ResultSet result = statement.executeQuery(sql)) {
             result.next();

@@ -13,8 +13,7 @@
 // （与管理页/任务中心同款 [UtenNotificationBadge]），并按模块累加到 hub 卡与
 // 工作台模块卡——用户口径：草稿是必须处理完的活，看不见就会忘。
 //
-// 导航走 goFrom：主 Tab 下 push 会静默失效（见 MEMORY「go_router 主Tab前缀push失效」），
-// 且带上 returnTo 让列表页返回能回到新建页。
+// 草稿入口离开当前编辑器，经过保存/丢弃/置忙保护；带 returnTo 让列表可回新建页。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -77,6 +76,7 @@ class UtenDraftsButton extends ConsumerWidget {
         onPressed: () => goFrom(
           UtenAppBarActionScope.actionContextOf(context),
           '$listLocation?status=$kDraftStatusQuery',
+          retainSource: false,
         ),
       ),
     );

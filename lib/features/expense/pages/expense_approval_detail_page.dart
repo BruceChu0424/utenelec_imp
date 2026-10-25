@@ -762,6 +762,4 @@ UtenStatusBadgeType _badge(ExpenseClaimStatus s) => switch (s) {
 String _fmtDate(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-String _fmt(DateTime t) =>
-    '${_fmtDate(t)} '
-    '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+String _fmt(DateTime t) => ChinaDateTime.formatDateTime(t);

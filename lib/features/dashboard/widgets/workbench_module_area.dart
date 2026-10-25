@@ -288,7 +288,7 @@ class _EmptyGroupPlaceholder extends StatelessWidget {
 // ===== 分组定义（稳定 key 与 workbench_layout_provider.defaultOrder 对应）=====
 
 const _allGroups = <_ModuleGroup>[
-  // 常用功能：四张自助卡的权限码在权限目录里归「常用模块」分组(V831，排目录最前，
+  // 常用功能：自助卡的权限码在权限目录里归「常用模块」分组(V831，排目录最前，
   // 子类与卡片同名)，权限管理页勾选/收回即控卡片显隐；基础资料卡不设单一码，
   // 仍由「基础资料」模块各主档 view 码并集控制(hub 守卫=子卡并集)。
   _ModuleGroup(
@@ -296,24 +296,16 @@ const _allGroups = <_ModuleGroup>[
     title: '常用功能',
     color: UtenColors.teal600,
     items: [
-      // 已落地（真实后端）排前面
-      _ModuleItem(
-        icon: Icons.person_search_outlined,
-        label: '我的访客',
-        location: RouteName.myVisitors,
-        badge: WorkbenchBadgeKind.visitorHost,
-      ),
       // 基础资料 hub 按各主档查看权限过滤，与路由守卫共用权限映射。
       _ModuleItem(
         icon: Icons.category_outlined,
         label: '基础资料',
         location: RouteName.basicinfo,
       ),
-      // 工资条、报销与意见箱均已接真实后端；生产验收状态由验收手册单独记录。
       _ModuleItem(
-        icon: Icons.account_balance_wallet_outlined,
-        label: '工资条',
-        location: RouteName.payrollSlipList,
+        icon: Icons.folder_copy_outlined,
+        label: '公司资料库',
+        location: RouteName.companyFiles,
       ),
       _ModuleItem(
         icon: Icons.receipt_long_outlined,
@@ -322,9 +314,20 @@ const _allGroups = <_ModuleGroup>[
         badge: WorkbenchBadgeKind.expenseMine,
       ),
       _ModuleItem(
+        icon: Icons.account_balance_wallet_outlined,
+        label: '工资条',
+        location: RouteName.payrollSlipList,
+      ),
+      _ModuleItem(
         icon: Icons.lightbulb_outline_rounded,
         label: '意见箱',
         location: RouteName.suggestion,
+      ),
+      _ModuleItem(
+        icon: Icons.person_search_outlined,
+        label: '我的访客',
+        location: RouteName.myVisitors,
+        badge: WorkbenchBadgeKind.visitorHost,
       ),
     ],
   ),
@@ -768,6 +771,8 @@ class _ModuleTile extends StatelessWidget {
         ? AppLocalizations.of(context).serverStatusTitle
         : item.location == RouteName.websiteManagement
         ? AppLocalizations.of(context).websiteManagementTitle
+        : item.location == RouteName.companyFiles
+        ? AppLocalizations.of(context).companyFilesTitle
         : item.label;
     final accent = comingSoon ? theme.disabledColor : color;
     return Material(

@@ -260,7 +260,7 @@ void main() {
     );
 
     testWidgets(
-      '${family.name} failed refresh hides old actions until the new detail arrives',
+      '${family.name} failed refresh preserves read feedback and hides old actions until the new detail arrives',
       (tester) async {
         final api = _DetailApi(family);
         final container = await _pump(tester, api);
@@ -277,13 +277,31 @@ void main() {
           container.read(pageRefreshRequestProvider.notifier).state++;
         }
         await tester.pumpAndSettle();
-        expect(find.byType(UtenEmpty), findsOneWidget);
+        if (family == _Family.finance) {
+          expect(find.byType(UtenEmpty), findsOneWidget);
+        } else {
+          expect(find.byType(UtenEmpty), findsNothing);
+          expect(find.textContaining('DOC-${family.name}'), findsWidgets);
+          expect(find.text('更新失败，当前显示上次内容'), findsOneWidget);
+          expect(find.text('暂时无法读取详情'), findsOneWidget);
+        }
         expect(tester.widget<Scaffold>(_scaffold).floatingActionButton, isNull);
         api.readError = null;
         api.readGate = Completer<void>();
-        await tester.tap(find.widgetWithText(OutlinedButton, '重试'));
+        await tester.tap(
+          family == _Family.finance
+              ? find.widgetWithText(OutlinedButton, '重试')
+              : find.text('重新更新'),
+        );
         await tester.pump();
-        expect(find.byType(UtenSkeletonList), findsOneWidget);
+        if (family == _Family.finance) {
+          expect(find.byType(UtenSkeletonList), findsOneWidget);
+        } else {
+          expect(find.byType(UtenSkeletonList), findsNothing);
+          expect(find.textContaining('DOC-${family.name}'), findsWidgets);
+          expect(find.byType(LinearProgressIndicator), findsWidgets);
+          expect(find.text('更新失败，当前显示上次内容'), findsNothing);
+        }
         expect(tester.widget<Scaffold>(_scaffold).floatingActionButton, isNull);
         api.readGate!.complete();
         await tester.pumpAndSettle();

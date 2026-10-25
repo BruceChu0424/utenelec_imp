@@ -325,7 +325,9 @@ List<MasterColumnDef<InsightWeightAlertRow>> insightWeightAlertColumns({
     label: '日期',
     width: 110,
     type: 'date',
-    value: (r) => _date(r.observedAt),
+    value: (r) => r.observedAt == null
+        ? '—'
+        : ChinaDateTime.formatDateTime(r.observedAt!),
   ),
   MasterColumnDef(
     key: 'type',
@@ -581,7 +583,9 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
     label: '最近称重',
     width: 110,
     type: 'date',
-    value: (r) => _date(r.lastObservedAt),
+    value: (r) => r.lastObservedAt == null
+        ? '—'
+        : ChinaDateTime.formatDateTime(r.lastObservedAt!),
   ),
   MasterColumnDef(
     key: 'sampleQty',

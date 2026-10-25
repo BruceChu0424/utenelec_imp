@@ -57,7 +57,7 @@ public class GoodsSubcontractSupplierService {
         LEFT JOIN units unit ON unit.id=e.unit_id LEFT JOIN colors color ON color.id=e.color_id
         LEFT JOIN LATERAL (
             SELECT a.id,a.status,a.submission_snapshot,a.decided_at FROM procurement_order_approval_cases a
-            WHERE a.order_type='SUBCONTRACT' AND a.order_id=e.order_id ORDER BY a.attempt DESC LIMIT 1
+            WHERE a.order_type='SUBCONTRACT' AND a.order_id=e.order_id AND a.request_type='ORDER' ORDER BY a.attempt DESC LIMIT 1
         ) approval ON true
         LEFT JOIN LATERAL (
             SELECT COALESCE(SUM(c.loss_qty) FILTER(WHERE c.qty_change_log_id IS NOT NULL),0) legacy_loss_qty,

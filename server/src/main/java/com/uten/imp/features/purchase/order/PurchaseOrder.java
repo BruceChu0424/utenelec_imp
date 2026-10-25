@@ -86,6 +86,9 @@ public class PurchaseOrder extends SoftDeletableEntity {
     @Column(name = "is_closed", nullable = false)
     private boolean closed = false;
 
+    @Column(name = "termination_case_id")
+    private UUID terminationCaseId;
+
     /** 老库 PStyle（结帐方式原值，无字典，前端按字典常量渲染）。 */
     @Column(name = "settlement_style_legacy")
     private Short settlementStyleLegacy;

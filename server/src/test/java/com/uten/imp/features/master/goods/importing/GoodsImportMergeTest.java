@@ -156,11 +156,155 @@ class GoodsImportMergeTest {
         assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("不唯一")));
     }
 
-    @Test void samePathAndNameWithAnUnknownExplicitCodeRequiresIdentityCorrection() throws Exception {
+    @Test void samePathAndNameWithAnUnusedExplicitCodeCreatesANewVariant() throws Exception {
         Fixture f = fixture();
-        var report = f.service.detect(workbook("UNKNOWN", "现有货品", "222", "", ""));
+        byte[] file = workbook("NEW-CODE", "现有货品", "222", "新客户名称", "新规格");
+        var report = f.service.detect(file);
+        assertTrue(report.errors().isEmpty(), report.errors().toString());
+        assertEquals(1, report.addedRows());
+        assertTrue(report.reviewRows().isEmpty());
+
+        var result = f.service.commit(report.planId(), file, "new-variant.xlsx");
+
+        var request = org.mockito.ArgumentCaptor.forClass(GoodsSaveRequest.class);
+        verify(f.goodsService).saveImported(request.capture());
+        assertEquals("NEW-CODE", request.getValue().getCode());
+        assertEquals("现有货品", request.getValue().getName());
+        assertEquals("新规格", request.getValue().getSpec());
+        assertEquals(1, result.createdCount());
+        verify(f.goodsService, never()).updateImported(any(), any());
+    }
+
+    @Test void sameNameVariantsDoNotMakeAnExplicitNewCodeAmbiguous() throws Exception {
+        Fixture f = fixture();
+        Goods duplicate = goods(f.category, "G2", "现有货品");
+        when(f.repo.findImportIdentities()).thenReturn(List.of(identity(f.goods), identity(duplicate)));
+        var report = f.service.detect(workbook("NEW-CODE", "现有货品", "222", "", ""));
+        assertTrue(report.errors().isEmpty(), report.errors().toString());
+        assertEquals(1, report.addedRows());
+    }
+
+    @Test void newSameNameVariantPreservesItsOwnMaterialAndColor() throws Exception {
+        Fixture f = fixture();
+        f.goods.setMaterial("铜");
+        var color = new com.uten.imp.features.master.color.Color();
+        color.setId(UUID.randomUUID()); color.setName("白色"); color.setStatus("使用");
+        var colors = (ColorRepository) ReflectionTestUtils.getField(f.service, "colorRepo");
+        when(colors.findAll()).thenReturn(List.of(color));
+        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = book.createSheet("货品"); var header = sheet.createRow(0); var row = sheet.createRow(1);
+            String[] titles = {"编号", "名称", "类别", "材质", "主颜色"};
+            String[] values = {"NEW-CODE", "现有货品", "成品", "铝", "白色"};
+            for (int n = 0; n < titles.length; n++) { header.createCell(n).setCellValue(titles[n]); row.createCell(n).setCellValue(values[n]); }
+            book.write(out); byte[] file = out.toByteArray();
+            var report = f.service.detect(file);
+            assertTrue(report.errors().isEmpty(), report.errors().toString());
+            f.service.commit(report.planId(), file, "material-color-variant.xlsx");
+
+            var request = org.mockito.ArgumentCaptor.forClass(GoodsSaveRequest.class);
+            verify(f.goodsService).saveImported(request.capture());
+            assertEquals("铝", request.getValue().getMaterial());
+            assertEquals(color.getId(), request.getValue().getColorId());
+            assertEquals("铜", f.goods.getMaterial());
+            verify(f.goodsService, never()).updateImported(any(), any());
+        }
+    }
+
+    @Test void anExportedUuidWithBlankCodeKeepsItsIdentityAndExistingCode() throws Exception {
+        Fixture f = fixture();
+        Goods duplicate = goods(f.category, "G2", "现有货品");
+        when(f.repo.findImportIdentities()).thenReturn(List.of(identity(f.goods), identity(duplicate)));
+        byte[] file = workbookWithUuid("", f.goods.getId().toString());
+        var report = f.service.detect(file);
+
+        assertTrue(report.errors().isEmpty(), report.errors().toString());
+        assertEquals(1, report.unchangedRows());
+        assertEquals(0, report.addedRows());
+        f.service.commit(report.planId(), file, "blank-code-roundtrip.xlsx");
+        verifyNoInteractions(f.goodsService);
+    }
+
+    @Test void anExportedUuidWithAnUnusedNewCodeRequiresReviewBeforeRenumbering() throws Exception {
+        Fixture f = fixture();
+        byte[] file = workbookWithUuid("NEW-CODE", f.goods.getId().toString());
+        var report = f.service.detect(file);
+
+        assertTrue(report.errors().isEmpty(), report.errors().toString());
+        assertEquals(0, report.addedRows());
+        assertEquals(1, report.conflictRows());
+        var review = report.reviewRows().getFirst();
+        assertEquals(f.goods.getId(), review.goodsId());
+        assertEquals("UUID", review.matchType());
+        assertEquals(List.of(new GoodsImportReviewRow.Change("code", "编号", "G1", "NEW-CODE", "CONFLICT")), review.changes());
+
+        var result = f.service.commit(report.planId(), file, "rename.xlsx", Set.of("goods:2"));
+
+        assertEquals("NEW-CODE", captured(f).getCode());
+        assertEquals(1, result.updatedCount());
+        verify(f.goodsService, never()).saveImported(any());
+    }
+
+    @Test void ignoringAnExportedCodeChangeDoesNotRenumberTheGoods() throws Exception {
+        Fixture f = fixture();
+        byte[] file = workbookWithUuid("NEW-CODE", f.goods.getId().toString());
+        var report = f.service.detect(file);
+        var result = f.service.commit(report.planId(), file, "ignore-rename.xlsx", Set.of());
+
+        assertEquals(1, result.ignoredCount());
+        assertEquals(0, result.importedCount());
+        assertNull(result.batchId());
+        verifyNoInteractions(f.goodsService);
+    }
+
+    @Test void blankCodeOrIgnoredNewCodeStillFillsOtherCellsWithoutRenumbering() throws Exception {
+        for (String incomingCode : List.of("", "NEW-CODE")) {
+            Fixture f = fixture();
+            try (var book = new XSSFWorkbook(new java.io.ByteArrayInputStream(
+                    workbook(incomingCode, "现有货品", "", "新客户品名", "")));
+                 var out = new ByteArrayOutputStream()) {
+                book.getSheetAt(0).getRow(0).createCell(6).setCellValue("系统标识");
+                book.getSheetAt(0).getRow(1).createCell(6).setCellValue(f.goods.getId().toString());
+                book.write(out); byte[] file = out.toByteArray();
+                var report = f.service.detect(file);
+                assertTrue(report.errors().isEmpty(), report.errors().toString());
+                f.service.commit(report.planId(), file, "fill-without-renumbering.xlsx", Set.of());
+                GoodsSaveRequest request = captured(f);
+                assertEquals("G1", request.getCode());
+                assertEquals("新客户品名", request.getClientGoodsName());
+            }
+        }
+    }
+
+    @Test void aCodeClaimedAfterRenameDetectionRejectsTheEntireCommit() throws Exception {
+        Fixture f = fixture();
+        byte[] file = workbookWithUuid("NEW-CODE", f.goods.getId().toString());
+        var report = f.service.detect(file);
+        Goods other = goods(f.category, "NEW-CODE", "其他货品");
+        when(f.repo.findImportIdentities()).thenReturn(List.of(identity(f.goods), identity(other)));
+
+        assertThrows(ApiException.class, () -> f.service.commit(report.planId(), file, "stale-rename.xlsx", Set.of("goods:2")));
+        verifyNoInteractions(f.goodsService);
+    }
+
+    @Test void aReusedSourceCodeCanBeRenamedOnlyWhenItsUuidIsPreserved() throws Exception {
+        Fixture f = fixture();
+        when(f.repo.codeHasReuseHistory("G1")).thenReturn(true);
+        byte[] file = workbookWithUuid("NEW-CODE", f.goods.getId().toString());
+        var report = f.service.detect(file);
+        assertTrue(report.errors().isEmpty(), report.errors().toString());
+        f.service.commit(report.planId(), file, "rename-reused-code.xlsx", Set.of("goods:2"));
+        assertEquals("NEW-CODE", captured(f).getCode());
+    }
+
+    @Test void aUuidCannotClaimAnotherDeletedGoodsCodeOrRestoreThatGoods() throws Exception {
+        Fixture f = fixture();
+        UUID deletedId = UUID.randomUUID();
+        when(f.repo.findRestorableDeletedIdsByCode("DELETED-CODE")).thenReturn(List.of(deletedId));
+        var report = f.service.detect(workbookWithUuid("DELETED-CODE", f.goods.getId().toString()));
         assertNull(report.planId());
-        assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("编号不一致")));
+        assertEquals(0, report.restorableRows());
+        assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("已删除货品编号不一致")));
+        verifyNoInteractions(f.goodsService);
     }
 
     @Test void sameNameInAnotherCategoryNeedsAnExplicitNewCodeBeforeCreatingNewGoods() throws Exception {
@@ -422,13 +566,16 @@ class GoodsImportMergeTest {
         }
     }
     private static byte[] workbookWithUuid(String id) throws Exception {
+        return workbookWithUuid("G1", id);
+    }
+    private static byte[] workbookWithUuid(String code, String id) throws Exception {
         try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
             var sheet = book.createSheet("货品");
             var header = sheet.createRow(0);
             String[] titles = {"编号", "名称", "类别", "货品UUID"};
             for (int i = 0; i < titles.length; i++) header.createCell(i).setCellValue(titles[i]);
             var row = sheet.createRow(1);
-            String[] values = {"G1", "现有货品", "成品", id};
+            String[] values = {code, "现有货品", "成品", id};
             for (int i = 0; i < values.length; i++) row.createCell(i).setCellValue(values[i]);
             book.write(out); return out.toByteArray();
         }

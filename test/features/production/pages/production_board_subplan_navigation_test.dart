@@ -67,7 +67,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 历史记录段：先过时间门（全部）才加载已结案/历史计划卡。
+    // 历史记录段：默认近三个月加载；再点「全部」全量看已结案/历史计划卡。
     await tester.tap(find.text('历史记录'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('全部'));
@@ -139,7 +139,9 @@ void main() {
     // Four categories collapse to the shared menu at this width and scale.
     await selectFilterSegment(tester, '历史记录');
     await tester.pumpAndSettle();
-    await tester.tap(find.text('全部'));
+    // 默认近三个月的时间胶囊文本变长，375px 下时间行同样收进紧凑菜单，
+    // 经 selectFilterSegment 穿透选择「全部」。
+    await selectFilterSegment(tester, '全部');
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 

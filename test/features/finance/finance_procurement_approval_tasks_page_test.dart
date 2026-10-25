@@ -8,6 +8,7 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/models/finance_procurement_workflow.dart';
 import 'package:uten_imp/features/finance/pages/finance_procurement_approval_tasks_page.dart';
@@ -38,6 +39,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   String? lastKeyword;
   FinanceProcurementOrderType? lastOrderType;
   Object? reviewError;
+  int taskReads = 0;
 
   @override
   Future<FinanceProcurementApprovalPage> approvalTasks({
@@ -50,12 +52,17 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
     String? billNo,
     String status = 'PENDING',
   }) async {
+    taskReads++;
     lastKeyword = keyword;
     lastOrderType = orderType;
     final filtered = items
         .where(
           (item) =>
-              (status == 'ALL' || item.status == status) &&
+              (status == 'ALL' ||
+                  item.status == status ||
+                  (status == 'CLOSURE_PENDING' &&
+                      item.status == 'PENDING' &&
+                      item.isClosureRequest)) &&
               (orderType == null || item.orderType == orderType),
         )
         .toList();
@@ -173,13 +180,31 @@ Future<GoRouter> _pumpPage(
       ),
       GoRoute(
         path: '/finance/procurement-approvals/:caseId',
-        builder: (_, state) =>
-            Scaffold(body: Text('审核详情 ${state.pathParameters['caseId']}')),
+        builder: (context, state) => Scaffold(
+          body: Column(
+            children: [
+              Text('审核详情 ${state.pathParameters['caseId']}'),
+              TextButton(
+                onPressed: () => context.pop(false),
+                child: const Text('返回审批任务'),
+              ),
+            ],
+          ),
+        ),
       ),
       GoRoute(
         path: '/purchase/orders/:id',
-        builder: (_, state) =>
-            Scaffold(body: Text('采购详情 ${state.pathParameters['id']}')),
+        builder: (context, state) => Scaffold(
+          body: Column(
+            children: [
+              Text('采购详情 ${state.pathParameters['id']}'),
+              TextButton(
+                onPressed: () => context.pop(false),
+                child: const Text('返回审批任务'),
+              ),
+            ],
+          ),
+        ),
       ),
       GoRoute(
         path: '/subcontract/orders/:id',
@@ -229,6 +254,79 @@ Future<GoRouter> _pumpPage(
 }
 
 void main() {
+  for (final sourceOrder in [false, true]) {
+    testWidgets('${sourceOrder ? '原订货单' : '审核详情'}无本地决定返回仍重核结束审批队列', (
+      tester,
+    ) async {
+      final repository = _FakeWorkflowRepo([
+        _task(
+          caseId: 'before',
+          orderId: 'order-1',
+          orderType: 'PURCHASE',
+          billNo: 'PO-BEFORE',
+        ),
+      ]);
+      await _pumpPage(tester, repository);
+      final table = tester
+          .widget<MasterDataTableView<FinanceProcurementApprovalTask>>(
+            find.byKey(const Key('finance-approval-task-table')),
+          );
+      final beforeReads = repository.taskReads;
+      if (sourceOrder) {
+        final menu = table.rowMenuBuilder!(table.items.single)
+            .whereType<UtenMenuItem>()
+            .last;
+        menu.onTap();
+      } else {
+        table.onRowTap!(table.items.single);
+      }
+      await tester.pumpAndSettle();
+      repository.items
+        ..clear()
+        ..add(
+          FinanceProcurementApprovalTask.fromJson({
+            'caseId': 'after',
+            'orderId': 'order-1',
+            'orderType': 'PURCHASE',
+            'billNo': 'PO-AFTER',
+            'requestType': 'CLOSE',
+            'status': 'PENDING',
+            'version': 1,
+            'allowedActions': ['APPROVE'],
+          }),
+        );
+      await tester.tap(find.text('返回审批任务'));
+      await tester.pumpAndSettle();
+      expect(repository.taskReads, beforeReads + 1);
+      expect(find.text('PO-BEFORE'), findsNothing);
+      expect(find.text('PO-AFTER'), findsOneWidget);
+      expect(find.text('采购 · 结束待审批'), findsOneWidget);
+    });
+  }
+
+  testWidgets('结束待审批使用同一状态筛选并区分正常订货审批', (tester) async {
+    final closure = FinanceProcurementApprovalTask.fromJson({
+      'caseId': 'closure-1',
+      'orderId': 'order-1',
+      'orderType': 'PURCHASE',
+      'billNo': 'PO-CLOSE-1',
+      'status': 'PENDING',
+      'requestType': 'CLOSE_AND_REORDER',
+      'version': 1,
+      'allowedActions': ['APPROVE', 'REJECT'],
+    });
+    final repository = _FakeWorkflowRepo([closure]);
+    await _pumpPage(tester, repository);
+    await tester.tap(find.text('结束待审批'));
+    await tester.pumpAndSettle();
+    expect(find.text('PO-CLOSE-1'), findsOneWidget);
+    expect(find.text('采购 · 结束待审批'), findsOneWidget);
+    expect(
+      find.byKey(const Key('finance-approval-status-segments')),
+      findsOneWidget,
+    );
+  });
+
   for (final scenario in const [
     (width: 1440.0, dark: false),
     (width: 1440.0, dark: true),
@@ -555,7 +653,11 @@ void main() {
     router.pop();
     await tester.pumpAndSettle();
     expect(find.text('PO-2026-001'), findsOneWidget);
-    expect(find.text('已选 1 项'), findsOneWidget);
+    expect(
+      find.text('已选 1 项'),
+      findsNothing,
+      reason: '返回时重核服务器队列并清掉旧选择，不能沿用可能已被他人审批的任务。',
+    );
     expect(
       find.byKey(const Key('finance-approval-batch-approve')),
       findsOneWidget,

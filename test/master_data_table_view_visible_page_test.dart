@@ -214,6 +214,7 @@ Future<void> _lookAtPage(
   // next one so a target is not scrolled past while its mount is still queued.
   for (var attempt = 0; anchor.evaluate().isEmpty && attempt < 60; attempt++) {
     await tester.drag(scrollable, Offset(0, forward ? -180 : 180));
+    await tester.pump(const Duration(milliseconds: 200));
     await tester.pumpAndSettle();
   }
   expect(anchor, findsOneWidget, reason: 'cached page $page must be reachable');

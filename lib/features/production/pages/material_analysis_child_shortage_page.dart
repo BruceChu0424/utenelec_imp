@@ -132,11 +132,13 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
               title: '补下层物料',
               // 命令式子页面，没有独立路由 scope；权限入口由物料分析页承载。
               showPagePermissionAction: false,
-              leading: _submitting
-                  ? const SizedBox(width: 48)
-                  : UtenBackButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
+              // 提交期间按钮常驻但空转（PopScope 已挡返回；传 null 会回落默认
+              // 返回），leading 槽恒为 UtenBackButton，标题不再左右跳变。
+              leading: UtenBackButton(
+                onPressed: _submitting
+                    ? () {}
+                    : () => Navigator.of(context).pop(),
+              ),
             ),
             body: Stack(
               children: [

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/utils/china_datetime.dart';
 import '../../../../components/buttons/uten_refresh_button.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
@@ -623,7 +624,13 @@ class _SupplierSettlementDetailPanelState
               leading: const Icon(Icons.radio_button_checked, size: 14),
               title: Text(event.type ?? '事件'),
               subtitle: Text(event.reason ?? '—'),
-              trailing: Text(event.createdAt ?? '—'),
+              trailing: Text(
+                ChinaDateTime.formatIsoInstant(
+                  event.createdAt,
+                  fallback: '—',
+                  seconds: true,
+                ),
+              ),
             ),
         ],
       ),

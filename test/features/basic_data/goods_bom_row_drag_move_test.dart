@@ -183,14 +183,45 @@ Future<TestGesture> _pickUp(
   Finder rowText, {
   int pointer = 7,
 }) async {
+  final slots = find.ancestor(
+    of: rowText,
+    matching: find.byWidgetPredicate(
+      (widget) =>
+          widget.key is ValueKey<String> &&
+          (widget.key! as ValueKey<String>).value.startsWith('row-drag-slot:'),
+    ),
+  );
+  final handle = slots.evaluate().isEmpty
+      ? rowText
+      : find
+            .descendant(of: slots.first, matching: find.textContaining('组件 '))
+            .first;
   final gesture = await tester.startGesture(
-    tester.getCenter(rowText),
+    tester.getCenter(handle),
     pointer: pointer,
     kind: PointerDeviceKind.mouse,
   );
   await tester.pump(const Duration(milliseconds: 600));
   await tester.pumpAndSettle();
   return gesture;
+}
+
+Future<void> _selectRow(WidgetTester tester, Finder rowText) async {
+  final slot = find
+      .ancestor(
+        of: rowText,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget.key is ValueKey<String> &&
+              (widget.key! as ValueKey<String>).value.startsWith(
+                'row-drag-slot:',
+              ),
+        ),
+      )
+      .first;
+  await tester.tap(
+    find.descendant(of: slot, matching: find.byType(Checkbox)).first,
+  );
 }
 
 Future<void> _dropAt(
@@ -299,9 +330,9 @@ void main() {
     final repo = _FakeBomRepo();
     await _pumpTab(tester, repo);
 
-    await tester.tap(find.text('外壳'));
+    await _selectRow(tester, find.text('外壳'));
     await tester.pump();
-    await tester.tap(find.text('螺丝'));
+    await _selectRow(tester, find.text('螺丝'));
     await tester.pump();
 
     final gesture = await _pickUp(tester, find.text('螺丝'));
@@ -335,9 +366,9 @@ void main() {
     await _pumpTab(tester, repo);
 
     // 勾选前两行（外壳、螺丝），拖到紧随其后的「线材」上方：结果与现状一致。
-    await tester.tap(find.text('外壳'));
+    await _selectRow(tester, find.text('外壳'));
     await tester.pump();
-    await tester.tap(find.text('螺丝'));
+    await _selectRow(tester, find.text('螺丝'));
     await tester.pump();
 
     final gesture = await _pickUp(tester, find.text('螺丝'));

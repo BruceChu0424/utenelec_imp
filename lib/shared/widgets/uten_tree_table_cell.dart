@@ -24,6 +24,8 @@ class UtenTreeTableCell extends StatelessWidget {
     this.sequenceInline = false,
     this.titleBadge,
     this.titleBadgeLabel,
+    this.titleWidget,
+    this.leafAction,
     this.foregroundColor,
     this.hasChildren = false,
     this.expanded = false,
@@ -117,6 +119,12 @@ class UtenTreeTableCell extends StatelessWidget {
   final int depth;
   final String sequence;
   final String title;
+
+  /// Optional editor for the identity; its own input semantics remain active.
+  final Widget? titleWidget;
+
+  /// Action in the otherwise empty leaf toggle slot, e.g. adding a child row.
+  final Widget? leafAction;
   final String? subtitle;
   final String? levelLabel;
 
@@ -314,6 +322,8 @@ class UtenTreeTableCell extends StatelessWidget {
                           ),
                         ),
                       )
+                    : leafAction != null
+                    ? leafAction!
                     : showLeafMarker
                     ? ExcludeSemantics(
                         child: Center(
@@ -353,6 +363,7 @@ class UtenTreeTableCell extends StatelessWidget {
                   container: true,
                   label: identityLabel,
                   child: ExcludeSemantics(
+                    excluding: titleWidget == null,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -372,17 +383,20 @@ class UtenTreeTableCell extends StatelessWidget {
                                 const SizedBox(width: UtenSpacing.s4),
                               ],
                               Expanded(
-                                child: Text(
-                                  title,
-                                  // 单行省略号（2026-09-16 全站口径）：树格名称
-                                  // 不再折两行撑高整行，列宽由宿主列 textOf 量宽。
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: textColor,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
+                                child:
+                                    titleWidget ??
+                                    Text(
+                                      title,
+                                      // 单行省略号（2026-09-16 全站口径）：树格名称
+                                      // 不再折两行撑高整行，列宽由宿主列 textOf 量宽。
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            color: textColor,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
                               ),
                             ],
                           )
@@ -407,16 +421,17 @@ class UtenTreeTableCell extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            title,
-                            // 同上：单行省略号，不折两行撑高整行。
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: textColor,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
+                          titleWidget ??
+                              Text(
+                                title,
+                                // 同上：单行省略号，不折两行撑高整行。
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: textColor,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                         ],
                         if (safeSubtitle?.isNotEmpty == true)
                           Text(

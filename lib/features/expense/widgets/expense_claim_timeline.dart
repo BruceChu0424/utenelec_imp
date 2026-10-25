@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../models/expense_claim.dart';
 import '../models/expense_claim_event.dart';
@@ -170,6 +171,4 @@ class _TimelineItem extends StatelessWidget {
   }
 }
 
-String _fmt(DateTime t) =>
-    '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')} '
-    '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+String _fmt(DateTime t) => ChinaDateTime.formatDateTime(t);

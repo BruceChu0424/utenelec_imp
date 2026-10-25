@@ -68,7 +68,9 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
   final _list = PagedListController<ProductionPlanListItem>();
   int? _statusFilter; // null=全部
   bool _historyMode = false;
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
+
+  /// 历史单据段的时间门控值；默认近三个月（2026-10-24 用户口径）。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
   bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）
 
   /// 表头列筛选：车间（departments/tree 展平桶，value=UUID 回传 departmentId）。
@@ -138,14 +140,16 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
   );
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
-  Future<PagedResult<ProductionPlanListItem>> _fetch() async {
+  Future<PagedResult<ProductionPlanListItem>> _fetch([
+    int? requestedPage,
+  ]) async {
     final names = ref.read(masterNameServiceProvider);
     // 字典与列表并行(ADR-108)，不再先等字典。
     final dictionaries = names.ensureLoaded();
     final r = await ref
         .read(productionPlanRepositoryProvider)
         .list(
-          page: _list.pageNum,
+          page: requestedPage ?? _list.pageNum,
           filter: ProductionPlanFilter(
             keyword: _list.normalizedKeyword,
             departmentId: _workshopIdFilter,
@@ -198,6 +202,7 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
       page ?? _list.pageNum,
       silent: silent,
       fetch: _fetch,
+      fetchPage: _fetch,
       isCurrent: captureReadOwner(ref),
     );
     if (!mounted || _selectedIds.isEmpty) return;
@@ -480,7 +485,7 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
     // 返回即刷新：从详情/编辑页（保存/审核/删除后）回到本列表时静默重拉当前页，
     // 不再停留在进入子页前的老数据。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
-    ref.onPageResume(_myLocation!, () => _reload(null, true));
+    ref.onPageResume(_myLocation!, () => _list.revalidate(_reload(null, true)));
     final page = Scaffold(
       appBar: UtenAppBar(
         title: '生产计划单',
@@ -585,12 +590,16 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
                       batchActionsBuilder: _planBatchActions,
                       isLoading: _list.isLoadingFirst,
                       loadingMore: _list.isLoadingMore,
+                      isRefreshing: _list.refreshing,
+                      refreshError: _list.refreshError,
                       error: _list.error,
-                      onRetry: () => _reload(),
+                      onRetry: () => _reload(null, _list.refreshError != null),
                       emptyMessage: '暂无生产计划单',
                       currentPage: _list.currentPage,
                       totalPages: _list.totalPages,
-                      paginationRevision: _list.page,
+                      paginationRevision: _list.paginationRevision,
+                      refreshedPages: _list.refreshedPages,
+                      onRetainedPagesChanged: _list.retainPages,
                       paginationScope: (
                         _list.normalizedKeyword,
                         _statusFilter,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
@@ -225,5 +226,4 @@ String _eventTitle(String kind, AppLocalizations l) =>
       _ => l.websiteInquiryEvent,
     };
 
-String _format(DateTime v) =>
-    '${v.year}-${v.month.toString().padLeft(2, '0')}-${v.day.toString().padLeft(2, '0')} ${v.hour.toString().padLeft(2, '0')}:${v.minute.toString().padLeft(2, '0')}';
+String _format(DateTime v) => ChinaDateTime.formatDateTime(v);

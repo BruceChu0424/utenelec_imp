@@ -26,6 +26,7 @@ import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 
@@ -194,12 +195,19 @@ SensitiveReadBoundary _bomBoundary({
   superAdmin: false,
 );
 
-Future<void> _openEditForPc(WidgetTester tester) async {
-  await tester.tap(find.text('PC E-15'));
+Future<void> _openEditForRow(WidgetTester tester, String itemId) async {
+  final level = find.descendant(
+    of: find.byKey(ValueKey('goods-bom-tree-cell-$itemId')),
+    matching: find.text('组件 1 级'),
+  );
+  await tester.tap(level);
   await tester.pump();
-  await tester.tap(find.text('PC E-15'));
+  await tester.tap(level);
   await tester.pumpAndSettle();
 }
+
+Future<void> _openEditForPc(WidgetTester tester) =>
+    _openEditForRow(tester, 'row-pc');
 
 void main() {
   const staleCandidate = GoodsListItem(
@@ -314,7 +322,9 @@ void main() {
       await _pumpTab(tester, repo, picked: [first], suggestions: [candidate]);
       await tester.tap(find.byKey(const Key('goods-bom-add-component')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('选择组件'));
+      await tester.tap(
+        find.byKey(const ValueKey('uten-reference-open-picker')),
+      );
       await tester.pumpAndSettle();
       final quantity = find.byKey(const ValueKey('goods-bom-add-qty-picked'));
       await tester.enterText(quantity, '5');
@@ -387,10 +397,28 @@ void main() {
   testWidgets('期间边的数量列按克显示，普通行照旧显示数量', (tester) async {
     await _pumpTab(tester, _FakeBomRepo());
 
-    expect(find.text('12.5 克'), findsOneWidget);
+    final periodic = tester.widget<TextField>(
+      find.byKey(const ValueKey('goods-bom-inline-qty-goods-a/row-pc')),
+    );
+    expect(periodic.controller!.text, '12.5');
+    expect(periodic.decoration!.suffixText, '克');
+    final ordinary = tester.widget<TextField>(
+      find.byKey(const ValueKey('goods-bom-inline-qty-goods-a/row-shell')),
+    );
+    expect(ordinary.controller!.text, '1');
+    expect(ordinary.decoration!.suffixText, '个');
     expect(find.text('0.0125'), findsNothing);
     // ADR-129 并入后表头随全站口径叫「设计使用数量」；期间边格内仍按克显示。
-    expect(find.text('设计使用数量'), findsOneWidget, reason: '表头为设计使用数量');
+    final table = tester.widget<MasterDataTableView<dynamic>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<dynamic>,
+      ),
+    );
+    expect(
+      table.columns.singleWhere((column) => column.key == 'qty').label,
+      '设计使用数量',
+      reason: '表头为设计使用数量',
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -475,7 +503,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('goods-bom-add-component')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('选择组件'));
+    await tester.tap(find.byKey(const ValueKey('uten-reference-open-picker')));
     await tester.pumpAndSettle();
 
     final field = find.byKey(const ValueKey('goods-bom-add-qty-abs'));
@@ -522,7 +550,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('goods-bom-add-component')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('选择组件'));
+    await tester.tap(find.byKey(const ValueKey('uten-reference-open-picker')));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('goods-bom-add-qty-masterbatch')),
@@ -575,10 +603,12 @@ void main() {
   testWidgets('组件单位不能按克换算：按基本单位填，只提交 qty', (tester) async {
     final repo = _FakeBomRepo(rows: const [_tonRow]);
     await _pumpTab(tester, repo);
-    await tester.tap(find.text('吨包树脂'));
-    await tester.pump();
-    await tester.tap(find.text('吨包树脂'));
-    await tester.pumpAndSettle();
+    final inline = tester.widget<TextField>(
+      find.byKey(const ValueKey('goods-bom-inline-qty-goods-a/row-ton')),
+    );
+    expect(inline.controller!.text, '0.00002');
+    expect(inline.decoration!.suffixText, '吨');
+    await _openEditForRow(tester, 'row-ton');
 
     expect(find.widgetWithText(TextField, '单个重量 (吨)'), findsOneWidget);
     expect(

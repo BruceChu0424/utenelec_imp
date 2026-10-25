@@ -1,0 +1,7 @@
+{
+  "mount": "/var/lib/uten-imp-media",
+  "source": "REPLACE_WITH_REVIEWED_FINDMNT_SOURCE",
+  "filesystem_uuid": "REPLACE_WITH_REVIEWED_FINDMNT_UUID",
+  "root": "/var/lib/uten-imp-media/attachments",
+  "min_free_bytes": 10737418240
+}

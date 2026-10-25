@@ -430,16 +430,16 @@ public class PlatformColumnService {
         if(grants==null||!grants.keySet().equals(Set.of(recordId))||grants.get(recordId)==null)throw forbidden("新建记录的扩展字段授权不完整");
         var access=grants.get(recordId);
         long expectedVersion=recordId.equals(prepared.sourceId())?prepared.sourceVersion():0;
-        Map<String,Object> parameters=params(scope);parameters.put("record",recordId);parameters.put("retain",adapter.preserveValuesOnReset());
+        Map<String,Object> parameters=params(scope);parameters.put("record",recordId);
         parameters.put("cells",json(prepared.cells()));parameters.put("version",expectedVersion);
         parameters.put("sourceDocument",prepared.documentId());parameters.put("sourceIndex",prepared.lineIndex());
         parameters.put("sourceVersion",prepared.documentId()==null?null:prepared.sourceVersion());
         tx.bind();
         int changed=expectedVersion==0?jdbc.update("""
-                INSERT INTO platform_record_fields(scope,record_id,version,cells,created_by,updated_by,retain_on_reset,source_document_id,source_line_index,source_fields_version)
-                VALUES(:scope,:record,1,CAST(:cells AS jsonb),:actor,:actor,:retain,:sourceDocument,:sourceIndex,:sourceVersion) ON CONFLICT(scope,record_id) DO NOTHING
+                INSERT INTO platform_record_fields(scope,record_id,version,cells,created_by,updated_by,source_document_id,source_line_index,source_fields_version)
+                VALUES(:scope,:record,1,CAST(:cells AS jsonb),:actor,:actor,:sourceDocument,:sourceIndex,:sourceVersion) ON CONFLICT(scope,record_id) DO NOTHING
                 """,parameters):jdbc.update("""
-                UPDATE platform_record_fields SET version=version+1,cells=CAST(:cells AS jsonb),updated_by=:actor,updated_at=now(),retain_on_reset=:retain,
+                UPDATE platform_record_fields SET version=version+1,cells=CAST(:cells AS jsonb),updated_by=:actor,updated_at=now(),
                     source_document_id=COALESCE(source_document_id,:sourceDocument),source_line_index=COALESCE(source_line_index,:sourceIndex),
                     source_fields_version=COALESCE(source_fields_version,:sourceVersion)
                 WHERE scope=:scope AND record_id=:record AND version=:version

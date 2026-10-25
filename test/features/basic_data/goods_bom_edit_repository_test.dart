@@ -9,6 +9,198 @@ import 'package:uten_imp/features/basic_data/repositories/goods_bom_edit_reposit
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 
 void main() {
+  test(
+    'component master edits merge one optimistic command and share snapshots',
+    () async {
+      final api = _DraftApi();
+      final draft = _draft(api);
+      await draft.list('frame');
+      await draft.updateGoods('screw', {'model': '新型号'});
+      await draft.updateGoods('screw', {'spec': '新规格', 'material': 'PC'});
+      expect(draft.operationCount, 1);
+      final updated = (await draft.list('frame')).single;
+      expect(updated.componentModel, '新型号');
+      expect(updated.componentSpec, '新规格');
+      expect(updated.componentMaterial, 'PC');
+      expect(api.commands, isEmpty);
+      await draft.preview();
+      final operation =
+          (api.commands.single.$2['operations'] as List).single as Map;
+      expect(operation['type'], 'UPDATE_GOODS');
+      expect(operation['goodsId'], 'screw');
+      expect(operation['goodsVersion'], 4);
+      expect(operation['goodsChanges'], {
+        'model': '新型号',
+        'spec': '新规格',
+        'material': 'PC',
+      });
+      expect(
+        (api.commands.single.$2['snapshots'] as List).map(
+          (snapshot) => (snapshot as Map<String, dynamic>)['goodsId'],
+        ),
+        contains('screw'),
+      );
+    },
+  );
+
+  test(
+    'reverting component master input removes its pending operation',
+    () async {
+      final draft = _draft(_DraftApi());
+      await draft.updateGoods('screw', {'model': '新型号'});
+      await draft.updateGoods('screw', {'model': '旧型号'});
+      expect(draft.hasChanges, isFalse);
+    },
+  );
+
+  test(
+    'master edits reject missing authority and unsupported fields',
+    () async {
+      final draft = _draft(_DraftApi()..masterWritable = false);
+      await expectLater(
+        draft.updateGoods('screw', {'model': '新型号'}),
+        throwsA(isA<ApiException>()),
+      );
+      await expectLater(
+        draft.updateGoods('screw', {'code': 'OVERRIDE'}),
+        throwsA(isA<ApiException>()),
+      );
+      expect(draft.hasChanges, isFalse);
+    },
+  );
+
+  test(
+    'component replacement keeps the relation and stages no canonical writes',
+    () async {
+      final api = _DraftApi()..richEvidence = true;
+      final draft = _draft(api);
+      final original = (await draft.list('frame')).single;
+      final replaced = await draft.update('frame', original.id, {
+        'componentGoodsId': 'nut',
+        'qty': original.qty,
+        'summary': '保留装配用量',
+      });
+      expect(replaced.id, original.id);
+      expect(replaced.componentGoodsId, 'nut');
+      expect(replaced.componentName, '名称 nut');
+      expect(replaced.qty, original.qty);
+      expect(replaced.actual.qty, isNull);
+      expect(replaced.actual.sampleCount, 0);
+      expect(replaced.audited, isFalse);
+      expect(replaced.systemLearned, isFalse);
+      expect(
+        replaced.price,
+        isNull,
+        reason: 'the old component price must not carry forward',
+      );
+      expect(api.commands, isEmpty);
+      final preview = await draft.preview();
+      final operation =
+          (api.commands.single.$2['operations'] as List).single as Map;
+      expect(operation['type'], 'UPDATE');
+      expect(operation['goodsId'], 'frame');
+      expect(operation['itemId'], original.id);
+      await draft.commit(preview.previewToken, confirmSharedChanges: true);
+      expect(api.commands.last.$1, endsWith('/commit'));
+    },
+  );
+
+  test(
+    'discarded replacement leaves the canonical snapshot and identity intact',
+    () async {
+      final api = _DraftApi();
+      final draft = _draft(api);
+      await draft.update('frame', 'screw-edge', {
+        'componentGoodsId': 'nut',
+        'qty': 2,
+      });
+      draft.close();
+      final reopened = _draft(api);
+      final row = (await reopened.list('frame')).single;
+      expect(row.id, 'screw-edge');
+      expect(row.componentGoodsId, 'screw');
+      expect(api.commands, isEmpty);
+    },
+  );
+
+  test(
+    'duplicate or self-referencing replacements roll back the whole draft mutation',
+    () async {
+      final draft = _draft(_DraftApi());
+      await draft.paste(
+        mode: BomPasteMode.append,
+        targets: [const BomPasteTarget('frame')],
+        items: [
+          {'componentGoodsId': 'nut', 'qty': 1},
+        ],
+      );
+      await expectLater(
+        draft.update('frame', 'screw-edge', {
+          'componentGoodsId': 'nut',
+          'qty': 2,
+        }),
+        throwsA(isA<ApiException>()),
+      );
+      await expectLater(
+        draft.update('frame', 'screw-edge', {
+          'componentGoodsId': 'frame',
+          'qty': 2,
+        }),
+        throwsA(isA<ApiException>()),
+      );
+      expect((await draft.list('frame')).first.componentGoodsId, 'screw');
+      expect(draft.operationCount, 1);
+    },
+  );
+
+  test(
+    'a periodic replacement recomputes grams and fixes the periodic shape',
+    () async {
+      final api = _DraftApi()..richEvidence = true;
+      api.componentDetails['resin'] = {
+        'unitName': '千克',
+        'issueMethod': 'PERIODIC',
+      };
+      final draft = _draft(api);
+      final row = await draft.update('frame', 'screw-edge', {
+        'componentGoodsId': 'resin',
+        'unitWeightGrams': 2.5,
+      });
+      expect(row.componentGoodsId, 'resin');
+      expect(row.isPeriodicEdge, isTrue);
+      expect(row.qty, closeTo(0.0025, 0.00000001));
+      expect(row.unitWeightGrams, 2.5);
+      expect(row.consumptionBasis, BomConsumptionBasis.perUnit);
+      expect(row.basisOutputQty, 1);
+      expect(row.hardGate, isFalse);
+      expect(row.actual.qty, isNull);
+      expect(api.commands, isEmpty);
+    },
+  );
+
+  test(
+    'multi-picker append rejects a later duplicate without retaining earlier rows',
+    () async {
+      final draft = _draft(_DraftApi());
+      await draft.list('frame');
+      await expectLater(
+        draft.paste(
+          mode: BomPasteMode.append,
+          targets: [const BomPasteTarget('frame')],
+          items: [
+            {'componentGoodsId': 'nut', 'qty': 1},
+            {'componentGoodsId': 'screw', 'qty': 1},
+          ],
+        ),
+        throwsA(isA<ApiException>()),
+      );
+      expect((await draft.list('frame')).map((row) => row.componentGoodsId), [
+        'screw',
+      ]);
+      expect(draft.hasChanges, isFalse);
+    },
+  );
+
   test('concurrent occurrences share one snapshot request per goods', () async {
     final api = _DraftApi()
       ..pendingSnapshot = Completer<Map<String, dynamic>>();
@@ -370,10 +562,12 @@ class _DraftApi extends ApiClient {
 
   final commands = <(String, Map<String, dynamic>)>[];
   final snapshotCalls = <String>[];
+  final componentDetails = <String, Map<String, dynamic>>{};
   bool rejectCommit = false;
   bool loseCommitResponse = false;
   bool periodic = false;
   bool richEvidence = false;
+  bool masterWritable = true;
   Completer<Map<String, dynamic>>? pendingSnapshot;
 
   @override
@@ -409,6 +603,15 @@ class _DraftApi extends ApiClient {
           _ => <Map<String, dynamic>>[],
         },
         'fingerprint': 'snapshot-$goodsId',
+        'goods': {
+          'id': goodsId,
+          'version': 4,
+          'model': '旧型号',
+          'spec': null,
+          'material': null,
+          'sourceType': '采购',
+          'componentGoodsWritable': masterWritable,
+        },
       };
     }
     final id = path.split('/').last;
@@ -417,6 +620,7 @@ class _DraftApi extends ApiClient {
       'name': '名称 $id',
       'unitName': '个',
       'issueMethod': 'ORDER',
+      ...?componentDetails[id],
     };
   }
 

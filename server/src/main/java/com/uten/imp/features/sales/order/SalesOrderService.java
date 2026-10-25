@@ -394,6 +394,7 @@ public class SalesOrderService {
             double reservedQty = pgNum(row, 8);
             double plannedQty = pgNum(row, 9);
             double unplannedQty = pgNum(row, 17);
+            double outstandingQty = pgNum(row, 23);
             double shipmentDraftQty = pgNum(row, 18);
             double shipmentPendingFinanceQty = pgNum(row, 19);
             double shipmentFinanceRejectedQty = pgNum(row, 20);
@@ -413,7 +414,7 @@ public class SalesOrderService {
                             reservedQty, plannedQty, unplannedQty,
                             financeRejected, stopped, closed,
                             shipmentDraftQty, shipmentPendingFinanceQty,
-                            shipmentFinanceRejectedQty, shipmentApprovedQty, draft),
+                            shipmentFinanceRejectedQty, shipmentApprovedQty, draft, outstandingQty),
                     financeConfirmed,
                     financeRejected,
                     pgStr(row, 12),
@@ -671,9 +672,11 @@ public class SalesOrderService {
                        ship.pending_finance_qty AS shipment_pending_finance_qty,
                        ship.finance_rejected_qty AS shipment_finance_rejected_qty,
                        ship.approved_qty AS shipment_approved_qty,
-                       o.status AS bill_status
+                       o.status AS bill_status,
+                       COALESCE(SUM(GREATEST(%s,0)),0) AS outstanding_qty
                 """.formatted(taskResponsibility ? physicalShipmentReservationSql("i") : "i.reserved_qty",
-                        SalesOrderChainSql.unplannedQtySql("i")) + base + "\n" + """
+                        SalesOrderChainSql.unplannedQtySql("i"),
+                        SalesOrderChainSql.outstandingSql("i")) + base + "\n" + """
                 GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name,
                          o.finance_confirmed, o.finance_rejected,
                          o.finance_rejected_reason, finance_reviewer.full_name,
@@ -698,7 +701,7 @@ public class SalesOrderService {
                   WHEN t.is_stopped THEN 'CANCELED'
                   WHEN t.is_closed THEN 'CLOSED'
                   WHEN t.order_qty <= 0 THEN 'PENDING'
-                  WHEN t.shipped_qty >= t.order_qty - 0.000001 THEN 'SHIPPED'
+                  WHEN t.outstanding_qty <= 0.000001 THEN 'SHIPPED'
                   WHEN t.reserved_qty - (t.shipment_draft_qty + t.shipment_pending_finance_qty
                        + t.shipment_finance_rejected_qty + t.shipment_approved_qty) > 0.000001 THEN 'SHIPPABLE'
                   WHEN t.shipment_approved_qty > 0.000001 THEN 'WAREHOUSE_PENDING'
@@ -817,12 +820,36 @@ public class SalesOrderService {
             double shipmentFinanceRejectedQty,
             double shipmentApprovedQty,
             boolean draft) {
+        return progressStageOf(
+                orderQty, producedQty, shippedQty, reservedQty, plannedQty, unplannedQty,
+                financeRejected, stopped, closed, shipmentDraftQty, shipmentPendingFinanceQty,
+                shipmentFinanceRejectedQty, shipmentApprovedQty, draft,
+                Math.max(orderQty - shippedQty, 0));
+    }
+
+    /** Full row-quantity mirror. Excess delivery of one SKU cannot fulfill another SKU. */
+    static String progressStageOf(
+            double orderQty,
+            double producedQty,
+            double shippedQty,
+            double reservedQty,
+            double plannedQty,
+            double unplannedQty,
+            boolean financeRejected,
+            boolean stopped,
+            boolean closed,
+            double shipmentDraftQty,
+            double shipmentPendingFinanceQty,
+            double shipmentFinanceRejectedQty,
+            double shipmentApprovedQty,
+            boolean draft,
+            double outstandingQty) {
         if (financeRejected) return "REJECTED";
         if (draft) return "DRAFT";
         if (stopped) return "CANCELED";
         if (closed) return "CLOSED";
         if (orderQty <= 0) return "PENDING";
-        if (shippedQty + 1e-6 >= orderQty) return "SHIPPED";
+        if (outstandingQty <= 1e-6) return "SHIPPED";
         double inFlight = shipmentDraftQty + shipmentPendingFinanceQty
                 + shipmentFinanceRejectedQty + shipmentApprovedQty;
         if (reservedQty - inFlight > 1e-6) return "SHIPPABLE";

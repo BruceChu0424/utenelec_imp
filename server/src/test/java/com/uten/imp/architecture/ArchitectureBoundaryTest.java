@@ -181,7 +181,6 @@ class ArchitectureBoundaryTest {
     void businessCodeNeverReadsTheAuditLog() throws IOException {
         Pattern auditRead = Pattern.compile("(?i)\\b(?:from|join)\\s+(?:public\\.)?audit_log(?:_archive)?\\b");
         Set<String> allowed = Set.of(
-                "features/admin/systemtest/BusinessDataResetService.java",
                 // 并发工作流改为只按 xmin 判断「本事务新建」后删除本条(createdHere 不再查审计)。
                 "application/concurrency/FulfillmentMutationLocks.java");
         List<String> violations = new ArrayList<>();
@@ -354,8 +353,6 @@ class ArchitectureBoundaryTest {
                 "features/admin/impersonation/ImpersonationController.java", List.of("\"/enter\""),
                 "features/org/employee/EmployeeController.java", List.of("\"/{id}/account/reset-password\""),
                 "features/admin/systemsetting/SystemSettingController.java", List.of("@PutMapping"),
-                "features/admin/systemtest/SystemTestController.java", List.of(
-                        "\"/business-data/reset\""),
                 // ADR-133: AI 服务配置的写入与「用已保存密钥」的探测都必须再认证。
                 "features/ai/provider/AiProviderController.java", List.of(
                         "\"/providers\"", "\"/providers/{id}\"", "\"/providers/{id}/default\"",

@@ -773,7 +773,7 @@ VIEW 要有筛选/过滤/只看/搜索/勾选/打开等, FORM 要有改/设为/�
 
 - **存储**: 表 `ai_chat_operation_memory`(迁移 V816——开工临时号 V812, 并入 main 时两次撞号两次改号, 表结构、口径与回滚注意见[数据迁移/V816](../数据迁移/V816-AI助手个人操作记忆.md)):
   仅本人(`user_id`, 跨账号查不到)、`question_key` 规范化问题文本(≤160 字)、`resolution`(`kind` ∈ OPEN_FORM/TOOL + 目标)、`hit_count`、`last_used_at`;
-  UPSERT(同 key 同 resolution 累计、异则覆盖归 1)、LRU 保留本人最近 50 行、默认 90 天未用即清(housekeeping)、`business_data_reset` 按 CLEAR 清空、审计分类 NONE。
+  UPSERT(同 key 同 resolution 累计、异则覆盖归 1)、LRU 保留本人最近 50 行、默认 90 天未用即清(housekeeping)、审计分类 NONE。历史测试清空分类已退役，V919 删除业务清空入口。
 - **记忆点**: 8.13 的 `requestedForm` 出卡成功记 OPEN_FORM; 只读工具调用成功记 TOOL(工具名)。recall 命中只刷计数, 不改写 resolution。
 - **设置键** `operationMemory`(默认 **true**, 已列入 8.10 的 settings 表, capabilities 不加新键): 关闭时不写、不读、不注入, 建议端点回空。
   前端设置面板该行为「记住我的常用操作」开关(即改即存), 行下「清除记录」文本按钮 → 确认对话框 → 调清除端点 → 通知成功并清空本地最近操作列表。

@@ -68,6 +68,8 @@ import '../../../shared/formatters/money_display.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/party_open_balance.dart';
 import '../widgets/finance_party_snapshot_card.dart';
+import '../../../shared/models/procurement_order_closure.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 
 class FinanceProcurementApprovalReviewPage extends ConsumerStatefulWidget {
   const FinanceProcurementApprovalReviewPage({super.key, required this.caseId});
@@ -90,6 +92,21 @@ class _FinanceProcurementApprovalReviewPageState
   bool _loading = true;
   bool _busy = false;
   bool _authorityStale = false;
+  // Decision permissions refresh the live review/claim. Read permissions and
+  // account/API identity still retire this editor and its saved inputs.
+  @override
+  Object formDraftReadBoundaryIdentity(SensitiveReadBoundary boundary) =>
+      SensitiveReadBoundary(
+        identity: boundary.identity,
+        api: boundary.api,
+        permissions: boundary.permissions.difference({
+          Perm.financeOrderApprovalApprove,
+          Perm.financeOrderApprovalReject,
+          Perm.purchaseOrderReverse,
+          Perm.subcontractOrderReverse,
+        }),
+        superAdmin: boundary.superAdmin,
+      );
   @override
   Set<String> get reviewAuthorityPermissionCodes => const {
     Perm.financeOrderApprovalView,
@@ -230,20 +247,25 @@ class _FinanceProcurementApprovalReviewPageState
     return switch (command['action']) {
       'approve' =>
         current.status == 'APPROVED' &&
-            financeRateUnits(current.financeExchangeRate) != null &&
-            financeRateUnits(current.financeExchangeRate) ==
-                financeRateUnits(
-                  (command['request'] as Map?)?['exchangeRate'] as String?,
-                ) &&
-            (((command['request'] as Map?)?['reviewedTaxRate'] ??
-                        (command['request'] as Map?)?['taxRate']) ==
-                    null ||
-                financeRateUnits(current.financeTaxRate ?? current.taxRate) ==
-                    financeRateUnits(
-                      ((command['request'] as Map?)?['reviewedTaxRate'] ??
-                              (command['request'] as Map?)?['taxRate'])
-                          as String?,
-                    )) &&
+            (current.isClosureRequest ||
+                (financeRateUnits(current.financeExchangeRate) != null &&
+                    financeRateUnits(current.financeExchangeRate) ==
+                        financeRateUnits(
+                          (command['request'] as Map?)?['exchangeRate']
+                              as String?,
+                        ) &&
+                    (((command['request'] as Map?)?['reviewedTaxRate'] ??
+                                (command['request'] as Map?)?['taxRate']) ==
+                            null ||
+                        financeRateUnits(
+                              current.financeTaxRate ?? current.taxRate,
+                            ) ==
+                            financeRateUnits(
+                              ((command['request']
+                                          as Map?)?['reviewedTaxRate'] ??
+                                      (command['request'] as Map?)?['taxRate'])
+                                  as String?,
+                            )))) &&
             current.history.any(
               (entry) =>
                   entry.attempt == current.attempt &&
@@ -514,11 +536,11 @@ class _FinanceProcurementApprovalReviewPageState
     if (review == null || _busy) return;
     final claim = _reviewClaim;
     final generation = _loadGeneration;
-    if (review.isPending && !_rateInputValid()) {
+    if (!review.isClosureRequest && review.isPending && !_rateInputValid()) {
       context.appWarning(_rateInputError() ?? '汇率必须大于 0');
       return;
     }
-    if (_taxInputError() != null) {
+    if (!review.isClosureRequest && _taxInputError() != null) {
       context.appWarning(_taxInputError()!);
       return;
     }
@@ -547,7 +569,11 @@ class _FinanceProcurementApprovalReviewPageState
                 description: '确认后系统将以当前审核员记录通过责任，本操作即时生效。',
               ),
               const SizedBox(height: UtenSpacing.s12),
-              const Text('通过后订货单立即生效，并生成仓库预计到货任务。可填写审批备注(选填)：'),
+              Text(
+                review.isClosureRequest
+                    ? '${AppLocalizations.of(context).orderClosureApproveHint}\n${AppLocalizations.of(context).orderClosureReceiptFinalityHint}'
+                    : '通过后订货单立即生效，并生成仓库预计到货任务。可填写审批备注(选填)：',
+              ),
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 key: const Key('finance-order-review-approve-remark'),
@@ -582,12 +608,12 @@ class _FinanceProcurementApprovalReviewPageState
     );
     final remark = controller.text;
     if (ok != true || !mounted) return;
-    if (!_rateInputValid()) {
+    if (!review.isClosureRequest && !_rateInputValid()) {
       context.appWarning(_rateInputError() ?? '请重新核对汇率');
       return;
     }
     final reviewedRate = _effectiveRateText(review);
-    if (_taxInputError() != null) {
+    if (!review.isClosureRequest && _taxInputError() != null) {
       context.appWarning(_taxInputError()!);
       return;
     }
@@ -621,8 +647,8 @@ class _FinanceProcurementApprovalReviewPageState
                 ),
               ],
               remark: remark,
-              exchangeRate: reviewedRate,
-              taxRate: changedTax,
+              exchangeRate: review.isClosureRequest ? null : reviewedRate,
+              taxRate: review.isClosureRequest ? null : changedTax,
             ),
         request: {
           'exchangeRate': reviewedRate,
@@ -634,7 +660,11 @@ class _FinanceProcurementApprovalReviewPageState
       if (!mounted) return;
       await finishReviewDraft();
       if (!mounted || !formDraftIdentityIsCurrent) return;
-      context.appSuccess('已通过 $widgetSafeBillNo，仓库预计到货任务已生成');
+      context.appSuccess(
+        review.isClosureRequest
+            ? AppLocalizations.of(context).orderClosureApprovedToast
+            : '已通过 $widgetSafeBillNo，仓库预计到货任务已生成',
+      );
       refreshBadges(ref);
       _closeAfterDecision();
     } on ApiException catch (e) {
@@ -678,7 +708,11 @@ class _FinanceProcurementApprovalReviewPageState
                   description: '确认后系统将记录当前审核员、驳回原因和时间，请对本次决定负责。',
                 ),
                 const SizedBox(height: UtenSpacing.s12),
-                const Text('驳回不改动订货单内容；原因将通知原制单人修改后重新提交。'),
+                Text(
+                  review.isClosureRequest
+                      ? AppLocalizations.of(context).orderClosureRejectHint
+                      : '驳回不改动订货单内容；原因将通知原制单人修改后重新提交。',
+                ),
                 const SizedBox(height: UtenSpacing.s12),
                 TextField(
                   key: const Key('finance-order-review-reject-reason'),
@@ -866,6 +900,10 @@ class _FinanceProcurementApprovalReviewPageState
                                 const SizedBox(height: UtenSpacing.s12),
                               ],
                               _orderCard(theme, review),
+                              if (review.isClosureRequest) ...[
+                                const SizedBox(height: UtenSpacing.s12),
+                                _closureCard(theme, review),
+                              ],
                               if (procurementHeaderUnknownLabels(
                                 review.previousHeaderSnapshot,
                                 review.headerSnapshot,
@@ -1034,7 +1072,15 @@ class _FinanceProcurementApprovalReviewPageState
         ? Icons.undo_rounded
         : Icons.verified_rounded;
     final changed = r.previousItems.isNotEmpty;
-    final statusText = pending
+    final statusText = r.isClosureRequest
+        ? (pending
+              ? AppLocalizations.of(context).orderClosurePending
+              : rejected
+              ? AppLocalizations.of(context).orderClosureRejected
+              : approved
+              ? AppLocalizations.of(context).orderClosureApproved
+              : '已撤回')
+        : pending
         ? (changed ? '修改后待复核' : '待财务审核')
         : rejected
         ? '已退回'
@@ -1076,6 +1122,75 @@ class _FinanceProcurementApprovalReviewPageState
       ),
       balance: r.supplierBalance,
       side: PartyBalanceSide.supplier,
+    );
+  }
+
+  Widget _closureCard(ThemeData theme, FinanceProcurementApprovalReview r) {
+    final l10n = AppLocalizations.of(context);
+    final closure = r.closureRequest!;
+    final lines = [
+      for (final item in closure['items'] as List? ?? const [])
+        if (item is Map)
+          ProcurementOrderClosureLine.fromJson(item.cast<String, dynamic>()),
+    ];
+    return Card(
+      key: const Key('finance-order-closure-request'),
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              l10n.orderClosureReviewTitle,
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            Text(
+              r.reordersRemaining
+                  ? l10n.orderClosureReorder
+                  : l10n.orderClosureAction,
+            ),
+            Text('${l10n.orderClosureReason}: ${r.closureReason ?? '—'}'),
+            const SizedBox(height: UtenSpacing.s8),
+            Text(l10n.orderClosureApproveHint),
+            const SizedBox(height: UtenSpacing.s8),
+            Text(l10n.orderClosureReceiptFinalityHint),
+            if (closure['unverifiedQuantity'] == true)
+              Text(
+                l10n.orderClosureUnverifiedQuantity,
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            if (closure['replacementOrderId'] is String &&
+                (ref.read(isSuperAdminProvider) ||
+                    ref
+                        .read(currentPermissionsProvider)
+                        .contains(
+                          r.orderType == FinanceProcurementOrderType.purchase
+                              ? Perm.purchaseOrderView
+                              : Perm.subcontractOrderView,
+                        )))
+              TextButton.icon(
+                icon: const Icon(Icons.open_in_new_rounded),
+                onPressed: () => context.push(
+                  '/${r.orderType == FinanceProcurementOrderType.purchase ? 'purchase' : 'subcontract'}/orders/'
+                  '${Uri.encodeComponent(closure['replacementOrderId'] as String)}'
+                  '${ref.read(isSuperAdminProvider) || ref.read(currentPermissionsProvider).contains(r.orderType == FinanceProcurementOrderType.purchase ? Perm.purchaseOrderEdit : Perm.subcontractOrderEdit) ? '/edit' : ''}',
+                ),
+                label: Text(
+                  '${l10n.orderClosureReorder}: ${closure['replacementBillNo'] ?? ''}',
+                ),
+              ),
+            for (final line in lines) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                '${line.goodsCode} ${line.goodsName}\n'
+                '${l10n.orderClosureRemaining}: ${_trimNum(line.remainingQty) ?? '—'} ${line.unitName}'
+                ' · ${l10n.orderClosureRemainingGift}: ${_trimNum(line.remainingGiftQty) ?? '—'} ${line.unitName}',
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -1353,6 +1468,7 @@ class _FinanceProcurementApprovalReviewPageState
                 cellBuilders: {
                   'taxRate': (cellContext, row) {
                     if (!r.isPending ||
+                        r.isClosureRequest ||
                         row.kind == UtenRevisionKind.removed ||
                         !_allowsReviewAction('APPROVE') ||
                         !canDispatchReviewCommand('approve')) {
@@ -1383,6 +1499,7 @@ class _FinanceProcurementApprovalReviewPageState
                   },
                   'exchangeRate': (cellContext, row) {
                     if (!r.isPending ||
+                        r.isClosureRequest ||
                         row.kind == UtenRevisionKind.removed ||
                         !_allowsReviewAction('APPROVE') ||
                         !canDispatchReviewCommand('approve')) {

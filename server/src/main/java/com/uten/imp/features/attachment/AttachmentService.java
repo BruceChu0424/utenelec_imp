@@ -100,7 +100,7 @@ public class AttachmentService implements AttachmentAccessPort {
         String fileName = request.fileName().trim();
         String contentType = normalizeContentType(request.contentType());
         validateUpload(fileName, contentType, request.sizeBytes());
-        policy(ownerType).requireCanManage(request.ownerId(), user);
+        policy(ownerType).requireCanUpload(request.ownerId(), user);
 
         PresignedUpload upload = storage.presignUpload(new UploadRequest(
                 ownerType, fileName, contentType, request.sizeBytes()));
@@ -130,7 +130,7 @@ public class AttachmentService implements AttachmentAccessPort {
         requireGrantMatches(grant, request.storageKey(), ownerType, request.ownerId(),
                 user.getId(), fileName, contentType, request.sizeBytes());
         AttachmentOwnerAccessPolicy ownerPolicy = policy(ownerType);
-        ownerPolicy.requireCanManage(request.ownerId(), user);
+        ownerPolicy.requireCanUpload(request.ownerId(), user);
 
         Attachment existing = repository.findByStorageKey(request.storageKey()).orElse(null);
         if (existing != null) {
@@ -328,7 +328,7 @@ public class AttachmentService implements AttachmentAccessPort {
         Attachment attachment = repository.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         requireClean(attachment);
-        policy(attachment.getOwnerType()).requireCanView(attachment.getOwnerId(), user);
+        policy(attachment.getOwnerType()).requireCanDownload(attachment.getOwnerId(), user);
 
         StorageService.PresignedDownload grant = storageProviders.require(attachment.getStorageProvider()).presignDownload(
                 attachment.getStorageKey(), attachment.getStorageVersion());
@@ -350,7 +350,7 @@ public class AttachmentService implements AttachmentAccessPort {
         Attachment attachment = repository.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         requireClean(attachment);
-        policy(attachment.getOwnerType()).requireCanView(attachment.getOwnerId(), user);
+        policy(attachment.getOwnerType()).requireCanDownload(attachment.getOwnerId(), user);
         audit.logExplicit(user.getId(), user.getLoginAccount(),
                 "attachment_preview", "attachments", id.toString(), "success");
         return new PreviewSource(attachment.getId(), attachment.getOriginalName(),
@@ -409,7 +409,7 @@ public class AttachmentService implements AttachmentAccessPort {
         require(user, "attachment:delete");
         Attachment attachment = repository.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
-        policy(attachment.getOwnerType()).requireCanManageForUpdate(attachment.getOwnerId(), user);
+        policy(attachment.getOwnerType()).requireCanDeleteForUpdate(attachment.getOwnerId(), user);
         if (attachment.getLifecycleState() == AttachmentLifecycleState.DELETED
                 || attachment.getLifecycleState()==AttachmentLifecycleState.RETAINED_HISTORY
                 || attachment.getLifecycleState() == AttachmentLifecycleState.DELETE_PENDING
@@ -439,7 +439,7 @@ public class AttachmentService implements AttachmentAccessPort {
         requireGrantMatches(grant, storageKey, grant.ownerType(), grant.ownerId(), user.getId(),
                 grant.originalName(), contentType, contentLength);
         validateUpload(grant.originalName(), contentType, contentLength);
-        policy(grant.ownerType()).requireCanManage(grant.ownerId(), user);
+        policy(grant.ownerType()).requireCanUpload(grant.ownerId(), user);
         AttachmentUploadSessionStore.UploadSession session = uploadSessions.findByStorageKey(storageKey);
         if (session == null || !session.matches(grant) || !"PENDING".equals(session.status())) {
             throw new ApiException(ErrorCode.CONFLICT,
@@ -475,7 +475,7 @@ public class AttachmentService implements AttachmentAccessPort {
         Attachment metadata = repository.findByStorageKey(storageKey)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         requireClean(metadata);
-        policy(metadata.getOwnerType()).requireCanView(metadata.getOwnerId(), user);
+        policy(metadata.getOwnerType()).requireCanDownload(metadata.getOwnerId(), user);
 
         InputStream input = downloadVerifier.open(metadata);
         String fileName = metadata.getOriginalName() != null

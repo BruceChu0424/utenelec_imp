@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
@@ -52,9 +53,9 @@ void main() {
       for (var i = 0; i < 2; i++) {
         await selectFilterSegment(tester, '2024-01-01 ~ 2024-01-31');
         await tester.pumpAndSettle();
-        expect(find.byType(DateRangePickerDialog), findsOneWidget);
+        expect(find.byType(UtenDateRangePickerDialog), findsOneWidget);
         final calendarRange = tester
-            .widget<DateRangePickerDialog>(find.byType(DateRangePickerDialog))
+            .widget<UtenDateRangePickerDialog>(find.byType(UtenDateRangePickerDialog))
             .initialDateRange!;
         // Material normalizes calendar values to local date-only instances.
         // Compare their wall fields, retaining the domain's UTC date carrier.
@@ -73,12 +74,7 @@ void main() {
           ChinaDateTime.wallTimeToUtc(calendarRange.end),
           DateTime.utc(2024, 1, 30, 16),
         );
-        final cancel = find.text('取消').hitTestable();
-        if (tester.any(cancel)) {
-          await tester.tap(cancel);
-        } else {
-          await tester.tap(find.byTooltip('关闭').hitTestable());
-        }
+        await tester.tap(find.byTooltip('关闭').hitTestable());
         await tester.pumpAndSettle();
         expect(value.value, original);
         expect(changes, [const UtenHistoryTimeValue.all()]);
@@ -112,7 +108,7 @@ void main() {
     );
     await tester.tap(find.text('时间段'));
     await tester.pumpAndSettle();
-    expect(find.byType(DateRangePickerDialog), findsNothing);
+    expect(find.byType(UtenDateRangePickerDialog), findsNothing);
     expect(changes, 0);
   });
 }

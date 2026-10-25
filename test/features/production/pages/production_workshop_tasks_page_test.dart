@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'package:uten_imp/features/production/models/production_execution_planning.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -1068,7 +1070,7 @@ void main() {
     },
   );
 
-  testWidgets('history segment loads only after the time gate is chosen', (
+  testWidgets('history segment defaults to last three months and 全部 goes unbounded', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
@@ -1099,24 +1101,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.calls, isEmpty);
 
-    // ADR-066 §1.3（2026-10-04 修订）：点历史任务默认「全部时间段」，直接
-    // 全量加载（不带日期）；时间胶囊仍可切具体时间段。
+    // ADR-066 §1.3（2026-10-24 修订）：点历史任务默认近三个月直接加载；
+    // 时间胶囊仍可切「全部」或具体时间段。
     await tester.tap(find.text('历史任务'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('workshop-history-time')), findsOneWidget);
     expect(find.text('历史数据可能较多，请先在上方选择时间段或「全部」'), findsNothing);
+    final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
     expect(repository.calls, hasLength(1));
     expect(repository.calls.single.status, 'COMPLETED');
-    expect(repository.calls.single.dateFrom, isNull);
-    expect(repository.calls.single.dateTo, isNull);
+    expect(
+      repository.calls.single.dateFrom,
+      ChinaDateTime.formatDate(defaultRange.start),
+    );
+    expect(
+      repository.calls.single.dateTo,
+      ChinaDateTime.formatDate(defaultRange.end),
+    );
 
-    // 再点已选中的「全部」不重复发请求。
+    // 「全部」不再默认选中：点它切为不限时间，全量重查（不带日期）。
     await selectFilterSegment(tester, '全部');
     await tester.pumpAndSettle();
-    expect(repository.calls, hasLength(1));
-    expect(repository.calls.single.status, 'COMPLETED');
-    expect(repository.calls.single.dateFrom, isNull);
-    expect(repository.calls.single.dateTo, isNull);
+    expect(repository.calls, hasLength(2));
+    expect(repository.calls.last.status, 'COMPLETED');
+    expect(repository.calls.last.dateFrom, isNull);
+    expect(repository.calls.last.dateTo, isNull);
     expect(find.text('已取消'), findsOneWidget);
     expect(find.text('已撤回'), findsOneWidget);
     expect(find.text('已红冲'), findsNothing);

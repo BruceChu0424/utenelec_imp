@@ -11,7 +11,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
-import 'package:uten_imp/components/layout/uten_draft_status_layout.dart';
 import 'package:uten_imp/features/finance/pages/finance_sales_order_review_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_procurement_approval_review_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_quote_review_page.dart';
@@ -207,10 +206,6 @@ class _Fixture {
             'command': draft.data['command'],
           },
       ],
-      'status': tester
-          .widgetList<UtenDraftStatusLayout>(find.byType(UtenDraftStatusLayout))
-          .map((widget) => widget.status)
-          .toList(),
       'notices': container
           .read(appNotificationProvider)
           .map((notice) => notice.message)

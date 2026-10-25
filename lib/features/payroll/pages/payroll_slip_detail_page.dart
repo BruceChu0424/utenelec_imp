@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
@@ -355,6 +356,6 @@ class _DetailContent extends ConsumerWidget {
 
   String _formatDateTime(DateTime? date) {
     if (date == null) return '—';
-    return '${_formatDate(date)} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    return ChinaDateTime.formatDateTime(date);
   }
 }

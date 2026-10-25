@@ -24,6 +24,9 @@ void main() {
     expect(find.text('完整性通过'), findsOneWidget);
     expect(find.text('请求尝试'), findsOneWidget);
     expect(find.text('2 次'), findsOneWidget);
+    expect(find.textContaining('2026-07-31 10:00:00(北京)'), findsWidgets);
+    expect(find.textContaining('2026-07-31 10:00:01(北京)'), findsOneWidget);
+    expect(find.textContaining('2026-07-31 02:00'), findsNothing);
     expect(find.textContaining(_Store.firstRequestId), findsOneWidget);
     expect(find.textContaining(_Store.secondRequestId), findsOneWidget);
     expect(api.posts, [

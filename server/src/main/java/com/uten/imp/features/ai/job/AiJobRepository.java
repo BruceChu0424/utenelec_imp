@@ -19,7 +19,7 @@ import java.util.UUID;
  * <p>约定: 进入终态(SUCCEEDED/FAILED/CANCELLED)的每一条 UPDATE 都在同一条语句里清空
  * {@code input_bytes}(数据库 CHECK {@code ck_ai_jobs_terminal_input_released} 兜底);
  * 所有工作线程侧的写入都带 {@code status = 'RUNNING' AND attempts = :attempt} 条件(认领令牌: 每次认领
- * attempts 加一), 影响 0 行说明任务已被取消、清理、清库, 或租约过期后被重新认领 —— 调用方安静停止,
+ * attempts 加一), 影响 0 行说明任务已被取消、清理, 或租约过期后被重新认领 —— 调用方安静停止,
  * 被取代的旧处理线程不会改写新一次认领的任务行。
  */
 @Component
@@ -386,7 +386,7 @@ class AiJobRepository {
 
     /**
      * 报告阶段并续租(阶段/进度为空表示不改, 只续租)。返回当前的取消标记; 任务已不属于这次认领
-     * (被取消/清理/清库, 或租约过期后被重新认领)返回空。
+     * (被取消/清理, 或租约过期后被重新认领)返回空。
      */
     Optional<Boolean> progress(UUID id, int attempt, String stage, Integer percent, int leaseSeconds) {
         return jdbc.queryForList("""

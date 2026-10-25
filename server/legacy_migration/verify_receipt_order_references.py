@@ -137,12 +137,15 @@ def acceptance_sql(run_id, sources):
         source = sources[kind]
         _require(re.fullmatch('[0-9a-f]{64}', source['file_sha256']) is not None, 'Invalid receipt source SHA-256')
         fields = 'ARRAY[' + ','.join("'%s'" % field for field in sorted(COMMON_FIELDS + EXTRA_FIELDS[kind])) + ']::text[]'
+        # V627 records field order using the database collation. Normalize only
+        # order: exact array equality still rejects duplicate, NULL or extra keys.
+        canonical_fields = '(ARRAY(SELECT field FROM unnest(p.target_fields) AS proof_fields(field) ORDER BY field COLLATE "C"))'
         routes.append(f"(p.source_kind='{kind}' AND p.target_table='{table}' AND p.source_file='{source_file}')")
         branches.append(f"""SELECT '{kind}' AS kind,jsonb_build_object(
  'proof_rows',count(*),
  'proof_source_ids_sha256',encode(digest(coalesce(string_agg(p.source_legacy_id::text||chr(10),'' ORDER BY p.source_legacy_id),''),'sha256'),'hex'),
  'wrong_file_sha',count(*) FILTER(WHERE p.source_file_sha256 IS DISTINCT FROM '{source['file_sha256']}'),
- 'wrong_target_fields',count(*) FILTER(WHERE p.target_fields IS DISTINCT FROM {fields}),
+ 'wrong_target_fields',count(*) FILTER(WHERE {canonical_fields} IS DISTINCT FROM {fields}),
  'invalid_source_row_hashes',count(*) FILTER(WHERE p.source_row_sha256 IS NULL OR p.source_row_sha256 !~ '^[0-9a-f]{{64}}$'),
  'missing_or_mismatched_targets',count(*) FILTER(WHERE t.id IS NULL OR t.legacy_id IS DISTINCT FROM p.source_legacy_id OR t.legacy_import_run_id IS DISTINCT FROM p.run_id),
  'changed_original_projections',count(*) FILTER(WHERE (CASE WHEN t.id IS NOT NULL THEN p.target_snapshot_sha256=encode(digest(public.fn_legacy_finance_snapshot(to_jsonb(t),p.target_fields)::text,'sha256'),'hex') ELSE false END) IS DISTINCT FROM true),

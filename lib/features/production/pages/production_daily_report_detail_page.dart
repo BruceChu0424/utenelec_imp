@@ -31,6 +31,8 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/network/server_config.dart';
+import '../../../shared/auth/native_read_view_scope_mixin.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -86,6 +88,9 @@ class _ProductionDailyReportDetailPageState
     extends ConsumerState<ProductionDailyReportDetailPage> {
   ProductionDailyReportDetail? _detail;
   bool _loading = false;
+  bool _backgroundRefresh = false;
+  String? _refreshError;
+  int _detailReadGeneration = 0;
   bool _busy = false;
 
   /// 审核/红冲/删除网络段的加载遮罩标题（null=无遮罩）。
@@ -113,19 +118,25 @@ class _ProductionDailyReportDetailPageState
   @override
   void initState() {
     super.initState();
-    ref.listenManual(authenticatedScopeProvider, (before, after) {
-      if (before != after) _invalidateApprovalView();
-    });
-    ref.listenManual(apiBaseUrlProvider, (before, after) {
-      if (before != after) _invalidateApprovalView();
-    });
+    listenReadOwner(ref, _invalidateApprovalView);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void didUpdateWidget(covariant ProductionDailyReportDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.id != widget.id) {
+      _invalidateApprovalView();
+      _myLocation = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    }
   }
 
   void _invalidateApprovalView() {
     if (!mounted) return;
     setState(() {
       _approvalViewGeneration++;
+      _detailReadGeneration++;
       _detail = null;
       _materialReview = null;
       _materialActions = {};
@@ -137,6 +148,8 @@ class _ProductionDailyReportDetailPageState
       _approvalConfirming = false;
       _busy = false;
       _loading = false;
+      _backgroundRefresh = false;
+      _refreshError = null;
       _error = '登录身份或服务器已变化，请重新读取这张日报。';
     });
   }
@@ -145,6 +158,7 @@ class _ProductionDailyReportDetailPageState
     bool requireCurrentRoute = true,
     bool requireCurrentIntent = true,
   }) {
+    final ownsRead = captureReadOwner(ref);
     final scope = ref.read(authenticatedScopeProvider);
     final server = ref.read(apiBaseUrlProvider);
     final id = widget.id;
@@ -153,7 +167,7 @@ class _ProductionDailyReportDetailPageState
     final session = ref.read(sessionProvider.notifier);
     final intentEpoch = session.requestIntentEpoch;
     return () =>
-        mounted &&
+        ownsRead() &&
         identical(ref.read(sessionProvider.notifier), session) &&
         (!requireCurrentIntent || session.requestIntentEpoch == intentEpoch) &&
         _approvalViewGeneration == generation &&
@@ -203,11 +217,16 @@ class _ProductionDailyReportDetailPageState
       _approvalRecoveryReady &&
       _allows(DocumentPermissionAction.reverse);
 
-  Future<void> _load() async {
+  Future<void> _load({bool background = false}) async {
     if (!mounted || _loading || _busy) return;
-    final isCurrent = _approvalViewFence(requireCurrentRoute: false);
+    final generation = ++_detailReadGeneration;
+    final sameView = _approvalViewFence(requireCurrentRoute: false);
+    bool isCurrent() => sameView() && generation == _detailReadGeneration;
+    final retainAccepted = background && _detail != null;
     setState(() {
       _loading = true;
+      _backgroundRefresh = retainAccepted;
+      _refreshError = null;
       _error = null;
       _approvalRecoveryReady = false;
     });
@@ -244,15 +263,28 @@ class _ProductionDailyReportDetailPageState
       }
     } on ApiException catch (e) {
       if (!mounted || !isCurrent()) return;
+      final retained =
+          retainAccepted &&
+          !nativeReadAccessDenied(e) &&
+          !nativeReadResourceRetired(e);
       setState(() {
-        _error = e.message;
+        _error = retained ? null : e.message;
+        _refreshError = retained ? e.message : null;
+        if (nativeReadAccessDenied(e) || nativeReadResourceRetired(e)) {
+          _detail = null;
+        }
         _loading = false;
+        _backgroundRefresh = false;
       });
     } catch (_) {
       if (!mounted || !isCurrent()) return;
       setState(() {
-        _error = _l10n.productionDailyReportLoadFailed;
+        _error = retainAccepted ? null : _l10n.productionDailyReportLoadFailed;
+        _refreshError = retainAccepted
+            ? _l10n.productionDailyReportLoadFailed
+            : null;
         _loading = false;
+        _backgroundRefresh = false;
       });
     }
   }
@@ -272,6 +304,8 @@ class _ProductionDailyReportDetailPageState
       _materialReviewError = null;
       _materialReviewAttempted = false;
       _loading = false;
+      _backgroundRefresh = false;
+      _refreshError = null;
       _error = null;
     });
   }
@@ -1189,8 +1223,10 @@ class _ProductionDailyReportDetailPageState
     // push 的 Future，返回到它时停在保存前的旧状态。注册后：期间写过数据
     // （保存/审核都在子页办完）就重拉本页详情。
     _myLocation ??= currentLocationOr(context, RouteName.production);
-    ref.onPageResume(_myLocation!, () {
-      if (!_busy && !_editing) _load();
+    ref.onPageResume(_myLocation!, () async {
+      if (!_busy && !_editing) await _load(background: true);
+      final error = _error ?? _refreshError;
+      if (error != null) throw StateError(error);
     });
     final scopeCapability = ref.watch(
       documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
@@ -1202,7 +1238,7 @@ class _ProductionDailyReportDetailPageState
         children: [
           SafeArea(
             child: UtenContentContainer(
-              child: _loading
+              child: _loading && !_backgroundRefresh
                   ? Semantics(
                       label: _l10n.commonLoading,
                       liveRegion: true,
@@ -1285,6 +1321,11 @@ class _ProductionDailyReportDetailPageState
                     ),
             ),
           ),
+          NativeReadRefreshFeedback(
+            refreshing: _backgroundRefresh,
+            error: _refreshError,
+            onRetry: () => _load(background: true),
+          ),
           // 审核/红冲/删除网络段的全屏加载遮罩；确认弹窗期间不挂（_busy 在弹窗后才置位）。
           if (_busy)
             UtenBusyOverlay(
@@ -1299,7 +1340,11 @@ class _ProductionDailyReportDetailPageState
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton:
-          _detail == null || _busy || _loading || _error != null
+          _detail == null ||
+              _busy ||
+              _loading ||
+              _error != null ||
+              _refreshError != null
           ? null
           : _actions(theme),
     );

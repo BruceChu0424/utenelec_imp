@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import 'package:go_router/go_router.dart';
 
@@ -8,16 +11,20 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_dropdown_geometry.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../shared/drafts/form_draft_navigation.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import 'master_data_table_view.dart';
 import 'master_edit_dialog.dart';
+
+part 'master_inline_create.dart';
 
 /// A column opts in explicitly. Identity, calculated and system columns remain
 /// ordinary cells and are never included in a write request.
@@ -88,6 +95,32 @@ bool canRetainMasterReadShell(
 }
 
 class MasterInlineEditController<T> extends ChangeNotifier {
+  late final _MasterInlineCreation<T> _creation = _MasterInlineCreation<T>(
+    this,
+  );
+  void configureCreation(MasterInlineCreateConfig? config) =>
+      _creation.configure(config);
+  ValueListenable<List<MasterTableAppendRow>> get appendRowsSource =>
+      _creation.rows;
+  List<MasterTableAppendRow> get appendRows => _creation.rows.value;
+  bool get canCreate => _creation.config?.canCreate ?? false;
+  void _creationChanged() => notifyListeners();
+  List<String> get creationDraftKeys =>
+      List.unmodifiable(_creation._drafts.keys);
+  Map<String, dynamic> creationValuesFor(String key) =>
+      Map.unmodifiable(_creation._drafts[key]?.values ?? {});
+  bool creationIsUncertain(String key) =>
+      _creation._drafts[key]?.uncertain ?? false;
+  void setCreationValue(String draftKey, String fieldKey, Object? value) {
+    final draft = _creation._drafts[draftKey];
+    final field = _creation.config?.fields
+        .where((field) => field.key == fieldKey)
+        .firstOrNull;
+    if (draft != null && field != null && !field.readOnly) {
+      _creation.change(draft, field, value);
+    }
+  }
+
   bool active = false;
   bool busy = false;
   bool preparing = false;
@@ -156,8 +189,8 @@ class MasterInlineEditController<T> extends ChangeNotifier {
     });
   }
 
-  bool get dirty => _patches.isNotEmpty;
-  int get changedRows => _patches.length;
+  bool get dirty => _patches.isNotEmpty || _creation.dirty;
+  int get changedRows => _patches.length + _creation.changedRows;
   T? baselineOf(String id) => _baselines[id];
   void rememberBaseline(String id, T row) {
     if (!active || busy) return;
@@ -175,6 +208,7 @@ class MasterInlineEditController<T> extends ChangeNotifier {
     if (busy || active) return;
     active = true;
     error = null;
+    _creation.refresh();
     notifyListeners();
   }
 
@@ -211,12 +245,14 @@ class MasterInlineEditController<T> extends ChangeNotifier {
     _baselines.clear();
     _fields.clear();
     _clearValidation();
+    _creation.reset();
   }
 
   @override
   void dispose() {
     _epoch++;
     _clearValidation();
+    _creation.dispose();
     super.dispose();
   }
 
@@ -307,13 +343,20 @@ class MasterInlineEditController<T> extends ChangeNotifier {
           ),
         ),
         content: Text(
-          discardNote ??
-              masterEditText(
-                context,
-                '表格中的修改尚未保存。放弃后不会写入资料。',
-                'Changes in this table have not been saved.',
-                '표의 변경 사항이 아직 저장되지 않았습니다.',
-              ),
+          _creation.hasUncertain
+              ? masterEditText(
+                  context,
+                  '上次新增可能已保存。放弃只清理本地草稿，不会撤销服务器上的资料，请刷新核对。',
+                  'The last creation may already be saved. Discarding clears only local drafts and does not undo server records. Refresh the list to check.',
+                  '이전 신규 자료가 이미 저장되었을 수 있습니다. 버리기는 로컬 초안만 지우며 서버 자료를 취소하지 않습니다. 목록을 새로 고침해 확인하세요.',
+                )
+              : discardNote ??
+                    masterEditText(
+                      context,
+                      '表格中的修改尚未保存。放弃后不会写入资料。',
+                      'Changes in this table have not been saved.',
+                      '표의 변경 사항이 아직 저장되지 않았습니다.',
+                    ),
         ),
         actions: [
           TextButton(
@@ -349,6 +392,10 @@ class MasterInlineEditController<T> extends ChangeNotifier {
     Future<void> Function()? beforeWrite,
   }) async {
     if (!active || busy || !dirty) return false;
+    if (!_creation.validate()) {
+      notifyListeners();
+      return false;
+    }
     if (_validationPending.isNotEmpty || _validationErrors.isNotEmpty) {
       error = _validationPending.isNotEmpty
           ? '正在检查编号，请稍后保存'
@@ -426,13 +473,15 @@ class MasterInlineEditController<T> extends ChangeNotifier {
         }
         notifyListeners();
       }
+      final creationComplete = await _creation.save(epoch);
+      if (epoch != _epoch) return false;
       busy = false;
-      error = null;
+      if (creationComplete) error = null;
       _originals.clear();
       _baselines.clear();
       _fields.clear();
       notifyListeners();
-      return true;
+      return creationComplete;
     } catch (failure) {
       if (epoch != _epoch) return false;
       busy = false;
@@ -447,14 +496,42 @@ class MasterInlineEditController<T> extends ChangeNotifier {
     }
   }
 
+  bool _requiredColumn(
+    String columnKey,
+    Map<String, MasterInlineField<T>> fields,
+  ) {
+    if (fields[columnKey]?.required == true) return true;
+    final creation = _creation.config;
+    if (creation == null || !creation.canCreate) return false;
+    final fieldKey = creation.columnFields[columnKey] ?? columnKey;
+    return creation.fields.any(
+      (field) => field.key == fieldKey && field.required && !field.readOnly,
+    );
+  }
+
+  /// Use the declared order within the required group. Creation field aliases
+  /// resolve to table keys, while payloads continue to use their UUID fields.
+  List<String> requiredColumnKeys({
+    required List<MasterColumnDef<T>> columns,
+    required Map<String, MasterInlineField<T>> fields,
+  }) => !active
+      ? const []
+      : [
+          for (final column in columns)
+            if (_requiredColumn(column.key, fields)) column.key,
+        ];
+
   List<MasterColumnDef<T>> columns({
     required List<MasterColumnDef<T>> columns,
     required String Function(T) idOf,
     required Map<String, MasterInlineField<T>> fields,
     bool Function(T)? writableOf,
+    String? preferenceNamespace,
   }) => [
     for (final column in columns)
-      if (!active || !fields.containsKey(column.key))
+      if (!active ||
+          (!fields.containsKey(column.key) &&
+              !_creation.editsColumn(column.key)))
         column
       else
         MasterColumnDef<T>(
@@ -474,11 +551,31 @@ class MasterInlineEditController<T> extends ChangeNotifier {
           sortable: column.sortable,
           filterFromRows: column.filterFromRows,
           columnSearchEnabled: column.columnSearchEnabled,
+          facetSearchEnabled: column.facetSearchEnabled,
           cellColor: column.cellColor,
           cellColorListenableOf: column.cellColorListenableOf,
           fillsCellHeight: column.fillsCellHeight,
           emphasized: column.emphasized,
           info: column.info,
+          headerFilterAction: column.headerFilterAction,
+          headerTrailingBuilder: _requiredColumn(column.key, fields)
+              ? (context) => Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Semantics(
+                      label: masterEditText(context, '必填', 'Required', '필수'),
+                      child: Text(
+                        '*',
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ),
+                    if (column.headerTrailingBuilder != null)
+                      column.headerTrailingBuilder!(context),
+                  ],
+                )
+              : column.headerTrailingBuilder,
           defaultVisible: column.defaultVisible,
           exportDefinition: column.exportDefinition,
           exactValueOf: column.exactValueOf,
@@ -486,10 +583,12 @@ class MasterInlineEditController<T> extends ChangeNotifier {
           legendOf: column.legendOf,
           aiSensitive: column.aiSensitive,
           exportable: column.exportable,
-          cellBuilderHandlesSemantics: true,
+          cellBuilderHandlesSemantics:
+              fields.containsKey(column.key) ||
+              column.cellBuilderHandlesSemantics,
           cellBuilder: (context, row) {
-            final field = fields[column.key]!;
-            if (writableOf?.call(row) == false) {
+            final field = fields[column.key];
+            if (field == null || writableOf?.call(row) == false) {
               return column.cellBuilder?.call(context, row) ??
                   Text(column.value(row) ?? '—');
             }
@@ -501,6 +600,8 @@ class MasterInlineEditController<T> extends ChangeNotifier {
               row: row,
               id: id,
               field: field,
+              menuPreferenceKey:
+                  'master.${preferenceNamespace ?? 'fields'}.${field.key}',
               label: column.label,
               readOnlyBuilder: column.cellBuilder,
               readOnlyValue: column.value,
@@ -520,6 +621,7 @@ class MasterInlineRecordEditor<T> extends StatelessWidget {
     required this.idOf,
     required this.columns,
     required this.fields,
+    this.preferenceNamespace,
   });
 
   final MasterInlineEditController<T> controller;
@@ -527,6 +629,7 @@ class MasterInlineRecordEditor<T> extends StatelessWidget {
   final String Function(T) idOf;
   final List<MasterColumnDef<T>> columns;
   final Map<String, MasterInlineField<T>> fields;
+  final String? preferenceNamespace;
 
   @override
   Widget build(BuildContext context) {
@@ -534,6 +637,7 @@ class MasterInlineRecordEditor<T> extends StatelessWidget {
       columns: columns,
       idOf: idOf,
       fields: fields,
+      preferenceNamespace: preferenceNamespace,
     );
     return UtenFormGrid(
       columns: 4,
@@ -551,7 +655,11 @@ class MasterInlineRecordEditor<T> extends StatelessWidget {
               ),
               const SizedBox(height: UtenSpacing.s4),
               column.cellBuilder?.call(context, row) ??
-                  Text(column.value(row) ?? '—'),
+                  Text(
+                    column.value(row) ?? '—',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
             ],
           ),
       ],
@@ -566,6 +674,7 @@ class _MasterInlineCell<T> extends StatefulWidget {
     required this.row,
     required this.id,
     required this.field,
+    required this.menuPreferenceKey,
     required this.label,
     required this.readOnlyBuilder,
     required this.readOnlyValue,
@@ -574,6 +683,7 @@ class _MasterInlineCell<T> extends StatefulWidget {
   final T row;
   final String id;
   final MasterInlineField<T> field;
+  final String menuPreferenceKey;
   final String label;
   final Widget Function(BuildContext, T)? readOnlyBuilder;
   final String? Function(T) readOnlyValue;
@@ -729,11 +839,13 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
     final content = changed
         ? Text(
             display!.isEmpty ? '—' : display,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
           )
         : widget.readOnlyBuilder?.call(context, widget.row) ??
               Text(
                 widget.readOnlyValue(widget.row) ?? '—',
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               );
     return Material(
@@ -784,15 +896,20 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
       );
       return IgnorePointer(
         ignoring: widget.controller.busy,
-        child:
-            field.cellBuilder?.call(context, widget.row, fieldContext) ??
-            field.customBuilder!(fieldContext),
+        child: UtenDropdownPreferenceScope(
+          preferenceKey: widget.menuPreferenceKey,
+          child:
+              field.cellBuilder?.call(context, widget.row, fieldContext) ??
+              field.customBuilder!(fieldContext),
+        ),
       );
     }
     if (field.type == MasterFieldType.select) {
       return UtenDropdownField(
         value: value?.toString(),
         dense: true,
+        menuMatchContentWidth: true,
+        menuPreferenceKey: widget.menuPreferenceKey,
         enabled: !widget.controller.busy,
         allowClear: !field.required,
         items: [
@@ -851,6 +968,7 @@ class MasterInlineEditActions<T> extends StatelessWidget {
     required this.controller,
     required this.canEdit,
     required this.onSave,
+    this.canCreate = false,
     this.additionalActions = const [],
     this.embedded = false,
     this.cancelLabel,
@@ -858,6 +976,7 @@ class MasterInlineEditActions<T> extends StatelessWidget {
   });
   final MasterInlineEditController<T> controller;
   final bool canEdit;
+  final bool canCreate;
   final Future<void> Function(String, Map<String, dynamic>) onSave;
   final List<Widget> additionalActions;
   final String? cancelLabel;
@@ -905,7 +1024,7 @@ class MasterInlineEditActions<T> extends StatelessWidget {
   );
 
   List<Widget> buildActions(BuildContext context) => [
-    if (canEdit && !controller.active)
+    if ((canEdit || canCreate) && !controller.active)
       UtenButton(
         type: UtenButtonType.secondary,
         size: UtenButtonSize.large,
@@ -945,7 +1064,8 @@ class MasterInlineEditActions<T> extends StatelessWidget {
       ),
       UtenButton(
         size: UtenButtonSize.large,
-        onPressed: !canEdit || controller.busy || !controller.dirty
+        onPressed:
+            !(canEdit || canCreate) || controller.busy || !controller.dirty
             ? null
             : () => controller.save(onSave, beforeWrite: _paintFeedback),
         child: Text(
@@ -1091,6 +1211,7 @@ class _MasterInlineOptionsCellState extends State<MasterInlineOptionsCell> {
       final value = widget.field.initialValue;
       return UtenDropdownField(
         dense: true,
+        menuMatchContentWidth: true,
         value: value,
         selectedLabel: options.any((option) => option.value == value)
             ? null

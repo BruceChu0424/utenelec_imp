@@ -249,8 +249,7 @@ public class GoodsImportService {
                 Goods byId = goodsRepo.findById(r.goodsId).orElse(null);
                 if (byId == null || byId.isDeleted() && !Objects.equals(restoreGoodsId, byId.getId())) {
                     errors.add(new GoodsImportError(r.rowNum, "货品UUID", "货品 UUID 不存在或已删除，请重新导出后导入"));
-                } else if ((existingGoods != null && !existingGoods.getId().equals(byId.getId()))
-                        || (r.code != null && !r.code.isEmpty() && !r.code.equals(normCode(byId.getCode())))) {
+                } else if (existingGoods != null && !existingGoods.getId().equals(byId.getId())) {
                     errors.add(new GoodsImportError(r.rowNum, "编号", "货品 UUID 与编号指向不同货品，请核对后重传"));
                 } else if (!byId.isDeleted()) {
                     existingGoods = byId;
@@ -292,7 +291,12 @@ public class GoodsImportService {
             if (r.status != null && !r.status.isEmpty() && !VALID_STATUSES.contains(r.status)) {
                 errors.add(new GoodsImportError(r.rowNum, "状态", "状态必须为 使用/禁用"));
             }
-            if (existingGoods == null && restoreGoodsId == null && category != null) {
+            // A supplied UUID identifies an update, while an unused explicit code
+            // without a UUID identifies a new variant. Names are not unique goods
+            // identifiers: colors, materials and models may legitimately differ.
+            // Only legacy files missing both identifiers use the name fallback.
+            if (existingGoods == null && restoreGoodsId == null && category != null
+                    && r.goodsId == null && (r.code == null || r.code.isEmpty())) {
                 UUID categoryId = existingCategoryId(category);
                 List<GoodsImportIdentity> matches = categoryId == null ? List.of() : goodsSnapshot.stream()
                         .filter(g -> !g.deleted() && categoryId.equals(g.categoryId())
@@ -302,13 +306,9 @@ public class GoodsImportService {
                 } else if (matches.size() == 1) {
                     Goods matched = goodsRepo.findById(matches.getFirst().id())
                             .orElseThrow(() -> stalePlan("匹配货品在检测期间已变化"));
-                    if (r.code != null && !r.code.isEmpty()) {
-                        errors.add(new GoodsImportError(r.rowNum, "编号", "同分类同名货品已存在，但编号不一致，请填写现有编号或 UUID 后重传"));
-                    } else {
-                        existingGoods = matched;
-                        matchType = "PATH_NAME";
-                    }
-                } else if ((r.code == null || r.code.isEmpty()) && goodsSnapshot.stream()
+                    existingGoods = matched;
+                    matchType = "PATH_NAME";
+                } else if (goodsSnapshot.stream()
                         .anyMatch(g -> !g.deleted() && Objects.equals(normName(g.name()), r.name))) {
                     errors.add(new GoodsImportError(r.rowNum, "货品名称",
                             "其他分类存在同名货品，请填现有编号确认更新；若确为新货品，请填写新编号"));
@@ -1089,6 +1089,7 @@ public class GoodsImportService {
                                                      PlannedMasterReference color,
                                                      PlannedMasterReference unit) {
         List<GoodsImportReviewRow.Change> result = new ArrayList<>();
+        change(result, "code", "编号", normCode(old.getCode()), row.code);
         change(result, "name", "货品名称", old.getName(), row.name);
         change(result, "clientGoodsName", "客户货品名称", old.getClientGoodsName(), row.clientGoodsName);
         change(result, "cNumber", "客户型号", old.getCNumber(), row.cNumber);
@@ -1164,6 +1165,7 @@ public class GoodsImportService {
         request.setVersion(old.getVersion());
         for (GoodsImportReviewRow.Change change : changes) {
             switch (change.field()) {
+                case "code" -> request.setCode(row.code);
                 case "name" -> request.setName(row.name);
                 case "clientGoodsName" -> request.setClientGoodsName(row.clientGoodsName);
                 case "cNumber" -> request.setCNumber(row.cNumber);

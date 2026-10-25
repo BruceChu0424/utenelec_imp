@@ -106,6 +106,14 @@ public class ProcurementMutationFootprint {
      * 「先入库后质检」合格品所在收货单的品质足迹与入库足迹——与品质结论({@code inspection})和自动转正
      * ({@code stockIn})各自取锁时发现的是同一组收货单引用。没有这种货时返回空计划。
      */
+    public FulfillmentMutationLockPlan heldSubcontractPreStockForOrders(Collection<OrderRef> orders) {
+        List<UUID> ids=orders.stream().filter(order->"SUBCONTRACT".equals(order.type())).map(OrderRef::id).distinct().sorted().toList();
+        if(ids.isEmpty())return heldSubcontractPreStock(List.of());
+        List<UUID> items=rows("SELECT id FROM subcontract_order_items WHERE order_id IN (:ids) AND NOT is_deleted ORDER BY id",
+                Map.of("ids",ids)).stream().map(row->(UUID)row[0]).toList();
+        return heldSubcontractPreStock(items);
+    }
+
     public FulfillmentMutationLockPlan heldSubcontractPreStock(Collection<UUID> orderItemIds) {
         List<SubcontractHeldPreStock.Release> held = SubcontractHeldPreStock.ofOrderItems(em, orderItemIds);
         if (held.isEmpty()) {

@@ -5,6 +5,7 @@ import hashlib
 from pathlib import Path
 import re
 import uuid
+import finance_cash_source_policy as cash_policy
 
 
 SOURCE_FILE = 'm_get.csv'
@@ -72,12 +73,15 @@ def source_inventory(directory, records, require=_require):
         rows = list(reader)
     require(len(rows) == record['rows'] and all(None not in row for row in rows),
             'Receipt fee source CSV row count or shape differs')
+    cash_source=cash_policy.source_inventory(directory,records)
+    archive_ids=set(cash_source['inventory'][SOURCE_FILE]['archive_ids']) if cash_source is not None else set()
     identities, pairs = set(), []
     positive_count = nonzero_count = no_style_nonzero = positive_nonzero = 0
     for row in rows:
         old = _integer(row['legacy_id'], True, require)
         require(old not in identities, 'Receipt fee source identity is duplicated')
         identities.add(old)
+        if old in archive_ids:continue
         original = _integer(row['qtfymc'], False, require)
         nonzero = _nonzero(row['qtfy'], require)
         pairs.append((old, original))
@@ -87,6 +91,7 @@ def source_inventory(directory, records, require=_require):
         positive_nonzero += original > 0 and nonzero
     return {
         'source_file': SOURCE_FILE, 'target_table': 'finance_receipts', 'rows': len(pairs),
+        'full_source_rows':len(rows),'archived_source_rows':len(archive_ids),'cash_source_policy':cash_source,
         'file_sha256': record['sha256'],
         'source_ids_sha256': _hash(str(old) + '\n' for old, _ in sorted(pairs)),
         'original_style_ids_sha256': _hash(f'{old}:{original}\n' for old, original in sorted(pairs)),
@@ -103,7 +108,7 @@ def acceptance_sql(run_id, source):
     fields = 'ARRAY[' + ','.join("'%s'" % name for name in sorted(TARGET_FIELDS)) + ']::text[]'
     family = "(p.source_kind='RECEIPT' OR p.target_table='finance_receipts')"
     route = "(p.source_kind='RECEIPT' AND p.target_table='finance_receipts' AND p.source_file='m_get.csv')"
-    return f"""SELECT jsonb_build_object(
+    query = f"""SELECT jsonb_build_object(
  'total_receipt_proofs',(SELECT count(*) FROM public.legacy_finance_import_sources p WHERE {family}),
  'wrong_run_proofs',(SELECT count(*) FROM public.legacy_finance_import_sources p WHERE {family} AND p.run_id IS DISTINCT FROM '{run_id}'::uuid),
  'unregistered_proof_routes',(SELECT count(*) FROM public.legacy_finance_import_sources p WHERE {family} AND {route} IS NOT TRUE),
@@ -135,9 +140,13 @@ def acceptance_sql(run_id, source):
  'pending_nonzero_fee_rows',(SELECT count(*) FROM public.finance_receipts WHERE other_fee_style_legacy_id>0 AND other_fee_style_id IS NULL AND coalesce(other_fee,0)<>0))
  FROM public.legacy_finance_import_sources p LEFT JOIN public.finance_receipts t ON t.id=p.target_id
  WHERE p.run_id='{run_id}'::uuid AND p.source_kind='RECEIPT' AND p.target_table='finance_receipts' AND p.source_file='m_get.csv'"""
+    if source.get('cash_source_policy') is not None:
+        cash=cash_policy.acceptance_sql(run_id,source['cash_source_policy'])
+        return "SELECT receipt_fee.payload||jsonb_build_object('cash_source_archive',("+cash+")) FROM ("+query+") AS receipt_fee(payload)"
+    return query
 
 
-def validate(actual, source, require=_require):
+def validate(actual, source, require=_require, run_id=None):
     require(isinstance(actual, dict) and isinstance(source, dict), 'Receipt fee proof or sealed source inventory is absent')
     for fact, expected in (
         ('total_receipt_proofs', 'rows'), ('proof_rows', 'rows'), ('target_rows', 'rows'),
@@ -158,7 +167,7 @@ def validate(actual, source, require=_require):
             and actual['pending_nonzero_fee_rows'] <= actual['pending_original_style_rows']
             and actual['pending_nonzero_fee_rows'] <= actual['positive_original_style_nonzero_fee_rows'],
             'Receipt fee valid/pending count conservation differs')
-    return {
+    result = {
         'verified': True, 'source_proof_rows': source['rows'],
         **{key: actual[key] for key in ('positive_original_style_rows', 'valid_expense_style_rows',
             'pending_original_style_rows', 'original_no_style_rows', 'nonzero_fee_rows',
@@ -167,3 +176,11 @@ def validate(actual, source, require=_require):
         'exact_bidirectional_source_target_coverage': True, 'typed_expense_identity_verified': True,
         'pending_is_not_expense_or_posting_authority': True,
     }
+
+    if source.get('cash_source_policy') is not None:
+        require(run_id is not None,'V21 cash source archive verification requires the requested run UUID')
+        result['finance_cash_source_archive']=cash_policy.validate(actual.get('cash_source_archive'),source['cash_source_policy'],str(run_id),require=require)
+        result['full_source_rows']=source['full_source_rows']
+        result['archived_source_rows']=source['archived_source_rows']
+        result['full_source_fees_preserved_in_live_plus_typed_archive']=True
+    return result

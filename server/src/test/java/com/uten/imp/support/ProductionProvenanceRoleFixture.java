@@ -7,7 +7,7 @@ import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
 
-/** Full migration proof with separated real login roles; synthetic data only. */
+/** Frozen V915 gap / V917 release rehearsal with separated real login roles; synthetic data only. */
 public final class ProductionProvenanceRoleFixture {
     private ProductionProvenanceRoleFixture() { }
     private static final String OWNER="uten_migrator", APP="uten", PASSWORD="r1-fixture-only";
@@ -50,7 +50,7 @@ public final class ProductionProvenanceRoleFixture {
             var gap=migration(url,full,"915",true);
             var pending=gap.info().pending();require(pending.length==1&&pending[0].getVersion().getVersion().equals("915"),"exact original915-only gap required");
             require(gap.migrate().migrationsExecuted==1,"one real original915 migration required");
-            var normal=migration(url,full,"latest",false);require(normal.migrate().migrationsExecuted==1,"one exact normal917 migration required");
+            var normal=migration(url,full,"917",false);require(normal.migrate().migrationsExecuted==1,"one exact normal917 migration required");
             normal.validate();require(normal.migrate().migrationsExecuted==0,"normal false final migrate must be zero");
             var actual=history(admin);require(actual.size()==baseline+2&&actual.subList(0,original.size()).equals(original),"old history changed");
             require(bool(admin,"SELECT NOT rolsuper AND NOT rolinherit FROM pg_roles WHERE rolname='uten'"),"runtime real non-SU required");

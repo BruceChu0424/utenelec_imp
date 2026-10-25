@@ -21,6 +21,7 @@
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 // 文档：docs/03-页面/我的页.md（§HR 端：员工修改审批）
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/retained_async_page.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
@@ -485,7 +486,4 @@ String _statusLabel(AppLocalizations l10n, ProfileChangeStatus s) {
   }
 }
 
-String _formatTime(DateTime t) {
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
-}
+String _formatTime(DateTime t) => ChinaDateTime.formatDateTime(t);

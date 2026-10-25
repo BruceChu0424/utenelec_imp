@@ -167,7 +167,7 @@ final ok = await context.guardRun(
 
 ## 四、视觉规范
 
-- **顶部弹条**：与「连接恢复横幅」共用 [`UtenTopBannerCard`](../../lib/core/ui/uten_top_banner_card.dart) ——居中、最大宽 720、圆角 14、elevation 4、柔和 `*Container` 容器色（success=`primaryContainer`、error=`errorContainer`、warning=`tertiaryContainer`、info=浅蓝 `UtenColors.infoContainer`）。**卡片按内容收缩到 ≤720**（短文案 → 小卡，长文案 → 720 处换行），不是恒为 720 满宽。
+- **顶部弹条**：[`UtenTopBannerCard`](../../lib/core/ui/uten_top_banner_card.dart) ——居中、最大宽 720、圆角 14、elevation 4、柔和 `*Container` 容器色（success=`primaryContainer`、error=`errorContainer`、warning=`tertiaryContainer`、info=浅蓝 `UtenColors.infoContainer`）。**卡片按内容收缩到 ≤720**（短文案 → 小卡，长文案 → 720 处换行），不是恒为 720 满宽。连接恢复横幅不走本卡片——它占顶下推为通栏单行（见 `connection_recovery_banner.dart`）。
   > 本主题 `primary/secondary/tertiaryContainer` 同为 teal，故 **success 与 warning 同底色，靠语义图标区分**（✓ / ⚠）；error 浅红、info 浅灰各自独立。这是主题决定、非 bug。滑入 220ms easeOutCubic，可左/右滑关闭。
   >
   > **只占卡片宽度，两侧点击放行**：`UtenTopBannerCard` 是纯卡片（不含 `SafeArea`/`Center`，按内容收缩到 ≤720），居中与状态栏留白由宿主层（透明的 `Center`/`Column`）负责。透明居中层无手势监听，故**弹条两侧的空白不会拦截下方页面的点击**——只有卡片像素可交互（点、滑、关闭）。悬停/点按反馈用前景色低透明叠加，而非 Material 默认灰高亮（避免把绿/红卡片刷成灰条）。
@@ -184,12 +184,15 @@ final ok = await context.guardRun(
 
 ```
 MaterialApp.builder
+├── Column 顶部（占顶下推，把页面整体下推）
+│   ├── ImpersonationBanner       ← 模拟身份横幅
+│   └── ConnectionRecoveryBanner  ← 连接状态通栏（断网/重连/恢复，单行占顶下推）
 └── Stack
     ├── child（路由页面）
-    ├── ConnectionRecoveryBanner   ← 连接状态横幅（断网/重连/恢复）
-    └── AppNotificationHost        ← 顶部弹条渲染层（全局 Provider 队列驱动）
+    └── AppNotificationHost       ← 顶部弹条渲染层（悬浮居中，全局 Provider 队列驱动）
 
-两者视觉外壳同出 UtenTopBannerCard（居中 / maxWidth 720 / 圆角 14 / elevation 4）。
+连接通栏为占顶下推单行，不走 UtenTopBannerCard；通知弹条外壳仍是
+UtenTopBannerCard（居中 / maxWidth 720 / 圆角 14 / elevation 4）。
 
 UtenNotify.alert → showGeneralDialog → _CenterAlertDialog  ← 居中弹窗（按需 push）
 ```

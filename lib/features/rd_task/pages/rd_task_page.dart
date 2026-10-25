@@ -22,6 +22,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../widgets/rd_initial_basic_unit_dialog.dart';
 import '../../../shared/drafts/form_draft_category.dart';
@@ -839,7 +840,11 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '创建',
           width: 120,
           type: 'date',
-          value: (item) => item.createdAt ?? '—',
+          value: (item) => ChinaDateTime.formatIsoInstant(
+            item.createdAt,
+            fallback: '—',
+            seconds: true,
+          ),
         ),
       ],
       items: items,

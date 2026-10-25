@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/cards/uten_card.dart';
@@ -50,6 +51,7 @@ class _InstantInventoryOverviewPageState
   InstantInventorySummary? _summary;
   DateTime? _updatedAt;
   bool _loading = true;
+  bool _backgroundRefresh = false;
   String? _error;
   String? _selectedRisk;
   PagedResult<InstantInventoryRow>? _riskPage;
@@ -94,6 +96,7 @@ class _InstantInventoryOverviewPageState
         _error = null;
         _riskError = null;
         _loading = false;
+        _backgroundRefresh = false;
         _riskLoading = false;
       });
     });
@@ -108,6 +111,8 @@ class _InstantInventoryOverviewPageState
     if (!mapEquals(oldWidget.scope.toQuery(), widget.scope.toQuery())) {
       _selectedRisk = null;
       _updatedAt = null;
+      _summary = null;
+      _riskPage = null;
       _refresh();
     }
   }
@@ -142,14 +147,15 @@ class _InstantInventoryOverviewPageState
         );
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({bool background = false}) async {
     final generation = _summaryRequests.begin();
     _riskRequests.begin();
     setState(() {
       _loading = true;
+      _backgroundRefresh = background && _summary != null;
       _error = null;
       _riskLoading = false;
-      _riskPage = null;
+      if (!_backgroundRefresh) _riskPage = null;
       _riskError = null;
     });
     try {
@@ -164,25 +170,53 @@ class _InstantInventoryOverviewPageState
           if (summary.hasAnalysis && (summary.count(entry.value) ?? 0) > 0)
             entry.key,
       ];
+      final previousRisk = _selectedRisk;
+      final previousPage = _requestedRiskPage;
       setState(() {
         _summary = summary;
         _updatedAt = DateTime.now();
         if (!available.contains(_selectedRisk)) {
           _selectedRisk = available.firstOrNull;
+          _riskPage = null;
         }
         _loading = false;
       });
-      if (_selectedRisk != null) await _loadRisk(_selectedRisk!, 1);
+      if (_selectedRisk != null) {
+        await _loadRisk(
+          _selectedRisk!,
+          background && previousRisk == _selectedRisk ? previousPage : 1,
+          background: background && previousRisk == _selectedRisk,
+        );
+      }
+      if (mounted && _summaryRequests.isCurrent(generation)) {
+        setState(() => _backgroundRefresh = false);
+      }
     } catch (error) {
       if (!mounted || !_summaryRequests.isCurrent(generation)) return;
       setState(() {
+        if (_accessDenied(error)) {
+          _summary = null;
+          _riskPage = null;
+          _updatedAt = null;
+        }
         _error = _errorText(error);
         _loading = false;
       });
     }
   }
 
-  Future<void> _loadRisk(String risk, int page) async {
+  bool _accessDenied(Object error) =>
+      error is ApiException &&
+      (error.httpStatus == 401 ||
+          error.httpStatus == 403 ||
+          error.code == 'UNAUTHORIZED' ||
+          error.code == 'FORBIDDEN');
+
+  Future<void> _loadRisk(
+    String risk,
+    int page, {
+    bool background = false,
+  }) async {
     if (_loading || !_riskCounts.containsKey(risk)) return;
     final generation = _riskRequests.begin();
     setState(() {
@@ -190,11 +224,14 @@ class _InstantInventoryOverviewPageState
       _requestedRiskPage = page;
       _riskLoading = true;
       _riskError = null;
-      _riskPage = null;
+      if (!background) _riskPage = null;
     });
     try {
       final result = await _fetch(page: page, size: 8, attention: risk);
       if (!mounted || !_riskRequests.isCurrent(generation)) return;
+      if (result.totalPages > 0 && page > result.totalPages) {
+        return _loadRisk(risk, result.totalPages, background: background);
+      }
       setState(() {
         _riskPage = result;
         _riskLoading = false;
@@ -202,6 +239,12 @@ class _InstantInventoryOverviewPageState
     } catch (error) {
       if (!mounted || !_riskRequests.isCurrent(generation)) return;
       setState(() {
+        if (_accessDenied(error)) {
+          _riskPage = null;
+          _summary = null;
+          _updatedAt = null;
+          _error = _errorText(error);
+        }
         _riskError = error is ApiException && error.httpStatus == 404
             ? '当前系统版本暂不支持风险明细，请联系管理员更新系统后重试。'
             : _errorText(error);
@@ -234,14 +277,18 @@ class _InstantInventoryOverviewPageState
 
   @override
   Widget build(BuildContext context) {
-    ref.onPageResume(RouteName.stockInstantInventoryOverview, _refresh);
+    ref.onPageResume(RouteName.stockInstantInventoryOverview, () async {
+      await _refresh(background: true);
+      final failure = _error ?? _riskError;
+      if (failure != null) throw StateError(failure);
+    });
     final summary = _summary;
     return Scaffold(
       appBar: UtenAppBar(
         title: '库存总览与分析',
         subtitle: _updatedAt == null
             ? null
-            : '最近更新 ${DateFormat('HH:mm:ss').format(_updatedAt!)} · 当前筛选范围',
+            : '最近更新 ${ChinaDateTime.formatTime(ChinaDateTime.fromInstant(_updatedAt!), seconds: true)} · 当前筛选范围',
         leading: UtenBackButton(
           onPressed: () =>
               backTo(context, defaultPath: RouteName.stockInstantInventory),
@@ -258,68 +305,103 @@ class _InstantInventoryOverviewPageState
       body: SafeArea(
         child: UtenContentContainer.wide(
           padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-          child: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(_error!),
-                      const SizedBox(height: UtenSpacing.s12),
-                      FilledButton(
-                        onPressed: _refresh,
-                        child: const Text('重新加载'),
-                      ),
-                    ],
-                  ),
-                )
-              : summary == null
-              ? const SizedBox.shrink()
-              : summary.totalRows == 0
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        widget.scopeLabel ?? widget.scope.fallbackLabel,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: UtenSpacing.s16),
-                      const Text('当前筛选范围暂无货品'),
-                      const SizedBox(height: UtenSpacing.s12),
-                      TextButton(
-                        onPressed: () => backTo(
-                          context,
-                          defaultPath: RouteName.stockInstantInventory,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: _loading && !_backgroundRefresh
+                    ? const Center(child: CircularProgressIndicator())
+                    : _error != null && (!_backgroundRefresh || summary == null)
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(_error!),
+                            const SizedBox(height: UtenSpacing.s12),
+                            FilledButton(
+                              onPressed: _refresh,
+                              child: const Text('重新加载'),
+                            ),
+                          ],
                         ),
-                        child: const Text('返回即时库存调整筛选'),
+                      )
+                    : summary == null
+                    ? const SizedBox.shrink()
+                    : summary.totalRows == 0
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              widget.scopeLabel ?? widget.scope.fallbackLabel,
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: UtenSpacing.s16),
+                            const Text('当前筛选范围暂无货品'),
+                            const SizedBox(height: UtenSpacing.s12),
+                            TextButton(
+                              onPressed: () => backTo(
+                                context,
+                                defaultPath: RouteName.stockInstantInventory,
+                              ),
+                              child: const Text('返回即时库存调整筛选'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : LayoutBuilder(
+                        builder: (context, constraints) {
+                          _contentWidth = constraints.maxWidth;
+                          return InstantInventoryOverviewContent(
+                            summary: summary,
+                            scopeLabel:
+                                widget.scopeLabel ?? widget.scope.fallbackLabel,
+                            selectedRisk: _selectedRisk,
+                            onRiskSelected: summary.hasAnalysis
+                                ? _selectRisk
+                                : null,
+                            riskDetails: KeyedSubtree(
+                              key: _riskDetailsAnchor,
+                              child: _riskDetails(summary),
+                            ),
+                            onAdvancedAnalysis:
+                                ref
+                                    .watch(currentPermissionsProvider)
+                                    .contains(Perm.stockReportView)
+                                ? () =>
+                                      context.push(RouteName.warehouseInsights)
+                                : null,
+                          );
+                        },
                       ),
-                    ],
-                  ),
-                )
-              : LayoutBuilder(
-                  builder: (context, constraints) {
-                    _contentWidth = constraints.maxWidth;
-                    return InstantInventoryOverviewContent(
-                      summary: summary,
-                      scopeLabel:
-                          widget.scopeLabel ?? widget.scope.fallbackLabel,
-                      selectedRisk: _selectedRisk,
-                      onRiskSelected: summary.hasAnalysis ? _selectRisk : null,
-                      riskDetails: KeyedSubtree(
-                        key: _riskDetailsAnchor,
-                        child: _riskDetails(summary),
-                      ),
-                      onAdvancedAnalysis:
-                          ref
-                              .watch(currentPermissionsProvider)
-                              .contains(Perm.stockReportView)
-                          ? () => context.push(RouteName.warehouseInsights)
-                          : null,
-                    );
-                  },
+              ),
+              if (_backgroundRefresh && _loading)
+                const Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  child: LinearProgressIndicator(minHeight: 2),
                 ),
+              if (_backgroundRefresh && _error != null && summary != null)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  child: Material(
+                    color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                    child: Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        const Text('更新失败，显示上次数据'),
+                        TextButton(
+                          onPressed: () => _refresh(background: true),
+                          child: const Text('重试'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -357,7 +439,7 @@ class _InstantInventoryOverviewPageState
               ),
             ),
             const SizedBox(height: UtenSpacing.s16),
-            if (_riskLoading)
+            if (_riskLoading && page == null)
               const Padding(
                 padding: EdgeInsets.all(UtenSpacing.s24),
                 child: Center(child: CircularProgressIndicator()),
@@ -371,7 +453,10 @@ class _InstantInventoryOverviewPageState
                 onPressed: () => _loadRisk(risk, _requestedRiskPage),
                 child: const Text('重试加载清单'),
               ),
-            ] else if (page != null) ...[
+            ],
+            if (page != null) ...[
+              if (_riskError != null) const Text('更新失败，以下为上次加载的清单'),
+              if (_riskLoading) const LinearProgressIndicator(minHeight: 2),
               Text(
                 '当前筛选涉及 ${page.total} 项 · 按货品 × 颜色列示',
                 style: theme.textTheme.labelLarge,

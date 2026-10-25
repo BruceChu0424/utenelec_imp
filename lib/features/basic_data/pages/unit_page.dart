@@ -307,6 +307,22 @@ class _UnitPageState extends ConsumerState<UnitPage>
     ),
   ];
 
+  @override
+  MasterInlineCreateConfig get inlineCreation => MasterInlineCreateConfig(
+    namespace: 'units',
+    fields: _unitFields()
+        .where((field) => field.key != 'status' || _canStatus)
+        .toList(),
+    defaults: const {'status': '使用'},
+    canCreate: _canCreate,
+    onCreate: (_, values) async {
+      await ref.read(unitRepositoryProvider).create({
+        'status': '使用',
+        ...values,
+      });
+    },
+  );
+
   Future<void> _showCreate() async {
     if (!_canCreate || _rowOpBusy) return;
     final owner = _operationOwner(Perm.unitCreate);
@@ -687,6 +703,7 @@ class _UnitPageState extends ConsumerState<UnitPage>
     MasterInlineEditActions<UnitListItem>(
       controller: inlineEdit,
       canEdit: _canEdit && inlineReadReady && !_rowOpBusy,
+      canCreate: _canCreate && inlineReadReady && !_rowOpBusy,
       onSave: saveInline,
       embedded: true,
       additionalActions: [
@@ -827,6 +844,7 @@ class _UnitPageState extends ConsumerState<UnitPage>
                       ),
                       Expanded(
                         child: MasterDataTableView<UnitListItem>(
+                          appendRowsSource: inlineAppendRowsSource,
                           bottomContentPadding: (_canCreate || _canEdit)
                               ? UtenFloatingActionGroup.scrollClearance
                               : 0,

@@ -38,6 +38,11 @@ def excluded_rows(source):
 
 
 def archived_rows(source):
+    if source in ('m_get.csv','m_paid.csv'):
+        return ("(SELECT count(*) FROM legacy_migration_runs run CROSS JOIN LATERAL jsonb_array_elements("
+                "COALESCE(run.reconciliation_summary->'financeCashSourceArchive'->'entries','[]'::jsonb)) archived "
+                "WHERE run.run_id=current_setting('uten.bootstrap_run_id')::uuid "
+                f"AND archived->>'source_file'='{source}')")
     if source == "m_allcheck.csv":
         return ("(SELECT jsonb_array_length(reconciliation_summary->'financeArchiveOnly'->'entries') "
                 "FROM legacy_migration_runs WHERE run_id=current_setting('uten.bootstrap_run_id')::uuid)")

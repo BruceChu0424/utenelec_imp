@@ -45,8 +45,7 @@ public class RemoteAccessGuardFilter extends OncePerRequestFilter {
         String path = SecurityRequestPath.withinApplication(request);
         if (remoteAccessPolicy.isRemoteRequest() && !remoteAccessPolicy.isCloud()
                 && (path.equals("/api/website-inquiries/ingest")
-                    || path.equals("/api/visitor") || path.startsWith("/api/visitor/")
-                    || path.equals("/api/system-test") || path.startsWith("/api/system-test/"))) {
+                    || path.equals("/api/visitor") || path.startsWith("/api/visitor/"))) {
             block(request,response,null,new ApiException(ErrorCode.FORBIDDEN,"当前远程入口仅供获授权员工使用"));
             return;
         }

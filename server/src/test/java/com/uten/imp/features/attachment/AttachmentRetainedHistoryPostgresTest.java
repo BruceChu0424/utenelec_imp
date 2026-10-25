@@ -157,21 +157,17 @@ class AttachmentRetainedHistoryPostgresTest {
         assertThatThrownBy(()->jdbc.execute("TRUNCATE attachments CASCADE")).isInstanceOf(org.springframework.dao.DataAccessException.class);
         assertThat(repository.findById(row.getId())).isPresent();
     }
-    @Test void retainedHistoryStaysInTheTestFileListUntilTheExplicitResetDeletesIt() throws Exception {
-        Attachment row=create("keep across explicit reset".getBytes(StandardCharsets.UTF_8),AttachmentLifecycleState.CLEAN);
-        assertThat(listedFinal(row)).isEqualTo(1);
+    @Test void retainedHistoryStaysReferencedAfterOrdinaryDeletion() throws Exception {
+        Attachment row=create("retained original".getBytes(StandardCharsets.UTF_8),AttachmentLifecycleState.CLEAN);
+        assertThat(referencedFinal(row)).isTrue();
         transactions.executeWithoutResult(status->service.delete(row.getId()));
-        assertThat(listedFinal(row)).isEqualTo(1);
-        // Ordinary deletion retains history and never proves physical deletion: the file stays listed.
-        assertThat(processor.processNext()).isTrue();assertThat(listedFinal(row)).isEqualTo(1);
+        assertThat(referencedFinal(row)).isTrue();
+        // The normal reconciliation reference remains after logical deletion and worker processing.
+        assertThat(processor.processNext()).isTrue();assertThat(referencedFinal(row)).isTrue();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox WHERE attachment_id=? AND status='SUCCEEDED'",Integer.class,row.getId())).isZero();
-        String reset=jdbc.queryForObject("SELECT pg_get_functiondef('business_data_reset()'::regprocedure)",String.class);
-        for(String table:List.of("attachments","attachment_upload_sessions","attachment_object_outbox","attachment_reconciliation_findings"))
-            assertThat(reset).contains("('"+table+"', 'PRESERVE')");
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM fn_business_data_reset_refusals() WHERE reason_code='UNSUPPORTED_STORAGE'",Long.class)).isZero();
-        // A delete task on storage the system cannot delete becomes refusal rule 20.
-        jdbc.update("UPDATE attachment_object_outbox SET storage_provider='oss' WHERE attachment_id=?",row.getId());
-        assertThat(jdbc.queryForObject("SELECT item_count FROM fn_business_data_reset_refusals() WHERE reason_code='UNSUPPORTED_STORAGE'",Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT to_regprocedure('public.business_data_reset()')::text",String.class)).isNull();
+        assertThat(repository.findById(row.getId())).isPresent();
+        assertThat(Files.exists(root.resolve("final").resolve(row.getStorageKey()))).isTrue();
     }
     @Test void legacyPendingIntentRetainsTheSourceInsteadOfRepeatingPhysicalDeletion() throws Exception {
         Attachment row=create("old pending original".getBytes(StandardCharsets.UTF_8),AttachmentLifecycleState.DELETE_PENDING);
@@ -227,7 +223,7 @@ class AttachmentRetainedHistoryPostgresTest {
         assertThat(service.history(legacy.getId()).sha256()).isNull();
     }
 
-    private long listedFinal(Attachment row){return jdbc.queryForObject("SELECT count(*) FROM fn_business_test_reset_objects() WHERE object_provider=? AND object_location='FINAL' AND object_key=?",Long.class,row.getStorageProvider(),row.getStorageKey());}
+    private boolean referencedFinal(Attachment row){return AttachmentReconciliationService.isReferenced(jdbc,row.getStorageProvider(),"FINAL",row.getStorageKey(),row.getStorageVersion());}
     private Attachment create(byte[] bytes,AttachmentLifecycleState state) throws Exception {
         return create(bytes,state,true);
     }

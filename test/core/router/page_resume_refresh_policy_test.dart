@@ -1,9 +1,11 @@
 // 「返回即刷新」按数据变没变(ADR-108 / perf-frontend-04):
-//   · 列表 → 详情(只查看) → 返回: 0 次重拉;
+//   · 列表 → 详情(只查看) → 返回: 1 次后台核对，包含他人的写入;
 //   · 列表 → 详情(保存成功, 写修订号前进) → 返回: 恰好 1 次, 且发生在返回转场走完之后;
 //   · 保存时发出的精准刷新(refreshKeys)在列表被盖住时只记下, 返回时合并成那 1 次;
 //   · 超过 30 秒的旧数据, 纯查看返回也重拉;
 //   · Web/桌面转场是约 150ms 的纯淡入淡出。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,9 +20,10 @@ import 'package:uten_imp/shared/providers/list_refresh_provider.dart';
 const _listKey = 'test-docs';
 
 class _ListPage extends ConsumerWidget {
-  const _ListPage(this.onRefresh);
+  const _ListPage(this.onRefresh, this.staleAfter);
 
-  final void Function(bool transitionIdle) onRefresh;
+  final FutureOr<void> Function(bool transitionIdle) onRefresh;
+  final Duration staleAfter;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -28,6 +31,7 @@ class _ListPage extends ConsumerWidget {
       '/list',
       () => onRefresh(RouteTransitionTracker.instance.isIdle),
       refreshKeys: const [_listKey],
+      staleAfter: staleAfter,
     );
     return Scaffold(
       body: TextButton(
@@ -59,13 +63,23 @@ class _DetailPage extends ConsumerWidget {
   );
 }
 
-Future<(List<bool>, ProviderContainer)> _pump(WidgetTester tester) async {
+Future<(List<bool>, ProviderContainer)> _pump(
+  WidgetTester tester, {
+  FutureOr<void> Function()? refresh,
+  Duration staleAfter = kPageResumeStaleAfter,
+}) async {
   RouteTransitionTracker.instance.reset();
   final refreshes = <bool>[];
   final router = GoRouter(
     initialLocation: '/list',
     routes: [
-      GoRoute(path: '/list', builder: (_, _) => _ListPage(refreshes.add)),
+      GoRoute(
+        path: '/list',
+        builder: (_, _) => _ListPage((idle) {
+          refreshes.add(idle);
+          return refresh?.call();
+        }, staleAfter),
+      ),
       GoRoute(path: '/detail', builder: (_, _) => const _DetailPage()),
     ],
   );
@@ -97,7 +111,9 @@ Future<(List<bool>, ProviderContainer)> _pump(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('view-only return does not reload the list', (tester) async {
+  testWidgets('every view-only return revalidates other users changes', (
+    tester,
+  ) async {
     final (refreshes, _) = await _pump(tester);
 
     await tester.tap(find.text('打开详情'));
@@ -105,7 +121,7 @@ void main() {
     await tester.tap(find.text('返回'));
     await tester.pumpAndSettle();
 
-    expect(refreshes, isEmpty);
+    expect(refreshes, [true]);
   });
 
   testWidgets(
@@ -152,6 +168,139 @@ void main() {
     container.read(listRefreshTickProvider(_listKey).notifier).state++;
     await tester.pumpAndSettle();
 
+    expect(refreshes, hasLength(1));
+  });
+
+  testWidgets('a hidden precise signal is retained without a global write', (
+    tester,
+  ) async {
+    final (refreshes, container) = await _pump(tester);
+    await tester.tap(find.text('打开详情'));
+    await tester.pumpAndSettle();
+
+    container.read(listRefreshTickProvider(_listKey).notifier).state++;
+    await tester.pumpAndSettle();
+    expect(refreshes, isEmpty);
+    expect(container.read(dataWriteRevisionProvider), 0);
+
+    await tester.tap(find.text('返回'));
+    await tester.pumpAndSettle();
+    expect(refreshes, [true]);
+  });
+
+  testWidgets('a scheduled refresh rechecks visibility and keeps its signal', (
+    tester,
+  ) async {
+    final (refreshes, container) = await _pump(tester);
+    final resume = container.read(pageResumeProvider.notifier);
+    // Simulate a return immediately covered by another navigation, before the
+    // transition-settled callback gets a frame to run.
+    bumpPageResumeState(resume, '/detail');
+    container.read(listRefreshTickProvider(_listKey).notifier).state++;
+    bumpPageResumeState(resume, '/list');
+    bumpPageResumeState(resume, '/detail');
+    await tester.pumpAndSettle();
+    expect(refreshes, isEmpty);
+
+    bumpPageResumeState(resume, '/list');
+    await tester.pumpAndSettle();
+    expect(refreshes, [true]);
+  });
+
+  testWidgets(
+    'a return during I/O queues one newer snapshot after completion',
+    (tester) async {
+      final pending = Completer<void>();
+      var serverValue = 'before detail';
+      String? acceptedValue;
+      var reads = 0;
+      final (refreshes, container) = await _pump(
+        tester,
+        refresh: () {
+          final snapshot = serverValue;
+          if (++reads == 1) {
+            return pending.future.then<void>((_) => acceptedValue = snapshot);
+          }
+          acceptedValue = snapshot;
+        },
+      );
+      container.read(listRefreshTickProvider(_listKey).notifier).state++;
+      await tester.pumpAndSettle();
+      expect(refreshes, hasLength(1));
+
+      await tester.tap(find.text('打开详情'));
+      await tester.pumpAndSettle();
+      serverValue = 'another user added a document';
+      await tester.tap(find.text('返回'));
+      await tester.pumpAndSettle();
+      expect(refreshes, hasLength(1));
+      pending.complete();
+      await tester.pumpAndSettle();
+      expect(refreshes, hasLength(2));
+      expect(acceptedValue, 'another user added a document');
+    },
+  );
+
+  testWidgets('signals during I/O are coalesced after the current read', (
+    tester,
+  ) async {
+    final pending = Completer<void>();
+    var calls = 0;
+    final (refreshes, container) = await _pump(
+      tester,
+      refresh: () => ++calls == 1 ? pending.future : Future<void>.value(),
+    );
+    container.read(listRefreshTickProvider(_listKey).notifier).state++;
+    await tester.pumpAndSettle();
+    container.read(listRefreshTickProvider(_listKey).notifier).state++;
+    container.read(listRefreshTickProvider(_listKey).notifier).state++;
+    await tester.pumpAndSettle();
+    expect(refreshes, hasLength(1));
+
+    pending.complete();
+    await tester.pumpAndSettle();
+    expect(refreshes, [true, true]);
+  });
+
+  testWidgets('failed reads remain dirty and retry on the next return', (
+    tester,
+  ) async {
+    var calls = 0;
+    final (refreshes, container) = await _pump(
+      tester,
+      refresh: () => ++calls == 1
+          ? Future<void>.error(StateError('offline'))
+          : Future<void>.value(),
+    );
+    container.read(listRefreshTickProvider(_listKey).notifier).state++;
+    await tester.pumpAndSettle();
+    expect(refreshes, hasLength(1));
+
+    await tester.tap(find.text('打开详情'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('返回'));
+    await tester.pumpAndSettle();
+    expect(refreshes, [true, true]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('freshness starts when the actual read succeeds', (tester) async {
+    final pending = Completer<void>();
+    final (refreshes, container) = await _pump(
+      tester,
+      refresh: () => pending.future,
+      staleAfter: const Duration(seconds: 30),
+    );
+    container.read(listRefreshTickProvider(_listKey).notifier).state++;
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 31));
+    pending.complete();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('打开详情'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('返回'));
+    await tester.pumpAndSettle();
     expect(refreshes, hasLength(1));
   });
 

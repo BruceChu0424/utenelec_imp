@@ -239,7 +239,7 @@ class SubcontractTargetOutboundPreparationMigrationContractTest {
                 .contains("DROP TABLE subcontract_outbound_preparation_commands;")
                 .doesNotContain("DROP TABLE subcontract_outbound_issue_reservation_allocations");
 
-        assertThat(com.uten.imp.ops.BusinessDataResetSqlContractTest.expectedCurrentPolicy())
+        assertThat(com.uten.imp.ops.BusinessDataResetSqlContractTest.expectedPreRetirementPolicy())
                 .containsEntry("subcontract_outbound_issue_reservation_allocations", "CLEAR")
                 .as("V798 retires the preparation command ledger from the reset policy")
                 .doesNotContainKey("subcontract_outbound_preparation_commands");

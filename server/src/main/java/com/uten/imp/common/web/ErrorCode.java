@@ -55,13 +55,6 @@ public enum ErrorCode {
     AUTH_BUSY(503, "登录验证的人较多，请稍后几秒再试"),
     SERVER_OPERATIONS_UNAVAILABLE(503, "服务器运维助手暂不可用"),
     SERVER_OPERATION_OUTCOME_UNCERTAIN(503, "服务器操作结果待确认，请刷新状态后核对，不要重复提交"),
-    /**
-     * 清空业务数据：提交事务或写完成回执时出错，服务器自己也不知道清空有没有生效 (ADR-155)。
-     * 客户端只对这个码 (和网络层失败) 按「结果待确认」处理；其它 500 都是明确失败。
-     */
-    RESET_OUTCOME_UNCERTAIN(500, "清空结果没有确认，请重新登录后核对本次结果，不要再次提交清空"),
-    /** 清空业务数据：服务器的数据库账号或清空程序所在数据库配置有误，再试也一样，要开发人员处理 (ADR-155)。 */
-    RESET_SERVER_MISCONFIGURED(500, "服务器的清空配置有问题，本次没有删除任何文件，也没有清空数据，请联系开发人员"),
     INTERNAL(500, "服务器内部错误");
 
     private final int httpStatus;

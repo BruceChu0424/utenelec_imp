@@ -127,7 +127,7 @@ void main() {
       final value = ChinaDateTime.now(
         utcNow: DateTime.utc(2026, 7, 30, 16, 30),
       );
-      expect(ChinaDateTime.formatDateTime(value), '2026-07-31 00:30');
+      expect(ChinaDateTime.formatDateTime(value), '2026-07-31 00:30(北京)');
       expect(
         ChinaDateTime.formatDate(
           ChinaDateTime.today(utcNow: DateTime.utc(2026, 7, 30, 16, 30)),
@@ -153,17 +153,20 @@ void main() {
     test('带偏移的 ISO 转中国时间，无偏移数据库时间保持原值', () {
       expect(
         ChinaDateTime.formatIsoInstant('2026-07-30T18:30:00Z'),
-        '2026-07-31 02:30',
+        '2026-07-31 02:30(北京)',
       );
       expect(
         ChinaDateTime.formatIsoInstant('2026-07-30T09:15:00+08:00'),
-        '2026-07-30 09:15',
+        '2026-07-30 09:15(北京)',
       );
       expect(
         ChinaDateTime.formatIsoInstant('2026-07-30T09:15:00'),
-        '2026-07-30 09:15',
+        '2026-07-30 09:15(北京)',
       );
-      expect(ChinaDateTime.formatIsoInstant('2026-07-30'), '2026-07-30 00:00');
+      expect(
+        ChinaDateTime.formatIsoInstant('2026-07-30'),
+        '2026-07-30 00:00(北京)',
+      );
     });
 
     test('访客接口时间统一转换为中国墙上时间', () {
@@ -178,11 +181,11 @@ void main() {
 
       expect(
         ChinaDateTime.formatDateTime(application.plannedVisitAt),
-        '2026-07-31 02:30',
+        '2026-07-31 02:30(北京)',
       );
       expect(
         ChinaDateTime.formatDateTime(application.appliedAt),
-        '2026-07-30 09:15',
+        '2026-07-30 09:15(北京)',
       );
     });
   });

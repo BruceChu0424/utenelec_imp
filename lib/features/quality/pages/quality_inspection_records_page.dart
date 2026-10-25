@@ -7,6 +7,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_date_range_picker.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -277,7 +278,7 @@ class _QualityInspectionRecordsPageState
   Future<void> _pickDateRange() async {
     final today = ChinaDateTime.today();
     final current = _dateRange;
-    final picked = await showDateRangePicker(
+    final picked = await showUtenDateRangePicker(
       context: context,
       firstDate: DateTime.utc(2020),
       lastDate: today,
@@ -285,7 +286,6 @@ class _QualityInspectionRecordsPageState
           ? null
           : DateTimeRange(start: current.start, end: current.end),
       helpText: '选择检验决定日期范围',
-      saveText: '应用',
     );
     if (picked == null || !mounted) return;
     setState(() {

@@ -78,8 +78,9 @@ class AiDocKnowledgePolicyTest {
                 .containsExactlyInAnyOrder("SALES", "FINANCE");
         assertThat(AiDocKnowledgePolicy.domains("03-页面/员工详情页.md", "员工详情页")).containsExactly("HR");
         assertThat(AiDocKnowledgePolicy.domains("03-页面/员工编辑页.md", "员工编辑页")).containsExactly("HR");
-        assertThat(AiDocKnowledgePolicy.domains("99-决策记录-ADR/ADR-155-清空业务数据测试文件单一规则与幂等删除.md", "ADR-155"))
-                .containsExactly("ADMIN");
+        assertThat(AiDocKnowledgePolicy.included("99-决策记录-ADR/ADR-155-清空业务数据测试文件单一规则与幂等删除.md"))
+                .as("the retired destructive feature must not be taught as an available operation")
+                .isFalse();
         assertThat(AiDocKnowledgePolicy.domains(AiDocGlossary.PATH, "业务术语与状态总表")).isEmpty();
         assertThat(AiDocKnowledgePolicy.domains("03-页面/AI工作助手使用说明.md", "AI 工作助手使用说明")).isEmpty();
         // The reader's own access and how to ask for it: every chat user, although its title names 权限.

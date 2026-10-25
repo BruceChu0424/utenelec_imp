@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.*;
 
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class MaterialForecastSettingsPostgresTest {
-    @Test void forwardSeedPreservesAnExplicitFalseAndThePolicyIsIncludedInBusinessResetPreservation()throws Exception {
+    @Test void forwardSeedPreservesExplicitPolicyValues()throws Exception {
         try(var database=MigratedSchemaBaseline.openDatabase("market_portable_policy")) {
             var jdbc=new JdbcTemplate(new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()));
             assertThat(jdbc.queryForObject("SELECT value FROM system_settings WHERE key='material_forecast.enabled'",String.class)).isEqualTo("true");
@@ -20,7 +20,6 @@ class MaterialForecastSettingsPostgresTest {
             assertThat(jdbc.queryForObject("SELECT value FROM system_settings WHERE key='material_forecast.enabled'",String.class)).isEqualTo("false");
             assertThat(jdbc.queryForObject("SELECT value FROM system_settings WHERE key='material_forecast.interval_minutes'",String.class)).isEqualTo("30");
             assertThat(jdbc.queryForObject("SELECT count(*) FROM system_settings WHERE key LIKE 'material_forecast.%'",Integer.class)).isEqualTo(4);
-            assertThat(jdbc.queryForObject("SELECT disposition FROM fn_business_reset_table_policy() WHERE table_name='system_settings'",String.class)).isEqualTo("PRESERVE");
         }
     }
 }

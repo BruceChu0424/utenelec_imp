@@ -81,7 +81,7 @@ class PermissionGrantPolicyContractTest {
         }
         assertThat(db.queryForList(
                 "SELECT code FROM permissions WHERE 'SUPERADMIN_ONLY' = ANY(grant_policy) ORDER BY code",
-                String.class)).contains("authorization:manage", "system:business_data_reset");
+                String.class)).contains("authorization:manage").doesNotContain("system:business_data_reset");
     }
 
     @Test
@@ -108,7 +108,7 @@ class PermissionGrantPolicyContractTest {
         assertThatThrownBy(() -> db.update("""
                 INSERT INTO permission_surface_permissions (surface_id, permission_id)
                 SELECT surface.id, permission.id FROM permission_surfaces surface, permissions permission
-                WHERE surface.surface_key = 'basic.goods' AND permission.code = 'system:business_data_reset'
+                WHERE surface.surface_key = 'basic.goods' AND permission.code = 'authorization:manage'
                 """)).isInstanceOf(DataAccessException.class);
     }
 

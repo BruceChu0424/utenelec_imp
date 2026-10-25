@@ -559,9 +559,7 @@ class _QualityPendingDisposalPageState
       ),
       extra: receipt,
     );
-    if (!mounted) return;
-    // 处置页返回后重拉队列（本单可能已结案）并同步角标。
-    await _load();
+    // The page's resume scheduler refreshes both queues once after transition.
   }
 
   /// 双击检查单行：进入 FQC 检查单办理页（2026-09-12 弹窗改页，对齐采购 IQC
@@ -582,7 +580,6 @@ class _QualityPendingDisposalPageState
     );
     if (!mounted) return;
     refreshBadges(ref);
-    await _load();
   }
 
   /// 双击 FQC 行 / 右键「办理质检」：进入单任务办理页（详情 + 决定 + 检验证据）。
@@ -600,7 +597,6 @@ class _QualityPendingDisposalPageState
     );
     if (!mounted) return;
     refreshBadges(ref);
-    await _load();
   }
 
   /// 「批量审批」（2026-09-05 用户口径）：多选的 IQC 收货单与 FQC 任务汇总到
@@ -630,7 +626,7 @@ class _QualityPendingDisposalPageState
       context.appWarning('所选任务状态已变化，请刷新后重新选择');
       return;
     }
-    final done = await context.push<bool>(
+    await context.push<bool>(
       RouteName.warehouseInspectionBatchApproval,
       extra: QualityBatchApprovalSelection(
         receipts: receipts,
@@ -640,7 +636,6 @@ class _QualityPendingDisposalPageState
     );
     if (!mounted) return;
     setState(() => _selectedIds.clear());
-    if (done == true) await _load();
   }
 
   List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
@@ -2139,6 +2134,5 @@ String _fmt(double value) {
 /// OffsetDateTime 序列化值 → 'yyyy-MM-dd HH:mm'；解析不了原样返回。
 String? _fmtDateTime(String? iso) {
   if (iso == null || iso.isEmpty) return null;
-  final text = iso.replaceFirst('T', ' ');
-  return text.length > 16 ? text.substring(0, 16) : text;
+  return ChinaDateTime.formatIsoInstant(iso, fallback: iso);
 }

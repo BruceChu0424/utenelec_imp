@@ -201,6 +201,7 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     this.loadLeadingGroups,
     this.inlineFields = const {},
     this.onInlineSave,
+    this.inlineCreation,
     this.inlineCancelLabel,
     this.inlineDiscardNote,
     this.readStableWritePermission,
@@ -212,6 +213,10 @@ class MasterEntityPaneConfig<TItem, TDetail> {
   final String defaultCodePrefix;
   final List<MasterColumnDef<TItem>> columns;
   final Map<String, MasterInlineField<TItem>> inlineFields;
+  final MasterInlineCreateConfig Function(
+    MasterEntityPaneController<TItem, TDetail> pane,
+  )?
+  inlineCreation;
   final String? inlineCancelLabel;
   final String? inlineDiscardNote;
   final String? readStableWritePermission;
@@ -497,6 +502,53 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         });
       }
     }
+  }
+
+  void _configureInlineCreation() {
+    final builder = _c.inlineCreation;
+    final categoryId = widget.categoryId;
+    final config = builder == null || widget.categoryId == null
+        ? null
+        : builder(this);
+    _inlineEdit.configureCreation(
+      config == null
+          ? null
+          : MasterInlineCreateConfig(
+              namespace: config.namespace,
+              fields: config.fields,
+              defaults: config.defaults,
+              emptyRows: config.emptyRows,
+              columnFields: config.columnFields,
+              canCreate: _c.canCreate && config.canCreate,
+              onCreate: (key, values) async {
+                if (!_c.canCreate ||
+                    _listError != null ||
+                    categoryId == null ||
+                    widget.categoryId != categoryId) {
+                  throw ApiException('FORBIDDEN', '当前分类或新增权限已变化，请刷新后重试');
+                }
+                await runSensitiveWrite(
+                  ref,
+                  isCurrent: () =>
+                      mounted &&
+                      _c.canCreate &&
+                      widget.categoryId == categoryId &&
+                      _listError == null,
+                  write: () => config.onCreate(key, values),
+                );
+              },
+              afterSave: () async {
+                if (!mounted || widget.categoryId != categoryId) return;
+                await config.afterSave?.call();
+                await reload();
+                if (mounted && _listError != null) {
+                  throw StateError(
+                    'Confirmed creation refresh did not restore the readable list',
+                  );
+                }
+              },
+            ),
+    );
   }
 
   @override
@@ -1374,11 +1426,16 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
           child: Text('添加${_c.noun}'), // TODO(l10n): 补 arb
         ),
     ];
-    if (_c.onInlineSave == null || _c.inlineFields.isEmpty) return additional;
+    final canCreate =
+        widget.categoryId != null && _c.canCreate && _c.inlineCreation != null;
+    if ((_c.onInlineSave == null || _c.inlineFields.isEmpty) && !canCreate) {
+      return additional;
+    }
     return [
       MasterInlineEditActions<TItem>(
         controller: _inlineEdit,
         canEdit: _c.canEdit && !_busy && !_listLoading && _listError == null,
+        canCreate: canCreate && !_busy && !_listLoading && _listError == null,
         onSave: _saveInlineRow,
         cancelLabel: _c.inlineCancelLabel,
         discardNote: _c.inlineDiscardNote,
@@ -1404,6 +1461,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   @override
   Widget build(BuildContext context) {
+    _configureInlineCreation();
     final theme = Theme.of(context);
     if (_loading || (widget.externalSearchPending && _page == null)) {
       return const Center(child: CircularProgressIndicator());
@@ -1473,6 +1531,11 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
             // primary:true → 表体参与「卡片折叠 → 表格内滚」联动。
             Expanded(
               child: MasterDataTableView<TItem>(
+                appendRowsSource: _inlineEdit.appendRowsSource,
+                temporaryLeadingColumnKeys: _inlineEdit.requiredColumnKeys(
+                  columns: _c.columns,
+                  fields: _c.canEdit ? _c.inlineFields : const {},
+                ),
                 columnEditingEnabled: _c.canEdit,
                 rowsController: _tableRows,
                 paginationRevision: _page,
@@ -1488,9 +1551,10 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 revealItemId: _revealItemId,
                 revealRequest: _revealRequest,
                 columns: _inlineEdit.columns(
+                  preferenceNamespace: _c.batchEntityPath,
                   columns: _c.columns,
                   idOf: _c.idOf,
-                  fields: _listLoading || _listError != null
+                  fields: !_c.canEdit || _listLoading || _listError != null
                       ? const {}
                       : _c.inlineFields,
                   writableOf: _c.writableOf,

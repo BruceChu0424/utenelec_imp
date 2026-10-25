@@ -1055,7 +1055,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
 
   // ---- 库存与出入库 Tab ----
   Widget _buildStockTab() => Padding(
-    padding: const EdgeInsets.all(UtenSpacing.s12),
+    // 水平贴 0 与页签栏共缘（2026-10-24 口径）。
+    padding: const EdgeInsets.fromLTRB(0, UtenSpacing.s12, 0, UtenSpacing.s12),
     child: GoodsStockLedgerPanel(
       key: ValueKey('goods-stock-$_goodsId-$_stockPanelGeneration'),
       goodsId: _goodsId!,
@@ -1064,11 +1065,11 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
   );
 
   Widget _buildFilesTab() => SingleChildScrollView(
-    // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+    // compact 悬浮胶囊避让：滚到底末行要能越过胶囊；水平贴 0 与页签栏共缘。
     padding: EdgeInsets.fromLTRB(
+      0,
       UtenSpacing.s16,
-      UtenSpacing.s16,
-      UtenSpacing.s16,
+      0,
       math.max(UtenSpacing.s16, UtenCapsuleNavScope.occlusionOf(context)),
     ),
     child: Center(
@@ -1077,8 +1078,6 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('用于保存产品图片、图纸和规格资料。能查看该货品的同事也能查看这些文件，请不要放入价格、成本等保密凭证。'),
-            const SizedBox(height: UtenSpacing.s12),
             BusinessAttachmentSection(
               ownerType: 'GOODS',
               ownerId: _goodsId!,
@@ -1227,10 +1226,11 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
               ),
               child: MasterEditForm(
                 key: _formKey,
+                // 水平贴 0：正文左缘与页签栏药丸共用 x=0（2026-10-24 口径）。
                 contentPadding: const EdgeInsets.fromLTRB(
+                  0,
                   UtenSpacing.s16,
-                  UtenSpacing.s16,
-                  UtenSpacing.s16,
+                  0,
                   UtenFloatingActionGroup.scrollClearance,
                 ),
                 fields: _goodsFields(
@@ -1297,10 +1297,11 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     }
     return UtenDetailActionLayout(
       body: SingleChildScrollView(
+        // 水平贴 0：只读分组与编辑态表单、页签栏共用左缘。
         padding: const EdgeInsets.fromLTRB(
+          0,
           UtenSpacing.s16,
-          UtenSpacing.s16,
-          UtenSpacing.s16,
+          0,
           UtenFloatingActionGroup.scrollClearance,
         ),
         // 只读网格与编辑态表单同样使用完整可用内容宽度。
@@ -1596,7 +1597,6 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         onEdit: r.onEdit,
       );
     }
-    final hasValue = r.value != null && r.value!.isNotEmpty;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(
@@ -1618,12 +1618,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
             ),
           ),
           const SizedBox(height: 2),
-          Text(
-            hasValue ? r.value! : '—',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+          MasterDetailValue(value: r.value),
         ],
       ),
     );

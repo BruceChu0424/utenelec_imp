@@ -1,10 +1,9 @@
-// UtenTopBannerCard —— 顶部横幅统一视觉外壳
+// UtenTopBannerCard —— 顶部通知横幅统一视觉外壳
 // 文档：docs/02-组件库/UtenNotify.md §四 / AppNotification.md §四
 //
-// 连接恢复横幅（ConnectionRecoveryBanner）与普通通知横幅（_AppNotificationBanner）
-// 共用本组件，保证两者"居中 / 最大宽 720 / 圆角 14 / elevation 4 / 柔和容器色"
-// 完全同款。各调用方只负责自己的生命周期（动画、自动消失、相位切换、重试按钮），
-// 把背景色、前景色、图标、正文、可选尾部件交给本卡片渲染。
+// 普通通知横幅（_AppNotificationBanner）用本组件悬浮居中（瞬时提示、自动消失）。
+// 连接恢复横幅（ConnectionRecoveryBanner）不在此列：它占顶下推为通栏单行
+//（悬浮卡片会盖住页面工具条，见 connection_recovery_banner.dart）。
 //
 // 不要在业务代码里直接用本组件；通知走 UtenNotify 门面，连接态走 ConnectionRecoveryBanner。
 

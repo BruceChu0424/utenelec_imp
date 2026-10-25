@@ -152,13 +152,13 @@ bash deploy/simple/install-server-operations.sh deploy/simple
 
 **因为连接串写死, 不要在服务器上拿它对副本库"演练"**(改 `UTEN_DB_URL` 无效, 会直接迁正式库; 2026-09-24 v2.0.0 发版踩过)。迁移演练在开发机克隆库上做: pg_dump 服务器库 → 本机恢复 → 用待发布 JAR 起实例指向克隆库。
 
-### 上线后业务清空功能下架
+### 业务清空功能永久删除
 
-所有服务器（公司内网、内测、云端）均下架整个 `/api/system-test/`。`prod`、`internal-test` 的开关固定为 `false`，服务器环境校验拒绝 `UTEN_BUSINESS_DATA_RESET_ENABLED=true`；Controller 只在单独的 `dev` 环境注册，服务层还要求回环监听与回环 PostgreSQL 地址。所有 Nginx 模板直接拒绝测试路径，V915 撤销 `business_data_reset()` 对非 owner 角色的执行授权，角色加固脚本重复撤权，避免后续通用函数授权恢复能力。
+客户端和服务端已删除清空业务数据实现，所有环境（包括本地 dev）都没有恢复开关。旧 `UTEN_BUSINESS_DATA_RESET_ENABLED` 环境变量不再被应用读取，升级不要求保留该废弃键；不应以旧配置或手工授权恢复危险函数。Nginx 模板继续对整个 `/api/system-test/` 返回 404。
 
-已有服务器需核对并实际应用网关拒绝、运行开关关闭、数据库撤权三道保护；源码完成或模板修改不代表线上已经生效。只读核验 `has_function_privilege('uten','public.business_data_reset()','EXECUTE')` 必须为 `false`，同时核对应用角色没有 owner/migrator 继承权限。禁止通过手工 TRUNCATE、停机脚本或给应用账号恢复执行授权来绕过下架。
+下次正式更新服务器时，由签名发行包中的独立 migrator 顺序执行到 V919：保留 V915 历史字节，继续删除数据库清空入口、专用 helper/权限与历史保护中的清空绕过分支，不清理业务数据、文件或审计。应用仅在受控迁移和健康核验后启动，不能跳过这一步只换客户端。
 
-本地测试保留工作台入口，仅 Debug 客户端连接 `localhost` / `127.0.0.1` / `::1` API 时显示；连接公司或云端 API 时入口消失，仓库层也拒绝请求。开发机后端必须是单独 `dev` profile、`SERVER_ADDRESS=127.0.0.1`、回环 JDBC URL（不含可改写目标的查询参数）。V915 后，如本地应用账号不是函数 owner，由开发人员仅在独立本地测试数据库以 owner 执行 `GRANT EXECUTE ON FUNCTION public.business_data_reset() TO uten;`；此操作不进入任何服务器安装或发布流程，超管本人、再认证、逐字确认、文件核对与排水检查仍然必需。
+升级验收应确认 `to_regprocedure('public.business_data_reset()') IS NULL`，专用权限码不在目录中；使用已认证超管访问旧 preview、last-result、reset 接口均返回 404，普通业务、附件、权限及历史审计可正常访问。若恢复旧备份或回滚到包含危险实现的旧发行，必须先封闭旧路径并重新应用下架迁移，不能直接重开服务。源码修改和本地隔离测试不代表公司服务器已经更新。
 
 ## 数据与附件备份
 

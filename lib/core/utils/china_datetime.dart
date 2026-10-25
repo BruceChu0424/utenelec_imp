@@ -65,9 +65,17 @@ abstract final class ChinaDateTime {
   static DateTime? tryParse(String? value) {
     final raw = value?.trim();
     if (raw == null || raw.isEmpty) return null;
-    final parsed = DateTime.tryParse(raw);
+    final explicitOffset = _hasExplicitOffset(raw);
+    // 无偏移值是北京墙上时间，先用 UTC 载体解析，避免设备的夏令时
+    // 把 02:30 等合法北京时间自动归一化成 03:30。
+    final parseValue = explicitOffset
+        ? raw
+        : raw.contains(RegExp(r'[Tt ]'))
+        ? '${raw}Z'
+        : '${raw}T00:00:00Z';
+    final parsed = DateTime.tryParse(parseValue);
     if (parsed == null) return null;
-    return _hasExplicitOffset(raw) ? fromInstant(parsed) : _wallClock(parsed);
+    return explicitOffset ? fromInstant(parsed) : _wallClock(parsed);
   }
 
   static String formatDate(DateTime value) =>
@@ -75,17 +83,26 @@ abstract final class ChinaDateTime {
       '${value.month.toString().padLeft(2, '0')}-'
       '${value.day.toString().padLeft(2, '0')}';
 
-  static String formatDateTime(DateTime value) =>
-      '${formatDate(value)} '
+  /// 展示用北京墙上日期时间。机器日期/ISO 序列化不使用此方法。
+  static String formatDateTime(DateTime value, {bool seconds = false}) =>
+      '${formatDate(value)} ${formatTime(value, seconds: seconds)}';
+
+  /// 展示用北京墙上时刻，统一保留明确的业务时区标记。
+  static String formatTime(DateTime value, {bool seconds = false}) =>
       '${value.hour.toString().padLeft(2, '0')}:'
-      '${value.minute.toString().padLeft(2, '0')}';
+      '${value.minute.toString().padLeft(2, '0')}'
+      '${seconds ? ':${value.second.toString().padLeft(2, '0')}' : ''}(北京)';
 
-  static String formatInstant(DateTime instant) =>
-      formatDateTime(fromInstant(instant));
+  static String formatInstant(DateTime instant, {bool seconds = false}) =>
+      formatDateTime(fromInstant(instant), seconds: seconds);
 
-  static String formatIsoInstant(String? value, {String fallback = ''}) {
+  static String formatIsoInstant(
+    String? value, {
+    String fallback = '',
+    bool seconds = false,
+  }) {
     final parsed = tryParse(value);
-    return parsed == null ? fallback : formatDateTime(parsed);
+    return parsed == null ? fallback : formatDateTime(parsed, seconds: seconds);
   }
 
   static bool sameWallMinute(DateTime a, DateTime b) =>

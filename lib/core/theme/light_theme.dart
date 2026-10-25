@@ -88,7 +88,7 @@ ThemeData buildLightTheme({PlatformBranding? branding}) {
         fontFamily: 'NotoSansSC',
         color: UtenColors.textPrimary,
         fontSize: 18,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
       ),
       systemOverlayStyle: SystemUiOverlayStyle.dark,
     ),

@@ -176,7 +176,9 @@ class GoodsExcelPreparationTest(unittest.TestCase):
 
     def test_default_supplier_follows_route_without_using_other_route_as_secondary(self):
         subject.write_csv(self.dictionary / "supplier.csv", ["legacy_id", "code", "name"],
-                          [{"legacy_id": "73", "code": "GY000001", "name": "采购商"},
+                          [{"legacy_id": "70", "code": "GY000070", "name": "原默认商"},
+                           {"legacy_id": "71", "code": "GY000071", "name": "原第二商"},
+                           {"legacy_id": "73", "code": "GY000001", "name": "采购商"},
                            {"legacy_id": "74", "code": "GY000002", "name": "委外商"},
                            {"legacy_id": "75", "code": "GY000003", "name": "通用商"}])
         _, old = subject.read_csv(self.source / "goods.csv")

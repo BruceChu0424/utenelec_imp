@@ -286,7 +286,8 @@ class _FinanceArrivalExceptionTasksPageState
                   await context.push(
                     RoutePath.financeArrivalException(result.items[i].id),
                   );
-                  if (mounted) await _load(_result?.page ?? 1);
+                  // Standalone resume or the embedded host's refresh tick owns
+                  // the return read; do not issue a second request here.
                 },
               ),
               if (i != result.items.length - 1)

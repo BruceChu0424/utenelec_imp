@@ -216,6 +216,8 @@ public class SubcontractReceiptService {
     public ReceiptDetail create(ReceiptSaveRequest req) {
         tx.bind();
         lockReceiptRequest(null,req).verifyUnchanged();
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,"SUBCONTRACT",
+                req.getItems().stream().map(ReceiptItemLine::getOrderItemId).toList());
         lockAndRequireDraftOutboundCapacity(req.getItems(), null, List.of());
         SubcontractReceipt r = new SubcontractReceipt();
         applyHeader(req, r);
@@ -332,6 +334,8 @@ public class SubcontractReceiptService {
         }
         warehouseScopes.require(r.getWarehouseId(), "入库仓库", WarehouseUse.GOOD_IN);
         List<SubcontractReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,"SUBCONTRACT",
+                items.stream().map(SubcontractReceiptItem::getOrderItemId).toList());
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
@@ -432,6 +436,8 @@ public class SubcontractReceiptService {
             com.uten.imp.common.finance.ProcurementUnapprovalPreflight.check("DOWNSTREAM_OR_COST_BLOCKED",()->requireReversibleBusiness(r)));
     }
     private void requireUnapprovalHeader(SubcontractReceipt r){
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,"SUBCONTRACT",
+                itemRepo.findByReceiptIdOrderByLineNoAsc(r.getId()).stream().map(SubcontractReceiptItem::getOrderItemId).toList());
         access.requireWritable(r.getMakerId(),"只能操作本人负责的委外收货单");
         com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         if(r.getStatus()==null||r.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");

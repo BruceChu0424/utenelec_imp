@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/network/api_exception.dart';
 
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/auth/sensitive_write.dart';
@@ -18,6 +20,7 @@ mixin MasterInlinePageMixin<W extends ConsumerStatefulWidget, T>
   String get inlineEntityType;
   bool get inlineCanEdit;
   bool get inlineReadReady;
+  MasterInlineCreateConfig? get inlineCreation => null;
   Future<void> inlineReload();
   Future<void> inlineReloadAfterBoundary() => inlineReload();
   void inlineClearView();
@@ -55,13 +58,60 @@ mixin MasterInlinePageMixin<W extends ConsumerStatefulWidget, T>
     super.dispose();
   }
 
-  List<MasterColumnDef<T>> inlineColumns(List<MasterColumnDef<T>> columns) =>
-      inlineEdit.columns(
-        columns: columns,
-        idOf: inlineIdOf,
-        fields: inlineFields,
-        writableOf: (_) => inlineReadReady,
-      );
+  void _configureCreation() {
+    final config = inlineCreation;
+    inlineEdit.configureCreation(
+      config == null
+          ? null
+          : MasterInlineCreateConfig(
+              namespace: config.namespace,
+              fields: config.fields,
+              defaults: config.defaults,
+              emptyRows: config.emptyRows,
+              columnFields: config.columnFields,
+              canCreate: config.canCreate,
+              onCreate: (key, values) async {
+                if (inlineCreation?.canCreate != true || !inlineReadReady) {
+                  throw ApiException('FORBIDDEN', '新增权限或列表状态已变化，请刷新后重试');
+                }
+                await runSensitiveWrite(
+                  ref,
+                  isCurrent: () =>
+                      mounted &&
+                      inlineCreation?.canCreate == true &&
+                      inlineReadReady,
+                  write: () => config.onCreate(key, values),
+                );
+              },
+              afterSave: () async {
+                if (!mounted) return;
+                await config.afterSave?.call();
+                await inlineReload();
+                if (mounted && !inlineReadReady) {
+                  throw StateError(
+                    'Confirmed creation refresh did not restore the readable list',
+                  );
+                }
+              },
+            ),
+    );
+  }
+
+  ValueListenable<List<MasterTableAppendRow>> get inlineAppendRowsSource {
+    _configureCreation();
+    return inlineEdit.appendRowsSource;
+  }
+
+  List<MasterColumnDef<T>> inlineColumns(List<MasterColumnDef<T>> columns) {
+    _configureCreation();
+    return inlineEdit.columns(
+      columns: columns,
+      idOf: inlineIdOf,
+      fields: inlineCanEdit ? inlineFields : const {},
+      preferenceNamespace: inlineEntityType,
+      writableOf: (_) => inlineReadReady,
+    );
+  }
 
   Future<void> saveInline(String id, Map<String, dynamic> patch) async {
     if (!inlineCanEdit) throw StateError('编辑权限已变化，请刷新后重试');
@@ -97,6 +147,7 @@ mixin MasterInlinePageMixin<W extends ConsumerStatefulWidget, T>
       MasterInlineEditActions(
         controller: inlineEdit,
         canEdit: inlineCanEdit && inlineReadReady,
+        canCreate: inlineCreation?.canCreate == true && inlineReadReady,
         onSave: saveInline,
         additionalActions: additionalActions,
       );

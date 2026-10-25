@@ -170,7 +170,7 @@ class ApiClient {
     }
   }
 
-  /// 已知的长事务端点（如清空业务数据）用：同 [post]，但用 [receiveTimeout] 覆盖
+  /// 已知的长事务端点（如人事对账）用：同 [post]，但用 [receiveTimeout] 覆盖
   /// network_policy.dart 的全局 45s 接收超时。单独成方法而非给 [post] 加可选参数，
   /// 是为了让既有覆写 [post] 的测试/API 子类保持源码兼容（同 [putWithQuery]）。
   /// 非幂等写请求，不走安全重试拦截器（POST 本就不重试）。

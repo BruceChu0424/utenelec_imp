@@ -308,7 +308,10 @@ void main() {
     final resizedField = tester.getRect(field);
     final resizedMenu = tester.getRect(menuItem);
     expect(resizedMenu.left, moreOrLessEquals(resizedField.left));
-    expect(resizedMenu.top, moreOrLessEquals(resizedField.bottom + 2));
+    final resizedSurface = tester.getRect(
+      find.ancestor(of: menuItem, matching: find.byType(Material)).first,
+    );
+    expect(resizedSurface.top, moreOrLessEquals(resizedField.bottom + 2));
     expect(resizedMenu.width, moreOrLessEquals(resizedField.width));
     await tester.tapAt(const Offset(10, 500));
     await tester.pumpAndSettle();

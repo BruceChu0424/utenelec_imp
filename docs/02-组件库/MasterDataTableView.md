@@ -25,6 +25,9 @@
 
 ## 二、Excel 风格特性（开箱即用）
 
+- **独立尾部草稿行 (2026-10-24)**：`appendRows` 或 `appendRowsSource` 承载没有业务身份的本地录入行。`MasterTableAppendRow.cellBuilder` 按列 key 渲染，沿用当前列序、显隐、列宽、冻结列和全屏布局；`detailsBuilder` 可为隐藏字段提供本地补充入口。空业务列表仍显示这些录入行。尾行不进入 `items`、分页、选择、筛选、排序、计数或导出，不能伪造 `T` 或 UUID 混入服务端数据。主档通过 `MasterInlineCreateConfig` 绑定原创建字段、上下文和保存回调，BOM 通过自己的编辑会话暂存组件，两者共用表格展示能力。
+- **可选双击确认与表头业务图标**：`onRowDoubleTap` 可在单击选中之外提供明确的双击动作，保留原读取和行可用性检查；未配置时行为保持。`headerTrailingBuilder` 在表头末端提供如「添加下级组件」的业务动作，与平台自定义列功能分别配置和授权。
+
 - **添加列常驻工具条（2026-10-09 统一骨架起）**：空结果/初次加载/加载失败都渲染同一张
   表骨架（表头常在），「添加列」与全屏、业务动作一样在任何状态都显示——占位切换期间
   入口不再忽隐忽现。由共用组件统一处理，业务页面不各自判断。
@@ -192,6 +195,8 @@
   宽时不必把表格拖到最右才看得到「合计数量/合计金额」(2026-09-15 用户反馈)。表宽没撑满
   可视框时保持贴表格右端(位移不取正)。契约见
   [`test/features/sales/pages/sales_doc_detail_totals_bar_test.dart`](../../test/features/sales/pages/sales_doc_detail_totals_bar_test.dart)。
+- **返回后台更新（2026-10-23）**：`isRefreshing` 与首屏 `isLoading`、翻页 `loadingMore` 分开。每次真实返回均向服务器核对，包括其他用户新增/删除；表头固定，表体平缓下沉一行，空出的第一行显示刷新状态和加载图标。下方数据行始终可点击、双击；核对完成后有变化就更新，内容相同时只收起状态行，保持表格与行 State、滚动和原有数据出现动画。只对一个状态容器做高度过渡，不给每行建立动画，不使用模糊、shader 或每帧数据投影；复用动画 token，省电、减少动画及隐藏页面会降级。`refreshError` 在同一行显示“更新失败，显示上次数据”及 `onRetry`，不能悄悄把旧内容标为最新。
+  接入共享 `PagedListController` 时传 `paginationRevision: controller.paginationRevision`，不要用每次响应的新对象作为 revision。将 `onRetainedPagesChanged` 接 `controller.retainPages`，将 `refreshedPages` 接 `controller.refreshedPages`，取数同时提供 `fetchPage(page)`；后台顺序核对实际保留窗口（最多 5 页），全部成功后一次更新，避免分页位移后残留已删除行。后台核对期间不追加分页；身份/权限/服务器/查询改变清空旧范围。草稿包装表必须传递并转换这些接口，不能只保留最后一次请求页。
 - **`onLoadMore`（2026-09-10 新增，滚动自动加载）**：表体竖向滚动临近底部（距底约 200px
   预取窗）时回调，配合 `loadingMore:true`（末尾追加转圈行，组件内同时防重入）实现
   「滑到底自动加载下一页」。组件不判断是否还有更多页——增量加载式页面不传
@@ -564,3 +569,7 @@ normal/fullscreen共用表面圆角12，嵌入表也使用同一外框；装饰�
 物料分析的产品/物料排布使用局部通知器先绘制加载反馈与轻微淡出，至少两帧之后才更新投影，新表体完成一帧布局后淡入。减少动画与省电模式取消淡入淡出时长，仍保留加载反馈先绘制的顺序。连续点击仅采用最后意图；离开页面、分析快照或会话作用域改变时丢弃待切换操作。该入口不改变数量、选择身份、过滤和业务提交守卫。
 
 物料切换采用 120ms 淡出、150ms 淡入。实际数据和布局允许耗时，不据此声明零长帧；回归见 test/features/production/pages/material_analysis_view_transition_cases.dart。
+
+## 2026-10-24 前导分组标题行钉视口
+
+`leadingGroups` 的折叠标题行（如货品页「禁用货品」「不明货品」）经 `_ViewportPinnedRow` 钉在视口左缘：表格横向滚动时文案不随内容被带走，任何横滚位置都看得见、点得到（展开/加载/重试同一入口）。行内布局为图标 + 标题 + 副标题 + `detailLabel`（默认「下拉查看详情」）+ 旋转箭头逐段左起相邻排布，不用 `Expanded` 把提示推到行右端——行宽是整表宽，行尾在宽表下远在可视区外。展开后的分组数据行仍按列定义正常横滚。回归见 test/features/basic_data/widgets/master_data_group_header_pinned_test.dart。

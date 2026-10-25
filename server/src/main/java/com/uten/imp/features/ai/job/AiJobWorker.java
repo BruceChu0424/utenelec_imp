@@ -6,7 +6,6 @@ import com.uten.imp.application.port.AiCompletionPort;
 import com.uten.imp.application.port.AiCompletionPort.AiCallException;
 import com.uten.imp.application.port.AiCompletionPort.AiErrorCategory;
 import com.uten.imp.application.port.AiJobHandler;
-import com.uten.imp.application.port.BusinessDataResetGatePort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.ai.AiPermissions;
 import com.uten.imp.features.ai.AiProperties;
@@ -49,9 +48,7 @@ import java.util.regex.Pattern;
  * AI 识别任务的后台处理(ADR-133; 只在本地实例运行, 云端实例提交的任务也由这里经轮询接手)。
  *
  * <p>专用线程池(默认 2 个守护线程 {@code ai-job-N}, 有界等待队列 8, 满了直接放弃唤醒 —— 真正的队列在数据库,
- * 5 秒轮询兜底)。认领用 {@code FOR UPDATE SKIP LOCKED} 的独立短事务。每个短事务都经过业务数据清空排水闸
- * ({@link BusinessDataResetGatePort#tryEnter()}/{@code leave()}), 排水闸从不跨网络调用或整个任务持有;
- * 阶段之间发现系统正在清空就中止。
+ * 5 秒轮询兜底)。认领用 {@code FOR UPDATE SKIP LOCKED} 的独立短事务，事务不跨网络调用或整个任务持有。
  *
  * <p>租约: 认领、阶段报告与 AI 调用前后都续租; 一次 AI 调用可能比租约还长(等名额 + 服务商超时 + 重试一次),
  * 所以调用期间由守护线程 {@code ai-job-lease} 每隔租约的 1/4(最长 60 秒)续租。处理器自己的解析阶段不续租 ——
@@ -60,7 +57,7 @@ import java.util.regex.Pattern;
  *
  * <p>处理前用 {@link SubmitterPrincipalRestorer} 按提交时的授权戳重建提交人主体放进本线程的
  * SecurityContext(finally 清除); 账号状态或权限变化即失败「账号权限已变化, 请重新识别」, 从不用系统或超管身份。
- * 任何终态更新都在同一语句里清空上传文件; 更新影响 0 行(任务被取消、清理、清库或已被重新认领)就安静停止。
+ * 任何终态更新都在同一语句里清空上传文件; 更新影响 0 行(任务被取消、清理或已被重新认领)就安静停止。
  *
  * <p>失败原因给业务人员看: 处理器的 {@link ApiException} 用它的消息; AI 调用失败按错误类别换成不含技术细节的
  * 说法(类别与 HTTP 状态只记服务端日志); 其他异常一律「识别失败, 请稍后重试」。
@@ -71,7 +68,6 @@ import java.util.regex.Pattern;
 public class AiJobWorker implements AutoCloseable {
 
     static final String PRINCIPAL_CHANGED_MESSAGE = "账号权限已变化, 请重新识别";
-    static final String RESETTING_MESSAGE = "系统正在重置数据, 请稍后重试";
     static final String GENERIC_FAILURE_MESSAGE = "识别失败, 请稍后重试";
     static final String CANCELLED_MESSAGE = "识别已取消";
     static final String NO_AI_USE_MESSAGE = "没有使用 AI 识别的权限";
@@ -82,7 +78,7 @@ public class AiJobWorker implements AutoCloseable {
 
     /** 平台自己抛出的、本来就是给业务人员看的 BLOCKED 消息; 其余 BLOCKED(地址被拦等)是给管理员看的。 */
     private static final Set<String> PLAIN_BLOCKED_MESSAGES = Set.of(CANCELLED_MESSAGE, NO_AI_USE_MESSAGE,
-            CALL_CAP_MESSAGE, RESETTING_MESSAGE, AiGateway.VISION_UNSUPPORTED_MESSAGE);
+            CALL_CAP_MESSAGE, AiGateway.VISION_UNSUPPORTED_MESSAGE);
     private static final Pattern STAGE = Pattern.compile("^[A-Z][A-Z0-9_]{0,47}$");
     /** 处理器随 ApiException 给出的业务错误码(fieldErrors 里 field = errorCode), 写进 ai_jobs.error_code。 */
     static final String ERROR_CODE_FIELD = "errorCode";
@@ -93,7 +89,6 @@ public class AiJobWorker implements AutoCloseable {
     private final AiJobHandlerRegistry registry;
     private final SubmitterPrincipalRestorer restorer;
     private final AiCompletionPort completion;
-    private final BusinessDataResetGatePort resetGate;
     private final AiProperties properties;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate requiresNew;
@@ -110,20 +105,19 @@ public class AiJobWorker implements AutoCloseable {
     @Autowired
     public AiJobWorker(AiJobRepository repository, AiJobHandlerRegistry registry,
                        SubmitterPrincipalRestorer restorer, AiCompletionPort completion,
-                       BusinessDataResetGatePort resetGate, AiProperties properties, ObjectMapper objectMapper,
+                       AiProperties properties, ObjectMapper objectMapper,
                        PlatformTransactionManager transactionManager) {
-        this(repository, registry, restorer, completion, resetGate, properties, objectMapper, transactionManager,
+        this(repository, registry, restorer, completion, properties, objectMapper, transactionManager,
                 newExecutor(properties));
     }
 
     AiJobWorker(AiJobRepository repository, AiJobHandlerRegistry registry, SubmitterPrincipalRestorer restorer,
-                AiCompletionPort completion, BusinessDataResetGatePort resetGate, AiProperties properties,
+                AiCompletionPort completion, AiProperties properties,
                 ObjectMapper objectMapper, PlatformTransactionManager transactionManager, ExecutorService executor) {
         this.repository = repository;
         this.registry = registry;
         this.restorer = restorer;
         this.completion = completion;
-        this.resetGate = resetGate;
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.requiresNew = new TransactionTemplate(transactionManager);
@@ -181,8 +175,6 @@ public class AiJobWorker implements AutoCloseable {
             if (recovered > 0) {
                 log.warn("Recovered {} AI job(s) whose worker lease expired", recovered);
             }
-        } catch (ResetDraining e) {
-            return;
         } catch (RuntimeException e) {
             log.warn("AI job lease recovery failed: {}", e.getClass().getSimpleName());
         }
@@ -220,8 +212,6 @@ public class AiJobWorker implements AutoCloseable {
                 boolean worked;
                 try {
                     worked = processNext();
-                } catch (ResetDraining e) {
-                    return;
                 } catch (RuntimeException e) {
                     log.warn("AI job worker loop failed: {}", e.getClass().getSimpleName());
                     return;
@@ -243,9 +233,6 @@ public class AiJobWorker implements AutoCloseable {
 
     /** 认领并处理一个任务; 没有可认领的返回 false。 */
     boolean processNext() {
-        if (resetGate.blockingNewRequests()) {
-            return false;
-        }
         Optional<AiJobRepository.ClaimedJob> claimed = shortTx(status -> repository.claimNext(leaseSeconds()));
         if (claimed.isEmpty()) {
             return false;
@@ -273,8 +260,6 @@ public class AiJobWorker implements AutoCloseable {
         } catch (SubmitterPrincipalRestorer.PrincipalChangedException e) {
             log.info("AI job {} stopped: submitter principal changed ({})", job.id(), e.reason());
             finishFailed(job, "PRINCIPAL_CHANGED", PRINCIPAL_CHANGED_MESSAGE);
-            return;
-        } catch (ResetDraining e) {
             return;
         } catch (RuntimeException e) {
             log.warn("AI job {} could not restore its submitter: {}", job.id(), e.getClass().getSimpleName());
@@ -304,10 +289,6 @@ public class AiJobWorker implements AutoCloseable {
                 releaseForShutdown(job.id(), job.attempts());
                 return;
             }
-        }
-        if (execution.resetDraining || resetGate.blockingNewRequests()) {
-            finishFailed(job, "RESETTING", RESETTING_MESSAGE);
-            return;
         }
         if (failure != null) {
             finishWithFailure(job, execution, failure);
@@ -370,7 +351,7 @@ public class AiJobWorker implements AutoCloseable {
 
     /**
      * AI 调用失败时给业务人员看的说法: 不出现服务商、模型、HTTP 状态或服务商原文(那些是管理员在「AI 服务」设置页
-     * 与调用记录里看的)。平台自己的 BLOCKED 提示(已取消、无权限、次数上限、清库中、不支持图片)原样保留。
+     * 与调用记录里看的)。平台自己的 BLOCKED 提示(已取消、无权限、次数上限、不支持图片)原样保留。
      */
     static String plainAiFailureMessage(AiCallException failure) {
         if (failure.category() == AiErrorCategory.BLOCKED && PLAIN_BLOCKED_MESSAGES.contains(failure.getMessage())) {
@@ -394,8 +375,6 @@ public class AiJobWorker implements AutoCloseable {
                 log.debug("AI job {} (attempt {}) was no longer held by this worker when finishing", job.id(),
                         job.attempts());
             }
-        } catch (ResetDraining e) {
-            // 表会被清空, 无需也不能再写。
         } catch (RuntimeException e) {
             log.warn("AI job {} terminal update failed: {}; lease recovery will close it", job.id(),
                     e.getClass().getSimpleName());
@@ -411,14 +390,7 @@ public class AiJobWorker implements AutoCloseable {
     }
 
     private <T> T shortTx(TransactionCallback<T> work) {
-        if (!resetGate.tryEnter()) {
-            throw new ResetDraining();
-        }
-        try {
-            return requiresNew.execute(work);
-        } finally {
-            resetGate.leave();
-        }
+        return requiresNew.execute(work);
     }
 
     /** 日志只留异常类型与调用栈, 不留消息(可能带有客户文件内容)。 */
@@ -455,13 +427,6 @@ public class AiJobWorker implements AutoCloseable {
         }
     }
 
-    /** 清空排水期间不能开事务。 */
-    static final class ResetDraining extends RuntimeException {
-        ResetDraining() {
-            super("business data reset is draining", null, false, false);
-        }
-    }
-
     /** 一次处理的上下文(处理器看到的 {@link AiJobHandler.AiJobContext})。 */
     final class Execution implements AiJobHandler.AiJobContext {
         private final AiJobRepository.ClaimedJob job;
@@ -471,7 +436,6 @@ public class AiJobWorker implements AutoCloseable {
         private final int maxCalls;
         private volatile int aiCalls;
         private volatile boolean vanished;
-        private volatile boolean resetDraining;
         private volatile boolean cancelRequested;
         private volatile long lastCancelCheck = System.nanoTime();
 
@@ -523,11 +487,7 @@ public class AiJobWorker implements AutoCloseable {
 
         /** 写阶段/进度(为空表示不改)并续租, 顺便读回取消标记。 */
         private void touch(String stage, Integer percent) {
-            if (vanished || resetDraining) {
-                return;
-            }
-            if (resetGate.blockingNewRequests()) {
-                resetDraining = true;
+            if (vanished) {
                 return;
             }
             try {
@@ -539,8 +499,6 @@ public class AiJobWorker implements AutoCloseable {
                     cancelRequested = true;
                 }
                 lastCancelCheck = System.nanoTime();
-            } catch (ResetDraining e) {
-                resetDraining = true;
             } catch (RuntimeException e) {
                 log.warn("AI job {} progress update failed: {}", job.id(), e.getClass().getSimpleName());
             }
@@ -566,11 +524,7 @@ public class AiJobWorker implements AutoCloseable {
 
         @Override
         public boolean cancelled() {
-            if (vanished || resetDraining || cancelRequested) {
-                return true;
-            }
-            if (resetGate.blockingNewRequests()) {
-                resetDraining = true;
+            if (vanished || cancelRequested) {
                 return true;
             }
             if (System.nanoTime() - lastCancelCheck >= CANCEL_CHECK_INTERVAL_NANOS) {
@@ -583,13 +537,11 @@ public class AiJobWorker implements AutoCloseable {
                     } else if (Boolean.TRUE.equals(cancel.get())) {
                         cancelRequested = true;
                     }
-                } catch (ResetDraining e) {
-                    resetDraining = true;
                 } catch (RuntimeException e) {
                     log.warn("AI job {} cancel check failed: {}", job.id(), e.getClass().getSimpleName());
                 }
             }
-            return vanished || resetDraining || cancelRequested;
+            return vanished || cancelRequested;
         }
 
         @Override
@@ -605,14 +557,8 @@ public class AiJobWorker implements AutoCloseable {
             if (!holdsAiUse()) {
                 throw new AiCallException(AiErrorCategory.BLOCKED, NO_AI_USE_MESSAGE);
             }
-            int count;
-            try {
-                count = shortTx(status -> repository.incrementAiCalls(job.id(), job.attempts(), maxCalls,
-                        leaseSeconds()));
-            } catch (ResetDraining e) {
-                resetDraining = true;
-                throw new AiCallException(AiErrorCategory.BLOCKED, RESETTING_MESSAGE);
-            }
+            int count = shortTx(status -> repository.incrementAiCalls(job.id(), job.attempts(), maxCalls,
+                    leaseSeconds()));
             if (count == -1) {
                 vanished = true;
                 throw new AiCallException(AiErrorCategory.BLOCKED, CANCELLED_MESSAGE);

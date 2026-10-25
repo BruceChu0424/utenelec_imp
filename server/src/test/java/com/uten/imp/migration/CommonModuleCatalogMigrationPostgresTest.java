@@ -13,8 +13,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * V831 常用模块分组：工作台「常用功能」四张自助码归「常用模块」（子类与卡片同名、
- * 按卡片顺序排序），只挪目录归类，授权策略 / 基础包口径与管理码归属保持 V677/V679 现状。
+ * V831/V925 常用模块分组：公司资料库在报销、工资条、意见箱之前，原自助码授权策略与基础包保持不变。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class CommonModuleCatalogMigrationPostgresTest {
@@ -48,10 +47,19 @@ class CommonModuleCatalogMigrationPostgresTest {
                 (rs, i) -> new Grouped(rs.getString("code"), rs.getString("category"), rs.getInt("sort_order")));
 
         assertThat(rows).containsExactly(
-                new Grouped("visitor:host_confirm", "我的访客", 10),
-                new Grouped("payroll:view:self", "工资条", 20),
+                new Grouped("company_file:view", "公司资料库", 15),
+                new Grouped("company_file:download", "公司资料库", 16),
+                new Grouped("company_file:upload", "公司资料库", 17),
+                new Grouped("company_file:create", "公司资料库", 18),
+                new Grouped("company_file:edit", "公司资料库", 19),
+                new Grouped("company_file:move", "公司资料库", 20),
+                new Grouped("company_file:delete", "公司资料库", 21),
+                new Grouped("company_file:restore", "公司资料库", 22),
+                new Grouped("company_file:manage_permissions", "公司资料库", 23),
                 new Grouped("expense:apply", "我的报销", 30),
-                new Grouped("suggestion:submit", "意见箱", 40));
+                new Grouped("payroll:view:self", "工资条", 40),
+                new Grouped("suggestion:submit", "意见箱", 50),
+                new Grouped("visitor:host_confirm", "我的访客", 60));
     }
 
     @Test

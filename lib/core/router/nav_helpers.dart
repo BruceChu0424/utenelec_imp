@@ -5,8 +5,8 @@
 // 写死回哪都不对。
 //
 // 方案：跳转时带 ?returnTo=<当前路径>；返回时先 pop（被 push 进来的页面回上一页），
-// 栈空才读 returnTo，没有则用默认。配合工作台/ShellRoute 主 Tab 的 KeepAlive，
-// context.go 回来源 Tab 复用同一实例，滚动位置随之保留。
+// 栈空才读 returnTo，没有则用默认。向下打开页面使用 push 保留来源实例；
+// 返回时不重新创建列表，不重复首次取数。
 //
 // 用法：
 //   卡片入口：onTap: () => goFrom(context, item.location)
@@ -17,19 +17,38 @@
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
-/// 带来源跳转：在 path 上追加 ?returnTo=<当前路径>（已带 query 则合并）。
+import 'route_names.dart';
+
+/// 带来源打开页面，并保留来源页的数据、分类、滚动位置和动画状态。
 ///
-/// 当前路径取 matchedLocation（不含 query），避免来源链无限变长。
-void goFrom(BuildContext context, String path) {
+/// 主 Tab 由外壳保活，沿用 go 避免创建重复的隐藏 Tab；其余来源与 [pushFrom]
+/// 使用同一压栈契约。原来的 go 会销毁普通列表，使“详情返回”变成首次加载。
+/// 切换主导航、登录重定向和结束业务流程仍用显式 go/replace/backTo。
+/// 编辑器的草稿入口设置 [retainSource] 为 false，继续经过路由离开保护；
+/// 保存中的编辑器不能被隐藏后继续替换顶层路由。
+void goFrom(BuildContext context, String path, {bool retainSource = true}) {
   final from = GoRouterState.of(context).matchedLocation;
-  final uri = Uri.parse(path);
-  final params = Map<String, String>.from(uri.queryParameters)
-    ..['returnTo'] = from;
-  context.go(uri.replace(queryParameters: params).toString());
+  if (!retainSource ||
+      const {
+        RouteName.dashboard,
+        RouteName.notice,
+        RouteName.profile,
+        RouteName.settings,
+      }.contains(from)) {
+    final uri = Uri.parse(path);
+    context.go(
+      uri
+          .replace(queryParameters: {...uri.queryParameters, 'returnTo': from})
+          .toString(),
+    );
+    return;
+  }
+  pushFrom<void>(context, path);
 }
 
 /// 带来源压栈，保留来源页的分类、筛选和滚动状态。
-/// 普通 hub 不属于主 Tab 的 KeepAlive 范围，卡片进入子页时使用此入口。
+/// 普通 hub 和任务中心不属于主 Tab 的 KeepAlive 范围，所有向下入口均使用此契约。
+/// 当前路径取 matchedLocation（不含 query），避免来源链无限变长。
 Future<T?> pushFrom<T extends Object?>(BuildContext context, String path) {
   final from = GoRouterState.of(context).matchedLocation;
   final uri = Uri.parse(path);
@@ -41,7 +60,7 @@ Future<T?> pushFrom<T extends Object?>(BuildContext context, String path) {
 /// 全站唯一返回契约（2026-09-10 收敛，docs/05-架构/路由设计.md「返回键契约」）：
 /// 1. 能 pop 就 pop——被 push 进来的页面（任务中心→列表→详情、详情→关联页）
 ///    返回到上一页，栈下页面保留业务分类与未保存状态，搜索按页面生命周期清空；
-/// 2. 栈空（深链、hub 卡片 goFrom/context.go 直达）读 ?returnTo 回来源页；
+/// 2. 栈空（深链、context.go 直达）读 ?returnTo 回来源页；
 /// 3. 再没有则回 [defaultPath]（模块 hub / 工作台）。
 ///
 /// 此前 backTo 永远 context.go（整栈替换），约 70 个页面的返回键因此从三四层

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../components/buttons/uten_back_button.dart';
 import '../../components/buttons/uten_button.dart';
 import '../../components/cards/uten_card.dart';
 import '../../components/layout/uten_content_container.dart';
@@ -183,11 +184,14 @@ class ClientUpdatePage extends StatelessWidget {
         child: Scaffold(
           appBar: AppBar(
             title: Text(l10n.clientUpdateTitle),
-            leading: BackButton(
+            // 与全站 UtenBackButton 口径一致；忙时空回调挡住返回
+            //（UtenBackButton 传 null 会回落默认返回行为，不能用 null）。
+            leading: UtenBackButton(
               onPressed: controller.transferBusy
-                  ? null
+                  ? () {}
                   : () => Navigator.of(context).maybePop(),
             ),
+            leadingWidth: UtenBackButton.slotWidth(context),
           ),
           body: UtenContentContainer(
             child: SingleChildScrollView(

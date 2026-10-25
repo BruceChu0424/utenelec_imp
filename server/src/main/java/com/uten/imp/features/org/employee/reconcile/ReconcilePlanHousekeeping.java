@@ -15,7 +15,7 @@ import java.time.OffsetDateTime;
  *   <li>超过 24 小时有效期还没执行完的计划以 EXPIRED 关闭, 未执行项的旧值/新值/候选密文一并清掉;</li>
  *   <li>卡死的更正轮(APPLYING 超过 applying_until)回收: 计划回 OPEN、RUNNING 回执置 INTERRUPTED。</li>
  * </ul>
- * 已执行项是更正记录, 与员工档案一样长期保留, 本任务不删。业务数据清空期间由排水调度器自动跳过本轮。
+ * 已执行项是更正记录, 与员工档案一样长期保留, 本任务不删。
  */
 @Slf4j
 @Component

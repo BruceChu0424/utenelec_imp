@@ -5,7 +5,7 @@
 | 项目 | 当前值 |
 |---|---|
 | 源码与运行版本 | 源码、隔离验证与已部署版本分别记录；本地检查不代表服务器已升级。当前 2.5.6 核对范围与发布依据见[当前版本验证](docs/99-项目治理/当前版本验证.md) |
-| 数据库迁移头 | 本分支源码 **V874 / 800** 个迁移文件；下一号先核对[迁移目录](server/src/main/resources/db/migration)和在途修改，避免撞号；源码不代表服务器已安装；说明见[迁移索引](docs/数据迁移/README.md)，[完整整合验收](docs/99-项目治理/2026-09-29-全量整合测试提速与发布验收.md) |
+| 数据库迁移头 | 当前本地源码 **V918 / 844** 个迁移文件；本轮5434空库已按完整目录初始化，业务导入/验收状态另记。下一号先核[迁移目录](server/src/main/resources/db/migration)和在途修改；源码不代表公司已安装；见[迁移索引](docs/数据迁移/README.md) |
 | 前端 | Flutter 3.44.2 / Dart 3.12.2(Web、Windows、macOS、Linux、Android、iOS) |
 | 后端 | Java 21、Spring Boot 3.5.16、PostgreSQL 16、Flyway |
 | 发布方式 | GitHub Actions 签名构建 → 阿里云 OSS → 服务器更新器拉取激活([ADR-060](docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md)) |
@@ -22,6 +22,7 @@
 - [技术架构](#技术架构)
 - [仓库结构](#仓库结构)
 - [快速开始](#快速开始)
+- [本地数据重建与导入](#本地数据重建与导入)
 - [质量门禁与测试](#质量门禁与测试)
 - [数据库迁移规则](#数据库迁移规则)
 - [安全与权限](#安全与权限)
@@ -88,7 +89,7 @@
 ├─ test/                Flutter 单元与 Widget 测试
 ├─ server/              Spring Boot 后端(独立 Maven 工程, 见 server/README.md)
 │  ├─ src/main/resources/db/migration   Flyway 正式迁移(唯一的表结构来源)
-│  ├─ ops/              运维 SQL(业务数据重置等)
+│  ├─ ops/              数据库账户、备份与运维维护脚本
 │  └─ legacy_migration/ 旧系统(YTDQ)数据导入脚本; 原始备份不入库, 由 UTEN_LEGACY_INPUT_DIR 指定
 ├─ deploy/              部署: simple/(现役发布与运行手册) · updater · nginx · systemd · postgres · ocr；其余子目录(cloud、release、setup、monitoring、aliyun-oidc、watchdog 等)为退役旧发布链代码([ADR-060](docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md))
 ├─ scripts/             仓库级辅助脚本(平台表清单审计、表键登记、特性分支发布等)
@@ -109,18 +110,29 @@
 
 ### 1. 启动后端
 
-```bash
-cd server
-cp .env.example .env              # 私有配置: 数据库、JWT 密钥、UTEN_PROFILE=dev 等; 不得提交
-docker compose up -d --wait --wait-timeout 600 postgres # 等 PostgreSQL 健康，宿主端口 5433
-mvn spring-boot:run               # 启动时 Flyway 自动迁移到最新
-```
+先确认实际数据库、角色和私有配置，再运行Maven。本轮重建使用独立本地127.0.0.1:5434/uten_imp，旧5433及其他数据库保留；当前导入事务尚未提交，普通Main启动及登录验收PENDING。不要为了看半套数据先启动业务应用，或把旧5433仍显示旧资料当成本轮未执行。
 
-API 位于 `http://localhost:8080/api`, dev 下 Swagger 位于 `/swagger-ui.html`。首次引导超管、端口约定与排错见[后端说明](server/README.md)。
+本地导入、目标准备及真实结果统一见[重建彩排与正式导入执行手册](docs/数据迁移/重建彩排与正式导入执行手册.md)。新开发环境也先按其角色准备步骤建立空本地实例：owner/迁移为非SU的uten_migrator，应用为非SU的uten；不在共享旧实例上全局改角色或赋应用SU，不调用已退役的数据重置功能。
 
-数据库异常退出后的恢复可能持续数分钟。先等上述 Docker 命令成功，再启动 Maven；若等待超时，检查数据库日志，确认恢复完成后重试。
+原server/.env存在时必须保留原字节和秘密。受控配置需明确：
 
-等日志出现应用启动完成后，再确认 `http://localhost:8080/actuator/health/readiness` 返回 `UP`。仅看到编译成功或端口监听不等于应用就绪。并行测试使用独立 `-Duten.build.directory=target-任务名`，避免覆盖正在运行的类目录。
+| 用途 | 本轮目标 |
+|---|---|
+| 应用连接 | UTEN_DB_URL指5434/uten_imp，UTEN_DB_USER=uten，密码由私有受控配置提供 |
+| dev Flyway | UTEN_DEV_MIGRATOR_DB_USER=uten_migrator及其私有密码；应用连接池不能使用owner |
+| 本地附件 | 本批已验证的local staging/final根；不能只改DB后继续指向旧附件目录 |
+
+真实COMMIT、来源门和配置CAS完成后，才按正常方式启动：
+
+    cd server
+    mvn spring-boot:run
+
+API默认http://localhost:8080/api，dev Swagger为/swagger-ui.html。核实际JVM及Hikari数据源身份，再确认http://localhost:8080/actuator/health/readiness实际返回200/UP。仅编译成功、端口监听或独立探针通过都不等于普通Main已就绪；原管理员登录需真实验证，不猜密码或伪造会话。
+
+若V915报应用仍继承重置执行权，说明实际owner/runtime分离尚不成立；先修受控新本地实例的真实角色/ACL，不Flyway repair、不跳迁移、不关闭守卫。已应用SQL字节不可修改。数据库异常退出时先确认正确实例恢复完成，不能终止不属于本次操作的进程。
+
+并行构建使用独立-Duten.build.directory=target-任务名，避免覆盖运行中类目录。更多首次管理员、私有配置和排错规则见[后端说明](server/README.md)。
+
 
 ### 2. 启动前端
 
@@ -145,6 +157,19 @@ flutter build web --release --no-pub --no-web-resources-cdn --no-wasm-dry-run --
 
 `--no-wasm-dry-run`关闭未采用的 WebAssembly 目标预检查；JavaScript 编译、静态分析、测试和字体完整性校验继续执行。这不表示 WebAssembly 兼容性已通过，安全存储依赖也不因此升级大版本。
 
+## 本地数据重建与导入
+
+[执行手册](docs/数据迁移/重建彩排与正式导入执行手册.md)是唯一当前流程和结果表；旧失败回执、离线plan、完整23项/七门历史通过记录不能代替本轮实际验收。
+
+本轮冻结导入H3为993004ded4c8649d54b60a20fba6ee9265d8589e；封包MF为f72c67aa21344d6f22d429928f3d7eebf9ea35326969b7819b1d43fd97dc7507；第15轮run为007c7f69-3935-4c78-a1a8-9dda5ef3171a。直接写入最终本地5434/uten_imp，一次业务事务，**整理时RUNNING，COMMIT及真实验收PENDING**，不再做本地候选复制/改名。
+
+本轮保留全部人事、主档、采购、仓库、销售、委外和生产计划，用户明确跳过生产成本及历史财务；不是完整财务导入。成功时使用SUCCESS/WAIVED、fullBootstrap=false及实际四个来源门，三个财务门明确跳过，不冒称完整七门。普通Main启动、五个服务探针、.env/媒体配置和新库备份恢复仍须逐项真实回执。
+
+用户已选择先完整保留旧单并展示“待接续核对”，优先交付测试；现代接续开发不纳入本轮。已知边界包括433张有余量的chain0销售旧单、3222张已有旧执行累计的未完生产计划不能直接接上现代履约，以及41条未完采购明细单位待核而阻塞MRP。无FK委外旧收发退从历史/报表/详情入口查询，不猜成新订单或供应商余额。四类详情只读提示已实现并通过focused检查；真实浏览器/UAT及目标验收仍以手册结果表为准，PENDING。
+
+代码已整合Main工作目录，由用户统一提交、CI及发布；本任务不代Git提交、推送或操作公司服务器。真实原库/旧附件备份保留，恢复是否成功另行验证，不用备份文件存在冒充恢复通过。
+
+
 ## 质量门禁与测试
 
 CI(`.github/workflows/quality.yml`)在每次推送 main 与每个 PR 上运行, 发布门禁要求同一提交的质量门禁、CodeQL、依赖漏洞扫描全部通过:
@@ -165,15 +190,16 @@ CI(`.github/workflows/quality.yml`)在每次推送 main 与每个 PR 上运行, 
 ## 数据库迁移规则
 
 - 表结构只来自 [`server/src/main/resources/db/migration`](server/src/main/resources/db/migration); 已应用的迁移**永不修改字节**, 修正一律向前追加。
+- 业务数据清空功能已彻底删除，开发环境也不保留入口；V919 前向迁移删除数据库清空函数、专用权限和历史保护绕过分支。历史 SQL 保留原字节供 Flyway 校验，不能作为恢复清空能力的依据，见 [ADR-192](docs/99-决策记录-ADR/ADR-192-业务数据清空功能永久删除.md)。
 - 新迁移号必须大于当前源码迁移头。开号前先查目录与在途修改，目标服务器版本另查其 `flyway_schema_history`；不能用历史部署记录或本地文件数推断。
-- 新增表必须同时登记: 审计三清单、`business_data_reset()` 里的 CLEAR/PRESERVE 分类(在同一迁移里按锚点追加, 并在 `BusinessDataResetSqlContractTest` 神谕登记; 库测试 `BusinessDataResetCatalogPostgresTest` 把关)、主档引用目录(若引用主档); 迁移头变化只需同步 [docs/数据迁移/README.md](docs/数据迁移/README.md) 头行(停机清空脚本已于 2026-10-05 删除, 见 [ADR-155](docs/99-决策记录-ADR/ADR-155-清空业务数据测试文件单一规则与幂等删除.md))。
+- 新增表必须同时登记审计三清单、主档引用目录(若引用主档)；不再扩展已删除的业务清空分类或恢复其函数。迁移头变化同步 [docs/数据迁移/README.md](docs/数据迁移/README.md)，历史迁移合同只验证对应历史版本。
 - 每个迁移有对应说明, 索引见[数据迁移](docs/数据迁移/README.md)。
 - 生产迁移只经发布更新器执行(先自动全量备份)。**不要在服务器上直接运行 migrator 做演练**: 它固定连接正式库; 演练在开发机的库副本上进行。
 
 ## 安全与权限
 
 - 认证: Argon2id 密码; JWT 绑定服务端会话(`sid`), 登出、改密、停用、离职即时失效; 登录限流与锁定, 锁定期对错同码。
-- 敏感操作(授权、重置密码、模拟身份、系统设置、清空业务数据等)要求 5 分钟内一次性再认证。
+- 敏感操作(授权、重置密码、模拟身份、系统设置等)要求 5 分钟内一次性再认证。
 - 授权: 权限目录单一事实源 + 部门/个人授权 + 对象级数据范围; 前端隐藏按钮只是体验, 服务端逐请求校验。
 - 数据: SQL 全部参数化; 员工敏感字段加密与按权限脱敏; 审计只追加且运行账号不能改删。
 - 密钥只经受控环境注入(`server/.env` 仅限本机开发且不入库); 详见[安全准则](docs/00-项目准则/10-安全准则.md)。

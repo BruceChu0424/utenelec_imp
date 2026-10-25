@@ -289,6 +289,22 @@ class _ColorPageState extends ConsumerState<ColorPage>
 
   // ---- 新建/编辑/删除 ---------------------------------------------------
 
+  @override
+  MasterInlineCreateConfig get inlineCreation => MasterInlineCreateConfig(
+    namespace: 'colors',
+    fields: _colorFields()
+        .where((field) => field.key != 'status' || _canStatus)
+        .toList(),
+    defaults: const {'status': '使用'},
+    canCreate: _canCreate,
+    onCreate: (_, values) async {
+      await ref.read(colorRepositoryProvider).create({
+        'status': '使用',
+        ...values,
+      });
+    },
+  );
+
   List<MasterFieldDef> _colorFields([String? entityId]) => [
     MasterFieldDef(
       key: 'code',
@@ -744,6 +760,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
     MasterInlineEditActions<ColorListItem>(
       controller: inlineEdit,
       canEdit: _canEdit && inlineReadReady && !_rowOpBusy,
+      canCreate: _canCreate && inlineReadReady && !_rowOpBusy,
       onSave: saveInline,
       embedded: true,
       additionalActions: [
@@ -863,6 +880,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
                       ),
                       Expanded(
                         child: MasterDataTableView<ColorListItem>(
+                          appendRowsSource: inlineAppendRowsSource,
                           bottomContentPadding: (_canCreate || _canEdit)
                               ? UtenFloatingActionGroup.scrollClearance
                               : 0,

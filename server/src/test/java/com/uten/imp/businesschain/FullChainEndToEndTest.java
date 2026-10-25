@@ -171,6 +171,11 @@ class FullChainEndToEndTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        // This empty isolated container must migrate with its own fixture identity,
+        // independently of the host developer's optional migration credentials.
+        registry.add("spring.flyway.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.flyway.user", POSTGRES::getUsername);
+        registry.add("spring.flyway.password", POSTGRES::getPassword);
         registry.add("uten.bootstrap.admin-login", () -> SHARED_ADMIN_LOGIN);
         registry.add("uten.bootstrap.admin-password", () -> SHARED_ADMIN_PASSWORD);
         registry.add("uten.jwt.secret", () -> SHARED_JWT_SECRET);

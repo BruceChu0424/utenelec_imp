@@ -75,6 +75,9 @@ bool _isAnalysisSalesOrderPath(String routePath) {
 List<String>? requiredAnyPermFor(String rawLocation) {
   final location = hubCardPath(rawLocation);
   final routePath = location;
+  if (location == RouteName.companyFiles) {
+    return const [Perm.companyFileView];
+  }
   if (RegExp(r'^/basicinfo/goods/[^/]+/price-analysis$').hasMatch(location)) {
     return const [Perm.goodsPriceAnalysisView];
   }

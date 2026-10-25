@@ -361,6 +361,22 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
     }
   }
 
+  @override
+  MasterInlineCreateConfig get inlineCreation => MasterInlineCreateConfig(
+    namespace: 'currencies',
+    fields: _fields()
+        .where((field) => field.key != 'status' || _canStatus)
+        .toList(),
+    defaults: const {'status': '使用', 'exchangeRate': '1'},
+    canCreate: _canCreate,
+    onCreate: (_, values) async {
+      await ref.read(currencyRepositoryProvider).create({
+        'status': '使用',
+        ...values,
+      });
+    },
+  );
+
   Future<void> _showEdit(
     CurrencyDetail d, {
     MasterEditOwner? openingOwner,
@@ -754,6 +770,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
     MasterInlineEditActions<CurrencyListItem>(
       controller: inlineEdit,
       canEdit: _canEdit && inlineReadReady && !_rowOpBusy,
+      canCreate: _canCreate && inlineReadReady && !_rowOpBusy,
       onSave: saveInline,
       embedded: true,
       additionalActions: [
@@ -904,6 +921,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
                       ),
                       Expanded(
                         child: MasterDataTableView<CurrencyListItem>(
+                          appendRowsSource: inlineAppendRowsSource,
                           bottomContentPadding: (_canCreate || _canEdit)
                               ? UtenFloatingActionGroup.scrollClearance
                               : 0,

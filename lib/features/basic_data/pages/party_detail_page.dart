@@ -2165,10 +2165,8 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   );
 }
 
-String _shortDateTime(String? iso) {
-  if (iso == null || iso.length < 16) return iso ?? '—';
-  return '${iso.substring(0, 10)} ${iso.substring(11, 16)}';
-}
+String _shortDateTime(String? iso) =>
+    ChinaDateTime.formatIsoInstant(iso, fallback: iso ?? '—');
 
 /// 金额/税率显示：整数不带 .0，小数保留两位。
 String _fmtMoney(double? v) {

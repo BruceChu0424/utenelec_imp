@@ -156,12 +156,14 @@ class GoodsUuidRelationshipServiceTest {
         GoodsRepository goodsRepo = mock(GoodsRepository.class);
         GoodsBomItemRepository bomRepo = mock(GoodsBomItemRepository.class);
         GoodsMasterRelationshipResolver relationships = mock(GoodsMasterRelationshipResolver.class);
+        var access = mock(com.uten.imp.features.master.lifecycle.MasterObjectAccess.class);
+        when(access.visibleGoodsOwner()).thenReturn(owner -> true);
         GoodsBomService service = new GoodsBomService(
                 goodsRepo, bomRepo, mock(ColorRepository.class), mock(UnitRepository.class),
                 mock(TxSessionVars.class), mock(com.uten.imp.security.SecurityContextCurrentUser.class),
                 mock(MasterReferenceValidationPort.class), relationships,
                 mock(com.uten.imp.application.port.BusinessEventPublisher.class),
-                mock(com.uten.imp.features.master.lifecycle.MasterObjectAccess.class));
+                access);
 
         Goods parent = new Goods();
         parent.setName("Parent");

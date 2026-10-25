@@ -315,7 +315,7 @@ void main() {
     expect(find.textContaining('选择分类'), findsNothing);
   });
 
-  testWidgets('预选历史记录直接请求全部订单，不叠加草稿或链路过滤', (tester) async {
+  testWidgets('预选历史记录直接请求（默认近三个月），不叠加草稿或链路过滤', (tester) async {
     final api = await _pumpOrderList(tester, initialHistory: true);
     expect(api.listQueries, hasLength(1));
     final query = api.listQueries.single;

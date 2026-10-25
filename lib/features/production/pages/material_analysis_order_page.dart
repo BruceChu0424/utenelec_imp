@@ -174,9 +174,13 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
           appBar: UtenAppBar(
             title: _host._l10n.materialPreparationReview,
             showPagePermissionAction: false,
-            leading: _submitting || _host._busy
-                ? const SizedBox(width: 48)
-                : UtenBackButton(onPressed: () => Navigator.of(context).pop()),
+            // 提交期间按钮常驻但空转（PopScope 已挡返回；传 null 会回落默认
+            // 返回），leading 槽恒为 UtenBackButton，标题不再左右跳变。
+            leading: UtenBackButton(
+              onPressed: _submitting || _host._busy
+                  ? () {}
+                  : () => Navigator.of(context).pop(),
+            ),
           ),
           body: Stack(
             children: [

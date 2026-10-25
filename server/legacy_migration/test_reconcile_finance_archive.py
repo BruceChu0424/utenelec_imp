@@ -11,10 +11,13 @@ SPEC=importlib.util.spec_from_file_location('archive_reconcile',Path(__file__).w
 reconcile=importlib.util.module_from_spec(SPEC);SPEC.loader.exec_module(reconcile)
 
 class FinanceArchiveReconciliationTest(unittest.TestCase):
-    def test_only_account_flow_source_may_have_archive_count(self):
+    def test_only_explicit_account_flow_or_reviewed_cash_source_may_have_archive_count(self):
         self.assertIn("financeArchiveOnly",reconcile.archived_rows('m_allcheck.csv'))
+        for source in ('m_get.csv','m_paid.csv'):
+            self.assertIn('financeCashSourceArchive',reconcile.archived_rows(source))
+            self.assertIn("archived->>'source_file'=",reconcile.archived_rows(source))
         for source in reconcile.document_queries():
-            if source!='m_allcheck.csv':self.assertEqual(reconcile.archived_rows(source),'0')
+            if source not in ('m_allcheck.csv','m_get.csv','m_paid.csv'):self.assertEqual(reconcile.archived_rows(source),'0')
     def test_generated_sql_keeps_archive_distinct_from_excluded_and_active(self):
         with tempfile.TemporaryDirectory() as folder:
             manifest=Path(folder)/'inputs.json'

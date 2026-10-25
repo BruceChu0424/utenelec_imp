@@ -1,3 +1,4 @@
+import '../../../shared/models/procurement_order_closure.dart';
 import '../../../shared/models/procurement_quantity.dart';
 import '../../../shared/models/procurement_source_terms.dart';
 import '../../../shared/business_columns/business_column.dart';
@@ -455,6 +456,7 @@ class PurchaseDocDetail {
     this.canReverse = false,
     this.restrictionReason,
     this.financeApproval,
+    this.closureRequest,
     this.priceAssessment,
     this.sourceRequestId,
     this.sourceRequestNo,
@@ -523,6 +525,7 @@ class PurchaseDocDetail {
   final bool canReverse;
   final String? restrictionReason;
   final ProcurementFinanceApproval? financeApproval;
+  final ProcurementOrderClosureRequest? closureRequest;
   final Map<String, dynamic>? priceAssessment;
 
   /// 来源采购申请（订货单全部明细同源时给出，供跳转；跨申请分解为 null）
@@ -588,6 +591,11 @@ class PurchaseDocDetail {
         sourceOrderNo: json['sourceOrderNo'] as String?,
         priceAssessment: json['priceAssessment'] is Map<String, dynamic>
             ? json['priceAssessment'] as Map<String, dynamic>
+            : null,
+        closureRequest: json['closureRequest'] is Map
+            ? ProcurementOrderClosureRequest.fromJson(
+                (json['closureRequest'] as Map).cast<String, dynamic>(),
+              )
             : null,
         financeApproval: json['financeApproval'] is Map
             ? ProcurementFinanceApproval.fromJson(

@@ -51,12 +51,12 @@
 
 ### 3.2 全局连接恢复提示
 
-`MaterialApp.builder` 在所有路由上方挂载 `ConnectionRecoveryBanner`，不改变当前导航、筛选、输入内容或滚动位置（视觉外壳与普通通知 `AppNotificationHost` 同出 `lib/core/ui/uten_top_banner_card.dart` 的 `UtenTopBannerCard`，两者居中 / 最大宽 720 / 圆角 14 / 柔和容器色完全同款）：
+`MaterialApp.builder` 在路由 `Stack` 之上、模拟身份横幅同层的 builder `Column` 中挂载 `ConnectionRecoveryBanner`：占顶「下推」通栏单行（消息靠左、「运行与灾备」内联、「立即重试」靠右），不覆盖页面 AppBar/工具条，也不改变当前导航、筛选、输入内容或滚动位置。普通通知 `AppNotificationHost` 仍以悬浮卡片居中（外壳 `UtenTopBannerCard`），两者不重叠：
 
 - GET/HEAD/OPTIONS 安全读遇到瞬态连接故障时最多额外重试两次（400ms、1200ms）；开始重试时显示“网络暂时不稳定，正在自动连接…”，耗尽后显示“暂时连不上服务器，系统会继续自动连接”；
 - 后台只探测同源根路径 `/actuator/health`，按 2/5/10/15 秒上限并带 0.85–1.0 抖动继续尝试；只有状态码 200、响应为 Map 且 `data['status'] == 'UP'` 才算恢复，SPA HTML、空体或空对象不能冒充健康；
 - 恢复后显示“网络已恢复，可以继续使用”，并递增 `recoveryEpoch`。当前明确接入恢复刷新的页面包括生产履约工作台；首页履约分区另在降级期间每 15 秒重新读取。普通 Stateful 页面若未监听恢复事件，不承诺自动重载整个页面；
-- 断开态只提供一个高 48dp 的“立即重试”按钮，避免多入口和技术术语；
+- 断开态只提供一个“立即重试”按钮（视觉 40dp 高、命中区保持 48dp），避免多入口和技术术语；
 - 提示使用主题语义色、屏幕阅读器 live region，并服从系统“减少动画”设置；
 - “立即重试”会合并重复点击并绕过等待和抖动；403 代表服务可达但没有权限，不能显示成离线；POST/PUT/PATCH/DELETE 也绝不自动重放；
 - 后端权限解析或数据库短暂不可用时返回结构化 `503 SERVICE_UNAVAILABLE`。安全读可以按上述有限次数重试，但该响应证明 HTTP 服务仍可达，不启动全局断网 health 循环、不显示“无权限”，也不清除会话。

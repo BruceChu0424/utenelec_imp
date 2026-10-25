@@ -446,10 +446,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Super administrators can configure company branding, logos and theme colors; upgrades preserve saved settings and personal preferences.';
 
   @override
-  String get businessResetAuditScope =>
-      'Clears test business data, deletion history, field versions and business audit records. Authentication, authorization, security and system audit records, and reset receipts, are retained.';
-
-  @override
   String get serverAlertAcknowledge => 'Acknowledge';
 
   @override
@@ -495,10 +491,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get release253Notices =>
       'Material arrivals notify authorized workshop leaders when additional production becomes possible. Urgent alerts, tasks, progress and announcements have distinct styles.';
-
-  @override
-  String get release253Reset =>
-      'Clearing business data also invalidates old drafts and clears business weight measurements and learned weight records.';
 
   @override
   String get release253Maintenance =>
@@ -12640,11 +12632,66 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get goodsImportTemplateHint =>
-      'Use an exported goods file to create or update records. Category (join its path with -) and goods name are required; code may be blank. Keep the system identifier when updating. Do not copy an existing goods identifier into a new row. Reused codes require the system identifier to confirm the current goods.';
+      'Use an exported goods file to create or update records. Category (join its path with -) and goods name are required; code may be blank. Keep the system identifier when updating. A blank code keeps the original; an unused new code goes to review. Clear the system identifier for a new row and optionally enter a new code. Reused codes require the system identifier to confirm the current goods.';
 
   @override
   String get goodsImportMergeHint =>
-      'New goods are created. Existing goods match by code or by category and name. Missing values are filled automatically; review other differences on the full page and choose replace or ignore. Blank import cells keep existing values. Resolve ambiguous names before uploading again. Deleted goods with the same code are restored from the file.';
+      'The system identifier selects the original goods. Without it, the code selects existing goods; a new code can create goods with the same name and different colors or materials. Only when both identifier and code are blank does a unique category/name match apply; multiple matches require a code or identifier. Missing values are filled automatically; review other differences on the full page and choose replace or ignore. Blank cells keep existing values. Deleted goods with the same code are restored from the file.';
+
+  @override
+  String get goodsImportUndoHint =>
+      'Use Undo on the toolbar for ordinary imported data. If a code changed, select a version in Change history to restore it under the current code rules.';
+
+  @override
+  String get dropdownMoveResizeHint =>
+      'Drag here to move; drag an edge to resize';
+
+  @override
+  String get dropdownResetGeometry => 'Restore automatic size and position';
+
+  @override
+  String get dropdownResizeMenu => 'Resize dropdown';
+
+  @override
+  String pickerChooseRecord(String label) {
+    return 'Choose $label';
+  }
+
+  @override
+  String get bomChooseComponent => 'Choose component';
+
+  @override
+  String get bomReplaceComponent => 'Replace component';
+
+  @override
+  String get bomAddChildComponent => 'Add child component';
+
+  @override
+  String get bomSelectParentFirst =>
+      'Select one component to use as the parent first';
+
+  @override
+  String get bomNewComponentRow => 'New component';
+
+  @override
+  String get masterInlineOtherFields => 'Fill required fields';
+
+  @override
+  String get masterInlineNewRecord => 'New record details';
+
+  @override
+  String get masterInlineApplyDraft => 'Apply to table';
+
+  @override
+  String get masterInlineCreateUncertain =>
+      'The creation result is unconfirmed. Refresh and check first; resubmission of this row is paused to prevent duplicates.';
+
+  @override
+  String get masterInlineCreateNotAllowed =>
+      'Create access or the current category changed. Refresh before entering more records.';
+
+  @override
+  String get masterInlineNewRowHint => 'New record';
 
   @override
   String get importRedetectCurrent => 'Check this file again';
@@ -12692,4 +12739,520 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get importFilesFinished => 'All selected files have been processed';
+
+  @override
+  String get orderClosureUnverifiedQuantity =>
+      'Legacy quantities are unverified. Ending this order stops future fulfillment and keeps the original quantities and recorded activity. Remaining quantities cannot be calculated or reordered.';
+
+  @override
+  String get orderClosureHandleBlocker => 'Open the related task';
+
+  @override
+  String get orderClosureContactQuality =>
+      'An authorized quality reviewer must complete this order\'s inspection before the end request can be reviewed again.';
+
+  @override
+  String get orderClosureContactWarehouse =>
+      'Authorized warehouse staff must finish this order\'s receipt, return or physical disposition before reviewing the end request again.';
+
+  @override
+  String get orderClosureContactSubcontract =>
+      'Authorized subcontract staff must review this order\'s material tasks before reviewing the end request again.';
+
+  @override
+  String get orderClosureContactFinance =>
+      'An authorized finance reviewer must resolve this order\'s current review before reviewing the end request again.';
+
+  @override
+  String get orderClosureQualityPreserved =>
+      'Physical goods under inspection and their inspection tasks remain active. Requesting an end does not cancel inspection or treat unchecked goods as resolved.';
+
+  @override
+  String get orderClosureRejectHint =>
+      'This decision rejects the end request. The original order continues under its approved terms. The applicant can review the reason and submit a new end request.';
+
+  @override
+  String get orderClosureAction => 'Cancel/end order';
+
+  @override
+  String get orderClosureBatchAction => 'Cancel/end selected orders';
+
+  @override
+  String get orderClosureEligibilityChecking =>
+      'Checking the selected orders with the server. Please wait.';
+
+  @override
+  String get orderClosureEligibilityFailed =>
+      'Eligibility could not be checked. Refresh or select the orders again.';
+
+  @override
+  String get orderClosureNoEligibleOrders =>
+      'None of the selected orders can currently be processed. Resolve their pending tasks and select them again.';
+
+  @override
+  String get orderClosureEligibleOrders => 'Eligible orders';
+
+  @override
+  String get orderClosureUnavailableOrders => 'Unavailable orders';
+
+  @override
+  String get orderClosureEligibleOnlyConfirm =>
+      'I confirm that only the eligible orders above will be submitted; unavailable items will remain unchanged';
+
+  @override
+  String get orderClosureUnsupportedRowReason =>
+      'This record is not an order eligible for an end request and will remain unchanged.';
+
+  @override
+  String get orderClosureBusy => 'An operation is in progress. Please wait.';
+
+  @override
+  String get orderClosureSelectOrders => 'Select the orders to cancel or end.';
+
+  @override
+  String get orderClosureSelectionChanged =>
+      'The selected tasks changed. Refresh and select them again.';
+
+  @override
+  String get orderClosureOrdersOnly =>
+      'The selection includes requests or other records. Select only the orders to end.';
+
+  @override
+  String get orderClosureBatchLimit => 'Select at most 50 orders at a time.';
+
+  @override
+  String get orderClosureMissingPermission =>
+      'Finance submission permission is required. Contact your administrator.';
+
+  @override
+  String get orderClosureWholeOrderHint =>
+      'The request covers each entire order, including all its lines. Selecting several goods lines from one order creates one request. Both options require finance approval and retain historical records.';
+
+  @override
+  String get orderClosureAlreadyPending =>
+      'This order already has a pending finance review. Resolve it first.';
+
+  @override
+  String get orderClosureAlreadyEnded =>
+      'This order has already ended and cannot be submitted again.';
+
+  @override
+  String get orderClosureReadOnly =>
+      'This document is read-only. Its creator or a user with write scope must perform this action.';
+
+  @override
+  String get orderClosureApprovalHint =>
+      'Both options take effect only after finance approval. Existing receipt, inventory and accounting records are retained, and subcontract material custody still requires resolution. Fulfillment changes require a new review.';
+
+  @override
+  String get orderClosureReceiptFinalityHint =>
+      'Complete receipt, return and quality dispositions before ending the order. After approval, the confirmed received quantities cannot be changed directly.';
+
+  @override
+  String get orderClosureCloseHint =>
+      'Approval ends remaining fulfillment and removes expected remaining deliveries.';
+
+  @override
+  String get orderClosureReorder => 'End and reorder remaining quantities';
+
+  @override
+  String get orderClosureReorderHint =>
+      'Approval creates a linked draft for the reviewed remaining quantities with the previous prices as reference. Choose a supplier, review the terms, then submit it for normal finance approval.';
+
+  @override
+  String get orderClosureReason => 'Reason for ending';
+
+  @override
+  String get orderClosureReasonHint =>
+      'For example: supplier stopped delivery or legacy order no longer required';
+
+  @override
+  String get orderClosureReasonRequired =>
+      'Enter a reason for ending the order';
+
+  @override
+  String get orderClosureSubmit => 'Submit for finance approval';
+
+  @override
+  String get orderClosureSubmitted =>
+      'End request submitted for finance approval; it takes effect after approval';
+
+  @override
+  String get orderClosureLoadFailed => 'Unable to load order end information';
+
+  @override
+  String get orderClosureUnavailable =>
+      'This order cannot be ended in its current state. Refresh and check its status.';
+
+  @override
+  String get orderClosureRemaining => 'Remaining ordered quantity';
+
+  @override
+  String get orderClosureRemainingGift => 'Remaining gift quantity';
+
+  @override
+  String get orderClosurePending => 'End awaiting approval';
+
+  @override
+  String get orderClosureApproved => 'End approved';
+
+  @override
+  String get orderClosureRejected => 'End rejected';
+
+  @override
+  String get orderClosureApproveHint =>
+      'Approval ends remaining fulfillment on the original order. Reordering creates a linked draft with reference prices. Choose its supplier, review the terms, then submit it for approval. Inventory and accounting records are retained, and material custody still requires resolution.';
+
+  @override
+  String get orderClosureReviewTitle => 'Order end request';
+
+  @override
+  String get orderClosureApprovedToast =>
+      'End request approved; remaining fulfillment on the original order has ended';
+
+  @override
+  String get orderClosureBatchHint =>
+      'Selection includes end requests. Approval ends remaining fulfillment and creates new drafts where requested. Review each reason and remaining quantity.';
+
+  @override
+  String get companyFilesTitle => 'Company library';
+
+  @override
+  String get companyFilesLibrary => 'All documents';
+
+  @override
+  String get companyFilesTrash => 'Recycle bin';
+
+  @override
+  String get companyFilesNewFolder => 'New folder';
+
+  @override
+  String get companyFilesUpload => 'Upload files';
+
+  @override
+  String get companyFilesSearch => 'Search this folder';
+
+  @override
+  String get companyFilesRefresh => 'Refresh';
+
+  @override
+  String get companyFilesSort => 'Sort';
+
+  @override
+  String get companyFilesManual => 'Custom order';
+
+  @override
+  String get companyFilesName => 'Name';
+
+  @override
+  String get companyFilesUpdated => 'Modified';
+
+  @override
+  String get companyFilesSize => 'Size';
+
+  @override
+  String get companyFilesAscending => 'Ascending';
+
+  @override
+  String get companyFilesDescending => 'Descending';
+
+  @override
+  String get companyFilesIcons => 'Icons';
+
+  @override
+  String get companyFilesTiles => 'Tiles';
+
+  @override
+  String get companyFilesDetails => 'Details';
+
+  @override
+  String get companyFilesOpen => 'Open';
+
+  @override
+  String get companyFilesDownload => 'Download original';
+
+  @override
+  String get companyFilesRename => 'Rename';
+
+  @override
+  String get companyFilesMove => 'Move to';
+
+  @override
+  String get companyFilesDelete => 'Move to recycle bin';
+
+  @override
+  String get companyFilesRestore => 'Restore';
+
+  @override
+  String get companyFilesAccess => 'Folder access';
+
+  @override
+  String get companyFilesPassword => 'Folder password';
+
+  @override
+  String get companyFilesUnlock => 'Unlock';
+
+  @override
+  String get companyFilesLock => 'Lock again';
+
+  @override
+  String get companyFilesClose => 'Close';
+
+  @override
+  String get companyFilesCancel => 'Cancel';
+
+  @override
+  String get companyFilesSave => 'Save';
+
+  @override
+  String get companyFilesConfirm => 'Confirm';
+
+  @override
+  String get companyFilesRetry => 'Retry';
+
+  @override
+  String get companyFilesEmpty => 'This folder is empty';
+
+  @override
+  String get companyFilesEmptyHint =>
+      'Add documents using the toolbar or drop files here when you have permission.';
+
+  @override
+  String get companyFilesNoResults => 'No matching documents';
+
+  @override
+  String get companyFilesTrashEmpty => 'Recycle bin is empty';
+
+  @override
+  String get companyFilesTrashHint =>
+      'Deleted documents retain their originals and can be restored by authorized staff.';
+
+  @override
+  String get companyFilesLoading => 'Loading documents…';
+
+  @override
+  String get companyFilesLoadFailed => 'Unable to load documents';
+
+  @override
+  String get companyFilesChanged => 'Saved';
+
+  @override
+  String get companyFilesDescription => 'Description';
+
+  @override
+  String get companyFilesFolder => 'Folder';
+
+  @override
+  String get companyFilesFile => 'File';
+
+  @override
+  String get companyFilesType => 'Type';
+
+  @override
+  String get companyFilesCreatedBy => 'Created by';
+
+  @override
+  String get companyFilesCreatedAt => 'Created';
+
+  @override
+  String get companyFilesUpdatedBy => 'Modified by';
+
+  @override
+  String get companyFilesDeletedAt => 'Deleted';
+
+  @override
+  String get companyFilesPending => 'Upload incomplete';
+
+  @override
+  String get companyFilesProtected => 'Password protected';
+
+  @override
+  String get companyFilesLocked => 'This folder requires a password';
+
+  @override
+  String get companyFilesLockedHint =>
+      'Folder permissions still apply. Unlocking is temporary and limited to this session.';
+
+  @override
+  String get companyFilesDeleteHint =>
+      'The folder and all its contents will move to the recycle bin. Originals are retained and current permissions apply after restoration.';
+
+  @override
+  String get companyFilesPasswordHint =>
+      'A password adds protection and does not replace access permissions. Changing it invalidates temporary unlocks.';
+
+  @override
+  String get companyFilesNewPassword => 'New password';
+
+  @override
+  String get companyFilesRepeatPassword => 'Repeat password';
+
+  @override
+  String get companyFilesRemovePassword => 'Remove password';
+
+  @override
+  String get companyFilesPasswordMismatch => 'The passwords do not match';
+
+  @override
+  String get companyFilesRequiredName => 'Enter a name';
+
+  @override
+  String get companyFilesPasswordLength => 'Use at least 8 characters';
+
+  @override
+  String get companyFilesSelectFolder => 'Choose a destination folder';
+
+  @override
+  String get companyFilesMoveHere => 'Move here';
+
+  @override
+  String get companyFilesParent => 'Parent folder';
+
+  @override
+  String get companyFilesAccessHint =>
+      'Actions require both global permissions and folder access. Deny rules take priority; inherited rules continue to apply.';
+
+  @override
+  String get companyFilesInherit => 'Inherit parent permissions';
+
+  @override
+  String get companyFilesAddRule => 'Add access rule';
+
+  @override
+  String get companyFilesAllow => 'Allow';
+
+  @override
+  String get companyFilesDeny => 'Deny';
+
+  @override
+  String get companyFilesUser => 'Person';
+
+  @override
+  String get companyFilesDepartment => 'Department';
+
+  @override
+  String get companyFilesPrincipalSearch =>
+      'Search a name, employee number or department';
+
+  @override
+  String get companyFilesRead => 'View';
+
+  @override
+  String get companyFilesCreate => 'Create folders';
+
+  @override
+  String get companyFilesEdit => 'Edit name and description';
+
+  @override
+  String get companyFilesManage => 'Manage access and passwords';
+
+  @override
+  String get companyFilesRemoveRule => 'Remove rule';
+
+  @override
+  String get companyFilesQueue => 'Upload queue';
+
+  @override
+  String get companyFilesWaiting => 'Waiting';
+
+  @override
+  String get companyFilesUploading => 'Uploading';
+
+  @override
+  String get companyFilesVerifying => 'Verifying and saving';
+
+  @override
+  String get companyFilesUploaded => 'Uploaded';
+
+  @override
+  String get companyFilesUploadFailed => 'Upload failed';
+
+  @override
+  String get companyFilesUnknown => 'Check upload result';
+
+  @override
+  String get companyFilesCheckResult => 'Check result';
+
+  @override
+  String get companyFilesStopQueue => 'Stop after the current file';
+
+  @override
+  String get companyFilesStopped => 'Stopped';
+
+  @override
+  String get companyFilesQueueHint =>
+      'Files are uploaded and scanned one at a time. Closing the queue keeps saved documents.';
+
+  @override
+  String get companyFilesUnsupported => 'Unsupported file type';
+
+  @override
+  String get companyFilesTooLarge => 'File exceeds the upload limit';
+
+  @override
+  String get companyFilesBatchTooLarge =>
+      'Select no more than 100 MB at a time';
+
+  @override
+  String get companyFilesUnreadable =>
+      'Unable to read the file; select it again';
+
+  @override
+  String get companyFilesDropHint => 'Drop to upload into this folder';
+
+  @override
+  String get companyFilesDragHint =>
+      'In custom order, hold and drag to reorder; in other orders, drop onto a folder to move.';
+
+  @override
+  String get companyFilesSavedTo => 'File saved';
+
+  @override
+  String get companyFilesNoAccess => 'No available actions';
+
+  @override
+  String get companyFilesPermissionDenied =>
+      'Access changed; refresh and try again';
+
+  @override
+  String get companyFilesUnknownHint =>
+      'The request may have been saved. Check its result before uploading again.';
+
+  @override
+  String get companyFilesUp => 'Move one position earlier';
+
+  @override
+  String get companyFilesDown => 'Move one position later';
+
+  @override
+  String get companyFilesItems => 'items';
+
+  @override
+  String get companyFilesPage => 'page';
+
+  @override
+  String get companyFilesPrevious => 'Previous page';
+
+  @override
+  String get companyFilesNext => 'Next page';
+
+  @override
+  String get companyFilesDuplicateRule =>
+      'Allow and deny rules already exist for this person or department; edit the existing rules.';
+
+  @override
+  String get companyFilesRuleActionsRequired =>
+      'Select at least one action for each rule.';
+
+  @override
+  String get companyFilesPreviewUnavailable =>
+      'Online preview is unavailable. Download the original to view it.';
+
+  @override
+  String get companyFilesResumeName =>
+      'Select the original with the same name as the incomplete upload.';
+
+  @override
+  String get companyFilesKeepExtension =>
+      'Keep the original extension when renaming to preserve how the file opens.';
 }

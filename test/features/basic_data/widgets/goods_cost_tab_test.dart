@@ -2925,6 +2925,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(nested.innerController.offset, greaterThan(0));
       expect(tester.getTopLeft(find.text('货品名称')).dy, closeTo(headerTop, .5));
+      final lastMaterial = find.text('待核材料 30');
+      final save = find.byKey(const Key('cost-save'));
       // Sliver extent is estimated until deferred rows are admitted. Reach the
       // updated tail after each real layout, rather than stopping at the old
       // estimate while asserting that the final material was reached.
@@ -2933,7 +2935,7 @@ void main() {
           nested.innerController.position.maxScrollExtent,
         );
         await tester.pumpAndSettle();
-        if (find.text('待核材料 30').evaluate().isNotEmpty &&
+        if (lastMaterial.evaluate().isNotEmpty &&
             (nested.innerController.position.maxScrollExtent -
                         nested.innerController.offset)
                     .abs() <
@@ -2941,10 +2943,28 @@ void main() {
           break;
         }
       }
-      expect(find.text('待核材料 30'), findsOneWidget);
+      expect(lastMaterial, findsOneWidget);
+      // Lazy row measurement revises the extent. Keep exercising user wheel
+      // input until the final row clears the floating actions.
+      for (var step = 0; step < 20; step++) {
+        if (lastMaterial.hitTestable().evaluate().isNotEmpty &&
+            tester.getBottomLeft(lastMaterial).dy <
+                tester.getTopLeft(save).dy) {
+          break;
+        }
+        await tester.sendEventToBinding(
+          PointerScrollEvent(
+            position: point,
+            scrollDelta: const Offset(0, 240),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+      expect(lastMaterial.hitTestable(), findsOneWidget);
+      expect(tester.getTopLeft(find.text('货品名称')).dy, closeTo(headerTop, .5));
       expect(
-        tester.getBottomLeft(find.text('待核材料 30')).dy,
-        lessThan(tester.getTopLeft(find.byKey(const Key('cost-save'))).dy),
+        tester.getBottomLeft(lastMaterial).dy,
+        lessThan(tester.getTopLeft(save).dy),
       );
       await tester.tap(find.byKey(const Key('cost-settings-toggle')));
       await tester.pumpAndSettle();

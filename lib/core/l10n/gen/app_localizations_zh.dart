@@ -416,10 +416,6 @@ class AppLocalizationsZh extends AppLocalizations {
       '新增平台设置，超级管理员可配置公司品牌、Logo和主题色；升级保留已有配置及个人偏好。';
 
   @override
-  String get businessResetAuditScope =>
-      '清空：全部测试业务、删除历史、字段版本和业务审计；保留登录认证、授权、安全、系统审计及清空核对凭据。';
-
-  @override
   String get serverAlertAcknowledge => '已知悉';
 
   @override
@@ -459,9 +455,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get release253Notices => '车间到料提醒按新增可生产数量发送给有权限的负责人；紧急、待办、进度与公告使用不同样式。';
-
-  @override
-  String get release253Reset => '清空业务数据同时作废旧草稿，并清除业务称重与重量学习记录。';
 
   @override
   String get release253Maintenance => '清理旧代码和过时文档，补充权限、并发与数据一致性检查；点击版本号可查看本说明。';
@@ -11884,11 +11877,62 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get goodsImportTemplateHint =>
-      '可使用「导出货品」文件作为新增或更新模板；必填列为类别(用 - 拼分类路径)和货品名称，编号可留空。更新时保留系统标识；新增行不要沿用旧货品的系统标识。曾被复用的编号必须通过系统标识确认当前货品。';
+      '可使用「导出货品」文件作为新增或更新模板；必填列为类别(用 - 拼分类路径)和货品名称，编号可留空。更新时保留系统标识；编号留空保留原号，改为未占用的新编号会进入差异核对。新增行清空系统标识，可填写新编号；曾被复用的编号必须通过系统标识确认当前货品。';
 
   @override
   String get goodsImportMergeHint =>
-      '新货品正常新增；已有货品按编号或同分类同名称匹配。空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值，同名歧义须修正后重传。同编号已删除货品按清单内容恢复。';
+      '系统标识确定原货品；没有系统标识时按编号匹配，新编号可新增同名、不同颜色或材质的货品。系统标识和编号都为空时，才按同分类同名称唯一匹配，多条同名须补充编号或系统标识。空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值。同编号已删除货品按清单内容恢复。';
+
+  @override
+  String get goodsImportUndoHint =>
+      '普通资料导入可从工具栏「撤回」撤销；涉及编号变更时，请从「修改历史」选择版本，按当前编号规则恢复。';
+
+  @override
+  String get dropdownMoveResizeHint => '拖动此处移动，拖动边缘调整大小';
+
+  @override
+  String get dropdownResetGeometry => '恢复自动大小和位置';
+
+  @override
+  String get dropdownResizeMenu => '调整下拉框大小';
+
+  @override
+  String pickerChooseRecord(String label) {
+    return '选择$label';
+  }
+
+  @override
+  String get bomChooseComponent => '选择组件';
+
+  @override
+  String get bomReplaceComponent => '替换组件';
+
+  @override
+  String get bomAddChildComponent => '添加下级组件';
+
+  @override
+  String get bomSelectParentFirst => '请先选择一个组件作为父级';
+
+  @override
+  String get bomNewComponentRow => '新增组件';
+
+  @override
+  String get masterInlineOtherFields => '补充必填字段';
+
+  @override
+  String get masterInlineNewRecord => '填写新资料';
+
+  @override
+  String get masterInlineApplyDraft => '应用到表格';
+
+  @override
+  String get masterInlineCreateUncertain => '新增结果尚未确认，请先刷新核对；为避免重复，该行已暂停再次提交。';
+
+  @override
+  String get masterInlineCreateNotAllowed => '新增权限或当前分类已变化，请刷新后再录入。';
+
+  @override
+  String get masterInlineNewRowHint => '新增资料';
 
   @override
   String get importRedetectCurrent => '重新检测当前文件';
@@ -11932,4 +11976,483 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get importFilesFinished => '所选文件已全部处理完成';
+
+  @override
+  String get orderClosureUnverifiedQuantity =>
+      '本单旧库计量未核验。直接结束只停止后续履约，保留原始数量与已发生记录，不推算剩余量，也不能按剩余量重建订单。';
+
+  @override
+  String get orderClosureHandleBlocker => '前往对应任务处理';
+
+  @override
+  String get orderClosureContactQuality => '请由有权限的品质人员完成本单质检后，再重新核对结束申请。';
+
+  @override
+  String get orderClosureContactWarehouse =>
+      '请由有权限的仓库人员办清本单收退货或实物处置后，再重新核对结束申请。';
+
+  @override
+  String get orderClosureContactSubcontract => '请由有权限的委外人员核对本单领料任务后，再重新核对结束申请。';
+
+  @override
+  String get orderClosureContactFinance => '请由有权限的财务人员处理本单当前审批后，再重新核对结束申请。';
+
+  @override
+  String get orderClosureQualityPreserved =>
+      '质检中的实物和检验任务继续保留，申请结束不会取消质检，也不会把未检实物当作已处理。';
+
+  @override
+  String get orderClosureRejectHint =>
+      '驳回的是本次结束申请，原订单继续按已批准条款履约。请申请人核对退回原因后重新申请结束。';
+
+  @override
+  String get orderClosureAction => '取消/结束订单';
+
+  @override
+  String get orderClosureBatchAction => '批量取消/结束';
+
+  @override
+  String get orderClosureEligibilityChecking => '正在向服务器核对所选订单是否可办理，请稍候。';
+
+  @override
+  String get orderClosureEligibilityFailed => '暂时无法核对可办理订单，请刷新或重新选择。';
+
+  @override
+  String get orderClosureNoEligibleOrders => '所选订单当前均不可办理，请处理原单中的在办事项后重新选择。';
+
+  @override
+  String get orderClosureEligibleOrders => '可办理订单';
+
+  @override
+  String get orderClosureUnavailableOrders => '暂不可办理';
+
+  @override
+  String get orderClosureEligibleOnlyConfirm => '已确认只提交上方可办理订单，不可办理项保留不变';
+
+  @override
+  String get orderClosureUnsupportedRowReason => '此记录不是可提交结束申请的订货单，保留不变。';
+
+  @override
+  String get orderClosureBusy => '正在处理，请稍候。';
+
+  @override
+  String get orderClosureSelectOrders => '请先勾选要取消或结束的订货单。';
+
+  @override
+  String get orderClosureSelectionChanged => '所选任务已变化，请刷新后重新选择。';
+
+  @override
+  String get orderClosureOrdersOnly => '所选内容包含申请单或其它记录，请仅选择要结束的订货单。';
+
+  @override
+  String get orderClosureBatchLimit => '一次最多处理50张订单，请分批选择。';
+
+  @override
+  String get orderClosureMissingPermission => '缺少提交财务审批权限，请联系管理员授权。';
+
+  @override
+  String get orderClosureWholeOrderHint =>
+      '本次按整张订货单申请结束，包含订单全部明细；同一订单勾选多条货品只申请一次。两种方式都须财务批准，不会删除历史数据。';
+
+  @override
+  String get orderClosureAlreadyPending => '本单已有待处理财务审批，请先处理当前审批。';
+
+  @override
+  String get orderClosureAlreadyEnded => '本单已经结束，不能重复申请。';
+
+  @override
+  String get orderClosureReadOnly => '当前单据只读，请由原制单人或有该单据写入范围的人员办理。';
+
+  @override
+  String get orderClosureApprovalHint =>
+      '两种方式都须财务批准后才生效。已有收货、库存和账务记录保留，在外材料责任仍须处理；审批期间履约变化须重新核对申请。';
+
+  @override
+  String get orderClosureReceiptFinalityHint =>
+      '结束前请办清收退货和质检处置；批准后不能直接更改原单已核定实收。';
+
+  @override
+  String get orderClosureCloseHint => '批准后结束本单剩余履约，仓库不再等待剩余到货。';
+
+  @override
+  String get orderClosureReorder => '结束并重新生成剩余订单';
+
+  @override
+  String get orderClosureReorderHint =>
+      '批准后按核定剩余量生成新草稿，保留原单关联与价格参考；请在新单重新选择供应商、核对条款，再提交正常财务审批。';
+
+  @override
+  String get orderClosureReason => '结束原因';
+
+  @override
+  String get orderClosureReasonHint => '例如供应商停止供货、历史订单不再执行';
+
+  @override
+  String get orderClosureReasonRequired => '请填写结束原因';
+
+  @override
+  String get orderClosureSubmit => '提交财务审批';
+
+  @override
+  String get orderClosureSubmitted => '结束申请已提交财务审批，批准后生效';
+
+  @override
+  String get orderClosureLoadFailed => '结束申请信息暂时读取失败';
+
+  @override
+  String get orderClosureUnavailable => '本单当前不能申请结束，请刷新后核对状态';
+
+  @override
+  String get orderClosureRemaining => '剩余订货量';
+
+  @override
+  String get orderClosureRemainingGift => '剩余赠品量';
+
+  @override
+  String get orderClosurePending => '结束待审批';
+
+  @override
+  String get orderClosureApproved => '结束已批准';
+
+  @override
+  String get orderClosureRejected => '结束已驳回';
+
+  @override
+  String get orderClosureApproveHint =>
+      '批准后结束原单剩余履约，仓库不再等待未到货量。选择重建时生成关联草稿，保留价格参考；新单须重新选择供应商、核对条款后再送审。已有库存和账务记录保留，在外材料责任仍须处理。';
+
+  @override
+  String get orderClosureReviewTitle => '结束申请';
+
+  @override
+  String get orderClosureApprovedToast => '结束申请已批准，原单剩余履约已结束';
+
+  @override
+  String get orderClosureBatchHint =>
+      '所选内容含结束申请。批准后原单剩余履约结束，选择重建的订单生成新草稿；请逐单核对结束原因与剩余量。';
+
+  @override
+  String get companyFilesTitle => '公司资料库';
+
+  @override
+  String get companyFilesLibrary => '全部资料';
+
+  @override
+  String get companyFilesTrash => '回收站';
+
+  @override
+  String get companyFilesNewFolder => '新建文件夹';
+
+  @override
+  String get companyFilesUpload => '上传文件';
+
+  @override
+  String get companyFilesSearch => '搜索当前文件夹';
+
+  @override
+  String get companyFilesRefresh => '刷新';
+
+  @override
+  String get companyFilesSort => '排序';
+
+  @override
+  String get companyFilesManual => '手动排序';
+
+  @override
+  String get companyFilesName => '名称';
+
+  @override
+  String get companyFilesUpdated => '修改时间';
+
+  @override
+  String get companyFilesSize => '大小';
+
+  @override
+  String get companyFilesAscending => '升序';
+
+  @override
+  String get companyFilesDescending => '降序';
+
+  @override
+  String get companyFilesIcons => '图标';
+
+  @override
+  String get companyFilesTiles => '平铺';
+
+  @override
+  String get companyFilesDetails => '详情';
+
+  @override
+  String get companyFilesOpen => '打开';
+
+  @override
+  String get companyFilesDownload => '下载原件';
+
+  @override
+  String get companyFilesRename => '重命名';
+
+  @override
+  String get companyFilesMove => '移动到';
+
+  @override
+  String get companyFilesDelete => '移到回收站';
+
+  @override
+  String get companyFilesRestore => '还原';
+
+  @override
+  String get companyFilesAccess => '文件夹权限';
+
+  @override
+  String get companyFilesPassword => '文件夹密码';
+
+  @override
+  String get companyFilesUnlock => '解锁';
+
+  @override
+  String get companyFilesLock => '重新锁定';
+
+  @override
+  String get companyFilesClose => '关闭';
+
+  @override
+  String get companyFilesCancel => '取消';
+
+  @override
+  String get companyFilesSave => '保存';
+
+  @override
+  String get companyFilesConfirm => '确认';
+
+  @override
+  String get companyFilesRetry => '重试';
+
+  @override
+  String get companyFilesEmpty => '这个文件夹还没有资料';
+
+  @override
+  String get companyFilesEmptyHint => '有上传或创建权限时，可以从上方添加资料，也可以将文件拖到这里。';
+
+  @override
+  String get companyFilesNoResults => '没有找到匹配的资料';
+
+  @override
+  String get companyFilesTrashEmpty => '回收站是空的';
+
+  @override
+  String get companyFilesTrashHint => '删除的资料会保留原件，授权人员可以还原。';
+
+  @override
+  String get companyFilesLoading => '正在读取资料…';
+
+  @override
+  String get companyFilesLoadFailed => '资料没有加载出来';
+
+  @override
+  String get companyFilesChanged => '已保存';
+
+  @override
+  String get companyFilesDescription => '说明';
+
+  @override
+  String get companyFilesFolder => '文件夹';
+
+  @override
+  String get companyFilesFile => '文件';
+
+  @override
+  String get companyFilesType => '类型';
+
+  @override
+  String get companyFilesCreatedBy => '创建人';
+
+  @override
+  String get companyFilesCreatedAt => '创建时间';
+
+  @override
+  String get companyFilesUpdatedBy => '修改人';
+
+  @override
+  String get companyFilesDeletedAt => '删除时间';
+
+  @override
+  String get companyFilesPending => '上传未完成';
+
+  @override
+  String get companyFilesProtected => '密码保护';
+
+  @override
+  String get companyFilesLocked => '此文件夹需要密码';
+
+  @override
+  String get companyFilesLockedHint => '目录权限仍然有效。解锁只在当前登录会话中临时生效。';
+
+  @override
+  String get companyFilesDeleteHint => '文件夹及其全部子项将一起移到回收站，原件保留。还原后仍按当前权限访问。';
+
+  @override
+  String get companyFilesPasswordHint => '密码只作为额外保护，不能替代人员授权。设置或修改后，所有临时解锁会失效。';
+
+  @override
+  String get companyFilesNewPassword => '新密码';
+
+  @override
+  String get companyFilesRepeatPassword => '再次输入密码';
+
+  @override
+  String get companyFilesRemovePassword => '清除密码';
+
+  @override
+  String get companyFilesPasswordMismatch => '两次输入的密码不一致';
+
+  @override
+  String get companyFilesRequiredName => '请输入名称';
+
+  @override
+  String get companyFilesPasswordLength => '密码至少 8 位';
+
+  @override
+  String get companyFilesSelectFolder => '选择目标文件夹';
+
+  @override
+  String get companyFilesMoveHere => '移动到此处';
+
+  @override
+  String get companyFilesParent => '上一级';
+
+  @override
+  String get companyFilesAccessHint =>
+      '操作同时受总权限和文件夹规则约束。拒绝规则优先；继承开启时，上级规则继续生效。';
+
+  @override
+  String get companyFilesInherit => '继承上级权限';
+
+  @override
+  String get companyFilesAddRule => '添加授权规则';
+
+  @override
+  String get companyFilesAllow => '允许';
+
+  @override
+  String get companyFilesDeny => '拒绝';
+
+  @override
+  String get companyFilesUser => '人员';
+
+  @override
+  String get companyFilesDepartment => '部门';
+
+  @override
+  String get companyFilesPrincipalSearch => '搜索姓名、工号或部门';
+
+  @override
+  String get companyFilesRead => '查看';
+
+  @override
+  String get companyFilesCreate => '创建文件夹';
+
+  @override
+  String get companyFilesEdit => '编辑名称与说明';
+
+  @override
+  String get companyFilesManage => '管理权限与密码';
+
+  @override
+  String get companyFilesRemoveRule => '删除规则';
+
+  @override
+  String get companyFilesQueue => '上传队列';
+
+  @override
+  String get companyFilesWaiting => '等待上传';
+
+  @override
+  String get companyFilesUploading => '正在上传';
+
+  @override
+  String get companyFilesVerifying => '正在核验并保存';
+
+  @override
+  String get companyFilesUploaded => '已上传';
+
+  @override
+  String get companyFilesUploadFailed => '上传失败';
+
+  @override
+  String get companyFilesUnknown => '结果待核对';
+
+  @override
+  String get companyFilesCheckResult => '核对结果';
+
+  @override
+  String get companyFilesStopQueue => '完成当前文件后停止';
+
+  @override
+  String get companyFilesStopped => '已停止';
+
+  @override
+  String get companyFilesQueueHint => '文件逐个上传并扫描。关闭队列不会删除已保存的资料。';
+
+  @override
+  String get companyFilesUnsupported => '不支持此文件类型';
+
+  @override
+  String get companyFilesTooLarge => '文件超过上传大小限制';
+
+  @override
+  String get companyFilesBatchTooLarge => '单次选择的文件总量不能超过 100 MB';
+
+  @override
+  String get companyFilesUnreadable => '无法读取文件，请重新选择';
+
+  @override
+  String get companyFilesDropHint => '松开鼠标，上传到当前文件夹';
+
+  @override
+  String get companyFilesDragHint => '手动排序时可长按拖动位置；其他排序下拖到文件夹可移动。';
+
+  @override
+  String get companyFilesSavedTo => '文件已保存';
+
+  @override
+  String get companyFilesNoAccess => '没有可执行的操作';
+
+  @override
+  String get companyFilesPermissionDenied => '访问权限已变化，请刷新后重试';
+
+  @override
+  String get companyFilesUnknownHint => '请求可能已保存。请先核对结果，避免重复上传。';
+
+  @override
+  String get companyFilesUp => '向前移动一位';
+
+  @override
+  String get companyFilesDown => '向后移动一位';
+
+  @override
+  String get companyFilesItems => '项';
+
+  @override
+  String get companyFilesPage => '页';
+
+  @override
+  String get companyFilesPrevious => '上一页';
+
+  @override
+  String get companyFilesNext => '下一页';
+
+  @override
+  String get companyFilesDuplicateRule => '此人员或部门的允许和拒绝规则已存在，请编辑已有规则。';
+
+  @override
+  String get companyFilesRuleActionsRequired => '请为每条规则至少选择一种操作。';
+
+  @override
+  String get companyFilesPreviewUnavailable => '此文件暂时不能在线预览，可以下载原件查看。';
+
+  @override
+  String get companyFilesResumeName => '请选择与待完成文件同名的原件。';
+
+  @override
+  String get companyFilesKeepExtension => '重命名时请保留原扩展名，避免改变文件的打开方式。';
 }

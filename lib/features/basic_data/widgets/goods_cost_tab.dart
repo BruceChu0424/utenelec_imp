@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/cards/uten_card.dart';
@@ -103,6 +104,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   String? _automaticResumeId;
   String? _actualExecutionScope;
   bool _busy = false, _loading = true, _calculating = false, _dirty = false;
+  bool _booting = false, _startupFailed = false;
   bool _replacingFees = false;
   bool _showSettings = false,
       _showAdvancedSettings = false,
@@ -241,17 +243,33 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     'extraFields': <String, String>{},
   };
   Future<void> _boot() async {
+    if (!mounted || _booting || !formDraftIdentityIsCurrent) return;
+    startFormDraftIdentityGuard();
     if (widget.detail.costMasked || !_capability.canRead) {
       if (mounted) setState(() => _loading = false);
       return;
     }
+    _booting = true;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       _input = _freshInput();
       final versions = await _repository.list(widget.detail.id);
-      if (!mounted) return;
+      if (!formDraftIdentityIsCurrent) return;
       _versions = versions;
-      await _refreshLocalDrafts();
-      if (!mounted) return;
+      var localDraftsLoaded = false;
+      try {
+        await _refreshLocalDrafts();
+        localDraftsLoaded = true;
+      } catch (_) {
+        // Local draft availability must not stop the authoritative cost read.
+        // initializeFormDraft retains the storage error for recovery and the
+        // save/leave checkpoint; explicit draft recovery remains blocked.
+        _localDrafts = [];
+      }
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       final route = goRouterPageStateOrNull(context)?.uri;
       final resumesLocal =
           route?.path == '/basicinfo/goods/${widget.detail.id}' &&
@@ -267,25 +285,31 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
         final latest = await _repository.detail(
           costText(_versions.first['id'])!,
         );
-        if (!mounted) return;
+        if (!formDraftIdentityIsCurrent) return;
         _adopt(latest);
         if (latest.status == 'DRAFT') await _preview();
       } else {
         await _bootstrap();
       }
-      if (!mounted) return;
+      if (!formDraftIdentityIsCurrent) return;
       await initializeFormDraft();
-      await _refreshLocalDrafts();
+      if (!formDraftIdentityIsCurrent) return;
+      if (localDraftsLoaded) await _refreshLocalDrafts();
+      _startupFailed = false;
     } catch (e) {
-      if (mounted) _error = _message(e);
+      if (formDraftIdentityIsCurrent) {
+        _startupFailed = true;
+        _error = _message(e);
+      }
     } finally {
+      _booting = false;
       if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _bootstrap() async {
     final calculation = await _repository.bootstrap(widget.detail.id);
-    if (!mounted) return;
+    if (!formDraftIdentityIsCurrent) return;
     final input = calculation.resolvedInput;
     if (input == null || input['goodsId'] != widget.detail.id) {
       throw StateError(_l.commonError);
@@ -514,6 +538,10 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
         _historical != null) {
       throw StateError(_l.costNoPermission);
     }
+    await saveFormDraftNow();
+    if (!formDraftIdentityIsCurrent) {
+      throw StateError('登录身份或服务器已变化，原草稿继续保留');
+    }
     final sheet = await _repository.save(
       _sheet?.id,
       copyCostJson(_currentInput()),
@@ -638,7 +666,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   Future<void> _refreshLocalDrafts() async {
     final store = ref.read(formDraftsProvider.notifier);
     await store.ready;
-    if (!mounted) return;
+    if (!formDraftIdentityIsCurrent) return;
     setState(
       () => _localDrafts = ref
           .read(formDraftsProvider)
@@ -842,7 +870,11 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
                     ),
                     UtenButton(
                       type: UtenButtonType.tonal,
-                      onPressed: _busy ? null : _preview,
+                      onPressed: _busy
+                          ? null
+                          : _startupFailed
+                          ? _boot
+                          : _preview,
                       child: Text(_l.commonRetry),
                     ),
                   ],
@@ -876,10 +908,11 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
               controller: _feeScroll,
               child: ListView(
                 controller: _feeScroll,
+                // 水平贴 0：与货品详情页签栏共用左缘（2026-10-24 口径）。
                 padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s12,
                   0,
-                  UtenSpacing.s12,
+                  0,
+                  0,
                   UtenFloatingActionGroup.scrollClearance,
                 ),
                 children: [_header(), _feeTable()],
@@ -898,14 +931,9 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     return UtenCollapsingHeaderScrollView(
       key: const Key('cost-collapsing-scroll'),
       controller: _materialOuterScroll,
-      collapsingHeader: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
-        child: _header(),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
-        child: _materialTable(),
-      ),
+      // 水平贴 0：与货品详情页签栏共用左缘（2026-10-24 口径）。
+      collapsingHeader: _header(),
+      body: _materialTable(),
     );
   }
 
@@ -1167,7 +1195,9 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
               for (final draft in _localDrafts)
                 ListTile(
                   title: _oneLine(draft.title),
-                  subtitle: _oneLine(draft.updatedAt.toIso8601String()),
+                  subtitle: _oneLine(
+                    ChinaDateTime.formatInstant(draft.updatedAt, seconds: true),
+                  ),
                   trailing: UtenButton(
                     onPressed: _busy ? null : () => _recover(draft),
                     child: Text(_l.costRecoverLocal),
@@ -1175,96 +1205,95 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
                 ),
             ],
           ),
-    body: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
-      child: MasterDataTableView<Map<String, dynamic>>(
-        tableKey: 'master.goods.cost.versions',
-        primary: true,
-        onFullscreenChanged: (value) {
-          _materialFullscreen = value;
-          if (!value) {
-            _fullscreenClosed?.complete();
-            _fullscreenClosed = null;
-          }
-        },
-        columns: [
-          _readColumn(
-            'status',
-            _l.costStatus,
-            72,
-            text: (r) => _status(r['status']),
-          ),
-          _readColumn('name', _l.costName, 220),
-          for (final (key, label, width) in [
-            ('version', _l.costVersion, 90.0),
-            ('batchQty', _l.costBatch, 120.0),
-            ('knownTotal', _l.costKnownTotal, 150.0),
-          ])
-            MasterColumnDef(
-              key: key,
-              label: label,
-              width: width,
-              type: key == 'knownTotal' ? 'money' : 'number',
-              aiSensitive: key == 'knownTotal',
-              value: (r) => costText(r[key]),
-              exactValueOf: (r) => costText(r[key]),
-              cellBuilder: (_, r) => _oneLine(r[key]),
-            ),
-          _readColumn('updatedAt', _l.costUpdated, 190),
+    // 水平贴 0：与货品详情页签栏共用左缘（2026-10-24 口径）。
+    body: MasterDataTableView<Map<String, dynamic>>(
+      tableKey: 'master.goods.cost.versions',
+      primary: true,
+      onFullscreenChanged: (value) {
+        _materialFullscreen = value;
+        if (!value) {
+          _fullscreenClosed?.complete();
+          _fullscreenClosed = null;
+        }
+      },
+      columns: [
+        _readColumn(
+          'status',
+          _l.costStatus,
+          72,
+          text: (r) => _status(r['status']),
+        ),
+        _readColumn('name', _l.costName, 220),
+        for (final (key, label, width) in [
+          ('version', _l.costVersion, 90.0),
+          ('batchQty', _l.costBatch, 120.0),
+          ('knownTotal', _l.costKnownTotal, 150.0),
+        ])
           MasterColumnDef(
-            key: 'action',
-            label: _l.costAction,
-            width: 120,
-            value: (_) => _l.costOpen,
-            cellBuilder: (_, row) => UtenTableCellAction(
-              label: _l.costOpen,
-              onPressed: _busy ? null : () => _open(row['id'].toString()),
-            ),
+            key: key,
+            label: label,
+            width: width,
+            type: key == 'knownTotal' ? 'money' : 'number',
+            aiSensitive: key == 'knownTotal',
+            value: (r) => costText(r[key]),
+            exactValueOf: (r) => costText(r[key]),
+            cellBuilder: (_, r) => _oneLine(r[key]),
           ),
-        ],
-        items: _versions,
-        rowKeyOf: (r) => r['id'].toString(),
-        rowMenuBuilder: (row) => [
-          UtenMenuItem(
+        _readColumn('updatedAt', _l.costUpdated, 190),
+        MasterColumnDef(
+          key: 'action',
+          label: _l.costAction,
+          width: 120,
+          value: (_) => _l.costOpen,
+          cellBuilder: (_, row) => UtenTableCellAction(
             label: _l.costOpen,
-            onTap: () => _open(row['id'].toString()),
-            enabled: !_busy,
+            onPressed: _busy ? null : () => _open(row['id'].toString()),
           ),
-        ],
-        facets: const {},
-        nullCounts: const {},
-        filters: const {},
-        onFilterChanged: (_, _) {},
-        emptyMessage: _l.costEmpty,
-        toolbarLeadingActions: [
-          if (_sheet != null)
-            UtenButton(
-              height: UtenTableToolbar.controlHeight,
-              onPressed: _busy ? null : _compareVersions,
-              child: Text(_l.costCompare),
-            ),
-          if (_sheet != null)
-            UtenButton(
-              height: UtenTableToolbar.controlHeight,
-              onPressed: _busy ? null : _showSnapshots,
-              child: Text(_l.costHistory),
-            ),
-        ],
-        toolbarActions: [
+        ),
+      ],
+      items: _versions,
+      rowKeyOf: (r) => r['id'].toString(),
+      rowMenuBuilder: (row) => [
+        UtenMenuItem(
+          label: _l.costOpen,
+          onTap: () => _open(row['id'].toString()),
+          enabled: !_busy,
+        ),
+      ],
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      emptyMessage: _l.costEmpty,
+      toolbarLeadingActions: [
+        if (_sheet != null)
           UtenButton(
             height: UtenTableToolbar.controlHeight,
-            onPressed: _busy
-                ? null
-                : () => _action(() async {
-                    _versions = await _repository.list(widget.detail.id);
-                    await _refreshLocalDrafts();
-                  }),
-            child: Text(_l.commonRefresh),
+            onPressed: _busy ? null : _compareVersions,
+            child: Text(_l.costCompare),
           ),
-        ],
-      ),
+        if (_sheet != null)
+          UtenButton(
+            height: UtenTableToolbar.controlHeight,
+            onPressed: _busy ? null : _showSnapshots,
+            child: Text(_l.costHistory),
+          ),
+      ],
+      toolbarActions: [
+        UtenButton(
+          height: UtenTableToolbar.controlHeight,
+          onPressed: _busy
+              ? null
+              : () => _action(() async {
+                  _versions = await _repository.list(widget.detail.id);
+                  await _refreshLocalDrafts();
+                }),
+          child: Text(_l.commonRefresh),
+        ),
+      ],
     ),
   );
+
   MasterColumnDef<Map<String, dynamic>> _readColumn(
     String key,
     String label,

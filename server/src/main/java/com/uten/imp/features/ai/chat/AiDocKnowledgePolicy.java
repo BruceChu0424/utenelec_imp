@@ -45,7 +45,8 @@ final class AiDocKnowledgePolicy {
             "99-决策记录-ADR/ADR-106-*.md", "99-决策记录-ADR/ADR-107-*.md", "99-决策记录-ADR/ADR-108-*.md",
             "99-决策记录-ADR/ADR-109-*.md", "99-决策记录-ADR/ADR-110-*.md", "99-决策记录-ADR/ADR-133-*.md",
             "99-决策记录-ADR/ADR-140-*.md", "99-决策记录-ADR/ADR-141-*.md", "99-决策记录-ADR/ADR-150-*.md",
-            "99-决策记录-ADR/ADR-152-*.md", "99-决策记录-ADR/ADR-153-*.md", "99-决策记录-ADR/ADR-157-*.md",
+            "99-决策记录-ADR/ADR-152-*.md", "99-决策记录-ADR/ADR-153-*.md", "99-决策记录-ADR/ADR-155-*.md",
+            "99-决策记录-ADR/ADR-157-*.md",
             "99-决策记录-ADR/ADR-158-*.md",
             "99-决策记录-ADR/ADR-159-*.md",
             "99-决策记录-ADR/ADR-163-*.md",
@@ -126,7 +127,6 @@ final class AiDocKnowledgePolicy {
      *   <li>ADR-144 超收: a receiving rule, also for the warehouse clerks who register arrivals;</li>
      *   <li>ADR-128 信用口径: sales checks credit with the same rule (finance and sales read it);</li>
      *   <li>employee detail and edit pages: personnel, like the employee list;</li>
-     *   <li>ADR-155 清空业务数据: a system administration function;</li>
      *   <li>the business glossary, the AI assistant's user guide and the page on one's own permissions and how to get
      *       access: every chat user (that page is about the reader's own access, not about administering it).</li>
      * </ul>
@@ -138,7 +138,6 @@ final class AiDocKnowledgePolicy {
             Map.entry("99-决策记录-ADR/ADR-128-*.md", Set.of("SALES", "FINANCE")),
             Map.entry("03-页面/员工详情页.md", Set.of("HR")),
             Map.entry("03-页面/员工编辑页.md", Set.of("HR")),
-            Map.entry("99-决策记录-ADR/ADR-155-*.md", Set.of("ADMIN")),
             Map.entry("99-决策记录-ADR/ADR-179-*.md", Set.of("FINANCE")),
             Map.entry("03-页面/货品价格分析页.md", Set.of("FINANCE")),
             Map.entry(AiDocGlossary.PATH, Set.of()),

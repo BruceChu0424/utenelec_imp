@@ -4,9 +4,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/l10n/gen/app_localizations.dart';
+import '../../core/l10n/gen/app_localizations_zh.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
 import 'uten_input_decoration.dart';
+import 'uten_picker_icon_button.dart';
 
 /// A reference lookup keeps typed discovery separate from committing a record.
 /// The caller owns both the controller and the actual record identity. Only a
@@ -25,7 +28,9 @@ class UtenReferencePickerField<T> extends StatefulWidget {
     this.optionBuilder,
     this.onClear,
     this.onEditingDismissed,
-    this.pickerLabel = '选择',
+    this.pickerLabel,
+    this.pickerIcon = Icons.more_horiz_rounded,
+    this.pickerKey = const ValueKey('uten-reference-open-picker'),
     this.enabled = true,
     this.debounce = const Duration(milliseconds: 300),
     this.maxSuggestions = 8,
@@ -44,7 +49,9 @@ class UtenReferencePickerField<T> extends StatefulWidget {
   final Widget Function(BuildContext context, T item)? optionBuilder;
   final VoidCallback? onClear;
   final VoidCallback? onEditingDismissed;
-  final String pickerLabel;
+  final String? pickerLabel;
+  final IconData pickerIcon;
+  final Key pickerKey;
   final bool enabled;
   final Duration debounce;
   final int maxSuggestions;
@@ -459,11 +466,19 @@ class _UtenReferencePickerFieldState<T>
                           : null,
                       icon: const Icon(Icons.close_rounded, size: 18),
                     ),
-                  TextButton(
-                    onPressed: _allowed && !_pickerOpen
-                        ? () => unawaited(_openPicker())
-                        : null,
-                    child: Text(widget.pickerLabel),
+                  UtenPickerIconButton(
+                    key: widget.pickerKey,
+                    icon: widget.pickerIcon,
+                    tooltip:
+                        widget.pickerLabel ??
+                        (Localizations.of<AppLocalizations>(
+                                  context,
+                                  AppLocalizations,
+                                ) ??
+                                AppLocalizationsZh())
+                            .pickerChooseRecord(widget.label),
+                    isLoading: _pickerOpen,
+                    onPressed: _allowed && !_pickerOpen ? _openPicker : null,
                   ),
                 ],
               ),

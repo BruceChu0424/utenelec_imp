@@ -533,6 +533,34 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
     return true;
   }
 
+  @override
+  MasterInlineCreateConfig get inlineCreation => MasterInlineCreateConfig(
+    namespace: 'warehouses',
+    fields: _fields()
+        .where(
+          (field) => !field.readOnly && (field.key != 'status' || _canStatus),
+        )
+        .toList(),
+    defaults: const {
+      'accountable': 'true',
+      'defective': 'false',
+      'status': '使用',
+    },
+    canCreate: _canCreate,
+    onCreate: (_, values) async {
+      await ref.read(warehouseRepositoryProvider).create({
+        'status': '使用',
+        ...values,
+        'accountable':
+            values['accountable'] == null ||
+            values['accountable'] == true ||
+            values['accountable'] == 'true',
+        'defective':
+            values['defective'] == true || values['defective'] == 'true',
+      });
+    },
+  );
+
   Future<void> _showEdit(WarehouseDetail detail) async {
     if (!_canEdit || detail.lineSide || _selectedId != detail.id) return;
     await inlineEdit.prepareToBegin();
@@ -1246,6 +1274,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
         MasterInlineEditActions<WarehouseDetail>(
           controller: inlineEdit,
           canEdit: inlineCanEdit && inlineReadReady && !_tableBatchBusy,
+          canCreate: _canCreate && inlineReadReady && !_tableBatchBusy,
           onSave: saveInline,
           embedded: true,
           additionalActions: [
@@ -1296,6 +1325,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
               _directoryHeader(context, showCreate: false),
               Expanded(
                 child: MasterDataTableView<WarehouseDetail>(
+                  appendRowsSource: inlineAppendRowsSource,
                   key: const Key('warehouse-master-table'),
                   tableKey: 'master.warehouses',
                   requiredLeadingColumnKeys: const ['code', 'name', 'status'],
@@ -1401,6 +1431,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
               const SizedBox(height: UtenSpacing.s16),
               if (inlineEdit.active && !detail.lineSide)
                 MasterInlineRecordEditor<WarehouseDetail>(
+                  preferenceNamespace: inlineEntityType,
                   key: ValueKey('warehouse-inline-editor-${detail.id}'),
                   controller: inlineEdit,
                   row: detail,

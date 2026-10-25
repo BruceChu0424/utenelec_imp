@@ -136,12 +136,11 @@ class PermanentRecordHistoryPostgresTest {
             writer.rollback();
         }
     }
-    @Test void realCommercialTablesStayRegisteredAndOnlyExplicitTestResetMayClearTheirHistory() throws Exception {
+    @Test void realCommercialTablesStayRegisteredWithoutAnyResetException() throws Exception {
         assertThat(number("SELECT count(*) FROM business_record_retention_registry WHERE source_table IN ('sales_order_items','sales_quote_items','purchase_order_items','subcontract_order_items','finance_payment_lines','expense_claims','expense_claim_items','expense_claim_invoices')")).isEqualTo(8);
         assertThat(number("SELECT count(*) FROM business_record_retention_registry WHERE source_table IN ('users','refresh_tokens','password_history','business_record_history')")).isZero();
         assertThat(number("SELECT count(*) FROM information_schema.columns WHERE table_name='expense_claims' AND column_name IN ('is_deleted','deleted_at')")).isEqualTo(2);
-        assertThat(number("SELECT CASE WHEN pg_get_functiondef('business_data_reset()'::regprocedure) LIKE '%(''business_record_history'', ''CLEAR'')%' THEN 1 ELSE 0 END")).isEqualTo(1);
-        assertThat(number("SELECT CASE WHEN fn_business_test_reset_active() THEN 1 ELSE 0 END")).isZero();
+        assertThat(number("SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname IN ('business_data_reset','fn_business_test_reset_active')")).isZero();
     }
     private void seed(UUID parent,UUID child)throws Exception {
         sql("INSERT INTO history_parent(id,remark) VALUES('"+parent+"','完整原文')");

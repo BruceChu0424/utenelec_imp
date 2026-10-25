@@ -20,6 +20,7 @@ import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../components/feedback/uten_date_range_picker.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_employee_picker_access.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -812,21 +813,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       return;
     }
     final today = ChinaDateTime.today();
-    // Material 区间选择器在日历模式下按整窗尺寸铺开（全屏大页面中间一个日历），
-    // 这里用 builder 收窄成居中的紧凑弹窗（2026-09-28 用户口径）。
-    final picked = await showDateRangePicker(
+    final picked = await showUtenDateRangePicker(
       context: context,
       firstDate: DateTime.utc(2020),
       lastDate: today,
       initialDateRange: _dateRange,
       helpText: '选择审计时间范围',
-      saveText: '应用',
-      builder: (context, child) => Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520, maxHeight: 640),
-          child: child,
-        ),
-      ),
     );
     if (picked == null || !mounted) return;
     if (picked.duration.inDays > 30) {

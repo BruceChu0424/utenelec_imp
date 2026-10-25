@@ -769,7 +769,7 @@ foreach ($environmentSource in @(@{ Name = 'Phase 3'; Text = $text.Phase3 }, @{ 
             'UTEN_ATTACHMENT_UPLOADS_ENABLED=false', 'UTEN_ATTACHMENT_SCANNER_PROVIDER=clamav',
             'UTEN_CLAMAV_UNIX_SOCKET=/run/clamav/clamd.ctl',
             'UTEN_STORAGE_LEGACY_LOCAL_READ_ENABLED=false', 'UTEN_STORAGE_LEGACY_OSS_READ_ENABLED=false',
-            'UTEN_ATTACHMENT_RECONCILIATION_ENABLED=false', 'UTEN_BUSINESS_DATA_RESET_ENABLED=false')) {
+            'UTEN_ATTACHMENT_RECONCILIATION_ENABLED=false')) {
         Assert-Contains $environmentSource.Text $expected "$($environmentSource.Name) initial private-storage and closed-intake contract"
     }
     foreach ($retiredKey in @('UTEN_STORAGE_PROVIDER=oss', 'UTEN_OSS_BUCKET=', 'UTEN_OSS_STAGING_BUCKET=', 'UTEN_OSS_FINAL_BUCKET=')) {
@@ -797,13 +797,13 @@ Assert-Contains $text.EnvValidator 'historical OSS requires an HTTPS endpoint wi
 Assert-Contains $text.EnvValidator 'require_value UTEN_OSS_FINAL_BUCKET' 'historical OSS final bucket identity'
 Assert-Contains $text.EnvValidator 'require_value UTEN_OSS_REGION' 'historical OSS region identity'
 
-Assert-Contains $text.BaseProfile 'business-data-reset-enabled: ${UTEN_BUSINESS_DATA_RESET_ENABLED:false}' 'base reset defaults closed'
-foreach ($serverProfile in @($text.ProdProfile, $text.InternalTestProfile)) {
-    Assert-Contains $serverProfile 'business-data-reset-enabled: false' 'server reset profile is permanently disabled'
+foreach ($applicationProfile in @($text.BaseProfile, $text.ProdProfile, $text.InternalTestProfile)) {
+    Assert-NotContains $applicationProfile 'business-data-reset-enabled' 'reset configuration has been removed'
 }
-Assert-Contains $text.EnvValidator 'expect_exact UTEN_PROFILE prod' 'reset activation validator requires the production profile'
-Assert-Contains $text.EnvValidator 'expect_exact UTEN_DEPLOYMENT_SITE local' 'reset activation validator excludes cloud deployments'
-Assert-Contains $text.EnvValidator 'expect_exact UTEN_BUSINESS_DATA_RESET_ENABLED false' 'server reset is permanently disabled'
+Assert-NotContains $text.Phase3 'UTEN_BUSINESS_DATA_RESET_ENABLED' 'first install has no reset activation switch'
+Assert-NotContains $text.InternalStorageEnv 'UTEN_BUSINESS_DATA_RESET_ENABLED' 'environment template has no reset activation switch'
+Assert-Contains $text.EnvValidator 'expect_exact UTEN_PROFILE prod' 'activation validator requires the production profile'
+Assert-Contains $text.EnvValidator 'expect_exact UTEN_DEPLOYMENT_SITE local' 'activation validator excludes cloud deployments'
 Assert-Contains $text.InternalTestEnvValidator 'expect_exact UTEN_STORAGE_PROVIDER local' 'retired internal-test validator still requires its fixed local provider'
 Assert-Contains $text.InternalTestEnvValidator 'expect_exact UTEN_ATTACHMENT_UPLOADS_ENABLED false' 'retired internal-test intake remains closed'
 Assert-Contains $text.InternalTestEnvValidator 'expect_exact UTEN_ATTACHMENT_SCANNER_PROVIDER disabled' 'retired internal-test scanner remains explicitly disabled'

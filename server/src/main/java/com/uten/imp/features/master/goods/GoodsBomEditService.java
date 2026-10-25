@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.goods;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.MasterReferenceValidationPort;
 import com.uten.imp.common.web.ApiException;
@@ -52,6 +53,8 @@ public class GoodsBomEditService {
     private static final int MAX_PREVIEWS = 1000;
     private final GoodsBomService bom;
     private final GoodsRepository goodsRepo;
+    private final GoodsService goods;
+    private final GoodsInlineEditService inlineEdits;
     private final GoodsBomItemRepository rows;
     private final GoodsBomGraphLock graph;
     private final MasterReferenceValidationPort references;
@@ -71,9 +74,11 @@ public class GoodsBomEditService {
                                SecurityContextCurrentUser currentUser, NamedParameterJdbcTemplate db,
                                EntityManager em, ObjectMapper json, Validator validator,
                                PlatformTransactionManager transactionManager, TxSessionVars tx,
-                               GoodsBomHistoryPermissions historyPermissions) {
+                               GoodsBomHistoryPermissions historyPermissions, GoodsService goods, GoodsInlineEditService inlineEdits) {
         this.bom = bom;
         this.goodsRepo = goodsRepo;
+        this.goods = goods;
+        this.inlineEdits = inlineEdits;
         this.rows = rows;
         this.graph = graph;
         this.references = references;
@@ -92,7 +97,10 @@ public class GoodsBomEditService {
         this.snapshotTransactions.setReadOnly(true);
     }
 
-    public record SnapshotView(List<BomItemView> items, String fingerprint) { }
+    public record GoodsSnapshot(UUID id, long version, String model, String spec, String material,
+                                String sourceType, boolean componentGoodsWritable) { }
+    public record SnapshotView(List<BomItemView> items, String fingerprint, GoodsSnapshot goods) { }
+    private static final Set<String> GOODS_FIELDS = Set.of("model", "spec", "material", "sourceType");
     public record CommitResult(int operationCount, List<UUID> affectedGoodsIds, Map<UUID, UUID> itemIds) { }
     private record Identity(UUID user, UUID session, UUID impersonator) { }
     private static final class Pending {
@@ -122,8 +130,24 @@ public class GoodsBomEditService {
                     || goods.getStatus() != null && !"使用".equals(goods.getStatus())) {
                 throw conflict("货品已删除、停用或仅为迁移占位，不能进入编辑模式");
             }
-            return new SnapshotView(bom.list(parent), fingerprint(parent));
+            return new SnapshotView(bom.list(parent), fingerprint(parent), goodsSnapshot(goods));
         });
+    }
+
+    private GoodsSnapshot goodsSnapshot(Goods item) {
+        AuthUser user = currentUser.get().orElseThrow(() ->
+                new ApiException(ErrorCode.FORBIDDEN, "当前登录状态无效"));
+        if (!hasPermission(user, "goods:view")) return null;
+        goods.requireVisible(item);
+        boolean writable = hasPermission(user, "goods:edit") && user.getEmployeeId() != null
+                && !user.isVisitor() && user.isAccountNonLocked() && !user.isMustChangePassword()
+                && user.getImpersonatedBy() == null && goods.canWrite(item);
+        return new GoodsSnapshot(item.getId(), item.getVersion(), item.getModel(), item.getSpec(),
+                item.getMaterial(), item.getSourceType(), writable);
+    }
+
+    private static boolean hasPermission(AuthUser user, String permission) {
+        return user.isSuperAdmin() || !user.isMustChangePassword() && user.getPermissions().contains(permission);
     }
 
     public BomEditPreview preview(UUID root, BomEditRequest request) {
@@ -189,6 +213,7 @@ public class GoodsBomEditService {
                 for (var operation : request.operations()) {
                     if (operation.type() == BomEditRequest.Type.CREATE) required.add("goods:bom:create");
                     if (operation.type() == BomEditRequest.Type.DELETE) required.add("goods:bom:delete");
+                    if (operation.type() == BomEditRequest.Type.UPDATE_GOODS) required.add("goods:edit");
                 }
                 historyPermissions.record(required);
                 return new CommitResult(request.operations().size(), List.copyOf(replay.affected),
@@ -214,7 +239,32 @@ public class GoodsBomEditService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "组装草稿缺少有效操作、快照或必填字段");
         }
         int count = 0;
+        Set<UUID> editedGoods = new HashSet<>();
         for (var operation : request.operations()) {
+            if (operation.type() == BomEditRequest.Type.UPDATE_GOODS) {
+                if (operation.goodsId() == null || operation.goodsVersion() == null
+                        || operation.goodsVersion() < 0 || operation.goodsChanges() == null
+                        || operation.goodsChanges().isEmpty()
+                        || operation.goodsChanges().keySet().stream()
+                        .anyMatch(key -> key == null || !GOODS_FIELDS.contains(key))
+                        || operation.body() != null || operation.itemId() != null || operation.clientItemId() != null
+                        || operation.itemIds() != null || operation.moves() != null
+                        || !editedGoods.add(operation.goodsId())) {
+                    throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                            "货品资料修改须保留原始版本，每个货品合并一次，且只能修改型号、规格、材质和来源");
+                }
+                for (var change : operation.goodsChanges().entrySet()) {
+                    JsonNode value = change.getValue();
+                    if (value == null || !value.isNull() && !value.isTextual()
+                            || value.isTextual() && value.textValue().length() > 1000
+                            || "sourceType".equals(change.getKey()) && !value.isNull()
+                            && !Set.of("自制", "采购", "委外").contains(value.textValue())) {
+                        throw new ApiException(ErrorCode.VALIDATION_FAILED, "货品资料字段格式不正确，请核对型号、规格、材质和来源");
+                    }
+                }
+            } else if (operation.goodsVersion() != null || operation.goodsChanges() != null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "组装关系操作不能夹带货品主档修改");
+            }
             count += Math.max(1, Math.max(operation.itemIds() == null ? 0 : operation.itemIds().size(),
                     operation.moves() == null ? 0 : operation.moves().size()));
         }
@@ -244,6 +294,17 @@ public class GoodsBomEditService {
                 throw conflict("组装信息或相关货品资料已被修改，请刷新后重新编辑；本次未保存");
             }
         }
+        for (var operation : request.operations()) {
+            if (operation.type() != BomEditRequest.Type.UPDATE_GOODS) continue;
+            CurrentAuthorityGuard.requireAll("goods:view", "goods:edit");
+            Goods target = goodsRepo.findById(operation.goodsId()).filter(item -> !item.isDeleted())
+                    .orElseThrow(() -> conflict("货品不存在"));
+            goods.requireVisible(target);
+            goods.requireWritable(target);
+            if (target.getVersion() != operation.goodsVersion()) {
+                throw conflict("货品已有后续修改，请刷新后重新编辑；未覆盖任何修改");
+            }
+        }
         return covered;
     }
 
@@ -268,6 +329,19 @@ public class GoodsBomEditService {
         for (var operation : request.operations()) {
             UUID parent = operation.goodsId() == null ? root : operation.goodsId();
             switch (operation.type()) {
+                case UPDATE_GOODS -> {
+                    CurrentAuthorityGuard.requireAll("goods:view", "goods:edit");
+                    requireParent(root, parent, covered);
+                    // prepare already proved the caller's original master version under
+                    // the same row lock. Earlier recipe operations can advance this
+                    // parent's version through their own material-cost recalculation.
+                    em.flush();
+                    long version = goodsRepo.findById(parent).orElseThrow(() -> conflict("货品不存在")).getVersion();
+                    inlineEdits.patch(parent, Map.of("version", json.valueToTree(version)), operation.goodsChanges());
+                    // A master change is visible on every recipe referencing this component.
+                    replay.affected.add(parent);
+                    em.flush();
+                }
                 case CREATE -> {
                     CurrentAuthorityGuard.requireAll("goods:bom:create");
                     requireParent(root, parent, covered);
@@ -375,7 +449,7 @@ public class GoodsBomEditService {
                 involved AS (
                     SELECT id,version,updated_at,code,name,status,is_deleted,auto_created,owner_employee_id,
                            unit_id,unit_legacy_id,color_id,color_legacy_id,issue_method,periodic_cost_basis,
-                           price,source_type,m_weight,m_weight_unit_id,m_weight_unit_legacy_id
+                           model,spec,material,price,source_type,m_weight,m_weight_unit_id,m_weight_unit_legacy_id
                     FROM goods WHERE id=:id OR id IN (SELECT component_goods_id FROM edges))
                 SELECT jsonb_build_object(
                     'goods',(SELECT jsonb_agg(to_jsonb(g) ORDER BY g.id) FROM involved g),

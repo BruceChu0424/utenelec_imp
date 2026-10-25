@@ -22,8 +22,14 @@ class FinanceMonthlyFinalizationOrderTest(unittest.TestCase):
         self.assertLess(audit,commit)
         # After finalization there must be exactly the known audit/report write
         # and COMMIT. A future loader/metadata mutation must be reviewed here.
-        tail=source[final:commit+len("sql += 'COMMIT;\\n'")]
-        statements=ast.parse(textwrap.dedent('        '+tail)).body
+        line_start=source.rfind('\n',0,final)+1
+        tail=source[line_start:commit+len("sql += 'COMMIT;\\n'")]
+        # The final COMMIT is deliberately outside the full/scoped branch.
+        # Check each terminal statement without assuming their shared indent.
+        statements=[]
+        for line in tail.splitlines():
+            if line.strip() and not line.lstrip().startswith('#'):
+                statements.extend(ast.parse(line.strip()).body)
         self.assertEqual(len(statements),3)
         audit_sql=(HERE/'migrate_audit_summary.sql').read_text(encoding='utf-8')
         self.assertIn('INSERT INTO audit_log (',audit_sql)

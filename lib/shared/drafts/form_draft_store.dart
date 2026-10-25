@@ -80,9 +80,26 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
   bool _readOnly = false;
   bool _closed = false;
   Future<void> _ready = Future.value();
-  Future<void> _tail = Future.value();
+  Future<void>? _tail;
 
-  Future<void> get ready => _ready;
+  Future<void> get ready async {
+    final scope = _ownerScope, server = _ownerServer;
+    while (true) {
+      final generation = _generation;
+      try {
+        await _ready;
+      } catch (_) {
+        if (generation == _generation) rethrow;
+      }
+      if (_closed || scope != _ownerScope || server != _ownerServer) {
+        throw StateError('登录身份或服务器已变化，原草稿继续保留');
+      }
+      if (generation == _generation) return;
+      // A permission refresh rebuilds this notifier without changing its
+      // owner. Await that build, rather than publishing an obsolete failure
+      // or treating its still-loading empty state as the current draft list.
+    }
+  }
 
   /// Bound namespace for late editor callbacks, including after widget disposal.
   String? get ownerKey => _prefix;
@@ -117,6 +134,7 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
     _prefix = prefix;
     _storage = storage;
     _ready = Future<void>.microtask(() async {
+      if (generation != _generation) return;
       if (storage is BusinessResetFormDraftStorage) {
         await (storage as BusinessResetFormDraftStorage)
             .synchronizeBusinessReset(
@@ -713,7 +731,14 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
 
   Future<T> _serial<T>(Future<T> Function() operation) {
     if (_closed) return Future<T>.error(StateError('草稿会话已关闭'));
-    final next = _tail.then((_) => _safeDraftErrors(operation));
+    // 惰性创建初始 tail：字段初始化器会在 notifier 构造（widget 测试里是
+    // pumpWidget 的 fake-async zone）时创建 Future.value()，其完成微任务被
+    // fake 队列拦截；编辑器随后在 tester.runAsync 的真实 zone 里提交保存时，
+    // 对这个永未完成的 future 排队会永久挂起（finance_review_task_draft_
+    // storage_test 的 runAsync 全程无 pump 场景）。第一次 _serial 调用时在
+    // 调用方 zone 创建，完成微任务与调用方同区，不再跨 zone 死锁。
+    final tail = _tail ??= Future<void>.value();
+    final next = tail.then((_) => _safeDraftErrors(operation));
     _tail = next.then<void>((_) {}, onError: (Object _, StackTrace _) {});
     return next;
   }

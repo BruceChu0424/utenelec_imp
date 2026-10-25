@@ -44,6 +44,9 @@ class PermissionConfigurationTransferPostgresTest {
         DATABASE.start();
         p.add("spring.datasource.url",DATABASE::getJdbcUrl);p.add("spring.datasource.username",DATABASE::getUsername);
         p.add("spring.datasource.password",DATABASE::getPassword);p.add("uten.jwt.secret",()->SECRET);
+        // Real migrations belong to this empty fixture database, never the host's dev migrator.
+        p.add("spring.flyway.url",DATABASE::getJdbcUrl);p.add("spring.flyway.user",DATABASE::getUsername);
+        p.add("spring.flyway.password",DATABASE::getPassword);
         p.add("uten.crypto.pgp-master-key",()->SECRET);p.add("uten.crypto.hmac-key",()->SECRET);
         p.add("uten.bootstrap.admin-login",()->"transfer-bootstrap");p.add("uten.bootstrap.admin-password",()->SECRET+"Aa1!");
     }
@@ -336,7 +339,6 @@ class PermissionConfigurationTransferPostgresTest {
     private List<String> confirmations(Preview preview){return preview.sensitiveAdditions().stream().map(SensitiveAddition::key).toList();}
 
     @Test void savedTemplateIsAnIndependentVersionedSnapshotAndNeverARole() {
-        assertThat(jdbc.queryForObject("SELECT disposition FROM fn_business_reset_table_policy() WHERE table_name='permission_templates'",String.class)).isEqualTo("PRESERVE");
         UUID target=account(department(),"模板快照");
         var created=templates.create(new PermissionTemplateDtos.Save("模板-"+UUID.randomUUID(),"采购用途",List.of("goods:view"),0L));
         assertThat(templates.list()).anyMatch(row->row.id().equals(created.id()) && row.permissions().contains("goods:view"));

@@ -276,6 +276,41 @@ void main() {
   );
 
   testWidgets(
+    'category navigation stays locked while a location draft is active',
+    (tester) async {
+      final api = _LocationApi();
+      await pumpPage(
+        tester,
+        api,
+        grants: {...permissions, Perm.materialCategoryView},
+      );
+      await tester.tap(find.text('原材料分类'));
+      await tester.pumpAndSettle();
+      expect(api.inventoryQueries.last['categoryId'], 'raw');
+      await editPlace(tester, 'B-02');
+      final reads = api.inventoryQueries.length;
+      await tester.tap(
+        find.byKey(const Key('instant-inventory-all-categories')),
+        warnIfMissed: false,
+      );
+      await tester.pumpAndSettle();
+      expect(controller(tester).dirty, isTrue);
+      expect(api.inventoryQueries.length, reads);
+      expect(api.writes, isEmpty);
+      await tester.tap(find.text('取消编辑'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('放弃修改'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('instant-inventory-all-categories')),
+      );
+      await tester.pumpAndSettle();
+      expect(api.inventoryQueries.last['categoryId'], isNull);
+      expect(api.writes, isEmpty);
+    },
+  );
+
+  testWidgets(
     'permission changes discard location drafts before further writes',
     (tester) async {
       final api = _LocationApi();
@@ -343,7 +378,11 @@ class _LocationApi extends ApiClient {
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => path.contains('warehouses/dict')
+  }) async => path.contains('material-categories/tree')
+      ? [
+          {'id': 'raw', 'code': 'RAW', 'name': '原材料分类', 'goodsCount': 1},
+        ]
+      : path.contains('warehouses/dict')
       ? [
           {'id': 'w1', 'name': '原仓库', 'code': 'W1', 'selectableForNew': true},
           {'id': 'w2', 'name': '新仓库', 'code': 'W2', 'selectableForNew': true},

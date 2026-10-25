@@ -149,6 +149,7 @@ public class SubcontractShortDeliveryService
             LEFT JOIN colors color ON color.id = oi.color_id
             LEFT JOIN units unit ON unit.id = oi.unit_id
             WHERE oi.id IN (%s) AND oi.is_deleted = FALSE
+              AND order_doc.termination_case_id IS NULL
             ORDER BY oi.order_id, oi.line_no, oi.id
             """;
 
@@ -290,6 +291,7 @@ public class SubcontractShortDeliveryService
                 LEFT JOIN units unit ON unit.id = c.unit_id
                 CROSS JOIN LATERAL (SELECT %s AS delivered_qty) current_return
                 WHERE receipt_item.receipt_id = ?
+                  AND order_doc.termination_case_id IS NULL
                   AND COALESCE(receipt_item.is_deleted, FALSE) = FALSE
                   AND current_return.delivered_qty < oi.qty
                   AND ((c.status='PENDING_OWNER' AND oi.allowed_loss_pct IS NOT NULL
@@ -400,6 +402,7 @@ public class SubcontractShortDeliveryService
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void lossReversed(UUID wasteId) {
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireSettledLossMutable(em,wasteId);
         List<Map<String,Object>> settled = jdbc.queryForList("""
                 SELECT id,order_item_id,version FROM subcontract_short_delivery_cases
                 WHERE waste_id=? AND status='ACCEPTED_LOSS' AND qty_change_log_id IS NULL

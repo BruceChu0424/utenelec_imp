@@ -28,6 +28,11 @@ class _Page extends StatelessWidget {
           onPressed: () => context.push('/b'),
           child: const Text('push b'),
         ),
+        TextButton(
+          key: Key('open-b-from-$name'),
+          onPressed: () => goFrom(context, '/b?tab=lines'),
+          child: const Text('open b'),
+        ),
         const UtenBackButton(),
       ],
     ),
@@ -50,6 +55,56 @@ GoRouter _router(String initial) => GoRouter(
 );
 
 void main() {
+  testWidgets('source-aware navigation retains the ordinary source route', (
+    tester,
+  ) async {
+    final router = _router('/a?status=open');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+    final source = tester.element(find.text('page:a'));
+
+    await tester.tap(find.byKey(const Key('open-b-from-a')));
+    await tester.pumpAndSettle();
+    expect(
+      source.mounted,
+      isTrue,
+      reason: 'opening details must retain source data',
+    );
+    expect(router.state.uri.queryParameters['tab'], 'lines');
+    expect(router.state.uri.queryParameters['returnTo'], '/a');
+    expect(router.canPop(), isTrue);
+
+    await tester.tap(find.byKey(const Key('back-b')));
+    await tester.pumpAndSettle();
+    expect(identical(tester.element(find.text('page:a')), source), isTrue);
+    expect(router.state.uri.queryParameters['status'], 'open');
+  });
+
+  testWidgets('nested source-aware opens return through each retained page', (
+    tester,
+  ) async {
+    final router = _router('/hub');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+    final hub = tester.element(find.text('page:hub'));
+    router.push<void>('/a');
+    await tester.pumpAndSettle();
+    final list = tester.element(find.text('page:a'));
+
+    await tester.tap(find.byKey(const Key('open-b-from-a')));
+    await tester.pumpAndSettle();
+    expect(hub.mounted, isTrue);
+    expect(list.mounted, isTrue);
+    await tester.tap(find.byKey(const Key('back-b')));
+    await tester.pumpAndSettle();
+    expect(identical(tester.element(find.text('page:a')), list), isTrue);
+    await tester.tap(find.byKey(const Key('back-a')));
+    await tester.pumpAndSettle();
+    expect(identical(tester.element(find.text('page:hub')), hub), isTrue);
+  });
+
   testWidgets('backTo pops when the page was pushed', (tester) async {
     final router = _router('/a');
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));

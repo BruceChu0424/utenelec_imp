@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../components/feedback/uten_empty.dart';
+import '../../components/feedback/uten_inline_notice.dart';
+import '../../core/network/api_exception.dart';
 import '../../core/network/server_config.dart';
 import '../providers/authenticated_scope_provider.dart';
 import 'session_snapshot_provider.dart';
@@ -17,6 +19,9 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
   int _readEpoch = 0;
   bool _accepted = false;
   bool _pendingRead = false;
+  String? _acceptedResource;
+  String? _pendingResource;
+  String? _refreshError;
   bool _permissionReady = false;
   int? _snapshotGeneration;
   bool _hasConfirmedSnapshot = false;
@@ -32,7 +37,12 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
 
   bool get nativeReadCanWrite =>
       nativeReadAccessConfirmed &&
+      !_pendingRead &&
+      _refreshError == null &&
       ref.read(authenticatedScopeProvider)?.readOnly != true;
+
+  bool get nativeReadRefreshing => _pendingRead && nativeReadAccessConfirmed;
+  String? get nativeReadRefreshError => _refreshError;
 
   void nativeReadOwnerChanged();
   void nativeReadPermissionChanged();
@@ -50,6 +60,9 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
       _readEpoch++;
       _accepted = false;
       _pendingRead = false;
+      _acceptedResource = null;
+      _pendingResource = null;
+      _refreshError = null;
       _permissionReady = false;
       if (!mounted) return;
       nativeReadOwnerChanged();
@@ -83,6 +96,9 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
         _readEpoch++;
         _pendingRead = false;
         _accepted = false;
+        _acceptedResource = null;
+        _pendingResource = null;
+        _refreshError = null;
         _accessChanges.value++;
       }
       if (ready) {
@@ -112,8 +128,9 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
 
   bool Function() captureNativeRead(
     String resource,
-    String Function() currentResource,
-  ) {
+    String Function() currentResource, {
+    bool retainAccepted = false,
+  }) {
     final scope = ref.read(authenticatedScopeProvider);
     final snapshot = confirmedSessionSnapshot(
       ref.read(sessionSnapshotProvider),
@@ -127,7 +144,15 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
     final owner = _ownerEpoch;
     final access = _accessEpoch;
     final read = ++_readEpoch;
-    _accepted = false;
+    // Retention is display-only and opt-in for a revalidation of this exact
+    // resource. Owner/access/snapshot transitions clear acceptance separately;
+    // no equality check can revive an earlier A-B-A reader or resource.
+    _accepted =
+        retainAccepted &&
+        nativeReadAccessConfirmed &&
+        _acceptedResource == resource;
+    _pendingResource = resource;
+    _refreshError = null;
     _pendingRead = true;
     return () =>
         mounted &&
@@ -152,7 +177,25 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
 
   void acceptNativeRead() {
     _accepted = true;
+    _acceptedResource = _pendingResource;
     _pendingRead = false;
+    _refreshError = null;
+  }
+
+  /// Finishes only an already-fenced read. A failed background check may keep
+  /// its previously authorized display, but commands remain unavailable until
+  /// a successful reread. Confirmed access denial retires the old display too.
+  bool failNativeRead(Object error, {required String message}) {
+    _pendingRead = false;
+    if (nativeReadAccessDenied(error) || nativeReadResourceRetired(error)) {
+      invalidateNativeReadAccess();
+      return false;
+    }
+    if (nativeReadAccessConfirmed && _acceptedResource == _pendingResource) {
+      _refreshError = message;
+      return true;
+    }
+    return false;
   }
 
   /// Hide accepted data and invalidate pending reads/dialogs immediately when a
@@ -162,8 +205,18 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
     _readEpoch++;
     _accepted = false;
     _pendingRead = false;
+    _acceptedResource = null;
+    _pendingResource = null;
+    _refreshError = null;
     _accessChanges.value++;
   }
+
+  Widget nativeReadRefreshFeedback({required VoidCallback onRetry}) =>
+      NativeReadRefreshFeedback(
+        refreshing: nativeReadRefreshing,
+        error: nativeReadRefreshError,
+        onRetry: onRetry,
+      );
 
   Widget nativeReadAccessNotice() {
     if (ref.read(authenticatedScopeProvider) == null) {
@@ -295,4 +348,67 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
         ),
       ) ==
       true;
+}
+
+/// The same confirmed access failures used by the network exception factory.
+bool nativeReadAccessDenied(Object error) =>
+    error is ApiException &&
+    (error.httpStatus == 401 ||
+        error.httpStatus == 403 ||
+        error.code == 'UNAUTHORIZED' ||
+        error.code == 'FORBIDDEN');
+
+/// A detail endpoint confirms that the record no longer exists or is no longer
+/// addressable. This is distinct from a transient network/read failure.
+bool nativeReadResourceRetired(Object error) =>
+    error is ApiException &&
+    (error.httpStatus == 404 || error.code == 'NOT_FOUND');
+
+/// A Stack overlay keeps the detail subtree and its scroll controllers mounted.
+/// The previous display is explicitly labelled when a background check fails.
+class NativeReadRefreshFeedback extends StatelessWidget {
+  const NativeReadRefreshFeedback({
+    super.key,
+    required this.refreshing,
+    required this.error,
+    required this.onRetry,
+  });
+
+  final bool refreshing;
+  final String? error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!refreshing && error == null) return const SizedBox.shrink();
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: Material(
+        color: Theme.of(context).colorScheme.surface,
+        child: refreshing
+            ? Semantics(
+                label: '正在核对最新数据',
+                child: const LinearProgressIndicator(minHeight: 2),
+              )
+            : ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 160),
+                child: SingleChildScrollView(
+                  primary: false,
+                  child: UtenInlineNotice(
+                    level: UtenInlineNoticeLevel.warning,
+                    title: '更新失败，当前显示上次内容',
+                    message: error,
+                    trailing: TextButton.icon(
+                      onPressed: onRetry,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('重新更新'),
+                    ),
+                  ),
+                ),
+              ),
+      ),
+    );
+  }
 }

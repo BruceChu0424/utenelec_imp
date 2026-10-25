@@ -27,6 +27,9 @@ import '../widgets/category_edit_dialog.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_inline_edit.dart';
+import '../widgets/master_inline_create_fields.dart';
+import '../repositories/reference_method_repository.dart';
+import '../repositories/currency_repository.dart';
 import '../repositories/master_inline_edit_repository.dart';
 import '../widgets/master_entity_detail_pane.dart';
 import '../widgets/master_edit_dialog.dart';
@@ -222,6 +225,39 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
     final suppliers = ref.watch(supplierRepositoryProvider);
     return MasterEntityPaneConfig<SupplierListItem, SupplierDetail>(
       noun: '供应商', // TODO(l10n): 补 arb
+      inlineCreation: (pane) => MasterInlineCreateConfig(
+        namespace: 'suppliers.${pane.categoryId}',
+        fields: masterInlineCreateFields(
+          buildSupplierFields(context, const {}, const [], ref),
+          excluded: {if (!perms.contains(Perm.supplierStatus)) 'status'},
+          options: {
+            'defaultSettlementMethodId': () async => [
+              for (final value
+                  in await ref
+                      .read(referenceMethodRepositoryProvider)
+                      .settlementMethods())
+                MasterSelectOption(value: value.id, label: value.name),
+            ],
+            'defaultCurrencyId': () async => [
+              for (final value
+                  in await ref.read(currencyRepositoryProvider).dict())
+                MasterSelectOption(
+                  value: value.id,
+                  label: value.name ?? value.code ?? value.id,
+                ),
+            ],
+          },
+        ),
+        defaults: {'status': '使用', 'categoryId': pane.categoryId},
+        canCreate: perms.contains(Perm.supplierCreate),
+        onCreate: (_, values) async {
+          await ref.read(supplierRepositoryProvider).create({
+            'status': '使用',
+            ...values,
+            'categoryId': pane.categoryId,
+          });
+        },
+      ),
       icon: Icons.local_shipping_outlined,
       defaultCodePrefix: 'GY',
       columns: _supplierColumns,

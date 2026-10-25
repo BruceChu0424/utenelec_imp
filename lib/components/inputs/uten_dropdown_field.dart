@@ -21,6 +21,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../core/l10n/gen/app_localizations.dart';
+import '../../core/network/server_config.dart';
+import '../../shared/providers/authenticated_scope_provider.dart';
+import 'uten_dropdown_geometry.dart';
 import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
 import 'uten_field_placeholder.dart';
@@ -76,6 +80,7 @@ class UtenDropdownField extends StatefulWidget {
     this.info,
     this.searchable,
     this.menuMatchContentWidth = false,
+    this.menuPreferenceKey,
     this.errorMessage,
     this.autofilled = false,
     this.warningMessage,
@@ -133,6 +138,10 @@ class UtenDropdownField extends StatefulWidget {
   /// viewport. The collapsed field and the default fixed-width menu are unchanged.
   final bool menuMatchContentWidth;
 
+  /// Stable presentation key, shared by a field's rows rather than their IDs.
+  /// A host scope or the route and field label supply a default when omitted.
+  final String? menuPreferenceKey;
+
   /// Validation error shown by a red border and an in-field error icon.
   final String? errorMessage;
 
@@ -169,6 +178,12 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
   Object? _menuWidthSignature;
   List<UtenDropdownItem> _measuredMenuItems = const [];
   double _measuredMenuWidth = 0;
+  final GlobalKey _menuSurfaceKey = GlobalKey();
+  UtenDropdownMenuGeometry? _localGeometry;
+  Object? _localGeometryOwner;
+  Rect? _gestureStartRect;
+  Object? _geometryOwner;
+  Object? _gestureOwner;
 
   // ADR-150: AI page context registration; the value the assistant chose stays
   // framed yellow ("AI filled, please review") until the user picks again.
@@ -206,6 +221,11 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
   @override
   void didUpdateWidget(covariant UtenDropdownField oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.menuPreferenceKey != widget.menuPreferenceKey ||
+        oldWidget.label != widget.label) {
+      _localGeometry = null;
+      _close();
+    }
     _aiAttach();
     if (!widget.enabled) {
       _close();
@@ -322,6 +342,8 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
 
   void _open() {
     if (_overlay != null || !widget.enabled) return;
+    _geometryOwner = null;
+    _gestureOwner = null;
     final search = _searchCtl = TextEditingController();
     final focus = _searchFocus = FocusNode();
     final scroll = _menuScroll = ScrollController();
@@ -403,6 +425,9 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     _searchCtl = null;
     _searchFocus = null;
     _menuScroll = null;
+    _gestureStartRect = null;
+    _geometryOwner = null;
+    _gestureOwner = null;
     WidgetsBinding.instance.removeObserver(this);
     for (final position in _scrollPositions) {
       position.removeListener(_refreshOverlay);
@@ -472,10 +497,94 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     );
     final fieldMedia = MediaQuery.of(context);
     final overlayMedia = MediaQuery.of(overlayContext);
-    Widget menu = LayoutBuilder(
-      builder: (menuContext, constraints) =>
-          _buildOverlay(menuContext, constraints, entry, search, focus, scroll),
+    final routeKey = (ModalRoute.of(context)?.settings.name ?? 'form')
+        .split('?')
+        .first
+        .replaceAll(
+          RegExp(
+            r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
+          ),
+          ':id',
+        );
+    final preferenceKey =
+        widget.menuPreferenceKey ??
+        UtenDropdownPreferenceScope.maybeOf(context) ??
+        (widget.label?.trim().isNotEmpty == true
+            ? 'field.$routeKey.${widget.label}'
+            : null);
+    ProviderContainer? scopeContainer;
+    try {
+      scopeContainer = ProviderScope.containerOf(context, listen: false);
+    } on StateError {
+      scopeContainer = null;
+    }
+    Widget layout(
+      UtenDropdownMenuGeometry? geometry,
+      void Function(UtenDropdownMenuGeometry?)? save,
+      bool Function()? owns,
+    ) => LayoutBuilder(
+      builder: (menuContext, constraints) => _buildOverlay(
+        menuContext,
+        constraints,
+        entry,
+        search,
+        focus,
+        scroll,
+        geometry: _localGeometry ?? geometry,
+        saveGeometry: save,
+        ownsGeometry: owns,
+      ),
     );
+    Widget menu;
+    if (scopeContainer != null) {
+      menu = Consumer(
+        builder: (context, ref, _) {
+          final owner = (
+            ref.watch(authenticatedScopeProvider),
+            ref.watch(apiBaseUrlProvider),
+            preferenceKey,
+          );
+          if (_localGeometry != null && _localGeometryOwner != owner) {
+            _localGeometry = null;
+          }
+          if (_geometryOwner != null && _geometryOwner != owner) {
+            _localGeometry = null;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && identical(_overlay, entry)) _close();
+            });
+            return const SizedBox.shrink();
+          }
+          _geometryOwner = owner;
+          final geometry = preferenceKey == null
+              ? null
+              : ref.watch(dropdownGeometryPrefsProvider)[preferenceKey];
+          bool owns() =>
+              mounted &&
+              identical(_overlay, entry) &&
+              (
+                    ref.read(authenticatedScopeProvider),
+                    ref.read(apiBaseUrlProvider),
+                    preferenceKey,
+                  ) ==
+                  owner;
+          return layout(
+            geometry,
+            preferenceKey == null
+                ? null
+                : (value) {
+                    if (!owns()) return;
+                    ref
+                        .read(dropdownGeometryPrefsProvider.notifier)
+                        .updateFor(preferenceKey, value);
+                    _localGeometry = null;
+                  },
+            owns,
+          );
+        },
+      );
+    } else {
+      menu = layout(_localGeometry, null, null);
+    }
     menu = MediaQuery(
       data: fieldMedia.copyWith(
         padding: overlayMedia.padding,
@@ -492,12 +601,6 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     );
     // Riverpod 3：UncontrolledProviderScope 不再是 InheritedWidget，
     // 取祖先容器改用 ProviderScope.containerOf；无 ProviderScope（测试/预览）时不包。
-    ProviderContainer? scopeContainer;
-    try {
-      scopeContainer = ProviderScope.containerOf(context, listen: false);
-    } on StateError {
-      scopeContainer = null;
-    }
     if (scopeContainer != null) {
       menu = UncontrolledProviderScope(container: scopeContainer, child: menu);
     }
@@ -720,7 +823,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     );
   }
 
-  /// 弹层：锚定字段下方、限高 320、竖向滚动；点外部关闭。样式对齐 _FilterCell。
+  /// 弹层：使用字段上方或下方较充足的安全空间，竖向滚动；点外部关闭。
   /// 选项较多（或 searchable:true）时顶部带搜索框，输入实时过滤，回车选中第一项。
   Widget _buildOverlay(
     BuildContext ctx,
@@ -728,9 +831,16 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     OverlayEntry entry,
     TextEditingController search,
     FocusNode focus,
-    ScrollController scroll,
-  ) {
-    bool current() => mounted && identical(_overlay, entry) && widget.enabled;
+    ScrollController scroll, {
+    UtenDropdownMenuGeometry? geometry,
+    void Function(UtenDropdownMenuGeometry?)? saveGeometry,
+    bool Function()? ownsGeometry,
+  }) {
+    bool current() =>
+        mounted &&
+        identical(_overlay, entry) &&
+        widget.enabled &&
+        (ownsGeometry?.call() ?? true);
     void close() {
       if (current()) _close();
     }
@@ -778,8 +888,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
           UtenSpacing.s8,
     );
     final safeHeight = math.max(0.0, safeBottom - safeTop);
-    final down = math.max(0.0, safeBottom - anchor.bottom - 2);
-    final up = math.max(0.0, anchor.top - safeTop - 2);
+    final belowTop = (anchor.bottom + 2).clamp(safeTop, safeBottom);
+    final aboveBottom = (anchor.top - 2).clamp(safeTop, safeBottom);
+    final down = safeBottom - belowTop;
+    final up = aboveBottom - safeTop;
     final openAbove = up > down;
     final fontSize = theme.textTheme.bodyMedium?.fontSize ?? 14;
     final textFactor = math.max(
@@ -790,10 +902,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     // search/add controls join the same scroll area in short or enlarged menus.
     final floating =
         math.max(up, down) < math.min(160 * textFactor, safeHeight);
-    final maxHeight = math.min(
-      320.0,
-      floating ? safeHeight : (openAbove ? up : down),
-    );
+    final naturalMaxHeight = floating ? safeHeight : (openAbove ? up : down);
     final defaultWidth = anchor.width.clamp(120.0, 480.0);
     final safeLeft = media.padding.left + UtenSpacing.s8;
     final safeRight = math.max(
@@ -801,7 +910,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
       overlaySize.width - media.padding.right - UtenSpacing.s8,
     );
     final viewportWidth = math.max(0.0, safeRight - safeLeft);
-    final fieldWidth = widget.menuMatchContentWidth
+    final naturalWidth = widget.menuMatchContentWidth
         ? math.min(
             viewportWidth,
             math.max(
@@ -810,9 +919,72 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
             ),
           )
         : math.min(viewportWidth, defaultWidth);
-    final left = anchor.left
-        .clamp(safeLeft, math.max(safeLeft, safeRight - fieldWidth))
-        .toDouble();
+    final bounds = Rect.fromLTRB(safeLeft, safeTop, safeRight, safeBottom);
+    final minimum = Size(120, 96 * textFactor);
+    final manualRect = geometry?.resolve(anchor, bounds, minimum);
+    final fieldWidth = manualRect?.width ?? naturalWidth;
+    final maxHeight = manualRect?.height ?? naturalMaxHeight;
+    final left =
+        manualRect?.left ??
+        anchor.left
+            .clamp(safeLeft, math.max(safeLeft, safeRight - fieldWidth))
+            .toDouble();
+    void beginGeometry(UtenDropdownEdge _) {
+      if (!current()) return;
+      final surface = _menuSurfaceKey.currentContext?.findRenderObject();
+      if (surface is! RenderBox || !surface.hasSize) return;
+      _gestureStartRect = MatrixUtils.transformRect(
+        surface.getTransformTo(host),
+        Offset.zero & surface.size,
+      );
+      _gestureOwner = _geometryOwner;
+    }
+
+    void updateGeometry(Offset delta, UtenDropdownEdge edge) {
+      final start = _gestureStartRect;
+      if (!current() || start == null || _gestureOwner != _geometryOwner) {
+        return;
+      }
+      final next = resizeDropdownRect(
+        start,
+        host.globalToLocal(delta) - host.globalToLocal(Offset.zero),
+        edge,
+        bounds,
+        Size(
+          math.min(minimum.width, start.width),
+          math.min(minimum.height, start.height),
+        ),
+      );
+      _localGeometry = UtenDropdownMenuGeometry.fromRect(next, anchor);
+      _localGeometryOwner = _geometryOwner;
+      _refreshOverlay();
+    }
+
+    void finishGeometry() {
+      if (!current() ||
+          _gestureStartRect == null ||
+          _gestureOwner != _geometryOwner) {
+        return;
+      }
+      _gestureStartRect = null;
+      if (_localGeometry != null) saveGeometry?.call(_localGeometry);
+      _refreshOverlay();
+    }
+
+    void resetGeometry() {
+      if (!current()) return;
+      _localGeometry = null;
+      saveGeometry?.call(null);
+      _refreshOverlay();
+    }
+
+    final strings = Localizations.of<AppLocalizations>(ctx, AppLocalizations);
+    final handleHeight = UtenControlMetrics.minimumHitExtent(ctx, desktop: 28);
+    final surfaceTop =
+        manualRect?.top ?? (floating ? safeTop : (openAbove ? null : belowTop));
+    final surfaceBottom = manualRect != null || floating
+        ? null
+        : (openAbove ? overlaySize.height - aboveBottom : null);
     return Stack(
       children: [
         Positioned.fill(
@@ -822,236 +994,297 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
           ),
         ),
         Positioned(
-          left: left,
-          top: floating ? safeTop : (openAbove ? null : anchor.bottom + 2),
-          bottom: floating
-              ? null
-              : (openAbove ? overlaySize.height - anchor.top + 2 : null),
+          left: left - 8,
+          top: surfaceTop == null ? null : surfaceTop - 8,
+          bottom: surfaceBottom == null ? null : surfaceBottom - 8,
           child: TapRegion(
             onTapOutside: (_) => close(),
-            child: Material(
-              color: theme.colorScheme.surfaceContainerHigh,
-              elevation: 8,
-              borderRadius: BorderRadius.circular(UtenRadius.md),
-              clipBehavior: Clip.antiAlias,
-              child: Container(
-                width: fieldWidth,
-                constraints: BoxConstraints(maxHeight: maxHeight),
-                child: StatefulBuilder(
-                  builder: (ctx, setOverlayState) {
-                    final q = search.text.trim().toLowerCase();
-                    final ranked = widget.items.indexed
-                        .where(
-                          (entry) =>
-                              entry.$2.visible &&
-                              keywordSearchRank([entry.$2.label], q) != null,
-                        )
-                        .toList();
-                    // Indented choices carry a parent/child order supplied by
-                    // their host. Never detach children from their group header.
-                    if (q.isNotEmpty &&
-                        !widget.items.any((item) => item.indent > 0)) {
-                      ranked.sort((a, b) {
-                        final rank = keywordSearchRank([
-                          a.$2.label,
-                        ], q)!.compareTo(keywordSearchRank([b.$2.label], q)!);
-                        return rank == 0 ? a.$1.compareTo(b.$1) : rank;
-                      });
-                    }
-                    final filtered = [for (final entry in ranked) entry.$2];
-                    final header = <Widget>[
-                      if (searchable)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            UtenSpacing.s8,
-                            UtenSpacing.s8,
-                            UtenSpacing.s8,
-                            UtenSpacing.s4,
-                          ),
-                          child: TextField(
-                            key: const Key('uten-dropdown-search-input'),
-                            controller: search,
-                            focusNode: focus,
-                            autofocus: true,
-                            style: theme.textTheme.bodyMedium,
-                            decoration: InputDecoration(
-                              isDense: true,
-                              hintText: _menuSearchHint,
-                              prefixIcon: const Icon(
-                                Icons.search_rounded,
-                                size: 18,
-                              ),
-                              prefixIconConstraints: const BoxConstraints(
-                                minWidth: 32,
-                                minHeight: 32,
-                              ),
-                              suffixIcon: q.isEmpty
-                                  ? null
-                                  : IconButton(
-                                      icon: const Icon(
-                                        Icons.close_rounded,
-                                        size: 16,
-                                      ),
-                                      onPressed: () {
-                                        if (!current()) return;
-                                        search.clear();
-                                        setOverlayState(() {});
-                                      },
-                                    ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(
-                                  UtenRadius.control,
-                                ),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: UtenSpacing.s8,
-                                vertical: UtenSpacing.s8,
-                              ),
-                            ),
-                            onChanged: (_) => setOverlayState(() {}),
-                            onSubmitted: (_) {
-                              if (filtered.isNotEmpty) {
-                                select(filtered.first.value);
-                              }
-                            },
-                          ),
-                        ),
-                      if (widget.onAddNew != null)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            UtenSpacing.s8,
-                            UtenSpacing.s4,
-                            UtenSpacing.s8,
-                            UtenSpacing.s4,
-                          ),
-                          child: InkWell(
-                            onTap: () {
-                              if (!current()) return;
-                              final onAddNew = widget.onAddNew;
-                              if (onAddNew == null) return;
-                              _close();
-                              onAddNew();
-                            },
-                            borderRadius: BorderRadius.circular(UtenRadius.sm),
-                            child: Container(
-                              width: double.infinity,
-                              constraints: BoxConstraints(
-                                minHeight: UtenControlMetrics.minimumHitExtent(
-                                  ctx,
-                                ),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: UtenSpacing.s12,
-                                vertical: UtenSpacing.s8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: UtenColors.successBg,
-                                borderRadius: BorderRadius.circular(
-                                  UtenRadius.sm,
-                                ),
-                                border: Border.all(color: UtenColors.success),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.add_rounded,
-                                    size: 18,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                  const SizedBox(width: UtenSpacing.s4),
-                                  Flexible(
-                                    child: Text(
-                                      widget.addNewLabel ?? '添加',
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                            color: theme.colorScheme.primary,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                    ];
-                    final options = <Widget>[
-                      if (widget.allowClear)
-                        _item(
-                          ctx,
-                          key: ValueKey((
-                            'uten-dropdown-clear-option',
-                            widget.key,
-                          )),
-                          label: '不选',
-                          selected: widget.value == null,
-                          onTap: () => select(null),
-                          theme: theme,
-                        ),
-                      for (final it in filtered)
-                        _item(
-                          ctx,
-                          key: ValueKey((
-                            'uten-dropdown-option',
-                            widget.key,
-                            it.value,
-                          )),
-                          label: it.label,
-                          tooltip: it.tooltip,
-                          selected: it.value == widget.value,
-                          onTap: it.enabled ? () => select(it.value) : null,
-                          theme: theme,
-                          indent: it.indent.clamp(
-                            0.0,
-                            math.max(
-                              0.0,
-                              fieldWidth -
-                                  46 -
-                                  math.max(
-                                    64.0,
-                                    media.textScaler.scale(fontSize) * 2,
-                                  ),
-                            ),
-                          ),
-                          error: it.error,
-                        ),
-                      if (filtered.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: UtenSpacing.s12,
-                            vertical: UtenSpacing.s12,
-                          ),
-                          child: Text(
-                            '无匹配项',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                    ];
-                    final wholeScroll = maxHeight < 160 * textFactor;
-                    final list = Scrollbar(
-                      controller: scroll,
-                      thumbVisibility: true,
-                      child: ListView(
-                        controller: scroll,
-                        shrinkWrap: true,
-                        padding: EdgeInsets.zero,
-                        children: wholeScroll
-                            ? [...header, ...options]
-                            : options,
-                      ),
-                    );
-                    return wholeScroll
-                        ? list
-                        : Column(
-                            mainAxisSize: MainAxisSize.min,
+            child: UtenDropdownResizeFrame(
+              fieldKey: widget.key,
+              resizeLabel: strings?.dropdownResizeMenu ?? 'Resize dropdown',
+              onStart: beginGeometry,
+              onUpdate: updateGeometry,
+              onEnd: finishGeometry,
+              child: Material(
+                key: _menuSurfaceKey,
+                color: theme.colorScheme.surfaceContainerHigh,
+                elevation: 8,
+                borderRadius: BorderRadius.circular(UtenRadius.md),
+                clipBehavior: Clip.antiAlias,
+                child: Container(
+                  width: fieldWidth,
+                  height: manualRect?.height,
+                  constraints: BoxConstraints(maxHeight: maxHeight),
+                  child: StatefulBuilder(
+                    builder: (ctx, setOverlayState) {
+                      final q = search.text.trim().toLowerCase();
+                      final ranked = widget.items.indexed
+                          .where(
+                            (entry) =>
+                                entry.$2.visible &&
+                                keywordSearchRank([entry.$2.label], q) != null,
+                          )
+                          .toList();
+                      // Indented choices carry a parent/child order supplied by
+                      // their host. Never detach children from their group header.
+                      if (q.isNotEmpty &&
+                          !widget.items.any((item) => item.indent > 0)) {
+                        ranked.sort((a, b) {
+                          final rank = keywordSearchRank([
+                            a.$2.label,
+                          ], q)!.compareTo(keywordSearchRank([b.$2.label], q)!);
+                          return rank == 0 ? a.$1.compareTo(b.$1) : rank;
+                        });
+                      }
+                      final filtered = [for (final entry in ranked) entry.$2];
+                      final header = <Widget>[
+                        SizedBox(
+                          height: handleHeight,
+                          child: Row(
                             children: [
-                              ...header,
-                              Flexible(child: list),
+                              Expanded(
+                                child: Tooltip(
+                                  message:
+                                      strings?.dropdownMoveResizeHint ??
+                                      'Drag to move; drag edges to resize',
+                                  child: UtenDropdownGeometryHandle(
+                                    key: ValueKey((
+                                      'uten-dropdown-move',
+                                      widget.key,
+                                    )),
+                                    edge: UtenDropdownEdge.move,
+                                    cursor: SystemMouseCursors.move,
+                                    onStart: beginGeometry,
+                                    onUpdate: updateGeometry,
+                                    onEnd: finishGeometry,
+                                    child: SizedBox.expand(
+                                      child: Icon(
+                                        Icons.drag_handle_rounded,
+                                        size: 18,
+                                        color:
+                                            theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                key: ValueKey((
+                                  'uten-dropdown-reset-geometry',
+                                  widget.key,
+                                )),
+                                tooltip:
+                                    strings?.dropdownResetGeometry ??
+                                    'Restore automatic size and position',
+                                onPressed: resetGeometry,
+                                constraints: BoxConstraints(
+                                  minWidth: handleHeight,
+                                  minHeight: handleHeight,
+                                ),
+                                padding: const EdgeInsets.all(4),
+                                iconSize: 16,
+                                icon: const Icon(
+                                  Icons.settings_backup_restore_rounded,
+                                ),
+                              ),
                             ],
-                          );
-                  },
+                          ),
+                        ),
+                        if (searchable)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              UtenSpacing.s8,
+                              UtenSpacing.s8,
+                              UtenSpacing.s8,
+                              UtenSpacing.s4,
+                            ),
+                            child: TextField(
+                              key: const Key('uten-dropdown-search-input'),
+                              controller: search,
+                              focusNode: focus,
+                              autofocus: true,
+                              style: theme.textTheme.bodyMedium,
+                              decoration: InputDecoration(
+                                isDense: true,
+                                hintText: _menuSearchHint,
+                                prefixIcon: const Icon(
+                                  Icons.search_rounded,
+                                  size: 18,
+                                ),
+                                prefixIconConstraints: const BoxConstraints(
+                                  minWidth: 32,
+                                  minHeight: 32,
+                                ),
+                                suffixIcon: q.isEmpty
+                                    ? null
+                                    : IconButton(
+                                        icon: const Icon(
+                                          Icons.close_rounded,
+                                          size: 16,
+                                        ),
+                                        onPressed: () {
+                                          if (!current()) return;
+                                          search.clear();
+                                          setOverlayState(() {});
+                                        },
+                                      ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(
+                                    UtenRadius.control,
+                                  ),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: UtenSpacing.s8,
+                                  vertical: UtenSpacing.s8,
+                                ),
+                              ),
+                              onChanged: (_) => setOverlayState(() {}),
+                              onSubmitted: (_) {
+                                if (filtered.isNotEmpty) {
+                                  select(filtered.first.value);
+                                }
+                              },
+                            ),
+                          ),
+                        if (widget.onAddNew != null)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              UtenSpacing.s8,
+                              UtenSpacing.s4,
+                              UtenSpacing.s8,
+                              UtenSpacing.s4,
+                            ),
+                            child: InkWell(
+                              onTap: () {
+                                if (!current()) return;
+                                final onAddNew = widget.onAddNew;
+                                if (onAddNew == null) return;
+                                _close();
+                                onAddNew();
+                              },
+                              borderRadius: BorderRadius.circular(
+                                UtenRadius.sm,
+                              ),
+                              child: Container(
+                                width: double.infinity,
+                                constraints: BoxConstraints(
+                                  minHeight:
+                                      UtenControlMetrics.minimumHitExtent(ctx),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: UtenSpacing.s12,
+                                  vertical: UtenSpacing.s8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: UtenColors.successBg,
+                                  borderRadius: BorderRadius.circular(
+                                    UtenRadius.sm,
+                                  ),
+                                  border: Border.all(color: UtenColors.success),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.add_rounded,
+                                      size: 18,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: UtenSpacing.s4),
+                                    Flexible(
+                                      child: Text(
+                                        widget.addNewLabel ?? '添加',
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              color: theme.colorScheme.primary,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                      ];
+                      final options = <Widget>[
+                        if (widget.allowClear)
+                          _item(
+                            ctx,
+                            key: ValueKey((
+                              'uten-dropdown-clear-option',
+                              widget.key,
+                            )),
+                            label: '不选',
+                            selected: widget.value == null,
+                            onTap: () => select(null),
+                            theme: theme,
+                          ),
+                        for (final it in filtered)
+                          _item(
+                            ctx,
+                            key: ValueKey((
+                              'uten-dropdown-option',
+                              widget.key,
+                              it.value,
+                            )),
+                            label: it.label,
+                            tooltip: it.tooltip,
+                            selected: it.value == widget.value,
+                            onTap: it.enabled ? () => select(it.value) : null,
+                            theme: theme,
+                            indent: it.indent.clamp(
+                              0.0,
+                              math.max(
+                                0.0,
+                                fieldWidth -
+                                    46 -
+                                    math.max(
+                                      64.0,
+                                      media.textScaler.scale(fontSize) * 2,
+                                    ),
+                              ),
+                            ),
+                            error: it.error,
+                          ),
+                        if (filtered.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: UtenSpacing.s12,
+                              vertical: UtenSpacing.s12,
+                            ),
+                            child: Text(
+                              '无匹配项',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                      ];
+                      final wholeScroll =
+                          maxHeight < 160 * textFactor + handleHeight;
+                      final list = Scrollbar(
+                        controller: scroll,
+                        thumbVisibility: true,
+                        child: ListView(
+                          controller: scroll,
+                          shrinkWrap: true,
+                          padding: EdgeInsets.zero,
+                          children: wholeScroll
+                              ? [...header, ...options]
+                              : options,
+                        ),
+                      );
+                      return wholeScroll
+                          ? list
+                          : Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                ...header,
+                                Flexible(child: list),
+                              ],
+                            );
+                    },
+                  ),
                 ),
               ),
             ),

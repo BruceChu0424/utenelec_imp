@@ -58,6 +58,8 @@ public class OrderDetail extends com.uten.imp.common.pricing.ProcurementPriceAss
     /** Effective financial decision for downstream receipts; contract exchangeRate remains frozen. */
     @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=com.uten.imp.common.finance.ExactDecimalText.class)
     private java.math.BigDecimal effectiveFinanceExchangeRate;
+    /** Latest termination request; the normal commercial finance approval remains independent. */
+    private com.uten.imp.application.port.ProcurementOrderClosureReadPort.ClosureRequestView closureRequest;
 
     @Override public void disableHistoryActions() {
         if(financeApproval!=null)financeApproval=financeApproval.readOnly();

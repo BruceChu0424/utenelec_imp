@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/layout/uten_refresh_scope.dart';
 import 'package:go_router/go_router.dart';
 
@@ -37,12 +38,14 @@ class GoodsStockBalanceView extends ConsumerStatefulWidget {
     this.scope = const InstantInventoryScope.full(),
     this.goodsName,
     this.unitName,
+    this.summaryBar,
   });
 
   final String goodsId;
   final InstantInventoryScope scope;
   final String? goodsName;
   final String? unitName;
+  final Widget? summaryBar;
 
   /// 查看流水: 切到流水分段并筛到这个仓库 + 颜色 (colorId 为 null = 无颜色维度)。
   final void Function(String? warehouseId, String? colorId) onViewLedger;
@@ -217,6 +220,7 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
       totalPages: _balances?.totalPages ?? 1,
       paginationScope: (widget.goodsId, widget.scope),
       onPageChange: _load,
+      summaryBar: widget.summaryBar,
     );
   }
 
@@ -295,11 +299,8 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
         key: 'lastMovementDate',
         label: '最后变动',
         width: 160,
-        value: (row) {
-          final text = row.lastMovementDate?.replaceAll('T', ' ');
-          if (text == null) return '—';
-          return text.length >= 16 ? text.substring(0, 16) : text;
-        },
+        value: (row) =>
+            ChinaDateTime.formatIsoInstant(row.lastMovementDate, fallback: '—'),
       ),
       MasterColumnDef(
         key: 'actions',

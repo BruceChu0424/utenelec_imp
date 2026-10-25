@@ -9,6 +9,7 @@
 // 历史：2026-09-09 表格化；2026-09-10 表头筛选 + 责任提示；2026-09-16 类别桶。
 
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/retained_async_page.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../shared/models/paged_result.dart';
@@ -569,7 +570,4 @@ class _ExpenseApprovalListPageState
 String expenseYearMonth(DateTime t) =>
     '${t.year}-${t.month.toString().padLeft(2, '0')}';
 
-String _formatTime(DateTime t) {
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
-}
+String _formatTime(DateTime t) => ChinaDateTime.formatDateTime(t);

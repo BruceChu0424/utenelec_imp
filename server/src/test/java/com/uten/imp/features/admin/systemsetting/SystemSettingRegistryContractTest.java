@@ -101,17 +101,6 @@ class SystemSettingRegistryContractTest {
                 SELECT count(*) FROM information_schema.tables
                 WHERE table_schema = 'public' AND table_name IN ('auth_sessions', 'auth_step_up_states')
                 """, Integer.class));
-        // V889 separates business reset from authorization and reauthentication lockouts.
-        // Query the installed policy, rather than depending on the reset function's formatting.
-        Map<String, String> authResetPolicy = new TreeMap<>();
-        jdbc.query("""
-                SELECT table_name, disposition FROM public.fn_business_reset_table_policy()
-                WHERE table_name IN ('auth_sessions', 'auth_step_up_states')
-                """, row -> { authResetPolicy.put(row.getString(1), row.getString(2)); });
-        assertEquals(Map.of("auth_sessions", "CLEAR", "auth_step_up_states", "PRESERVE"), authResetPolicy);
-        assertThat(jdbc.queryForObject("""
-                SELECT pg_get_functiondef('business_data_reset()'::regprocedure)
-                """, String.class)).contains("TRUNCATE TABLE refresh_tokens RESTART IDENTITY;")
-                .doesNotContain("SET epoch = epoch + 1");
+        assertThat(jdbc.queryForObject("SELECT to_regprocedure('public.business_data_reset()')::text", String.class)).isNull();
     }
 }

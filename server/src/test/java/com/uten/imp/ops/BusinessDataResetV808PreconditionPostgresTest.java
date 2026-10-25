@@ -30,9 +30,35 @@ class BusinessDataResetV808PreconditionPostgresTest {
     private String current;
     private int clones;
 
+    private static int[] singleObjectRuleVersions() throws Exception {
+        var directory = java.nio.file.Path.of(BusinessDataResetV808PreconditionPostgresTest.class.getResource("/db/migration").toURI());
+        Pattern pattern = Pattern.compile("V(\\d+)__.*\\.sql");
+        int current = -1, previous = -1;
+        List<java.nio.file.Path> migrations;
+        try (var files = java.nio.file.Files.list(directory)) { migrations = files.toList(); }
+        for (var migration : migrations) {
+            Matcher matcher = pattern.matcher(migration.getFileName().toString());
+            if (matcher.matches() && java.nio.file.Files.readString(migration, java.nio.charset.StandardCharsets.UTF_8)
+                    .contains("CREATE FUNCTION public.fn_business_test_reset_objects()")) {
+                assertThat(current).isEqualTo(-1);
+                current = Integer.parseInt(matcher.group(1));
+            }
+        }
+        assertThat(current).isPositive();
+        for (var migration : migrations) {
+            Matcher matcher = pattern.matcher(migration.getFileName().toString());
+            if (matcher.matches()) {
+                int version = Integer.parseInt(matcher.group(1));
+                if (version < current) previous = Math.max(previous, version);
+            }
+        }
+        assertThat(previous).isPositive();
+        return new int[]{previous, current};
+    }
+
     @BeforeAll
     void migrateToTheVersionBefore() throws Exception {
-        int[] versions = TestResetCurrentOwnerPostgresTest.singleObjectRuleVersions();
+        int[] versions = singleObjectRuleVersions();
         previous = Integer.toString(versions[0]);
         current = Integer.toString(versions[1]);
         postgres = new PostgreSQLContainer("postgres:16-alpine").withDatabaseName("precondition_base");

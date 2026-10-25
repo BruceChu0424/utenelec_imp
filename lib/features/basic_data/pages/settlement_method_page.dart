@@ -279,6 +279,27 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
     return true;
   }
 
+  @override
+  MasterInlineCreateConfig get inlineCreation => MasterInlineCreateConfig(
+    namespace: 'settlement-methods',
+    fields: _termsFields(),
+    defaults: const {
+      'termsBase': 'RECEIPT_DATE',
+      'dueRule': 'NET_DAYS',
+      'defaultDueDays': '0',
+      'monthsAhead': '0',
+    },
+    canCreate: _canCreate,
+    onCreate: (_, values) async {
+      await ref
+          .read(referenceMethodRepositoryProvider)
+          .createSettlement(
+            values['name']?.toString().trim() ?? '',
+            terms: _termsOf(values),
+          );
+    },
+  );
+
   // ---- 账期维护 ----------------------------------------------------------
 
   void _showEditTerms(SettlementMethodAdminItem m) {
@@ -578,6 +599,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
     MasterInlineEditActions<SettlementMethodAdminItem>(
       controller: inlineEdit,
       canEdit: _canEdit && inlineReadReady,
+      canCreate: _canCreate && inlineReadReady,
       onSave: saveInline,
       embedded: true,
       additionalActions: [
@@ -647,6 +669,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
                   ),
                   Expanded(
                     child: MasterDataTableView<SettlementMethodAdminItem>(
+                      appendRowsSource: inlineAppendRowsSource,
                       bottomContentPadding: (_canCreate || _canEdit)
                           ? UtenFloatingActionGroup.scrollClearance
                           : 0,

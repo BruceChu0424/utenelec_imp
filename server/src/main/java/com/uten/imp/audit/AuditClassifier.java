@@ -44,6 +44,8 @@ public final class AuditClassifier {
             "super_admin_grant", "super_admin_revoke", "remote_access_grant", "remote_access_revoke",
             "permission_configuration_import", "permission_configuration_copy",
             "permission_template_create", "permission_template_update", "permission_template_delete", "permission_template_apply",
+            "company_file_permissions_set", "company_file_password_set", "company_file_password_clear",
+            "company_file.set_permissions", "company_file.set_password",
             "impersonation_enter", "impersonation_switch", "impersonation_exit");
     private static final Set<String> SYSTEM_ACTIONS = Set.of(
             "update_system_setting", "audit_retention_completed", "audit_retention_failed",
@@ -56,6 +58,7 @@ public final class AuditClassifier {
             "password_temporary_reset", "task_force_release", "admin_force_release",
             "business_data_reset", "business_data_reset_received", "legacy_migration_run",
             "notice_delete", "server_source_save", "server_update_start", "server_update_cancel", "server_cleanup",
+            "company_file_recycle",
             "mfa_enrolled", "mfa_disabled", "mfa_admin_reset", "mfa_locked", "remote_access_policy_update");
     /** 含个人、账户或财务敏感字段的详情; 查看它们记中风险。 */
     static final Set<String> SENSITIVE_DETAIL_TARGETS = Set.of(

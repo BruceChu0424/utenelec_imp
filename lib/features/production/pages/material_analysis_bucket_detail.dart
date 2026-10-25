@@ -609,10 +609,8 @@ class _MaterialAnalysisBucketPageState
       child: UtenContentContainer.wide(
         selectable: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s12,
-            vertical: UtenSpacing.s8,
-          ),
+          // 水平贴 0：提示卡、筛选行与表格和顶栏返回键共用左缘。
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

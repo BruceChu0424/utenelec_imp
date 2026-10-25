@@ -122,6 +122,25 @@ owner 权限。保留该迁移和校验，使用独立的本地开发 PostgreSQL
 未配置这两个变量的旧开发环境仍沿用原连接，并继续受 V915 的安全门禁约束。
 隔离回归入口为 `python -m unittest server.ops.test_prepare_local_postgres_roles -v`。
 
+#### 已分离账号的新库与重建库：运行权限自动核对
+
+本地 `dev` 使用 `uten_migrator` 迁移、`uten` 运行时，
+`LocalRuntimePrivilegesCallback` 在 Flyway 成功结束后核对运行权限，**没有待执行迁移时也执行**。
+这修复了新库只完成 owner 迁移、未完成业务账号授权时，启动报
+`permission denied for table permission_surfaces`，随后逐表报错的问题。
+统一策略位于 `src/main/resources/db/local-runtime-privileges.sql`，只处理本库迁移 owner
+管理的普通对象、序列和函数，并补齐未来对象的默认授权；不修改密码、对象 owner、业务数据或迁移版本。
+
+该回调仅适用于回环地址的 `uten_imp` 和上述开发账号组合。迁移历史、审计分区、历史来源凭证、
+导入及维护专用函数继续封闭，旧业务清空函数和权限不能借此恢复。
+生产环境不注册该开发回调；现有角色初始化脚本仍只用于其明确允许的新隔离实例，不能为修复一次
+运行权限错误而对正在使用的库重跑账号/密码初始化。
+
+回归包括 `python -m unittest server.ops.test_local_runtime_privileges -v`、
+`LocalRuntimePrivilegesCallbackTest` 和启用 `UTEN_RUN_DB_TESTS=true` 的
+`LocalRuntimePrivilegesPostgresTest`。后者在新建隔离 PostgreSQL 中执行完整迁移、故意撤销权限后的
+零迁移修复、正常开发后端 HTTP readiness，以及旧清空路由不存在的检查。
+
 本机开发在 `.env` 中显式设置 `UTEN_PROFILE=dev`。当前公司内网版本的目标配置为 `prod`，使用
 专用内部附件目录、回环后端、HTTPS反向代理和独立迁移；必须配齐数据库、JWT issuer、CORS及密钥。
 `internal-test` 是旧受限测试运行配置，仍保留其安全门禁，默认禁止附件上传，不能当成新内部附件版本的配置模板。
@@ -131,7 +150,7 @@ owner 权限。保留该迁移和校验，使用独立的本地开发 PostgreSQL
 
 ### 运维脚本（server/ops/）
 
-清空业务数据在所有服务器均已下架；仅本机 `dev` 后端、回环数据库与 Debug 客户端保留工作台「系统测试 > 清空数据」测试入口。V915 撤销运行账号的数据库执行权限，本地独立测试库需 owner 显式授权；服务器禁止恢复。保护与核验步骤见[上线下架说明](../deploy/simple/RUNBOOK.zh-CN.md#上线后业务清空功能下架)，文件规则沿用 [ADR-155](../docs/99-决策记录-ADR/ADR-155-清空业务数据测试文件单一规则与幂等删除.md)。
+清空业务数据已永久删除，开发环境也不保留工作台入口或后端实现。V919 前向删除数据库清空函数、专用权限与历史保护绕过分支；旧 V915 仅保留历史字节。正式更新服务器时必须包含并执行 V919，核验步骤见[永久删除说明](../deploy/simple/RUNBOOK.zh-CN.md#业务清空功能永久删除)和 [ADR-192](../docs/99-决策记录-ADR/ADR-192-业务数据清空功能永久删除.md)。
 
 ### 公司内网运行与历史配置
 
@@ -200,7 +219,7 @@ mvn "-Duten.build.directory=target-tests" clean test
 
 启动失败先检查当前日志中最深一层原因：
 
-1. 连接失败：核对私有环境文件、`UTEN_PROFILE`、数据库名和5433宿主端口。
+1. 连接失败：核对私有环境文件、`UTEN_PROFILE`、数据库名和实际宿主端口。本轮已重建的数据位于 `127.0.0.1:5434/uten_imp`，旧5433实例保全；复核步骤见[重建导入手册](../docs/数据迁移/重建彩排与正式导入执行手册.md)。
 2. 缺列/缺表：确认本轮源码需要的迁移已进入正式资源且Flyway成功完成；不关闭结构校验。
 3. `NoClassDefFoundError` 或依赖不匹配：停止旧进程，使用当前pom完整编译后启动。临时目录或旧依赖生成的classpath/argfile不能长期用作启动入口。
 4. 历史数据或迁移校验失败：保留错误及目标库备份，按对应迁移文档修正前提，再原样重跑；不修改已应用文件或执行repair掩盖差异。
@@ -324,7 +343,7 @@ Argon2id 密码 · access JWT（源码默认 15 分钟，运行值可由系统�
 30 秒、最多 2048 项且以 user/employee/superAdmin/authVersion/epoch 为键; 账号状态和版本不缓存。
 
 **敏感操作再认证**: `POST /api/auth/step-up` 用本人密码换取 5 分钟内一次性凭证, 挂在 `@RequiresStepUp`
-的端点上(设/撤超管、授权与数据范围、重置密码、模拟身份、系统设置写、清空业务数据、改手机号姓名、补开账号等)。
+的端点上(设/撤超管、授权与数据范围、重置密码、模拟身份、系统设置写、改手机号姓名、补开账号等)。
 临时密码由系统生成 20 位随机且限时; 带高危权限(`permissions.high_risk`)的账号只能由超管重置。
 
 服务端权限解析发生数据库/缓存依赖故障时，`JwtAuthFilter` 返回结构化 `503 SERVICE_UNAVAILABLE`，

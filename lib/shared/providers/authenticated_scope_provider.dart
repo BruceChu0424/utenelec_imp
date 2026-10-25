@@ -24,8 +24,10 @@ class AuthenticatedScope {
   final String? actorId;
   final bool readOnly;
 
-  /// 登录纪元: 清空业务数据后重新登录也要从零重建。
+  /// 登录纪元：重新登录后从零重建会话缓存。
   final int epoch;
+
+  /// 保留历史数据代次，避免旧版本遗留草稿和缓存重新进入当前会话。
   final int businessResetGeneration;
 
   @override

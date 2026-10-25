@@ -68,7 +68,13 @@ CREATE TEMP TABLE supplier_stage (
 );
 \copy supplier_stage FROM '/tmp/supplier.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
-WITH numbered AS (
+WITH settlement_matches AS (
+    SELECT legacy_id, (array_agg(id ORDER BY id))[1] AS method_id
+    FROM settlement_methods
+    WHERE legacy_id IS NOT NULL AND status = '使用' AND is_deleted = FALSE
+    GROUP BY legacy_id
+    HAVING count(*) = 1
+), numbered AS (
     SELECT ss.*,
            row_number() OVER (ORDER BY ss.legacy_id) AS seq_ordinal,
            count(*) OVER ()::bigint AS allocation_count
@@ -84,7 +90,8 @@ INSERT INTO suppliers (
     legacy_id, category_id, name, code, description, place,
     emp_id, owner_employee_id, legal_person, linkman, mobile, phone, phone2, fax, postcode, address,
     email, website, ship_via, ship_address, bank, bank_account, tax_id,
-    init_total, init_total2, exchange_rate, tday, price_style, status, remark,
+    init_total, init_total2, exchange_rate, tday,
+    default_settlement_method_id, price_style, status, remark,
     code_managed, code_sequence
 )
 SELECT
@@ -99,11 +106,14 @@ SELECT
     ss.legal_person, ss.linkman, ss.mobile, ss.phone, ss.phone2, ss.fax,
     ss.postcode, ss.address, ss.email, ss.website, ss.ship_via, ss.ship_address,
     ss.bank, ss.bank_account, ss.tax_id, ss.init_total, ss.init_total2, ss.exchange_rate,
-    ss.tday, ss.price_style, ss.status, ss.remark, FALSE,
+    -- Zero is B_Provider.PStyle's no-selection sentinel, not a payment method.
+    -- The source stage and sealed identity audit retain the original value.
+    ss.tday, settlement_match.method_id, NULLIF(ss.price_style, 0), ss.status, ss.remark, FALSE,
     reserved.last_seq - ss.allocation_count + ss.seq_ordinal
 FROM numbered ss
 CROSS JOIN reserved
-LEFT JOIN LATERAL pg_temp.legacy_owner_resolution(ss.emp_id) employee_owner ON true;
+LEFT JOIN LATERAL pg_temp.legacy_owner_resolution(ss.emp_id) employee_owner ON true
+LEFT JOIN settlement_matches settlement_match ON settlement_match.legacy_id=NULLIF(ss.price_style, 0);
 
 INSERT INTO pg_temp.legacy_owner_custody
 SELECT 'suppliers',s.id,s.legacy_id,stage.emp_id,resolution.original_employee_id,s.owner_employee_id,resolution.reason

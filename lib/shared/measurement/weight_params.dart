@@ -13,6 +13,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/display_datetime.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../auth/permissions.dart';
@@ -1315,7 +1316,7 @@ String? _str(Object? v) {
 
 DateTime? _date(Object? v) {
   final s = _str(v);
-  return s == null ? null : DateTime.tryParse(s)?.toLocal();
+  return DisplayDateTime.instantOf(s);
 }
 
 List<Map<String, dynamic>> _maps(Object? v) => v is List

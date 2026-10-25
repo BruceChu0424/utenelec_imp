@@ -207,6 +207,118 @@ class GoodsImportHistoryPostgresTest {
         assertEquals("UNDONE", scalar("SELECT status FROM goods_import_batches WHERE id=:id", second.batchId()));
     }
 
+    @Test void reviewedCodeChangeKeepsUuidAndBothPermanentNumberReservations() throws Exception {
+        byte[] file = identityWorkbook(newCode, existingId.toString());
+        var detected = inTx(() -> importer.detect(file));
+        assertTrue(detected.errors().isEmpty(), detected.errors().toString());
+        assertEquals(List.of("code"), detected.reviewRows().getFirst().changes().stream()
+                .map(GoodsImportReviewRow.Change::field).toList());
+
+        var result = inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(detected.planId(), file, "renumber.xlsx", Set.of("goods:2"));
+        });
+
+        assertEquals(1, result.updatedCount());
+        assertEquals(0, result.createdCount());
+        assertEquals(newCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
+        assertEquals("111", scalar("SELECT c_number FROM goods WHERE id=:id", existingId));
+        assertEquals(2L, ((Number) em.createNativeQuery("""
+                SELECT count(*) FROM master_code_reservation_members
+                WHERE master_domain='GOODS' AND entity_id=:id AND normalized_code IN (:old,:next)
+                """).setParameter("id", existingId).setParameter("old", existingCode).setParameter("next", newCode)
+                .getSingleResult()).longValue());
+        assertEquals(2L, ((Number) em.createNativeQuery("""
+                SELECT count(*) FROM business_identifier_reservation_members
+                WHERE owner_domain='GOODS' AND entity_id=:id AND normalized_identifier IN (:old,:next)
+                """).setParameter("id", existingId).setParameter("old", existingCode).setParameter("next", newCode)
+                .getSingleResult()).longValue());
+
+        // Code changes keep the existing controlled-version-restore contract;
+        // the ordinary import undo cannot bypass current identifier safeguards.
+        var undoError = assertThrows(ApiException.class, () -> inTx(() -> {
+            provenance("/api/master/goods/import/" + result.batchId(), "DELETE");
+            return importer.undo(result.batchId());
+        }));
+        assertTrue(undoError.getMessage().contains("编号变化"));
+        assertEquals(newCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
+        assertEquals("IMPORTED", scalar("SELECT status FROM goods_import_batches WHERE id=:id", result.batchId()));
+    }
+
+    @Test void exportedUuidWithBlankNumberDoesNotAllocateANewNumberOrGoods() throws Exception {
+        byte[] file = identityWorkbook("", existingId.toString());
+        var detected = inTx(() -> importer.detect(file));
+        assertTrue(detected.errors().isEmpty(), detected.errors().toString());
+        assertEquals(1, detected.unchangedRows());
+
+        var result = inTx(() -> importer.commit(detected.planId(), file, "blank-code.xlsx"));
+
+        assertNull(result.batchId());
+        assertEquals(existingCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
+        assertEquals(1L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods WHERE category_id=:id")
+                .setParameter("id", categoryId).getSingleResult()).longValue());
+    }
+
+    @Test void newNumberWithoutUuidCreatesASameNameVariantWithoutChangingTheExistingGoods() throws Exception {
+        byte[] file = identityWorkbook(newCode, "");
+        var detected = inTx(() -> importer.detect(file));
+        assertTrue(detected.errors().isEmpty(), detected.errors().toString());
+        assertEquals(1, detected.addedRows());
+
+        var result = inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(detected.planId(), file, "new-variant.xlsx");
+        });
+
+        assertEquals(1, result.createdCount());
+        UUID createdId = (UUID) em.createNativeQuery("SELECT id FROM goods WHERE code=:code")
+                .setParameter("code", newCode).getSingleResult();
+        assertNotEquals(existingId, createdId);
+        assertEquals("现有货品", scalar("SELECT name FROM goods WHERE id=:id", createdId));
+        assertEquals(existingCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
+        assertEquals("111", scalar("SELECT c_number FROM goods WHERE id=:id", existingId));
+    }
+
+    @Test void reviewedRenameCannotTakeAnotherGoodsHistoricalNumberAndRollsBackItsBatch() throws Exception {
+        UUID otherId = UUID.randomUUID();
+        String movedCode = "H" + UUID.randomUUID().toString().replace("-", "").toUpperCase(Locale.ROOT);
+        inTx(() -> {
+            em.createNativeQuery("""
+                    INSERT INTO goods(id,code,name,category_id,code_sequence)
+                    VALUES(:id,:code,'其他货品',:category,(SELECT coalesce(max(code_sequence),0)+1 FROM goods))
+                    """).setParameter("id", otherId).setParameter("code", newCode).setParameter("category", categoryId).executeUpdate();
+            em.createNativeQuery("UPDATE goods SET code=:code,version=version+1 WHERE id=:id")
+                    .setParameter("code", movedCode).setParameter("id", otherId).executeUpdate();
+            return null;
+        });
+        byte[] file = identityWorkbook(newCode, existingId.toString());
+        var detected = inTx(() -> importer.detect(file));
+        assertTrue(detected.errors().isEmpty(), detected.errors().toString());
+
+        assertThrows(ApiException.class, () -> inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(detected.planId(), file, "occupied-history.xlsx", Set.of("goods:2"));
+        }));
+
+        assertEquals(existingCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
+        assertEquals(movedCode, scalar("SELECT code FROM goods WHERE id=:id", otherId));
+        assertEquals(0L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods_import_batches WHERE created_by=:actor")
+                .setParameter("actor", actor).getSingleResult()).longValue());
+    }
+
+    private byte[] identityWorkbook(String code, String goodsId) throws Exception {
+        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = book.createSheet("货品");
+            var header = sheet.createRow(0); var row = sheet.createRow(1);
+            String[] titles = {"编号", "名称", "类别", "系统标识"};
+            String[] values = {code, "现有货品", categoryName(), goodsId};
+            for (int i = 0; i < titles.length; i++) {
+                header.createCell(i).setCellValue(titles[i]); row.createCell(i).setCellValue(values[i]);
+            }
+            book.write(out); return out.toByteArray();
+        }
+    }
+
     private String categoryName() { return "导入核对" + categoryId; }
     private byte[] workbook() throws Exception { return workbook("222"); }
     private byte[] workbook(String customerModel) throws Exception {

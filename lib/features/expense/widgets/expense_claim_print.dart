@@ -10,6 +10,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../core/utils/china_datetime.dart';
 import '../../../core/print/pdf_printer.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/print/uten_print_preview.dart';
@@ -591,8 +592,7 @@ class _PaperSheet extends StatelessWidget {
 String _fmtDate(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-String _fmtDateTime(DateTime t) =>
-    '${_fmtDate(t)} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+String _fmtDateTime(DateTime t) => ChinaDateTime.formatDateTime(t);
 
 /// Every submission, correction, rejection and payment stays visible on the printed claim.
 List<String> expensePrintAuditLines(ExpenseClaim claim) => [

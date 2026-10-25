@@ -536,6 +536,42 @@ FROM settlement_methods m WHERE m.legacy_id = d.payment_style_id;
 REFRESH MATERIALIZED VIEW sales_monthly_mv;
 
 -- ---------------- 校验 ----------------
+WITH legacy_shipped_counter_diagnostic AS (
+    SELECT line.order_item_id,
+           count(*) FILTER (WHERE header.status = 1) AS approved_rows,
+           SUM(line.qty) FILTER (WHERE header.status = 1) AS approved_qty,
+           bool_and(
+               order_unit.id IS NOT NULL AND line_unit.id IS NOT NULL AND line_unit.id = order_unit.id
+               AND order_item.unit_rate IS NOT NULL AND order_item.unit_rate > 0
+               AND line.unit_rate IS NOT NULL AND line.unit_rate > 0
+               AND line.unit_rate = order_item.unit_rate
+           ) FILTER (WHERE header.status = 1) AS units_comparable
+    FROM sales_shipment_items line
+    JOIN sales_shipments header ON header.id = line.shipment_id
+    JOIN sales_order_items order_item ON order_item.id = line.order_item_id
+    LEFT JOIN units order_unit ON order_unit.id = order_item.unit_id AND NOT order_unit.is_deleted
+    LEFT JOIN units line_unit ON line_unit.id = line.unit_id AND NOT line_unit.is_deleted
+    WHERE line.order_item_id IS NOT NULL
+    GROUP BY line.order_item_id
+),
+legacy_returned_counter_diagnostic AS (
+    SELECT line.order_item_id,
+           count(*) FILTER (WHERE header.status = 1) AS approved_rows,
+           SUM(line.qty) FILTER (WHERE header.status = 1) AS approved_qty,
+           bool_and(
+               order_unit.id IS NOT NULL AND line_unit.id IS NOT NULL AND line_unit.id = order_unit.id
+               AND order_item.unit_rate IS NOT NULL AND order_item.unit_rate > 0
+               AND line.unit_rate IS NOT NULL AND line.unit_rate > 0
+               AND line.unit_rate = order_item.unit_rate
+           ) FILTER (WHERE header.status = 1) AS units_comparable
+    FROM sales_return_items line
+    JOIN sales_returns header ON header.id = line.return_id
+    JOIN sales_order_items order_item ON order_item.id = line.order_item_id
+    LEFT JOIN units order_unit ON order_unit.id = order_item.unit_id AND NOT order_unit.is_deleted
+    LEFT JOIN units line_unit ON line_unit.id = line.unit_id AND NOT line_unit.is_deleted
+    WHERE line.order_item_id IS NOT NULL
+    GROUP BY line.order_item_id
+)
 SELECT '报价 '         || (SELECT count(*) FROM sales_quotes)            || ' / ' || (SELECT count(*) FROM sales_quote_items) AS r
 UNION ALL SELECT '订货 '         || (SELECT count(*) FROM sales_orders)            || ' / ' || (SELECT count(*) FROM sales_order_items)
 UNION ALL SELECT 'BOM 展开 '     || (SELECT count(*) FROM sales_order_cost_items)
@@ -556,13 +592,19 @@ UNION ALL SELECT '孤儿 BOM(无订单明细) '  || (SELECT count(*) FROM sales_
                                           WHERE NOT EXISTS (SELECT 1 FROM sales_order_items oi WHERE oi.id = c.order_item_id))
 UNION ALL SELECT '补录 货品 '    || (SELECT count(*) FROM goods    WHERE code LIKE 'LEGACY-G-%')
 UNION ALL SELECT '补录 客户 '    || (SELECT count(*) FROM clients  WHERE code LIKE 'LEGACY-CL-%')
-UNION ALL SELECT '校验 订货已发量误差行' || (SELECT count(*) FROM (
-          SELECT i.id FROM sales_order_items i
-           JOIN (SELECT order_item_id, SUM(qty) AS sm FROM sales_shipment_items
-                  WHERE order_item_id IS NOT NULL GROUP BY order_item_id) x ON x.order_item_id = i.id
-          WHERE ABS(i.shipped_qty - x.sm) > 0.01) z)
-UNION ALL SELECT '校验 订货已退量误差行' || (SELECT count(*) FROM (
-          SELECT i.id FROM sales_order_items i
-           JOIN (SELECT order_item_id, SUM(qty) AS sm FROM sales_return_items
-                  WHERE order_item_id IS NOT NULL GROUP BY order_item_id) x ON x.order_item_id = i.id
-          WHERE ABS(i.returned_qty - x.sm) > 0.01) z);
+UNION ALL SELECT '待核 来源累计与已审同单位出货合计差异行 ' || (SELECT count(*) FROM sales_order_items item
+    JOIN legacy_shipped_counter_diagnostic source ON source.order_item_id = item.id
+    WHERE source.approved_rows > 0 AND source.units_comparable
+      AND ABS(item.shipped_qty - source.approved_qty) > 0.01)
+UNION ALL SELECT '待核 出货关联单位倍率不可直接比较行 ' || (SELECT count(*) FROM legacy_shipped_counter_diagnostic
+    WHERE approved_rows > 0 AND NOT COALESCE(units_comparable, FALSE))
+UNION ALL SELECT '待核 出货仅反审或未审关联无已审合计行 ' || (SELECT count(*) FROM legacy_shipped_counter_diagnostic
+    WHERE approved_rows = 0)
+UNION ALL SELECT '待核 来源累计与已审同单位退货合计差异行 ' || (SELECT count(*) FROM sales_order_items item
+    JOIN legacy_returned_counter_diagnostic source ON source.order_item_id = item.id
+    WHERE source.approved_rows > 0 AND source.units_comparable
+      AND ABS(item.returned_qty - source.approved_qty) > 0.01)
+UNION ALL SELECT '待核 退货关联单位倍率不可直接比较行 ' || (SELECT count(*) FROM legacy_returned_counter_diagnostic
+    WHERE approved_rows > 0 AND NOT COALESCE(units_comparable, FALSE))
+UNION ALL SELECT '待核 退货仅反审或未审关联无已审合计行 ' || (SELECT count(*) FROM legacy_returned_counter_diagnostic
+    WHERE approved_rows = 0);

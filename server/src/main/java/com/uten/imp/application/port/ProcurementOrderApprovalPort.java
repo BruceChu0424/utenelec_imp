@@ -37,6 +37,14 @@ public interface ProcurementOrderApprovalPort {
     /** Lock the effective order and snapshot current commercial facts without applying them again. */
     OrderSnapshot lockFinanceReconfirmationSnapshot(UUID orderId);
 
+    /** Finance-approved termination creates a new, editable draft; it never approves replacement supply. */
+    default UUID createRemainingDraft(UUID orderId, List<RemainingLine> lines, UUID makerEmployeeId) {
+        throw new UnsupportedOperationException("Remaining-order draft is unavailable");
+    }
+
+    record RemainingLine(UUID orderItemId, BigDecimal remainingQty, BigDecimal remainingGiftQty) {}
+    default void cancelUnfulfilledWorkForTermination(UUID orderId) {}
+
 
 
     record OrderSnapshot(

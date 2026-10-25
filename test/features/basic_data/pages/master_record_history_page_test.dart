@@ -8,14 +8,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
+import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'package:uten_imp/features/basic_data/pages/master_record_history_page.dart';
 import 'package:uten_imp/features/basic_data/pages/master_record_revision_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/master_record_history_repository.dart'
@@ -29,6 +32,17 @@ import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
 final _identity = StateProvider<AuthenticatedScope?>(
   (_) => const AuthenticatedScope(userId: 'reader-a'),
 );
+
+/// 历史门默认近三个月（2026-10-24 口径）下，无其他筛选时的期望查询。
+Map<String, dynamic> _defaultDatedQuery() {
+  final range = UtenHistoryTimeValue.lastThreeMonths().range!;
+  return {
+    'size': 50,
+    'dateFrom': ChinaDateTime.formatDate(range.start),
+    'dateTo': ChinaDateTime.formatDate(range.end),
+  };
+}
+
 final _grants = StateProvider<Set<String>>(
   (_) => {
     Perm.goodsView,
@@ -276,13 +290,17 @@ Finder get _columnInput => find.byKey(const Key('uten-column-keyword-input'));
 
 Future<void> _openHeader(WidgetTester tester, String key) async {
   final header = find.byKey(ValueKey('master-column-filter-$key'));
-  final target = header.hitTestable().evaluate().isNotEmpty
-      ? header.hitTestable().first
-      : header.first;
-  await tester.ensureVisible(target);
+  const labelPoint = Alignment(-.7, 0);
+  if (header.hitTestable(at: labelPoint).evaluate().isEmpty) {
+    // A left-aligned reveal can put a non-frozen filter behind the identity
+    // prefix. Reveal its trailing edge and verify the actual label hit target.
+    await Scrollable.ensureVisible(tester.element(header.first), alignment: 1);
+    await tester.pump();
+  }
+  final target = header.hitTestable(at: labelPoint).first;
   final rect = tester.getRect(target);
   // Help and resize have independent hit targets; tap the filter label side.
-  await tester.tapAt(Offset(rect.left + 24, rect.center.dy));
+  await tester.tapAt(rect.topLeft + labelPoint.alongSize(rect.size));
   await tester.pump();
 }
 
@@ -343,9 +361,9 @@ void main() {
       await _selectHeader(tester, 'action', '删除');
       expect(wire.queries.last['entityType'], 'units');
       expect(wire.queries.last['action'], 'DELETE');
-      await tester.tap(find.text('箱'));
+      await tester.tap(find.text('箱').hitTestable().first);
       await tester.pump(const Duration(milliseconds: 80));
-      await tester.tap(find.text('箱'));
+      await tester.tap(find.text('箱').hitTestable().first);
       await tester.pumpAndSettle();
       await tester.tap(_button('恢复到此次修改前'));
       await tester.pumpAndSettle();
@@ -398,7 +416,7 @@ void main() {
     await _searchHeader(tester, 'actorName', '张师傅');
     await _openHeader(tester, 'recordedAt');
     await tester.pump(const Duration(milliseconds: 350));
-    Navigator.of(tester.element(find.byType(DateRangePickerDialog))).pop(
+    Navigator.of(tester.element(find.byType(UtenDateRangePickerDialog))).pop(
       DateTimeRange(start: DateTime(2026, 10), end: DateTime(2026, 10, 22)),
     );
     await tester.pumpAndSettle();
@@ -411,9 +429,9 @@ void main() {
           find.byKey(const Key('master-record-history-table')),
         );
     final beforeLabel = beforeTable.items.single.recordLabel;
-    await tester.tap(find.text(beforeLabel));
+    await tester.tap(find.text(beforeLabel).hitTestable().first);
     await tester.pump(const Duration(milliseconds: 80));
-    await tester.tap(find.text(beforeLabel));
+    await tester.tap(find.text(beforeLabel).hitTestable().first);
     await tester.pumpAndSettle();
     await tester.tap(_button('恢复到此次修改前'));
     await tester.pumpAndSettle();
@@ -487,7 +505,7 @@ void main() {
       await _searchHeader(tester, 'actorName', '  张师傅  ');
       await _openHeader(tester, 'recordedAt');
       await tester.pump(const Duration(milliseconds: 350));
-      Navigator.of(tester.element(find.byType(DateRangePickerDialog))).pop(
+      Navigator.of(tester.element(find.byType(UtenDateRangePickerDialog))).pop(
         DateTimeRange(start: DateTime(2026, 10), end: DateTime(2026, 10, 22)),
       );
       await tester.pumpAndSettle();
@@ -522,7 +540,8 @@ void main() {
       expect(wire.queries.last.containsKey('recordId'), isFalse);
       await tester.tap(_button('清除筛选'));
       await tester.pumpAndSettle();
-      expect(wire.queries.last, {'size': 50});
+      // 清除筛选回到历史门默认的近三个月（2026-10-24 口径）。
+      expect(wire.queries.last, _defaultDatedQuery());
       expect(tester.takeException(), isNull);
     },
   );
@@ -533,7 +552,8 @@ void main() {
       final wire = _Transport();
       await _pump(tester, wire);
       final initial = wire.queries.length;
-      expect(wire.queries.last, {'size': 50});
+      // 初始查询即带历史门默认的近三个月（2026-10-24 口径）。
+      expect(wire.queries.last, _defaultDatedQuery());
       expect(find.text('第一页货品'), findsOneWidget);
       expect(find.text('第 1 页'), findsOneWidget);
       expect(tester.widget<UtenButton>(_button('上一页')).onPressed, isNull);
@@ -664,42 +684,85 @@ void main() {
       final initial = wire.queries.length;
       await _openHeader(tester, 'recordedAt');
       await tester.pump(const Duration(milliseconds: 350));
-      Navigator.of(tester.element(find.byType(DateRangePickerDialog))).pop();
+      Navigator.of(
+        tester.element(find.byType(UtenDateRangePickerDialog)),
+      ).pop();
       await tester.pumpAndSettle();
       expect(wire.queries.length, initial);
       await _openHeader(tester, 'recordedAt');
       await tester.pump(const Duration(milliseconds: 350));
-      expect(find.byType(DateRangePickerDialog), findsOneWidget);
+      expect(find.byType(UtenDateRangePickerDialog), findsOneWidget);
       app.container.read(_identity.notifier).state = null;
       await tester.pumpAndSettle();
-      expect(find.byType(DateRangePickerDialog), findsNothing);
-      expect(
-        wire.queries.any((query) => query.containsKey('dateFrom')),
-        isFalse,
-      );
+      expect(find.byType(UtenDateRangePickerDialog), findsNothing);
+      // 取消不重查（上文计数断言）；身份切换也只关弹窗，不多发请求。
+      expect(wire.queries.length, initial);
       expect(tester.takeException(), isNull);
     },
   );
 
   testWidgets(
-    'old hidden identity preferences retain the required two-line code/name column',
+    'old hidden identity preferences show separate required single-line code and name columns',
     (tester) async {
       await _pump(tester, _Transport(), oldLayout: true);
       final table = tester
           .widget<MasterDataTableView<history.MasterRecordRevision>>(
             find.byKey(const Key('master-record-history-table')),
           );
-      expect(table.requiredLeadingColumnKeys, ['recordLabel']);
-      expect(
-        table.columns.any((column) => column.key == 'recordCode'),
-        isFalse,
-      );
+      expect(table.requiredLeadingColumnKeys, ['recordCode', 'recordLabel']);
+      expect(table.columns.take(2).map((column) => column.key), [
+        'recordCode',
+        'recordLabel',
+      ]);
+      final fallback = history.MasterRecordRevision.fromJson({
+        ..._revision('fallback', '历史名称'),
+        'recordName': '',
+      });
+      expect(table.columns[0].value(fallback), 'Vfallback');
+      expect(table.columns[1].value(fallback), '历史名称');
       expect(find.text('V8').hitTestable(), findsOneWidget);
       expect(find.text('第一页货品').hitTestable(), findsOneWidget);
-      expect(find.text('编号 / 名称').hitTestable(), findsOneWidget);
-      final identity = tester.getRect(find.text('编号 / 名称').hitTestable());
-      final time = tester.getRect(find.text('修改时间').hitTestable());
-      expect(identity.left, lessThan(time.left));
+      expect(find.text('编号 / 名称'), findsNothing);
+      final code = tester.getRect(find.text('编号').hitTestable());
+      final name = tester.getRect(find.text('名称').hitTestable());
+      // 默认近三个月挂值后表头显示「修改时间：<起> ~ <止>」，按前缀定位。
+      final time = tester.getRect(find.textContaining('修改时间').hitTestable());
+      expect(code.left, lessThan(name.left));
+      expect(name.left, lessThan(time.left));
+      expect(
+        tester.getRect(find.text('V8').hitTestable()).top,
+        closeTo(tester.getRect(find.text('第一页货品').hitTestable()).top, 1),
+      );
+      final context = tester.element(
+        find.byKey(const Key('master-record-history-table')),
+      );
+      for (final column in table.columns) {
+        final cell = column.cellBuilder!(context, table.items.single) as Text;
+        expect(cell.maxLines, 1, reason: column.key);
+        expect(cell.softWrap, isFalse, reason: column.key);
+        expect(cell.overflow, TextOverflow.ellipsis, reason: column.key);
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'code search keeps the full server history query and resets cursors',
+    (tester) async {
+      final wire = _Transport();
+      await _pump(tester, wire);
+      await tester.tap(_button('下一页'));
+      await tester.pumpAndSettle();
+      expect(wire.queries.last['cursor'], 'opaque-next-token');
+      await _searchHeader(tester, 'recordCode', ' V8 ');
+      expect(wire.queries.last['keyword'], 'V8');
+      expect(wire.queries.last.containsKey('cursor'), isFalse);
+      final table = tester
+          .widget<MasterDataTableView<history.MasterRecordRevision>>(
+            find.byKey(const Key('master-record-history-table')),
+          );
+      expect(table.filters['search.recordCode'], 'V8');
+      expect(table.items, hasLength(1));
       expect(tester.takeException(), isNull);
     },
   );

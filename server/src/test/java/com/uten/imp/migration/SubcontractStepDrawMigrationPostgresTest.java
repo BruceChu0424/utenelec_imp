@@ -742,8 +742,55 @@ class SubcontractStepDrawMigrationPostgresTest {
                       AND grant_row.created_at IS NOT DISTINCT FROM original_grant.created_at
                     """, decision), "V896 拆分决定必须保留原财务授权的部门、创建者、时间与精确父级身份: " + decision);
         }
-        assertEquals(3, count("SELECT count(*) FROM business_record_identities WHERE source_table = 'department_permissions'"),
-                "当前完整目录仅含逐条验证的 V860/V896 配置身份，不得归因于 V798 领料种子");
+        // V931 independently replaces company_file:view's whole-company baseline
+        // with explicit grants to every live department. Those retained identities
+        // are unrelated to the V798 draw seed and must be proven, not subtracted blindly.
+        List<Map<String,Object>> identities=rows("""
+                SELECT identity.source_id,identity.parent_table,identity.parent_id,
+                       department.id::text department_id,department.code department_code,
+                       department.is_deleted,permission.code permission_code,permission.baseline,
+                       grant_row.created_by::text created_by,grant_row.created_at::text created_at
+                FROM business_record_identities identity
+                LEFT JOIN department_permissions grant_row ON identity.source_id::jsonb=jsonb_build_object(
+                    'department_id',grant_row.department_id,'permission_id',grant_row.permission_id)
+                LEFT JOIN departments department ON department.id=grant_row.department_id
+                LEFT JOIN permissions permission ON permission.id=grant_row.permission_id
+                WHERE identity.source_table='department_permissions'
+                ORDER BY department.code,permission.code,identity.source_id
+                """);
+        writeDepartmentIdentityEvidence(identities);
+        assertEquals(1,count("SELECT count(*) FROM permissions WHERE code='company_file:view' AND NOT baseline"),
+                "V931 makes only the former company-library baseline independently revocable");
+        int liveDepartments=count("SELECT count(*) FROM departments WHERE NOT is_deleted");
+        assertEquals(liveDepartments,count("""
+                SELECT count(*) FROM business_record_identities identity
+                JOIN department_permissions grant_row ON identity.source_id::jsonb=jsonb_build_object(
+                    'department_id',grant_row.department_id,'permission_id',grant_row.permission_id)
+                JOIN departments department ON department.id=grant_row.department_id
+                JOIN permissions permission ON permission.id=grant_row.permission_id
+                WHERE identity.source_table='department_permissions' AND permission.code='company_file:view'
+                  AND NOT department.is_deleted AND NOT permission.baseline AND grant_row.created_by IS NULL
+                  AND identity.parent_table='departments' AND identity.parent_id=department.id::text
+                """),"each V931 identity retains its exact live department grant/parent and real migration actor");
+        assertEquals(0,count("""
+                SELECT count(*) FROM departments department WHERE NOT department.is_deleted AND NOT EXISTS(
+                    SELECT 1 FROM department_permissions grant_row JOIN permissions permission ON permission.id=grant_row.permission_id
+                    JOIN business_record_identities identity ON identity.source_table='department_permissions'
+                        AND identity.source_id::jsonb=jsonb_build_object('department_id',grant_row.department_id,'permission_id',grant_row.permission_id)
+                    WHERE grant_row.department_id=department.id AND permission.code='company_file:view'
+                        AND identity.parent_table='departments' AND identity.parent_id=department.id::text)
+                """),"V931 preserves the old default entrance for every live department without missing identities");
+        assertEquals(liveDepartments,count("""
+                SELECT count(*) FROM business_record_identities identity
+                JOIN permissions permission ON permission.id::text=identity.source_id::jsonb->>'permission_id'
+                WHERE identity.source_table='department_permissions' AND permission.code='company_file:view'
+                """),"no additional company-file identities can hide outside the exact V931 mapping");
+        assertEquals(3,count("""
+                SELECT count(*) FROM business_record_identities identity
+                WHERE identity.source_table='department_permissions' AND NOT EXISTS(
+                    SELECT 1 FROM permissions permission WHERE permission.id::text=identity.source_id::jsonb->>'permission_id'
+                        AND permission.code='company_file:view')
+                """),"outside independently proven V931 entrance allocations, only the original V860/V896 identities remain");
         assertEquals(2, count("""
                 SELECT count(*) FROM pg_trigger
                 WHERE tgrelid = 'department_permissions'::regclass
@@ -1070,6 +1117,20 @@ class SubcontractStepDrawMigrationPostgresTest {
             statement.setObject(index + 1, args[index]);
         }
         return statement;
+    }
+
+    private void writeDepartmentIdentityEvidence(List<Map<String,Object>> identities) {
+        String location=System.getProperty("uten.v931.identityEvidence");
+        if(location==null)return;
+        var serializable=identities.stream().map(row->{
+            Map<String,String> values=new LinkedHashMap<>();
+            row.forEach((key,value)->values.put(key,value==null?null:value.toString()));return values;
+        }).toList();
+        try {
+            var path=java.nio.file.Path.of(location);java.nio.file.Files.createDirectories(path.getParent());
+            java.nio.file.Files.writeString(path,new com.fasterxml.jackson.databind.ObjectMapper().writerWithDefaultPrettyPrinter()
+                    .writeValueAsString(serializable)+"\n",java.nio.charset.StandardCharsets.UTF_8);
+        } catch(java.io.IOException failure){throw new java.io.UncheckedIOException(failure);}
     }
 
     private List<Map<String, Object>> rows(String sql, Object... args) throws SQLException {

@@ -102,9 +102,7 @@ class _StockItemDetailPageState extends ConsumerState<StockItemDetailPage> {
         child: UtenContentContainer.wide(
           child: Padding(
             // 水平贴 0：面板（含分段筛选行）与顶栏返回键共用左缘。
-            padding: const EdgeInsets.symmetric(
-              vertical: UtenSpacing.s16,
-            ),
+            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
             child: GoodsStockLedgerPanel(
               key: _panelKey,
               goodsId: widget.goodsId,

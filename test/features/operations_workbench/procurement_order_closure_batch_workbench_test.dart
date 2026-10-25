@@ -259,42 +259,41 @@ void _selectOrders(WidgetTester tester, Set<String> ids) {
 }
 
 void main() {
-  testWidgets(
-    'shared table keeps summary-first order: 已选胶囊最左、业务动作在右',
-    (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: MasterDataTableView<String>(
-              columns: [
-                MasterColumnDef(
-                  key: 'name',
-                  label: '名称',
-                  width: 160,
-                  value: (item) => item,
-                ),
-              ],
-              items: const ['one'],
-              facets: const {},
-              nullCounts: const {},
-              filters: const {},
-              onFilterChanged: (_, _) {},
-              selectable: true,
-              idOf: (item) => item,
-              onSelectedIdsChanged: (_) {},
-              batchActionsBuilder: (_, _) => [const Text('普通批量动作')],
-            ),
+  testWidgets('shared table keeps summary-first order: 已选胶囊最左、业务动作在右', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MasterDataTableView<String>(
+            columns: [
+              MasterColumnDef(
+                key: 'name',
+                label: '名称',
+                width: 160,
+                value: (item) => item,
+              ),
+            ],
+            items: const ['one'],
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            selectable: true,
+            idOf: (item) => item,
+            onSelectedIdsChanged: (_) {},
+            batchActionsBuilder: (_, _) => [const Text('普通批量动作')],
           ),
         ),
-      );
-      await tester.pumpAndSettle();
-      final group = tester.widget<UtenFloatingActionGroup>(
-        find.byType(UtenFloatingActionGroup),
-      );
-      expect(group.children.first, isA<UtenSelectionSummaryPill>());
-      expect(group.children.last, isA<Text>());
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
+    final group = tester.widget<UtenFloatingActionGroup>(
+      find.byType(UtenFloatingActionGroup),
+    );
+    expect(group.children.first, isA<UtenSelectionSummaryPill>());
+    expect(group.children.last, isA<Text>());
+  });
   for (final subcontract in [false, true]) {
     testWidgets(
       '${subcontract ? 'subcontract' : 'purchase'} bottom-right action survives zero selection and deduplicates whole orders',

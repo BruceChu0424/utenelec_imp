@@ -43,24 +43,22 @@ class UtenBackButton extends StatelessWidget {
   /// 触屏 = 主题最小命中区。宿主传给 AppBar.leadingWidth，保证标题紧跟。
   static double slotWidth(BuildContext context) =>
       UtenControlMetrics.usesTouchTargets(context)
-          ? UtenControlMetrics.minimumHitExtent(context)
-          : _extent;
+      ? UtenControlMetrics.minimumHitExtent(context)
+      : _extent;
 
   @override
   Widget build(BuildContext context) {
     final touch = UtenControlMetrics.usesTouchTargets(context);
     return IconButton(
-      icon: Icon(
-        Icons.arrow_back_ios_new_rounded,
-        size: _extent,
-        color: color,
-      ),
+      icon: Icon(Icons.arrow_back_ios_new_rounded, size: _extent, color: color),
       tooltip: tooltip ?? '返回',
       alignment: AlignmentDirectional.centerStart,
       padding: EdgeInsets.zero,
       // 桌面端收紧到 24×24（UtenControlTheme 会把 IconButton 最小命中区
       // 钉在 40，必须显式 tight 覆盖）；触屏端交给主题最小命中区。
-      constraints: touch ? null : BoxConstraints.tight(const Size.square(_extent)),
+      constraints: touch
+          ? null
+          : BoxConstraints.tight(const Size.square(_extent)),
       onPressed: onPressed ?? () => _defaultBack(context),
     );
   }

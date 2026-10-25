@@ -190,7 +190,9 @@ class UtenApp extends ConsumerWidget {
                                     bottom: false,
                                     // 普通通知横幅：瞬时悬浮居中、自动消失。连接横幅
                                     // 不在此处——它占顶下推，见上方 Column。
-                                    child: AppNotificationHost(useSafeArea: false),
+                                    child: AppNotificationHost(
+                                      useSafeArea: false,
+                                    ),
                                   ),
                                 ),
                               ],

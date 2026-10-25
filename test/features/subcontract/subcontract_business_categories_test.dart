@@ -259,15 +259,12 @@ void main() {
         // 2026-10-24 起历史门默认近三个月：选中历史记录即按最近三个月查询
         //（无状态）。
         final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
-        expect(
-          api.lastQuery,
-          {
-            'page': 1,
-            'size': 20,
-            'dateFrom': ChinaDateTime.formatDate(defaultRange.start),
-            'dateTo': ChinaDateTime.formatDate(defaultRange.end),
-          },
-        );
+        expect(api.lastQuery, {
+          'page': 1,
+          'size': 20,
+          'dateFrom': ChinaDateTime.formatDate(defaultRange.start),
+          'dateTo': ChinaDateTime.formatDate(defaultRange.end),
+        });
         _table(tester).onFilterChanged('status', 'APPROVED');
         await tester.pumpAndSettle();
         expect(api.lastQuery, {

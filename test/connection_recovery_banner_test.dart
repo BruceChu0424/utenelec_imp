@@ -58,57 +58,54 @@ void main() {
     expect(controller.state.recoveryEpoch, 1);
   });
 
-  testWidgets(
-    'connection bar docks in-flow above the floating notice card',
-    (tester) async {
-      final controller = ConnectionRecoveryController(
-        probe: () async => true,
-        probeDelays: const <Duration>[],
-      )..markRetrying(1);
-      final container = ProviderContainer(
-        overrides: [
-          connectionRecoveryProvider.overrideWith((ref) => controller),
-        ],
-      );
-      addTearDown(container.dispose);
+  testWidgets('connection bar docks in-flow above the floating notice card', (
+    tester,
+  ) async {
+    final controller = ConnectionRecoveryController(
+      probe: () async => true,
+      probeDelays: const <Duration>[],
+    )..markRetrying(1);
+    final container = ProviderContainer(
+      overrides: [connectionRecoveryProvider.overrideWith((ref) => controller)],
+    );
+    addTearDown(container.dispose);
 
-      await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: container,
-          child: const MaterialApp(
-            locale: Locale('zh'),
-            supportedLocales: [Locale('zh'), Locale('en')],
-            localizationsDelegates: [
-              AppLocalizations.delegate,
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
-            home: SafeArea(
-              bottom: false,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ConnectionRecoveryBanner(useSafeArea: false),
-                  AppNotificationHost(useSafeArea: false),
-                ],
-              ),
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          supportedLocales: [Locale('zh'), Locale('en')],
+          localizationsDelegates: [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: SafeArea(
+            bottom: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ConnectionRecoveryBanner(useSafeArea: false),
+                AppNotificationHost(useSafeArea: false),
+              ],
             ),
           ),
         ),
-      );
-      container
-          .read(appNotificationProvider.notifier)
-          .showInfo('新的采购任务', duration: const Duration(hours: 1));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 250));
+      ),
+    );
+    container
+        .read(appNotificationProvider.notifier)
+        .showInfo('新的采购任务', duration: const Duration(hours: 1));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
 
-      final bar = tester.getRect(find.byType(ConnectionRecoveryBanner));
-      // 连接横幅不再走 UtenTopBannerCard（占顶下推通栏）；悬浮卡片只剩通知弹条。
-      final cards = find.byType(UtenTopBannerCard);
-      expect(cards, findsOneWidget);
-      final noticeRect = tester.getRect(cards.at(0));
-      expect(noticeRect.top, greaterThanOrEqualTo(bar.bottom));
-    },
-  );
+    final bar = tester.getRect(find.byType(ConnectionRecoveryBanner));
+    // 连接横幅不再走 UtenTopBannerCard（占顶下推通栏）；悬浮卡片只剩通知弹条。
+    final cards = find.byType(UtenTopBannerCard);
+    expect(cards, findsOneWidget);
+    final noticeRect = tester.getRect(cards.at(0));
+    expect(noticeRect.top, greaterThanOrEqualTo(bar.bottom));
+  });
 }

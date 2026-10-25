@@ -35,10 +35,7 @@ Future<DateTimeRange?> showUtenDateRangePicker({
       if (wrap != null) dialog = wrap(dialogContext, dialog);
       return Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 24,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520),
             child: dialog,
@@ -112,7 +109,8 @@ class _UtenDateRangePickerDialogState extends State<UtenDateRangePickerDialog> {
         _endDate = start;
       }
     }
-    final anchor = _startDate ??
+    final anchor =
+        _startDate ??
         (_today.isBefore(_firstDate)
             ? _firstDate
             : (_today.isAfter(_lastDate) ? _lastDate : _today));
@@ -220,17 +218,17 @@ class _UtenDateRangePickerDialogState extends State<UtenDateRangePickerDialog> {
   void _confirm() {
     final start = _startDate;
     if (start == null) return;
-    Navigator.of(context).pop(DateTimeRange(
-      start: start,
-      end: _endDate ?? start,
-    ));
+    Navigator.of(
+      context,
+    ).pop(DateTimeRange(start: start, end: _endDate ?? start));
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final localizations = MaterialLocalizations.of(context);
-    final helpText = widget.helpText ??
+    final helpText =
+        widget.helpText ??
         _t(context, '选择日期范围', 'Select date range', '날짜 범위 선택');
     return Material(
       color: scheme.surface,
@@ -297,8 +295,9 @@ class _UtenDateRangePickerDialogState extends State<UtenDateRangePickerDialog> {
                     children: [
                       TextSpan(
                         text: startText,
-                        style:
-                            _startDate == null ? placeholderStyle : valueStyle,
+                        style: _startDate == null
+                            ? placeholderStyle
+                            : valueStyle,
                       ),
                       TextSpan(text: ' – ', style: placeholderStyle),
                       TextSpan(
@@ -414,17 +413,20 @@ class _UtenDateRangePickerDialogState extends State<UtenDateRangePickerDialog> {
               isStart: _sameDay(day, _startDate),
               isEnd: _sameDay(day, _endDate),
               hasRange: hasRange,
-              inBand: hasRange &&
+              inBand:
+                  hasRange &&
                   day.isAfter(_startDate!) &&
                   day.isBefore(_endDate!),
             ),
           ),
         );
       }
-      rows.add(SizedBox(
-        height: _cellHeight,
-        child: Row(children: rowChildren),
-      ));
+      rows.add(
+        SizedBox(
+          height: _cellHeight,
+          child: Row(children: rowChildren),
+        ),
+      );
     }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
@@ -510,10 +512,10 @@ class _DayCellState extends State<_DayCell> {
       color: !widget.enabled
           ? scheme.onSurface.withValues(alpha: 0.32)
           : selected
-              ? scheme.onPrimary
-              : widget.isToday
-                  ? scheme.primary
-                  : scheme.onSurface,
+          ? scheme.onPrimary
+          : widget.isToday
+          ? scheme.primary
+          : scheme.onSurface,
     );
 
     return MouseRegion(

@@ -204,7 +204,9 @@ UtenDropdownField _newRowDropdown(
   bool Function(UtenDropdownField) match,
 ) => tester.widget<UtenDropdownField>(
   find
-      .byWidgetPredicate((widget) => widget is UtenDropdownField && match(widget))
+      .byWidgetPredicate(
+        (widget) => widget is UtenDropdownField && match(widget),
+      )
       .first,
 );
 
@@ -263,11 +265,7 @@ void main() {
           await tester.enterText(_newRowTextCell('linkman'), '采购联系人');
           await tester.pumpAndSettle();
         }
-        expect(
-          api.writes,
-          isEmpty,
-          reason: 'input only stages a draft',
-        );
+        expect(api.writes, isEmpty, reason: 'input only stages a draft');
         if (_capture && entry.domain == 'goods') {
           for (final state in tester.stateList<ScrollableState>(
             find.byType(Scrollable),

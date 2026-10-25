@@ -59,7 +59,9 @@ void main() {
         onChanged: changes.add,
       );
       await tester.enterText(find.byType(TextField), '5M开关');
-      await tester.tap(find.byKey(const ValueKey('uten-reference-open-picker')));
+      await tester.tap(
+        find.byKey(const ValueKey('uten-reference-open-picker')),
+      );
       await tester.pumpAndSettle();
       expect(repository.requests, [('5M开关', 1)]);
       expect(repository.hintRequests, isEmpty);

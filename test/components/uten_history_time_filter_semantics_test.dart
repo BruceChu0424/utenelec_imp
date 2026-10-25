@@ -55,7 +55,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(UtenDateRangePickerDialog), findsOneWidget);
         final calendarRange = tester
-            .widget<UtenDateRangePickerDialog>(find.byType(UtenDateRangePickerDialog))
+            .widget<UtenDateRangePickerDialog>(
+              find.byType(UtenDateRangePickerDialog),
+            )
             .initialDateRange!;
         // Material normalizes calendar values to local date-only instances.
         // Compare their wall fields, retaining the domain's UTC date carrier.

@@ -100,8 +100,10 @@ void main() {
     );
     // 标题行钉视口：文案原位不动，副标题与提示仍在视口内可见。
     expect(tester.getRect(title).topLeft, before.topLeft);
-    expect(tester.getRect(find.text('当前分类子树内已停用的货品')).left,
-        lessThan(viewport.width));
+    expect(
+      tester.getRect(find.text('当前分类子树内已停用的货品')).left,
+      lessThan(viewport.width),
+    );
     expect(tester.getRect(find.text('下拉查看详情')).right, lessThan(viewport.width));
 
     // 钉住的位置仍可交互：点击展开，分组行顶上来。

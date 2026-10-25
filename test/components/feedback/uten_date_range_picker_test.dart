@@ -212,9 +212,11 @@ void main() {
     await _openDialog(tester);
 
     IconButton prevButton(Icon icon) => tester.widget<IconButton>(
-          find.ancestor(of: find.byIcon(icon.icon!), matching:
-              find.byType(IconButton)),
-        );
+      find.ancestor(
+        of: find.byIcon(icon.icon!),
+        matching: find.byType(IconButton),
+      ),
+    );
     expect(prevButton(const Icon(Icons.chevron_left)).onPressed, isNull);
     expect(prevButton(const Icon(Icons.chevron_right)).onPressed, isNull);
   });

@@ -165,12 +165,14 @@ public class SalesReturnQualityService {
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.NOT_FOUND,
                         "销售退货单不存在"));
+
         // Keep object scope identical to list(): the dedicated handler
         // authority is the only cross-owner bypass.
         accessPolicy.requireWritable(
                 salesReturn.getOwnerEmployeeId(),
                 "无权处置该销售退货质检冻结",
                 DISPOSE_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_returns",salesReturn);
         if (request == null || request.reason() == null
                 || request.reason().isBlank()) {
             throw new ApiException(
@@ -310,10 +312,12 @@ public class SalesReturnQualityService {
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.NOT_FOUND,
                         "销售退货单不存在"));
+
         accessPolicy.requireWritable(
                 salesReturn.getOwnerEmployeeId(),
                 "无权纠错该销售退货质检处置",
                 CORRECT_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_returns",salesReturn);
         if (request == null || request.reason() == null
                 || request.reason().isBlank()) {
             throw new ApiException(

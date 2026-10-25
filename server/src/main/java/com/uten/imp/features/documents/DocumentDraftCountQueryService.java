@@ -258,10 +258,17 @@ public class DocumentDraftCountQueryService {
         StringBuilder sql = new StringBuilder("SELECT count(*) FROM ")
                 .append(source.table())
                 .append(" o WHERE o.is_deleted = false AND o.status = 0");
+        sql.append(" AND ").append(currentSourcePredicate(source));
         if (source.extraPredicate() != null) {
             sql.append(" AND ").append(source.extraPredicate());
         }
         return sql.append(" AND ").append(scopePredicate).toString();
+    }
+
+    /** Operational counts use actual source ancestry even when a history list was requested. */
+    static String currentSourcePredicate(DraftSource source) {
+        if (!source.table().matches("[a-z][a-z0-9_]*")) throw new IllegalArgumentException("Invalid fixed document table");
+        return "NOT fn_imported_business_document('" + source.table() + "',o.id)";
     }
 
     /**

@@ -4,6 +4,16 @@ import 'package:uten_imp/features/stock/models/instant_inventory_summary.dart';
 import 'package:uten_imp/shared/measurement/weight_unit.dart';
 
 void main() {
+  test('计量待核复用原关注项且不承诺补主档单位就解除历史冻结', () {
+    final summary = InstantInventorySummary(
+      totalRows: 2,
+      totals: [_count('inventory_rows', 2), _count('missing_unit_rows', 2)],
+    );
+    expect(summary.advice.single.attention, 'MISSING_UNIT');
+    expect(summary.advice.single.title, '核实库存计量');
+    expect(summary.advice.single.message, contains('账面数仅供核对'));
+    expect(summary.advice.single.message, contains('主档补单位不自动解除'));
+  });
   test('按单位横向统计三个阶段，隐藏全零单位并保留负数和缺失单位', () {
     final summary = InstantInventorySummary(
       totalRows: 137,
@@ -15,7 +25,7 @@ void main() {
     );
 
     final units = {for (final row in summary.units) row.unit: row};
-    expect(units.keys, unorderedEquals(['个', '箱', '卷', '单位未维护', '件']));
+    expect(units.keys, unorderedEquals(['个', '箱', '卷', '计量待核', '件']));
     expect(units['个']!.quantity, 900);
     expect(units['个']!.pending, 0);
     expect(units['个']!.pendingStockIn, 2);
@@ -24,8 +34,9 @@ void main() {
     expect(units['卷']!.quantity, -3);
     expect(units['件']!.quantity, 0);
     expect(units['件']!.pending, 8);
-    expect(units['单位未维护']!.missingUnit, isTrue);
-    expect(units['单位未维护']!.quantity, 4);
+    expect(units['计量待核']!.missingUnit, isTrue);
+    expect(units['计量待核']!.quantity, isNull);
+    expect(summary.total('qty')!.groups.last.value, 4);
   });
 
   test('服务端没有提供的阶段保持未知，不能伪造成零待检', () {
@@ -54,8 +65,9 @@ void main() {
 
     expect(summary.units, hasLength(2));
     expect(summary.units.every((row) => row.missingUnit), isTrue);
-    expect(summary.units.map((row) => row.quantity), unorderedEquals([4, 7]));
-    expect(summary.units.map((row) => row.unit), everyElement('单位未维护'));
+    expect(summary.units.map((row) => row.quantity), everyElement(isNull));
+    expect(summary.total('qty')!.groups.map((group) => group.value), [4, 7]);
+    expect(summary.units.map((row) => row.unit), everyElement('计量待核'));
   });
 
   test('重量覆盖只统计非零余额，零库存和估算项不重复进入分母', () {

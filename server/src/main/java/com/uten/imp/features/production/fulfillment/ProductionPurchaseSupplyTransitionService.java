@@ -79,7 +79,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                 SELECT i.id, src.request_item_id,
                                        src.alloc_qty * COALESCE(i.unit_rate, 1),
                                        i.deliver_date
-                                FROM purchase_order_items i
+                                FROM (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_order_items',archive_origin.id)) i
                                 JOIN purchase_order_item_sources src
                                   ON src.order_item_id = i.id
                                 WHERE i.order_id = :orderId
@@ -241,7 +241,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                        target.consumed_qty,
                                        source.released_qty
                                 FROM production_material_peg_transfers t
-                                JOIN purchase_order_items oi
+                                JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_order_items',archive_origin.id)) oi
                                   ON oi.id = t.order_item_id
                                 JOIN production_material_supply_pegs source
                                   ON source.id = t.from_peg_id
@@ -324,7 +324,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
         List<UUID> warehouses = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                                 SELECT warehouse_id
-                                FROM purchase_receipts
+                                FROM (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipts',archive_origin.id)) purchase_receipts
                                 WHERE id = :receiptId
                                   AND is_deleted = FALSE
                                 """)
@@ -350,7 +350,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
         lockReceiptMaterialDimensions(receiptId, warehouseId);
         em.createNativeQuery("""
                         SELECT d.id
-                        FROM purchase_receipt_items receipt_item
+                        FROM (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipt_items',archive_origin.id)) receipt_item
                         JOIN production_material_supply_pegs peg
                           ON peg.supply_type = 'PURCHASE_ORDER_ITEM'
                          AND peg.supply_item_id =
@@ -428,7 +428,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
         List<UUID> receipts = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                                 SELECT id
-                                FROM purchase_receipts
+                                FROM (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipts',archive_origin.id)) purchase_receipts
                                 WHERE id = :receiptId
                                   AND is_deleted = FALSE
                                   AND status = 1
@@ -455,7 +455,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                 SELECT receipt_item.id,
                                        receipt_item.order_item_id,
                                        fn_procurement_received_in_warehouse('PURCHASE',receipt_item.id,:warehouseId) AS qualified_base_qty
-                                FROM purchase_receipt_items receipt_item
+                                FROM (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipt_items',archive_origin.id)) receipt_item
                                 LEFT JOIN procurement_inspection_items inspection
                                   ON inspection.receipt_type = 'PURCHASE'
                                  AND inspection.receipt_item_id = receipt_item.id
@@ -514,7 +514,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                       ON package.id = d.package_id
                                      AND package.is_deleted = FALSE
                                      AND package.status = 'CONFIRMED'
-                                    JOIN production_plans plan
+                                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
                                       ON plan.id = d.plan_id
                                     WHERE p.supply_type = 'PURCHASE_ORDER_ITEM'
                                       AND p.supply_item_id = :orderItemId
@@ -679,9 +679,9 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                   ON p.id = a.order_peg_id
                                 JOIN stock_reservations r
                                   ON r.id = a.reservation_id
-                                JOIN stock_documents draw
+                                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) draw
                                   ON draw.id = a.draw_id
-                                JOIN stock_document_items item
+                                JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item
                                   ON item.id = a.draw_item_id
                                 WHERE a.receipt_id = :receiptId
                                   AND a.status = 'EFFECTIVE'
@@ -860,7 +860,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
             ledger.authorizeDraftDrawCleanup(drawId);
             Number activeItems = (Number) em.createNativeQuery("""
                             SELECT COUNT(*)
-                            FROM stock_document_items
+                            FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) stock_document_items
                             WHERE doc_id = :drawId
                               AND is_deleted = FALSE
                             """)
@@ -908,7 +908,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                 WITH receipt_segments AS (
                                     SELECT DISTINCT
                                            demand.execution_segment_id
-                                    FROM purchase_receipt_items receipt_item
+                                    FROM (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipt_items',archive_origin.id)) receipt_item
                                     JOIN production_material_supply_pegs peg
                                       ON peg.supply_type =
                                              'PURCHASE_ORDER_ITEM'
@@ -927,7 +927,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                 dimensions AS (
                                     SELECT receipt_item.goods_id,
                                            receipt_item.color_id
-                                    FROM purchase_receipt_items receipt_item
+                                    FROM (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipt_items',archive_origin.id)) receipt_item
                                     WHERE receipt_item.receipt_id = :receiptId
                                       AND receipt_item.is_deleted = FALSE
                                     UNION ALL
@@ -961,7 +961,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
             UUID colorId) {
         List<?> rows = em.createNativeQuery("""
                         SELECT id
-                        FROM stock_balances
+                        FROM v_stock_operable_balances
                         WHERE warehouse_id = :warehouseId
                           AND goods_id = :goodsId
                           AND color_id IS NOT DISTINCT
@@ -1116,7 +1116,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
             StockGoodsSnapshot goodsSnapshot) {
         Number maxLine = (Number) em.createNativeQuery("""
                         SELECT COALESCE(MAX(line_no), 0)
-                        FROM stock_document_items
+                        FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) stock_document_items
                         WHERE doc_id = :drawId
                         """)
                 .setParameter("drawId", draw.id())

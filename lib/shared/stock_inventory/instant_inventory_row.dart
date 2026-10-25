@@ -1,3 +1,5 @@
+import 'measurement_hold.dart';
+
 /// 即时库存行（对标老系统「即时库存」窗口），对应后端 InstantInventoryRow。
 /// 粒度=货品+颜色；名称（分类/颜色/单位）后端已解析，免前端字典二次查询。
 class InstantInventoryRow {
@@ -31,7 +33,10 @@ class InstantInventoryRow {
     this.defectiveQty,
     this.searchRank,
     this.searchMatchKind,
-  });
+    this.measurementPending = false,
+    this.measurementHoldReason,
+    bool availableKnown = true,
+  }) : availableKnown = availableKnown && !measurementPending;
 
   final String? goodsId;
   final String? colorId;
@@ -80,6 +85,10 @@ class InstantInventoryRow {
   final double? defectiveQty;
   final int? searchRank;
   final String? searchMatchKind;
+  final bool measurementPending;
+  final String? measurementHoldReason;
+  final bool availableKnown;
+  String get measurementNotice => measurementHoldNotice(measurementHoldReason);
   bool get isRelatedSearchMatch => searchMatchKind == 'RELATED';
 
   factory InstantInventoryRow.fromJson(Map<String, dynamic> json) =>
@@ -115,5 +124,8 @@ class InstantInventoryRow {
         defectiveQty: (json['defectiveQty'] as num?)?.toDouble(),
         searchRank: (json['searchRank'] as num?)?.toInt(),
         searchMatchKind: json['searchMatchKind'] as String?,
+        measurementPending: json['measurementPending'] == true,
+        measurementHoldReason: json['measurementHoldReason'] as String?,
+        availableKnown: json['availableKnown'] != false,
       );
 }

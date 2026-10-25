@@ -47,7 +47,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                 SELECT item.id,goods.code
                 FROM production_material_analysis_items item
                 JOIN goods ON goods.id=item.goods_id
-                LEFT JOIN sales_order_items sales ON sales.id=item.sales_order_item_id
+                LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) sales ON sales.id=item.sales_order_item_id
                 LEFT JOIN production_material_analysis_materials root ON root.id=item.root_material_id
                 WHERE item.analysis_id=:id AND item.is_deleted=FALSE
                   AND item.source_type IN ('SALES_ORDER_ITEM','REWORK','TRIAL','SAMPLE','STOCK','OTHER')
@@ -99,7 +99,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                   COALESCE(sales.unit_rate,1),1,'EDGE_RULE','ROOT_SUPPLY',0,0,0,:actorId,:actorId
                 FROM production_material_analysis_items item
                 JOIN goods ON goods.id=item.goods_id
-                LEFT JOIN sales_order_items sales ON sales.id=item.sales_order_item_id
+                LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) sales ON sales.id=item.sales_order_item_id
                 WHERE item.analysis_id=:analysisId AND item.root_material_id IS NOT NULL
                   AND item.is_deleted=FALSE
                 ON CONFLICT (id) DO UPDATE
@@ -203,14 +203,14 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                   item.sales_order_item_id,
                   COALESCE((SELECT SUM(LEAST(pi.qty,GREATEST(COALESCE(pi.iqty,0),0))
                       * COALESCE(pi.unit_rate,1))
-                    FROM production_plans plan JOIN production_plan_items pi ON pi.plan_id=plan.id
+                    FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) pi ON pi.plan_id=plan.id
                     WHERE plan.material_analysis_id=item.analysis_id
                       AND plan.material_analysis_item_id=item.id
                       AND plan.status=1 AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
                       AND pi.is_deleted=FALSE),0),
                   COALESCE((SELECT SUM(GREATEST(pi.qty-COALESCE(pi.iqty,0),0)
                       * COALESCE(pi.unit_rate,1))
-                    FROM production_plans plan JOIN production_plan_items pi ON pi.plan_id=plan.id
+                    FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) pi ON pi.plan_id=plan.id
                     WHERE plan.material_analysis_id=item.analysis_id
                       AND plan.material_analysis_item_id=item.id
                       AND plan.status IN (0,1) AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
@@ -231,7 +231,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                 JOIN production_material_analysis_materials root ON root.id=item.root_material_id
                 JOIN goods ON goods.id=item.goods_id
                 LEFT JOIN LATERAL (
-                    SELECT SUM(physical.qty) AS qty FROM stock_balances physical
+                    SELECT SUM(physical.qty) AS qty FROM v_stock_operable_balances physical
                     WHERE physical.goods_id=item.goods_id AND physical.color_id IS NOT DISTINCT FROM item.color_id
                       AND fn_warehouse_same_main(physical.warehouse_id,analysis.warehouse_id)
                       AND fn_warehouse_is_good_stock_leaf(physical.warehouse_id)
@@ -296,7 +296,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                     WHERE reservation.goods_id=balance.goods_id
                       AND reservation.color_id IS NOT DISTINCT FROM balance.color_id
                       AND reservation.warehouse_id=balance.warehouse_id AND reservation.status=0 AND NOT reservation.is_deleted),0),0)
-                FROM stock_balances balance WHERE balance.goods_id=:goods
+                FROM v_stock_operable_balances balance WHERE balance.goods_id=:goods
                   AND balance.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
                   AND fn_warehouse_same_main(balance.warehouse_id,:scope)
                   AND fn_warehouse_is_good_stock_leaf(balance.warehouse_id)
@@ -541,7 +541,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
         for(UUID id:eventIds)requireOutputReversible(id);
         var insufficient=em.createNativeQuery("""
             SELECT source.sales_order_item_id FROM preplan_root_output_events source
-            JOIN sales_order_items item ON item.id=source.sales_order_item_id
+            JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) item ON item.id=source.sales_order_item_id
             WHERE source.event_kind='FULFILL' AND source.source_receipt_type=:type AND source.source_receipt_id=:id
               AND NOT EXISTS(SELECT 1 FROM preplan_root_output_events rev WHERE rev.reversed_event_id=source.id)
             GROUP BY source.sales_order_item_id,item.reserved_qty
@@ -646,8 +646,8 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                   AND (:delta<=0 OR reserved_qty+:delta<=
                     qty-COALESCE(shipped_qty,0)+COALESCE(returned_qty,0)-COALESCE(flag_qty,0)
                     -GREATEST(COALESCE(planned_qty,0)-COALESCE(produced_qty,0),0)
-                    -COALESCE((SELECT SUM(pi.qty) FROM production_plan_items pi
-                      JOIN production_plans p ON p.id=pi.plan_id WHERE pi.sales_order_item_id=item.id
+                    -COALESCE((SELECT SUM(pi.qty) FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) pi
+                      JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) p ON p.id=pi.plan_id WHERE pi.sales_order_item_id=item.id
                         AND pi.is_deleted=FALSE AND p.is_deleted=FALSE AND p.status=0 AND p.is_canceled=FALSE),0))
                 """).setParameter("delta", delta).setParameter("id", root.salesOrderItemId()).executeUpdate();
         if (updated!=1) throw conflict("根产品供给与销售剩余数量不一致，本次操作没有生效");
@@ -680,7 +680,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                     SELECT item.id, (NOT item.is_deleted AND NOT document.is_deleted
                       AND document.status=1 AND document.finance_confirmed=TRUE
                       AND NOT COALESCE(document.is_stopped,FALSE) AND NOT document.is_closed)
-                    FROM sales_order_items item JOIN sales_orders document ON document.id=item.order_id
+                    FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) item JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) document ON document.id=item.order_id
                     WHERE item.id=:id
                     FOR UPDATE OF document,item
                     """).setParameter("id", row[6]));

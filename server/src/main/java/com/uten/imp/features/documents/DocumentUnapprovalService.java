@@ -51,12 +51,14 @@ public class DocumentUnapprovalService {
         requireWriteIdentity();
         // Existing family methods still own object scopes and physical/downstream reversibility.
         adapter.detail(originalId);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.requireMutable(em, adapter.header().table(), originalId);
         em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:identity, 0))")
                 .setParameter("identity", "DOCUMENT_UNAPPROVAL:" + family + ":" + originalId).getSingleResult();
         List<?> prior = em.createNativeQuery("SELECT draft_id FROM document_unapprovals WHERE family=:family AND original_id=:id")
                 .setParameter("family", family).setParameter("id", originalId).getResultList();
         if (!prior.isEmpty()) return successorDetail(adapter,(UUID) prior.getFirst(),originalId);
-        if(Boolean.TRUE.equals(em.createNativeQuery("SELECT legacy_id IS NOT NULL FROM "+adapter.header().table()+" WHERE id=:id")
+        if(Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_imported_business_document(:table,id) FROM "+adapter.header().table()+" WHERE id=:id")
+                .setParameter("table",adapter.header().table())
                 .setParameter("id",originalId).getSingleResult()))
             throw new ApiException(ErrorCode.CONFLICT,"历史原始记录仅供核对，不能通用反审生成新业务");
         adapter.requireSupported(originalId);
@@ -99,8 +101,9 @@ public class DocumentUnapprovalService {
         boolean permitted = !user.isVisitor() && user.getEmployeeId()!=null && !user.isMustChangePassword() && user.isAccountNonLocked()
                 && user.getImpersonatedBy() == null && (user.isSuperAdmin() || user.getAuthorities().stream()
                 .anyMatch(authority -> authority.getAuthority().equals(adapter.permission() + ":reverse")));
-        Object[] stored = (Object[]) em.createNativeQuery("SELECT header.status,header.legacy_id,to_jsonb(header)::text FROM "
+        Object[] stored = (Object[]) em.createNativeQuery("SELECT header.status,header.legacy_id,to_jsonb(header)::text,fn_imported_business_document(:table,header.id) FROM "
                 + adapter.header().table() + " header WHERE header.id=:id AND NOT header.is_deleted")
+                .setParameter("table",adapter.header().table())
                 .setParameter("id", id).getSingleResult();
         short state = stored[0] instanceof Number number ? number.shortValue() : Short.MIN_VALUE;
         UUID successor = null;
@@ -128,7 +131,7 @@ public class DocumentUnapprovalService {
             if (successor != null) action = "OPEN_SUCCESSOR";
         } else if (!permitted) {
             check = DocumentUnapprovalPort.Eligibility.blocked("REVERSE_PERMISSION_REQUIRED", "当前身份没有该单据的反审权限", null);
-        } else if (stored[1] != null) {
+        } else if (stored[1] != null || (stored.length > 3 && Boolean.TRUE.equals(stored[3]))) {
             check = DocumentUnapprovalPort.Eligibility.blocked("IMPORTED_HISTORY", "历史原始单据仅供核对，不能通用反审生成新业务", null);
         } else if (state == 0) {
             check = DocumentUnapprovalPort.Eligibility.blocked("DRAFT_NOT_APPROVED", "草稿尚未审核，无需反审；请按草稿编辑或取消流程办理", null);

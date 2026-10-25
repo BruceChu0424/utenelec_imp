@@ -72,6 +72,11 @@ public interface StockBalanceRepository
     java.util.List<WarehouseClassFacts> warehouseClassFacts(@Param("warehouse") UUID warehouseId,
             @Param("transferDoc") UUID transferDocId);
 
+    /** Measurement qualification is separate from unchanged book balances. */
+    @Query(value="SELECT fn_stock_measurement_usable(:warehouse,:goods,CAST(:color AS uuid))",nativeQuery=true)
+    Boolean measurementUsable(@Param("warehouse") UUID warehouseId,@Param("goods") UUID goodsId,
+            @Param("color") UUID colorId);
+
     /** Native scalar projection deliberately bypasses cached entities after same-transaction upserts. */
     @Query(value="""
             SELECT qty,weight,weight_estimated AS weightEstimated FROM stock_balances
@@ -97,6 +102,7 @@ public interface StockBalanceRepository
                     WHERE b.warehouse_id = :wid
                       AND b.goods_id = :gid
                       AND b.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
+                      AND fn_stock_measurement_usable(b.warehouse_id,b.goods_id,b.color_id)
                 ), 0)
                 - COALESCE((
                     SELECT SUM(r.qty - r.consumed_qty - r.released_qty)
@@ -164,7 +170,8 @@ public interface StockBalanceRepository
     @Query(value = """
             SELECT GREATEST(COALESCE((SELECT balance.qty FROM stock_balances balance
                 WHERE balance.warehouse_id = :wid AND balance.goods_id = :gid
-                  AND balance.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)), 0)
+                  AND balance.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
+                  AND fn_stock_measurement_usable(balance.warehouse_id,balance.goods_id,balance.color_id)), 0)
                 - COALESCE((SELECT SUM(reservation.qty - reservation.consumed_qty - reservation.released_qty)
                     FROM stock_reservations reservation
                     WHERE reservation.is_deleted = FALSE AND reservation.status = 0

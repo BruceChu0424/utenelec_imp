@@ -90,7 +90,8 @@ public class PurchaseRequestService {
     private com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
 
     @Transactional(readOnly = true)
-    public PageResponse<RequestListItem> list(RequestQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<RequestListItem> list(RequestQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final RequestQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         Specification<PurchaseRequest> spec = requestSpec(f);
         // 列排序：sort 命中白名单(日期/金额/单据号)才按实体属性排序，否则默认 billDate DESC。
         Pageable pageable = Pageables.of(page, size,
@@ -99,21 +100,23 @@ public class PurchaseRequestService {
         var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
         Page<PurchaseRequest> p = requestRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<RequestListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
-        return p.stream().noneMatch(PurchaseRequest::isDeleted) ? result
-                : retainedRecords.page(result, "purchase_requests", p.getContent());
+        return retainedRecords.page(result, "purchase_requests", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
-    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(RequestQueryFilter f) {
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(RequestQueryFilter originalFilter) {
+        final RequestQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, PurchaseRequest.class, requestSpec(f), "billNo"));
     }
 
-    private Specification<PurchaseRequest> requestSpec(RequestQueryFilter f) {
+    private Specification<PurchaseRequest> requestSpec(RequestQueryFilter originalFilter) {
+        final RequestQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return (Root<PurchaseRequest> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             if (f.keyword() != null && !f.keyword().isBlank()) {
@@ -128,9 +131,9 @@ public class PurchaseRequestService {
                 }));
             }
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.closed() != null) {
-                ps.add(cb.equal(root.get("closed"), f.closed()));
+                ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("closed"), f.closed())));
                 if (!f.closed()) ps.add(cb.notEqual(cb.coalesce(root.get("isStopped"), false), true));
             }
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
@@ -196,11 +199,13 @@ public class PurchaseRequestService {
         tx.bind();
         PurchaseRequest r = requestRepo.findById(requestId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购申请不存在"));
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_requests",r);
         if (r.isDeleted()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "采购申请不存在");
         }
         PurchaseRequestItem item = itemRepo.findById(itemId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "申请明细不存在"));
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_request_items",item);
         if (!requestId.equals(item.getRequestId()) || item.isDeleted()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "申请明细不存在");
         }
@@ -281,7 +286,7 @@ public class PurchaseRequestService {
     /** 待财务审核、财务退回待修订订货单对该申请明细的占用量，与工作台同口径。 */
     private java.math.BigDecimal pendingApprovalOrderQty(UUID requestItemId) {
         Object value = em.createNativeQuery("""
-                SELECT pending.pending_physical_qty FROM purchase_request_items i
+                SELECT pending.pending_physical_qty FROM (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_request_items',archive_origin.id)) i
                 %s WHERE i.id=:itemId AND NOT i.is_deleted
                 """.formatted(PENDING_ORDER_QUANTITY_JOIN))
                 .setParameter("itemId", requestItemId)
@@ -381,6 +386,7 @@ public class PurchaseRequestService {
     public RequestDetail update(UUID id, RequestSaveRequest req) {
         tx.bind();
         PurchaseRequest r = requireRequestForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_requests",r);
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         productionSourceGuard.requirePurchaseRequestMutable(id);
         applyHeader(req, r);
@@ -395,6 +401,7 @@ public class PurchaseRequestService {
     public void delete(UUID id) {
         tx.bind();
         PurchaseRequest r = requireRequestForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_requests",r);
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities
                 .requireDraftForDelete(r.getStatus());
         productionSourceGuard.requirePurchaseRequestMutable(id);
@@ -415,6 +422,7 @@ public class PurchaseRequestService {
     public RequestDetail approve(UUID id) {
         tx.bind();
         PurchaseRequest r = requireRequestForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_requests",r);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         List<PurchaseRequestItem> items = itemRepo.findByRequestIdOrderByLineNoAsc(id);
@@ -691,7 +699,6 @@ public class PurchaseRequestService {
     }
 
     private RequestDetail finishHistory(RequestDetail view, PurchaseRequest entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "purchase_requests", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

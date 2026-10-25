@@ -1865,7 +1865,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           DraftAwareGoRoute(
             path: '/subcontract/receipts',
             name: 'subcontract-receipts-list',
-            redirect: (_, _) => '/subcontract/orders',
+            builder: (_, _) => SubcontractPageFactory.list(
+              SubcontractDocType.receipt,
+              legacyOnly: true,
+            ),
           ),
           // 委外报表（3 卡：明细/汇总/出入状况，静态段 report 优先于 :seg 参数路由）
           DraftAwareGoRoute(
@@ -1923,6 +1926,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, s) => SubcontractPageFactory.list(
               SubcontractDocType.byPath(s.pathParameters['seg']!),
               initialStatus: s.uri.queryParameters['status'],
+              legacyOnly: s.uri.queryParameters['origin'] == 'legacy',
             ),
           ),
 

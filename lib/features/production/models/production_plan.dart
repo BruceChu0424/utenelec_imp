@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 // 生产计划单 model（生产管理 / production）。
 //
 // 对应后端 server/src/main/java/com/uten/imp/features/production/plan/：
@@ -344,6 +345,7 @@ class ProductionPlanDetail {
   const ProductionPlanDetail({
     required this.id,
     this.legacyId,
+    this.historyReadOnly = false,
     this.billNo,
     this.billDate,
     this.fStyle,
@@ -380,6 +382,8 @@ class ProductionPlanDetail {
 
   final String id;
   final int? legacyId;
+  final bool historyReadOnly;
+  bool get legacyImported => historyReadOnly || legacyId != null;
   final String? billNo;
   final String? billDate;
   final String? fStyle;
@@ -431,6 +435,7 @@ class ProductionPlanDetail {
       ProductionPlanDetail(
         id: json['id'] as String,
         legacyId: _asInt(json['legacyId']),
+        historyReadOnly: importedBusinessDocument(json),
         billNo: json['billNo'] as String?,
         billDate: json['billDate'] as String?,
         fStyle: json['fStyle'] as String?,

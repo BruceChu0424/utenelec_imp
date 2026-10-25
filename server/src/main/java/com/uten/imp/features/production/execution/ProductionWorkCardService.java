@@ -45,8 +45,10 @@ public class ProductionWorkCardService {
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.NOT_FOUND,
                         "生产计划不存在"));
+
         access.requireReadable(
                 plan.getMakerId(), "生产计划不存在", "production_plan:approve");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_plans",plan);
         if (plan.getStatus() == null
                 || plan.getStatus() != STATUS_APPROVED
                 || plan.isStopped()
@@ -132,7 +134,7 @@ public class ProductionWorkCardService {
                                        segment.material_requirement_mode,
                                        segment.zero_material_reason
                                 FROM production_planning_packages package
-                                JOIN production_plans plan
+                                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
                                   ON plan.id = package.plan_id
                                  AND plan.is_deleted = FALSE
                                 JOIN warehouses warehouse
@@ -142,7 +144,7 @@ public class ProductionWorkCardService {
                                   ON segment.package_id = package.id
                                  AND segment.plan_id = plan.id
                                  AND segment.is_deleted = FALSE
-                                JOIN production_plan_items plan_item
+                                JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) plan_item
                                   ON plan_item.id = segment.source_plan_item_id
                                  AND plan_item.plan_id = plan.id
                                  AND plan_item.is_deleted = FALSE

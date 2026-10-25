@@ -62,7 +62,7 @@ final class SalesShipmentBatchAllocation {
                            -COALESCE(claim.qty,0)-GREATEST(COALESCE(CAST(goods.min_qty AS numeric),0),0),0) public_qty,
                        GREATEST(LEAST(COALESCE(global.qty,0),
                            GREATEST(COALESCE((SELECT SUM(GREATEST(stock.qty-GREATEST(COALESCE(CAST(goods.min_qty AS numeric),0),0),0))
-                               FROM stock_balances stock JOIN warehouses leaf ON leaf.id=stock.warehouse_id
+                               FROM v_stock_operable_balances stock JOIN warehouses leaf ON leaf.id=stock.warehouse_id
                                JOIN active_warehouses valid ON valid.id=leaf.id
                                WHERE stock.goods_id=i.goods_id AND stock.color_id IS NOT DISTINCT FROM i.color_id
                                  AND fn_warehouse_counts_as_usable(leaf.id)),0)
@@ -74,7 +74,7 @@ final class SalesShipmentBatchAllocation {
                              AND r.warehouse_id=d.warehouse_id AND r.goods_id=d.goods_id
                              AND r.color_id IS NOT DISTINCT FROM d.color_id
                            WHERE d.order_item_id=i.id),0),0) global_qty
-                FROM selected i JOIN stock_balances balance ON balance.goods_id=i.goods_id
+                FROM selected i JOIN v_stock_operable_balances balance ON balance.goods_id=i.goods_id
                     AND balance.color_id IS NOT DISTINCT FROM i.color_id AND balance.qty>0
                 JOIN goods ON goods.id=i.goods_id
                 JOIN active_warehouses active ON active.id=balance.warehouse_id

@@ -10,6 +10,7 @@ import '../../../shared/documents/document_unapproval.dart';
 // UtenCollapsingHeaderScrollView——上滑先折叠头部（提示条/表头卡/附件），
 // 「明细 (N)」标题顶到页面顶部后再滚明细表内部。
 import 'package:flutter/material.dart';
+import '../../../shared/widgets/imported_document_status_badge.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -177,14 +178,22 @@ class _ProductionDailyReportDetailPageState
         (!requireCurrentRoute || route == null || route.isCurrent);
   }
 
-  bool _allows(DocumentPermissionAction action) => DocumentPermissionCatalog
-      .productionDailyReport
-      .allows(ref.read(currentPermissionsProvider), action);
+  bool _allows(DocumentPermissionAction action) =>
+      (action == DocumentPermissionAction.view ||
+          !(_detail?.legacyImported ?? false)) &&
+      DocumentPermissionCatalog.productionDailyReport.allows(
+        ref.read(currentPermissionsProvider),
+        action,
+      );
 
-  bool get _ordinaryWritable => documentOwnerCanWrite(
-    ref.read(documentScopeCapabilityProvider(DocumentDataScope.productionPlan)),
-    _detail?.makerId,
-  );
+  bool get _ordinaryWritable =>
+      !(_detail?.legacyImported ?? false) &&
+      documentOwnerCanWrite(
+        ref.read(
+          documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
+        ),
+        _detail?.makerId,
+      );
 
   bool get _canEdit =>
       _pendingApproval == null &&
@@ -1355,7 +1364,9 @@ class _ProductionDailyReportDetailPageState
     final d = _detail!;
     return UtenDetailSummaryCard(
       heading: UtenSummaryField(label: '单据号', value: d.billNo, emphasis: true),
-      status: ProductionStatusBadge(status: d.status, closed: d.closed),
+      status: d.legacyImported
+          ? const ImportedDocumentStatusBadge()
+          : ProductionStatusBadge(status: d.status, closed: d.closed),
       facts: [
         UtenSummaryField(label: '日期', value: d.billDate),
         // 车间及参与人员沿用服务端随单解析的名字。

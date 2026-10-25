@@ -173,7 +173,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     private com.uten.imp.application.port.RdBomGapPort rdBomGaps;
 
     @Transactional(readOnly = true)
-    public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<OrderListItem> list(OrderQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         boolean priceMasked = subcontractPriceMasked();
         Specification<SubcontractOrder> spec = orderSpec(f);
         Pageable pageable = Pageables.of(page, size,
@@ -194,19 +195,20 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 .toList();
         PageResponse<OrderListItem> result = new PageResponse<>(
                 items, p);
-        return p.stream().noneMatch(SubcontractOrder::isDeleted) ? result
-                : retainedRecords.page(result, "subcontract_orders", p.getContent());
+        return retainedRecords.page(result, "subcontract_orders", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
-    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(OrderQueryFilter f) {
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(OrderQueryFilter originalFilter) {
+        final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, SubcontractOrder.class, orderSpec(f), "billNo"));
     }
 
     /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）：财务审批态切片 + 基础过滤。 */
-    private Specification<SubcontractOrder> orderSpec(OrderQueryFilter f) {
+    private Specification<SubcontractOrder> orderSpec(OrderQueryFilter originalFilter) {
+        final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope();
         // 财务审批态切片（financeApproval）：与采购订货单同构——财务通过前 status
         // 保持 0，草稿段与「等待财务审核」段同为 status=0，按 PENDING case 集合区分。
@@ -222,6 +224,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -231,17 +234,17 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
-            if (f.closed() != null) ps.add(cb.equal(root.get("closed"), f.closed()));
+            if (f.closed() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("closed"), f.closed())));
             // 2026-09-25 单号列统一：单据号表头值筛选（精确匹配）。
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
             if (financeApproval != null) {
                 if (java.util.Set.of("PENDING", "REJECTED").contains(financeApproval)) {
-                    ps.add(root.get("status").in(STATUS_DRAFT, STATUS_APPROVED));
+                    ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,root.get("status").in(STATUS_DRAFT, STATUS_APPROVED)));
                 }
                 if ("IN_PROGRESS".equals(financeApproval)) {
                     // 实物结案不结束财务复核；在审/退回仍须显示原单，再加尚未结案的执行单。
@@ -598,7 +601,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         tx.bind();
         var mutationGuard=lockOrderRequest(id,req);
         SubcontractOrder r = requireOrderForUpdate(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外订货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_orders",r);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -607,6 +612,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         requireRowsMatchHeaderSupplier(req);
         requireRowsMatchHeaderCommercial(req);
         var oldItems=itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_order_items",oldItems);
         requireDecompositionAuthorityForSourceChange(id, req);
         var previousColumns = previousColumns(req.getItems(), oldItems);
         Map<OrderItemLine,SubcontractOrderItem> retained=new java.util.IdentityHashMap<>();
@@ -641,7 +647,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         tx.bind();
         var mutationGuard=mutationLocks.order(orderType(),id);
         SubcontractOrder r = requireOrderForUpdate(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外订货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_orders",r);
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         approvalProjection.requireMutable(orderType(), id);
         mutationGuard.verifyUnchanged();
@@ -684,15 +692,18 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @Transactional(propagation = Propagation.MANDATORY)
     public void requireFinanceSubmitterWritable(UUID id) {
         SubcontractOrder order = requireOrderForUpdate(id);
+
         access.requireWritable(
                 order.getMakerId(),
                 "只能提交本人负责或已正式交接的委外订货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_orders",order);
     }
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public OrderSnapshot lockAndValidateFinanceSubmission(UUID id) {
         SubcontractOrder order = requireOrderForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_orders",order);
         if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.CONFLICT, "仅草稿订货单可提交或执行财务审核");
         }
@@ -727,6 +738,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @Transactional(propagation = Propagation.MANDATORY)
     public boolean isFinanceApproved(UUID id) {
         SubcontractOrder order = requireOrderForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_orders",order);
         return order.getStatus() != null && order.getStatus() == STATUS_APPROVED;
     }
 
@@ -734,6 +746,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @Transactional(propagation = Propagation.MANDATORY)
     public OrderSnapshot lockFinanceReconfirmationSnapshot(UUID id) {
         SubcontractOrder order = requireOrderForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_orders",order);
         if (order.getStatus() == null || order.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.CONFLICT, "委外订货单已不在已批准状态，请刷新");
         }
@@ -1091,6 +1104,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @Transactional(propagation = Propagation.MANDATORY)
     public void applyFinanceApproval(UUID id, UUID approverEmployeeId) {
         SubcontractOrder order = requireOrderForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_orders",order);
         if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.CONFLICT, "订货单已不再是待生效草稿");
         }
@@ -1176,7 +1190,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         tx.bind();
         var mutationGuard=mutationLocks.order(orderType(),id);
         SubcontractOrder r = requireOrderForUpdate(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外订货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_orders",r);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -1346,8 +1362,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 .map(SourceRef::applicationItemId).distinct().sorted().toList();
         List<?> lockedSources = em.createNativeQuery("""
                         SELECT source.id
-                        FROM subcontract_application_items source
-                        JOIN subcontract_applications application
+                        FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) source
+                        JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) application
                           ON application.id = source.application_id
                         WHERE source.id IN (:sourceIds)
                           AND source.is_deleted = FALSE
@@ -1371,8 +1387,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                                source.unit_id,
                                COALESCE(source.unit_rate, 1),
                                application.status
-                        FROM subcontract_application_items source
-                        JOIN subcontract_applications application
+                        FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) source
+                        JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) application
                           ON application.id = source.application_id
                         WHERE source.id IN (:sourceIds)
                           AND source.is_deleted = FALSE
@@ -2197,7 +2213,6 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     private OrderDetail finishHistory(OrderDetail view, SubcontractOrder entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "subcontract_orders", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

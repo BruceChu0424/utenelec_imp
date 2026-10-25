@@ -40,8 +40,8 @@ final class SubcontractComponentCustodyProjection {
                             WHEN inspection.status IN ('PARTIAL','RESOLVED')
                                 THEN COALESCE(inspection.warehouse_stocked_base_qty,0)
                             ELSE 0 END)
-                FROM subcontract_receipt_items receipt_item
-                JOIN subcontract_receipts receipt ON receipt.id=receipt_item.receipt_id
+                FROM (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) receipt_item
+                JOIN (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipts',archive_origin.id)) receipt ON receipt.id=receipt_item.receipt_id
                   AND receipt.status=1 AND NOT receipt.is_deleted
                 LEFT JOIN procurement_inspection_items inspection ON inspection.receipt_type='SUBCONTRACT'
                   AND inspection.receipt_item_id=receipt_item.id
@@ -58,8 +58,8 @@ final class SubcontractComponentCustodyProjection {
                 SELECT SUM(fn_subcontract_order_source_share(item.id,source.application_item_id,
                     %s))
                 FROM subcontract_order_item_sources source
-                JOIN subcontract_order_items item ON item.id=source.order_item_id AND NOT item.is_deleted
-                JOIN subcontract_orders document ON document.id=item.order_id
+                JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) item ON item.id=source.order_item_id AND NOT item.is_deleted
+                JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) document ON document.id=item.order_id
                   AND document.status=1 AND NOT document.is_deleted
                 WHERE source.alloc_qty>0 AND source.application_item_id IN (
                     SELECT allocation.external_item_id FROM preplan_supply_action_allocations allocation
@@ -151,8 +151,8 @@ final class SubcontractComponentCustodyProjection {
                 ), sources AS MATERIALIZED (
                     SELECT source.order_item_id,source.application_item_id,source.alloc_qty
                     FROM subcontract_order_item_sources source
-                    JOIN subcontract_order_items item ON item.id=source.order_item_id AND NOT item.is_deleted
-                    JOIN subcontract_orders document ON document.id=item.order_id
+                    JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) item ON item.id=source.order_item_id AND NOT item.is_deleted
+                    JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) document ON document.id=item.order_id
                       AND document.status=1 AND NOT document.is_deleted
                     WHERE source.alloc_qty>0 AND source.order_item_id IN (
                         SELECT relevant.order_item_id FROM subcontract_order_item_sources relevant
@@ -160,7 +160,7 @@ final class SubcontractComponentCustodyProjection {
                 ), stocked AS MATERIALIZED (
                     SELECT item.id AS order_item_id,COALESCE(item.unit_rate,1) AS order_unit_rate,
                            %s AS stocked_base
-                    FROM subcontract_order_items item
+                    FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) item
                     WHERE item.id IN (SELECT order_item_id FROM sources)
                 ), received AS (
                     SELECT live.action_id,SUM(fn_subcontract_order_source_share(
@@ -252,8 +252,8 @@ final class SubcontractComponentCustodyProjection {
                                plan_item.goods_id,plan_item.color_id,plan_item.bom_unit_qty,
                                plan_item.issued_qty+COALESCE((
                                    SELECT SUM(issue_item.qty)
-                                   FROM subcontract_material_issue_items issue_item
-                                   JOIN subcontract_material_issues issue ON issue.id=issue_item.issue_id
+                                   FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) issue_item
+                                   JOIN (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issues',archive_origin.id)) issue ON issue.id=issue_item.issue_id
                                      AND issue.status=0 AND NOT issue.is_deleted
                                    WHERE issue_item.plan_item_id=plan_item.id AND NOT issue_item.is_deleted),0) AS gross_qty
                         FROM subcontract_material_plan_items plan_item

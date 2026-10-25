@@ -539,6 +539,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
           return;
         }
         final writable =
+            !d.historyReadOnly &&
             !d.productionLinked &&
             d.canEdit &&
             await loadDocumentOwnerCanWrite(

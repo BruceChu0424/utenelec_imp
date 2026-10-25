@@ -12,6 +12,7 @@ import '../../../shared/documents/document_unapproval.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/documents/imported_document_policy.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -130,7 +131,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
           widget.docType == StockDocType.finishedOut);
 
   bool get _isLegacyReadOnly =>
-      widget.docType.isLegacyReadOnly || _d?.docType == StockDocType.waste.code;
+      (_d?.historyReadOnly ?? false) ||
+      widget.docType.isLegacyReadOnly ||
+      _d?.docType == StockDocType.waste.code;
 
   /// 行级仓库类型（V787，与编辑页同口径）：仓库在明细行上逐行展示；
   /// 调拨/盘点仍看表头。
@@ -227,6 +230,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
   }
 
   bool _allows(DocumentPermissionAction action) =>
+      (action == DocumentPermissionAction.view ||
+          !(_d?.historyReadOnly ?? false)) &&
       warehouseTaskCanWrite &&
       (_isLegacyReadOnly
               ? DocumentPermissionCatalog.legacyStockDocument
@@ -1782,8 +1787,12 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
       heading: UtenSummaryField(label: '单据号', value: d.billNo, emphasis: true),
       status: UtenSummaryField(
         label: '状态',
-        value: rejectedInbound ? '仓库拒收 · 待生产更正' : stockStatusLabel(d.status),
-        danger: rejectedInbound,
+        value: d.historyReadOnly
+            ? importedBusinessHistoryLabel
+            : rejectedInbound
+            ? '仓库拒收 · 待生产更正'
+            : stockStatusLabel(d.status),
+        danger: !d.historyReadOnly && rejectedInbound,
       ),
       facts: [
         UtenSummaryField(label: '日期', value: d.billDate),

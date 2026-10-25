@@ -54,7 +54,7 @@ class StockWarehouseRelatedInventoryPostgresTest {
         }
         MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(connection,
                 "goods","warehouses","stock_balances","procurement_inspection_items","material_categories",
-                "colors","units","goods_weight_estimates","production_plan_items");
+                "colors","units","goods_weight_estimates","production_plans","production_plan_items","stock_measurement_holds");
         jdbc=new NamedParameterJdbcTemplate(new SingleConnectionDataSource(connection,true));
         costs=mock(StockCostMasker.class);
         service=new StockQueryService(mock(StockBalanceRepository.class),executingEntityManager(),costs);
@@ -121,6 +121,59 @@ class StockWarehouseRelatedInventoryPostgresTest {
         assertThat(inventory(empty,true,1,20).getTotal()).isZero();
     }
 
+    @Test void importedClosedStoppedAndDraftPlansNeverContributeCurrentExcessProduction() {
+        World world=world();
+        plan(world.stocked(),world.red(),1001,(short)1,false,false,10);
+        plan(world.stocked(),world.red(),null,(short)1,true,false,20);
+        plan(world.stocked(),world.red(),null,(short)1,false,true,30);
+        plan(world.stocked(),world.red(),null,(short)0,false,false,40);
+        plan(world.stocked(),world.red(),null,(short)1,false,false,50);
+
+        assertThat(inventory(world.parent(),true,1,20).getItems().stream()
+                .filter(row->row.getGoodsId().equals(world.stocked()) && world.red().equals(row.getColorId()))
+                .findFirst()).hasValueSatisfying(row->{
+                    assertThat(row.getMoreQty()).isEqualByComparingTo("47");
+                    assertThat(row.getQty()).isEqualByComparingTo("15");
+                });
+    }
+
+    @Test void persistedMeasurementHoldSurvivesAResolvedMasterUnitWithoutChangingBookValuesOrUnitTotals() {
+        World world=world();
+        jdbc.update("""
+                INSERT INTO stock_measurement_holds(id,stock_balance_id,warehouse_id,goods_id,color_id,reason)
+                SELECT :hold,id,warehouse_id,goods_id,color_id,'LEGACY_QUANTITY_BASIS_UNPROVEN'
+                FROM stock_balances WHERE goods_id=:goods AND color_id=:color AND qty=10
+                """,new MapSqlParameterSource("hold",UUID.randomUUID()).addValue("goods",world.stocked()).addValue("color",world.red()));
+        when(costs.canView()).thenReturn(true);
+        var result=inventory(world.parent(),true,1,20);
+        assertThat(result.getItems().stream().filter(row->row.getGoodsId().equals(world.stocked())
+                && world.red().equals(row.getColorId())).findFirst()).hasValueSatisfying(row->{
+                    assertThat(row.getQty()).isEqualByComparingTo("15");
+                    assertThat(row.getCostAmount()).isEqualByComparingTo("150");
+                    assertThat(row.getUnitName()).isNull();
+                    assertThat(row.isMeasurementPending()).isTrue();
+                    assertThat(row.isAvailableKnown()).isFalse();
+                    assertThat(row.getMeasurementHoldReason()).isEqualTo("LEGACY_QUANTITY_BASIS_UNPROVEN");
+                });
+        assertThat(result.getTotals().stream().filter(total->total.key().equals("missing_unit_rows")).findFirst().orElseThrow().groups())
+                .singleElement().satisfies(group->assertThat(group.value()).isEqualByComparingTo("1"));
+        assertThat(result.getTotals().stream().filter(total->total.key().equals("qty")).findFirst().orElseThrow().groups())
+                .anySatisfy(group->{ assertThat(group.unit()).isNull();assertThat(group.value()).isNull(); });
+    }
+
+    private void plan(UUID goods,UUID color,Integer legacy,short status,
+                      boolean closed,boolean stopped,int qty) {
+        UUID id=UUID.randomUUID();
+        var parameters=new MapSqlParameterSource("id",id).addValue("legacy",legacy)
+                .addValue("status",status).addValue("closed",closed).addValue("stopped",stopped)
+                .addValue("billNo",id.toString()).addValue("goods",goods).addValue("color",color)
+                .addValue("qty",qty).addValue("item",UUID.randomUUID());
+        jdbc.update("INSERT INTO production_plans(id,legacy_id,bill_no,bill_date,status,is_closed,is_stopped,is_deleted)"
+                +" VALUES(:id,:legacy,:billNo,DATE '2026-10-23',:status,:closed,:stopped,FALSE)",parameters);
+        jdbc.update("INSERT INTO production_plan_items(id,plan_id,bill_no,bill_date,goods_id,color_id,qty,oqty,lqty,iqty,is_deleted)"
+                +" VALUES(:item,:id,:billNo,DATE '2026-10-23',:goods,:color,:qty,0,0,3,FALSE)",parameters);
+    }
+
     private record World(UUID parent,UUID stocked,UUID zero,UUID inspecting,
                          UUID released,UUID red,UUID blue,UUID green) {}
 
@@ -129,7 +182,7 @@ class StockWarehouseRelatedInventoryPostgresTest {
         UUID category=UUID.randomUUID(),outsideCategory=UUID.randomUUID(),unit=UUID.randomUUID();
         jdbc.update("INSERT INTO material_categories(id,code,name,is_deleted) VALUES(:id,'C-A','分类A',FALSE),(:outside,'C-B','分类B',FALSE)",
                 new MapSqlParameterSource("id",category).addValue("outside",outsideCategory));
-        jdbc.update("INSERT INTO units(id,code,name) VALUES(:id,'UNIT','个')",new MapSqlParameterSource("id",unit));
+        jdbc.update("INSERT INTO units(id,code,name,is_deleted) VALUES(:id,'UNIT','个',FALSE)",new MapSqlParameterSource("id",unit));
         UUID red=color("红"),blue=color("蓝"),green=color("绿");
         UUID stocked=goods("库存实物",unit,category,parent),zero=goods("零余额实物",unit,category,parent);
         UUID inspecting=goods("待检实物",unit,category,parent),released=goods("待入库实物",unit,category,parent);
@@ -168,9 +221,9 @@ class StockWarehouseRelatedInventoryPostgresTest {
         return id;
     }
     private void balance(UUID warehouse,UUID goods,UUID color,int qty) {
-        jdbc.update("INSERT INTO stock_balances(warehouse_id,goods_id,color_id,qty,weight,amount_local) VALUES(:warehouse,:goods,:color,:qty,0,:amount)",
+        jdbc.update("INSERT INTO stock_balances(id,warehouse_id,goods_id,color_id,qty,weight,amount_local) VALUES(:id,:warehouse,:goods,:color,:qty,0,:amount)",
                 new MapSqlParameterSource("warehouse",warehouse).addValue("goods",goods).addValue("color",color)
-                        .addValue("qty",qty).addValue("amount",qty*10));
+                        .addValue("qty",qty).addValue("amount",qty*10).addValue("id",UUID.randomUUID()));
     }
     private void inspection(UUID warehouse,UUID goods,UUID color,int received,int passed,int failed,String status) {
         jdbc.update("INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,receipt_item_id,warehouse_id,goods_id,color_id,"

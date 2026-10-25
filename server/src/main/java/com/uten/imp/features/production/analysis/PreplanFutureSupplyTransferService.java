@@ -211,16 +211,16 @@ public class PreplanFutureSupplyTransferService {
                 SELECT expected_date,bill_no,header_id,doc_route FROM (
                     SELECT COALESCE(item.deliver_date,header.deliver_date) expected_date,header.bill_no,header.id header_id,'PURCHASE' doc_route
                     FROM purchase_order_item_sources link
-                    JOIN purchase_order_items item ON item.id=link.order_item_id AND NOT item.is_deleted
-                    JOIN purchase_orders header ON header.id=item.order_id AND header.status=1 AND NOT header.is_deleted
+                    JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_order_items',archive_origin.id)) item ON item.id=link.order_item_id AND NOT item.is_deleted
+                    JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_orders',archive_origin.id)) header ON header.id=item.order_id AND header.status=1 AND NOT header.is_deleted
                     WHERE action.route='BUY' AND link.request_item_id=allocation.external_item_id
                       AND ((NOT header.is_closed AND fn_procurement_order_source_remaining_qty('PURCHASE',item.id,link.request_item_id)>0)
                            OR fn_procurement_order_source_pending_qty('PURCHASE',item.id,link.request_item_id)>0)
                     UNION ALL
                     SELECT COALESCE(item.deliver_date,header.deliver_date),header.bill_no,header.id,'SUBCONTRACT'
                     FROM subcontract_order_item_sources link
-                    JOIN subcontract_order_items item ON item.id=link.order_item_id AND NOT item.is_deleted
-                    JOIN subcontract_orders header ON header.id=item.order_id AND header.status=1 AND NOT header.is_deleted
+                    JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) item ON item.id=link.order_item_id AND NOT item.is_deleted
+                    JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) header ON header.id=item.order_id AND header.status=1 AND NOT header.is_deleted
                     WHERE action.route='SUBCONTRACT' AND link.application_item_id=allocation.external_item_id
                       AND ((NOT header.is_closed AND fn_procurement_order_source_remaining_qty('SUBCONTRACT',item.id,link.application_item_id)>0)
                            OR fn_procurement_order_source_pending_qty('SUBCONTRACT',item.id,link.application_item_id)>0)

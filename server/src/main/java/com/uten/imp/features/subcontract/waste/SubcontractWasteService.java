@@ -111,7 +111,8 @@ public class SubcontractWasteService {
             com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryOrderHooks> shortDeliveryHooks;
 
     @Transactional(readOnly = true)
-    public PageResponse<WasteListItem> list(WasteQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<WasteListItem> list(WasteQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final WasteQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         boolean priceMasked = subcontractPriceMasked();
         Specification<SubcontractWaste> spec = wasteSpec(f);
         Pageable pageable = Pageables.of(page, size,
@@ -120,25 +121,27 @@ public class SubcontractWasteService {
         Page<SubcontractWaste> p = wasteRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<WasteListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
-        return p.stream().noneMatch(SubcontractWaste::isDeleted) ? result
-                : retainedRecords.page(result, "subcontract_wastes", p.getContent());
+        return retainedRecords.page(result, "subcontract_wastes", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
     public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(
-            WasteQueryFilter f) {
+            WasteQueryFilter originalFilter) {
+        final WasteQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(
                         em, SubcontractWaste.class, wasteSpec(f), "billNo"));
     }
 
-    private Specification<SubcontractWaste> wasteSpec(WasteQueryFilter f) {
+    private Specification<SubcontractWaste> wasteSpec(WasteQueryFilter originalFilter) {
+        final WasteQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope();
         return (Root<SubcontractWaste> root,
                 jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -148,7 +151,7 @@ public class SubcontractWasteService {
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             if (f.billNo() != null && !f.billNo().isBlank()) {
@@ -199,7 +202,9 @@ public class SubcontractWasteService {
     public WasteDetail update(UUID id, WasteSaveRequest req) {
         tx.bind();
         SubcontractWaste r = requireWasteForUpdate(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外损耗单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_wastes",r);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -216,7 +221,9 @@ public class SubcontractWasteService {
     public void delete(UUID id) {
         tx.bind();
         SubcontractWaste r = requireWasteForUpdate(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外损耗单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_wastes",r);
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
@@ -441,8 +448,10 @@ public class SubcontractWasteService {
         tx.bind();
         var mutationGuard=mutationLocks.materialWaste(id);
         SubcontractWaste r = requireWasteForUpdate(id);
+
         mutationGuard.verifyUnchanged();
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外损耗单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_wastes",r);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -728,7 +737,6 @@ public class SubcontractWasteService {
     }
 
     private WasteDetail finishHistory(WasteDetail view, SubcontractWaste entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "subcontract_wastes", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

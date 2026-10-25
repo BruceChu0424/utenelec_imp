@@ -141,7 +141,9 @@ public class DocumentStatusCountQueryService {
         }
         StringBuilder sql = new StringBuilder("SELECT ").append(String.join(", ", projections))
                 .append(" FROM ").append(source.table())
-                .append(" o WHERE o.is_deleted = false AND ").append(scopePredicate);
+                .append(" o WHERE o.is_deleted = false AND ")
+                .append(DocumentDraftCountQueryService.currentSourcePredicate(source))
+                .append(" AND ").append(scopePredicate);
         if (shipmentKind) sql.append(" AND o.shipment_kind = :shipmentKind");
         if (docType) sql.append(" AND o.doc_type = :docType");
         return sql.toString();
@@ -264,7 +266,7 @@ public class DocumentStatusCountQueryService {
                 ? warehouseScopes.current(requestedWarehouse)
                 : com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL;
         String sql = "SELECT " + String.join(", ", projections) + " FROM " + source.table()
-                + " o WHERE o.is_deleted = false"
+                + " o WHERE o.is_deleted = false AND " + DocumentDraftCountQueryService.currentSourcePredicate(source)
                 + (shipmentKind == null ? "" : " AND o.shipment_kind=:shipmentKind")
                 + (docType == null ? "" : " AND o.doc_type=:docType")
                 + (warehouse.active() ? " AND " + DocumentDraftCountQueryService.WAREHOUSE_SCOPE_PREDICATE : "");
@@ -338,6 +340,7 @@ public class DocumentStatusCountQueryService {
                     .filter(bucket -> FINANCE_REJECTED.equals(bucket.key()))
                     .findFirst().orElseThrow().predicate();
             projections.add("(SELECT count(*) FROM " + source.table() + " o WHERE o.is_deleted = false AND "
+                    + DocumentDraftCountQueryService.currentSourcePredicate(source) + " AND "
                     + rejected + " AND " + source.ownerColumn() + " IS NOT NULL AND " + scope.predicate()
                     + " AND " + correctionPredicate(user, source) + ")");
         }

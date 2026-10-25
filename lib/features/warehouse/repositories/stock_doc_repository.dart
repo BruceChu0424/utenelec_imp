@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/documents/document_unapproval.dart';
 // 仓库单据仓库（8 类统一，端点 /api/stock/docs，docType 区分）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,6 +17,7 @@ export '../../../shared/warehouse/warehouse_task_view.dart';
 
 class StockDocFilter {
   const StockDocFilter({
+    this.origin,
     this.keyword,
     this.warehouseId,
     this.toWarehouseId,
@@ -30,6 +32,7 @@ class StockDocFilter {
     this.standaloneDrafts = false,
     this.view = WarehouseTaskView.active,
   });
+  final BusinessDocumentOrigin? origin;
   final String? keyword;
   final String? warehouseId;
 
@@ -75,6 +78,7 @@ class StockDocRepository {
       ApiEndpoints.stockDocsBase,
       query: {
         'docType': type.code,
+        'originScope': ?filter.origin?.apiValue,
         'view': filter.view.apiValue,
         'page': page,
         'size': size,
@@ -109,6 +113,7 @@ class StockDocRepository {
       query: {
         'view': filter.view.apiValue,
         'docType': type.code,
+        'originScope': ?filter.origin?.apiValue,
         if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
           'keyword': filter.keyword!.trim(),
         if (filter.warehouseId != null) 'warehouseId': filter.warehouseId,

@@ -64,9 +64,33 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
       width: 185,
       type: 'number',
       sortable: true,
-      value: (r) => formatQtyWithUnit(r.qty, r.unitName),
+      value: (r) => r.measurementPending
+          ? '${formatQty(r.qty)}（${r.measurementNotice}）'
+          : formatQtyWithUnit(r.qty, r.unitName),
       // ADR-146: 打开「含不良品仓」时, 数量里在不良品仓的部分另标出来。
       cellBuilder: (context, r) {
+        if (r.measurementPending) {
+          return Tooltip(
+            message: '${r.measurementNotice}。主档补单位不代表原账计量已经核验。',
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  formatQty(r.qty),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  r.measurementNotice,
+                  style: Theme.of(context).textTheme.labelSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          );
+        }
         final qty = formatQtyWithUnit(r.qty, r.unitName);
         final defective = r.defectiveQty ?? 0;
         if (defective <= 0) return Text(qty);
@@ -113,7 +137,10 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
       type: 'number',
       sortable: true,
       // 待检量>0 = 采购/委外已收货但 IQC 未放行（货在待检隔离区，不在库存内）。
-      value: (r) => formatQtyWithUnit(r.pendingQty, r.unitName),
+      value: (r) => formatQtyWithUnit(
+        r.pendingQty,
+        r.measurementPending ? null : r.unitName,
+      ),
     ),
     MasterColumnDef(
       columnSearchEnabled: columnSearchEnabled,
@@ -123,7 +150,10 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
       type: 'number',
       sortable: true,
       // 品质 PASS 只形成仓库任务；仓库确认前不进入库存数量。
-      value: (r) => formatQtyWithUnit(r.pendingStockInQty, r.unitName),
+      value: (r) => formatQtyWithUnit(
+        r.pendingStockInQty,
+        r.measurementPending ? null : r.unitName,
+      ),
     ),
     MasterColumnDef(
       columnSearchEnabled: columnSearchEnabled,
@@ -132,7 +162,10 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
       width: 135,
       type: 'number',
       sortable: true,
-      value: (r) => formatQtyWithUnit(r.moreQty, r.unitName),
+      value: (r) => formatQtyWithUnit(
+        r.moreQty,
+        r.measurementPending ? null : r.unitName,
+      ),
     ),
     MasterColumnDef(
       columnSearchEnabled: columnSearchEnabled,

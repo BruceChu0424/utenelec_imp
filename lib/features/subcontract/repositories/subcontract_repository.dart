@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/documents/document_unapproval.dart';
 // 委外单据仓库（8 单据统一，按 docType 切端点）。
 //
@@ -27,6 +28,7 @@ class SubcontractDocFilter {
     this.financeApproval,
     this.billNo,
     this.apPosted,
+    this.origin,
     this.columnSearch = const {},
   });
   final String? keyword;
@@ -49,6 +51,9 @@ class SubcontractDocFilter {
 
   /// Native returns list: true/false are real posted states, null is no filter.
   final bool? apPosted;
+
+  /// Omitted keeps the server's CURRENT default and existing native queries.
+  final BusinessDocumentOrigin? origin;
   final Map<String, String?> columnSearch;
 
   Map<String, dynamic> toQuery() => <String, dynamic>{
@@ -61,12 +66,21 @@ class SubcontractDocFilter {
       'keyword': keyword!.trim(),
     if (supplierId != null) 'supplierId': supplierId,
     if (warehouseId != null) 'warehouseId': warehouseId,
-    if (status != null) 'status': status,
+    if (origin != null)
+      ...businessDocumentOriginQuery(
+        origin: origin!,
+        status: status,
+        financeApproval: financeApproval,
+        closed: closed,
+      )
+    else ...{
+      if (status != null) 'status': status,
+      if (financeApproval != null) 'financeApproval': financeApproval,
+      if (closed != null) 'closed': closed,
+    },
     if (apPosted != null) 'hf.apPosted': apPosted,
     if (dateFrom != null) 'dateFrom': dateFrom,
     if (dateTo != null) 'dateTo': dateTo,
-    if (closed != null) 'closed': closed,
-    if (financeApproval != null) 'financeApproval': financeApproval,
     if (billNo != null && billNo!.trim().isNotEmpty) 'billNo': billNo!.trim(),
   };
 }
@@ -118,6 +132,7 @@ class SubcontractRepository {
       closed: filter.closed,
       financeApproval: filter.financeApproval,
       apPosted: filter.apPosted,
+      origin: filter.origin,
       columnSearch: filter.columnSearch,
     ).toQuery();
     final json = await api.get('$_base/facets', query: query);

@@ -4,8 +4,41 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/stock/models/stock_query.dart';
 import 'package:uten_imp/shared/stock_ledger/stock_ledger_models.dart';
+import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 
 void main() {
+  test('持久计量冻结透传到分仓及货品库存行，补单位不能假定可用', () {
+    final json = <String, dynamic>{
+      'id': 'held',
+      'qty': 17.5,
+      'amountLocal': 123.45,
+      'unitName': 'kg',
+      'measurementPending': true,
+      'measurementHoldReason': 'LEGACY_QUANTITY_BASIS_UNPROVEN',
+      'availableKnown': true,
+    };
+    final balance = BalanceRow.fromJson(json);
+    final nested = GoodsStockRow.fromJson(json);
+    expect(balance.qty, 17.5);
+    expect(balance.amountLocal, 123.45);
+    expect(balance.availableKnown, isFalse);
+    expect(nested.qty, 17.5);
+    expect(nested.availableKnown, isFalse);
+    expect(nested.measurementNotice, '历史计量待核 · 账面数仅核对');
+    final goods = GoodsDetail.fromJson({
+      'id': 'goods',
+      'stockQty': 17.5,
+      'unitName': 'kg',
+      'stockByWarehouse': [json],
+    });
+    expect(goods.stockQty, 17.5);
+    expect(goods.stockMeasurementPending, isTrue);
+    expect(
+      BalanceRow.fromJson({'id': 'native', 'qty': 3}).availableKnown,
+      isTrue,
+    );
+    expect(GoodsStockRow.fromJson({'qty': 3}).measurementPending, isFalse);
+  });
   test('balance row parses weight kg and the estimated flag', () {
     final row = BalanceRow.fromJson({
       'id': 'balance-1',

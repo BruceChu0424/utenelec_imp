@@ -356,7 +356,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         if (lines == null || lines.isEmpty() || planId == null
                 || warehouseId == null || stockDocumentId == null) return;
         if(admissionSnapshots!=null)refreshRetainedReceiptSnapshots(NativeQueryResults.typedRows(em.createNativeQuery("""
-                SELECT material_analysis_id FROM production_plans WHERE id=:plan AND material_analysis_id IS NOT NULL
+                SELECT material_analysis_id FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) production_plans WHERE id=:plan AND material_analysis_id IS NOT NULL
                 """).setParameter("plan",planId),UUID.class));
         MakeInboundSplit split = splitMakeInbound(stockDocumentId, lines);
         // Establish all claimed public ownership before readiness can consume
@@ -377,12 +377,12 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 SELECT item.id,GREATEST(item.qty*COALESCE(item.unit_rate,1)
                     -COALESCE(source.planned_public_qty,0)-COALESCE((
                         SELECT SUM(stock.base_qty)
-                        FROM stock_document_items stock JOIN stock_documents doc ON doc.id=stock.doc_id
+                        FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) stock JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) doc ON doc.id=stock.doc_id
                         WHERE stock.upstream_item_id=item.id AND stock.bill_type='FINISHED_IN'
                           AND NOT stock.is_deleted AND NOT doc.is_deleted AND doc.status=1
                           AND doc.id<>:document AND NOT fn_finished_in_is_public_output(stock.id)
                     ),0),0)
-                FROM production_plan_items item
+                FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item
                 LEFT JOIN LATERAL fn_preplan_make_public_supply_sources(NULL::uuid,item.id) source ON TRUE
                 WHERE item.id IN(:items) AND NOT item.is_deleted
                 ORDER BY item.id
@@ -390,7 +390,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             privateRemaining.put((UUID) row[0], decimal(row[1]));
         }
         Set<UUID> explicitPublic = new HashSet<>(NativeQueryResults.typedRows(em.createNativeQuery("""
-                SELECT id FROM stock_document_items WHERE doc_id=:document
+                SELECT id FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) stock_document_items WHERE doc_id=:document
                   AND NOT is_deleted AND fn_finished_in_is_public_output(id)
                 """).setParameter("document", document), UUID.class));
         return splitMakeInbound(lines, privateRemaining, explicitPublic);
@@ -436,7 +436,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     SELECT claim.id,claim.target_analysis_id,claim.target_material_id,
                         GREATEST(fn_preplan_make_public_claim_pending_qty(claim.id)-COALESCE((
                             SELECT SUM(peg.qty) FROM preplan_analysis_stock_exact_pegs peg
-                            JOIN stock_documents doc ON doc.id=peg.source_stock_document_id
+                            JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) doc ON doc.id=peg.source_stock_document_id
                             WHERE peg.make_public_claim_id=claim.id AND doc.id=:document
                               AND doc.status<>1 AND NOT doc.is_deleted),0),0)
                     FROM preplan_make_public_claims claim
@@ -475,7 +475,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         // Public output retains the originating plan for audit and costing,
         // but cannot inherit that plan's original material/sales obligation.
         List<UUID> publicItems = NativeQueryResults.typedRows(em.createNativeQuery("""
-                SELECT id FROM stock_document_items
+                SELECT id FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) stock_document_items
                 WHERE doc_id = :documentId AND fn_finished_in_is_public_output(id)
                 """).setParameter("documentId", stockDocumentId), UUID.class);
         lines = lines.stream().filter(line -> !publicItems.contains(line.stockDocumentItemId())).toList();
@@ -487,7 +487,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                                item.source_type,
                                item.parent_analysis_material_id,
                                analysis.status
-                        FROM production_plans plan
+                        FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
                         JOIN production_material_analyses analysis
                           ON analysis.id = plan.material_analysis_id
                          AND analysis.is_deleted = FALSE
@@ -566,7 +566,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         SELECT proof.supply_action_allocation_id,SUM(proof.qty_base)
                         FROM preplan_aggregate_direct_transfer_slices proof
                         JOIN production_workshop_direct_transfer_items transfer ON transfer.id=proof.transfer_item_id AND transfer.reversal_id IS NULL
-                        JOIN stock_document_items item ON item.source_daily_report_item_id=transfer.source_report_item_id
+                        JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item ON item.source_daily_report_item_id=transfer.source_report_item_id
                         WHERE item.id=:item AND proof.supply_action_allocation_id IS NOT NULL
                         GROUP BY proof.supply_action_allocation_id
                         """).setParameter("item",line.stockDocumentItemId())))directMembers.put((UUID)slice[0],decimal(slice[1]));
@@ -687,10 +687,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     fn_preplan_direct_make_admitted_qty(child.id,material.id) AS admitted_qty,
                     COALESCE((
                     SELECT SUM(exact.qty) FROM preplan_analysis_stock_exact_pegs exact
-                    JOIN stock_document_items stock_item ON stock_item.id=exact.source_stock_document_item_id
-                    JOIN stock_documents document ON document.id=stock_item.doc_id
-                    JOIN production_plan_items plan_item ON plan_item.id=stock_item.upstream_item_id
-                    JOIN production_plans plan ON plan.id=plan_item.plan_id
+                    JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) stock_item ON stock_item.id=exact.source_stock_document_item_id
+                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document ON document.id=stock_item.doc_id
+                    JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) plan_item ON plan_item.id=stock_item.upstream_item_id
+                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=plan_item.plan_id
                     WHERE exact.source_receipt_type='MAKE' AND exact.make_public_claim_id IS NULL
                       AND plan.material_analysis_item_id=child.id
                       AND NOT document.is_deleted AND (document.status=1 OR document.id=:currentDocument)
@@ -725,7 +725,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         if (planId == null) return null;
         List<?> sourceAnalyses = em.createNativeQuery("""
                         SELECT material_analysis_id
-                        FROM production_plans
+                        FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) production_plans
                         WHERE id = :planId
                           AND is_deleted = FALSE
                           AND material_analysis_id IS NOT NULL
@@ -777,7 +777,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         if (planId == null) return;
         List<UUID> transferred = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT reservation.id
-                        FROM production_plans plan
+                        FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
                         JOIN stock_reservations reservation
                           ON reservation.owner_type = :ownerType
                          AND reservation.owner_id = plan.material_analysis_id
@@ -852,7 +852,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                       ON analysis_link.analysis_id = material.analysis_id
                      AND analysis_link.analysis_item_id = material.analysis_item_id
                      AND analysis_link.allocation_status = 'APPROVED'
-                    JOIN production_plans plan
+                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
                       ON plan.id = analysis_link.plan_id
                      AND plan.material_analysis_id = material.analysis_id
                      AND plan.material_analysis_item_id = material.analysis_item_id
@@ -1123,7 +1123,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             throw new IllegalStateException("Issue preview lacks its original analysis material identities");
         }
         if (materials.isEmpty() && ((Number)em.createNativeQuery("""
-                SELECT COUNT(*) FROM production_material_demands demand JOIN production_plans plan ON plan.id=demand.plan_id
+                SELECT COUNT(*) FROM production_material_demands demand JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=demand.plan_id
                 WHERE demand.id IN (:ids) AND NOT demand.is_deleted AND plan.material_analysis_id=:analysis
                 """).setParameter("ids",demands.stream().map(DemandSlice::demandId).distinct().toList())
                 .setParameter("analysis",analysisId).getSingleResult()).intValue()!=demands.size())
@@ -1158,7 +1158,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         List<UUID> analysisItemIds = previewMaterials != null ? List.of() : NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                         SELECT material_analysis_item_id
-                        FROM production_plans
+                        FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) production_plans
                         WHERE id = :planId
                           AND material_analysis_id = :analysisId
                           AND material_analysis_item_id IS NOT NULL
@@ -1368,7 +1368,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     FROM goods JOIN warehouses warehouse ON warehouse.id=:warehouseId
                       AND NOT warehouse.is_deleted AND warehouse.is_accountable
                       AND fn_warehouse_is_operational_leaf(warehouse.id)
-                    LEFT JOIN stock_balances stock ON stock.goods_id=goods.id
+                    LEFT JOIN v_stock_operable_balances stock ON stock.goods_id=goods.id
                       AND stock.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid) AND stock.warehouse_id=warehouse.id
                     WHERE goods.id=:goodsId AND NOT goods.is_deleted
                 ), owned AS (
@@ -1583,7 +1583,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                   ON disposition.id = peg.source_disposition_event_id
                 LEFT JOIN procurement_inspection_items inspection
                   ON inspection.id = disposition.inspection_item_id
-                LEFT JOIN stock_documents stock_document
+                LEFT JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) stock_document
                   ON stock_document.id = peg.source_stock_document_id
                 WHERE peg.supply_action_allocation_id = :allocationId
                   AND (
@@ -1616,10 +1616,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         - reservation.released_qty
                 END), 0)
                 FROM stock_reservations reservation
-                JOIN production_plan_items plan_item
+                JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) plan_item
                   ON plan_item.id = reservation.supply_id
                  AND plan_item.is_deleted = FALSE
-                JOIN production_plans plan
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
                   ON plan.id = plan_item.plan_id
                  AND plan.is_deleted = FALSE
                  AND plan.material_analysis_id = :analysisId

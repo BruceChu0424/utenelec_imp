@@ -209,7 +209,8 @@ public class SalesShipmentService {
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
-    public PageResponse<ShipmentListItem> list(ShipmentQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<ShipmentListItem> list(ShipmentQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final ShipmentQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         Specification<SalesShipment> spec = shipmentSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
@@ -232,25 +233,27 @@ public class SalesShipmentService {
                                 && accessPolicy.canWrite(
                                         s.getOwnerEmployeeId(), warehouseScope))).getContent(),
                 p);
-        return p.stream().noneMatch(SalesShipment::isDeleted) ? result
-                : retainedRecords.page(result, "sales_shipments", p.getContent());
+        return retainedRecords.page(result, "sales_shipments", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
-    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(ShipmentQueryFilter f) {
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(ShipmentQueryFilter originalFilter) {
+        final ShipmentQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, SalesShipment.class, shipmentSpec(f), "billNo"));
     }
 
     /** 列表谓词（list 与 facets 共用，2026-09-25 单号列统一抽出；billNo=表头单据号精确匹配）。 */
-    private Specification<SalesShipment> shipmentSpec(ShipmentQueryFilter f) {
+    private Specification<SalesShipment> shipmentSpec(ShipmentQueryFilter originalFilter) {
+        final ShipmentQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = accessPolicy.scope(
                 FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_VIEW_AUTHORITY);
         return (Root<SalesShipment> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             if (f.shipmentKind()!=null && !f.shipmentKind().isBlank()) {
@@ -265,7 +268,7 @@ public class SalesShipmentService {
             boolean rejectedOnly = Boolean.TRUE.equals(f.financeRejected());
             if (Short.valueOf((short)0).equals(f.financeAudit()) && !rejectedOnly) {
                 ps.add(cb.notEqual(root.get("shipmentKind"),"LEGACY"));
-                ps.add(cb.isFalse(root.get("financeRejected")));
+                ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.isFalse(root.get("financeRejected"))));
                 ps.add(cb.or(cb.lt(root.get("financeGateVersion"),2),cb.and(
                         cb.isNotNull(root.get("salesConfirmedAt")),cb.equal(root.get("salesConfirmedRevision"),root.get("reviewRevision")))));
             }
@@ -273,7 +276,7 @@ public class SalesShipmentService {
             // 财务可在这里进入详情「撤回退回」，销售可看到退回待处理的全量。
             if (rejectedOnly) {
                 ps.add(cb.notEqual(root.get("shipmentKind"),"LEGACY"));
-                ps.add(cb.isTrue(root.get("financeRejected")));
+                ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.isTrue(root.get("financeRejected"))));
             }
             addStagePredicates(ps, cb, root, f.stage());
             ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
@@ -300,7 +303,7 @@ public class SalesShipmentService {
             // 仓库数据范围(ADR-149)：仓库侧销售出库列表与计数同一谓词(warehouseScopePredicate)。
             if (f.warehouseScope().active()) ps.add(warehouseScopePredicate(root, q, cb, f.warehouseScope()));
             if (f.currencyId() != null) ps.add(cb.equal(root.get("currencyId"), f.currencyId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.arPosted() != null) ps.add(cb.equal(root.get("arPosted"), f.arPosted()));
             if (f.financeAudit() != null) {
                 ps.add(cb.equal(root.get("financeAudit"), f.financeAudit()));
@@ -377,6 +380,7 @@ public class SalesShipmentService {
                 FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_VIEW_AUTHORITY);
         Specification<SalesShipment> spec = (root, q, cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             ps.add(cb.isFalse(root.get("deleted")));
             ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
             ps.add(cb.equal(root.get("financeAudit"), (short) 1));
@@ -583,7 +587,9 @@ public class SalesShipmentService {
                 for(Object[] row:replay) {
                     if(!batchHash.equals(row[1])) throw new ApiException(ErrorCode.CONFLICT,"同一批量出货操作编号已用于不同内容，请刷新后重试");
                     SalesShipment prior=requireReadableShipment((UUID)row[0]);
+
                     accessPolicy.requireWritable(prior.getOwnerEmployeeId(),"无权重放该批出货单",accessPolicy.scope());
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",prior);
                     result.add(detail(prior.getId()));
                 }
                 return result;
@@ -702,6 +708,7 @@ public class SalesShipmentService {
     public ShipmentDetail update(UUID id, ShipmentSaveRequest req) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id, requestedFootprint(req));
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
         customerShipmentPolicy.require(s.getShipmentKind(),"edit");
         requireLegacyShipmentMutable(s);
         if (s.getStatus() != STATUS_DRAFT) {
@@ -759,6 +766,7 @@ public class SalesShipmentService {
     public void delete(UUID id) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
         customerShipmentPolicy.require(s.getShipmentKind(),"delete");
         requireLegacyShipmentMutable(s);
         if (s.getStatus() == null || s.getStatus() != STATUS_DRAFT) {
@@ -794,6 +802,7 @@ public class SalesShipmentService {
     public ShipmentDetail confirmSales(UUID id,Long expectedRevision) {
         tx.bind();
         SalesShipment s=requireWritableShipmentForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
         customerShipmentPolicy.require(s.getShipmentKind(),"approve");
         requireLegacyShipmentMutable(s);
         requireFinanceAuditEditableState(s);
@@ -863,6 +872,7 @@ public class SalesShipmentService {
             com.uten.imp.features.sales.shipment.dto.ShipmentFinanceDecisionRequest request) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id, FINANCE_APPROVE_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
         requireFinanceAuditEditableState(s);
         requireFinanceDecision(s,request);
         if (s.getFinanceAudit() != null && s.getFinanceAudit() == 1) {
@@ -911,6 +921,7 @@ public class SalesShipmentService {
             com.uten.imp.features.sales.shipment.dto.ShipmentFinanceDecisionRequest request) {
         tx.bind();
         SalesShipment s=requireWritableShipmentForUpdate(id,FINANCE_REJECT_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
         requireFinanceAuditEditableState(s);
         requireFinanceDecision(s,request);
         String reason=request==null?null:trimToNull(request.reason());
@@ -975,6 +986,7 @@ public class SalesShipmentService {
     public Map<String, Object> financeRejectReverse(UUID id) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id, FINANCE_REVERSE_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
         requireFinanceAuditEditableState(s);
         taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
         if (!s.isFinanceRejected()) {
@@ -1014,6 +1026,7 @@ public class SalesShipmentService {
     public Map<String, Object> financeAuditReverse(UUID id) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id, FINANCE_REVERSE_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
         requireFinanceAuditEditableState(s);
         taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
         if (s.getFinanceAudit() == null || s.getFinanceAudit() != 1) {
@@ -1250,6 +1263,7 @@ public class SalesShipmentService {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(
                 id, WAREHOUSE_WORK_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
         if (s.getStatus() == null || s.getStatus() != STATUS_DRAFT
                 || s.isRejected()) {
             throw new ApiException(ErrorCode.BUSINESS, "仅有效待出库草稿可执行仓库作业");
@@ -1440,7 +1454,7 @@ public class SalesShipmentService {
             Set<UUID> ownIds = ownOrderItems.getOrDefault(key, Set.of());
             BigDecimal onHand = scalarDecimal(em.createNativeQuery("""
                     SELECT COALESCE((
-                        SELECT qty FROM stock_balances
+                        SELECT qty FROM v_stock_operable_balances
                         WHERE warehouse_id = :wid
                           AND goods_id = :gid
                           AND color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
@@ -1706,6 +1720,7 @@ public class SalesShipmentService {
     public ShipmentDetail approve(UUID id) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
         customerShipmentPolicy.require(s.getShipmentKind(),"approve");
         return rejectRetiredDirectApproval(s);
     }
@@ -2175,6 +2190,7 @@ public class SalesShipmentService {
     public ShipmentDetail reject(UUID id, String reason) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id, REJECT_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
         taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
         customerInventory.requireNoUnreleased(id);
         requireLegacyShipmentMutable(s);
@@ -2236,6 +2252,7 @@ public class SalesShipmentService {
     public ShipmentDetail reverse(UUID id) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
         if (s.getStatus() == null || s.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -2422,7 +2439,7 @@ public class SalesShipmentService {
     private void validateShippable(SalesShipmentItem it) {
         Object[] r = (Object[]) em.createNativeQuery(
                 "SELECT qty, shipped_qty, returned_qty, flag_qty, reserved_qty, chain_status"
-                        + " FROM sales_order_items WHERE id = :id")
+                        + " FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) sales_order_items WHERE id = :id")
                 .setParameter("id", it.getOrderItemId())
                 .getSingleResult();
         BigDecimal qty = toBd(r[0]);
@@ -3743,7 +3760,6 @@ public class SalesShipmentService {
     }
 
     private ShipmentDetail finishHistory(ShipmentDetail view, SalesShipment entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "sales_shipments", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

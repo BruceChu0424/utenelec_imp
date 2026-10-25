@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../../../shared/models/procurement_quantity.dart';
 import '../../../shared/documents/document_unapproval.dart';
@@ -343,6 +344,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
 
   bool get _canReviewQtyInputs =>
       nativeReadCanWrite &&
+      !(_detail?.legacyImported ?? false) &&
       !_busy &&
       _qtyInputConflicts.isNotEmpty &&
       _qtyInputConflicts.every(
@@ -566,6 +568,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
 
   bool _hasPermission(String? code) =>
       code != null &&
+      importedDocumentPermissionAllowed(
+        code,
+        _detail?.legacyImported ?? false,
+      ) &&
       nativeReadAccessConfirmed &&
       ((code.endsWith(':view') ||
               code.contains(':view:') ||
@@ -580,6 +586,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
 
   bool get _ordinaryWritable =>
       nativeReadCanWrite &&
+      !(_detail?.legacyImported ?? false) &&
       !_historicalReceipt &&
       widget.docType != PurchaseDocType.request &&
       documentOwnerCanWrite(
@@ -1401,10 +1408,14 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       ],
       _KV(
         '状态',
-        widget.docType == PurchaseDocType.request && d.status == 1
+        d.legacyImported
+            ? importedBusinessHistoryLabel
+            : widget.docType == PurchaseDocType.request && d.status == 1
             ? '计划已下达，等待采购分解'
             : null,
-        badge: widget.docType == PurchaseDocType.request && d.status == 1
+        badge:
+            d.legacyImported ||
+                (widget.docType == PurchaseDocType.request && d.status == 1)
             ? null
             : PurchaseStatusBadge(
                 status: d.status,

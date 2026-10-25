@@ -50,4 +50,9 @@ public class ShipmentListItem extends com.uten.imp.common.history.DocumentHistor
         canReject = false;
         canManageWarehouseWork = false;
     }
+
+
+    public boolean isWritable() { return !isHistoryReadOnly() && writable; }
+    public boolean isCanReject() { return !isHistoryReadOnly() && canReject; }
+    public boolean isCanManageWarehouseWork() { return !isHistoryReadOnly() && canManageWarehouseWork; }
 }

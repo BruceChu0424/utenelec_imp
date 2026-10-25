@@ -128,7 +128,8 @@ public class SubcontractReturnService {
     private CommercialPriceVisibility commercialPriceVisibility;
 
     @Transactional(readOnly = true)
-    public PageResponse<ReturnListItem> list(ReturnQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<ReturnListItem> list(ReturnQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final ReturnQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         boolean priceMasked = subcontractPriceMasked();
         Specification<SubcontractReturn> spec = returnSpec(f);
         // 2026-09-25 单号列统一：billNo 进两分支白名单（价格遮蔽只挡金额排序）。
@@ -141,24 +142,26 @@ public class SubcontractReturnService {
         Page<SubcontractReturn> p = returnRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<ReturnListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
-        return p.stream().noneMatch(SubcontractReturn::isDeleted) ? result
-                : retainedRecords.page(result, "subcontract_returns", p.getContent());
+        return retainedRecords.page(result, "subcontract_returns", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
-    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(ReturnQueryFilter f) {
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(ReturnQueryFilter originalFilter) {
+        final ReturnQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, SubcontractReturn.class, returnSpec(f), "billNo"));
     }
 
     /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）。 */
-    private Specification<SubcontractReturn> returnSpec(ReturnQueryFilter f) {
+    private Specification<SubcontractReturn> returnSpec(ReturnQueryFilter originalFilter) {
+        final ReturnQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope();
         return (Root<SubcontractReturn> root,
                                                  jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                  CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -168,7 +171,7 @@ public class SubcontractReturnService {
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             // 2026-09-25 单号列统一：单据号表头值筛选（精确匹配）。
@@ -228,7 +231,7 @@ public class SubcontractReturnService {
     public void lockPlatformColumnSave(UUID id, ReturnSaveRequest request) {
         tx.bind();
         var guard = lockReturnRequest(id, request);
-        requireReturnForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_returns",requireReturnForUpdate(id));
         guard.verifyUnchanged();
     }
 
@@ -239,7 +242,9 @@ public class SubcontractReturnService {
         tx.bind();
         var mutationGuard=lockReturnRequest(id,req);
         SubcontractReturn r = requireReturnForUpdate(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_returns",r);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -258,7 +263,9 @@ public class SubcontractReturnService {
         tx.bind();
         var mutationGuard=mutationLocks.productReturn("SUBCONTRACT",id);
         SubcontractReturn r = requireReturnForUpdate(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_returns",r);
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         mutationGuard.verifyUnchanged();
         r.setDeleted(true);
@@ -287,11 +294,13 @@ public class SubcontractReturnService {
         periodIdentityGuard.requireOpenAtBillDate(periodIdentity, "委外退货审核");
         var mutationGuard=mutationLocks.productReturn("SUBCONTRACT",id);
         SubcontractReturn r = requireReturnForUpdate(id);
+
         mutationGuard.verifyUnchanged();
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_returns",r);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -455,6 +464,7 @@ public class SubcontractReturnService {
         periodIdentityGuard.requireOpenToday(periodIdentity, "委外退货红冲");
         var mutationGuard=mutationLocks.productReturn("SUBCONTRACT",id);
         SubcontractReturn r = requireReturnForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_returns",r);
         mutationGuard.verifyUnchanged();
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
@@ -800,7 +810,6 @@ public class SubcontractReturnService {
     }
 
     private ReturnDetail finishHistory(ReturnDetail view, SubcontractReturn entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "subcontract_returns", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

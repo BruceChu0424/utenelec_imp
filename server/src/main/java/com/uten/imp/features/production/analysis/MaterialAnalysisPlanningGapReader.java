@@ -59,7 +59,7 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
                    facts.shortage_qty, goods.id, goods.code, goods.name, color.name, unit.name,
                    facts.color_id, facts.unit_id
             FROM production_execution_segments segment
-            JOIN production_plans plan ON plan.id = segment.plan_id AND NOT plan.is_deleted
+            JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id = segment.plan_id AND NOT plan.is_deleted
              AND plan.material_analysis_id IS NOT NULL AND plan.material_analysis_item_id IS NOT NULL
             CROSS JOIN LATERAL fn_execution_segment_material_facts(segment.id) facts
             JOIN production_material_demands demand ON demand.id = facts.demand_id
@@ -288,7 +288,7 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
                        urge.gap_kind_count, urge.gap_summary
                 FROM production_planning_urges urge
                 JOIN production_execution_segments segment ON segment.id = urge.execution_segment_id
-                JOIN production_plans plan ON plan.id = segment.plan_id
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id = segment.plan_id
                 LEFT JOIN goods ON goods.id = segment.product_goods_id
                 LEFT JOIN departments department ON department.id = segment.workshop_department_id
                 WHERE urge.material_analysis_id = :analysisId AND urge.status = 'OPEN'

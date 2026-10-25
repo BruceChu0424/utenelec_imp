@@ -166,7 +166,7 @@ public class SalesOrderFinanceConfirmService {
                 ? "" : " AND COALESCE(o.bill_no, '') = :bill_no\n";
         var countQuery = em.createNativeQuery("""
                 SELECT COUNT(*)
-                FROM sales_orders o
+                FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN employees e ON e.id = o.seller_id
                 WHERE o.status = 1 AND o.is_deleted = FALSE
@@ -184,7 +184,7 @@ public class SalesOrderFinanceConfirmService {
                 SELECT o.id, o.bill_no, o.bill_date,
                        COALESCE(c.name, ''), COALESCE(e.full_name, ''),
                        o.deliver_date,
-                       (SELECT COUNT(*) FROM sales_order_items i
+                       (SELECT COUNT(*) FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i
                         WHERE i.order_id = o.id AND i.is_deleted = FALSE),
                        o.total_original, COALESCE(cur.code, ''), COALESCE(cur.name, ''),
                        COALESCE(o.shipment_policy, ''),
@@ -211,8 +211,8 @@ public class SalesOrderFinanceConfirmService {
                        , source_quote.id, source_quote.bill_no,
                        COALESCE(quote_confirmer.full_name, ''), source_quote.finance_confirmed_at,
                        o.finance_confirmed
-                FROM sales_orders o
-                LEFT JOIN sales_quotes source_quote ON source_quote.id = o.source_quote_id
+                FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o
+                LEFT JOIN (SELECT * FROM sales_quotes archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_quotes',archive_origin.id)) source_quote ON source_quote.id = o.source_quote_id
                      AND source_quote.is_deleted = FALSE
                      AND source_quote.finance_confirmed_at IS NOT NULL
                 LEFT JOIN employees quote_confirmer ON quote_confirmer.id = source_quote.finance_confirmed_by
@@ -333,7 +333,7 @@ public class SalesOrderFinanceConfirmService {
                 + TaskKeywordSearch.conditionParameter("keyword", SEARCH_FIELDS);
         var query = em.createNativeQuery("""
                         SELECT COALESCE(o.bill_no, ''), COUNT(*)
-                        FROM sales_orders o
+                        FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o
                         LEFT JOIN clients c ON c.id = o.client_id
                         LEFT JOIN employees e ON e.id = o.seller_id
                         WHERE o.status = 1 AND o.is_deleted = FALSE
@@ -365,7 +365,7 @@ public class SalesOrderFinanceConfirmService {
         String changesFilter = changesOnly == null ? ""
                 : " AND " + (changesOnly ? "" : "NOT ") + "(" + pendingChangesExpression() + ")";
         Number n = (Number) em.createNativeQuery("""
-                SELECT COUNT(*) FROM sales_orders o
+                SELECT COUNT(*) FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o
                 WHERE o.status = 1 AND o.is_deleted = FALSE
                   AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
                   AND o.finance_confirmed = FALSE AND o.finance_rejected = FALSE
@@ -708,6 +708,7 @@ public class SalesOrderFinanceConfirmService {
         tx.bind();
         requireEligibleConfirmer();
         SalesOrder order = requireDecisionOrderForUpdate(orderId);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",order);
         requireReviewRevision(order, request == null ? null : request.expectedRevision());
         requireConfirmable(order);
         if (order.isFinanceConfirmed()) {
@@ -738,7 +739,7 @@ public class SalesOrderFinanceConfirmService {
 
         List<SalesOrder> lockedOrders = new ArrayList<>(normalized.orderIds().size());
         for (UUID orderId : normalized.orderIds()) {
-            lockedOrders.add(requireDecisionOrderForUpdate(orderId));
+            lockedOrders.add(com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",requireDecisionOrderForUpdate(orderId)));
         }
         for (SalesOrder order : lockedOrders) {
             requireReviewRevision(order, request.expectedRevisions() == null
@@ -784,6 +785,7 @@ public class SalesOrderFinanceConfirmService {
         tx.bind();
         requireEligibleConfirmer();
         SalesOrder order = requireDecisionOrderForUpdate(orderId);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",order);
         if (request == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请填写财务驳回原因");
         requireReviewRevision(order, request.expectedRevision());
         if (order.getStatus() == null || order.getStatus() != 1) {

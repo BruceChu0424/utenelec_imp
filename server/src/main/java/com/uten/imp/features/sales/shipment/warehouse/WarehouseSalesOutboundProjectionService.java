@@ -360,7 +360,7 @@ public class WarehouseSalesOutboundProjectionService {
                 FROM active_wh warehouse JOIN warehouses physical ON physical.id=warehouse.id
                 JOIN sales_shipment_items item ON item.shipment_id=:shipment AND NOT item.is_deleted
                 JOIN goods ON goods.id=item.goods_id
-                LEFT JOIN stock_balances balance ON balance.warehouse_id=warehouse.id AND balance.goods_id=item.goods_id
+                LEFT JOIN v_stock_operable_balances balance ON balance.warehouse_id=warehouse.id AND balance.goods_id=item.goods_id
                     AND balance.color_id IS NOT DISTINCT FROM item.color_id
                 LEFT JOIN LATERAL (
                     SELECT sum(reservation.qty-reservation.consumed_qty-reservation.released_qty) qty FROM stock_reservations reservation
@@ -379,7 +379,7 @@ public class WarehouseSalesOutboundProjectionService {
                         CAST(string_to_array(:ownIdsCsv, ',') AS uuid[])) qty
                 ) global_budget ON TRUE
                 WHERE fn_warehouse_counts_as_usable(warehouse.id)
-                  AND EXISTS(SELECT 1 FROM stock_balances present WHERE present.warehouse_id=warehouse.id AND present.qty>0
+                  AND EXISTS(SELECT 1 FROM v_stock_operable_balances present WHERE present.warehouse_id=warehouse.id AND present.qty>0
                     AND present.goods_id IN(SELECT goods_id FROM sales_shipment_items WHERE shipment_id=:shipment AND NOT is_deleted))
                 ORDER BY warehouse.name,warehouse.id,item.line_no,item.id
                 """).setParameter("shipment",source.getId()).setParameter("ownIds",ownIds)

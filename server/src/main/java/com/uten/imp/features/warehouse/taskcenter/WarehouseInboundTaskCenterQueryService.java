@@ -183,7 +183,7 @@ public class WarehouseInboundTaskCenterQueryService {
                     SELECT item.id,item.line_no AS "lineNo",item.goods_code_snapshot AS "goodsCode",
                            item.goods_name_snapshot AS "goodsName",color.name AS "colorName",unit.name AS "unitName",
                            item.qty AS quantity,item.weight,item.place,item.count_qty AS "countedQty"
-                    FROM stock_document_items item LEFT JOIN colors color ON color.id=item.color_id
+                    FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item LEFT JOIN colors color ON color.id=item.color_id
                     LEFT JOIN units unit ON unit.id=item.unit_id
                     WHERE item.doc_id=:id AND NOT item.is_deleted ORDER BY item.line_no,item.id
                     """;
@@ -193,7 +193,7 @@ public class WarehouseInboundTaskCenterQueryService {
                            color.name AS "colorName",unit.name AS "unitName",source.qty AS quantity,item.place_snapshot AS place,
                            lineage.document_nos AS "stockDocumentNos",lineage.document_ids AS "stockDocumentIds"
                     FROM production_finished_arrival_registration_items item
-                    JOIN production_daily_report_items source ON source.id=item.source_report_item_id
+                    JOIN (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_report_items',archive_origin.id)) source ON source.id=item.source_report_item_id
                     LEFT JOIN goods ON goods.id=source.goods_id LEFT JOIN colors color ON color.id=source.color_id
                     LEFT JOIN units unit ON unit.id=goods.unit_id
                     LEFT JOIN LATERAL (
@@ -201,8 +201,8 @@ public class WarehouseInboundTaskCenterQueryService {
                                string_agg(DISTINCT document.id::text,',') AS document_ids
                         FROM production_fqc_inspection_sheet_items sheet_item
                         JOIN production_fqc_release_commands release ON release.inspection_id=sheet_item.inspection_id
-                        JOIN stock_document_items released_item ON released_item.id=release.stock_document_item_id
-                        JOIN stock_documents document ON document.id=released_item.doc_id AND NOT document.is_deleted
+                        JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) released_item ON released_item.id=release.stock_document_item_id
+                        JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document ON document.id=released_item.doc_id AND NOT document.is_deleted
                         WHERE sheet_item.registration_id=item.registration_id
                           AND release.source_report_item_id=item.source_report_item_id
                     ) lineage ON TRUE
@@ -211,7 +211,7 @@ public class WarehouseInboundTaskCenterQueryService {
             case "FINISHED_REGISTER" -> """
                     SELECT source.id,source.output_lot_id AS "lotId",goods.code AS "goodsCode",goods.name AS "goodsName",
                            color.name AS "colorName",source.qty AS quantity
-                    FROM production_daily_report_items source
+                    FROM (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_report_items',archive_origin.id)) source
                     JOIN v_production_report_items_pending_registration pending ON pending.report_item_id=source.id
                     LEFT JOIN goods ON goods.id=source.goods_id LEFT JOIN colors color ON color.id=source.color_id
                     WHERE source.report_id=:id ORDER BY source.id

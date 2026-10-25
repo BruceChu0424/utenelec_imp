@@ -59,7 +59,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                        EXISTS(SELECT 1 FROM warehouses line_side
                               WHERE line_side.id=document.warehouse_id AND line_side.is_line_side),
                        item.execution_segment_id
-                FROM stock_documents document LEFT JOIN stock_document_items item
+                FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document LEFT JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item
                   ON item.doc_id=document.id AND item.is_deleted=FALSE
                 WHERE document.id IN (:ids) AND document.is_deleted=FALSE
                 ORDER BY document.id,item.id
@@ -83,7 +83,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         // analyses merely because they once used the same goods.
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT link.id,plan.id,plan.material_analysis_id,link.xmin::text
-                FROM plan_draw_links link JOIN production_plans plan ON plan.id=link.plan_id
+                FROM plan_draw_links link JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=link.plan_id
                 WHERE link.draw_id IN (:ids) AND link.is_deleted=FALSE AND plan.is_deleted=FALSE
                 ORDER BY link.id
                 """).setParameter("ids", ids))) {
@@ -104,7 +104,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         // its own segment identity. First receipts have no output row yet.
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT DISTINCT output.execution_segment_id,output.source_node_id,output.xmin::text
-                FROM stock_document_items item
+                FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item
                 JOIN stock_movements movement ON movement.source_doc_type='STOCK_DOC'
                   AND movement.source_doc_id=item.doc_id AND movement.source_item_id=item.id AND movement.direction=1
                 JOIN stock_value_production_cost_outputs output ON output.movement_id=movement.id
@@ -120,10 +120,10 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
             for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                     SELECT item.id,item.plan_id,item.sales_order_item_id,sales_item.order_id,
                            link.id,linked_sale.order_id,item.xmin::text,link.xmin::text
-                    FROM production_plan_items item
-                    LEFT JOIN sales_order_items sales_item ON sales_item.id=item.sales_order_item_id
-                    LEFT JOIN plan_order_item_links link ON link.plan_item_id=item.id AND link.is_deleted=FALSE
-                    LEFT JOIN sales_order_items linked_sale ON linked_sale.id=link.order_item_id
+                    FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item
+                    LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) sales_item ON sales_item.id=item.sales_order_item_id
+                    LEFT JOIN (SELECT * FROM plan_order_item_links archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('plan_order_item_links',archive_origin.id)) link ON link.plan_item_id=item.id AND link.is_deleted=FALSE
+                    LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) linked_sale ON linked_sale.id=link.order_item_id
                     WHERE item.id IN (:ids) AND item.is_deleted=FALSE ORDER BY item.id,link.id
                     """).setParameter("ids", planItems))) {
                 result.row("plan-sales", row); result.sales((UUID) row[3]); result.sales((UUID) row[5]);
@@ -134,7 +134,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 WITH affected_segments AS (
                     SELECT DISTINCT demand.execution_segment_id
-                    FROM stock_document_items item
+                    FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item
                     JOIN production_material_supply_pegs peg ON peg.supply_type='PRODUCTION_PLAN_ITEM'
                       AND peg.supply_item_id=item.upstream_item_id AND peg.status<>'REVERSED'
                     JOIN production_material_demands demand ON demand.id=peg.demand_id AND demand.is_deleted=FALSE
@@ -146,7 +146,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                 FROM affected_segments source JOIN production_material_demands demand
                   ON demand.execution_segment_id=source.execution_segment_id AND demand.is_deleted=FALSE
                   AND demand.status NOT IN ('RELEASED','REVERSED')
-                JOIN production_plans plan ON plan.id=demand.plan_id AND plan.is_deleted=FALSE
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=demand.plan_id AND plan.is_deleted=FALSE
                 ORDER BY demand.id
                 """).setParameter("ids", ids))) {
             result.row("parent-demand", row); result.inventory((UUID) row[1], (UUID) row[2]);
@@ -241,7 +241,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         if (!sales.isEmpty()) for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT item.id,item.order_id,item.goods_id,item.color_id,
                        item.xmin::text,header.xmin::text
-                FROM sales_order_items item JOIN sales_orders header ON header.id=item.order_id
+                FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) item JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) header ON header.id=item.order_id
                 WHERE item.id IN (:ids) ORDER BY item.id
                 """).setParameter("ids",sales))) {
             result.row("preview-sale",row); result.sales((UUID)row[1]);
@@ -295,10 +295,10 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
             for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                     SELECT item.id,item.plan_id,item.sales_order_item_id,sales_item.order_id,
                            link.id,linked_sale.order_id,item.xmin::text,link.xmin::text
-                    FROM production_plan_items item
-                    LEFT JOIN sales_order_items sales_item ON sales_item.id=item.sales_order_item_id
-                    LEFT JOIN plan_order_item_links link ON link.plan_item_id=item.id AND link.is_deleted=FALSE
-                    LEFT JOIN sales_order_items linked_sale ON linked_sale.id=link.order_item_id
+                    FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item
+                    LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) sales_item ON sales_item.id=item.sales_order_item_id
+                    LEFT JOIN (SELECT * FROM plan_order_item_links archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('plan_order_item_links',archive_origin.id)) link ON link.plan_item_id=item.id AND link.is_deleted=FALSE
+                    LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) linked_sale ON linked_sale.id=link.order_item_id
                     WHERE item.id IN (:ids) AND item.is_deleted=FALSE ORDER BY item.id,link.id
                     """).setParameter("ids", items))) {
                 result.row("future-plan-sales", row); result.sales((UUID) row[3]); result.sales((UUID) row[5]);
@@ -319,7 +319,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                     FROM affected_segments source JOIN production_material_demands demand
                       ON demand.execution_segment_id=source.execution_segment_id AND demand.is_deleted=FALSE
                       AND demand.status NOT IN ('RELEASED','REVERSED')
-                    JOIN production_plans plan ON plan.id=demand.plan_id AND plan.is_deleted=FALSE
+                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=demand.plan_id AND plan.is_deleted=FALSE
                     ORDER BY demand.id
                     """).setParameter("ids", items))) {
                 result.row("future-parent-demand", row); result.inventory((UUID) row[1], (UUID) row[2]);
@@ -463,8 +463,8 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 WITH RECURSIVE edges(source_id,target_id) AS (
                     SELECT plan.material_analysis_id,claim.target_analysis_id
-                    FROM preplan_make_public_claims claim JOIN production_plan_items item ON item.id=claim.source_plan_item_id
-                    JOIN production_plans plan ON plan.id=item.plan_id WHERE plan.material_analysis_id IS NOT NULL
+                    FROM preplan_make_public_claims claim JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item ON item.id=claim.source_plan_item_id
+                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=item.plan_id WHERE plan.material_analysis_id IS NOT NULL
                 ), related(id) AS (
                     SELECT id FROM production_material_analyses WHERE id IN(:ids)
                     UNION
@@ -490,7 +490,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         // the source order was not created by a preplan supply action.
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 WITH RECURSIVE family(id) AS (
-                    SELECT id FROM production_plans WHERE material_analysis_id IN (:ids) AND NOT is_deleted
+                    SELECT id FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) production_plans WHERE material_analysis_id IN (:ids) AND NOT is_deleted
                     UNION
                     SELECT edge.id FROM family parent CROSS JOIN LATERAL (
                         SELECT link.subplan_id AS id FROM subplan_links link
@@ -509,13 +509,13 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                        COALESCE(purchase.order_id,subcontract.order_id,request.request_id,application.application_id),
                        peg.xmin::text,demand.id,demand.xmin::text,plan.id,plan.xmin::text,
                        demand.goods_id,demand.color_id
-                FROM family JOIN production_plans plan ON plan.id=family.id
+                FROM family JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=family.id
                 JOIN production_material_demands demand ON demand.plan_id=plan.id AND NOT demand.is_deleted
                 LEFT JOIN production_material_supply_pegs peg ON peg.demand_id=demand.id AND peg.status NOT IN ('RELEASED','REVERSED')
-                LEFT JOIN purchase_order_items purchase ON purchase.id=peg.supply_item_id AND peg.supply_type='PURCHASE_ORDER_ITEM'
-                LEFT JOIN subcontract_order_items subcontract ON subcontract.id=peg.supply_item_id AND peg.supply_type='SUBCONTRACT_ORDER_ITEM'
-                LEFT JOIN purchase_request_items request ON request.id=peg.supply_item_id AND peg.supply_type='PURCHASE_REQUEST_ITEM'
-                LEFT JOIN subcontract_application_items application ON application.id=peg.supply_item_id AND peg.supply_type='SUBCONTRACT_APPLICATION_ITEM'
+                LEFT JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_order_items',archive_origin.id)) purchase ON purchase.id=peg.supply_item_id AND peg.supply_type='PURCHASE_ORDER_ITEM'
+                LEFT JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) subcontract ON subcontract.id=peg.supply_item_id AND peg.supply_type='SUBCONTRACT_ORDER_ITEM'
+                LEFT JOIN (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_request_items',archive_origin.id)) request ON request.id=peg.supply_item_id AND peg.supply_type='PURCHASE_REQUEST_ITEM'
+                LEFT JOIN (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) application ON application.id=peg.supply_item_id AND peg.supply_type='SUBCONTRACT_APPLICATION_ITEM'
                 ORDER BY demand.id,peg.id
                 """).setParameter("ids",analyses))) {
             result.row("analysis-execution-supply",row);
@@ -536,9 +536,9 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                 SELECT action.id,action.external_document_type,
                        COALESCE(request.id,application.id),action.xmin::text
                 FROM preplan_supply_actions action
-                LEFT JOIN purchase_requests request ON action.external_document_type='PURCHASE_REQUEST'
+                LEFT JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_requests',archive_origin.id)) request ON action.external_document_type='PURCHASE_REQUEST'
                   AND request.id=action.external_document_id
-                LEFT JOIN subcontract_applications application ON action.external_document_type='SUBCONTRACT_APPLICATION'
+                LEFT JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) application ON action.external_document_type='SUBCONTRACT_APPLICATION'
                   AND application.id=action.external_document_id
                 WHERE action.analysis_id IN (:ids)
                   AND action.external_document_type IN ('PURCHASE_REQUEST','SUBCONTRACT_APPLICATION')
@@ -562,7 +562,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                        item.id,sale.order_id,item.goods_id,item.color_id,item.xmin::text
                 FROM analysis_headers analysis
                 LEFT JOIN production_material_analysis_items item ON item.analysis_id=analysis.id AND item.is_deleted=FALSE
-                LEFT JOIN sales_order_items sale ON sale.id=item.sales_order_item_id AND item.source_type='SALES_ORDER_ITEM'
+                LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) sale ON sale.id=item.sales_order_item_id AND item.source_type='SALES_ORDER_ITEM'
                 ORDER BY analysis.id,item.id
                 """).setParameter("ids", analyses))) {
             result.row("analysis", row); if (row[1]!=null) result.warehouses.add((UUID) row[1]);

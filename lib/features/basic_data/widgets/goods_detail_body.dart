@@ -1539,7 +1539,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         MasterDetailRow('所属仓库', d.owningWarehouseName),
         // 生产车间 (V590)：最近一次排产确认/车间改派自动学习回写，只读。
         MasterDetailRow('生产车间', d.owningWorkshopName),
-        MasterDetailRow('库存量(合计)', s(d.stockQty)),
+        MasterDetailRow(
+          d.stockMeasurementPending ? '账面量(合计，仅核对)' : '库存量(合计)',
+          d.stockMeasurementPending
+              ? '${d.stockMeasurementNotice}，按仓明细核对'
+              : s(d.stockQty),
+        ),
         // ADR-146: 不良品仓的数量不计入合计, 另列一行。
         if ((d.stockDefectiveQty ?? 0) > 0)
           MasterDetailRow(
@@ -1556,7 +1561,11 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
                 '${w.colorName != null ? '·${w.colorName}' : ''}'
                 '${w.lineSide ? ' (内料仓, 不计入合计)' : ''}'
                 '${w.defective ? ' (${_l10nOrNull()?.warehouseDefectiveTag ?? '不良品'})' : ''}',
-            '${s(w.qty)}${d.unitName != null ? ' ${d.unitName}' : ''}'
+            '${s(w.qty)}${w.measurementPending
+                    ? '（${w.measurementNotice}）'
+                    : d.unitName != null
+                    ? ' ${d.unitName}'
+                    : ''}'
                 '${_rowWeightText(w, weightDisplay)}',
           ),
       ]),

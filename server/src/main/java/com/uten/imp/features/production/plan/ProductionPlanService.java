@@ -112,13 +112,15 @@ public class ProductionPlanService {
 
 
     @Transactional(readOnly = true)
-    public PageResponse<PlanListItem> list(PlanQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<PlanListItem> list(PlanQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final PlanQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return list(f, page, size, sort, order, false, false);
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<PlanListItem> list(PlanQueryFilter f, int page, int size, String sort, String order,
+    public PageResponse<PlanListItem> list(PlanQueryFilter originalFilter, int page, int size, String sort, String order,
                                          boolean includeDeleted, boolean onlyDeleted) {
+        final PlanQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         if (f.lifecycle() != null && !"ACTIVE".equals(f.lifecycle())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "生产计划生命周期筛选不正确");
         }
@@ -126,6 +128,7 @@ public class ProductionPlanService {
         Specification<ProductionPlan> spec = (Root<ProductionPlan> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                               CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (onlyDeleted) ps.add(cb.isTrue(root.get("deleted")));
             else if (!includeDeleted) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -144,13 +147,13 @@ public class ProductionPlanService {
                 }));
             }
             if (f.departmentId() != null) ps.add(cb.equal(root.get("departmentId"), f.departmentId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
-            if (f.closed() != null) ps.add(cb.equal(root.get("closed"), f.closed()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
+            if (f.closed() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("closed"), f.closed())));
             if ("ACTIVE".equals(f.lifecycle())) {
-                ps.add(cb.equal(root.get("status"), STATUS_APPROVED));
-                ps.add(cb.isFalse(root.get("closed")));
-                ps.add(cb.isFalse(root.get("stopped")));
-                ps.add(cb.isFalse(root.get("canceled")));
+                ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), STATUS_APPROVED)));
+                ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.isFalse(root.get("closed"))));
+                ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.isFalse(root.get("stopped"))));
+                ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.isFalse(root.get("canceled"))));
             }
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
@@ -161,7 +164,7 @@ public class ProductionPlanService {
         var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
         Page<ProductionPlan> p = planRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<PlanListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
-        return includeDeleted || onlyDeleted ? retainedRecords.page(result, "production_plans", p.getContent()) : result;
+        return retainedRecords.page(result, "production_plans", p.getContent());
     }
 
     @Transactional(readOnly = true, noRollbackFor=ApiException.class)
@@ -170,7 +173,8 @@ public class ProductionPlanService {
         access.requireReadable(
                 p.getMakerId(), "生产计划不存在", "production_plan:approve");
         List<PlanItemDto> items = itemRepo.findByPlanIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList();
-        return toDetail(p, items);
+        return retainedRecords.detail(toDetail(p, items), "production_plans", id,
+                p.isDeleted(), p.getDeletedAt(), false);
     }
 
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
@@ -247,7 +251,7 @@ public class ProductionPlanService {
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('production_plan:edit')")
     public void lockPlatformColumnSave(UUID id, PlanSaveRequest request) {
         tx.bind();
-        requirePlanForUpdate(id, requestedFootprint(request));
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_plans",requirePlanForUpdate(id, requestedFootprint(request)));
     }
 
     @Transactional
@@ -256,7 +260,9 @@ public class ProductionPlanService {
     public PlanDetail update(UUID id, PlanSaveRequest req) {
         tx.bind();
         ProductionPlan p = requirePlanForUpdate(id, requestedFootprint(req));
+
         access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_plans",p);
         if (p.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         if(p.getActualOutputSupplementRequestId()!=null)throw new ApiException(ErrorCode.CONFLICT,
                 "实际超产追加计划已冻结原批次及数量，请在追加申请中取消后重新申请，不能改成另一批生产计划");
@@ -566,6 +572,7 @@ public class ProductionPlanService {
         mutationFootprint.lockPlan(planId, List.of());
         ProductionPlan p = em.find(ProductionPlan.class, planId,
                 jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_plans",p);
         if (p == null || p.isDeleted()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "生产计划不存在");
         }
@@ -756,6 +763,7 @@ public class ProductionPlanService {
     public void growAnalysisPlanSalesAllocation(UUID planId, UUID planItemId, BigDecimal delta) {
         if (delta == null || delta.signum() <= 0) return;
         ProductionPlan plan = requirePlanForUpdate(planId);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_plans",plan);
         if (plan.getStatus() == null || plan.getStatus() != STATUS_APPROVED
                 || plan.getMaterialAnalysisId() == null) {
             throw new ApiException(ErrorCode.CONFLICT, "只有已审核的物料分析计划才能同步扩大销售分摊");
@@ -763,6 +771,7 @@ public class ProductionPlanService {
         ProductionPlanItem item = itemRepo.findById(planItemId)
                 .filter(value -> planId.equals(value.getPlanId()))
                 .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "计划明细不存在"));
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_plan_items",item);
         em.refresh(item);
         if (item.getSalesOrderItemId() == null) return;
         List<PlanOrderItemLink> links = linkRepo.findActiveByPlanItemIds(List.of(planItemId));
@@ -1297,7 +1306,9 @@ public class ProductionPlanService {
     public PlanDetail reverse(UUID id) {
         tx.bind();
         ProductionPlan p = requirePlanForUpdate(id);
+
         access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_plans",p);
         rejectDirectLifecycleOfExecutionV1Subplan(id, "红冲");
         if (p.getStatus() == null || p.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
@@ -1696,7 +1707,9 @@ public class ProductionPlanService {
     public void updateFlags(UUID id, com.uten.imp.features.production.plan.dto.PlanFlagsRequest req) {
         tx.bind();
         ProductionPlan p = requirePlanForUpdate(id);
+
         access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"production_plans",p);
         if (req.pinned() != null) p.setPinned(req.pinned());
         if (req.important() != null) p.setImportant(req.important());
         planRepo.save(p);

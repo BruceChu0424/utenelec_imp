@@ -53,4 +53,9 @@ public class QuoteListItem extends com.uten.imp.common.history.DocumentHistoryMe
 
     public String getTotalOriginalExact() { return priceMasked ? null : com.uten.imp.common.util.DecimalText.of(totalOriginal); }
     public String getTotalLocalExact() { return priceMasked ? null : com.uten.imp.common.util.DecimalText.of(totalLocal); }
+
+
+    public boolean isWritable() { return !isHistoryReadOnly() && writable; }
+
+    public List<String> getAllowedActions() { return isHistoryReadOnly() ? List.of() : allowedActions; }
 }

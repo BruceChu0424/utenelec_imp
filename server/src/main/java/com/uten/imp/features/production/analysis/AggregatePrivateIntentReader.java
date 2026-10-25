@@ -55,12 +55,12 @@ final class AggregatePrivateIntentReader {
                                CASE WHEN EXISTS(SELECT 1 FROM production_material_analysis_items child
                                    WHERE child.id=action.external_document_id AND NOT child.is_deleted
                                      AND (child.requested_qty>child.approved_qty OR EXISTS(SELECT 1 FROM production_material_analysis_plan_links link
-                                       JOIN production_plans plan ON plan.id=link.plan_id AND plan.status IN(0,1) AND NOT plan.is_deleted
+                                       JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=link.plan_id AND plan.status IN(0,1) AND NOT plan.is_deleted
                                          AND NOT plan.is_canceled AND NOT plan.is_closed
                                        WHERE link.analysis_item_id=child.id AND link.allocation_status IN('SUBMITTED','APPROVED'))))
                                     THEN GREATEST(fn_preplan_action_admitted_qty(action.id)-fn_preplan_action_received_qty(action.id),0)
                                     ELSE 0 END
-                          WHEN action.external_document_type='SUBCONTRACT_APPLICATION' AND EXISTS(SELECT 1 FROM subcontract_applications application
+                          WHEN action.external_document_type='SUBCONTRACT_APPLICATION' AND EXISTS(SELECT 1 FROM (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) application
                                WHERE application.id=action.external_document_id AND NOT application.is_deleted AND application.status IN(0,1))
                                THEN GREATEST(fn_preplan_action_admitted_qty(action.id)-fn_preplan_action_received_qty(action.id),0)
                           ELSE 0 END AS total_pending

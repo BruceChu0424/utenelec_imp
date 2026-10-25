@@ -27,34 +27,38 @@ abstract final class SubcontractPageFactory {
     SubcontractDocType type, {
     String? initialStatus,
     bool embedded = false,
-  }) => switch (type) {
-    SubcontractDocType.order => SubcontractOrderWorkspacePage(
-      initialStatus: initialStatus,
-      embedded: embedded,
-    ),
-    SubcontractDocType.materialIssue =>
-      const SubcontractMaterialIssueListPage(),
-    SubcontractDocType.returnDoc => SubcontractFinishedReturnHistoryPage(
-      initialStatus: initialStatus,
-      embedded: embedded,
-    ),
-    SubcontractDocType.materialReturn => SubcontractMaterialReturnHistoryPage(
-      initialStatus: initialStatus,
-      embedded: embedded,
-    ),
-    SubcontractDocType.waste => SubcontractWasteResponsibilityPage(
-      initialStatus: initialStatus,
-      embedded: embedded,
-    ),
-    SubcontractDocType.inquiry => const SubcontractInquiryArchivePage(),
-    // 申请列表=任务中心；回厂列表=订货页（路由层已重定向，防御兜底）。
-    SubcontractDocType.application => throw UnsupportedError(
-      '计划委外申请列表已并入委外任务中心',
-    ),
-    SubcontractDocType.receipt => throw UnsupportedError(
-      '委外回厂跟踪页已下线，进度在订货单详情查看',
-    ),
-  };
+    bool legacyOnly = false,
+  }) => legacyOnly || type == SubcontractDocType.receipt
+      ? SubcontractLegacyHistoryPage(type: type)
+      : switch (type) {
+          SubcontractDocType.order => SubcontractOrderWorkspacePage(
+            initialStatus: initialStatus,
+            embedded: embedded,
+          ),
+          SubcontractDocType.materialIssue =>
+            const SubcontractMaterialIssueListPage(),
+          SubcontractDocType.returnDoc => SubcontractFinishedReturnHistoryPage(
+            initialStatus: initialStatus,
+            embedded: embedded,
+          ),
+          SubcontractDocType.materialReturn =>
+            SubcontractMaterialReturnHistoryPage(
+              initialStatus: initialStatus,
+              embedded: embedded,
+            ),
+          SubcontractDocType.waste => SubcontractWasteResponsibilityPage(
+            initialStatus: initialStatus,
+            embedded: embedded,
+          ),
+          SubcontractDocType.inquiry => const SubcontractInquiryArchivePage(),
+          // 申请列表=任务中心；回厂列表=订货页（路由层已重定向，防御兜底）。
+          SubcontractDocType.application => throw UnsupportedError(
+            '计划委外申请列表已并入委外任务中心',
+          ),
+          SubcontractDocType.receipt => SubcontractLegacyHistoryPage(
+            type: type,
+          ),
+        };
 
   static Widget detail(SubcontractDocType type, String id) => switch (type) {
     SubcontractDocType.application => SubcontractApplicationReadOnlyDetailPage(

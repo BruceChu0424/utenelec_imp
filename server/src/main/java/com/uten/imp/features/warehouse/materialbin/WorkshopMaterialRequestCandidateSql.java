@@ -23,7 +23,7 @@ final class WorkshopMaterialRequestCandidateSql {
                 """ + (filterGoods ? " AND goods.id IN (:goodsIds)\n" : "") + categoryFilter + """
                 ), balances AS MATERIALIZED (
                     SELECT balance.warehouse_id, balance.goods_id, balance.color_id, balance.qty
-                    FROM stock_balances balance JOIN eligible ON eligible.id = balance.goods_id
+                    FROM v_stock_operable_balances balance JOIN eligible ON eligible.id = balance.goods_id
                     WHERE balance.qty <> 0
                 ), accounting AS MATERIALIZED (
                     SELECT leaf.warehouse_id FROM (SELECT DISTINCT warehouse_id FROM balances) leaf

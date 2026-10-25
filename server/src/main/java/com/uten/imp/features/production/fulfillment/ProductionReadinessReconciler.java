@@ -95,7 +95,7 @@ public class ProductionReadinessReconciler {
                 FROM production_execution_segments segment
                 JOIN production_planning_packages package ON package.id=segment.package_id
                     AND package.status='CONFIRMED' AND package.execution_model_version=1 AND NOT package.is_deleted
-                JOIN production_plans plan ON plan.id=segment.plan_id AND plan.status=1 AND NOT plan.is_deleted
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=segment.plan_id AND plan.status=1 AND NOT plan.is_deleted
                     AND NOT COALESCE(plan.is_closed,FALSE) AND NOT COALESCE(plan.is_canceled,FALSE)
                     AND NOT COALESCE(plan.is_stopped,FALSE)
                 WHERE (segment.status='WAITING' OR (segment.continuous_supply
@@ -105,7 +105,7 @@ public class ProductionReadinessReconciler {
                   AND (?::uuid IS NULL OR segment.id>?::uuid)
                   AND EXISTS (
                     SELECT 1 FROM production_material_demands demand
-                    JOIN stock_balances stock ON stock.goods_id=demand.goods_id
+                    JOIN v_stock_operable_balances stock ON stock.goods_id=demand.goods_id
                         AND stock.color_id IS NOT DISTINCT FROM demand.color_id AND stock.qty>0
                     JOIN warehouses warehouse ON warehouse.id=stock.warehouse_id
                         AND NOT warehouse.is_deleted AND warehouse.is_accountable

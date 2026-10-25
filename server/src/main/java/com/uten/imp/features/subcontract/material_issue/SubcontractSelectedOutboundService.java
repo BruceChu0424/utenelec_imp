@@ -106,6 +106,7 @@ public class SubcontractSelectedOutboundService {
         boolean split=selected.size()!=allIds.size();
         if(split) {
             var execution=executionHeader(source);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_material_issues",execution);
             headers.saveAndFlush(execution);
             executionId=execution.getId();
             billNo=execution.getBillNo();

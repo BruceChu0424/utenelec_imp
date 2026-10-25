@@ -46,7 +46,7 @@ public class PreplanMakePublicSupplyService {
                 JOIN %s source ON source.goods_id=material.goods_id
                   AND source.color_id IS NOT DISTINCT FROM material.color_id AND source.unit_id=material.unit_id
                   AND fn_warehouse_same_main(source.warehouse_id,analysis.warehouse_id)
-                JOIN production_plans plan ON plan.id=source.source_plan_id
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=source.source_plan_id
                 WHERE material.analysis_id=:analysis AND material.active AND source.available_to_claim_qty>0
                 """.formatted(sources)+(targetIds==null?"":" AND material.id IN(:targets)")+
                 " ORDER BY source.expected_date NULLS LAST,source.source_plan_item_id,material.id").setParameter("analysis",analysisId);
@@ -67,8 +67,8 @@ public class PreplanMakePublicSupplyService {
                     SELECT claim.target_material_id,claim.source_plan_item_id,item.plan_id,plan.status AS plan_status,
                            fn_preplan_make_public_claim_pending_qty(claim.id) AS pending_qty
                     FROM preplan_make_public_claims claim
-                    JOIN production_plan_items item ON item.id=claim.source_plan_item_id AND NOT item.is_deleted
-                    JOIN production_plans plan ON plan.id=item.plan_id AND plan.status IN(0,1)
+                    JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item ON item.id=claim.source_plan_item_id AND NOT item.is_deleted
+                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=item.plan_id AND plan.status IN(0,1)
                       AND NOT plan.is_deleted AND NOT plan.is_canceled
                     WHERE claim.target_analysis_id=:analysis AND claim.qty>fn_preplan_make_public_claim_cancelled_qty(claim.id)
                 ), source_items AS MATERIALIZED (
@@ -160,7 +160,7 @@ public class PreplanMakePublicSupplyService {
         return insertClaim(analysisId,materialId,planItemId,qty,key);
     }
     private void lockSource(UUID planItemId) {
-        if(em.createNativeQuery("SELECT item.id FROM production_plan_items item JOIN production_plans plan ON plan.id=item.plan_id WHERE item.id=:id AND NOT item.is_deleted AND NOT plan.is_deleted FOR UPDATE OF plan,item")
+        if(em.createNativeQuery("SELECT item.id FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=item.plan_id WHERE item.id=:id AND NOT item.is_deleted AND NOT plan.is_deleted FOR UPDATE OF plan,item")
                 .setParameter("id",planItemId).getResultList().isEmpty())throw conflict("公共自制供给已变化，请刷新后重试");
     }
     private UUID insertClaim(UUID analysisId,UUID materialId,UUID planItemId,BigDecimal qty,String key) {

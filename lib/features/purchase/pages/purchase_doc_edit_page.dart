@@ -316,7 +316,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         final repo = ref.read(purchaseRepositoryProvider(widget.docType));
         final d = await repo.detail(widget.id!);
         if (!accepts()) return;
-        if (widget.docType == PurchaseDocType.receipt && d.legacyImported) {
+        if (d.legacyImported) {
           if (!mounted) return;
           context.appWarning(historicalReceiptReadOnlyMessage, force: true);
           context.replace(

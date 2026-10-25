@@ -22,9 +22,11 @@ class _QuantityNames extends MasterNameService {
 }
 
 class _QuantityApi extends ApiClient {
-  _QuantityApi(this.items, {this.canApprove = false}) : super(Dio());
+  _QuantityApi(this.items, {this.canApprove = false, this.legacy = false})
+    : super(Dio());
   final List<Map<String, Object?>> items;
   final bool canApprove;
+  final bool legacy;
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -35,6 +37,8 @@ class _QuantityApi extends ApiClient {
           'billNo': 'TEST-EXACT-PLAN',
           'billDate': '2026-10-11',
           'status': 0,
+          'closed': false,
+          if (legacy) 'legacyId': 42,
           'allowedActions': ['VIEW', if (canApprove) 'APPROVE'],
           'items': items,
         }
@@ -50,10 +54,11 @@ Future<void> _open(
   WidgetTester tester,
   List<Map<String, Object?>> items, {
   bool canApprove = false,
+  bool legacy = false,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1100));
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  final api = _QuantityApi(items, canApprove: canApprove);
+  final api = _QuantityApi(items, canApprove: canApprove, legacy: legacy);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -96,6 +101,22 @@ Future<void> _open(
 }
 
 void main() {
+  testWidgets(
+    'legacy raw draft stays unchanged but displays closed read-only archive',
+    (tester) async {
+      await _open(
+        tester,
+        [
+          {'id': 'item-1', 'goodsId': 'goods-1', 'unitId': 'piece', 'qty': 1},
+        ],
+        canApprove: true,
+        legacy: true,
+      );
+      expect(find.text('历史已结案 · 只读'), findsWidgets);
+      expect(find.widgetWithText(UtenButton, '审核'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'plan approval exposes only a decision without document amendment',
     (tester) async {

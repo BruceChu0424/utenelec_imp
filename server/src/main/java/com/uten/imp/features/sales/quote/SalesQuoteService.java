@@ -128,7 +128,8 @@ public class SalesQuoteService {
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_quote:view')")
-    public PageResponse<QuoteListItem> list(QuoteQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<QuoteListItem> list(QuoteQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final QuoteQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         Specification<SalesQuote> spec = quoteSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
@@ -142,14 +143,14 @@ public class SalesQuoteService {
                         canEdit && accessPolicy.canWrite(q.getMakerId(), readScope), masked,
                         converted.get(q.getId()), readScope)).getContent(),
                 p);
-        return p.stream().noneMatch(SalesQuote::isDeleted) ? result
-                : retainedRecords.page(result, "sales_quotes", p.getContent());
+        return retainedRecords.page(result, "sales_quotes", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_quote:view')")
-    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(QuoteQueryFilter f) {
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(QuoteQueryFilter originalFilter) {
+        final QuoteQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, SalesQuote.class, quoteSpec(f), "billNo"));
     }
@@ -192,12 +193,14 @@ public class SalesQuoteService {
     }
 
     /** 列表谓词(list 与 facets 共用；billNo=表头单据号精确匹配；bucket=分段)。 */
-    private Specification<SalesQuote> quoteSpec(QuoteQueryFilter f) {
+    private Specification<SalesQuote> quoteSpec(QuoteQueryFilter originalFilter) {
+        final QuoteQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = accessPolicy.scope();
         String bucket = normalizeBucket(f.bucket());
         return (Root<SalesQuote> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             // 报价表没有独立 owner 列，maker_id 是其有效归属人。
@@ -220,7 +223,7 @@ public class SalesQuoteService {
                 }));
             }
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (bucket != null) ps.add(bucketPredicate(bucket, root, q, cb));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
@@ -326,6 +329,7 @@ public class SalesQuoteService {
     public QuoteDetail update(UUID id, QuoteSaveRequest req) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 锁行重读, 与提交核价互斥
         if (q.getStatus() == null || q.getStatus() != STATUS_DRAFT || q.isClosed()) {
             throw new ApiException(ErrorCode.BUSINESS, q.getStatus() != null && q.getStatus() == STATUS_PENDING_FINANCE
@@ -359,6 +363,7 @@ public class SalesQuoteService {
     public void delete(UUID id, Integer expectedRevision) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireNotDeleted(q);
         requireRevision(q, expectedRevision);
@@ -379,6 +384,7 @@ public class SalesQuoteService {
     public QuoteDetail submit(UUID id, QuoteActionRequest req) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (q.getStatus() == null || q.getStatus() != STATUS_DRAFT || q.isClosed()) {
             throw new ApiException(ErrorCode.CONFLICT, "只有草稿报价可以提交财务核价");
@@ -416,6 +422,7 @@ public class SalesQuoteService {
     public QuoteDetail withdraw(UUID id, QuoteActionRequest req) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireNotDeleted(q);
         if (q.getStatus() == null || q.getStatus() != STATUS_PENDING_FINANCE) {
@@ -439,6 +446,7 @@ public class SalesQuoteService {
     public QuoteDetail reopen(UUID id, QuoteActionRequest req) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireNotDeleted(q);
         if (q.getStatus() == null || q.getStatus() != STATUS_CONFIRMED || q.isClosed()) {
@@ -471,6 +479,7 @@ public class SalesQuoteService {
     public QuoteDetail customerConfirm(UUID id, QuoteActionRequest req) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireNotDeleted(q);
         requireRevision(q, req == null ? null : req.expectedRevision());
@@ -495,6 +504,7 @@ public class SalesQuoteService {
     public QuoteDetail cancel(UUID id, QuoteActionRequest req) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireNotDeleted(q);
         requireRevision(q, req == null ? null : req.expectedRevision());
@@ -537,6 +547,7 @@ public class SalesQuoteService {
     public com.uten.imp.features.sales.order.dto.OrderDetail convertToOrder(UUID id, QuoteActionRequest action) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 锁行并重读最新状态，防陈旧快照绕过守卫
         requireNotDeleted(q);
         if (q.getStatus() == null || q.getStatus() != STATUS_CONFIRMED || q.isClosed()) {
@@ -620,6 +631,7 @@ public class SalesQuoteService {
     public QuoteDetail requote(UUID id, QuoteActionRequest req) {
         tx.bind();
         SalesQuote original = requireWritableQuote(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",original);
         em.refresh(original, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireNotDeleted(original);
         requireRevision(original, req == null ? null : req.expectedRevision());
@@ -1240,7 +1252,6 @@ public class SalesQuoteService {
     }
 
     private QuoteDetail finishHistory(QuoteDetail view, SalesQuote entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "sales_quotes", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

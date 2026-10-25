@@ -19,8 +19,8 @@ final class PurchaseActionLifecycleProjection {
                             WHEN inspection.status IN ('PARTIAL','RESOLVED')
                                 THEN COALESCE(inspection.warehouse_stocked_base_qty,0)
                             ELSE 0 END)
-                FROM purchase_receipt_items receipt_item
-                JOIN purchase_receipts receipt ON receipt.id=receipt_item.receipt_id
+                FROM (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipt_items',archive_origin.id)) receipt_item
+                JOIN (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipts',archive_origin.id)) receipt ON receipt.id=receipt_item.receipt_id
                   AND receipt.status=1 AND NOT receipt.is_deleted
                 LEFT JOIN procurement_inspection_items inspection ON inspection.receipt_type='PURCHASE'
                   AND inspection.receipt_item_id=receipt_item.id
@@ -31,27 +31,27 @@ final class PurchaseActionLifecycleProjection {
     static final String REGULAR_STOCKED_BASE_SQL = """
             COALESCE((SELECT SUM(fn_purchase_order_source_share(item.id,source.request_item_id,%s))
                 FROM purchase_order_item_sources source
-                JOIN purchase_order_items item ON item.id=source.order_item_id AND NOT item.is_deleted
-                JOIN purchase_orders document ON document.id=item.order_id
+                JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_order_items',archive_origin.id)) item ON item.id=source.order_item_id AND NOT item.is_deleted
+                JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_orders',archive_origin.id)) document ON document.id=item.order_id
                   AND document.status=1 AND NOT document.is_deleted
                 WHERE source.alloc_qty>0 AND source.request_item_id IN (%s)),0)
             """.formatted(ORDER_ITEM_STOCKED_BASE_SQL,REGULAR_ITEM_IDS_SQL);
 
     static final String REGULAR_APPROVED_ORDER_EXISTS_SQL = """
             EXISTS (SELECT 1 FROM purchase_order_item_sources source
-                JOIN purchase_order_items item ON item.id=source.order_item_id AND NOT item.is_deleted
-                JOIN purchase_orders document ON document.id=item.order_id
+                JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_order_items',archive_origin.id)) item ON item.id=source.order_item_id AND NOT item.is_deleted
+                JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_orders',archive_origin.id)) document ON document.id=item.order_id
                   AND document.status=1 AND NOT document.is_deleted
                 WHERE source.alloc_qty>0 AND source.request_item_id IN (%s))
             """.formatted(REGULAR_ITEM_IDS_SQL);
 
     static final String REGULAR_FAILED_INSPECTION_EXISTS_SQL = """
             EXISTS (SELECT 1 FROM purchase_order_item_sources source
-                JOIN purchase_order_items item ON item.id=source.order_item_id AND NOT item.is_deleted
-                JOIN purchase_orders document ON document.id=item.order_id
+                JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_order_items',archive_origin.id)) item ON item.id=source.order_item_id AND NOT item.is_deleted
+                JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_orders',archive_origin.id)) document ON document.id=item.order_id
                   AND document.status=1 AND NOT document.is_deleted
-                JOIN purchase_receipt_items receipt_item ON receipt_item.order_item_id=item.id AND NOT receipt_item.is_deleted
-                JOIN purchase_receipts receipt ON receipt.id=receipt_item.receipt_id AND receipt.status=1 AND NOT receipt.is_deleted
+                JOIN (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipt_items',archive_origin.id)) receipt_item ON receipt_item.order_item_id=item.id AND NOT receipt_item.is_deleted
+                JOIN (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipts',archive_origin.id)) receipt ON receipt.id=receipt_item.receipt_id AND receipt.status=1 AND NOT receipt.is_deleted
                 JOIN procurement_inspection_items inspection ON inspection.receipt_type='PURCHASE'
                   AND inspection.receipt_item_id=receipt_item.id AND inspection.status='RESOLVED' AND inspection.failed_base_qty>0
                 WHERE source.alloc_qty>0 AND source.request_item_id IN (%s))
@@ -60,8 +60,8 @@ final class PurchaseActionLifecycleProjection {
     /** Preserve in-transit, unfinished IQC and qualified-but-not-stocked source evidence. */
     static final String REGULAR_FUTURE_ORDER_EXISTS_SQL = """
             EXISTS (SELECT 1 FROM purchase_order_item_sources source
-                JOIN purchase_order_items item ON item.id=source.order_item_id AND NOT item.is_deleted
-                JOIN purchase_orders document ON document.id=item.order_id
+                JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_order_items',archive_origin.id)) item ON item.id=source.order_item_id AND NOT item.is_deleted
+                JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_orders',archive_origin.id)) document ON document.id=item.order_id
                   AND document.status=1 AND NOT document.is_deleted
                 WHERE source.alloc_qty>0 AND source.request_item_id IN (%s)
                   AND fn_procurement_order_source_remaining_qty('PURCHASE',item.id,source.request_item_id)>0)
@@ -69,9 +69,9 @@ final class PurchaseActionLifecycleProjection {
 
     static final String REGULAR_PENDING_INSPECTION_EXISTS_SQL = """
             EXISTS (SELECT 1 FROM purchase_order_item_sources source
-                JOIN purchase_order_items item ON item.id=source.order_item_id AND NOT item.is_deleted
-                JOIN purchase_receipt_items receipt_item ON receipt_item.order_item_id=item.id AND NOT receipt_item.is_deleted
-                JOIN purchase_receipts receipt ON receipt.id=receipt_item.receipt_id AND receipt.status=1 AND NOT receipt.is_deleted
+                JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_order_items',archive_origin.id)) item ON item.id=source.order_item_id AND NOT item.is_deleted
+                JOIN (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipt_items',archive_origin.id)) receipt_item ON receipt_item.order_item_id=item.id AND NOT receipt_item.is_deleted
+                JOIN (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipts',archive_origin.id)) receipt ON receipt.id=receipt_item.receipt_id AND receipt.status=1 AND NOT receipt.is_deleted
                 JOIN procurement_inspection_items inspection ON inspection.receipt_type='PURCHASE'
                   AND inspection.receipt_item_id=receipt_item.id
                   AND (inspection.status NOT IN ('RESOLVED','REVERSED')
@@ -80,7 +80,7 @@ final class PurchaseActionLifecycleProjection {
             """.formatted(REGULAR_ITEM_IDS_SQL);
 
     static final String REGULAR_FUTURE_SUPPLY_EXISTS_SQL = """
-            (EXISTS (SELECT 1 FROM purchase_request_items item
+            (EXISTS (SELECT 1 FROM (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_request_items',archive_origin.id)) item
                 WHERE item.id IN (%s) AND NOT item.is_deleted AND item.qty>COALESCE(item.ordered_qty,0))
              OR %s OR %s)
             """.formatted(REGULAR_ITEM_IDS_SQL,REGULAR_FUTURE_ORDER_EXISTS_SQL,REGULAR_PENDING_INSPECTION_EXISTS_SQL);

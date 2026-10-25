@@ -64,6 +64,7 @@ class StockCountCandidateCategoriesPostgresTest {
                 CREATE FUNCTION fn_weight_unit_kg_factor(text) RETURNS numeric LANGUAGE sql IMMUTABLE
                   AS $$ SELECT CASE WHEN $1='KG' THEN 1::numeric WHEN $1='G' THEN 0.001::numeric END $$;
                 """);
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentColumns(db,"stock_measurement_holds");
         try(var resource=getClass().getResourceAsStream("/db/migration/V613__operational_warehouse_leaf_identity.sql")) {
             String migration=new String(resource.readAllBytes(),StandardCharsets.UTF_8);
             db.execute(migration.substring(0,migration.indexOf("DO $migration$")));
@@ -85,6 +86,19 @@ class StockCountCandidateCategoriesPostgresTest {
                 mock(TxSessionVars.class),new ObjectMapper(),mock(Validator.class),
                 mock(com.uten.imp.application.concurrency.FulfillmentMutationLocks.class),
                 mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+    }
+
+    @Test void originalMeasurementHoldIsNotAnOrdinaryDifferenceCountCandidateAfterMasterUnitCompletion() {
+        UUID category=category("HELD","待核原账",null);
+        UUID held=goods("HELD-STOCK","当前主档已有单位但原数量仍待核",category,kg,null);
+        UUID nativeKnown=goods("KNOWN-STOCK","正常已知单位库存",category,kg,null);
+        db.update("INSERT INTO stock_balances VALUES (?,?,NULL,9,18,true),(?,?,NULL,4,4,false)",leaf,held,leaf,nativeKnown);
+        db.update("INSERT INTO stock_measurement_holds(warehouse_id,goods_id,color_id) VALUES (?,?,NULL)",leaf,held);
+        assertThat(service.candidates(leaf,"",null,1,50).getItems()).extracting(row->row.get("goodsId"))
+                .contains(nativeKnown).doesNotContain(held);
+        assertThat(db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,leaf,held))
+                .isEqualByComparingTo("9");
+        assertThat(service.candidateCategories(leaf)).hasSize(1);
     }
 
     @Test void treeKeepsDisabledGoodsCountableAndPrunesStubOnlyCategories() {

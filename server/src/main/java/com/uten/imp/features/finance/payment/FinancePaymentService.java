@@ -102,30 +102,33 @@ public class FinancePaymentService {
     private final SupplierPayableHoldGuard payableHoldGuard;
 
     @Transactional(readOnly = true)
-    public PageResponse<FinancePaymentListItem> list(FinancePaymentQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<FinancePaymentListItem> list(FinancePaymentQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final FinancePaymentQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         Specification<FinancePayment> spec = paymentSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
         Page<FinancePayment> p = paymentRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<FinancePaymentListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
-        return p.stream().noneMatch(FinancePayment::isDeleted) ? result
-                : retainedRecords.page(result, "finance_payments", p.getContent());
+        return retainedRecords.page(result, "finance_payments", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
-    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(FinancePaymentQueryFilter f) {
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(FinancePaymentQueryFilter originalFilter) {
+        final FinancePaymentQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, FinancePayment.class, paymentSpec(f), "billNo"));
     }
 
     /** 列表谓词（list 与 facets 共用，2026-09-25 单号列统一抽出；billNo=表头单据号精确匹配）。 */
-    private Specification<FinancePayment> paymentSpec(FinancePaymentQueryFilter f) {
+    private Specification<FinancePayment> paymentSpec(FinancePaymentQueryFilter originalFilter) {
+        final FinancePaymentQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope();
         return (Root<FinancePayment> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -148,7 +151,7 @@ public class FinancePaymentService {
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.accountId() != null) ps.add(cb.equal(root.get("accountId"), f.accountId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             // 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配。
@@ -185,6 +188,7 @@ public class FinancePaymentService {
         String requestHash = requestHash(req);
         lockCreateIdempotency(makerId, idempotencyKey);
         FinancePayment replay = findCreateReplay(makerId, idempotencyKey);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_payments",replay);
         if (replay != null) {
             if (!Objects.equals(replay.getCreateRequestHash(), requestHash)
                     && !(replay.getAmountAuthorityVersion()<BANK_AUTHORITY_VERSION
@@ -219,9 +223,11 @@ public class FinancePaymentService {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         FinancePayment p = require(id);
+
         em.refresh(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireActiveAfterLock(p);
         access.requireWritable(p.getMakerId(), "只能操作本人负责或已授权的采购付款单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_payments",p);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(p.getLegacyId());
         if (p.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
@@ -255,9 +261,11 @@ public class FinancePaymentService {
     public void delete(UUID id) {
         tx.bind();
         FinancePayment p = require(id);
+
         em.refresh(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireActiveAfterLock(p);
         access.requireWritable(p.getMakerId(), "只能操作本人负责或已授权的采购付款单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_payments",p);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(p.getLegacyId());
         if (p.getStatus() == null || p.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可删除");
@@ -274,6 +282,7 @@ public class FinancePaymentService {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         FinancePayment p = require(id);
+
         UUID guardedSupplierId=p.getSupplierId();
         UUID guardedCurrencyId=p.getCurrencyId();
         LocalDate guardedBillDate=p.getBillDate();
@@ -285,6 +294,7 @@ public class FinancePaymentService {
         requireActiveAfterLock(p);
         access.requireScopedOperationWritable(p.getMakerId(), "只能操作本人负责或已交接的采购付款单",
                 "finance_payment:approve");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_payments",p);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(p.getLegacyId());
         if (p.getStatus() == null || p.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -318,6 +328,7 @@ public class FinancePaymentService {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         FinancePayment p = require(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_payments",p);
         UUID guardedSupplierId=p.getSupplierId();
         UUID guardedCurrencyId=p.getCurrencyId();
         LocalDate guardedBillDate=p.getBillDate();
@@ -1165,7 +1176,6 @@ public class FinancePaymentService {
     }
 
     private FinancePaymentDetail finishHistory(FinancePaymentDetail view, FinancePayment entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "finance_payments", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

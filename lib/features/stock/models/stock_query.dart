@@ -1,4 +1,5 @@
 import '../../../shared/models/historical_receipt_facts.dart';
+import '../../../shared/stock_inventory/measurement_hold.dart';
 
 export '../../../shared/stock_inventory/instant_inventory_row.dart';
 
@@ -20,7 +21,10 @@ class BalanceRow {
     this.weight,
     this.weightEstimated = false,
     this.lastMovementDate,
-  });
+    this.measurementPending = false,
+    this.measurementHoldReason,
+    bool availableKnown = true,
+  }) : availableKnown = availableKnown && !measurementPending;
 
   final String id;
   final String? warehouseId;
@@ -37,6 +41,10 @@ class BalanceRow {
   /// 库存重量含估算 (按库存均重/单重估算过)。
   final bool weightEstimated;
   final String? lastMovementDate;
+  final bool measurementPending;
+  final String? measurementHoldReason;
+  final bool availableKnown;
+  String get measurementNotice => measurementHoldNotice(measurementHoldReason);
 
   factory BalanceRow.fromJson(Map<String, dynamic> json) => BalanceRow(
     id: json['id'] as String,
@@ -52,6 +60,9 @@ class BalanceRow {
     weight: (json['weight'] as num?)?.toDouble(),
     weightEstimated: json['weightEstimated'] == true,
     lastMovementDate: json['lastMovementDate'] as String?,
+    measurementPending: json['measurementPending'] == true,
+    measurementHoldReason: json['measurementHoldReason'] as String?,
+    availableKnown: json['availableKnown'] != false,
   );
 }
 

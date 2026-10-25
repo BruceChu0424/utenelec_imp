@@ -575,9 +575,18 @@ public class GoodsService {
                    CASE WHEN bool_or(b.qty <> 0 AND b.weight IS NULL) THEN NULL
                         ELSE COALESCE(SUM(b.weight), 0) END AS weight,
                    COALESCE(bool_or(b.weight_estimated), false) AS weight_estimated,
-                   w.is_line_side, w.is_defective
+                   w.is_line_side, w.is_defective,
+                   bool_or(held.id IS NOT NULL OR stock_unit.id IS NULL) AS measurement_pending,
+                   CASE WHEN bool_or(held.id IS NOT NULL) THEN 'LEGACY_QUANTITY_BASIS_UNPROVEN'
+                        WHEN bool_or(stock_unit.id IS NULL) THEN 'MISSING_BASE_UNIT' END AS measurement_hold_reason,
+                   NOT bool_or(held.id IS NOT NULL OR stock_unit.id IS NULL) AS available_known
             FROM stock_balances b
             JOIN warehouses w ON w.id = b.warehouse_id
+            JOIN goods stock_goods ON stock_goods.id=b.goods_id
+            LEFT JOIN units stock_unit ON NOT stock_unit.is_deleted AND NULLIF(btrim(stock_unit.name),'') IS NOT NULL
+                AND (stock_unit.id=stock_goods.unit_id OR (stock_goods.unit_id IS NULL
+                    AND stock_unit.legacy_id=NULLIF(stock_goods.unit_legacy_id,0)))
+            LEFT JOIN stock_measurement_holds held ON held.stock_balance_id=b.id AND held.released_at IS NULL
             LEFT JOIN colors c ON c.id = b.color_id
             WHERE b.goods_id = :goodsId AND w.is_accountable
             GROUP BY b.warehouse_id, w.code, w.name, w.is_line_side, w.is_defective, b.color_id, c.name
@@ -615,8 +624,14 @@ public class GoodsService {
             boolean estimated = weight != null && Boolean.TRUE.equals(r[7]);
             boolean lineSide = Boolean.TRUE.equals(r[8]);
             boolean defective = Boolean.TRUE.equals(r[9]);
-            out.add(new GoodsStockRow(toUuid(r[0]), (String) r[1], (String) r[2],
-                    toUuid(r[3]), (String) r[4], qty, weight, estimated, lineSide, defective));
+            GoodsStockRow stockRow = new GoodsStockRow(toUuid(r[0]), (String) r[1], (String) r[2],
+                    toUuid(r[3]), (String) r[4], qty, weight, estimated, lineSide, defective);
+            if (r.length > 12) {
+                stockRow.setMeasurementPending(Boolean.TRUE.equals(r[10]));
+                stockRow.setMeasurementHoldReason((String)r[11]);
+                stockRow.setAvailableKnown(Boolean.TRUE.equals(r[12]));
+            }
+            out.add(stockRow);
             if (defective) {
                 defectiveQty = defectiveQty.add(qty);
                 continue;

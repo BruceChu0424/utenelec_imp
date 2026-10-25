@@ -93,7 +93,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('全部').first);
       await tester.pumpAndSettle();
-      expect(find.text('历史只读（草稿）'), findsOneWidget);
+      expect(find.text('历史已结案 · 只读'), findsOneWidget);
       // 合计恒本币：金额带「元」后缀（2026-10-10 口径）。
       expect(find.text('原始表头值 0.00 元'), findsOneWidget);
     },

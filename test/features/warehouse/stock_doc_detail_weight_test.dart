@@ -192,6 +192,22 @@ const _issuer = {Perm.stockDocView, Perm.stockDocIssue};
 
 void main() {
   testWidgets(
+    'legacy stock raw status is presented as archive without rewriting it',
+    (tester) async {
+      final document = _draw()..['legacyId'] = 42;
+      final originalStatus = document['status'];
+      await _pump(
+        tester,
+        type: StockDocType.draw,
+        document: document,
+        permissions: _issuer,
+      );
+      expect(find.text('历史已结案 · 只读'), findsWidgets);
+      expect(document['status'], originalStatus);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'DRAW actual issue keeps a decimal delta lost by legacy doubles',
     (tester) async {
       final document = _draw();

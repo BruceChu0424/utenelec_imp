@@ -84,7 +84,7 @@ public class FulfillmentWorkbenchQueryService {
                     %s AS supplier_name,
                     ARRAY[v.goods_name::text] AS search_goods_names,
                     ARRAY[v.goods_code::text] AS search_goods_codes
-             FROM v_procurement_decomposition_tasks v
+             FROM (SELECT * FROM v_procurement_decomposition_tasks archive_scope WHERE NOT fn_imported_business_document(fn_imported_business_document_scope_table(archive_scope.action_doc_type),archive_scope.action_doc_id) AND NOT fn_imported_business_document('production_plans',archive_scope.plan_id)) v
              LEFT JOIN %s current_order
                ON v.action_doc_type='%s_ORDER' AND current_order.id=v.action_doc_id
              LEFT JOIN suppliers supplier ON supplier.id=current_order.supplier_id
@@ -208,12 +208,12 @@ public class FulfillmentWorkbenchQueryService {
                     NULL::text AS supplier_name,
                     array_remove(array_agg(DISTINCT v.goods_name::text), NULL) AS search_goods_names,
                     array_remove(array_agg(DISTINCT v.goods_code::text), NULL) AS search_goods_codes
-             FROM v_fulfillment_workbench v
+             FROM (SELECT * FROM v_fulfillment_workbench archive_scope WHERE NOT fn_imported_business_document('production_plans',archive_scope.plan_id)) v
              JOIN production_planning_package_document_items mapping
                ON mapping.package_id=v.package_id AND mapping.demand_id=v.task_id AND mapping.document_type='DRAW'
-             JOIN stock_documents draw_doc ON draw_doc.id=mapping.document_id
+             JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) draw_doc ON draw_doc.id=mapping.document_id
                AND draw_doc.doc_type='DRAW' AND NOT draw_doc.is_deleted AND draw_doc.status IN(0,1)
-             JOIN stock_document_items draw_item ON draw_item.id=mapping.document_item_id
+             JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) draw_item ON draw_item.id=mapping.document_item_id
                AND draw_item.doc_id=draw_doc.id AND NOT draw_item.is_deleted
              LEFT JOIN warehouses actual_warehouse ON actual_warehouse.id=draw_doc.warehouse_id
              LEFT JOIN departments draw_dept ON draw_dept.id=draw_doc.department_id
@@ -246,7 +246,7 @@ public class FulfillmentWorkbenchQueryService {
                     material.search_goods_names, material.search_goods_codes
              FROM production_material_discovery_requests request
              JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
-             JOIN production_plans plan ON plan.id=segment.plan_id
+             JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=segment.plan_id
              CROSS JOIN LATERAL (
                  SELECT COUNT(DISTINCT item."goodsId") AS goods_count, COUNT(*) AS line_count,
                         CASE WHEN COUNT(DISTINCT item."goodsId")=1 THEN MIN(item."goodsId"::text)::uuid END AS goods_id,
@@ -709,7 +709,7 @@ public class FulfillmentWorkbenchQueryService {
         if (canOrder) {
             String missingBom = subcontract ? """
                     AND NOT EXISTS (
-                        SELECT 1 FROM subcontract_application_items gap_item
+                        SELECT 1 FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) gap_item
                         WHERE gap_item.id = decomposition.action_item_id AND NOT gap_item.is_deleted
                           AND NOT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(gap_item.goods_id)))
                     """ : "";
@@ -734,7 +734,7 @@ public class FulfillmentWorkbenchQueryService {
                        COUNT(*) FILTER (WHERE decomposition.task_status = 'WAITING_ORDER'),
                        COUNT(*) FILTER (WHERE decomposition.task_status = 'FINANCE_REJECTED'),
                        COUNT(*) FILTER (WHERE decomposition.task_status = 'FINANCE_APPROVED')
-                FROM v_procurement_decomposition_tasks decomposition
+                FROM (SELECT * FROM v_procurement_decomposition_tasks archive_scope WHERE NOT fn_imported_business_document(fn_imported_business_document_scope_table(archive_scope.action_doc_type),archive_scope.action_doc_id) AND NOT fn_imported_business_document('production_plans',archive_scope.plan_id)) decomposition
                 WHERE decomposition.department = :department AND (%s)
                 """.formatted(String.join(" OR ", stages)));
         query.setParameter("department", department);
@@ -782,7 +782,7 @@ public class FulfillmentWorkbenchQueryService {
         NativeReadScope scope = accessPolicy.orderTaskScope(department, "task_order.maker_id", "task_order_owners");
         Query query = em.createNativeQuery("""
                 SELECT COUNT(*)
-                FROM v_procurement_decomposition_tasks decomposition
+                FROM (SELECT * FROM v_procurement_decomposition_tasks archive_scope WHERE NOT fn_imported_business_document(fn_imported_business_document_scope_table(archive_scope.action_doc_type),archive_scope.action_doc_id) AND NOT fn_imported_business_document('production_plans',archive_scope.plan_id)) decomposition
                 WHERE decomposition.department = :department
                   AND decomposition.task_status IN (%s)
                   AND %s
@@ -902,18 +902,18 @@ public class FulfillmentWorkbenchQueryService {
                                      AND waiting_case.status = 'WAITING_MORE'
                                      AND waiting_case.severity <> 'WITHIN_TOLERANCE'
                                      AND waiting_case.expected_complete_by >= CURRENT_DATE) AS waiting_more,
-                           EXISTS (SELECT 1 FROM subcontract_order_items received_item
+                           EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) received_item
                                    WHERE received_item.order_id = base.action_doc_id AND received_item.id = base.action_item_id
                                      AND NOT received_item.is_deleted
                                      AND COALESCE(received_item.received_qty, 0) > 0) AS any_received,
-                           NOT EXISTS (SELECT 1 FROM subcontract_order_items pending_item
+                           NOT EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) pending_item
                                        WHERE pending_item.order_id = base.action_doc_id AND pending_item.id = base.action_item_id
                                          AND NOT pending_item.is_deleted
                                          AND COALESCE(pending_item.received_qty, 0)
                                              - COALESCE(pending_item.returned_qty, 0)
                                              + %s
                                              < COALESCE(pending_item.qty, 0)) AS all_received,
-                           EXISTS (SELECT 1 FROM subcontract_order_items draw_item
+                           EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) draw_item
                                    CROSS JOIN LATERAL fn_subcontract_draw_summary(draw_item.id) draw_summary
                                    WHERE base.task_status = 'FINANCE_APPROVED'
                                      AND draw_item.order_id = base.action_doc_id AND draw_item.id = base.action_item_id
@@ -934,20 +934,20 @@ public class FulfillmentWorkbenchQueryService {
                                                  WHERE draw_plan.order_id = base.action_doc_id
                                                    AND draw_plan.status = 'OPEN'
                                                    AND NOT draw_plan.is_deleted)) AS any_drawable,
-                           EXISTS (SELECT 1 FROM subcontract_material_issue_items draft_item
-                                   JOIN subcontract_material_issues draft_doc
+                           EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) draft_item
+                                   JOIN (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issues',archive_origin.id)) draft_doc
                                      ON draft_doc.id = draft_item.issue_id
                                     AND draft_doc.status = 0 AND NOT draft_doc.is_deleted
-                                   JOIN subcontract_order_items draft_order_item
+                                   JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) draft_order_item
                                      ON draft_order_item.id = draft_item.order_item_id
                                    WHERE draft_order_item.order_id = base.action_doc_id AND draft_order_item.id = base.action_item_id
                                      AND draft_item.plan_item_id IS NOT NULL
                                      AND NOT draft_item.is_deleted) AS any_draw_submitted,
-                           EXISTS (SELECT 1 FROM subcontract_material_issue_items issued_item
-                                   JOIN subcontract_material_issues issued_doc
+                           EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) issued_item
+                                   JOIN (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issues',archive_origin.id)) issued_doc
                                      ON issued_doc.id = issued_item.issue_id
                                     AND issued_doc.status = 1 AND NOT issued_doc.is_deleted
-                                   JOIN subcontract_order_items issued_order_item
+                                   JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) issued_order_item
                                      ON issued_order_item.id = issued_item.order_item_id
                                    WHERE issued_order_item.order_id = base.action_doc_id AND issued_order_item.id = base.action_item_id
                                      AND NOT issued_item.is_deleted) AS any_issued
@@ -1054,7 +1054,7 @@ public class FulfillmentWorkbenchQueryService {
                            STRING_AGG(DISTINCT open_task.task_no, '、' ORDER BY open_task.task_no) AS rd_task_no,
                            ARRAY_AGG(DISTINCT gap_item.id::text ORDER BY gap_item.id::text) AS item_ids
                     FROM unnest(base.action_item_ids) gap_ref(item_id)
-                    JOIN subcontract_application_items gap_item
+                    JOIN (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) gap_item
                       ON gap_item.id = gap_ref.item_id::uuid AND gap_item.is_deleted = FALSE
                     LEFT JOIN rd_tasks open_task
                       ON open_task.goods_id = gap_item.goods_id AND open_task.category = 'BOM'
@@ -1238,7 +1238,7 @@ public class FulfillmentWorkbenchQueryService {
         Query query = em.createNativeQuery("""
                 WITH visible_items AS (
                     SELECT item.id, item.application_id
-                    FROM subcontract_application_items item
+                    FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) item
                     WHERE item.application_id IN (:applicationIds) AND NOT item.is_deleted
                 ), source_rows AS (
                     SELECT item.application_id, origin.id AS origin_id, origin.source_type,
@@ -1256,7 +1256,7 @@ public class FulfillmentWorkbenchQueryService {
                      AND origin.analysis_id = material.analysis_id
                     JOIN goods product ON product.id = origin.goods_id
                     JOIN goods material_goods ON material_goods.id = action.goods_id
-                    LEFT JOIN sales_order_items sale ON sale.id = origin.sales_order_item_id
+                    LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) sale ON sale.id = origin.sales_order_item_id
                     LEFT JOIN units unit ON unit.id = action.unit_id
                     UNION ALL
                     SELECT item.application_id, NULL::uuid, 'PUBLIC_STOCK', '', NULL::integer, '', '',

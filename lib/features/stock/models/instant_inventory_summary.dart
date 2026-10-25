@@ -63,13 +63,20 @@ class InstantInventorySummary {
       for (final entry in values.entries)
         if (entry.value.values.any((v) => v != 0))
           InventoryUnitSummary(
-            unit: (entry.key?.trim().isEmpty ?? true) ? '单位未维护' : entry.key!,
+            unit: (entry.key?.trim().isEmpty ?? true) ? '计量待核' : entry.key!,
             missingUnit: entry.key?.trim().isEmpty ?? true,
-            quantity: total('qty') == null ? null : entry.value['qty'] ?? 0,
-            pending: total('pending_qty') == null
+            quantity:
+                (entry.key?.trim().isEmpty ?? true) || total('qty') == null
+                ? null
+                : entry.value['qty'] ?? 0,
+            pending:
+                (entry.key?.trim().isEmpty ?? true) ||
+                    total('pending_qty') == null
                 ? null
                 : entry.value['pending_qty'] ?? 0,
-            pendingStockIn: total('pending_stock_in_qty') == null
+            pendingStockIn:
+                (entry.key?.trim().isEmpty ?? true) ||
+                    total('pending_stock_in_qty') == null
                 ? null
                 : entry.value['pending_stock_in_qty'] ?? 0,
           ),
@@ -130,7 +137,11 @@ class InstantInventorySummary {
       '补全库存重量',
       ' 项非零库存的重量未知，当前合计只覆盖已知重量。建议结合盘点补称。',
     );
-    add('missing_unit_rows', '补全计量单位', ' 项货品未维护单位。先核实基本单位，再比较数量和补货需求。');
+    add(
+      'missing_unit_rows',
+      '核实库存计量',
+      ' 项记录计量待核，账面数仅供核对，不能当作可用供应。历史计量待核需真实核验，主档补单位不自动解除。',
+    );
     return result;
   }
 

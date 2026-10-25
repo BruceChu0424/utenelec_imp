@@ -791,6 +791,7 @@ class _ProductionDailyReportEditPageState
         final d = await repo.detail(widget.id!);
         if (!isCurrent()) return;
         final writable =
+            !d.legacyImported &&
             d.status == kProductionStatusDraft &&
             await loadDocumentOwnerCanWrite(
               ref,

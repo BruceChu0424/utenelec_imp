@@ -185,7 +185,7 @@ public class AggregateMissingDeepAliasRepair {
                     EXISTS(SELECT 1 FROM production_material_analysis_items child
                         JOIN production_material_analysis_plan_links link ON link.analysis_item_id=child.id
                           AND link.allocation_status IN('SUBMITTED','APPROVED')
-                        JOIN production_plans plan ON plan.id=link.plan_id AND plan.status IN(0,1)
+                        JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=link.plan_id AND plan.status IN(0,1)
                           AND NOT plan.is_deleted AND NOT plan.is_canceled
                         WHERE child.parent_analysis_material_id=material.id AND NOT child.is_deleted
                           AND child.source_type<>'AGGREGATE_MAKE'),material.depth,item.line_priority,item.delivery_date,

@@ -84,6 +84,11 @@ public class InstantInventoryRow {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String searchMatchKind;
 
+    /** Pending original quantity basis remains pending after master-unit completion. */
+    @Setter private boolean measurementPending;
+    @Setter private String measurementHoldReason;
+    @Setter private boolean availableKnown = true;
+
     public InstantInventoryRow(UUID goodsId, UUID colorId, String categoryName, String model, String cNumber,
                                String name, String spec, String colorName, String unitName, String remark,
                                BigDecimal weight, BigDecimal qty, BigDecimal costAmount, BigDecimal moreQty,
@@ -94,7 +99,7 @@ public class InstantInventoryRow {
         this(goodsId, colorId, categoryName, model, cNumber, name, spec, colorName, unitName, remark,
                 weight, qty, costAmount, moreQty, goodsCode, series, stockPlace, pendingQty, pendingStockInQty,
                 weightEstimated, weightUnknown, unitWeightKg, weightTier, costMasked,
-                owningWarehouseId, owningWarehouseName, defectiveQty, null, null);
+                owningWarehouseId, owningWarehouseName, defectiveQty, null, null, false, null, true);
     }
 
     /** Preserve the existing constructor used by stock clients and read-side tests. */

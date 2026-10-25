@@ -85,20 +85,21 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     private final AccountFlowLedgerService accountFlowLedger;
 
     @Transactional(readOnly = true)
-    public PageResponse<FinanceExpenseListItem> list(FinanceExpenseQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<FinanceExpenseListItem> list(FinanceExpenseQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final FinanceExpenseQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         Specification<FinanceExpense> spec = expenseSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
         Page<FinanceExpense> p = expenseRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<FinanceExpenseListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
-        return p.stream().noneMatch(FinanceExpense::isDeleted) ? result
-                : retainedRecords.page(result, "finance_expenses", p.getContent());
+        return retainedRecords.page(result, "finance_expenses", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
-    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(FinanceExpenseQueryFilter f) {
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(FinanceExpenseQueryFilter originalFilter) {
+        final FinanceExpenseQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, FinanceExpense.class, expenseSpec(f), "billNo"));
     }
@@ -114,15 +115,18 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         // the operation authority grants its pooled write scope; ownerless rows
         // remain unwritable even for a super administrator.
         return Map.of("count", expenseRepo.count(pending.and((root, query, cb) ->
-                cb.isNotNull(root.get("makerId")))));
+                cb.and(cb.isNotNull(root.get("makerId")),
+                        com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeOnly(root,cb)))));
     }
 
     /** 列表谓词（list 与 facets 共用，2026-09-25 单号列统一抽出；billNo=表头单据号精确匹配）。 */
-    private Specification<FinanceExpense> expenseSpec(FinanceExpenseQueryFilter f) {
+    private Specification<FinanceExpense> expenseSpec(FinanceExpenseQueryFilter originalFilter) {
+        final FinanceExpenseQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope();
         return (Root<FinanceExpense> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -132,7 +136,8 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
                     cb.or(cb.equal(root.get("status"), STATUS_DRAFT),
                             cb.and(cb.equal(root.get("status"), STATUS_APPROVED),
                                     cb.equal(root.get("glStatus"), (short) 1))));
-            ps.add("HISTORY".equals(f.view()) ? cb.not(active) : active);
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root,cb,
+                    "HISTORY".equals(f.view()) ? cb.not(active) : active));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 // 全行可搜（2026-10-09「行里显示什么就能按什么搜」）：单据号 + 引用主档名称
                 //（经 NameRefKeyword 转外键 IN 子查询，count 同谓词派生）。
@@ -147,7 +152,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
                 }));
             }
             if (f.accountId() != null) ps.add(cb.equal(root.get("accountId"), f.accountId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             // departmentId 走明细表（多对一），主表过滤需 EXISTS；本期略，前端报表侧按部门汇总。
@@ -203,7 +208,9 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
             PaymentStyleHierarchyLock.lock(em);
         }
         FinanceExpense e = lockActive(id);
+
         access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_expenses",e);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(e.getLegacyId());
         if (e.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
@@ -222,7 +229,9 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     public void delete(UUID id) {
         tx.bind();
         FinanceExpense e = lockActive(id);
+
         access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_expenses",e);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(e.getLegacyId());
         if (e.getStatus() == null || e.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可删除；已审核单据请红冲");
@@ -239,8 +248,10 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         FinanceExpense e = lockActiveForProjection(id);
+
         access.requireScopedOperationWritable(e.getMakerId(), "只能操作本人负责或已交接的一般费用单",
                 "finance_expense:approve");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_expenses",e);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(e.getLegacyId());
         UUID approver = currentUser.requireEmployeeId();
         if (e.getMakerId() != null && e.getMakerId().equals(approver)) {
@@ -361,6 +372,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     public FinanceExpenseDetail reverse(UUID id) {
         tx.bind();
         FinanceExpense e = lockActiveForProjection(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_expenses",e);
         requireUnapprovalHeader(e);
         // 账户余额与流水由账本按原始流水一并冲回。
         reverseReconciliation(e.getId());
@@ -379,8 +391,10 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     public FinanceExpenseDetail glConfirm(UUID id) {
         tx.bind();
         FinanceExpense e = lockActiveForProjection(id);
+
         access.requireScopedOperationWritable(e.getMakerId(), "只能操作本人负责或已交接的一般费用单",
                 "finance_expense:gl_confirm");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_expenses",e);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(e.getLegacyId());
         if (e.getStatus() == null || e.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可财务确认");
@@ -615,7 +629,6 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     }
 
     private FinanceExpenseDetail finishHistory(FinanceExpenseDetail view, FinanceExpense entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "finance_expenses", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

@@ -73,4 +73,7 @@ public class OtherShipmentDetail extends com.uten.imp.common.history.DocumentHis
     @Override public void disableHistoryActions() {
         writable = false;
     }
+
+
+    public boolean isWritable() { return !isHistoryReadOnly() && writable; }
 }

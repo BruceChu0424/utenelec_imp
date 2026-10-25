@@ -64,4 +64,8 @@ public class DailyReportDetail extends DailyReportMaterialReviewMetadata {
     private DailyReportApprovalReceipt approvalReceipt;
 
     @Override public void disableHistoryActions() { allowedActions = List.of(); }
+
+
+
+    public List<String> getAllowedActions() { return isHistoryReadOnly() ? List.of() : allowedActions; }
 }

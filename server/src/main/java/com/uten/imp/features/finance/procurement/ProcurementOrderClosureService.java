@@ -248,7 +248,10 @@ public class ProcurementOrderClosureService {
         ClosureBlock downstream=downstreamBlock(type,id,billNo);
         String blocked=null;
         ClosureBlocker blocker=null;
-        if(((Number)header.get("status")).intValue()!=1) blocked="仅已生效订货单可申请提前结束";
+        boolean importedHistory=header.get("legacy_id")!=null;
+        String historicalReadOnly="历史原始单据仅供核对，不能申请提前结束或按剩余量重建";
+        if(importedHistory) blocked=historicalReadOnly;
+        else if(((Number)header.get("status")).intValue()!=1) blocked="仅已生效订货单可申请提前结束";
         else if(header.get("termination_case_id")!=null) blocked="该订单已通过财务审批结束";
         else if(!hasPermission(type,"submit_finance")) blocked="没有提交财务审批权限";
         else if(downstream!=null) { blocked=downstream.reason();blocker=downstream.target(); }
@@ -260,9 +263,9 @@ public class ProcurementOrderClosureService {
             }
         }
         boolean hasRemaining=items.stream().anyMatch(line->zero(line.remainingQty()).signum()>0||zero(line.remainingGiftQty()).signum()>0);
-        String blockReorder=unverified?"旧库单据的计量依据尚未核验，只能直接结束；核对单位和实际收退数量后才能按剩余量重建":hasRemaining?null:"当前没有可重建的剩余数量";
+        String blockReorder=importedHistory?historicalReadOnly:unverified?"计量依据尚未核验，不能按剩余量重建":hasRemaining?null:"当前没有可重建的剩余数量";
         return new ClosurePreview(type,id,billNo,HashUtil.sha256(json(fingerprint)),blocked==null,blocked,List.copyOf(items),
-                !unverified&&hasRemaining,blockReorder,unverified,blocker);
+                !importedHistory&&!unverified&&hasRemaining,blockReorder,unverified,blocker);
     }
 
     private ClosureBlock downstreamBlock(String type,UUID order,String billNo) {

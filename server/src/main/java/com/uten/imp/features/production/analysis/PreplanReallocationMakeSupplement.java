@@ -26,7 +26,7 @@ final class PreplanReallocationMakeSupplement {
                                FROM preplan_reallocation_make_supplements supplement WHERE supplement.reallocation_id=relation.id),0)),
                        CASE WHEN child.source_type='MAKE_COMPONENT' THEN
                            GREATEST(child.requested_qty-COALESCE((SELECT SUM(item.iqty)
-                               FROM production_plans plan JOIN production_plan_items item ON item.plan_id=plan.id
+                               FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item ON item.plan_id=plan.id
                                WHERE plan.material_analysis_item_id=child.id AND plan.status=1
                                  AND NOT plan.is_deleted AND NOT item.is_deleted),0),0)
                        ELSE 0 END

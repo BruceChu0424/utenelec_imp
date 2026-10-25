@@ -113,7 +113,7 @@ public class MaterialAnalysisBomDiagnosticService {
         if (!salesIds.isEmpty()) {
             for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                     SELECT i.id,i.goods_id
-                    FROM sales_order_items i JOIN sales_orders o ON o.id=i.order_id
+                    FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o ON o.id=i.order_id
                     JOIN goods g ON g.id=i.goods_id AND g.is_deleted=FALSE
                     WHERE i.id IN (:ids) AND i.is_deleted=FALSE AND o.is_deleted=FALSE
                       AND o.status=1 AND o.finance_confirmed=TRUE

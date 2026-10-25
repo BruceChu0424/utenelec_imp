@@ -13,8 +13,26 @@ public class DocumentHistoryMetadata {
     private String deletedByName;
     private String deletedReason;
     private boolean historyReadOnly;
+    private boolean legacyImported;
     /** Command response proof only: the server-bound original of an unapproval successor. */
     private java.util.UUID unapprovalOriginalId;
+
+    /** DTOs retain their original legacy ID even when source status was draft or reversed. */
+    @com.fasterxml.jackson.annotation.JsonProperty("legacyImported")
+    public boolean isLegacyImported() {
+        if (legacyImported) return true;
+        try { return getClass().getMethod("getLegacyId").invoke(this) != null; }
+        catch (NoSuchMethodException missing) { return false; }
+        catch (ReflectiveOperationException failure) { throw new IllegalStateException("Invalid document origin metadata", failure); }
+    }
+
+    @com.fasterxml.jackson.annotation.JsonProperty("historyReadOnly")
+    public boolean isHistoryReadOnly() { return historyReadOnly || isLegacyImported(); }
+
+    public void setLegacyImported(boolean imported) {
+        legacyImported = imported;
+        if (imported) { historyReadOnly = true; disableHistoryActions(); }
+    }
 
     public void setHistoryReadOnly(boolean value) {
         historyReadOnly = value;
@@ -34,7 +52,8 @@ public class DocumentHistoryMetadata {
         deletedAt = source.deletedAt;
         deletedByName = source.deletedByName;
         deletedReason = source.deletedReason;
-        historyReadOnly = source.historyReadOnly;
+        legacyImported = source.isLegacyImported();
+        historyReadOnly = source.isHistoryReadOnly();
         if (historyReadOnly || deleted) disableHistoryActions();
     }
 

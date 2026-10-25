@@ -146,29 +146,32 @@ public class SubcontractApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<ApplicationListItem> list(ApplicationQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<ApplicationListItem> list(ApplicationQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final ApplicationQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         var searchPage = NameRefKeyword.page(applicationSpec(f), pageable, f.keyword());
         Page<SubcontractApplication> p = applicationRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<ApplicationListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
-        return p.stream().noneMatch(SubcontractApplication::isDeleted) ? result
-                : retainedRecords.page(result, "subcontract_applications", p.getContent());
+        return retainedRecords.page(result, "subcontract_applications", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
-    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(ApplicationQueryFilter f) {
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(ApplicationQueryFilter originalFilter) {
+        final ApplicationQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, SubcontractApplication.class, applicationSpec(f), "billNo"));
     }
 
     /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）。 */
-    private Specification<SubcontractApplication> applicationSpec(ApplicationQueryFilter f) {
+    private Specification<SubcontractApplication> applicationSpec(ApplicationQueryFilter originalFilter) {
+        final ApplicationQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return (Root<SubcontractApplication> root,
                                                       jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                       CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             if (f.keyword() != null && !f.keyword().isBlank()) {
@@ -177,7 +180,7 @@ public class SubcontractApplicationService {
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             // 2026-09-25 单号列统一：单据号表头值筛选（精确匹配）。
@@ -307,6 +310,7 @@ public class SubcontractApplicationService {
     public ApplicationDetail update(UUID id, ApplicationSaveRequest req) {
         tx.bind();
         SubcontractApplication r = requireApplicationForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_applications",r);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -323,6 +327,7 @@ public class SubcontractApplicationService {
     public void delete(UUID id) {
         tx.bind();
         SubcontractApplication r = requireApplicationForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"subcontract_applications",r);
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities
                 .requireDraftForDelete(r.getStatus());
         productionSourceGuard.requireSubcontractApplicationMutable(id);
@@ -525,7 +530,6 @@ public class SubcontractApplicationService {
     }
 
     private ApplicationDetail finishHistory(ApplicationDetail view, SubcontractApplication entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "subcontract_applications", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

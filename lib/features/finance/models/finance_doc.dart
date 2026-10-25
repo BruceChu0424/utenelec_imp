@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 // 钱流单据统一模型（5 单据超集，对应后端各 *ListItem/*Detail/*ItemDto）。
 //
 // 5 单据差异由 doc_type 决定可选字段是否非空：
@@ -164,7 +165,7 @@ class FinanceDocListItem {
         status: (json['status'] as num?)?.toInt(),
         glStatus: (json['glStatus'] as num?)?.toInt(),
         legacyId: (json['legacyId'] as num?)?.toInt(),
-        legacyImported: json['legacyImported'] as bool? ?? false,
+        legacyImported: importedBusinessDocument(json),
       );
 }
 
@@ -489,7 +490,7 @@ class FinanceDocDetail {
     id: json['id'] as String,
     version: (json['version'] as num?)?.toInt(),
     legacyId: (json['legacyId'] as num?)?.toInt(),
-    legacyImported: json['legacyImported'] as bool? ?? false,
+    legacyImported: importedBusinessDocument(json),
     billNo: json['billNo'] as String?,
     billDate: json['billDate'] as String?,
     receiptKind: json['receiptKind'] as String?,

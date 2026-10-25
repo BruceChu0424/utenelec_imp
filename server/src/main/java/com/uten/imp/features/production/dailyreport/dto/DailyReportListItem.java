@@ -22,4 +22,6 @@ public class DailyReportListItem extends com.uten.imp.common.history.DocumentHis
     private boolean closed;
     private boolean canceled;
     private Integer legacyId;
+
+
 }

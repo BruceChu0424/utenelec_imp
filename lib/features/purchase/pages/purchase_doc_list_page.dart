@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 // 采购单据列表页（按 docType 参数化）。
 //
@@ -310,6 +311,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
         .list(
           page: requestedPage ?? _list.pageNum,
           filter: PurchaseDocFilter(
+            origin: seg.history ? BusinessDocumentOrigin.all : null,
             keyword: _list.normalizedKeyword,
             supplierId: _cfg.hasSupplier ? _supplierIdFilter : null,
             warehouseId: _cfg.hasWarehouse ? _warehouseIdFilter : null,
@@ -344,6 +346,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
             .read(purchaseRepositoryProvider(widget.docType))
             .billNoFacets(
               filter: PurchaseDocFilter(
+                origin: seg.history ? BusinessDocumentOrigin.all : null,
                 columnSearch: _columnFilters.values,
                 keyword: _list.normalizedKeyword,
                 supplierId: _cfg.hasSupplier ? _supplierIdFilter : null,
@@ -521,9 +524,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
   }
 
   String _statusLabel(PurchaseDocListItem item) {
-    if (widget.docType == PurchaseDocType.receipt && item.legacyImported) {
-      return '历史只读（${purchaseStatusLabel(item.status)}）';
-    }
+    if (item.legacyImported) return importedBusinessHistoryLabel;
     if (widget.docType == PurchaseDocType.request && item.status == 1) {
       return '计划已下达';
     }
@@ -539,6 +540,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
   /// 草稿/已取消=neutral；申请「计划已下达」=success 就绪可分解）。
   /// 映射与详情页共用 purchase_status_badge.dart。
   UtenStatusBadgeType _statusBadgeType(PurchaseDocListItem item) {
+    if (item.legacyImported) return UtenStatusBadgeType.neutral;
     if (widget.docType == PurchaseDocType.order) {
       return purchaseOrderDisplayBadgeType(item.status, item.financeApproval);
     }

@@ -257,7 +257,7 @@ public class ProductionPlanningUrgeService {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT segment.id, segment.status, plan.material_analysis_id
                 FROM production_execution_segments segment
-                JOIN production_plans plan ON plan.id = segment.plan_id AND NOT plan.is_deleted
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id = segment.plan_id AND NOT plan.is_deleted
                 WHERE segment.id = :id AND NOT segment.is_deleted
                 """).setParameter("id", segmentId));
         return rows.isEmpty() ? null : rows.getFirst();

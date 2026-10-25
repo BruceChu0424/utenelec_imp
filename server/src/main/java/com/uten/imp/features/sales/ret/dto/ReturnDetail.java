@@ -80,4 +80,7 @@ public class ReturnDetail extends com.uten.imp.common.history.DocumentHistoryMet
     @Override public void disableHistoryActions() {
         writable = false;
     }
+
+
+    public boolean isWritable() { return !isHistoryReadOnly() && writable; }
 }

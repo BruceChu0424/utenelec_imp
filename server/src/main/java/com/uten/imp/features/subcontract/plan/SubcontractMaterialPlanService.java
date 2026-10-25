@@ -417,7 +417,7 @@ public class SubcontractMaterialPlanService {
             }
             List<Object[]> balances = jdbc.query("""
                     SELECT balance.id, GREATEST(COALESCE(available.available_qty, 0), 0)
-                    FROM stock_balances balance
+                    FROM v_stock_operable_balances balance
                     LEFT JOIN v_stock_available available
                       ON available.warehouse_id = balance.warehouse_id
                      AND available.goods_id = balance.goods_id
@@ -628,13 +628,13 @@ public class SubcontractMaterialPlanService {
         }
         List<Object[]> drafts = rows("""
                 SELECT issue.id, issue.bill_no, issue.created_by, issue.updated_by,
-                       EXISTS (SELECT 1 FROM subcontract_material_issue_items dropped
+                       EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) dropped
                                WHERE dropped.issue_id = issue.id AND dropped.warehouse_dropped_at IS NOT NULL
                                  AND dropped.order_item_id IN (:items))
-                FROM subcontract_material_issues issue
+                FROM (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issues',archive_origin.id)) issue
                 WHERE issue.status = 0 AND NOT issue.is_deleted
                   AND EXISTS (
-                      SELECT 1 FROM subcontract_material_issue_items item
+                      SELECT 1 FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) item
                       WHERE item.issue_id = issue.id AND NOT item.is_deleted
                         AND item.plan_item_id IS NOT NULL AND item.order_item_id IN (:items))
                 ORDER BY issue.id
@@ -653,7 +653,7 @@ public class SubcontractMaterialPlanService {
             List<Object[]> lines = rows("""
                     SELECT item.id, item.plan_item_id, item.order_item_id, item.qty, item.requested_qty,
                            item.goods_id, item.color_id
-                    FROM subcontract_material_issue_items item
+                    FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) item
                     WHERE item.issue_id = :issueId AND NOT item.is_deleted
                     ORDER BY item.id
                     """, Map.of("issueId", issueId));

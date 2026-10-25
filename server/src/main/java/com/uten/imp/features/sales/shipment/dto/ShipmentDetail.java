@@ -97,4 +97,9 @@ public class ShipmentDetail extends com.uten.imp.common.history.DocumentHistoryM
         canReject = false;
         canManageWarehouseWork = false;
     }
+
+
+    public boolean isWritable() { return !isHistoryReadOnly() && writable; }
+    public boolean isCanReject() { return !isHistoryReadOnly() && canReject; }
+    public boolean isCanManageWarehouseWork() { return !isHistoryReadOnly() && canManageWarehouseWork; }
 }

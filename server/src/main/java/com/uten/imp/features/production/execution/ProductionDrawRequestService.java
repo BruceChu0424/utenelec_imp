@@ -150,7 +150,7 @@ public class ProductionDrawRequestService {
         // 单列 native query 的每行是标量 String（不是 Object[]），不能走 objectArrayRows。
         @SuppressWarnings("unchecked")
         List<Object> billNos = em.createNativeQuery(
-                        "SELECT bill_no FROM stock_documents WHERE id IN (:ids)")
+                        "SELECT bill_no FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) stock_documents WHERE id IN (:ids)")
                 .setParameter("ids", drawIds)
                 .getResultList();
         String batchNo = billNos.stream()
@@ -197,7 +197,7 @@ public class ProductionDrawRequestService {
                        goods.code, goods.name, segment.planned_qty, segment.start_route,
                        fn_segment_bin_material_state(segment.id)
                 FROM production_execution_segments segment
-                JOIN production_plans plan ON plan.id=segment.plan_id AND NOT plan.is_deleted
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=segment.plan_id AND NOT plan.is_deleted
                 JOIN production_planning_packages package ON package.id=segment.package_id AND NOT package.is_deleted
                 LEFT JOIN departments department ON department.id=segment.workshop_department_id
                 LEFT JOIN goods ON goods.id=segment.product_goods_id
@@ -254,9 +254,9 @@ public class ProductionDrawRequestService {
                        fn_production_draw_item_requested_qty(item.id),
                        COALESCE(warehouse.is_line_side, FALSE)
                 FROM production_planning_package_documents mapping
-                JOIN stock_documents document ON document.id=mapping.document_id
+                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document ON document.id=mapping.document_id
                   AND document.doc_type='DRAW' AND NOT document.is_deleted AND document.status IN (0,1)
-                JOIN stock_document_items item ON item.doc_id=document.id AND NOT item.is_deleted
+                JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item ON item.doc_id=document.id AND NOT item.is_deleted
                 JOIN production_planning_package_document_items item_mapping
                   ON item_mapping.document_item_id=item.id AND item_mapping.document_type='DRAW'
                 JOIN production_material_demands demand ON demand.id=item_mapping.demand_id
@@ -389,7 +389,7 @@ public class ProductionDrawRequestService {
     private List<UUID> documentIds(List<UUID> segmentIds) {
         return NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT DISTINCT document.id FROM production_planning_package_documents mapping
-                JOIN stock_documents document ON document.id=mapping.document_id AND NOT document.is_deleted
+                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document ON document.id=mapping.document_id AND NOT document.is_deleted
                   AND document.doc_type='DRAW' AND document.status IN (0,1)
                 WHERE mapping.execution_segment_id IN (:ids) AND mapping.document_type='DRAW'
                 ORDER BY document.id

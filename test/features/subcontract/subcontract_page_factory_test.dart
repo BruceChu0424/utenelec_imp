@@ -54,17 +54,20 @@ void main() {
     },
   );
 
-  test('retired list pages fail closed（申请并入任务中心、回厂跟踪下线）', () {
-    // 2026-09-06：列表路由在 app_router 层重定向，工厂分派防御性兜底。
-    expect(
-      () => SubcontractPageFactory.list(SubcontractDocType.application),
-      throwsUnsupportedError,
-    );
-    expect(
-      () => SubcontractPageFactory.list(SubcontractDocType.receipt),
-      throwsUnsupportedError,
-    );
-  });
+  test(
+    'application stays in workbench and receipts retain independent history',
+    () {
+      // 2026-09-06：列表路由在 app_router 层重定向，工厂分派防御性兜底。
+      expect(
+        () => SubcontractPageFactory.list(SubcontractDocType.application),
+        throwsUnsupportedError,
+      );
+      expect(
+        SubcontractPageFactory.list(SubcontractDocType.receipt),
+        isA<SubcontractLegacyHistoryPage>(),
+      );
+    },
+  );
 
   test(
     'new execution entry points fail closed only where an authoritative task is required',

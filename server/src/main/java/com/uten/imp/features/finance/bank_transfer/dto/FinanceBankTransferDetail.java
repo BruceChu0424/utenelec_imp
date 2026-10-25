@@ -39,7 +39,7 @@ public class FinanceBankTransferDetail extends com.uten.imp.common.history.Docum
     public String getAmountOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountOriginal); }
     public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
     /** The source identity is immutable; ordinary save requests cannot set it. */
-    public boolean isLegacyImported() { return legacyId != null; }
+    public boolean isLegacyImported() { return super.isLegacyImported(); }
 
     @Override public void disableHistoryActions() {
     }

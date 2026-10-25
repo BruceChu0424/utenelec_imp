@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/documents/document_unapproval.dart';
 // 销售单据仓库（5 单据统一，按 docType 切端点）。
 //
@@ -21,6 +22,7 @@ import '../models/sales_order_progress.dart';
 class SalesDocFilter {
   const SalesDocFilter({
     this.keyword,
+    this.origin,
     this.clientId,
     this.warehouseId,
     this.currencyId,
@@ -39,6 +41,7 @@ class SalesDocFilter {
     this.billNo,
     this.columnSearch = const {},
   });
+  final BusinessDocumentOrigin? origin;
   final String? keyword;
   final String? clientId;
   final String? warehouseId;
@@ -93,6 +96,7 @@ class SalesRepository {
       'size': size,
       if (type == SalesDocType.customerShipment)
         'shipmentKind': 'DIRECT_CUSTOMER',
+      'originScope': ?filter.origin?.apiValue,
       if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
         'keyword': filter.keyword!.trim(),
       if (filter.clientId != null) 'clientId': filter.clientId,
@@ -134,6 +138,7 @@ class SalesRepository {
       ...filter.columnSearchQuery,
       if (type == SalesDocType.customerShipment)
         'shipmentKind': 'DIRECT_CUSTOMER',
+      'originScope': ?filter.origin?.apiValue,
       if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
         'keyword': filter.keyword!.trim(),
       if (filter.clientId != null) 'clientId': filter.clientId,

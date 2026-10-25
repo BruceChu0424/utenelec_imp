@@ -1,3 +1,4 @@
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
@@ -151,6 +152,7 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
         .list(
           page: requestedPage ?? _list.pageNum,
           filter: ProductionPlanFilter(
+            origin: _historyMode ? BusinessDocumentOrigin.all : null,
             keyword: _list.normalizedKeyword,
             departmentId: _workshopIdFilter,
             status: _statusFilter,
@@ -415,7 +417,9 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
       key: 'status',
       label: '状态',
       width: 72,
-      value: (it) => productionStatusLabel(it.status),
+      value: (it) => it.legacyId != null
+          ? importedBusinessHistoryLabel
+          : productionStatusLabel(it.status),
       // 状态分类色（草稿中性/已审绿/红冲红）铺整格底色，替代原格内胶囊
       // （2026-09-27 用户口径）；value 仍是纯文本供列宽/排序/筛选。
       cellColor: (context, it) =>

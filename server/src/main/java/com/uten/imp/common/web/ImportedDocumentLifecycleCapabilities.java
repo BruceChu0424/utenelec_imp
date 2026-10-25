@@ -8,6 +8,10 @@ public interface ImportedDocumentLifecycleCapabilities extends StandardDocumentL
     Integer getLegacyId();
 
     static void requireMutable(Integer legacyId) {
+        requireMutable((Number) legacyId);
+    }
+
+    static void requireMutable(Number legacyId) {
         if(legacyId!=null)throw new ApiException(ErrorCode.BUSINESS,READ_ONLY_REASON);
     }
 

@@ -31,6 +31,7 @@ import '../../../shared/business_columns/business_columns_table.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/widgets/imported_document_status_badge.dart';
 import '../../../shared/widgets/sales_document_layout.dart';
 import '../../../shared/measurement/exact_measurement_totals.dart';
 import '../../../shared/measurement/document_quantity.dart';
@@ -1459,16 +1460,18 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                           children: [
                             // 出货财审状态横幅（2026-09-12 拆分改版）：销售一眼
                             // 看清本单正卡在财审哪一步；财审操作本身在财务专页。
-                            if (_cfg.type.isShipment) ...[
+                            if (!_detail!.historyReadOnly &&
+                                _cfg.type.isShipment) ...[
                               _shipmentFinanceStatusStrip(theme),
                               const SizedBox(height: UtenSpacing.s12),
                             ],
                             // 报价财务核价横幅(ADR-134)：一句话说清现在卡在哪、下一步谁做。
-                            if (_isQuote) ...[
+                            if (!_detail!.historyReadOnly && _isQuote) ...[
                               _quoteStatusStrip(theme),
                               const SizedBox(height: UtenSpacing.s12),
                             ],
                             if (!widget.historyRead &&
+                                !_detail!.historyReadOnly &&
                                 (_isQuote ||
                                     widget.docType == SalesDocType.order))
                               SalesLearningStatusPanel(
@@ -1499,12 +1502,14 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                             // 快递式时间线放明细表上方，默认折叠只露「最新」状态，
                             // 点「展开查看全部进度」展开完整链路（责任人/时间/关联单跳转）。
                             // 草稿单没有履约链可看，不渲染。
-                            if (_cfg.type == SalesDocType.order &&
+                            if (!_detail!.historyReadOnly &&
+                                _cfg.type == SalesDocType.order &&
                                 _detail!.status != kSalesStatusDraft) ...[
                               const SizedBox(height: UtenSpacing.s12),
                               _timelineSection(theme),
                             ],
-                            if (_cfg.type == SalesDocType.order &&
+                            if (!_detail!.historyReadOnly &&
+                                _cfg.type == SalesDocType.order &&
                                 _detail!.financeConfirmed) ...[
                               const SizedBox(height: UtenSpacing.s12),
                               Text(
@@ -1943,7 +1948,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       _KV(
         '状态',
         null,
-        badge: _isQuote
+        badge: d.historyReadOnly
+            ? const ImportedDocumentStatusBadge()
+            : _isQuote
             ? SalesQuoteStatusChip(
                 stage: quoteStage,
                 converted: quoteWf.isConverted,

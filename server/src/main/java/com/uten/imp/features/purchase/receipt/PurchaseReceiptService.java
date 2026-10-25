@@ -120,7 +120,8 @@ public class PurchaseReceiptService {
     private final com.uten.imp.application.port.ProcurementInventoryValuePort procurementValue;
 
     @Transactional(readOnly = true)
-    public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<ReceiptListItem> list(ReceiptQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final ReceiptQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         Specification<PurchaseReceipt> spec = receiptSpec(f);
         // 无商业查看权时金额排序同样属于侧信道：即使响应金额为 null，排序次序仍会泄露高低。
         // 2026-09-25 单号列统一：billNo 进两分支白名单（单据号排序不泄露商业信息）。
@@ -133,23 +134,25 @@ public class PurchaseReceiptService {
         var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
         Page<PurchaseReceipt> p = receiptRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<ReceiptListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
-        return p.stream().noneMatch(PurchaseReceipt::isDeleted) ? result
-                : retainedRecords.page(result, "purchase_receipts", p.getContent());
+        return retainedRecords.page(result, "purchase_receipts", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
-    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(ReceiptQueryFilter f) {
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(ReceiptQueryFilter originalFilter) {
+        final ReceiptQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, PurchaseReceipt.class, receiptSpec(f), "billNo"));
     }
 
     /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）。 */
-    private Specification<PurchaseReceipt> receiptSpec(ReceiptQueryFilter f) {
+    private Specification<PurchaseReceipt> receiptSpec(ReceiptQueryFilter originalFilter) {
+        final ReceiptQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope();
         return (Root<PurchaseReceipt> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -170,7 +173,7 @@ public class PurchaseReceiptService {
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.status() != null && f.status() == STATUS_DRAFT) ps.add(cb.isNull(root.get("legacyId")));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
@@ -237,7 +240,7 @@ public class PurchaseReceiptService {
     public void lockPlatformColumnSave(UUID id, ReceiptSaveRequest request) {
         tx.bind();
         var guard = lockReceiptRequest(id, request);
-        requireReceiptForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_receipts",requireReceiptForUpdate(id));
         guard.verifyUnchanged();
     }
 
@@ -248,7 +251,9 @@ public class PurchaseReceiptService {
         tx.bind();
         var mutationGuard=lockReceiptRequest(id,req);
         PurchaseReceipt r = requireReceiptForUpdate(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_receipts",r);
         com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
@@ -269,8 +274,10 @@ public class PurchaseReceiptService {
         tx.bind();
         var mutationGuard=mutationLocks.receipt("PURCHASE",id);
         PurchaseReceipt r = requireReceiptForUpdate(id);
+
         mutationGuard.verifyUnchanged();
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_receipts",r);
         com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         r.setDeleted(true);
@@ -485,6 +492,7 @@ public class PurchaseReceiptService {
         productionSupply.lockPurchaseReceiptMutationDimensions(
                 id);
         PurchaseReceipt r = requireReceiptForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_receipts",r);
         mutationGuard.verifyUnchanged();
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
@@ -965,7 +973,6 @@ public class PurchaseReceiptService {
     }
 
     private ReceiptDetail finishHistory(ReceiptDetail view, PurchaseReceipt entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "purchase_receipts", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

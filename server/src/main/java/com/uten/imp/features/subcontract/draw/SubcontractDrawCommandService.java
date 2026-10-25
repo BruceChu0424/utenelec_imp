@@ -349,7 +349,7 @@ public class SubcontractDrawCommandService {
             for (Object[] row : rows("""
                     SELECT DISTINCT balance.warehouse_id
                     FROM subcontract_material_plan_items line
-                    JOIN stock_balances balance ON balance.goods_id = line.goods_id
+                    JOIN v_stock_operable_balances balance ON balance.goods_id = line.goods_id
                      AND balance.color_id IS NOT DISTINCT FROM line.color_id
                     WHERE line.order_item_id IN (:ids) AND NOT line.is_deleted
                       -- 与 fn_subcontract_draw_line_stock 同一仓口径(ADR-146 计入可用量的仓)。

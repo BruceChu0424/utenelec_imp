@@ -124,30 +124,33 @@ public class FinanceReceiptService {
     private final AccountFlowLedgerService accountFlowLedger;
 
     @Transactional(readOnly = true)
-    public PageResponse<FinanceReceiptListItem> list(FinanceReceiptQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<FinanceReceiptListItem> list(FinanceReceiptQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final FinanceReceiptQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         Specification<FinanceReceipt> spec = receiptSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
         Page<FinanceReceipt> p = receiptRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<FinanceReceiptListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
-        return p.stream().noneMatch(FinanceReceipt::isDeleted) ? result
-                : retainedRecords.page(result, "finance_receipts", p.getContent());
+        return retainedRecords.page(result, "finance_receipts", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
-    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(FinanceReceiptQueryFilter f) {
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(FinanceReceiptQueryFilter originalFilter) {
+        final FinanceReceiptQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, FinanceReceipt.class, receiptSpec(f), "billNo"));
     }
 
     /** 列表谓词（list 与 facets 共用，2026-09-25 单号列统一抽出；billNo=表头单据号精确匹配）。 */
-    private Specification<FinanceReceipt> receiptSpec(FinanceReceiptQueryFilter f) {
+    private Specification<FinanceReceipt> receiptSpec(FinanceReceiptQueryFilter originalFilter) {
+        final FinanceReceiptQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope();
         return (Root<FinanceReceipt> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -173,7 +176,7 @@ public class FinanceReceiptService {
             }
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
             if (f.accountId() != null) ps.add(cb.equal(root.get("accountId"), f.accountId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             // 收款类型：存储值已归一大写；入参大小写不敏感（与 applyHeader 同口径）。
             // CUSTOMER_PREPAYMENT 无查看权限时上方 notEqual 已兜底（这里只会筛出空集）。
             if (f.receiptKind() != null && !f.receiptKind().isBlank()) {
@@ -220,6 +223,7 @@ public class FinanceReceiptService {
         String requestHash = requestHash(req);
         lockCreateIdempotency(makerId, idempotencyKey);
         FinanceReceipt replay = findCreateReplay(makerId, idempotencyKey);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_receipts",replay);
         if (replay != null) {
             if (!Objects.equals(replay.getCreateRequestHash(), requestHash)) {
                 throw new ApiException(ErrorCode.CONFLICT,
@@ -255,7 +259,9 @@ public class FinanceReceiptService {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         FinanceReceipt r = lockActive(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_receipts",r);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(r.getLegacyId());
         requirePrepaymentView(r);
         requirePrepaymentView(req.getReceiptKind());
@@ -293,7 +299,9 @@ public class FinanceReceiptService {
     public void delete(UUID id) {
         tx.bind();
         FinanceReceipt r = lockActive(id);
+
         access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_receipts",r);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(r.getLegacyId());
         requirePrepaymentView(r);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
@@ -313,8 +321,10 @@ public class FinanceReceiptService {
         // 与草稿编辑保持固定锁顺序，避免并发停用/增加子类造成 TOCTOU。
         PaymentStyleHierarchyLock.lock(em);
         FinanceReceipt r = lockActive(id);
+
         access.requireScopedOperationWritable(r.getMakerId(), "只能操作本人负责或已交接的销售收款单",
                 "finance_receipt:approve");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_receipts",r);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(r.getLegacyId());
         requirePrepaymentView(r);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
@@ -357,6 +367,7 @@ public class FinanceReceiptService {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         FinanceReceipt r = lockActive(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_receipts",r);
         requireUnapprovalHeader(r);
         assertCompletePosting(r); // 红冲前确认收款与另付费用流水完整
         OffsetDateTime reversedAt = OffsetDateTime.now();
@@ -1686,7 +1697,6 @@ public class FinanceReceiptService {
     }
 
     private FinanceReceiptDetail finishHistory(FinanceReceiptDetail view, FinanceReceipt entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "finance_receipts", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

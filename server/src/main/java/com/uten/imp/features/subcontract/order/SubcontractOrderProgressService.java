@@ -93,14 +93,14 @@ public class SubcontractOrderProgressService {
         // 出仓单（本订货单全部领料出仓单，含仓库未发出的领料草稿）
         List<IssueDoc> issues = query("""
                 SELECT DISTINCT i.id, i.bill_no, i.status, i.bill_date, w.name, i.approver_name,
-                       (SELECT SUM(ii.qty) FROM subcontract_material_issue_items ii
+                       (SELECT SUM(ii.qty) FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) ii
                         WHERE ii.issue_id = i.id AND ii.is_deleted = FALSE),
                        i.updated_at
-                FROM subcontract_material_issues i
+                FROM (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issues',archive_origin.id)) i
                 LEFT JOIN warehouses w ON w.id = i.warehouse_id
                 WHERE i.is_deleted = FALSE AND EXISTS (
-                    SELECT 1 FROM subcontract_material_issue_items ii
-                    JOIN subcontract_order_items oi ON oi.id = ii.order_item_id
+                    SELECT 1 FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) ii
+                    JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) oi ON oi.id = ii.order_item_id
                     WHERE ii.issue_id = i.id AND ii.is_deleted = FALSE AND oi.order_id = :id)
                 ORDER BY i.bill_date DESC NULLS LAST, i.id
                 """, orderId).stream()
@@ -113,7 +113,7 @@ public class SubcontractOrderProgressService {
         // 进仓单 + IQC 聚合状态
         List<ReceiptDoc> receipts = query("""
                 SELECT r.id, r.bill_no, r.status, r.bill_date, w.name, r.approver_name,
-                       (SELECT SUM(ri.qty) FROM subcontract_receipt_items ri WHERE ri.receipt_id = r.id),
+                       (SELECT SUM(ri.qty) FROM (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) ri WHERE ri.receipt_id = r.id),
                        r.total_local,
                        iqc.iqc_status,
                        iqc.warehouse_stock_in_status,
@@ -121,7 +121,7 @@ public class SubcontractOrderProgressService {
                        iqc.warehouse_stocked_base_qty,
                        iqc.pending_stock_in_base_qty,
                        r.updated_at
-                FROM subcontract_receipts r
+                FROM (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipts',archive_origin.id)) r
                 LEFT JOIN warehouses w ON w.id = r.warehouse_id
                 LEFT JOIN LATERAL (
                     SELECT CASE
@@ -176,8 +176,8 @@ public class SubcontractOrderProgressService {
                       AND iq.receipt_id = r.id
                 ) iqc ON TRUE
                 WHERE r.is_deleted = FALSE AND EXISTS (
-                    SELECT 1 FROM subcontract_receipt_items ri
-                    JOIN subcontract_order_items oi ON oi.id = ri.order_item_id
+                    SELECT 1 FROM (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) ri
+                    JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) oi ON oi.id = ri.order_item_id
                     WHERE ri.receipt_id = r.id AND oi.order_id = :id)
                 ORDER BY r.bill_date DESC NULLS LAST, r.id
                 """, orderId).stream()
@@ -191,12 +191,12 @@ public class SubcontractOrderProgressService {
         // 成品退货单
         List<ReturnDoc> returns = query("""
                 SELECT r.id, r.bill_no, r.status, r.bill_date,
-                       (SELECT SUM(ri.qty) FROM subcontract_return_items ri WHERE ri.return_id = r.id),
+                       (SELECT SUM(ri.qty) FROM (SELECT * FROM subcontract_return_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_return_items',archive_origin.id)) ri WHERE ri.return_id = r.id),
                        r.total_local
-                FROM subcontract_returns r
+                FROM (SELECT * FROM subcontract_returns archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_returns',archive_origin.id)) r
                 WHERE r.is_deleted = FALSE AND EXISTS (
-                    SELECT 1 FROM subcontract_return_items ri
-                    JOIN subcontract_order_items oi ON oi.id = ri.order_item_id
+                    SELECT 1 FROM (SELECT * FROM subcontract_return_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_return_items',archive_origin.id)) ri
+                    JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) oi ON oi.id = ri.order_item_id
                     WHERE ri.return_id = r.id AND oi.order_id = :id)
                 ORDER BY r.bill_date DESC NULLS LAST, r.id
                 """, orderId).stream()
@@ -208,13 +208,13 @@ public class SubcontractOrderProgressService {
         // 损耗单（含扣款）
         List<WasteDoc> wastes = query("""
                 SELECT wst.id, wst.bill_no, wst.status, wst.bill_date,
-                       (SELECT SUM(wi.qty) FROM subcontract_waste_items wi WHERE wi.waste_id = wst.id),
+                       (SELECT SUM(wi.qty) FROM (SELECT * FROM subcontract_waste_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_waste_items',archive_origin.id)) wi WHERE wi.waste_id = wst.id),
                        wst.deduct_amount, wst.deduct_posted
-                FROM subcontract_wastes wst
+                FROM (SELECT * FROM subcontract_wastes archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_wastes',archive_origin.id)) wst
                 WHERE wst.is_deleted = FALSE AND EXISTS (
-                    SELECT 1 FROM subcontract_waste_items wi
-                    JOIN subcontract_material_issue_items ii ON ii.id = wi.material_issue_item_id
-                    JOIN subcontract_order_items oi ON oi.id = ii.order_item_id
+                    SELECT 1 FROM (SELECT * FROM subcontract_waste_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_waste_items',archive_origin.id)) wi
+                    JOIN (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) ii ON ii.id = wi.material_issue_item_id
+                    JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) oi ON oi.id = ii.order_item_id
                     WHERE wi.waste_id = wst.id AND oi.order_id = :id)
                 ORDER BY wst.bill_date DESC NULLS LAST, wst.id
                 """, orderId).stream()
@@ -230,9 +230,9 @@ public class SubcontractOrderProgressService {
                        SUM(COALESCE(ii.returned_qty, 0)), SUM(COALESCE(ii.wasted_qty, 0)),
                        SUM(ii.at_supplier_qty + COALESCE(ii.compensated_qty, 0) - ii.consumed_qty
                            - COALESCE(ii.returned_qty, 0) - COALESCE(ii.wasted_qty, 0))
-                FROM subcontract_material_issue_items ii
-                JOIN subcontract_material_issues i ON i.id = ii.issue_id
-                JOIN subcontract_order_items oi ON oi.id = ii.order_item_id
+                FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) ii
+                JOIN (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issues',archive_origin.id)) i ON i.id = ii.issue_id
+                JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) oi ON oi.id = ii.order_item_id
                 JOIN goods g ON g.id = ii.goods_id
                 LEFT JOIN colors c ON c.id = ii.color_id
                 LEFT JOIN units u ON u.id = ii.unit_id

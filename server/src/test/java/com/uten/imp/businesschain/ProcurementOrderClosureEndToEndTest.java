@@ -489,9 +489,8 @@ class ProcurementOrderClosureEndToEndTest {
         assertThat(wasteCount(item)).isEqualTo(wasteBefore);
     }
 
-    @Test void standaloneImportedOrderWithUnknownUnitCanCloseWithoutGuessingAReplacementQuantity() {
+    @Test void importedOrderWithUnknownUnitCannotStartEitherClosureLifecycleOrChangeRetainedFacts() {
         var w = harness.seedWorld("closure-legacy-"+UUID.randomUUID()); harness.loginAs(w.superAdminUserId());
-        UUID reviewer = harness.createUserWithPerms(w,"closure-legacy-review-"+UUID.randomUUID(),"finance_order_approval:view","finance_order_approval:approve");
         harness.loginAs(w.superAdminUserId()); UUID order=UUID.randomUUID(),item=UUID.randomUUID();
         int legacy=940000000+Math.floorMod(order.hashCode(),1000000);
         // Retained historical input with unknown conversion and zero counters; no trigger or source proof is bypassed.
@@ -503,23 +502,22 @@ class ProcurementOrderClosureEndToEndTest {
             db.update("INSERT INTO purchase_order_items(id,legacy_id,order_id,bill_no,bill_date,line_no,goods_id,unit_id,unit_rate,qty,received_qty,returned_qty,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,goods_snapshot_locked_at) SELECT ?,?,?,?,CURRENT_DATE,1,id,NULL,NULL,10,0,0,code,name,'LEGACY_IMPORT',now() FROM goods WHERE id=?",
                     item,legacy,order,bill,w.goodsD());
         });
-        db.update("UPDATE purchase_orders SET updated_at=now()-interval '90 days' WHERE id=?",order);
-        var preview=closure.preview("PURCHASE",order);
-        assertThat(preview.canSubmit()).isTrue(); assertThat(preview.unverifiedQuantity()).isTrue(); assertThat(preview.canReorder()).isFalse();
-        assertThat(preview.items()).singleElement().satisfies(row -> { assertThat(row.remainingQty()).isNull(); assertThat(row.remainingGiftQty()).isNull(); });
-        assertThatThrownBy(() -> closure.submit("PURCHASE",order,new ClosureRequest("CLOSE_AND_REORDER","不得按未知换算率猜余量",preview.fingerprint())))
-                .isInstanceOf(ApiException.class).hasMessageContaining("核验");
-        var closing=closure.submit("PURCHASE",order,new ClosureRequest("CLOSE","旧库计量待核验，财务确认停止继续履约",preview.fingerprint()));
-        harness.loginAs(reviewer); finance.approveBatch(List.of(decision(closing)),null);
-        assertThat(db.queryForObject("SELECT is_closed FROM purchase_orders WHERE id=?",Boolean.class,order)).isTrue();
+        String beforeOrder=db.queryForObject("SELECT to_jsonb(o)::text FROM purchase_orders o WHERE id=?",String.class,order);
+        String beforeItem=db.queryForObject("SELECT to_jsonb(i)::text FROM purchase_order_items i WHERE id=?",String.class,item);
+        long approvalCases=db.queryForObject("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_id=?",Long.class,order);
+        assertThatThrownBy(() -> closure.preview("PURCHASE",order))
+                .isInstanceOf(ApiException.class).hasMessageContaining("历史");
+        for(String mode:List.of("CLOSE","CLOSE_AND_REORDER")) {
+            assertThatThrownBy(() -> closure.submit("PURCHASE",order,new ClosureRequest(mode,"保留旧单原始事实","unused-readonly-fingerprint")))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("历史");
+        }
+        assertThat(db.queryForObject("SELECT to_jsonb(o)::text FROM purchase_orders o WHERE id=?",String.class,order)).isEqualTo(beforeOrder);
+        assertThat(db.queryForObject("SELECT to_jsonb(i)::text FROM purchase_order_items i WHERE id=?",String.class,item)).isEqualTo(beforeItem);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_id=?",Long.class,order)).isEqualTo(approvalCases);
+        assertThat(db.queryForObject("SELECT is_closed FROM purchase_orders WHERE id=?",Boolean.class,order)).isFalse();
         assertThat(db.queryForObject("SELECT unit_id FROM purchase_order_items WHERE id=?",UUID.class,item)).isNull();
         assertThat(number("SELECT unit_rate FROM purchase_order_items WHERE id=?",item)).isNull();
         assertThat(number("SELECT qty FROM purchase_order_items WHERE id=?",item)).isEqualByComparingTo("10");
-        assertThat(db.queryForObject("SELECT COUNT(*) FROM procurement_order_termination_sources WHERE case_id=?",Long.class,closing.caseId())).isZero();
-        assertThat(db.queryForObject("SELECT replacement_order_id FROM procurement_order_approval_cases WHERE id=?",UUID.class,closing.caseId())).isNull();
-        assertThat(db.queryForObject("SELECT updated_at>now()-interval '1 minute' FROM purchase_orders WHERE id=?",Boolean.class,order)).isTrue();
-        assertThat(db.queryForList("SELECT task_status FROM v_procurement_decomposition_tasks WHERE action_doc_type='PURCHASE_ORDER' AND action_doc_id=?",String.class,order))
-                .containsExactly("COMPLETED");
     }
 
     private Fixture fixture(String label, String gift) {

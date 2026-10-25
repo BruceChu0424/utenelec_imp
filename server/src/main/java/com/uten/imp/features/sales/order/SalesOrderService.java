@@ -142,7 +142,8 @@ public class SalesOrderService {
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order:view')")
-    public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<OrderListItem> list(OrderQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         // 可发货置顶（工作台小项）：sort=shippable 走专用排序——有预留（可发）的单排前，
         // 次按交货日升序（临近在前）、再按开单日期倒序；此时忽略列排序。
         boolean shippableFirst = "shippable".equals(sort);
@@ -160,24 +161,26 @@ public class SalesOrderService {
                         o.getSellerId() == null ? null : sellerNames.get(o.getSellerId()),
                         canEdit && accessPolicy.canWrite(o.getOwnerEmployeeId(), readScope))).getContent(),
                 p);
-        return p.stream().noneMatch(SalesOrder::isDeleted) ? result
-                : retainedRecords.page(result, "sales_orders", p.getContent());
+        return retainedRecords.page(result, "sales_orders", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order:view')")
-    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(OrderQueryFilter f) {
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(OrderQueryFilter originalFilter) {
+        final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, SalesOrder.class, orderSpec(f, false), "billNo"));
     }
 
     /** 列表谓词（list 与 facets 共用，2026-09-25 单号列统一抽出；billNo=表头单据号精确匹配）。 */
-    private Specification<SalesOrder> orderSpec(OrderQueryFilter f, boolean shippableFirst) {
+    private Specification<SalesOrder> orderSpec(OrderQueryFilter originalFilter, boolean shippableFirst) {
+        final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = accessPolicy.scope();
         return (Root<SalesOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
@@ -201,17 +204,17 @@ public class SalesOrderService {
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
             if (f.sellerId() != null) ps.add(cb.equal(root.get("sellerId"), f.sellerId()));
             if (f.currencyId() != null) ps.add(cb.equal(root.get("currencyId"), f.currencyId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
-            if (f.closed() != null) ps.add(cb.equal(root.get("closed"), f.closed()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
+            if (f.closed() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("closed"), f.closed())));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             // Work categories follow the same active header boundary as stats,
             // even if a stopped/closed document retains an old child chain state.
             if ((f.chain() != null && !f.chain().isEmpty())
                     || (f.chainGroup() != null && !f.chainGroup().isBlank())) {
-                ps.add(cb.equal(root.get("status"), STATUS_APPROVED));
-                ps.add(cb.isFalse(root.get("closed")));
-                ps.add(cb.isFalse(root.get("stopped")));
+                ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), STATUS_APPROVED)));
+                ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.isFalse(root.get("closed"))));
+                ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.isFalse(root.get("stopped"))));
             }
             // 链路状态组筛选（工作台统计卡钻取）：存在任一明细行命中即返回
             if (f.chain() != null && !f.chain().isEmpty()) {
@@ -281,12 +284,12 @@ public class SalesOrderService {
                        GREATEST(%s - COALESCE(draft.allocated_qty,0), 0) AS available_to_draft,
                        i.price,
                        o.owner_employee_id
-                FROM sales_order_items i
-                JOIN sales_orders o ON o.id = i.order_id
+                FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i
+                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o ON o.id = i.order_id
                 LEFT JOIN (
                     SELECT si.order_item_id, SUM(si.qty) AS allocated_qty
-                    FROM sales_shipment_items si
-                    JOIN sales_shipments s ON s.id = si.shipment_id
+                    FROM (SELECT * FROM sales_shipment_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_shipment_items',archive_origin.id)) si
+                    JOIN (SELECT * FROM sales_shipments archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_shipments',archive_origin.id)) s ON s.id = si.shipment_id
                     WHERE COALESCE(si.is_deleted,false) = false
                       AND COALESCE(s.is_deleted,false) = false
                       AND s.status = 0
@@ -328,17 +331,17 @@ public class SalesOrderService {
         // V545：待生产/生产中按数量派生（SalesOrderChainSql），部分排产的单同时落两卡。
         String sql = """
                 SELECT
-                  COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM sales_order_items i
+                  COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i
                       WHERE i.order_id = o.id AND i.is_deleted = false AND %s)),
-                  COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM sales_order_items i
+                  COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i
                       WHERE i.order_id = o.id AND i.is_deleted = false AND %s)),
                   COUNT(*) FILTER (WHERE o.finance_confirmed = true
-                      AND EXISTS (SELECT 1 FROM sales_order_items i
+                      AND EXISTS (SELECT 1 FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i
                       WHERE i.order_id = o.id AND i.is_deleted = false
                         AND COALESCE(i.reserved_qty,0) > 0)),
                   COUNT(*) FILTER (WHERE o.is_closed
                         AND o.bill_date >= CAST(:monthStart AS date))
-                FROM sales_orders o
+                FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o
                 WHERE o.is_deleted = false AND o.status = 1
                 """.formatted(SalesOrderChainSql.pendingPlanLinePredicate("i"),
                         SalesOrderChainSql.inProductionLinePredicate("i"))
@@ -1308,6 +1311,7 @@ public class SalesOrderService {
                 : req.getItems().stream().filter(line -> line.getGoodsId() != null)
                     .map(line -> new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(
                             line.getGoodsId(), line.getColorId())).toList());
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",o);
         boolean rejectedRevision = o.isFinanceRejected()
                 && !o.isFinanceConfirmed()
                 && (o.getStatus() == STATUS_APPROVED || o.getStatus() == STATUS_DRAFT);
@@ -1318,6 +1322,7 @@ public class SalesOrderService {
         if (o.getSourceQuoteId() != null) {
             SalesQuote source = quoteRepo.findById(o.getSourceQuoteId())
                     .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "来源报价不存在，不能沿用报价价款"));
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",source);
             requireQuotedHeaderIdentity(source, req, o);
         }
         // 历史单只读保留 CUSTOMER_CONFIRM：不允许把其它策略的订单改回该历史值。
@@ -1682,6 +1687,7 @@ public class SalesOrderService {
     public void delete(UUID id) {
         tx.bind();
         SalesOrder o = requireWritableOrderForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",o);
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(o.getStatus());
         o.setDeleted(true);
         o.setDeletedAt(OffsetDateTime.now());
@@ -1696,6 +1702,7 @@ public class SalesOrderService {
         // 并发认领守卫：他人正审核同一单时拒绝重复操作（UX 层；下方悲观锁+状态前置仍是底线）。
         taskClaim.requireNoActiveClaimByOther(TASK_TYPE_APPROVE, id.toString());
         SalesOrder o = requireWritableOrderForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",o);
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -1784,6 +1791,7 @@ public class SalesOrderService {
     public OrderDetail reverse(UUID id) {
         tx.bind();
         SalesOrder o = requireWritableOrderForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",o);
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -1851,6 +1859,7 @@ public class SalesOrderService {
     public OrderDetail changeQty(UUID id, com.uten.imp.features.sales.order.dto.OrderChangeQtyRequest req) {
         tx.bind();
         SalesOrder o = requireWritableOrderForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",o);
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核订单可改量(草稿请直接编辑)");
         }
@@ -1885,6 +1894,7 @@ public class SalesOrderService {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "改量订单行不可为空或重复");
             }
             SalesOrderItem it = items.get(l.getOrderItemId());
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_order_items",it);
             if (it == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "订单行不属于本订单");
             if (l.getNewQty() == null || l.getNewQty().signum() <= 0) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "新数量必须大于 0");
@@ -1915,6 +1925,7 @@ public class SalesOrderService {
         List<Object[]> qtyChangeFacts = new ArrayList<>();
         for (var l : req.getItems()) {
             SalesOrderItem it = items.get(l.getOrderItemId());
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_order_items",it);
             BigDecimal oldQty = nz(it.getQty());
             BigDecimal newQty = l.getNewQty();
             if (newQty.compareTo(oldQty) == 0) continue;
@@ -2062,6 +2073,7 @@ public class SalesOrderService {
     public OrderDetail cancel(UUID id) {
         tx.bind();
         SalesOrder o = requireWritableOrderForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",o);
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核订单可取消(草稿直接删除)");
         }
@@ -2150,6 +2162,7 @@ public class SalesOrderService {
         // access. Supervisors that must confirm another salesperson's order
         // also need the normal delegated/view-all sales scope.
         SalesOrder order = requireWritableOrderForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",order);
         if (order.getStatus() == null || order.getStatus() != STATUS_APPROVED
                 || order.isStopped() || order.isClosed()) {
             throw new ApiException(ErrorCode.BUSINESS, "仅可为履约中的已审核订单记录分批发货确认");
@@ -2206,14 +2219,17 @@ public class SalesOrderService {
         }
         UUID orderId = mutationFootprint.lockOrderItem(orderItemId);
         SalesOrderItem it = em.find(SalesOrderItem.class, orderItemId, LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_order_items",it);
         if (it == null || isDeletedOrderItem(orderItemId)) {
             throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在");
         }
         em.refresh(it, LockModeType.PESSIMISTIC_WRITE);
         if (!orderId.equals(it.getOrderId())) throw new ApiException(ErrorCode.CONFLICT, "订单行来源已变化，请刷新");
         SalesOrder order = requireWritableOrderForUpdate(orderId, "sales_order:priority");
+
         accessPolicy.requireWritable(order.getOwnerEmployeeId(), "无权设置该订单行优先级",
                 "sales_order:priority");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",order);
         if (order.isFinanceRejected()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
@@ -2253,14 +2269,17 @@ public class SalesOrderService {
         }
         UUID orderId = mutationFootprint.lockOrderItem(orderItemId);
         SalesOrderItem it = em.find(SalesOrderItem.class, orderItemId, LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_order_items",it);
         if (it == null || isDeletedOrderItem(orderItemId)) {
             throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在");
         }
         em.refresh(it, LockModeType.PESSIMISTIC_WRITE);
         if (!orderId.equals(it.getOrderId())) throw new ApiException(ErrorCode.CONFLICT, "订单行来源已变化，请刷新");
         SalesOrder o = requireWritableOrderForUpdate(orderId, "sales_order:reallocate");
+
         accessPolicy.requireWritable(o.getOwnerEmployeeId(), "无权让出该订单行预留",
                 "sales_order:reallocate");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",o);
         if (o.isFinanceRejected()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
@@ -2505,6 +2524,7 @@ public class SalesOrderService {
     public OrderDetail toggleStopped(UUID id, boolean stopped) {
         tx.bind();
         SalesOrder o = requireWritableOrderForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",o);
         if (o.getStatus() != null && o.getStatus() == STATUS_APPROVED) {
             if (stopped && !o.isStopped()) {
                 return cancel(id);
@@ -3406,8 +3426,10 @@ public class SalesOrderService {
         List<SalesOrder> locked = new ArrayList<>();
         for (UUID id : ids) {
             SalesOrder order = em.find(SalesOrder.class, id, LockModeType.PESSIMISTIC_WRITE);
+
             em.refresh(order, LockModeType.PESSIMISTIC_WRITE);
             accessPolicy.requireWritable(order.getOwnerEmployeeId(), "只能为本人负责的订货单重新报价");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",order);
             if (!order.isDeleted() && (order.getStatus() == null || order.getStatus() != STATUS_REVERSED)
                     && !(order.getStatus() != null && order.getStatus() == STATUS_APPROVED && order.isStopped())) {
                 throw new ApiException(ErrorCode.CONFLICT, "请先按原订单流程取消、红冲或删除订货单，再重新报价");
@@ -3445,7 +3467,9 @@ public class SalesOrderService {
                 .filter(quote -> !quote.isDeleted() && quote.getStatus() != null && quote.getStatus() != -1
                         && java.util.Objects.equals(quote.getOriginQuoteId(), sourceQuoteId))
                 .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "重新报价与原始报价不一致"));
+
         accessPolicy.requireWritable(replacement.getMakerId(), "无权生成这次重新报价");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",replacement);
         List<SalesOrder> orders = lockRequotableOrders(sourceQuoteId);
         for (SalesOrder order : orders) {
             chainNotice.resolveReviewNotices("SALES_ORDER", order.getId(), "REQUOTED");
@@ -3589,7 +3613,6 @@ public class SalesOrderService {
     }
 
     private OrderDetail finishHistory(OrderDetail view, SalesOrder entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "sales_orders", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

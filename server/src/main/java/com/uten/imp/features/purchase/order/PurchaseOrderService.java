@@ -138,7 +138,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     private com.uten.imp.application.port.ProcurementOrderClosureReadPort closureRequests;
 
     @Transactional(readOnly = true)
-    public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
+    public PageResponse<OrderListItem> list(OrderQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         boolean priceMasked = purchasePriceMasked();
         Specification<PurchaseOrder> spec = orderSpec(f);
         Pageable pageable = Pageables.of(page, size,
@@ -159,19 +160,20 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 .toList();
         PageResponse<OrderListItem> result = new PageResponse<>(
                 items, p);
-        return p.stream().noneMatch(PurchaseOrder::isDeleted) ? result
-                : retainedRecords.page(result, "purchase_orders", p.getContent());
+        return retainedRecords.page(result, "purchase_orders", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
     @Transactional(readOnly = true)
-    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(OrderQueryFilter f) {
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(OrderQueryFilter originalFilter) {
+        final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, PurchaseOrder.class, orderSpec(f), "billNo"));
     }
 
     /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）：财务审批态切片 + 基础过滤。 */
-    private Specification<PurchaseOrder> orderSpec(OrderQueryFilter f) {
+    private Specification<PurchaseOrder> orderSpec(OrderQueryFilter originalFilter) {
+        final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope();
         // 财务审批态切片（financeApproval）：财务通过前 status 保持 0，草稿段与
         // 「等待财务审核」段同为 status=0，按 PENDING case 集合区分。待审队列很小，
@@ -187,6 +189,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         return (Root<PurchaseOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -207,7 +210,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
-            if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             // 2026-09-25 单号列统一：单据号表头值筛选（精确匹配）。
@@ -216,7 +219,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             }
             if (financeApproval != null) {
                 if (Set.of("PENDING", "REJECTED").contains(financeApproval)) {
-                    ps.add(root.get("status").in(STATUS_DRAFT, STATUS_APPROVED));
+                    ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,root.get("status").in(STATUS_DRAFT, STATUS_APPROVED)));
                 }
                 if ("IN_PROGRESS".equals(financeApproval)) {
                     // 实物已收齐后仍可能有改量财审，必须继续保留在活动队列。
@@ -540,7 +543,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         tx.bind();
         var mutationGuard=lockOrderRequest(id,req);
         PurchaseOrder o = requireOrderForUpdate(id);
+
         access.requireWritable(o.getMakerId(), "只能操作本人负责的采购订货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_orders",o);
         if (o.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         approvalProjection.requireMutable(orderType(), id);
         mutationGuard.verifyUnchanged();
@@ -563,6 +568,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                     && candidates.stream().map(PurchaseOrderItem::getExtraColumns).distinct().count() > 1)
                 throw new ApiException(ErrorCode.CONFLICT, "相同货品存在不同扩展条款，请刷新页面后按明细编号保存");
             PurchaseOrderItem match = candidates.isEmpty() ? null : candidates.getFirst();
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_order_items",match);
             if (line.getId() != null && match == null) throw new ApiException(ErrorCode.CONFLICT, "采购明细不存在或不属于本订单");
             if (match != null) {
                 previousColumns.put(line, match.getExtraColumns());
@@ -585,7 +591,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         tx.bind();
         var mutationGuard=mutationLocks.order(orderType(),id);
         PurchaseOrder o = requireOrderForUpdate(id);
+
         access.requireWritable(o.getMakerId(), "只能操作本人负责的采购订货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_orders",o);
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(o.getStatus());
         approvalProjection.requireMutable(orderType(), id);
         mutationGuard.verifyUnchanged();
@@ -633,7 +641,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         tx.bind();
         var mutationGuard=mutationLocks.order(orderType(),id);
         PurchaseOrder o = requireOrderForUpdate(id);
+
         access.requireWritable(o.getMakerId(), "只能操作本人负责的采购订货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_orders",o);
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(
                     ErrorCode.BUSINESS, "仅草稿订货单可取消；已审核单请使用红冲");
@@ -650,15 +660,18 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     @Transactional(propagation = Propagation.MANDATORY)
     public void requireFinanceSubmitterWritable(UUID id) {
         PurchaseOrder order = requireOrderForUpdate(id);
+
         access.requireWritable(
                 order.getMakerId(),
                 "只能提交本人负责或已正式交接的采购订货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_orders",order);
     }
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public OrderSnapshot lockAndValidateFinanceSubmission(UUID id) {
         PurchaseOrder order = requireOrderForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_orders",order);
         if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.CONFLICT, "仅草稿订货单可提交或执行财务审核");
         }
@@ -706,6 +719,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     @Transactional(propagation = Propagation.MANDATORY)
     public void applyFinanceApproval(UUID id, UUID approverEmployeeId) {
         PurchaseOrder order = requireOrderForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_orders",order);
         if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.CONFLICT, "订货单已不再是待生效草稿");
         }
@@ -783,7 +797,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         tx.bind();
         var mutationGuard=mutationLocks.order(orderType(),id);
         PurchaseOrder o = requireOrderForUpdate(id);
+
         access.requireWritable(o.getMakerId(), "只能操作本人负责的采购订货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_orders",o);
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         mutationGuard.verifyUnchanged();
@@ -833,6 +849,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     @Transactional(propagation = Propagation.MANDATORY)
     public boolean isFinanceApproved(UUID id) {
         PurchaseOrder order = requireOrderForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_orders",order);
         return order.getStatus() != null && order.getStatus() == STATUS_APPROVED;
     }
 
@@ -840,6 +857,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     @Transactional(propagation = Propagation.MANDATORY)
     public OrderSnapshot lockFinanceReconfirmationSnapshot(UUID id) {
         PurchaseOrder order = requireOrderForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_orders",order);
         if (order.getStatus() == null || order.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.CONFLICT, "采购订货单已不在已批准状态，请刷新");
         }
@@ -916,6 +934,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         PurchaseOrder order = requireOrderForUpdate(id);
         if (order.getTerminationCaseId()!=null) throw new ApiException(ErrorCode.CONFLICT,"订单已通过财务审批结束，不能改量");
         access.requireWritable(order.getMakerId(), "只能操作本人负责的采购订货单");
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_orders",order);
         if (order.getStatus() == null || order.getStatus() != STATUS_APPROVED) {
             throw new ApiException(
                     ErrorCode.BUSINESS, "仅财务批准后的采购订货单可改量");
@@ -930,6 +949,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         List<Object[]> changes = new ArrayList<>();
         for (OrderQtyChangeItem change : request.items()) {
             PurchaseOrderItem item = byId.get(change.orderItemId());
+            com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_order_items",item);
             if (item == null) {
                 throw new ApiException(
                         ErrorCode.NOT_FOUND,
@@ -958,11 +978,13 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 ? BigDecimal.ONE : order.getExchangeRate();
         sourceRevision.prepare(orderType(),id,changes.stream().map(change -> {
             PurchaseOrderItem item=(PurchaseOrderItem)change[0];
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_order_items",item);
             return new com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.Line((UUID)change[4],item.getId(),
                     (BigDecimal)change[1],(BigDecimal)change[2],item.getUnitRate()==null?BigDecimal.ONE:item.getUnitRate());
         }).toList());
         for (Object[] change : changes) {
             PurchaseOrderItem item = (PurchaseOrderItem) change[0];
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_order_items",item);
             BigDecimal newQty = (BigDecimal) change[2];
             item.setTotalAmountInput(MoneyPolicy.revisedTotalAmountInput(
                     item.getTotalAmountInput(), (BigDecimal) change[1], newQty));
@@ -981,6 +1003,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         sourceRevision.apply(orderType(),id,changes.stream().map(change ->(UUID)change[4]).toList());
         for(Object[] change:changes) {
             PurchaseOrderItem item=(PurchaseOrderItem)change[0];
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_order_items",item);
             com.uten.imp.common.finance.ProcurementOrderQuantityBounds.synchronizeExpectation(em,orderType(),
                     item.getId(),(BigDecimal)change[2],item.getUnitRate()==null ? BigDecimal.ONE : item.getUnitRate(),
                     (com.uten.imp.common.finance.ProcurementOrderQuantityBounds.ReceiptBound)change[3]);
@@ -994,6 +1017,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         UUID actorEmployee = currentUser.requireEmployeeId();
         for (Object[] change : changes) {
             PurchaseOrderItem item = (PurchaseOrderItem) change[0];
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_order_items",item);
             em.createNativeQuery("""
                     INSERT INTO procurement_order_qty_change_logs(
                         id, order_type, order_id, order_item_id,
@@ -1758,7 +1782,6 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     private OrderDetail finishHistory(OrderDetail view, PurchaseOrder entity, boolean historyRead) {
-        if (!historyRead && !entity.isDeleted()) return view;
         return retainedRecords.detail(view, "purchase_orders", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
     }
 

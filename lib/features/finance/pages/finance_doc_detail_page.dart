@@ -12,6 +12,7 @@ import '../../../shared/auth/native_read_view_scope_mixin.dart';
 // 换成 UtenCollapsingHeaderScrollView——上滑先折叠头部（提示条/表头卡/预收汇总/附件），
 // 「明细 (N)」标题顶到页面顶部后再滚明细表内部；客户预收（无明细表）仍走整页滚动。
 import 'package:flutter/material.dart';
+import '../../../shared/widgets/imported_document_status_badge.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -762,7 +763,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
       _KV(
         '状态',
         null,
-        badge: FinanceStatusBadge(status: d.status, closed: d.closed),
+        badge: d.legacyImported
+            ? const ImportedDocumentStatusBadge()
+            : FinanceStatusBadge(status: d.status, closed: d.closed),
       ),
       // C6：费用单总账过账状态（0 未过账/1 待确认/2 已确认）
       if (_cfg.type == FinanceDocType.expense && d.glStatus != null)

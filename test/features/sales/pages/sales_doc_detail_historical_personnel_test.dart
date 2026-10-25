@@ -57,6 +57,7 @@ void main() {
         'senderName': '历史发货人(UT0192)',
       });
       expect(find.text('历史业务员(UT0191)'), findsOneWidget);
+      expect(find.text('历史已结案 · 只读'), findsWidgets);
       if (type == SalesDocType.shipment || type == SalesDocType.otherShipment) {
         expect(find.text('历史发货人(UT0192)'), findsOneWidget);
       }

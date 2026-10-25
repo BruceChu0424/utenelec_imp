@@ -1,4 +1,5 @@
 import '../../../shared/models/procurement_order_closure.dart';
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/models/procurement_quantity.dart';
 import '../../../shared/models/procurement_source_terms.dart';
 import '../../../shared/business_columns/business_column.dart';
@@ -154,7 +155,7 @@ class PurchaseDocListItem {
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
         legacyId: (json['legacyId'] as num?)?.toInt(),
-        legacyImported: json['legacyImported'] as bool? ?? false,
+        legacyImported: importedBusinessDocument(json),
         financeApproval: json['financeApproval'] is Map
             ? ProcurementFinanceApproval.fromJson(
                 (json['financeApproval'] as Map).cast<String, dynamic>(),
@@ -540,7 +541,7 @@ class PurchaseDocDetail {
       PurchaseDocDetail(
         id: json['id'] as String,
         legacyId: (json['legacyId'] as num?)?.toInt(),
-        legacyImported: json['legacyImported'] as bool? ?? false,
+        legacyImported: importedBusinessDocument(json),
         billNo: json['billNo'] as String?,
         billDate: json['billDate'] as String?,
         supplierId: json['supplierId'] as String?,

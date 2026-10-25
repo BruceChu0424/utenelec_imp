@@ -5,6 +5,7 @@ import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 // 老库 F_DateReport 从未启用（docs/数据迁移/23 §2.2），本期建空结构保未来启用零成本。
 // UI 完整但预期 0 行。结构与生产计划单列表页同构（MasterDataTableView + 状态分段工具条）。
 import 'package:flutter/material.dart';
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -287,7 +288,9 @@ class _ProductionDailyReportListPageState
       key: 'status',
       label: '状态',
       width: 72,
-      value: (it) => productionStatusLabel(it.status),
+      value: (it) => it.legacyId != null
+          ? importedBusinessHistoryLabel
+          : productionStatusLabel(it.status),
       // 状态分类色（草稿中性/已审绿/红冲红）铺整格底色，替代原格内胶囊
       // （2026-09-27 用户口径）；value 仍是纯文本供列宽/排序/筛选。
       cellColor: (context, it) =>

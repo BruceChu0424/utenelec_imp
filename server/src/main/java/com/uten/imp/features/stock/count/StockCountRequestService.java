@@ -126,6 +126,8 @@ public class StockCountRequestService {
             LEFT JOIN stock_balances b ON b.warehouse_id=:warehouse AND b.goods_id=g.id AND b.color_id IS NOT DISTINCT FROM k.color_id
             WHERE NOT g.is_deleted AND NOT COALESCE(g.auto_created,false)
               AND NOT u.is_deleted
+              AND NOT EXISTS(SELECT 1 FROM stock_measurement_holds held WHERE held.warehouse_id=:warehouse
+                  AND held.goods_id=g.id AND held.color_id IS NOT DISTINCT FROM k.color_id AND held.released_at IS NULL)
               AND (k.color_id IS NULL OR NOT c.is_deleted)
             """;
     @Transactional(readOnly=true)

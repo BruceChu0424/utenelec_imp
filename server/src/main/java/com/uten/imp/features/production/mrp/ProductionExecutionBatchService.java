@@ -171,7 +171,7 @@ public class ProductionExecutionBatchService {
                 || source.workshopId()==null || !source.active()) throw conflict("仅有效物料分析来源的等待物料任务可以分批领料");
         Number activity=(Number)em.createNativeQuery("""
                 SELECT (SELECT count(*) FROM production_planning_package_documents WHERE execution_segment_id=:id)
-                    +(SELECT count(*) FROM production_daily_report_items WHERE execution_segment_id=:id)
+                    +(SELECT count(*) FROM (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_report_items',archive_origin.id)) production_daily_report_items WHERE execution_segment_id=:id)
                     +(SELECT count(*) FROM production_material_demands demand
                        JOIN production_material_supply_pegs peg ON peg.demand_id=demand.id WHERE demand.execution_segment_id=:id)
                     +(SELECT count(*) FROM production_material_demands demand
@@ -465,7 +465,7 @@ public class ProductionExecutionBatchService {
                     (plan.status=1 AND package.status='CONFIRMED' AND NOT package.is_deleted AND NOT plan.is_deleted),
                     COALESCE(s.split_root_segment_id,s.id),s.split_start_qty,s.auto_promote_when_ready,
                     s.material_requirement_mode='ZERO_MATERIAL'
-                FROM production_execution_segments s JOIN production_plans plan ON plan.id=s.plan_id
+                FROM production_execution_segments s JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=s.plan_id
                 JOIN production_planning_packages package ON package.id=s.package_id JOIN goods ON goods.id=s.product_goods_id
                 LEFT JOIN units unit ON unit.id=s.product_unit_id
                 WHERE s.id=:id AND NOT s.is_deleted

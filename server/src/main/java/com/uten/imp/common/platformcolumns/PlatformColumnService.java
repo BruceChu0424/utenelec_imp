@@ -673,9 +673,23 @@ public class PlatformColumnService {
     private Map<UUID,PlatformColumnResourceAdapter.RecordAccess> authorize(PlatformColumnResourceAdapter adapter,Set<UUID> ids,boolean write) {
         var access=adapter.authorize(ids,write);
         if(access==null||!access.keySet().equals(ids))throw forbidden("记录不存在或不在当前可访问范围");
-        if(write&&access.values().stream().anyMatch(a->a==null||!a.canWrite()))throw forbidden("当前记录不可编辑扩展字段");
         if(access.values().stream().anyMatch(Objects::isNull))throw forbidden("记录访问状态不完整");
-        return access;
+        Map<String,Object> origins=new LinkedHashMap<>();origins.put("scope",adapter.scope());
+        StringJoiner candidates=new StringJoiner(",");int originIndex=0;
+        for(UUID id:ids){String key="origin"+originIndex++;origins.put(key,id);candidates.add("(CAST(:"+key+" AS uuid))");}
+        Set<UUID> importedIds=ids.isEmpty()?Set.of():new HashSet<>(jdbc.queryForList(
+                "SELECT id FROM (VALUES "+candidates+") candidates(id) WHERE "
+                +"fn_imported_business_document(fn_imported_business_document_scope_table(:scope),id)",origins,UUID.class));
+        var resolved=new LinkedHashMap<UUID,PlatformColumnResourceAdapter.RecordAccess>();
+        for (var entry:access.entrySet()) {
+            boolean imported=importedIds.contains(entry.getKey());
+            if(write&&imported)throw conflict(com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.READ_ONLY_REASON);
+            var grant=entry.getValue();
+            resolved.put(entry.getKey(),new PlatformColumnResourceAdapter.RecordAccess(
+                    !imported&&grant.canWrite(),grant.priceVisible(),grant.facts()));
+        }
+        if(write&&resolved.values().stream().anyMatch(a->!a.canWrite()))throw forbidden("当前记录不可编辑扩展字段");
+        return resolved;
     }
     private PlatformColumnResourceAdapter resource(String scope) {
         currentUser.requireId();var adapter=scope==null?null:adapters.get(scope);

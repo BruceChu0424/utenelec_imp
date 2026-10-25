@@ -46,8 +46,19 @@ class StockMeasurementHoldAuditPostgresTest {
     @BeforeAll static void retainedSource() throws Exception {
         PG.start();
         try(var admin=admin();var sql=admin.createStatement()) {
-            sql.execute("CREATE ROLE uten_migrator LOGIN NOSUPERUSER NOINHERIT PASSWORD '"+PASSWORD+"'");
-            sql.execute("CREATE ROLE uten LOGIN NOSUPERUSER NOINHERIT PASSWORD '"+PASSWORD+"'");
+            try(var password=admin.prepareStatement("SELECT set_config('uten.fixture_role_password',?,false)")) {
+                password.setString(1,PASSWORD);
+                password.execute();
+            }
+            sql.execute("""
+                    DO $fixture$
+                    BEGIN
+                      EXECUTE format('CREATE ROLE uten_migrator LOGIN NOSUPERUSER NOINHERIT PASSWORD %L',
+                                     current_setting('uten.fixture_role_password'));
+                      EXECUTE format('CREATE ROLE uten LOGIN NOSUPERUSER NOINHERIT PASSWORD %L',
+                                     current_setting('uten.fixture_role_password'));
+                    END $fixture$;
+                    """);
             sql.execute("CREATE DATABASE uten_imp OWNER uten_migrator TEMPLATE template0");
         }
         try(var admin=connect(TEMPLATE,PG.getUsername());var sql=admin.createStatement()) {

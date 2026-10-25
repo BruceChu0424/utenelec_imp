@@ -36,13 +36,14 @@ class SalesOrderProgressDisplayTest {
         Query rows = mock(Query.class, RETURNS_SELF);
         when(count.getSingleResult()).thenReturn(1L);
         // Aggregated quantities may include one piece and 1000 metres. They are
-        // legacy stage inputs, never a denominator for a product-completion display.
+        // existing stage inputs, never a denominator for a product-completion display.
         when(rows.getResultList()).thenReturn(Collections.singletonList(new Object[]{
                 UUID.randomUUID().toString(), "SO-MIXED", "2026-10-12", "2026-10-13", "",
                 new BigDecimal("1001"), BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO,
                 new BigDecimal("1001"), true, false, null, "", null, false, false,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 1,
-                new BigDecimal("1001") // authoritative positive outstanding of the physical rows
+                new BigDecimal("1001"), // authoritative positive outstanding of the physical rows
+                false // native document, matching the classifier projection after outstanding
         }));
         when(em.createNativeQuery(anyString())).thenReturn(count, rows);
 
@@ -52,6 +53,8 @@ class SalesOrderProgressDisplayTest {
         assertThat(row.stage()).isEqualTo("PRODUCING");
         assertThat(row.orderQty()).isEqualTo(1001);
         assertThat(row.producedQty()).isEqualTo(1);
+        assertThat(row.legacyImported()).isFalse();
+        assertThat(row.historyReadOnly()).isFalse();
         assertThat(new ObjectMapper().valueToTree(row).get("productionPct").isNull()).isTrue();
         verify(count).setParameter("salesOwners", Set.of(owner));
         verify(rows).setParameter("salesOwners", Set.of(owner));

@@ -49,8 +49,21 @@ class ScopedRuntimePrivilegesPostgresTest {
         policy=new ClassPathResource("db/local-runtime-privileges.sql").getContentAsString(StandardCharsets.UTF_8);
         assertEquals(Files.readString(Path.of("src/main/resources/db/local-runtime-privileges.sql")),policy);
         try(var admin=admin();var sql=admin.createStatement()) {
-            sql.execute("CREATE ROLE uten_migrator LOGIN NOSUPERUSER NOINHERIT PASSWORD '"+OWNER_PASSWORD+"'");
-            sql.execute("CREATE ROLE uten LOGIN NOSUPERUSER NOINHERIT PASSWORD '"+APP_PASSWORD+"'");
+            try(var passwords=admin.prepareStatement("SELECT set_config('uten.fixture_owner_password',?,false), "
+                    +"set_config('uten.fixture_app_password',?,false)")) {
+                passwords.setString(1,OWNER_PASSWORD);
+                passwords.setString(2,APP_PASSWORD);
+                passwords.execute();
+            }
+            sql.execute("""
+                    DO $fixture$
+                    BEGIN
+                      EXECUTE format('CREATE ROLE uten_migrator LOGIN NOSUPERUSER NOINHERIT PASSWORD %L',
+                                     current_setting('uten.fixture_owner_password'));
+                      EXECUTE format('CREATE ROLE uten LOGIN NOSUPERUSER NOINHERIT PASSWORD %L',
+                                     current_setting('uten.fixture_app_password'));
+                    END $fixture$;
+                    """);
             sql.execute("CREATE ROLE acl_observer NOLOGIN NOSUPERUSER NOINHERIT");
             sql.execute("CREATE DATABASE "+TEMPLATE+" OWNER uten_migrator TEMPLATE template0");
         }

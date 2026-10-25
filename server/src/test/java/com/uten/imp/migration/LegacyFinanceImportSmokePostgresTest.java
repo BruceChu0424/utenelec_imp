@@ -43,7 +43,7 @@ class LegacyFinanceImportSmokePostgresTest {
         try(Connection connection=DriverManager.getConnection(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword())) {
             connection.setAutoCommit(false);
             JdbcTemplate tx=new JdbcTemplate(new SingleConnectionDataSource(connection,true));
-            UUID run=context(tx);
+            context(tx);
             String loader=Files.readString(Path.of("legacy_migration/migrate_finance.sql"));
             var stage=Pattern.compile("CREATE TEMP TABLE m_get_stage \\(.*?;",Pattern.DOTALL).matcher(loader);
             assertThat(stage.find()).isTrue();

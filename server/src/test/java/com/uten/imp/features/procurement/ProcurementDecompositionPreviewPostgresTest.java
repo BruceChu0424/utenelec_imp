@@ -52,20 +52,20 @@ class ProcurementDecompositionPreviewPostgresTest {
                     + "bill_no text, need_date date, warehouse_id uuid, source_doc_no text, status smallint DEFAULT 1,"
                     + "is_deleted boolean DEFAULT false,is_closed boolean DEFAULT false,is_stopped boolean DEFAULT false)");
             db.execute("CREATE TABLE " + kind.items + "(id uuid PRIMARY KEY, legacy_id int, legacy_import_run_id uuid,"
-                    + kind.parent + " uuid REFERENCES " + kind.header + "(id),goods_id uuid,color_id uuid,unit_id uuid,"
+                    + kind.parent + " uuid REFERENCES " + kind.header + "(id),goods_id uuid,color_id uuid,unit_id uuid, "
                     + "unit_rate numeric DEFAULT 1,qty numeric DEFAULT 10,ordered_qty numeric DEFAULT 0,"
                     + "deliver_date date,production_plan_no text,source_doc_no text,is_deleted boolean DEFAULT false,"
                     + "quantity_semantics text DEFAULT 'CHARGED_PLUS_GIFT_V1',gift_qty numeric DEFAULT 0,gift_ordered_qty numeric DEFAULT 0)");
-            db.execute("CREATE TABLE " + kind.orders + "(id uuid PRIMARY KEY,legacy_id int,legacy_import_run_id uuid,"
+            db.execute("CREATE TABLE " + kind.orders + "(id uuid PRIMARY KEY,legacy_id int,legacy_import_run_id uuid, "
                     + "status smallint DEFAULT 0,is_deleted boolean DEFAULT false)");
             db.execute("CREATE TABLE " + kind.orderItems + "(id uuid PRIMARY KEY,order_id uuid REFERENCES " + kind.orders
-                    + "(id)," + kind.source + " uuid REFERENCES " + kind.items + "(id),qty numeric DEFAULT 3,"
+                    + "(id)," + kind.source + " uuid REFERENCES " + kind.items + "(id),qty numeric DEFAULT 3, "
                     + "gift_qty numeric DEFAULT 0,quantity_semantics text DEFAULT 'CHARGED_PLUS_GIFT_V1',is_deleted boolean DEFAULT false)");
             db.execute("CREATE TABLE " + kind.sources + "(id uuid PRIMARY KEY,order_item_id uuid REFERENCES "
-                    + kind.orderItems + "(id)," + kind.source + " uuid REFERENCES " + kind.items
+                    + kind.orderItems + "(id), " + kind.source + " uuid REFERENCES " + kind.items
                     + "(id),alloc_qty numeric DEFAULT 3,allocated_gift_qty numeric DEFAULT 0)");
         }
-        db.execute("CREATE TABLE procurement_order_approval_cases(id uuid PRIMARY KEY,order_type text,order_id uuid,"
+        db.execute("CREATE TABLE procurement_order_approval_cases(id uuid PRIMARY KEY,order_type text,order_id uuid, "
                 + "attempt int,status text,request_type text,replacement_order_id uuid)");
         // Install the complete real provenance migration, including FK closure and ALWAYS guards.
         db.execute(Files.readString(Path.of("src/main/resources/db/migration/V926__imported_business_documents_archive_only.sql")));

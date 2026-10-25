@@ -48,5 +48,11 @@ public record OrderProgressRow(
         double shipmentDraftQty,
         double shipmentPendingFinanceQty,
         double shipmentFinanceRejectedQty,
-        double shipmentApprovedQty) {
+        double shipmentApprovedQty,
+        boolean legacyImported) {
+
+    @com.fasterxml.jackson.annotation.JsonProperty("historyReadOnly")
+    public boolean historyReadOnly() {
+        return legacyImported;
+    }
 }

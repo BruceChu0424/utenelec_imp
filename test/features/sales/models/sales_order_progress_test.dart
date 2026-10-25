@@ -1,7 +1,64 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/sales/models/sales_order_progress.dart';
+import 'package:uten_imp/shared/documents/imported_document_policy.dart';
 
 void main() {
+  test('imported raw stages remain evidence and never offer new work', () {
+    for (final stage in [
+      'DRAFT',
+      'REJECTED',
+      'SHIPPABLE',
+      'SHIPMENT_PENDING',
+    ]) {
+      final row = SalesOrderProgressRow.fromJson({
+        'orderId': 'legacy-$stage',
+        'legacyImported': true,
+        'stage': stage,
+        'orderQty': 10,
+        'shippedQty': 2,
+        'reservedQty': 8,
+        'plannedQty': 7,
+        'shipmentDraftQty': 3,
+        'shipmentFinanceRejectedQty': 5,
+      });
+      expect(row.historyReadOnly, isTrue);
+      expect(row.stage, stage);
+      expect(row.orderQty, 10);
+      expect(row.reservedQty, 8);
+      expect(row.plannedQty, 7);
+      expect(row.remainingQty, 8);
+      expect(row.shipmentInFlightQty, 8);
+      expect(row.shippable, isFalse);
+      expect(salesProgressStageText(row), importedBusinessHistoryLabel);
+      expect(salesProgressShipmentInFlightText(row), isNull);
+    }
+  });
+
+  test('progress rows share the platform archive identity parser', () {
+    for (final marker in [
+      {'historyReadOnly': true},
+      {'legacyImported': true},
+      {'legacyId': 17},
+      {'legacyImportRunId': 'import-run'},
+    ]) {
+      expect(
+        SalesOrderProgressRow.fromJson({
+          'orderId': 'old-order',
+          ...marker,
+        }).historyReadOnly,
+        isTrue,
+      );
+    }
+    final native = SalesOrderProgressRow.fromJson(const {
+      'orderId': 'native-order',
+      'stage': 'SHIPPABLE',
+      'reservedQty': 4,
+    });
+    expect(native.historyReadOnly, isFalse);
+    expect(native.shippable, isTrue);
+    expect(salesProgressStageText(native), '可分批发货');
+  });
+
   test(
     'retired mixed-product ratio stays unavailable while stage is retained',
     () {

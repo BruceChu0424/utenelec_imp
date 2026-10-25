@@ -1,12 +1,12 @@
 package com.uten.imp.features.production.fulfillment;
 
+import com.uten.imp.support.MigratedSchemaBaseline;
 import com.uten.imp.support.ProcurementReceiptFixtureSupport;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.postgresql.util.PSQLException;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -33,28 +33,16 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
     private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
             new java.util.concurrent.atomic.AtomicInteger();
 
-    private static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:16-alpine")
-                    .withDatabaseName("uten_imp")
-                    .withUsername("fixture_admin")
-                    .withPassword("uten");
+    private static MigratedSchemaBaseline.ScopedDatabase POSTGRES;
 
     @BeforeAll
-    static void migrate() {
-        POSTGRES.start();
-        com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
+    static void migrate() throws Exception {
+        POSTGRES = MigratedSchemaBaseline.openDatabase("measurement_d019d06c0f2e");
     }
 
     @AfterAll
-    static void stopPostgres() {
-        POSTGRES.stop();
+    static void stopPostgres() throws Exception {
+        if (POSTGRES != null) POSTGRES.close();
     }
 
     @Test
@@ -378,9 +366,9 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                 insert into units(id, code, name) values (?, ?, 'unit')
                 """);
              PreparedStatement goods = connection.prepareStatement("""
-                     insert into goods(id, code, name, min_qty, code_sequence)
+                     insert into goods(id, code, name, min_qty, code_sequence,unit_id)
                      values (?, ?, 'material', 0,
-                             (select coalesce(max(code_sequence), 0) + 1 from goods))
+                             (select coalesce(max(code_sequence), 0) + 1 from goods),?)
                      """);
              PreparedStatement warehouse = connection.prepareStatement("""
                      insert into warehouses(id, code, name)
@@ -396,6 +384,7 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
             unit.executeUpdate();
             goods.setObject(1, goodsId);
             goods.setString(2, "G-" + goodsId);
+            goods.setObject(3, unitId);
             goods.executeUpdate();
             warehouse.setObject(1, warehouseId);
             warehouse.setString(2, "W-" + warehouseId);

@@ -49,6 +49,8 @@ class FinancialQueueSearchPostgresTest {
         PG.start();
         db = new NamedParameterJdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword()));
         MigratedProjectionSchema.createCurrentTables(db.getJdbcTemplate(), TABLES);
+        MigratedProjectionSchema.installImportedDocumentPolicy(
+                db.getJdbcTemplate(), "sales_orders", "sales_quotes", "ar_ap_ledger");
     }
     @AfterAll static void stop() { PG.stop(); }
     @BeforeEach void setup() {
@@ -171,6 +173,12 @@ class FinancialQueueSearchPostgresTest {
         order("ORDERA100X", client, 2026, false, false);
         order("ORDER-confirmed", client, 2026, true, false);
         order("ORDER-hidden", client, 2026, false, true);
+        UUID imported = order("ORDER-imported", client, 2026, false, false);
+        db.getJdbcTemplate().update("UPDATE sales_orders SET legacy_id=17001 WHERE id=?", imported);
+        assertThat(db.getJdbcTemplate().queryForObject(
+                "SELECT fn_imported_business_document('sales_orders',?)", Boolean.class, imported)).isTrue();
+        assertThat(db.getJdbcTemplate().queryForObject(
+                "SELECT fn_imported_business_document('sales_orders',?)", Boolean.class, exact)).isFalse();
         var service = service(SalesOrderFinanceConfirmService.class);
         for (int page = 1; page <= 2; page++) {
             executions.clear();

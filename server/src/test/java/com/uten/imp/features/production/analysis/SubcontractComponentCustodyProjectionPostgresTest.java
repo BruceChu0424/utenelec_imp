@@ -61,9 +61,11 @@ class SubcontractComponentCustodyProjectionPostgresTest {
     @BeforeEach
     void schema() throws SQLException {
         connection = DriverManager.getConnection(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
-        execute("DROP SCHEMA IF EXISTS coverage CASCADE");
-        execute("CREATE SCHEMA coverage");
-        execute("SET search_path TO coverage");
+        // This container belongs only to this fixture. The real imported policy deliberately
+        // addresses public, so isolate data by rebuilding that schema rather than rewriting it.
+        execute("DROP SCHEMA public CASCADE");
+        execute("CREATE SCHEMA public");
+        execute("SET search_path TO public");
         execute("""
                 CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY, analysis_id uuid, route text,
                     operation_type text, status text, external_document_type text, requested_qty numeric,
@@ -123,6 +125,9 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                 """);
         MigratedProjectionSchema.createCurrentTables(new JdbcTemplate(new SingleConnectionDataSource(connection, true)),
                 "preplan_aggregate_batches", "preplan_aggregate_batch_events");
+        MigratedProjectionSchema.installImportedDocumentPolicy(new JdbcTemplate(new SingleConnectionDataSource(connection, true)),
+                "subcontract_orders", "subcontract_order_items", "subcontract_receipts", "subcontract_receipt_items",
+                "subcontract_material_issues", "subcontract_material_issue_items");
         // Keep the original local integrity guards in addition to the full
         // migrated column shapes and authoritative primary/unique constraints.
         execute("""

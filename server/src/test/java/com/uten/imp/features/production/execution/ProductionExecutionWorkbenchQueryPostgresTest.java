@@ -281,6 +281,9 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 ALTER TABLE sales_order_items ADD COLUMN goods_id uuid, ADD COLUMN remark text;
                 ALTER TABLE sales_orders ADD COLUMN remark text;
                 """);
+        com.uten.imp.support.MigratedProjectionSchema.installImportedDocumentPolicy(jdbc,
+                "production_plans", "production_daily_reports", "sales_order_items", "sales_orders",
+                "stock_documents", "stock_document_items");
         var fixtureConfiguration = new Configuration()
                 .setProperty("hibernate.hbm2ddl.auto", "none");
         fixtureConfiguration.getProperties().put("hibernate.connection.datasource", jdbc.getDataSource());

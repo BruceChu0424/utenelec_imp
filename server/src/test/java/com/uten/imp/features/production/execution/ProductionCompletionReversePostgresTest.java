@@ -1,11 +1,11 @@
 package com.uten.imp.features.production.execution;
 
+import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.postgresql.util.PSQLException;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -31,28 +31,16 @@ class ProductionCompletionReversePostgresTest {
     private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
             new java.util.concurrent.atomic.AtomicInteger();
 
-    private static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:16-alpine")
-                    .withDatabaseName("uten_imp")
-                    .withUsername("fixture_admin")
-                    .withPassword("uten");
+    private static MigratedSchemaBaseline.ScopedDatabase POSTGRES;
 
     @BeforeAll
-    static void migrate() {
-        POSTGRES.start();
-        com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
+    static void migrate() throws Exception {
+        POSTGRES = MigratedSchemaBaseline.openDatabase("measurement_5a155f1f83b0");
     }
 
     @AfterAll
-    static void stop() {
-        POSTGRES.stop();
+    static void stop() throws Exception {
+        if (POSTGRES != null) POSTGRES.close();
     }
 
     @Test
@@ -241,13 +229,13 @@ class ProductionCompletionReversePostgresTest {
                 "INSERT INTO units(id,code,name) VALUES(?,?,'piece')",
                 unit, "U-" + unit);
         insert(connection,
-                "INSERT INTO goods(id,code,name,min_qty,code_sequence)"
-                        + " VALUES(?,?,'material',0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
-                material, "M-" + material);
+                "INSERT INTO goods(id,code,name,min_qty,code_sequence,unit_id)"
+                        + " VALUES(?,?,'material',0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods),?)",
+                material, "M-" + material, unit);
         insert(connection,
-                "INSERT INTO goods(id,code,name,min_qty,code_sequence)"
-                        + " VALUES(?,?,'product',0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
-                product, "P-" + product);
+                "INSERT INTO goods(id,code,name,min_qty,code_sequence,unit_id)"
+                        + " VALUES(?,?,'product',0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods),?)",
+                product, "P-" + product, unit);
         insert(connection,
                 "INSERT INTO warehouses(id,code,name)"
                         + " VALUES(?,?,'warehouse')",

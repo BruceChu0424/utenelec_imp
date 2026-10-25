@@ -152,15 +152,17 @@ class LegacySubcontractSettlementProvenancePostgresTest {
         }
     }
 
-    @Test void officialV623ToV624PreservesHistoricalRowsAndResetDefinition() {
+    @Test void officialV623ToV624PreservesAnExistingDraftAndResetDefinition() {
         admin.execute("CREATE DATABASE v624_formal");
         String url=PG.getJdbcUrl().replace("/test?","/v624_formal?");
         var flyway=com.uten.imp.testsupport.TestFlyway.configure().dataSource(url,PG.getUsername(),PG.getPassword()).locations("classpath:db/migration");
-        flyway.target("377").load().migrate();
+        // The formal chain starts genuinely fresh at V623. Pre-V378 invalid
+        // settlement rows remain covered by the explicit projection fixture,
+        // rather than being carried across the forbidden V425 reset.
+        flyway.target("623").load().migrate();
         var db=new JdbcTemplate(new DriverManagerDataSource(url,PG.getUsername(),PG.getPassword()));
         UUID old=UUID.randomUUID();
-        db.update("INSERT INTO subcontract_orders(id,bill_no,bill_date,status) VALUES(?,'EO20200102000001','2020-01-02',1)",old);
-        flyway.target("623").load().migrate();
+        db.update("INSERT INTO subcontract_orders(id,bill_no,bill_date,status) VALUES(?,'EO20200102000001','2020-01-02',0)",old);
         String before=db.queryForObject("SELECT to_jsonb(h)::text FROM subcontract_orders h WHERE id=?",String.class,old);
         assertEquals(1,flyway.target("624").load().migrate().migrationsExecuted);
         assertEquals(before,db.queryForObject("SELECT (to_jsonb(h)-'legacy_import_run_id')::text FROM subcontract_orders h WHERE id=?",String.class,old));

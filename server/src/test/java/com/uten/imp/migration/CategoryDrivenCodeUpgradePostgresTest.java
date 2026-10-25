@@ -15,9 +15,10 @@ import java.sql.Statement;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Non-empty V257 -> latest proof that V258 never copies goods bytea into audit JSON. */
+/** Non-empty V257 -> V424 binary-redaction proof; destructive V425 remains forbidden. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class CategoryDrivenCodeUpgradePostgresTest {
 
@@ -68,8 +69,8 @@ class CategoryDrivenCodeUpgradePostgresTest {
             }
         }
 
-        // V425 审计日志全新开始会在链中 TRUNCATE audit_log，V258 回填产生的
-        // 脱敏证据必须在 V425 之前取证；先推进到 V424 再断言，随后继续到当前头。
+        // The V258 evidence belongs to a historical nonempty chain. Stop before
+        // destructive V425 and verify the real callback keeps that evidence.
         flyway("424").migrate();
 
         try (Connection connection = connection();
@@ -97,8 +98,30 @@ class CategoryDrivenCodeUpgradePostgresTest {
             }
         }
 
-        // 取证完成后继续 V425（清空审计）到当前迁移头，保持非空 257 基线全链演练。
-        flyway(null).migrate();
+        try (Connection connection = connection()) {
+            String before = preservedFacts(connection, goodsId);
+            var refused = assertThrows(org.flywaydb.core.api.FlywayException.class,
+                    () -> flyway("425").migrate());
+            assertTrue(refused.getMessage().contains("V425 audit fresh-start"));
+            assertEquals(before, preservedFacts(connection, goodsId));
+        }
+    }
+
+    private static String preservedFacts(Connection connection, UUID goodsId) throws Exception {
+        try (PreparedStatement query = connection.prepareStatement("""
+                SELECT jsonb_build_object(
+                    'goods_sha256',encode(digest(to_jsonb(g)::text,'sha256'),'hex'),
+                    'audit',(SELECT COALESCE(jsonb_agg(to_jsonb(a) ORDER BY a.id),'[]'::jsonb)
+                             FROM audit_log a WHERE a.target_type='goods' AND a.target_id=g.id::text),
+                    'flyway',(SELECT max(version::integer) FROM flyway_schema_history WHERE success))::text
+                FROM goods g WHERE g.id=?
+                """)) {
+            query.setObject(1, goodsId);
+            try (ResultSet row = query.executeQuery()) {
+                assertTrue(row.next());
+                return row.getString(1);
+            }
+        }
     }
 
     private static Flyway flyway(String target) {

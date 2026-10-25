@@ -39,7 +39,7 @@ class LegacyFinanceImportSmokePostgresTest {
     }
     @AfterAll static void stop() { PG.stop(); }
 
-    @Test void originalReceiptKeepsItsFactsAndHasAnExactSourceProof() throws Exception {
+    @Test void loaderFragmentCannotImportCashWithoutItsPreparedSourcePolicy() throws Exception {
         try(Connection connection=DriverManager.getConnection(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword())) {
             connection.setAutoCommit(false);
             JdbcTemplate tx=new JdbcTemplate(new SingleConnectionDataSource(connection,true));
@@ -57,17 +57,36 @@ class LegacyFinanceImportSmokePostgresTest {
                     .isEqualTo("string|object");
             var command=Pattern.compile("SELECT fn_import_legacy_finance_source\\(\\s*current_setting\\('uten.bootstrap_run_id'\\).*?'RECEIPT'.*?;",Pattern.DOTALL).matcher(loader);
             assertThat(command.find()).isTrue();
-            UUID id=tx.queryForObject(command.group(),UUID.class);
-            assertThat(tx.queryForObject("SELECT receipt_kind FROM finance_receipts WHERE id=?",String.class,id))
-                    .isEqualTo("LEGACY_UNCLASSIFIED");
-            assertThat(tx.queryForObject("SELECT amount_local FROM finance_receipts WHERE id=?",java.math.BigDecimal.class,id))
-                    .isEqualByComparingTo("8");
-            assertThat(tx.queryForObject("SELECT target_id FROM legacy_finance_import_sources WHERE run_id=?",UUID.class,run))
-                    .isEqualTo(id);
-            tx.update("UPDATE legacy_migration_runs SET status='SUCCESS' WHERE run_id=?",run);
-            tx.execute("SET CONSTRAINTS ALL IMMEDIATE");
+            // V21 composes an independently reviewed source-policy package before
+            // this statement. A single posted-row fixture is not that package;
+            // it must not fabricate the three reviewed archive identities.
+            String before=moneyAndAuditFacts(tx);
+            var savepoint=connection.setSavepoint();
+            org.assertj.core.api.Assertions.assertThatThrownBy(()->tx.queryForObject(command.group(),UUID.class))
+                    .isInstanceOf(org.springframework.dao.DataAccessException.class)
+                    .satisfies(error->{
+                        Throwable cause=((org.springframework.dao.DataAccessException)error).getMostSpecificCause();
+                        assertThat(cause).isInstanceOf(java.sql.SQLException.class);
+                        assertThat(((java.sql.SQLException)cause).getSQLState()).isEqualTo("42P01");
+                        assertThat(cause.getMessage()).contains("bootstrap_finance_cash_archive");
+                    });
+            connection.rollback(savepoint);
+            assertThat(moneyAndAuditFacts(tx)).isEqualTo(before);
             connection.rollback();
         }
+    }
+
+    private static String moneyAndAuditFacts(JdbcTemplate tx) {
+        return tx.queryForObject("""
+                SELECT jsonb_build_object(
+                    'receipts',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb) FROM finance_receipts t),
+                    'payments',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb) FROM finance_payments t),
+                    'accounts',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb) FROM accounts t),
+                    'proofs',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb) FROM legacy_finance_import_sources t),
+                    'vouchers',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb) FROM gl_vouchers t),
+                    'entries',(SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb) FROM gl_entries t),
+                    'audit_sha',(SELECT encode(digest(COALESCE(string_agg(to_jsonb(t)::text,E'\\n' ORDER BY id),''),'sha256'),'hex') FROM audit_log t))::text
+                """,String.class);
     }
 
     @Test void everyOriginalCashFamilyAndOpeningSurvivesDeferredFinalValidation() throws Exception {
@@ -112,6 +131,14 @@ class LegacyFinanceImportSmokePostgresTest {
                 }
             }
             assertThat(tx.queryForObject("SELECT count(DISTINCT source_kind) FROM legacy_finance_import_sources WHERE run_id=?",Integer.class,run)).isEqualTo(9);
+            // Keep the original posted-receipt facts on the legitimate importer
+            // path, independently of the rejected policy-less whole-loader path.
+            int originalReceiptSource=mapper.readTree(source("m_get.csv")).path("legacy_id").asInt();
+            UUID originalReceipt=tx.queryForObject("SELECT target_id FROM legacy_finance_import_sources WHERE run_id=? AND source_kind='RECEIPT' AND source_legacy_id=?",UUID.class,run,originalReceiptSource);
+            assertThat(tx.queryForObject("SELECT receipt_kind FROM finance_receipts WHERE id=?",String.class,originalReceipt))
+                    .isEqualTo("LEGACY_UNCLASSIFIED");
+            assertThat(tx.queryForObject("SELECT amount_local FROM finance_receipts WHERE id=?",java.math.BigDecimal.class,originalReceipt))
+                    .isEqualByComparingTo("8");
             tx.execute("SELECT fn_rebuild_account_flow_monthly_summaries(NULL); SELECT fn_assert_account_flow_monthly_integrity(NULL)");
             tx.update("UPDATE legacy_migration_runs SET status='SUCCESS',reconciliation_status='PASSED',finished_at=now(),exit_code=0 WHERE run_id=?",run);
             tx.execute("SET CONSTRAINTS ALL IMMEDIATE");

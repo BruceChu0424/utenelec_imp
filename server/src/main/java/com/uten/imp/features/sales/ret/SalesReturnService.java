@@ -914,6 +914,10 @@ public class SalesReturnService {
         if (sourceOwners.stream().anyMatch(owner -> !Objects.equals(commonOwner, owner))) {
             throw new ApiException(ErrorCode.CONFLICT, "退货来源单据归属不一致");
         }
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.requireNativeSources(
+                em, "sales_shipment_items", outIds);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.requireNativeSources(
+                em, "sales_order_items", orderIds);
         return new LinkedSource(
                 true, commonShipmentId, commonShipmentNo, commonOwner);
     }

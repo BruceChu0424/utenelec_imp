@@ -1,12 +1,12 @@
 package com.uten.imp.features.production.mrp;
 
+import com.uten.imp.support.MigratedSchemaBaseline;
 import com.uten.imp.support.ProcurementReceiptFixtureSupport;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.postgresql.util.PSQLException;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -43,28 +43,16 @@ class ProductionExecutionSegmentPostgresTest {
     private static final LocalDate BILL_DATE = LocalDate.of(2026, 7, 31);
     private static final String CHECK_VIOLATION = "23514";
     private static final String UNIQUE_VIOLATION = "23505";
-    private static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:16-alpine")
-                    .withDatabaseName("uten_imp")
-                    .withUsername("fixture_admin")
-                    .withPassword("uten");
+    private static MigratedSchemaBaseline.ScopedDatabase POSTGRES;
 
     @BeforeAll
-    static void migrate() {
-        POSTGRES.start();
-        com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
+    static void migrate() throws Exception {
+        POSTGRES = MigratedSchemaBaseline.openDatabase("measurement_09398c6f76cd");
     }
 
     @AfterAll
-    static void stopPostgres() {
-        POSTGRES.stop();
+    static void stopPostgres() throws Exception {
+        if (POSTGRES != null) POSTGRES.close();
     }
 
     @Test
@@ -1405,12 +1393,12 @@ class ProductionExecutionSegmentPostgresTest {
                 execute(
                         connection,
                         """
-                        insert into goods(id, code, name, min_qty, code_sequence)
+                        insert into goods(id, code, name, min_qty, code_sequence,unit_id)
                         values (?, ?, 'exact fixture goods', 0,
-                                (select coalesce(max(code_sequence), 0) + 1 from goods))
+                                (select coalesce(max(code_sequence), 0) + 1 from goods),?)
                         """,
                         goodsId,
-                        "GOODS-" + goodsId);
+                        "GOODS-" + goodsId, unitId);
             }
             execute(
                     connection,
@@ -1545,12 +1533,12 @@ class ProductionExecutionSegmentPostgresTest {
                 execute(
                         connection,
                         """
-                        insert into goods(id, code, name, min_qty, code_sequence)
+                        insert into goods(id, code, name, min_qty, code_sequence,unit_id)
                         values (?, ?, 'fixture goods', 0,
-                                (select coalesce(max(code_sequence), 0) + 1 from goods))
+                                (select coalesce(max(code_sequence), 0) + 1 from goods),?)
                         """,
                         goodsId,
-                        "GOODS-" + goodsId);
+                        "GOODS-" + goodsId, unitId);
             }
             execute(
                     connection,
@@ -1819,12 +1807,12 @@ class ProductionExecutionSegmentPostgresTest {
         execute(
                 connection,
                 """
-                insert into goods(id, code, name, min_qty, code_sequence)
+                insert into goods(id, code, name, min_qty, code_sequence,unit_id)
                 values (?, ?, 'legacy material', 0,
-                        (select coalesce(max(code_sequence), 0) + 1 from goods))
+                        (select coalesce(max(code_sequence), 0) + 1 from goods),?)
                 """,
                 materialId,
-                "GOODS-" + materialId);
+                "GOODS-" + materialId, unitId);
         execute(
                 connection,
                 """

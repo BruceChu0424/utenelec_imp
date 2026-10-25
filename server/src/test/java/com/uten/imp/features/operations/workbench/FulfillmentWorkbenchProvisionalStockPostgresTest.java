@@ -1,5 +1,6 @@
 package com.uten.imp.features.operations.workbench;
 
+import com.uten.imp.support.MigratedSchemaBaseline;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.AfterAll;
@@ -12,7 +13,6 @@ import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -42,27 +42,15 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
     private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
             new java.util.concurrent.atomic.AtomicInteger();
 
-    private static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:16-alpine")
-                    .withDatabaseName("uten_imp")
-                    .withUsername("fixture_admin")
-                    .withPassword("uten");
+    private static MigratedSchemaBaseline.ScopedDatabase POSTGRES;
 
     private static EntityManagerFactory entityManagerFactory;
     private static EntityManager entityManager;
     private static TransactionTemplate transactions;
 
     @BeforeAll
-    static void migrate() {
-        POSTGRES.start();
-        com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
+    static void migrate() throws Exception {
+        POSTGRES = MigratedSchemaBaseline.openDatabase("measurement_2f81bfea9c42");
 
         DriverManagerDataSource dataSource = new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(),
@@ -91,11 +79,11 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
     }
 
     @AfterAll
-    static void stop() {
+    static void stop() throws Exception {
         if (entityManagerFactory != null) {
             entityManagerFactory.close();
         }
-        POSTGRES.stop();
+        if (POSTGRES != null) POSTGRES.close();
     }
 
     @Test
@@ -548,27 +536,27 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
         insert(
                 connection,
                 """
-                INSERT INTO goods(id,code,name,min_qty,code_sequence)
-                VALUES(?,?,'物料 A',1,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))
+                INSERT INTO goods(id,code,name,min_qty,code_sequence,unit_id)
+                VALUES(?,?,'物料 A',1,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods),?)
                 """,
                 materialA,
-                "A-" + materialA);
+                "A-" + materialA, unit);
         insert(
                 connection,
                 """
-                INSERT INTO goods(id,code,name,min_qty,code_sequence)
-                VALUES(?,?,'物料 B',0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))
+                INSERT INTO goods(id,code,name,min_qty,code_sequence,unit_id)
+                VALUES(?,?,'物料 B',0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods),?)
                 """,
                 materialB,
-                "B-" + materialB);
+                "B-" + materialB, unit);
         insert(
                 connection,
                 """
-                INSERT INTO goods(id,code,name,min_qty,code_sequence)
-                VALUES(?,?,'成品',0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))
+                INSERT INTO goods(id,code,name,min_qty,code_sequence,unit_id)
+                VALUES(?,?,'成品',0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods),?)
                 """,
                 product,
-                "P-" + product);
+                "P-" + product, unit);
         insert(
                 connection,
                 """

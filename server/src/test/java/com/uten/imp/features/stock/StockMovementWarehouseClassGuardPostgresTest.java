@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock;
 
+import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -7,7 +8,6 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -31,23 +31,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class StockMovementWarehouseClassGuardPostgresTest {
 
-    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("stock_movement_class").withUsername("fixture_admin").withPassword("uten");
+    private static MigratedSchemaBaseline.ScopedDatabase POSTGRES;
     private static final AtomicInteger SEQUENCE = new AtomicInteger(700000);
     private static JdbcTemplate jdbc;
 
     @BeforeAll
-    static void migrate() {
-        POSTGRES.start();
-        com.uten.imp.testsupport.TestFlyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .locations("classpath:db/migration").load().migrate();
+    static void migrate() throws Exception {
+        POSTGRES = MigratedSchemaBaseline.openDatabase("measurement_1d0b936dacb3");
         jdbc = new JdbcTemplate(new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
     }
 
     @AfterAll
-    static void stop() {
-        POSTGRES.stop();
+    static void stop() throws Exception {
+        if (POSTGRES != null) POSTGRES.close();
     }
 
     @Test
@@ -261,9 +258,11 @@ class StockMovementWarehouseClassGuardPostgresTest {
         UUID good = warehouse(c, "G" + SEQUENCE.incrementAndGet(), "测试良品仓" + SEQUENCE.get(), root, false);
         UUID second = warehouse(c, "H" + SEQUENCE.incrementAndGet(), "测试良品二仓" + SEQUENCE.get(), root, false);
         UUID defective = warehouse(c, "D" + SEQUENCE.incrementAndGet(), "测试不良品仓", root, true);
+        UUID unit = UUID.randomUUID();
+        execute(c, "INSERT INTO units(id,code,name) VALUES ('"+unit+"','V801-U-"+unit+"','piece')");
         UUID goods = UUID.randomUUID();
-        execute(c, "INSERT INTO goods(id,code,name,code_sequence) VALUES ('" + goods + "','V801-" + goods
-                + "','测试货品',(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))");
+        execute(c, "INSERT INTO goods(id,code,name,unit_id,code_sequence) VALUES ('" + goods + "','V801-" + goods
+                + "','测试货品','"+unit+"',(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))");
         return new Fixture(root, good, second, defective, goods);
     }
 

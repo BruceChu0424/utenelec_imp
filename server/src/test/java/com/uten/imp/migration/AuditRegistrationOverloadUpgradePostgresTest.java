@@ -163,7 +163,8 @@ class AuditRegistrationOverloadUpgradePostgresTest {
     private static Flyway flyway(String database, String target, boolean compatible, String location) {
         var config = com.uten.imp.testsupport.TestFlyway.configure().dataSource(url(database), DB.getUsername(), DB.getPassword())
                 .locations(location).target(target).cleanDisabled(true);
-        if (compatible) config.callbacks(new AppliedMigrationCompatibilityCallback());
+        config.callbacks(new AuditFreshStartGuardCallback());
+        if (compatible) config.callbacks(new AppliedMigrationCompatibilityCallback(), new AuditFreshStartGuardCallback());
         return config.load();
     }
     private static String cloneDatabase(String label) throws SQLException {

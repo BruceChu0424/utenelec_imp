@@ -87,9 +87,9 @@ class CommercialHeaderFilterPostgresTest {
         assertTrue(containsBill(missing,unknown));assertFalse(containsBill(missing,zero));
         JsonNode activeImported=read("/api/finance/expenses/facets",setup.actor(),Map.of("view","ACTIVE","hf.recordOrigin","LEGACY","hf.amountMin","8","hf.amountMax","8"),200);
         assertFalse(activeImported.path("billNo").toString().contains(legacy));
-        JsonNode imported=read("/api/finance/expenses/facets",setup.actor(),Map.of("view","HISTORY","hf.recordOrigin","LEGACY","hf.amountMin","8","hf.amountMax","8"),200);
+        JsonNode imported=read("/api/finance/expenses/facets",setup.actor(),Map.of("view","HISTORY","originScope","LEGACY","hf.recordOrigin","LEGACY","hf.amountMin","8","hf.amountMax","8"),200);
         assertTrue(imported.path("billNo").toString().contains(legacy));
-        assertTrue(containsBill(read("/api/finance/expenses",setup.actor(),Map.of("view","HISTORY","hf.recordOrigin","LEGACY","hf.amountMin","8","hf.amountMax","8"),200),legacy));
+        assertTrue(containsBill(read("/api/finance/expenses",setup.actor(),Map.of("view","HISTORY","originScope","LEGACY","hf.recordOrigin","LEGACY","hf.amountMin","8","hf.amountMax","8"),200),legacy));
         read("/api/finance/expenses",setup.actor(),Map.of("hf.amountNull","true","hf.amountMin","0"),422);
     }
     @Test void wasteWeightNullAndRealZeroUsePhysicalWeightWithoutExposingSuggestionMoney()throws Exception {
@@ -135,16 +135,23 @@ class CommercialHeaderFilterPostgresTest {
             assertEquals(0,facet.path("billNo").size(),path+" facets preserve keyword and the fixed predicates");
         }
     }
-    @Test void importedReturnApReversalFlagHasAnActualBooleanPredicateOnBothListAndFacet()throws Exception {
+    @Test void importedReturnApFlagsRemainEvidenceWithoutBecomingHistoricalLifecycleFilters()throws Exception {
         var setup=setup();String no=numbers.nextNumber(DocNumberPrefix.SUB_RETURN),yes=numbers.nextNumber(DocNumberPrefix.SUB_RETURN);
         // Imported read projections carry their original AP flags; this fixture does not claim new financial postings.
         db.update("INSERT INTO subcontract_returns(id,bill_no,bill_date,supplier_id,warehouse_id,maker_id,status,ap_posted,legacy_id) VALUES(?,?,CURRENT_DATE,?,?,?,0,FALSE,?)",
                 UUID.randomUUID(),no,setup.world().supplierId(),setup.world().warehouseId(),setup.world().employeeId(),Integer.MAX_VALUE-1100);
         db.update("INSERT INTO subcontract_returns(id,bill_no,bill_date,supplier_id,warehouse_id,maker_id,status,ap_posted,legacy_id) VALUES(?,?,CURRENT_DATE,?,?,?,1,TRUE,?)",
                 UUID.randomUUID(),yes,setup.world().supplierId(),setup.world().warehouseId(),setup.world().employeeId(),Integer.MAX_VALUE-1101);
-        var positive=Map.of("supplierId",setup.world().supplierId().toString(),"hf.apPosted","true");
-        JsonNode page=read("/api/subcontract/returns",setup.actor(),positive,200);assertTrue(containsBill(page,yes));assertFalse(containsBill(page,no));
-        JsonNode facet=read("/api/subcontract/returns/facets",setup.actor(),positive,200);assertTrue(facet.path("billNo").toString().contains(yes));assertFalse(facet.path("billNo").toString().contains(no));
+        for(String flag:List.of("true","false")) {
+            var historical=Map.of("supplierId",setup.world().supplierId().toString(),"originScope","LEGACY",
+                    "hf.apPosted",flag);
+            JsonNode page=read("/api/subcontract/returns",setup.actor(),historical,200);
+            assertTrue(containsBill(page,yes));assertTrue(containsBill(page,no));
+            JsonNode facet=read("/api/subcontract/returns/facets",setup.actor(),historical,200);
+            assertTrue(facet.path("billNo").toString().contains(yes));assertTrue(facet.path("billNo").toString().contains(no));
+        }
+        assertEquals(false,db.queryForObject("SELECT ap_posted FROM subcontract_returns WHERE bill_no=?",Boolean.class,no));
+        assertEquals(true,db.queryForObject("SELECT ap_posted FROM subcontract_returns WHERE bill_no=?",Boolean.class,yes));
     }
 
     @Test void textColumnWordsApplyBeforePaginationAndCannotMatchAnotherColumn()throws Exception {

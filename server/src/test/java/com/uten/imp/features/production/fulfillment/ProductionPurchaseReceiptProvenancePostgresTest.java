@@ -1,12 +1,12 @@
 package com.uten.imp.features.production.fulfillment;
 
+import com.uten.imp.support.MigratedSchemaBaseline;
 import com.uten.imp.support.ProcurementReceiptFixtureSupport;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.postgresql.util.PSQLException;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -30,28 +30,16 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
             new java.util.concurrent.atomic.AtomicInteger();
 
     private static final LocalDate BILL_DATE = LocalDate.of(2026, 7, 31);
-    private static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:16-alpine")
-                    .withDatabaseName("uten_imp")
-                    .withUsername("fixture_admin")
-                    .withPassword("uten");
+    private static MigratedSchemaBaseline.ScopedDatabase POSTGRES;
 
     @BeforeAll
-    static void migrate() {
-        POSTGRES.start();
-        com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
+    static void migrate() throws Exception {
+        POSTGRES = MigratedSchemaBaseline.openDatabase("measurement_74400ba66a63");
     }
 
     @AfterAll
-    static void stopPostgres() {
-        POSTGRES.stop();
+    static void stopPostgres() throws Exception {
+        if (POSTGRES != null) POSTGRES.close();
     }
 
     @Test
@@ -282,9 +270,9 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
                     "insert into units(id, code, name) values (?, ?, 'piece')",
                     unitId,
                     "UNIT-" + unitId);
-            insertGoods(connection, productId);
-            insertGoods(connection, materialId);
-            insertGoods(connection, otherGoodsId);
+            insertGoods(connection, productId, unitId);
+            insertGoods(connection, materialId, unitId);
+            insertGoods(connection, otherGoodsId, unitId);
             insertWarehouse(connection, warehouseId);
             insertWarehouse(connection, otherWarehouseId);
             execute(
@@ -743,17 +731,17 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
         }
     }
 
-    private static void insertGoods(Connection connection, UUID id)
+    private static void insertGoods(Connection connection, UUID id, UUID unitId)
             throws Exception {
         execute(
                 connection,
                 """
-                insert into goods(id, code, name, min_qty, code_sequence)
+                insert into goods(id, code, name, min_qty, code_sequence,unit_id)
                 values (?, ?, 'fixture goods', 0,
-                        (select coalesce(max(code_sequence), 0) + 1 from goods))
+                        (select coalesce(max(code_sequence), 0) + 1 from goods),?)
                 """,
                 id,
-                "GOODS-" + id);
+                "GOODS-" + id, unitId);
     }
 
     private static void insertWarehouse(Connection connection, UUID id)

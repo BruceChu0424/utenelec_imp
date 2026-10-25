@@ -178,12 +178,14 @@ class WorkshopDirectTransferAvailabilityEndToEndTest {
         // Exact source rights still post immediately. Proven workshop-self
         // origins do not start a generic pre-approval readiness attempt; the
         // explicit direct handover reads once after its inbound is approved.
-        long availabilityReads = originReads(sample, "stock_balances");
+        long availabilityReads = originReads(sample, "v_stock_operable_balances");
         long anomalyReads = originReads(sample, "production_workshop_direct_legacy_anomalies");
         System.out.println("READINESS-SNAPSHOT receivers=" + receivers + " availability=" + availabilityReads
                 + " anomalies=" + anomalyReads + " totalStatements=" + sample.logicalStatements);
         assertEquals((long) receivers, availabilityReads);
         assertEquals((long) receivers, anomalyReads);
+        assertEquals(0L, originReads(sample, "stock_balances"),
+                "readiness must use measurement-qualified balances rather than the raw book table");
     }
 
     private static long originReads(ProductionJdbcMeasurement.Sample sample, String table) {

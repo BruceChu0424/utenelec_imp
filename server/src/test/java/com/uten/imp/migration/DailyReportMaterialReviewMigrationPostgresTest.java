@@ -48,6 +48,40 @@ class DailyReportMaterialReviewMigrationPostgresTest {
             "goods_code_reuse_releases",
             "legacy_production_plan_counter_import_contexts",
             "legacy_production_plan_counter_import_sources");
+    // Independent declarations reviewed against V923/V925/V928 CREATE TABLE,
+    // including constraint-owned indexes; never learned from the catalog under test.
+    private static final List<String> V923_TO_V928_TABLE_ADDITIONS=List.of(
+            "procurement_order_termination_sources",
+            "procurement_order_termination_peg_changes",
+            "company_file_nodes",
+            "company_file_acl",
+            "stock_measurement_holds");
+    private static final Map<String,String> V922_TO_V928_INDEX_ADDITIONS=Map.ofEntries(
+            // V922: one finance-termination lookup on the existing approval table.
+            Map.entry("idx_procurement_termination_cases","CREATE INDEX idx_procurement_termination_cases ON public.procurement_order_approval_cases USING btree (order_type, order_id, attempt DESC) WHERE (request_type <> 'ORDER'::text)"),
+            // V923: two primary keys, source/transfer uniqueness and two case lookups.
+            Map.entry("procurement_order_termination_sources_pkey","CREATE UNIQUE INDEX procurement_order_termination_sources_pkey ON public.procurement_order_termination_sources USING btree (id)"),
+            Map.entry("procurement_order_termination_order_type_order_item_id_sour_key","CREATE UNIQUE INDEX procurement_order_termination_order_type_order_item_id_sour_key ON public.procurement_order_termination_sources USING btree (order_type, order_item_id, source_item_id)"),
+            Map.entry("idx_procurement_termination_source_case","CREATE INDEX idx_procurement_termination_source_case ON public.procurement_order_termination_sources USING btree (case_id)"),
+            Map.entry("procurement_order_termination_peg_changes_pkey","CREATE UNIQUE INDEX procurement_order_termination_peg_changes_pkey ON public.procurement_order_termination_peg_changes USING btree (id)"),
+            Map.entry("procurement_order_termination_peg_ch_order_type_transfer_id_key","CREATE UNIQUE INDEX procurement_order_termination_peg_ch_order_type_transfer_id_key ON public.procurement_order_termination_peg_changes USING btree (order_type, transfer_id)"),
+            Map.entry("idx_procurement_termination_peg_case","CREATE INDEX idx_procurement_termination_peg_case ON public.procurement_order_termination_peg_changes USING btree (case_id)"),
+            // V925: immutable original identity, live names, ordering, trash,
+            // idempotent requests, one clean attachment and explicit ACL subjects.
+            Map.entry("company_file_nodes_pkey","CREATE UNIQUE INDEX company_file_nodes_pkey ON public.company_file_nodes USING btree (id)"),
+            Map.entry("company_file_nodes_attachment_id_key","CREATE UNIQUE INDEX company_file_nodes_attachment_id_key ON public.company_file_nodes USING btree (attachment_id)"),
+            Map.entry("company_file_live_name_uq","CREATE UNIQUE INDEX company_file_live_name_uq ON public.company_file_nodes USING btree (COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(name)) WHERE (NOT deleted)"),
+            Map.entry("company_file_parent_idx","CREATE INDEX company_file_parent_idx ON public.company_file_nodes USING btree (parent_id, deleted, \"position\", id)"),
+            Map.entry("company_file_trash_idx","CREATE INDEX company_file_trash_idx ON public.company_file_nodes USING btree (deleted_at DESC, id) WHERE deleted"),
+            Map.entry("company_file_request_uq","CREATE UNIQUE INDEX company_file_request_uq ON public.company_file_nodes USING btree (created_by, request_id) WHERE (request_id IS NOT NULL)"),
+            Map.entry("company_file_attachment_owner_uq","CREATE UNIQUE INDEX company_file_attachment_owner_uq ON public.attachments USING btree (owner_id) WHERE (((owner_type)::text = 'COMPANY_FILE'::text) AND ((lifecycle_state)::text = 'CLEAN'::text))"),
+            Map.entry("company_file_acl_pkey","CREATE UNIQUE INDEX company_file_acl_pkey ON public.company_file_acl USING btree (node_id, subject_type, subject_id, effect)"),
+            Map.entry("company_file_acl_subject_idx","CREATE INDEX company_file_acl_subject_idx ON public.company_file_acl USING btree (subject_type, subject_id, node_id)"),
+            // V928: NULL color participates in cohort identity; pending lookup
+            // is partial without changing any original stock-balance index.
+            Map.entry("stock_measurement_holds_pkey","CREATE UNIQUE INDEX stock_measurement_holds_pkey ON public.stock_measurement_holds USING btree (id)"),
+            Map.entry("stock_measurement_holds_warehouse_id_goods_id_color_id_key","CREATE UNIQUE INDEX stock_measurement_holds_warehouse_id_goods_id_color_id_key ON public.stock_measurement_holds USING btree (warehouse_id, goods_id, color_id) NULLS NOT DISTINCT"),
+            Map.entry("ix_stock_measurement_holds_pending","CREATE INDEX ix_stock_measurement_holds_pending ON public.stock_measurement_holds USING btree (goods_id, color_id, warehouse_id) WHERE (released_at IS NULL)"));
     private static final Map<String,String> V904_TO_V913_INDEX_ADDITIONS=Map.ofEntries(
             // V904__goods_material_identity_evidence.sql
             Map.entry("goods_material_identity_evidence_pkey","CREATE UNIQUE INDEX goods_material_identity_evidence_pkey ON public.goods_material_identity_evidence USING btree (id)"),
@@ -173,6 +207,7 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertTrue(expectedTables.add("subcontract_selected_outbound_commands"));
         assertTrue(expectedTables.add("subcontract_selected_outbound_items"));
         V904_TO_V913_PRESERVED_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
+        V923_TO_V928_TABLE_ADDITIONS.forEach(table->assertTrue(expectedTables.add(table)));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         V885_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         assertEquals(expectedTables.stream().toList(),tables());
@@ -224,6 +259,9 @@ class DailyReportMaterialReviewMigrationPostgresTest {
                 "A selected outbound index must not replace an existing index: "+name));
         V904_TO_V913_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
                 "A declared evidence/index delta must not replace an existing index: "+name));
+        assertEquals(19,V922_TO_V928_INDEX_ADDITIONS.size());
+        V922_TO_V928_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
+                "A termination/library/measurement index must not replace an existing index: "+name));
         assertEquals(expectedIndexes,catalogMap(indexes()));
         assertNull(db.queryForObject("SELECT to_regprocedure('public.business_data_reset()')::text",String.class));
         assertEquals(MigrationRehearsalSupport.CURRENT_HEAD_VERSION,

@@ -54,6 +54,9 @@ class MaterialAnalysisPlanReferenceProjectionPostgresTest {
         jdbc.execute("CREATE UNLOGGED TABLE employees(id uuid,full_name text)");
         jdbc.execute("CREATE UNLOGGED TABLE production_daily_reports(id uuid,is_deleted boolean,status int)");
         jdbc.execute("CREATE UNLOGGED TABLE production_daily_report_items(execution_segment_id uuid,report_id uuid,is_deleted boolean,qty numeric)");
+        jdbc.execute("ALTER TABLE production_daily_report_items ADD COLUMN id uuid DEFAULT gen_random_uuid()");
+        com.uten.imp.support.MigratedProjectionSchema.installImportedDocumentPolicy(jdbc,
+                "production_plans", "production_plan_items", "production_daily_reports", "production_daily_report_items");
         for (int i = 1; i <= 9; i++) {
             jdbc.update("INSERT INTO production_plans VALUES (?,?,?, ?,?,NULL,NULL,NULL)",
                     id(i), i == 3 ? "PP-003 \"装配\"" : "PP-00" + i, i == 6 ? 2 : i == 2 ? 0 : 1, i == 4, i == 5);

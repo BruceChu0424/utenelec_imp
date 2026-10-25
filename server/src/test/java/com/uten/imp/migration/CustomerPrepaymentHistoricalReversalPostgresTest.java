@@ -16,33 +16,37 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class CustomerPrepaymentHistoricalReversalPostgresTest {
     @Test
-    void nonemptyUpgradePreservesHistoricalMoneyAndAllowsOnlyHistoricalClosedOrderUpdates() throws Exception {
+    void v498ToV499PreservesApprovedMoneyAndAllowsACompleteHistoricalOrderReversal() throws Exception {
         try(var postgres=new PostgreSQLContainer("postgres:16.15-alpine")
-                .withDatabaseName("uten_advance_reversal").withUsername("uten").withPassword("uten")) {
+                .withDatabaseName("uten_advance_reversal").withUsername("fixture_admin").withPassword("uten")) {
             postgres.start();
-            // Genuine V0 history predates immutable receipt GL ownership in V407.
-            migrate(postgres,"406");
-            UUID client=UUID.randomUUID(),currency=UUID.randomUUID(),order=UUID.randomUUID();
+            // V425 is reached only as part of this genuinely fresh initialization.
+            migrate(postgres,"498");
+            UUID client=UUID.randomUUID(),order=UUID.randomUUID();
             UUID approved=UUID.randomUUID(),draft=UUID.randomUUID(),unbound=UUID.randomUUID();
-            UUID originalVoucher=UUID.randomUUID(),bankStyle=UUID.randomUUID();
+            UUID bankStyle=UUID.randomUUID(),account=UUID.randomUUID(),approver=UUID.randomUUID();
+            UUID currency,maker,originalVoucher;
             try(Connection c=connection(postgres)) {
-                execute(c,"INSERT INTO clients(id,code,name,status,code_sequence) VALUES(?,'ADV-REV','Advance reversal','使用',2)",client);
-                execute(c,"INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES(?,'ADV-REV-CNY','Advance reversal',1,'使用')",currency);
+                currency=UUID.fromString(value(c,"SELECT id::text FROM currencies WHERE is_base_currency"));
+                maker=UUID.fromString(value(c,"SELECT id::text FROM employees WHERE code='ADMIN'"));
+                execute(c,"INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,'ADV-REV-APPROVER','Advance reversal approver',id_type,department_id,CURRENT_DATE,'active','regular' FROM employees WHERE id=?",approver,maker);
+                execute(c,"INSERT INTO clients(id,code,name,status,code_sequence,sales_payment_type) VALUES(?,'ADV-REV','Advance reversal','使用',2,'CASH')",client);
+                execute(c,"INSERT INTO payment_styles(id,code,name,category,level,status) VALUES(?,'ADV-REV-BANK','Actual bank','ACCOUNT',0,'使用')",bankStyle);
+                execute(c,"INSERT INTO accounts(id,code,name,currency_id,style_id,status,init_balance,balance_current,receipts_total,payments_total) VALUES(?,'ADV-REV-ACCOUNT','Actual account',?,?,'使用',0,0,0,0)",account,currency,bankStyle);
                 execute(c,"""
                         INSERT INTO sales_orders(id,bill_no,bill_date,client_id,currency_id,total_original,status,
                             is_closed,is_stopped,shipment_policy)
                         VALUES(?,'XD20260907009701',DATE '2026-09-07',?,?,100,1,FALSE,FALSE,'ALLOW_PARTIAL')
                         """,order,client,currency);
-                receipt(c,approved,"XS20260907009701",client,currency,order,1);
-                receipt(c,draft,"XS20260907009702",client,currency,order,0);
-                receipt(c,unbound,"XS20260907009703",client,currency,null,0);
-                execute(c,"INSERT INTO payment_styles(id,code,name,category,level,status) VALUES(?,'ADV-REV-BANK','Historical bank','ACCOUNT',0,'使用')",bankStyle);
-                voucher(c,originalVoucher,approved,"RECEIPT",null,1);
-                entries(c,originalVoucher,approved,"RECEIPT",bankStyle,1);
+                nativeReceipt(c,approved,"XS20260907009701",client,currency,order,maker,account);
+                nativeReceipt(c,draft,"XS20260907009702",client,currency,order,maker,account);
+                nativeReceipt(c,unbound,"XS20260907009703",client,currency,null,maker,account);
+                // Use the real account/AR/GL posting fixture, not a fabricated V0 voucher.
+                FinancialActualBankReceiptPostgresTest.approve(c,approved,approver);
+                originalVoucher=UUID.fromString(value(c,"SELECT id::text FROM gl_vouchers WHERE source_type='RECEIPT' AND source_doc_id=?",approved));
                 execute(c,"UPDATE sales_orders SET is_closed=TRUE WHERE id=?",order);
                 rejected(c,"23514","UPDATE finance_receipts SET sales_order_id=sales_order_id,status=-1,reversed_at=now() WHERE id=?",approved);
             }
-            migrate(postgres,"498");
             String before;
             try(Connection c=connection(postgres)){before=snapshot(c,approved);}
             migrate(postgres,"499");
@@ -50,29 +54,76 @@ class CustomerPrepaymentHistoricalReversalPostgresTest {
                 assertThat(snapshot(c,approved)).isEqualTo(before);
                 rejected(c,"23514","UPDATE finance_receipts SET status=1 WHERE id=?",draft);
                 rejected(c,"23514","UPDATE finance_receipts SET sales_order_id=? WHERE id=?",order,unbound);
-                assertThatThrownBy(()->receipt(c,UUID.randomUUID(),"XS20260907009704",client,currency,order,0))
+                UUID finalCurrency=currency,finalMaker=maker;
+                assertThatThrownBy(()->nativeReceipt(c,UUID.randomUUID(),"XS20260907009704",client,finalCurrency,order,finalMaker,account))
                         .isInstanceOf(SQLException.class).extracting(e->((SQLException)e).getSQLState()).isEqualTo("23514");
-                // Keep the complete original/reversal GL pair. The forward
-                // migration must not weaken this independent money constraint.
-                c.setAutoCommit(false);
-                UUID reversalVoucher=UUID.randomUUID();
-                voucher(c,reversalVoucher,approved,"RECEIPT_REV",originalVoucher,0);
-                entries(c,reversalVoucher,approved,"RECEIPT_REV",bankStyle,-1);
-                execute(c,"UPDATE gl_vouchers SET status=1 WHERE id=?",reversalVoucher);
-                execute(c,"UPDATE gl_vouchers SET reversed_by_voucher_id=? WHERE id=?",reversalVoucher,originalVoucher);
-                // Hibernate includes unchanged identity columns in its update.
-                execute(c,"UPDATE finance_receipts SET sales_order_id=sales_order_id,status=-1,reversed_at=now() WHERE id=?",approved);
-                c.commit(); c.setAutoCommit(true);
+                FinancialActualBankReceiptPostgresTest.reverse(c,approved);
                 assertThat(value(c,"SELECT status FROM finance_receipts WHERE id=?",approved)).isEqualTo("-1");
-                assertThat(value(c,"SELECT COUNT(*) FROM gl_entries WHERE voucher_id IN(?,?)",originalVoucher,reversalVoucher)).isEqualTo("4");
+                assertThat(value(c,"SELECT COUNT(*) FROM gl_entries WHERE voucher_id=? OR voucher_id IN(SELECT id FROM gl_vouchers WHERE reversal_of_voucher_id=?)",originalVoucher,originalVoucher)).isEqualTo("4");
                 assertThat(value(c,"SELECT amount_original FROM finance_receipts WHERE id=?",approved)).isEqualTo("40.0000");
+                assertThat(value(c,"SELECT is_consistent::text FROM v_receipt_gl_integrity WHERE receipt_id=?",approved)).isEqualTo("true");
+                assertThat(value(c,"SELECT is_consistent::text FROM v_receipt_flow_integrity WHERE receipt_id=?",approved)).isEqualTo("true");
                 rejected(c,"55000","UPDATE finance_receipts SET amount_original=41 WHERE id=?",approved);
-                // Valid new approval still works when the order is active.
                 execute(c,"UPDATE sales_orders SET is_closed=FALSE WHERE id=?",order);
-                execute(c,"UPDATE finance_receipts SET status=1 WHERE id=?",draft);
+                FinancialActualBankReceiptPostgresTest.approve(c,draft,approver);
                 assertThat(value(c,"SELECT status FROM finance_receipts WHERE id=?",draft)).isEqualTo("1");
             }
         }
+    }
+
+    @Test
+    void preV407MoneyAndGlArePreservedWhenTheHistoricalChainRefusesV425() throws Exception {
+        try(var postgres=new PostgreSQLContainer("postgres:16.15-alpine")
+                .withDatabaseName("uten_advance_old_money").withUsername("fixture_admin").withPassword("uten")) {
+            postgres.start();migrate(postgres,"406");
+            UUID client=UUID.randomUUID(),currency=UUID.randomUUID(),order=UUID.randomUUID();
+            UUID approved=UUID.randomUUID(),voucher=UUID.randomUUID(),bankStyle=UUID.randomUUID();
+            try(Connection c=connection(postgres)) {
+                execute(c,"INSERT INTO clients(id,code,name,status,code_sequence) VALUES(?,'ADV-OLD','Old advance','使用',2)",client);
+                execute(c,"INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES(?,'ADV-OLD-CNY','Old advance',1,'使用')",currency);
+                execute(c,"INSERT INTO sales_orders(id,bill_no,bill_date,client_id,currency_id,total_original,status,is_closed,is_stopped,shipment_policy) VALUES(?,'XD20260907009701',DATE '2026-09-07',?,?,100,1,FALSE,FALSE,'ALLOW_PARTIAL')",order,client,currency);
+                legacyReceipt(c,approved,"XS20260907009701",client,currency,order,1);
+                execute(c,"INSERT INTO payment_styles(id,code,name,category,level,status) VALUES(?,'ADV-OLD-BANK','Historical bank','ACCOUNT',0,'使用')",bankStyle);
+                voucher(c,voucher,approved,"RECEIPT",null,1);entries(c,voucher,approved,"RECEIPT",bankStyle,1);
+            }
+            migrate(postgres,"424");
+            try(Connection c=connection(postgres)) {
+                String before=preservedHistory(c);
+                assertThatThrownBy(()->migrate(postgres,"425"))
+                        .isInstanceOf(org.flywaydb.core.api.FlywayException.class)
+                        .hasStackTraceContaining("V425 audit fresh-start is allowed only");
+                assertThat(preservedHistory(c)).isEqualTo(before);
+                assertThat(value(c,"SELECT amount_original FROM finance_receipts WHERE id=?",approved)).isEqualTo("40.0000");
+                assertThat(value(c,"SELECT max(version::integer) FROM flyway_schema_history WHERE success")).isEqualTo("424");
+            }
+        }
+    }
+
+    private static String preservedHistory(Connection c)throws SQLException {
+        return value(c,"""
+                SELECT jsonb_build_object(
+                    'receipts',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM finance_receipts r),
+                    'vouchers',(SELECT jsonb_agg(to_jsonb(v) ORDER BY id) FROM gl_vouchers v),
+                    'entries',(SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM gl_entries e),
+                    'audit',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM audit_log a))::text
+                """);
+    }
+
+    private static void nativeReceipt(Connection c,UUID id,String bill,UUID client,UUID currency,
+            UUID order,UUID maker,UUID account)throws SQLException {
+        execute(c,"""
+                INSERT INTO finance_receipts(id,bill_no,bill_date,receipt_kind,sales_order_id,client_id,currency_id,account_id,
+                    exchange_rate,amount_original,amount_local,bank_fee,other_fee,status,is_deleted,settlement_authority_version,maker_id,bank_reference,
+                    create_idempotency_key,create_request_hash,settlement_channel,settlement_rate_quote_direction,exchange_rate_source,
+                    exchange_rate_effective_at,bank_booked_at,account_currency_id,account_exchange_rate,account_exchange_rate_source,
+                    account_amount,account_amount_local,bank_fee_account_amount,other_fee_account_amount,fee_settlement_mode,fee_bearer,
+                    fee_account_currency_id,fee_account_exchange_rate,gl_account_style_id,gl_counter_style_id)
+                SELECT ?,?,DATE '2026-09-07','CUSTOMER_PREPAYMENT',?,?,?,a.id,
+                    1,40,40,0,0,0,FALSE,1,?,'ADV-REV-EXACT-BANK',?,repeat('a',64),
+                    'DIRECT_ACCOUNT','BASE_PER_SETTLEMENT','BANK_STATEMENT',now(),now(),a.currency_id,1,'BASE_CURRENCY_IDENTITY',
+                    40,40,0,0,'NONE','NONE',a.currency_id,1,a.style_id,system_posting_style_id('CUSTOMER_ADVANCE')
+                FROM accounts a WHERE a.id=?
+                """,id,bill,order,client,currency,maker,"advance-reversal-"+id,account);
     }
 
     private static void voucher(Connection c,UUID id,UUID receipt,String type,UUID original,int status)throws SQLException {
@@ -89,7 +140,7 @@ class CustomerPrepaymentHistoricalReversalPostgresTest {
                 """,voucher,bankStyle,direction,type,receipt,voucher,-direction,type,receipt);
     }
 
-    private static void receipt(Connection c,UUID id,String bill,UUID client,UUID currency,UUID order,int status)throws SQLException {
+    private static void legacyReceipt(Connection c,UUID id,String bill,UUID client,UUID currency,UUID order,int status)throws SQLException {
         execute(c,"""
                 INSERT INTO finance_receipts(id,bill_no,bill_date,client_id,currency_id,exchange_rate,
                     amount_original,amount_local,bank_fee,other_fee,status,receipt_kind,sales_order_id,is_deleted)

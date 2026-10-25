@@ -38,8 +38,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "uten.bootstrap.admin-login=return-authority-bootstrap-test",
         "uten.bootstrap.admin-password=ReturnAuthorityAdmin-1!"
 })
-// Historical frozen shipment amounts, including old rounded commercial totals.
-// Current V2 sales/finance/warehouse instructions are covered by FullChainEndToEndTest.
+// Imported frozen shipment facts are immutable evidence after V926.
+// Amount arithmetic remains covered by SalesReturnAmountAuthorityTest; current native
+// sales/finance/warehouse transitions are exercised by FullChainEndToEndTest.
 class SalesReturnAmountAuthorityPostgresTest {
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
     private static final AtomicInteger SEQUENCE = new AtomicInteger();
@@ -55,69 +56,90 @@ class SalesReturnAmountAuthorityPostgresTest {
     @Autowired PermissionResolver permissions;
     @Autowired TransactionTemplate transactions;
     @Autowired TxSessionVars tx;
+    @Autowired com.uten.imp.common.docnumber.DocNumberService numbers;
     @AfterEach void clearAuthentication() { SecurityContextHolder.clearContext(); }
 
     @Test
-    void tamperedDraftAmountsCannotOvercreditAndSplitReturnsExactlyExhaustOriginalDebt() {
+    void retainedShipmentCannotCreateSplitReturnsOrOvercreditItsFrozenDebt() {
         Fixture fixture = seed();
-        Long historicalMovementCount = jdbc.queryForObject(
-                "SELECT count(*) FROM stock_movements WHERE goods_id = ?", Long.class, fixture.goodsId());
-        for (int i = 0; i < 3; i++) {
-            ReturnSaveRequest request = request(fixture);
-            var created = service.create(request);
-            var approved = service.approve(created.getId());
-            assertThat(approved.getTotalOriginal()).isLessThan(BigDecimal.ONE);
-            assertThat(approved.getItems().getFirst().getPrice()).isEqualByComparingTo("0.5");
-            assertThatThrownBy(() -> service.approve(created.getId()))
-                    .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+        FrozenState before = freeze(fixture);
+        assertThat(jdbc.queryForObject("SELECT total_original FROM sales_shipments WHERE id=?",
+                BigDecimal.class, fixture.shipmentId())).isEqualByComparingTo("1");
+        assertThat(jdbc.queryForObject("SELECT total_local FROM sales_shipments WHERE id=?",
+                BigDecimal.class, fixture.shipmentId())).isEqualByComparingTo("7");
+        for (int split = 0; split < 3; split++) {
+            assertArchiveRejected(() -> service.create(request(fixture)));
+            assertUnchanged(fixture, before);
         }
-        assertThat(jdbc.queryForObject("""
-                SELECT SUM(ledger.amount_original) FROM ar_ap_ledger ledger
-                JOIN sales_returns returned ON returned.id = ledger.source_doc_id
-                WHERE ledger.source_doc_type = 'SALES_RETURN' AND ledger.status = 1
-                  AND returned.source_shipment_id = ?
-                """, BigDecimal.class, fixture.shipmentId())).isEqualByComparingTo("-1");
-        assertThat(jdbc.queryForObject("SELECT returned_amount FROM sales_shipment_items WHERE id = ?",
-                BigDecimal.class, fixture.shipmentItemId())).isEqualByComparingTo("7");
-        assertThat(jdbc.queryForObject("SELECT SUM(received_base_qty) FROM sales_return_quality_items WHERE goods_id = ?",
-                BigDecimal.class, fixture.goodsId())).isEqualByComparingTo("3");
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM stock_movements WHERE goods_id = ?",
-                Long.class, fixture.goodsId())).isEqualTo(historicalMovementCount);
-        assertThat(jdbc.queryForObject("""
-                SELECT count(*) FROM stock_movements WHERE goods_id=? AND source_doc_type='SALES_RETURN'
-                """, Long.class, fixture.goodsId())).isZero();
-        var pendingCost = jdbc.queryForMap("""
-                SELECT authority_type,initial_known_value,initial_complete
-                FROM stock_value_acquisition_sources WHERE evidence_id=?
-                """, fixture.originalMovementId());
-        assertThat(pendingCost.get("authority_type")).isEqualTo("LEGACY_SALES_MOVEMENT");
-        assertThat(pendingCost.get("initial_known_value")).isNull();
-        assertThat(pendingCost.get("initial_complete")).isEqualTo(false);
-        var overReturn = service.create(request(fixture));
-        assertThatThrownBy(() -> service.approve(overReturn.getId()))
-                .isInstanceOf(com.uten.imp.common.web.ApiException.class);
     }
 
     @Test
-    void currencyAndRateTamperingFailBeforeQuarantineAndLedgerEffects() {
+    void retainedSourceDraftsCannotBeApprovedEditedDeletedOrReversed() {
         Fixture fixture = seed();
+        UUID first = retainedSourceDraft(fixture, BusinessTime.today());
+        UUID second = retainedSourceDraft(fixture, BusinessTime.today());
+        FrozenState before = freeze(fixture);
+        assertArchiveRejected(() -> service.approve(first));
+        assertArchiveRejected(() -> service.update(second, request(fixture)));
+        assertArchiveRejected(() -> service.delete(second));
+        assertArchiveRejected(() -> service.reverse(first));
+        assertUnchanged(fixture, before);
+    }
+
+    @Test
+    void priorBusinessMonthDoesNotReactivateRetainedSourcesOrRewriteTheirMoney() {
+        Fixture fixture = seed();
+        var priorDate = BusinessTime.today().withDayOfMonth(1).minusDays(1);
+        UUID retained = retainedSourceDraft(fixture, priorDate);
+        FrozenState before = freeze(fixture);
+        var request = request(fixture);
+        request.setBillDate(priorDate);
+        assertArchiveRejected(() -> service.create(request));
+        assertArchiveRejected(() -> service.reverse(retained));
+        assertUnchanged(fixture, before);
+    }
+
+    @Test
+    void concurrentAttemptsCannotTurnTheSameHistoricalShipmentIntoNewReturns() throws Exception {
+        Fixture fixture = seed();
+        FrozenState before = freeze(fixture);
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var start = new java.util.concurrent.CountDownLatch(1);
+            var futures = java.util.stream.IntStream.range(0, 2).mapToObj(index -> executor.submit(() -> {
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+                try {
+                    start.await();
+                    assertArchiveRejected(() -> service.create(request(fixture)));
+                    return true;
+                } finally { SecurityContextHolder.clearContext(); }
+            })).toList();
+            start.countDown();
+            for (var future : futures) assertThat(future.get(30, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        }
+        assertUnchanged(fixture, before);
+    }
+
+    @Test
+    void currencyAndRateTamperingCannotMakeAnArchivedSourceWritable() {
+        Fixture fixture = seed();
+        FrozenState before = freeze(fixture);
         var request = request(fixture);
         request.setExchangeRate(new BigDecimal("99"));
-        var created = service.create(request);
-        assertThatThrownBy(() -> service.approve(created.getId()))
-                .isInstanceOf(com.uten.imp.common.web.ApiException.class);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_return_quality_items WHERE return_id = ?",
-                Long.class, created.getId())).isZero();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM ar_ap_ledger WHERE source_doc_id = ?",
-                Long.class, created.getId())).isZero();
-        assertThat(jdbc.queryForObject("SELECT returned_qty FROM sales_shipment_items WHERE id = ?",
-                BigDecimal.class, fixture.shipmentItemId())).isZero();
+        assertArchiveRejected(() -> service.create(request));
+        assertUnchanged(fixture, before);
+    }
+
+    private void assertArchiveRejected(Runnable action) {
+        assertThatThrownBy(action::run).isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,
+                error -> {
+                    assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.BUSINESS);
+                    assertThat(error.getMessage()).contains("历史原始单据仅供核对");
+                });
     }
 
     private ReturnSaveRequest request(Fixture fixture) {
         var request = new ReturnSaveRequest();
-        // The source is historical, but this is a new return whose reversible
-        // AR posting belongs to the current Asia/Shanghai business period.
         request.setBillDate(BusinessTime.today());
         request.setClientId(fixture.clientId());
         request.setWarehouseId(fixture.warehouseId());
@@ -135,112 +157,70 @@ class SalesReturnAmountAuthorityPostgresTest {
         return request;
     }
 
-    @Test
-    void reversingTheEarlierPartialReturnPreservesLaterCreditAndAllowsFullReturnAgain() {
-        Fixture fixture = seed();
-        UUID first = service.create(request(fixture)).getId();
-        UUID second = service.create(request(fixture)).getId();
-        service.approve(first);
-        service.approve(second);
-        // ADR-112: 累计份额 0.3333 / 0.6667, 本批 = 累计份额差, 末批收回全部剩余。
-        assertThat(service.detail(first).getTotalOriginal()).isEqualByComparingTo("0.3333");
-        assertThat(service.detail(second).getTotalOriginal()).isEqualByComparingTo("0.3334");
-        service.reverse(first);
+    /** Explicit maintenance fixture for an inert source-linked draft, never an approved financial event. */
+    private UUID retainedSourceDraft(Fixture fixture, java.time.LocalDate date) {
+        return transactions.execute(ignored -> {
+            tx.bind();
+            UUID id = UUID.randomUUID();
+            AuthUser user = (AuthUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            jdbc.update("""
+                    INSERT INTO sales_returns(id,bill_no,bill_date,client_id,warehouse_id,currency_id,
+                        exchange_rate,tax_rate,owner_employee_id,maker_id,status,source_shipment_id,
+                        source_doc_no,total_original,total_local)
+                    VALUES(?,?,?,?,?,?,7,13,?,?,0,?,(SELECT bill_no FROM sales_shipments WHERE id=?),0,0)
+                    """, id, numbers.nextNumber(com.uten.imp.common.docnumber.DocNumberPrefix.SALES_RETURN),
+                    date, fixture.clientId(), fixture.warehouseId(), fixture.currencyId(),
+                    user.getEmployeeId(), user.getEmployeeId(), fixture.shipmentId(), fixture.shipmentId());
+            assertThat(jdbc.queryForObject("SELECT fn_imported_business_document('sales_returns',?)",
+                    Boolean.class, id)).isTrue();
+            return id;
+        });
+    }
+
+    private FrozenState freeze(Fixture fixture) {
+        List<String> facts = List.of(
+                rows("sales_shipments", "id", fixture.shipmentId()),
+                rows("sales_shipment_items", "shipment_id", fixture.shipmentId()),
+                rows("ar_ap_ledger", "source_doc_id", fixture.shipmentId()),
+                rows("stock_movements", "goods_id", fixture.goodsId()),
+                rows("sales_returns", "source_shipment_id", fixture.shipmentId()),
+                rows("sales_return_quality_items", "goods_id", fixture.goodsId()),
+                rows("stock_value_acquisition_sources", "evidence_id", fixture.originalMovementId()));
+        List<AuditRow> audit = jdbc.query("""
+                SELECT id,to_jsonb(a)::text FROM audit_log a
+                WHERE target_id IN (?,?,?) OR target_id IN (
+                    SELECT id::text FROM ar_ap_ledger WHERE source_doc_id=?)
+                   OR target_id IN (SELECT id::text FROM sales_returns WHERE source_shipment_id=?)
+                ORDER BY id
+                """, (rs, index) -> new AuditRow(rs.getLong(1), rs.getString(2)),
+                fixture.shipmentId().toString(), fixture.shipmentItemId().toString(),
+                fixture.originalMovementId().toString(), fixture.shipmentId(), fixture.shipmentId());
+        return new FrozenState(facts, audit);
+    }
+
+    private void assertUnchanged(Fixture fixture, FrozenState before) {
+        assertThat(freeze(fixture).facts()).isEqualTo(before.facts());
+        for (AuditRow row : before.audit()) {
+            assertThat(jdbc.queryForObject("SELECT to_jsonb(a)::text FROM audit_log a WHERE id=?",
+                    String.class, row.id())).isEqualTo(row.json());
+        }
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM ar_ap_ledger ledger JOIN sales_returns returned ON returned.id=ledger.source_doc_id
+                WHERE returned.source_shipment_id=?
+                """, Long.class, fixture.shipmentId())).isZero();
         assertThat(jdbc.queryForObject("SELECT returned_qty FROM sales_shipment_items WHERE id=?",
-                BigDecimal.class, fixture.shipmentItemId())).isEqualByComparingTo("1");
+                BigDecimal.class, fixture.shipmentItemId())).isZero();
         assertThat(jdbc.queryForObject("SELECT returned_amount FROM sales_shipment_items WHERE id=?",
-                BigDecimal.class, fixture.shipmentItemId())).isEqualByComparingTo("2.3334");
-        for (int remaining = 0; remaining < 2; remaining++) {
-            UUID replacement = service.create(request(fixture)).getId();
-            service.approve(replacement);
-        }
-        assertThat(service.detail(second).getTotalOriginal()).isEqualByComparingTo("0.3334");
-        assertThat(jdbc.queryForObject("""
-                SELECT SUM(ledger.amount_original) FROM ar_ap_ledger ledger
-                JOIN sales_returns returned ON returned.id=ledger.source_doc_id
-                WHERE ledger.source_doc_type='SALES_RETURN' AND ledger.status=1
-                  AND returned.source_shipment_id=?
-                """, BigDecimal.class, fixture.shipmentId())).isEqualByComparingTo("-1");
-        assertThat(jdbc.queryForObject("""
-                SELECT SUM(ledger.amount_original_local) FROM ar_ap_ledger ledger
-                JOIN sales_returns returned ON returned.id=ledger.source_doc_id
-                WHERE ledger.source_doc_type='SALES_RETURN' AND ledger.status=1
-                  AND returned.source_shipment_id=?
-                """, BigDecimal.class, fixture.shipmentId())).isEqualByComparingTo("-7");
-        assertThat(jdbc.queryForObject("SELECT returned_qty FROM sales_shipment_items WHERE id=?",
-                BigDecimal.class, fixture.shipmentItemId())).isEqualByComparingTo("3");
-        assertThat(jdbc.queryForObject("SELECT amount_original FROM ar_ap_ledger WHERE source_doc_id=?",
-                BigDecimal.class, first)).isEqualByComparingTo("-0.3333");
+                BigDecimal.class, fixture.shipmentItemId())).isZero();
     }
 
-    @Test
-    void priorBusinessMonthReturnReversalPreservesOriginalDocumentQuantityAndCredit() {
-        Fixture fixture = seed();
-        var priorPeriod = request(fixture);
-        priorPeriod.setBillDate(BusinessTime.today().withDayOfMonth(1).minusDays(1));
-        UUID returned = service.create(priorPeriod).getId();
-        service.approve(returned);
-        var documentBefore = jdbc.queryForMap("""
-                SELECT status, ar_posted, is_deleted, total_original, total_local
-                FROM sales_returns WHERE id=?
-                """, returned);
-        var ledgerBefore = jdbc.queryForMap("SELECT * FROM ar_ap_ledger WHERE source_doc_id=?", returned);
-        var shipmentBefore = jdbc.queryForMap("""
-                SELECT returned_qty, returned_amount FROM sales_shipment_items WHERE id=?
-                """, fixture.shipmentItemId());
-
-        assertThatThrownBy(() -> service.reverse(returned))
-                .isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,
-                        error -> assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.CONFLICT))
-                .hasMessageContaining("跨会计期间红冲");
-
-        assertThat(jdbc.queryForMap("""
-                SELECT status, ar_posted, is_deleted, total_original, total_local
-                FROM sales_returns WHERE id=?
-                """, returned)).isEqualTo(documentBefore);
-        assertThat(jdbc.queryForMap("SELECT * FROM ar_ap_ledger WHERE source_doc_id=?", returned))
-                .isEqualTo(ledgerBefore);
-        assertThat(jdbc.queryForMap("""
-                SELECT returned_qty, returned_amount FROM sales_shipment_items WHERE id=?
-                """, fixture.shipmentItemId())).isEqualTo(shipmentBefore);
-        assertThat(jdbc.queryForObject("SELECT SUM(received_base_qty) FROM sales_return_quality_items WHERE return_id=?",
-                BigDecimal.class, returned)).isEqualByComparingTo("1");
+    private String rows(String table, String key, UUID id) {
+        return jdbc.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(record) ORDER BY to_jsonb(record)::text),'[]'::jsonb)::text FROM "
+                + table + " record WHERE " + key + "=?", String.class, id);
     }
 
-    @Test
-    void concurrentReturnsSerializeOnTheShipmentAndCannotExceedOriginalQuantityOrDebt() throws Exception {
-        Fixture fixture = seed();
-        var request = request(fixture);
-        request.getItems().getFirst().setQty(new BigDecimal("2"));
-        UUID first = service.create(request).getId();
-        UUID second = service.create(request).getId();
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
-            var start = new java.util.concurrent.CountDownLatch(1);
-            var futures = List.of(first, second).stream().map(id -> executor.submit(() -> {
-                SecurityContextHolder.getContext().setAuthentication(authentication);
-                try {
-                    start.await();
-                    service.approve(id);
-                    return true;
-                } catch (com.uten.imp.common.web.ApiException expectedConflict) {
-                    return false;
-                } finally { SecurityContextHolder.clearContext(); }
-            })).toList();
-            start.countDown();
-            int approvals = 0;
-            for (var future : futures) if (future.get(30, java.util.concurrent.TimeUnit.SECONDS)) approvals++;
-            assertThat(approvals).isEqualTo(1);
-        }
-        assertThat(jdbc.queryForObject("SELECT returned_qty FROM sales_shipment_items WHERE id = ?",
-                BigDecimal.class, fixture.shipmentItemId())).isEqualByComparingTo("2");
-        assertThat(jdbc.queryForObject("""
-                SELECT SUM(ledger.amount_original) FROM ar_ap_ledger ledger
-                JOIN sales_returns returned ON returned.id = ledger.source_doc_id
-                WHERE ledger.source_doc_type = 'SALES_RETURN' AND ledger.status = 1
-                  AND returned.source_shipment_id = ?
-                """, BigDecimal.class, fixture.shipmentId())).isEqualByComparingTo("-0.6667");
-    }
+    private record AuditRow(long id, String json) {}
+    private record FrozenState(List<String> facts, List<AuditRow> audit) {}
 
     private Fixture seed() {
         Fixture fixture = transactions.execute(ignored -> seedHistoricalSource());

@@ -216,6 +216,7 @@ class SalesRepository {
   Future<PagedResult<SalesOrderProgressRow>> progress({
     int page = 1,
     int size = 20,
+    BusinessDocumentOrigin origin = BusinessDocumentOrigin.current,
     String stage = '',
     String keyword = '',
     String? dateFrom,
@@ -227,6 +228,7 @@ class SalesRepository {
     final json = await api.get(
       '/sales/orders/progress',
       query: {
+        'originScope': origin.apiValue,
         'page': page,
         'size': size,
         if (stage.isNotEmpty) 'stage': stage,
@@ -243,6 +245,7 @@ class SalesRepository {
 
   /// 订单进度订单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。
   Future<List<MasterFacetBucket>> progressFacets({
+    BusinessDocumentOrigin origin = BusinessDocumentOrigin.current,
     String stage = '',
     String keyword = '',
     String? dateFrom,
@@ -251,6 +254,7 @@ class SalesRepository {
     final json = await api.get(
       '/sales/orders/progress/facets',
       query: {
+        'originScope': origin.apiValue,
         if (stage.isNotEmpty) 'stage': stage,
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
         'dateFrom': ?dateFrom,

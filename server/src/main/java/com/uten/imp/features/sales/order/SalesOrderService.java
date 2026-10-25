@@ -409,10 +409,11 @@ public class SalesOrderService {
             // 草稿单（bill_status=0 且未驳回）：只有 stage='DRAFT' 才会进本查询。
             boolean draft = !financeRejected && row[22] != null
                     && ((Number) row[22]).intValue() == 0;
+            boolean legacyImported = Boolean.TRUE.equals(row[24]);
             return new OrderProgressRow(
                     pgStr(row, 0), pgStr(row, 1), pgStr(row, 2), pgStr(row, 3), pgStr(row, 4),
                     orderQty, producedQty, shippedQty, reservedQty, plannedQty, unplannedQty,
-                    null, progressStageOf(
+                    null, legacyImported ? "CLOSED" : progressStageOf(
                             orderQty, producedQty,
                             reservedQty, plannedQty, unplannedQty,
                             financeRejected, stopped, closed,
@@ -428,7 +429,8 @@ public class SalesOrderService {
                     shipmentDraftQty,
                     shipmentPendingFinanceQty,
                     shipmentFinanceRejectedQty,
-                    shipmentApprovedQty);
+                    shipmentApprovedQty,
+                    legacyImported);
         }).toList();
         int totalPages = (int) Math.ceil((double) total / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
@@ -534,7 +536,9 @@ public class SalesOrderService {
         var ownerScope = accessPolicy.nativeReadScope("o.owner_employee_id", "salesOwners");
         var q = em.createNativeQuery(
                 "SELECT (" + progressStageExpr() + "), COUNT(*) FROM ("
-                        + progressGroupedSql(ownerScope) + ") t GROUP BY 1");
+                        + progressGroupedSql(ownerScope, false,
+                                com.uten.imp.common.history.ImportedBusinessDocumentScope.Origin.CURRENT)
+                        + ") t GROUP BY 1");
         ownerScope.bind(q);
         // :stage='DRAFT' 打开子查询里的草稿行（其余 stage 值草稿不进查询）——
         // 计数随列表一次带回 DRAFT 桶，「草稿」分段徽章与其余阶段同源。
@@ -622,12 +626,31 @@ public class SalesOrderService {
     }
 
     static String progressGroupedSql(NativeReadScope ownerScope, boolean taskResponsibility) {
+        return progressGroupedSql(ownerScope, taskResponsibility,
+                com.uten.imp.common.history.ImportedBusinessDocumentScope.origin());
+    }
+
+    static String progressGroupedSql(NativeReadScope ownerScope, boolean taskResponsibility,
+            com.uten.imp.common.history.ImportedBusinessDocumentScope.Origin requestedOrigin) {
+        var origin = taskResponsibility
+                ? com.uten.imp.common.history.ImportedBusinessDocumentScope.Origin.CURRENT : requestedOrigin;
+        String imported = "fn_imported_business_document('sales_orders',o.id)";
+        String originPredicate = switch (origin) {
+            case CURRENT -> "NOT " + imported;
+            case LEGACY -> imported;
+            case ALL -> "TRUE";
+        };
+        // Preserve the original lifecycle as source evidence. Imported drafts and
+        // reversed orders join history, while every action/count queue stays native.
+        String importedHistory = origin == com.uten.imp.common.history.ImportedBusinessDocumentScope.Origin.CURRENT
+                ? "" : imported + " OR ";
         String base = """
                 FROM sales_orders o
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN employees finance_reviewer
                   ON finance_reviewer.id = o.finance_rejected_by
                 LEFT JOIN sales_order_items i ON i.order_id = o.id AND i.is_deleted = false
+                  AND (%s OR NOT fn_imported_business_document('sales_order_items',i.id))
                 LEFT JOIN LATERAL (
                     SELECT COALESCE(SUM(si.qty) FILTER (WHERE s.finance_audit = 0 AND s.finance_rejected = false
                                AND COALESCE(s.finance_gate_version, 0) >= 2
@@ -642,13 +665,17 @@ public class SalesOrderService {
                     FROM sales_shipment_items si
                     JOIN sales_shipments s ON s.id = si.shipment_id
                     WHERE si.order_item_id IN (SELECT oi.id FROM sales_order_items oi
-                                               WHERE oi.order_id = o.id AND oi.is_deleted = false)
+                                               WHERE oi.order_id = o.id AND oi.is_deleted = false
+                                                 AND NOT fn_imported_business_document('sales_order_items',oi.id))
                       AND COALESCE(si.is_deleted, false) = false
                       AND COALESCE(s.is_deleted, false) = false
+                      AND NOT fn_imported_business_document('sales_shipment_items',si.id)
+                      AND NOT fn_imported_business_document('sales_shipments',s.id)
                       AND s.status = 0 AND s.rejected = false AND s.shipment_kind <> 'LEGACY'
                 ) ship ON TRUE
                 WHERE o.is_deleted = false
-                  AND (
+                  AND %s
+                  AND (%s (
                     o.status = 1
                     OR (o.status = 0
                         AND o.finance_confirmed = false
@@ -656,8 +683,8 @@ public class SalesOrderService {
                     OR (:stage = 'DRAFT'
                         AND o.status = 0
                         AND o.finance_rejected = false)
-                  )
-                """ + " AND " + ownerScope.predicate();
+                  ))
+                """.formatted(imported, originPredicate, importedHistory) + " AND " + ownerScope.predicate();
         return """
                 SELECT o.id::text, o.bill_no,
                        CAST(o.bill_date AS text), CAST(o.deliver_date AS text),
@@ -676,7 +703,8 @@ public class SalesOrderService {
                        ship.finance_rejected_qty AS shipment_finance_rejected_qty,
                        ship.approved_qty AS shipment_approved_qty,
                        o.status AS bill_status,
-                       COALESCE(SUM(GREATEST(%s,0)),0) AS outstanding_qty
+                       COALESCE(SUM(GREATEST(%s,0)),0) AS outstanding_qty,
+                       fn_imported_business_document('sales_orders',o.id) AS legacy_imported
                 """.formatted(taskResponsibility ? physicalShipmentReservationSql("i") : "i.reserved_qty",
                         SalesOrderChainSql.unplannedQtySql("i"),
                         SalesOrderChainSql.outstandingSql("i")) + base + "\n" + """
@@ -699,6 +727,7 @@ public class SalesOrderService {
     static String progressStageExpr() {
         return """
                 CASE
+                  WHEN t.legacy_imported THEN 'CLOSED'
                   WHEN t.finance_rejected THEN 'REJECTED'
                   WHEN t.bill_status = 0 THEN 'DRAFT'
                   WHEN t.is_stopped THEN 'CANCELED'

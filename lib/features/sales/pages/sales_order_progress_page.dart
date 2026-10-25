@@ -58,6 +58,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../shared/drafts/form_draft_category_table.dart';
+import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/mixins/draft_bulk_delete_mixin.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/models/paged_result.dart';
@@ -183,12 +184,20 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
       _seg?.stage == _kDraftStage && _hasPerm(Perm.salesOrderDelete);
 
   bool _isDraftRow(SalesOrderProgressRow row) =>
+      !row.historyReadOnly &&
       row.stage == _kDraftStage &&
       !row.closed &&
       !row.stopped &&
       !row.financeRejected;
 
   Future<void> _deleteDraft(String id) {
+    if (_tableRows.items.any(
+      (row) => row.orderId == id && row.historyReadOnly,
+    )) {
+      return Future.error(
+        ApiException('FORBIDDEN', importedBusinessReadOnlyReason),
+      );
+    }
     final scope = ref.read(authenticatedScopeProvider);
     return deleteSalesDraft(
       ref.read(salesRepositoryProvider(SalesDocType.order)),
@@ -247,6 +256,9 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
           .progress(
             page: page,
             size: _size,
+            origin: seg.history
+                ? BusinessDocumentOrigin.all
+                : BusinessDocumentOrigin.current,
             // 历史记录 = 全部订单（含被驳回/进行中/已发货/已中止/已结案），
             // 阶段不限（stage=''），只按日期/关键字过滤。
             stage: _stageFilter ?? (seg.history ? '' : seg.stage!),
@@ -295,6 +307,9 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         'billNo': await ref
             .read(salesRepositoryProvider(SalesDocType.order))
             .progressFacets(
+              origin: seg.history
+                  ? BusinessDocumentOrigin.all
+                  : BusinessDocumentOrigin.current,
               stage: _stageFilter ?? (seg.history ? '' : seg.stage!),
               keyword: _keyword,
               dateFrom: range == null
@@ -353,6 +368,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   /// 财务驳回单的整单取消（终止处置）：无发货、无排产/在产/完工关联才开放，
   /// 与订货单详情页「取消订单」同一后端路径（cancel 会清驳回态并置中止）。
   bool _canCancelRejected(SalesOrderProgressRow r) =>
+      !r.historyReadOnly &&
       r.financeRejected &&
       !r.stopped &&
       !r.closed &&
@@ -362,7 +378,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
       r.producedQty <= 0.0001;
 
   Future<void> _cancelRejectedOrder(SalesOrderProgressRow r) async {
-    if (_cancelBusy) return;
+    if (_cancelBusy || r.historyReadOnly) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => UtenAlertDialog(
@@ -407,6 +423,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   /// 单个订单的发货入口先核对该单的产品进度，再选择本次发货产品。
   /// （2026-10-18 进度详情整页退役：产品进度与「去发货」都在订货单详情页。）
   Future<void> _ship(SalesOrderProgressRow row) async {
+    if (row.historyReadOnly) return;
     await context.push(RoutePath.salesDocDetail('orders', row.orderId));
   }
 
@@ -414,6 +431,16 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   /// 草稿行没有进度可看：首项换成「打开编辑」（继续把单办完），也不提供
   /// 修改订单/取消订单（那是财务驳回单的处置）/去发货（草稿未审不可发）。
   List<UtenContextMenuEntry> _rowMenuItems(SalesOrderProgressRow r) {
+    if (r.historyReadOnly) {
+      return [
+        UtenMenuItem(
+          label: '打开订单详情',
+          icon: Icons.article_outlined,
+          onTap: () =>
+              context.push(RoutePath.salesDocDetail('orders', r.orderId)),
+        ),
+      ];
+    }
     final draft = r.stage == _kDraftStage;
     final canShip =
         !draft &&
@@ -721,12 +748,12 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
           onChanged: _refilter,
         ),
         // 财务驳回行淡红底：一眼定位需要处理的订单（取消/修订后自然出队）。
-        rowColor: (r) => r.financeRejected
+        rowColor: (r) => !r.historyReadOnly && r.financeRejected
             ? theme.colorScheme.errorContainer.withValues(alpha: 0.30)
             : null,
         // 草稿行去编辑页继续办单；其余行进订货单详情页（履约进度时间线在
         // 表格上方折叠卡，产品进度与「去发货」同页——进度详情整页已退役）。
-        onRowTap: (r) => r.stage == _kDraftStage
+        onRowTap: (r) => !r.historyReadOnly && r.stage == _kDraftStage
             ? context.push(RoutePath.salesDocEdit('orders', r.orderId))
             : context.push(RoutePath.salesDocDetail('orders', r.orderId)),
         rowMenuBuilder: _rowMenuItems,
@@ -869,6 +896,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   /// 草稿同理排在闸门前：草稿 finance_confirmed 恒为 false，闸门先判会把草稿
   /// 错显成「等待财务审核」。
   String _stageText(SalesOrderProgressRow r) {
+    if (r.historyReadOnly) return importedBusinessHistoryLabel;
     if (r.stopped || r.stage == 'CANCELED') return '已中止';
     if (r.closed || r.stage == 'CLOSED') return '已结案';
     if (r.financeRejected) return '财务驳回';
@@ -885,6 +913,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   /// SHIPMENT_PENDING 段里被财务退回的出货（文案「出货被财务退回 N」）取
   /// danger 红——退回=驳回档（ADR-169 锚定），不能停在「流转中」的蓝上。
   UtenStatusBadgeType _stageBadgeType(SalesOrderProgressRow r) {
+    if (r.historyReadOnly) return UtenStatusBadgeType.success;
     if (r.stopped || r.stage == 'CANCELED') return UtenStatusBadgeType.neutral;
     if (r.closed || r.stage == 'CLOSED') return UtenStatusBadgeType.success;
     if (r.financeRejected) return UtenStatusBadgeType.danger;

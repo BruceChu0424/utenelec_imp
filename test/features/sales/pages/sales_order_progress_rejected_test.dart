@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
+import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
@@ -15,6 +16,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/sales/models/sales_order_progress.dart';
 import 'package:uten_imp/features/sales/pages/sales_order_progress_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/documents/imported_document_policy.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../../../support/page_resume_test_bridge.dart';
@@ -77,6 +79,8 @@ void main() {
         reason: '大类直接按组拉，不该退化成前端多拼几次单阶段请求',
       );
       expect(api.progressQueries.last['stage'], 'IN_PROGRESS');
+      expect(api.progressQueries.last['originScope'], 'CURRENT');
+      expect(api.facetQueries.last['originScope'], 'CURRENT');
       final table = tester.widget<MasterDataTableView<SalesOrderProgressRow>>(
         find.byType(MasterDataTableView<SalesOrderProgressRow>),
       );
@@ -264,7 +268,7 @@ void main() {
 
       // 2026-10-04 起红数「草稿」阶段进页面自动选中（stage=DRAFT 直查）。
       expect(api.progressQueries, [
-        {'page': 1, 'size': 50, 'stage': 'DRAFT'},
+        {'originScope': 'CURRENT', 'page': 1, 'size': 50, 'stage': 'DRAFT'},
       ]);
 
       await tester.tap(find.text('历史记录'));
@@ -274,6 +278,8 @@ void main() {
       expect(api.progressQueries, hasLength(2));
       // 历史记录不带 stage 参数（repo 空串省略）= 后端默认全部订单。
       expect(api.progressQueries.last.containsKey('stage'), isFalse);
+      expect(api.progressQueries.last['originScope'], 'ALL');
+      expect(api.facetQueries.last['originScope'], 'ALL');
       final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
       expect(
         api.progressQueries.last['dateFrom'],
@@ -399,13 +405,77 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets('legacy raw drafts and rejections only open historical details', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _ProgressApi(includeLegacy: true);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.salesOrderView,
+            Perm.salesOrderEdit,
+            Perm.salesOrderDelete,
+            Perm.salesOrderCancel,
+            Perm.salesShipmentCreate,
+          }),
+        ],
+        child: _host(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('SO-LEGACY-DRAFT'), findsNothing);
+    await tester.tap(find.text('历史记录'));
+    await tester.pumpAndSettle();
+    expect(api.progressQueries.last['originScope'], 'ALL');
+    expect(api.facetQueries.last['originScope'], 'ALL');
+    final table = tester.widget<MasterDataTableView<SalesOrderProgressRow>>(
+      find.byType(MasterDataTableView<SalesOrderProgressRow>),
+    );
+    final legacyRows = table.items.where((row) => row.historyReadOnly).toList();
+    expect(legacyRows, hasLength(2));
+    for (final row in legacyRows) {
+      expect(
+        table.columns.firstWhere((c) => c.key == 'stage').value(row),
+        importedBusinessHistoryLabel,
+      );
+      expect(table.idOf!(row), isNull);
+      expect(table.rowColor!(row), isNull);
+      expect(row.shippable, isFalse);
+      expect(salesProgressShipmentInFlightText(row), isNull);
+      expect(
+        table.rowMenuBuilder!(row).whereType<UtenMenuItem>().map(
+          (e) => e.label,
+        ),
+        ['打开订单详情'],
+        reason:
+            'all mutation permissions are granted, so only archive policy blocks actions',
+      );
+    }
+    final draft = legacyRows.firstWhere((row) => row.stage == 'DRAFT');
+    expect(draft.reservedQty, 10);
+    expect(draft.shipmentInFlightQty, 10);
+    // Real table double-click must route a raw DRAFT archive to detail, not edit.
+    await tester.tap(find.text('SO-LEGACY-DRAFT'));
+    await tester.pump(kDoubleTapMinTime);
+    await tester.tap(find.text('SO-LEGACY-DRAFT'));
+    await tester.pumpAndSettle();
+    expect(find.text('ORDER-DETAIL'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _ProgressApi extends ApiClient {
-  _ProgressApi() : super(Dio());
+  _ProgressApi({this.includeLegacy = false}) : super(Dio());
+
+  final bool includeLegacy;
 
   final List<Map<String, dynamic>> readBySourceQueries = [];
   final List<Map<String, dynamic>> progressQueries = [];
+  final List<Map<String, dynamic>> facetQueries = [];
 
   Map<String, dynamic> _row(
     String id,
@@ -448,6 +518,29 @@ class _ProgressApi extends ApiClient {
       progressQueries.add(Map<String, dynamic>.from(query ?? const {}));
       final stage = (query ?? const {})['stage'] as String? ?? '';
       final allRows = <Map<String, dynamic>>[
+        if (includeLegacy && query?['originScope'] == 'ALL') ...[
+          {
+            ..._row(
+              'legacy-draft',
+              'SO-LEGACY-DRAFT',
+              stage: 'DRAFT',
+              financeConfirmed: false,
+            ),
+            'legacyImported': true,
+            'reservedQty': 10,
+            'shipmentDraftQty': 4,
+            'shipmentApprovedQty': 6,
+          },
+          {
+            ..._row(
+              'legacy-rejected',
+              'SO-LEGACY-REJECTED',
+              stage: 'REJECTED',
+              financeRejected: true,
+            ),
+            'legacyImported': true,
+          },
+        ],
         _row(
           'order-rejected',
           'SO-REJECTED',
@@ -521,6 +614,10 @@ class _ProgressApi extends ApiClient {
         'WAREHOUSE_PENDING': 0,
         'SHIPPED': 0,
       };
+    }
+    if (path == '/sales/orders/progress/facets') {
+      facetQueries.add(Map<String, dynamic>.from(query ?? const {}));
+      return const {'billNo': <dynamic>[]};
     }
     if (path == '/notices/unread-count') return const {'count': 0};
     return const <String, dynamic>{};

@@ -1,6 +1,7 @@
 // 销售订单进度看板行（订单进度查询卡）。镜像后端 OrderProgressRow：
 // 每张已审订单聚合 订货/已排/已产/已发/可发 + 派生生产进度百分比与链路阶段。
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../shared/documents/imported_document_policy.dart';
 import 'sales_doc.dart' show salesQtyText;
 
 class SalesOrderProgressRow {
@@ -25,6 +26,7 @@ class SalesOrderProgressRow {
     this.financeRejectedByName,
     this.stopped = false,
     this.closed = false,
+    this.historyReadOnly = false,
     this.shipmentDraftQty = 0,
     this.shipmentPendingFinanceQty = 0,
     this.shipmentFinanceRejectedQty = 0,
@@ -72,6 +74,9 @@ class SalesOrderProgressRow {
   /// 已结案（正常履约完结）；历史记录里以「已结案」阶段呈现。
   final bool closed;
 
+  /// Imported workflow snapshots are historical evidence, regardless of stage.
+  final bool historyReadOnly;
+
   // ===== 出货在途（V631）：本单 status=0 的出货单按阶段汇总的数量 =====
   /// 出货草稿（销售尚未确认提交财务）。
   final double shipmentDraftQty;
@@ -93,7 +98,7 @@ class SalesOrderProgressRow {
       shipmentApprovedQty;
 
   /// 是否有可发货量（reserved_qty>0）。
-  bool get shippable => reservedQty > 0.0001;
+  bool get shippable => !historyReadOnly && reservedQty > 0.0001;
 
   /// 订单未交数量；分批可发不代表订单已经完成。
   double get remainingQty =>
@@ -121,6 +126,7 @@ class SalesOrderProgressRow {
         financeRejectedByName: json['financeRejectedByName'] as String?,
         stopped: (json['stopped'] as bool?) ?? false,
         closed: (json['closed'] as bool?) ?? false,
+        historyReadOnly: importedBusinessDocument(json),
         shipmentDraftQty: (json['shipmentDraftQty'] as num?)?.toDouble() ?? 0,
         shipmentPendingFinanceQty:
             (json['shipmentPendingFinanceQty'] as num?)?.toDouble() ?? 0,
@@ -150,6 +156,7 @@ String salesProgressStageLabel(String stage) => switch (stage) {
 /// 「待排产·部分已排 已排/订货」（V545：部分排产的单仍留在待排产段，
 /// 只在文本上标明已排多少），其余同 [salesProgressStageLabel]。
 String salesProgressStageText(SalesOrderProgressRow row) {
+  if (row.historyReadOnly) return importedBusinessHistoryLabel;
   if (row.stage == 'PENDING' && row.plannedQty > 0.0001) {
     return '待排产·部分已排 '
         '${salesQtyText(row.plannedQty)}/${salesQtyText(row.orderQty)}';
@@ -172,6 +179,7 @@ String salesProgressStageText(SalesOrderProgressRow row) {
 
 /// 「出货在途」列：按阶段列出本单未出库的出货数量；没有在途出货返回 null。
 String? salesProgressShipmentInFlightText(SalesOrderProgressRow row) {
+  if (row.historyReadOnly) return null;
   final parts = <String>[
     if (row.shipmentDraftQty > 0.0001)
       '草稿 ${salesQtyText(row.shipmentDraftQty)}',

@@ -44,9 +44,9 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
     // Freeze the shared normal-receipt selector and the two reversal-only selectors.
     // The approved/reversed/partial/legacy cases below validate the intentional query consolidation.
     private static final Map<String,String> DIMENSION_HASHES=Map.of(
-            "resolvedReceiptTargets","e74cfde7c0d014f6942c1d3d453eea378ca8cde9da07400ead473037521676d1",
-            "reversedPurchaseTargets","8337cfcf5808946277eef7b3bb05f969dfee1a0b14fbbf3ffe48f8aca9ac30aa",
-            "reversedSubcontractTargets","1de24fe0b164e47ac90428fedb105b478744f09a9ef2cb39d42ecee6eaf39ee9");
+            "resolvedReceiptTargets","2f2c9c4957757402936f3b015814ceec47a4bd30a022a9b9e70ddb6942c634a0",
+            "reversedPurchaseTargets","497aa0245220e5b1801cf1120a5221dcb92ffe2ee6042176ff0e41aa639f20d4",
+            "reversedSubcontractTargets","2281fb4e6a997716ad7e72db4d756343c99e8d931a65894faa27f1347b7bf354");
     // Independent, pre-change selector. This is intentionally not constructed from the new candidate filter.
     private static final String OLD_SELECTOR="""
             SELECT analysis.id, analysis.maker_id
@@ -174,6 +174,63 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
         assertReceiptTargets("SUBCONTRACT",purchase.id(),false,List.of());
     }
 
+    @Test void actualImportedSourceReceiptsKeepTheirImmutableFactsAndNeverWakeNativeAnalyses() throws Exception {
+        Map<String,UUID> retained=importRetainedSourceReceipts();
+        for(String type:List.of("PURCHASE","SUBCONTRACT")) {
+            Scope scope=scope();Receipt nativeReceipt=receipt(type,scope.leaf(),scope.goods(),null,1,"RESOLVED",false);
+            String header=type.toLowerCase(Locale.ROOT)+"_receipts",items=type.toLowerCase(Locale.ROOT)+"_receipt_items";
+            UUID original=retained.get(type);
+            assertFalse(Boolean.TRUE.equals(db.queryForObject("SELECT fn_imported_business_document(?,?)",Boolean.class,header,nativeReceipt.id())));
+            assertTrue(Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE contype='f' AND conrelid=CAST(? AS regclass) AND confrelid=CAST(? AS regclass))",Boolean.class,items,header)));
+            assertTrue(Boolean.TRUE.equals(db.queryForObject("SELECT fn_imported_business_document(?,?)",Boolean.class,header,original)));
+            assertTrue(Boolean.TRUE.equals(db.queryForObject("SELECT bool_and(fn_imported_business_document(?,item.id)) FROM "+items+" item WHERE receipt_id=?",Boolean.class,items,original)));
+            String before=db.queryForObject("SELECT to_jsonb(receipt)::text FROM "+header+" receipt WHERE id=?",String.class,original);
+            var denied=assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("UPDATE "+header+" SET legacy_id=legacy_id+1 WHERE id=?",original));
+            assertEquals("55000",((java.sql.SQLException)denied.getMostSpecificCause()).getSQLState());
+            assertEquals(before,db.queryForObject("SELECT to_jsonb(receipt)::text FROM "+header+" receipt WHERE id=?",String.class,original));
+            // Imported source rows do not acquire fabricated IQC/warehouse decisions.
+            assertReceiptTargets(type,original,false,List.of());
+            assertReceiptTargets(type,nativeReceipt.id(),false,scope.expected());
+            assertReceiptTargets(type,UUID.randomUUID(),false,List.of());
+        }
+    }
+
+    private static Map<String,UUID> importRetainedSourceReceipts() throws Exception {
+        Map<String,UUID> headers=new LinkedHashMap<>();
+        try(var connection=connection()) {
+            connection.setAutoCommit(false);
+            var jdbc=new JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true));
+            UUID run=com.uten.imp.support.LegacyFinanceImportFixture.context(jdbc);
+            com.uten.imp.support.LegacyFinanceImportFixture.seed(jdbc);
+            jdbc.update("INSERT INTO units(legacy_id,code,name) VALUES(900301,'WAKEUP-OLD-U','Real source fixture unit')");
+            jdbc.update("INSERT INTO warehouses(legacy_id,code,name) VALUES(900201,'WAKEUP-OLD-W','Real source fixture warehouse')");
+            for(int legacy:List.of(900101,900102))jdbc.update("INSERT INTO goods(legacy_id,code,name,unit_id,code_sequence) SELECT ?,?,'Source goods',id,(SELECT coalesce(max(code_sequence),0)+1 FROM goods) FROM units WHERE legacy_id=900301",legacy,"WAKEUP-OLD-G-"+legacy);
+            var mapper=new ObjectMapper();
+            for(String kind:List.of("PURCHASE_HEADER","PURCHASE_ITEM","SUBCONTRACT_HEADER","SUBCONTRACT_ITEM")) {
+                String file=jdbc.queryForObject("SELECT source_file FROM fn_legacy_receipt_import_kind(?)",String.class,kind);
+                jdbc.update("INSERT INTO legacy_migration_run_files(run_id,file_name,sha256,byte_size) VALUES(?,?,repeat('f',64),500)",run,file);
+                var source=mapper.createObjectNode();
+                jdbc.queryForList("SELECT unnest(source_keys) FROM fn_legacy_receipt_import_kind(?)",String.class,kind).forEach(source::putNull);
+                source.setAll((com.fasterxml.jackson.databind.node.ObjectNode)mapper.readTree(com.uten.imp.support.LegacyFinanceImportFixture.source(file)));
+                if(kind.endsWith("_ITEM")){source.putNull("order_item_legacy_id");source.putNull("color_legacy_id");}
+                UUID id=jdbc.queryForObject("SELECT fn_register_legacy_receipt_import_source(?,?,?::jsonb)",UUID.class,run,kind,source.toString());
+                var payload=(com.fasterxml.jackson.databind.node.ObjectNode)mapper.readTree(jdbc.queryForObject("SELECT fn_legacy_receipt_source_projection(?,?::jsonb)::text",String.class,kind,source.toString()));
+                payload.put("id",id.toString());payload.put("legacy_import_run_id",run.toString());
+                if(kind.endsWith("_ITEM")) {
+                    UUID goods=UUID.fromString(payload.get("goods_id").asText());payload.put("line_no",1);
+                    payload.put("goods_code_snapshot",jdbc.queryForObject("SELECT code FROM goods WHERE id=?",String.class,goods));
+                    payload.put("goods_name_snapshot",jdbc.queryForObject("SELECT name FROM goods WHERE id=?",String.class,goods));
+                    payload.put("goods_snapshot_source","LEGACY_IMPORT");payload.put("goods_snapshot_locked_at","2025-01-02T00:00:00Z");
+                } else headers.put(kind.startsWith("PURCHASE")?"PURCHASE":"SUBCONTRACT",id);
+                String table=jdbc.queryForObject("SELECT target_table FROM fn_legacy_receipt_import_kind(?)",String.class,kind);
+                String columns=java.util.stream.StreamSupport.stream(java.util.Spliterators.spliteratorUnknownSize(payload.fieldNames(),0),false).sorted().map(key->'"'+key+'"').collect(java.util.stream.Collectors.joining(","));
+                jdbc.update("INSERT INTO public."+table+"("+columns+") SELECT "+columns+" FROM jsonb_populate_record(NULL::public."+table+",?::jsonb)",payload.toString());
+            }
+            jdbc.execute("SET CONSTRAINTS ALL IMMEDIATE");connection.commit();
+        }
+        return headers;
+    }
+
     @Test void finishedInboundBatchCombinesApprovedDocumentsWithoutAdmittingDraftOrReversedRows() throws Exception {
         Scope scope = scope();
         UUID first = finished(scope.leaf(), scope.goods(), null, 1);
@@ -242,11 +299,35 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
         String current=lastSql;
         String dimension=dimension(current).replaceAll("\\s+"," ").trim();
         if (DIMENSION_HASHES.containsKey(method)) assertEquals(DIMENSION_HASHES.get(method),HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(dimension.getBytes(StandardCharsets.UTF_8))),"reviewed actual-warehouse source UNION predicates are unchanged");
+        if(DIMENSION_HASHES.containsKey(method))assertReviewedNativeOriginDelta(method,dimension);
         var oldRows=(List<Object[]>)bind(em.createNativeQuery(oldQuery(current)),params).getResultList();
         var old=oldRows.stream().map(row->new MaterialAnalysisSupplyWakeupService.AnalysisTarget((UUID)row[0],(UUID)row[1])).toList();
         assertEquals(old,actual,"old/new UUID and maker results, including ordering");
         // PostgreSQL UUID ordering is unsigned lexicographic; Java UUID.compareTo has different signed semantics.
         assertEquals(expected.stream().sorted(Comparator.comparing(UUID::toString)).toList(),actual.stream().map(MaterialAnalysisSupplyWakeupService.AnalysisTarget::analysisId).toList());
+    }
+    private static void assertReviewedNativeOriginDelta(String method,String dimension) throws Exception {
+        String original=dimension;
+        Map<String,Integer> projections=switch(method) {
+            case "resolvedReceiptTargets"->Map.of("purchase_receipts",1,"subcontract_receipts",1);
+            case "reversedPurchaseTargets"->Map.of("purchase_receipts",2,"purchase_receipt_items",1);
+            case "reversedSubcontractTargets"->Map.of("subcontract_receipts",2,"subcontract_receipt_items",1);
+            default->throw new IllegalArgumentException(method);
+        };
+        for(var entry:projections.entrySet()) {
+            String table=entry.getKey();
+            String reviewed="(SELECT * FROM "+table+" archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('"+table+"',archive_origin.id))";
+            assertEquals(entry.getValue(),original.split(java.util.regex.Pattern.quote(reviewed),-1).length-1,"exact approved native-source projection count");
+            original=original.replace(reviewed,table);
+        }
+        String expected=switch(method) {
+            case "resolvedReceiptTargets"->"e74cfde7c0d014f6942c1d3d453eea378ca8cde9da07400ead473037521676d1";
+            case "reversedPurchaseTargets"->"8337cfcf5808946277eef7b3bb05f969dfee1a0b14fbbf3ffe48f8aca9ac30aa";
+            case "reversedSubcontractTargets"->"1de24fe0b164e47ac90428fedb105b478744f09a9ef2cb39d42ecee6eaf39ee9";
+            default->throw new IllegalArgumentException(method);
+        };
+        assertEquals(expected,HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(original.getBytes(StandardCharsets.UTF_8))),
+                "removing only reviewed origin projections restores the original warehouse UNION/status/color SQL byte contract");
     }
     private static Map<String,Object> resolvedReceiptParameters(String type,UUID receipt) {
         return Map.of("purchaseReceiptIds","PURCHASE".equals(type)?receipt.toString():"",

@@ -47,28 +47,20 @@ class ProcurementDecompositionPreviewPostgresTest {
     @BeforeAll static void schema() throws Exception {
         db = new JdbcTemplate(new DriverManagerDataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword()));
         named = new NamedParameterJdbcTemplate(db);
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(db,
+                "purchase_requests","purchase_request_items","purchase_orders","purchase_order_items","purchase_order_item_sources",
+                "subcontract_applications","subcontract_application_items","subcontract_orders","subcontract_order_items","subcontract_order_item_sources",
+                "procurement_order_approval_cases");
         for (Kind kind : Kind.values()) {
-            db.execute("CREATE TABLE " + kind.header + "(id uuid PRIMARY KEY, legacy_id int, legacy_import_run_id uuid,"
-                    + "bill_no text, need_date date, warehouse_id uuid, source_doc_no text, status smallint DEFAULT 1,"
-                    + "is_deleted boolean DEFAULT false,is_closed boolean DEFAULT false,is_stopped boolean DEFAULT false)");
-            db.execute("CREATE TABLE " + kind.items + "(id uuid PRIMARY KEY, legacy_id int, legacy_import_run_id uuid,"
-                    + kind.parent + " uuid REFERENCES " + kind.header + "(id),goods_id uuid,color_id uuid,unit_id uuid, "
-                    + "unit_rate numeric DEFAULT 1,qty numeric DEFAULT 10,ordered_qty numeric DEFAULT 0,"
-                    + "deliver_date date,production_plan_no text,source_doc_no text,is_deleted boolean DEFAULT false,"
-                    + "quantity_semantics text DEFAULT 'CHARGED_PLUS_GIFT_V1',gift_qty numeric DEFAULT 0,gift_ordered_qty numeric DEFAULT 0)");
-            db.execute("CREATE TABLE " + kind.orders + "(id uuid PRIMARY KEY,legacy_id int,legacy_import_run_id uuid, "
-                    + "status smallint DEFAULT 0,is_deleted boolean DEFAULT false)");
-            db.execute("CREATE TABLE " + kind.orderItems + "(id uuid PRIMARY KEY,order_id uuid REFERENCES " + kind.orders
-                    + "(id)," + kind.source + " uuid REFERENCES " + kind.items + "(id),qty numeric DEFAULT 3, "
-                    + "gift_qty numeric DEFAULT 0,quantity_semantics text DEFAULT 'CHARGED_PLUS_GIFT_V1',is_deleted boolean DEFAULT false)");
-            db.execute("CREATE TABLE " + kind.sources + "(id uuid PRIMARY KEY,order_item_id uuid REFERENCES "
-                    + kind.orderItems + "(id), " + kind.source + " uuid REFERENCES " + kind.items
-                    + "(id),alloc_qty numeric DEFAULT 3,allocated_gift_qty numeric DEFAULT 0)");
+            db.execute("ALTER TABLE " + kind.items + " ADD FOREIGN KEY(" + kind.parent + ") REFERENCES " + kind.header + "(id)");
+            db.execute("ALTER TABLE " + kind.orderItems + " ADD FOREIGN KEY(order_id) REFERENCES " + kind.orders + "(id), ADD FOREIGN KEY(" + kind.source + ") REFERENCES " + kind.items + "(id)");
+            db.execute("ALTER TABLE " + kind.sources + " ADD FOREIGN KEY(order_item_id) REFERENCES " + kind.orderItems + "(id), ADD FOREIGN KEY(" + kind.source + ") REFERENCES " + kind.items + "(id)");
         }
-        db.execute("CREATE TABLE procurement_order_approval_cases(id uuid PRIMARY KEY,order_type text,order_id uuid, "
-                + "attempt int,status text,request_type text,replacement_order_id uuid)");
-        // Install the complete real provenance migration, including FK closure and ALWAYS guards.
-        db.execute(Files.readString(Path.of("src/main/resources/db/migration/V926__imported_business_documents_archive_only.sql")));
+        // Exact current catalog functions and real ownership FKs, never an unknown->native stub.
+        com.uten.imp.support.MigratedProjectionSchema.installImportedDocumentPolicy(db,
+                "purchase_requests","purchase_request_items","purchase_orders","purchase_order_items","purchase_order_item_sources",
+                "subcontract_applications","subcontract_application_items","subcontract_orders","subcontract_order_items","subcontract_order_item_sources",
+                "procurement_order_approval_cases");
         installFunction("V922__procurement_finance_approved_termination.sql",
                 "CREATE OR REPLACE FUNCTION fn_procurement_order_latest_approval_status", "$function$;");
         installFunction("V923__procurement_termination_source_accounting.sql",
@@ -86,6 +78,12 @@ class ProcurementDecompositionPreviewPostgresTest {
 
     @AfterEach void clearRequest() { RequestContextHolder.resetRequestAttributes(); }
 
+    @org.junit.jupiter.api.BeforeEach void clearOwnedProjectionRows() {
+        // Real catalog UNIQUE keys now apply. Each parameterized invocation owns
+        // its source identities instead of relying on duplicate legacy IDs.
+        db.execute("TRUNCATE procurement_order_approval_cases,purchase_order_item_sources,purchase_order_items,purchase_orders,purchase_request_items,purchase_requests,subcontract_order_item_sources,subcontract_order_items,subcontract_orders,subcontract_application_items,subcontract_applications");
+    }
+
     @ParameterizedTest
     @CsvSource({"PURCHASE,CURRENT", "PURCHASE,ALL", "PURCHASE,LEGACY",
             "SUBCONTRACT,CURRENT", "SUBCONTRACT,ALL", "SUBCONTRACT,LEGACY"})
@@ -93,13 +91,11 @@ class ProcurementDecompositionPreviewPostgresTest {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setParameter("originScope", scope);
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
-        UUID nativeItem = line(kind, null, null, null, null);
-        UUID legacyItem = line(kind, null, null, 701, null);
-        UUID runOnlyItem = line(kind, null, null, null, UUID.randomUUID());
-        UUID parentLegacyItem = line(kind, 702, null, null, null);
-        UUID parentRunItem = line(kind, null, UUID.randomUUID(), null, null);
+        UUID nativeItem = line(kind, null, null);
+        UUID legacyItem = line(kind, null, 701);
+        UUID parentLegacyItem = line(kind, 702, null);
         assertThat(preview(kind, List.of(nativeItem))).hasSize(1);
-        for (UUID archived : List.of(legacyItem, runOnlyItem, parentLegacyItem, parentRunItem)) {
+        for (UUID archived : List.of(legacyItem, parentLegacyItem)) {
             assertThat(db.queryForObject("SELECT fn_imported_business_document(?,?)", Boolean.class,
                     kind.items, archived)).isTrue();
             assertThatThrownBy(() -> preview(kind, List.of(archived))).isInstanceOfSatisfying(ApiException.class,
@@ -108,7 +104,7 @@ class ProcurementDecompositionPreviewPostgresTest {
                     error -> assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
         }
         // Selection never changes the imported row's original lifecycle or quantities.
-        assertThat(db.queryForObject("SELECT qty FROM " + kind.items + " WHERE id=?", BigDecimal.class, runOnlyItem))
+        assertThat(db.queryForObject("SELECT qty FROM " + kind.items + " WHERE id=?", BigDecimal.class, legacyItem))
                 .isEqualByComparingTo("10");
         assertThat(db.queryForObject("SELECT status FROM " + kind.header + " WHERE id=(SELECT " + kind.parent
                 + " FROM " + kind.items + " WHERE id=?)", Integer.class, parentLegacyItem)).isEqualTo(1);
@@ -116,12 +112,16 @@ class ProcurementDecompositionPreviewPostgresTest {
 
     @Test void approvedReplacementDraftKeepsItsShareUntilNormalOrderStateOrQuantityChanges() {
         for (Kind kind : Kind.values()) {
-            UUID item = line(kind, null, null, null, null), order = UUID.randomUUID(), orderItem = UUID.randomUUID();
+            UUID item = line(kind, null, null), order = UUID.randomUUID(), orderItem = UUID.randomUUID();
             db.update("INSERT INTO " + kind.orders + "(id) VALUES(?)", order);
-            db.update("INSERT INTO " + kind.orderItems + "(id,order_id," + kind.source + ") VALUES(?,?,?)", orderItem, order, item);
-            db.update("INSERT INTO " + kind.sources + "(id,order_item_id," + kind.source + ") VALUES(?,?,?)", UUID.randomUUID(), orderItem, item);
+            db.update("INSERT INTO " + kind.orderItems + "(id,order_id," + kind.source + ",qty"
+                    +(kind==Kind.PURCHASE?",gift_qty,quantity_semantics":"")+") VALUES(?,?,?,3"
+                    +(kind==Kind.PURCHASE?",0,'CHARGED_PLUS_GIFT_V1'":"")+")",orderItem,order,item);
+            db.update("INSERT INTO " + kind.sources + "(id,order_item_id," + kind.source + ",alloc_qty"
+                    +(kind==Kind.PURCHASE?",allocated_gift_qty":"")+") VALUES(?,?,?,3"
+                    +(kind==Kind.PURCHASE?",0":"")+")",UUID.randomUUID(),orderItem,item);
             assertPending(kind, item, "0"); // Merely saved, unsubmitted orders have no commitment.
-            db.update("INSERT INTO procurement_order_approval_cases VALUES(?,?,?,1,'APPROVED','CLOSE_AND_REORDER',?)",
+            db.update("INSERT INTO procurement_order_approval_cases(id,order_type,order_id,attempt,status,request_type,replacement_order_id) VALUES(?,?,?,1,'APPROVED','CLOSE_AND_REORDER',?)",
                     UUID.randomUUID(), kind.name(), UUID.randomUUID(), order);
             assertPending(kind, item, "3");
             db.update("UPDATE " + kind.sources + " SET alloc_qty=2 WHERE order_item_id=?", orderItem);
@@ -134,6 +134,40 @@ class ProcurementDecompositionPreviewPostgresTest {
         }
     }
 
+    @Test void downstreamRunProvenanceDoesNotArchiveItsNativeSourceOrEraseExistingCommitment() {
+        Kind kind=Kind.SUBCONTRACT;
+        UUID item=line(kind,null,null),order=UUID.randomUUID(),orderItem=UUID.randomUUID();
+        db.update("INSERT INTO subcontract_orders(id) VALUES(?)",order);
+        db.update("INSERT INTO subcontract_order_items(id,order_id,application_item_id,qty) VALUES(?,?,?,3)",orderItem,order,item);
+        db.update("INSERT INTO subcontract_order_item_sources(id,order_item_id,application_item_id,alloc_qty) VALUES(?,?,?,3)",UUID.randomUUID(),orderItem,item);
+        db.update("INSERT INTO procurement_order_approval_cases(id,order_type,order_id,attempt,status,request_type,replacement_order_id) VALUES(?,'SUBCONTRACT',?,1,'APPROVED','CLOSE_AND_REORDER',?)",UUID.randomUUID(),UUID.randomUUID(),order);
+        assertPending(kind,item,"3");
+        assertThatThrownBy(()->preview(kind,List.of(orderItem))).isInstanceOfSatisfying(ApiException.class,
+                error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        assertThatThrownBy(()->preview(kind,List.of(item,orderItem))).isInstanceOfSatisfying(ApiException.class,
+                error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        // V624's real column exists on subcontract_orders. Requests/applications
+        // and their items do not have a persisted run column; never invent one.
+        db.update("UPDATE subcontract_orders SET legacy_import_run_id=? WHERE id=?",UUID.randomUUID(),order);
+        assertThat(db.queryForObject("SELECT fn_imported_business_document('subcontract_orders',?)",Boolean.class,order)).isTrue();
+        assertThat(db.queryForObject("SELECT fn_imported_business_document('subcontract_order_items',?)",Boolean.class,orderItem)).isTrue();
+        assertThat(db.queryForObject("SELECT fn_imported_business_document('subcontract_application_items',?)",Boolean.class,item)).isFalse();
+        // This query oracle models the provenance independently of write/import
+        // protocol admission. Archive ancestry follows parents, not descendants.
+        // V923 retires commitments only through a real termination decision;
+        // V926 expressly preserves quantities. Read-only is not a quantity release.
+        assertPending(kind,item,"3");
+        // Same rejection as the native wrong-type control above. This proves
+        // source-ID domains, not an archive rejection route for application rows.
+        assertThatThrownBy(()->preview(kind,List.of(orderItem))).isInstanceOfSatisfying(ApiException.class,
+                error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        assertThatThrownBy(()->preview(kind,List.of(item,orderItem))).isInstanceOfSatisfying(ApiException.class,
+                error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        assertThat(db.queryForObject("SELECT qty FROM subcontract_application_items WHERE id=?",BigDecimal.class,item)).isEqualByComparingTo("10");
+        assertThat(db.queryForObject("SELECT ordered_qty FROM subcontract_application_items WHERE id=?",BigDecimal.class,item)).isZero();
+        assertThat(db.queryForObject("SELECT alloc_qty FROM subcontract_order_item_sources WHERE order_item_id=?",BigDecimal.class,orderItem)).isEqualByComparingTo("3");
+    }
+
     static void assertPending(Kind kind, UUID item, String expected) {
         Object row = preview(kind, List.of(item)).getFirst();
         BigDecimal pending = row instanceof com.uten.imp.features.purchase.request.dto.DecompositionPreviewItem purchase
@@ -141,12 +175,14 @@ class ProcurementDecompositionPreviewPostgresTest {
         assertThat(pending).isEqualByComparingTo(expected);
     }
 
-    static UUID line(Kind kind, Integer parentLegacy, UUID parentRun, Integer itemLegacy, UUID itemRun) {
+    static UUID line(Kind kind, Integer parentLegacy, Integer itemLegacy) {
         UUID header = UUID.randomUUID(), item = UUID.randomUUID();
-        db.update("INSERT INTO " + kind.header + "(id,bill_no,legacy_id,legacy_import_run_id) VALUES(?,?,?,?)",
-                header, header.toString(), parentLegacy, parentRun);
-        db.update("INSERT INTO " + kind.items + "(id," + kind.parent + ",goods_id,unit_id,legacy_id,legacy_import_run_id) VALUES(?,?,?,?,?,?)",
-                item, header, UUID.randomUUID(), UUID.randomUUID(), itemLegacy, itemRun);
+        db.update("INSERT INTO " + kind.header + "(id,bill_no,legacy_id,status,is_closed) VALUES(?,?,?,1,false)",
+                header, header.toString(), parentLegacy);
+        db.update("INSERT INTO " + kind.items + "(id," + kind.parent + ",goods_id,unit_id,legacy_id,qty,unit_rate,ordered_qty"
+                        +(kind==Kind.PURCHASE?",gift_qty,gift_ordered_qty,quantity_semantics":"")+") VALUES(?,?,?,?,?,10,1,0"
+                        +(kind==Kind.PURCHASE?",0,0,'CHARGED_PLUS_GIFT_V1'":"")+")",
+                item, header, UUID.randomUUID(), UUID.randomUUID(), itemLegacy);
         return item;
     }
 

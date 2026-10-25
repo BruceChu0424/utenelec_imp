@@ -38,15 +38,15 @@ class FulfillmentWorkbenchTaskAudiencePostgresTest {
         POSTGRES.start();
         jdbc = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
         named = new NamedParameterJdbcTemplate(jdbc);
-        jdbc.execute("CREATE TABLE purchase_orders (id uuid PRIMARY KEY, maker_id uuid, is_deleted boolean DEFAULT false, legacy_id integer)");
-        jdbc.execute("CREATE TABLE subcontract_orders (id uuid PRIMARY KEY, maker_id uuid, is_deleted boolean DEFAULT false, legacy_id integer)");
-        jdbc.execute("CREATE TABLE purchase_requests (id uuid PRIMARY KEY, maker_id uuid, legacy_id integer)");
-        jdbc.execute("CREATE TABLE subcontract_applications (id uuid PRIMARY KEY, maker_id uuid, legacy_id integer)");
-        jdbc.execute("CREATE TABLE production_plans (id uuid PRIMARY KEY, legacy_id integer)");
-        jdbc.execute("CREATE TABLE v_procurement_decomposition_tasks (department text, action_doc_type text, action_doc_id uuid, action_item_id uuid, task_status text, open_qty numeric, plan_id uuid REFERENCES production_plans(id))");
-        jdbc.execute("CREATE TABLE subcontract_short_delivery_cases (order_id uuid, order_item_id uuid, owner_employee_id uuid, status text, severity text, expected_complete_by date)");
-        jdbc.execute("CREATE TABLE subcontract_application_items (id uuid PRIMARY KEY, goods_id uuid, is_deleted boolean DEFAULT false, application_id uuid NOT NULL REFERENCES subcontract_applications(id))");
-        jdbc.execute("CREATE TABLE purchase_request_items (id uuid PRIMARY KEY, goods_id uuid, is_deleted boolean DEFAULT false, request_id uuid NOT NULL REFERENCES purchase_requests(id))");
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(jdbc,
+                "purchase_orders","subcontract_orders","purchase_requests","subcontract_applications",
+                "production_plans","v_procurement_decomposition_tasks","subcontract_short_delivery_cases",
+                "subcontract_application_items","purchase_request_items");
+        // Preserve this query oracle's actual parent identities/FKs. The catalog
+        // projection deliberately does not bring unrelated business write guards.
+        jdbc.execute("ALTER TABLE v_procurement_decomposition_tasks ADD FOREIGN KEY(plan_id) REFERENCES production_plans(id)");
+        jdbc.execute("ALTER TABLE subcontract_application_items ALTER COLUMN application_id SET NOT NULL, ADD FOREIGN KEY(application_id) REFERENCES subcontract_applications(id)");
+        jdbc.execute("ALTER TABLE purchase_request_items ALTER COLUMN request_id SET NOT NULL, ADD FOREIGN KEY(request_id) REFERENCES purchase_requests(id)");
         jdbc.execute("CREATE FUNCTION fn_subcontract_draw_edges(goods uuid) RETURNS TABLE(id uuid) LANGUAGE SQL AS 'SELECT goods WHERE goods IS NOT NULL'");
         com.uten.imp.support.MigratedProjectionSchema.installImportedDocumentPolicy(jdbc,
                 "purchase_orders", "subcontract_orders", "purchase_requests", "subcontract_applications",
@@ -79,7 +79,7 @@ class FulfillmentWorkbenchTaskAudiencePostgresTest {
         for (String department : List.of("PURCHASE", "SUBCONTRACT")) {
             UUID first = order(department, own, "FINANCE_REJECTED");
             // The list shows both goods lines, so both must contribute to the order's task badges.
-            jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES (?, ?, ?, ?, 'FINANCE_REJECTED', 1)",
+            jdbc.update("INSERT INTO v_procurement_decomposition_tasks(department,action_doc_type,action_doc_id,action_item_id,task_status,open_qty) VALUES (?, ?, ?, ?, 'FINANCE_REJECTED', 1)",
                     department, department + "_ORDER", first, UUID.randomUUID());
             order(department, handover, "FINANCE_REJECTED");
             order(department, readOnly, "FINANCE_REJECTED");
@@ -87,7 +87,7 @@ class FulfillmentWorkbenchTaskAudiencePostgresTest {
             UUID application = UUID.randomUUID(), item = UUID.randomUUID();
             applicationHeader(department, application);
             applicationItem(department, application, item, UUID.randomUUID());
-            jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES (?, ?, ?, ?, 'WAITING_ORDER', 1)",
+            jdbc.update("INSERT INTO v_procurement_decomposition_tasks(department,action_doc_type,action_doc_id,action_item_id,task_status,open_qty) VALUES (?, ?, ?, ?, 'WAITING_ORDER', 1)",
                     department, department.equals("SUBCONTRACT") ? "SUBCONTRACT_APPLICATION" : "PURCHASE_REQUEST", application, item);
             var access = access();
             when(access.documentAccess(department, "ORDER")).thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true, true));
@@ -109,15 +109,15 @@ class FulfillmentWorkbenchTaskAudiencePostgresTest {
             for (int index = 0; index < 2; index++) {
                 UUID item = UUID.randomUUID();
                 applicationItem(department, application, item, UUID.randomUUID());
-                jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES (?, ?, ?, ?, 'WAITING_ORDER', 1)",
+                jdbc.update("INSERT INTO v_procurement_decomposition_tasks(department,action_doc_type,action_doc_id,action_item_id,task_status,open_qty) VALUES (?, ?, ?, ?, 'WAITING_ORDER', 1)",
                         department, department.equals("SUBCONTRACT") ? "SUBCONTRACT_APPLICATION" : "PURCHASE_REQUEST", application, item);
             }
-            jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES (?, ?, ?, ?, 'WAITING_ORDER', 0)",
+            jdbc.update("INSERT INTO v_procurement_decomposition_tasks(department,action_doc_type,action_doc_id,action_item_id,task_status,open_qty) VALUES (?, ?, ?, ?, 'WAITING_ORDER', 0)",
                     department, department.equals("SUBCONTRACT") ? "SUBCONTRACT_APPLICATION" : "PURCHASE_REQUEST", application, UUID.randomUUID());
             if (department.equals("SUBCONTRACT")) {
                 UUID missingBomItem = UUID.randomUUID();
                 applicationItem(department, application, missingBomItem, null);
-                jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES ('SUBCONTRACT', 'SUBCONTRACT_APPLICATION', ?, ?, 'WAITING_ORDER', 1)",
+                jdbc.update("INSERT INTO v_procurement_decomposition_tasks(department,action_doc_type,action_doc_id,action_item_id,task_status,open_qty) VALUES ('SUBCONTRACT', 'SUBCONTRACT_APPLICATION', ?, ?, 'WAITING_ORDER', 1)",
                         application, missingBomItem);
             }
             var access = access();
@@ -134,10 +134,10 @@ class FulfillmentWorkbenchTaskAudiencePostgresTest {
     @Test
     void decisionOnlyCountKeepsAffectedItemRowsWithoutCountingOtherGoodsOfTheSameOrder() {
         UUID order = order("SUBCONTRACT", own, "FINANCE_APPROVED");
-        jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES ('SUBCONTRACT', 'SUBCONTRACT_ORDER', ?, ?, 'FINANCE_APPROVED', 1)",
+        jdbc.update("INSERT INTO v_procurement_decomposition_tasks(department,action_doc_type,action_doc_id,action_item_id,task_status,open_qty) VALUES ('SUBCONTRACT', 'SUBCONTRACT_ORDER', ?, ?, 'FINANCE_APPROVED', 1)",
                 order, UUID.randomUUID());
         shortCases(order, own);
-        jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES ('SUBCONTRACT', 'SUBCONTRACT_ORDER', ?, ?, 'FINANCE_APPROVED', 1)",
+        jdbc.update("INSERT INTO v_procurement_decomposition_tasks(department,action_doc_type,action_doc_id,action_item_id,task_status,open_qty) VALUES ('SUBCONTRACT', 'SUBCONTRACT_ORDER', ?, ?, 'FINANCE_APPROVED', 1)",
                 order, UUID.randomUUID());
         var access = access();
         when(access.canDecideSubcontractShortDelivery()).thenReturn(true);
@@ -151,7 +151,7 @@ class FulfillmentWorkbenchTaskAudiencePostgresTest {
         for (String department : List.of("PURCHASE", "SUBCONTRACT")) {
             for (String stage : FulfillmentWorkbenchQueryService.IN_PROGRESS_STATUSES) {
                 UUID order = order(department, own, stage);
-                jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES (?, ?, ?, ?, ?, 0)",
+                jdbc.update("INSERT INTO v_procurement_decomposition_tasks(department,action_doc_type,action_doc_id,action_item_id,task_status,open_qty) VALUES (?, ?, ?, ?, ?, 0)",
                         department, department + "_ORDER", order, UUID.randomUUID(), stage);
             }
             order(department, readOnly, "FINANCE_APPROVED");
@@ -170,7 +170,7 @@ class FulfillmentWorkbenchTaskAudiencePostgresTest {
         UUID importedOrder = order("SUBCONTRACT", own, "FINANCE_APPROVED");
         jdbc.update("UPDATE subcontract_orders SET legacy_id=19001 WHERE id=?", importedOrder);
         UUID importedPlan = UUID.randomUUID();
-        jdbc.update("INSERT INTO production_plans VALUES (?,19002)", importedPlan);
+        jdbc.update("INSERT INTO production_plans(id,legacy_id) VALUES (?,19002)", importedPlan);
         UUID planBoundOrder = order("SUBCONTRACT", own, "FINANCE_APPROVED");
         jdbc.update("UPDATE v_procurement_decomposition_tasks SET plan_id=? WHERE action_doc_id=?", importedPlan, planBoundOrder);
         assertEquals(false, jdbc.queryForObject(
@@ -197,7 +197,7 @@ class FulfillmentWorkbenchTaskAudiencePostgresTest {
 
     private void shortCases(UUID order, UUID owner) {
         jdbc.update("""
-                INSERT INTO subcontract_short_delivery_cases
+                INSERT INTO subcontract_short_delivery_cases(order_id,order_item_id,owner_employee_id,status,severity,expected_complete_by)
                 SELECT action_doc_id, action_item_id, ?, 'PENDING_OWNER', 'BELOW_FLOOR', NULL
                 FROM v_procurement_decomposition_tasks WHERE action_doc_id = ?
                 """, owner, order);
@@ -205,8 +205,8 @@ class FulfillmentWorkbenchTaskAudiencePostgresTest {
 
     private UUID order(String department, UUID owner, String status) {
         UUID order = UUID.randomUUID();
-        jdbc.update("INSERT INTO " + department.toLowerCase() + "_orders VALUES (?, ?, false)", order, owner);
-        jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES (?, ?, ?, ?, ?, 1)",
+        jdbc.update("INSERT INTO " + department.toLowerCase() + "_orders(id,maker_id,is_deleted) VALUES (?, ?, false)", order, owner);
+        jdbc.update("INSERT INTO v_procurement_decomposition_tasks(department,action_doc_type,action_doc_id,action_item_id,task_status,open_qty) VALUES (?, ?, ?, ?, ?, 1)",
                 department, department + "_ORDER", order, UUID.randomUUID(), status);
         return order;
     }

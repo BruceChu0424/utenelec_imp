@@ -32,4 +32,30 @@ class FixtureSchemaDdlTest {
         assertThat(scan.tables()).isEmpty();
         assertThat(scan.dynamicDdlFiles()).containsExactly("Fixture.java");
     }
+
+    @Test void liveCatalogProjectionContainsNoHandWrittenColumnDebt() throws Exception {
+        Files.writeString(sources.resolve("Fixture.java"), """
+                class Fixture { void schema() {
+                    com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(db,"goods","purchase_orders");
+                    com.uten.imp.support.MigratedProjectionSchema.installImportedDocumentPolicy(db,"purchase_orders");
+                } }
+                """);
+        var scan=FixtureSchemaDdl.scan(sources,Set.of());
+        assertThat(scan.tables()).isEmpty();
+        assertThat(scan.dynamicDdlFiles()).isEmpty();
+        assertThat(scan.parseFailures()).isEmpty();
+    }
+
+    @Test void usingTheCatalogHelperDoesNotExemptOtherHandWrittenDdlInTheSameFile() throws Exception {
+        Files.writeString(sources.resolve("Fixture.java"), """
+                class Fixture { void schema() {
+                    com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(db,"goods");
+                    db.execute("CREATE TABLE purchase_orders(id uuid, misspelled_column text)");
+                } }
+                """);
+        var scan=FixtureSchemaDdl.scan(sources,Set.of());
+        assertThat(scan.tables()).hasSize(1);
+        assertThat(scan.tables().getFirst().table()).isEqualTo("purchase_orders");
+        assertThat(scan.tables().getFirst().columns()).containsKey("misspelled_column");
+    }
 }

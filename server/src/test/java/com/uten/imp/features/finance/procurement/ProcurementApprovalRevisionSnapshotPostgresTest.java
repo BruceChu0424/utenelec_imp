@@ -30,26 +30,12 @@ class ProcurementApprovalRevisionSnapshotPostgresTest {
             postgres.start();
             JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
                     postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
-            jdbc.execute("""
-                    CREATE TABLE procurement_order_approval_cases (
-                        id uuid, order_type text, order_id uuid, attempt integer, submission_snapshot jsonb, display_snapshot jsonb, finance_tax_rate numeric(7,4));
-                    CREATE TABLE goods (id uuid, code text, name text, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8), client_goods_name text);
-                    CREATE TABLE colors (id uuid, name text, remark text);
-                    CREATE TABLE units (id uuid, name text);
-                    CREATE TABLE currencies (id uuid, name text);
-                    CREATE TABLE purchase_order_item_sources (order_item_id uuid, request_item_id uuid,
-                        allocated_gift_qty numeric(18,4) NOT NULL DEFAULT 0 CHECK(allocated_gift_qty>=0));
-                    CREATE TABLE purchase_request_items (row_version bigint NOT NULL DEFAULT 0, id uuid, request_id uuid,
-                        gift_ordered_qty numeric(18,4) NOT NULL DEFAULT 0 CHECK(gift_ordered_qty>=0),
-                        quantity_semantics text NOT NULL DEFAULT 'LEGACY_RECORDED'
-                            CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1')));
-                    CREATE TABLE purchase_requests (id uuid, bill_no text,
-                        quantity_semantics text NOT NULL DEFAULT 'LEGACY_RECORDED'
-                            CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1')));
-                    CREATE TABLE subcontract_order_item_sources (order_item_id uuid, application_item_id uuid);
-                    CREATE TABLE subcontract_application_items (id uuid, application_id uuid);
-                    CREATE TABLE subcontract_applications (id uuid, bill_no text);
-                    """);
+            // Real migrated columns/defaults and keys; this read oracle intentionally
+            // omits unrelated business write triggers, rather than duplicating stale DDL.
+            com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(jdbc,
+                    "procurement_order_approval_cases","goods","colors","units","currencies",
+                    "purchase_order_item_sources","purchase_request_items","purchase_requests",
+                    "subcontract_order_item_sources","subcontract_application_items","subcontract_applications");
             ProcurementFinanceApprovalService service = new ProcurementFinanceApprovalService(
                     List.of(), jdbc, new ObjectMapper(), mock(BusinessEventPublisher.class),
                     mock(WorkflowReviewerEligibility.class), mock(ProcurementApprovalProjectionQuery.class),
@@ -58,8 +44,8 @@ class ProcurementApprovalRevisionSnapshotPostgresTest {
                     mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
                     mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class), org.mockito.Mockito.mock(com.uten.imp.application.port.PartyOpenBalancePort.class));
             UUID dollars = UUID.randomUUID(), yuan = UUID.randomUUID();
-            jdbc.update("INSERT INTO currencies VALUES (?, ?)", dollars, "美元");
-            jdbc.update("INSERT INTO currencies VALUES (?, ?)", yuan, "人民币");
+            jdbc.update("INSERT INTO currencies(id,name) VALUES (?, ?)", dollars, "美元");
+            jdbc.update("INSERT INTO currencies(id,name) VALUES (?, ?)", yuan, "人民币");
             for (String type : List.of("PURCHASE", "SUBCONTRACT")) {
                 UUID order = UUID.randomUUID(), first = UUID.randomUUID(), second = UUID.randomUUID();
                 UUID existing = UUID.randomUUID(), deleted = UUID.randomUUID(), added = UUID.randomUUID();

@@ -74,7 +74,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                 CREATE TABLE preplan_supply_action_allocations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                     action_id uuid, analysis_id uuid, analysis_material_id uuid, allocated_qty numeric,
                     external_item_id uuid);
-                CREATE TABLE subcontract_orders(id uuid PRIMARY KEY, status int, is_deleted boolean DEFAULT false);
+                CREATE TABLE subcontract_orders(id uuid PRIMARY KEY, status int, is_deleted boolean DEFAULT false, termination_case_id uuid);
                 CREATE TABLE subcontract_order_items(id uuid PRIMARY KEY, order_id uuid, unit_rate numeric,
                     returned_qty numeric DEFAULT 0, is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_order_item_sources(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

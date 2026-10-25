@@ -66,9 +66,9 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
         assertThat(db.queryForObject("SELECT to_regclass('public.sms_gateway_settings') IS NULL", Boolean.class)).isTrue();
         var support=new RootSupplyActualWarehouseEndToEndTest();beans.autowireBean(support);support.prepare();
         try {
-            // Prepare versioned V854 analysis/request/procurement facts, then run real
-            // receipt/IQC/stock commands. Historical authorities restore before Flyway;
-            // current-schema receipt reversal below always uses the production bean.
+            // Write versioned V854 analysis/request/approval/receipt facts through JDBC,
+            // with the installed guards and real priced custody/stock evidence.
+            // Current business commands run only after all forward migrations.
             var historical=new LegacyV854RootSupplyFixture(support);
             var fixture=historical.createAndPass();
             historical.assertCurrentComponentsRestored();
@@ -125,6 +125,8 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
             assertThat(originalFulfillments).hasSize(2);
             assertThat(db.queryForObject("SELECT count(*) FROM preplan_root_output_events WHERE analysis_id=? AND warehouse_id<>?",Integer.class,fixture.analysis(),fixture.leaf())).isZero();
             assertThat(db.queryForObject("SELECT status FROM purchase_receipts WHERE id=?",Integer.class,fixture.receipt())).isEqualTo(1);
+            assertThat(db.queryForObject("SELECT fn_imported_business_document('purchase_receipts',?)",Boolean.class,fixture.receipt())).isFalse();
+            assertThat(db.queryForObject("SELECT sum(amount_original) FROM ar_ap_ledger WHERE source_doc_id=? AND direction='AP'",java.math.BigDecimal.class,fixture.receipt())).isEqualByComparingTo("50000");
             receipts.reverse(fixture.receipt());
             assertThat(db.queryForObject("SELECT COALESCE(SUM(root_fulfilled_qty),0) FROM production_material_analysis_items WHERE analysis_id=?",java.math.BigDecimal.class,fixture.analysis())).isZero();
             assertThat(db.queryForObject("SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE goods_id IN (?,?)",java.math.BigDecimal.class,fixture.goods().get(0),fixture.goods().get(1))).isZero();

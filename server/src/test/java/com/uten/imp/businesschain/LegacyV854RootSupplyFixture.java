@@ -1,41 +1,24 @@
 package com.uten.imp.businesschain;
 
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.OrderSnapshot;
-import com.uten.imp.application.port.ProductionSupplyTransitionPort;
 import com.uten.imp.application.port.PreplanAnalysisPegPort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
-import com.uten.imp.common.finance.ProcurementIqcReplacementAllocationService;
 import com.uten.imp.common.finance.ProcurementQuantities;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.HashUtil;
-import com.uten.imp.features.purchase.receipt.LegacyV854PurchaseReceiptAmountAuthority;
 import com.uten.imp.features.purchase.receipt.PurchaseReceiptAmountAuthority;
-import com.uten.imp.features.purchase.receipt.PurchaseReceiptItemRepository;
-import com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine;
-import com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest;
-import com.uten.imp.features.production.analysis.LegacyV854PreplanAnalysisStockPegService;
-import com.uten.imp.features.production.analysis.PreplanOriginEntitlementHook;
-import com.uten.imp.features.production.analysis.PreplanStockEntitlementService;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
-import com.uten.imp.features.stock.InventoryMutationLock;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInService;
-import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
-import org.springframework.aop.framework.Advised;
-import org.springframework.aop.framework.ProxyFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.AopTestUtils;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -47,7 +30,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * V835 finance FX, but no V865 finance-tax column/function. Native historical order,
  * approval and expectation rows obey the installed constraints/triggers. Analysis
  * and request facts are versioned native V854 fixtures, not modern preview/detail
- * commands against an old schema. Receipt, IQC, stock and root commands remain real.
+ * commands against an old schema. Versioned JDBC facts retain real custody/value,
+ * AP, IQC and exact entitlement guards. Current receipt reversal runs only after forward.
  * The ordinary current-schema analysis workflow is covered by its separate E2E.
  */
 final class LegacyV854RootSupplyFixture {
@@ -103,44 +87,9 @@ final class LegacyV854RootSupplyFixture {
         approveHistoricalOrder(reviewer, reviewerEmployee, order, sources);
         harness.loginAs(world.superAdminUserId());
 
-        RootSupplyActualWarehouseEndToEndTest.Fixture fixture;
-        // The sole V865 receipt-authority difference is tax-source projection.
-        // Use the complete frozen pre-V865 real implementation, not mocked rows,
-        // and retain the original transaction advisor. Always restore before Flyway.
-        try (var ignored = new HistoricalReceiptAmounts(); var historicalPegging = new HistoricalInspectionPegging();
-             var historicalCoverage = new HistoricalIqcCoverageReads()) {
-            historicalPegging.assertInstalled();
-            var receipt = new ReceiptSaveRequest();
-            receipt.setBillDate(BusinessTime.today());
-            receipt.setSupplierId(world.supplierId());
-            receipt.setWarehouseId(leaf);
-            receipt.setCurrencyId(world.currencyId());
-            receipt.setExchangeRate(BigDecimal.ONE);
-            receipt.setTaxRate(BigDecimal.ZERO);
-            receipt.setSettlementMethodId(settlement);
-            receipt.setItems(support.db.query("""
-                    SELECT id,goods_id,color_id,unit_id,unit_rate,qty,price
-                    FROM purchase_order_items WHERE order_id=? AND NOT is_deleted ORDER BY line_no,id
-                    """, (rs, row) -> {
-                var line = new ReceiptItemLine();
-                line.setOrderItemId(rs.getObject("id", UUID.class));
-                line.setGoodsId(rs.getObject("goods_id", UUID.class));
-                line.setColorId(rs.getObject("color_id", UUID.class));
-                line.setUnitId(rs.getObject("unit_id", UUID.class));
-                line.setUnitRate(rs.getBigDecimal("unit_rate"));
-                line.setQty(rs.getBigDecimal("qty"));
-                line.setPrice(rs.getBigDecimal("price"));
-                return line;
-            }, order.id()));
-            assertThat(receipt.getItems()).hasSize(2);
-            UUID receiptId = support.receipts.create(receipt).getId();
-            support.receipts.approve(receiptId);
-            fixture = new RootSupplyActualWarehouseEndToEndTest.Fixture(world, leaf, leaf, analysis, receiptId, goods);
-            support.passManual(fixture);
-            historicalCoverage.assertUsed();
-        } finally {
-            assertCurrentComponentsRestored();
-        }
+        UUID receiptId=seedHistoricalReceipt(world,leaf,settlement,order);
+        var fixture=new RootSupplyActualWarehouseEndToEndTest.Fixture(world,leaf,leaf,analysis,receiptId,goods);
+        seedHistoricalStockAndHandoffs(world,fixture);
         assertCurrentComponentsRestored();
         assertHistoricalSchema();
         assertThat(guardSnapshot()).containsExactlyElementsOf(guards);
@@ -173,10 +122,10 @@ final class LegacyV854RootSupplyFixture {
             }
             // This real root creation/validation boundary is unchanged from the
             // frozen pre-V895 source. It applies the V478 root identity rules.
-            support.roots.ensureRootNodes(analysis);
+            createHistoricalRoots(analysis,world.superAdminUserId());
             assertThat(support.db.update("""
-                    UPDATE production_material_analysis_materials SET confirmed_route='BUY',route_confirmed_by=?,route_confirmed_at=now()
-                    WHERE analysis_id=? AND node_role='ROOT_SUPPLY' AND source_suggestion='BUY'
+                    UPDATE production_material_analysis_materials SET source_suggestion='BUY',confirmed_route='BUY',route_confirmed_by=?,route_confirmed_at=now()
+                    WHERE analysis_id=? AND node_role='ROOT_SUPPLY'
                     """, world.superAdminUserId(), analysis)).isEqualTo(2);
             support.db.update("""
                     INSERT INTO purchase_requests(id,bill_no,bill_date,warehouse_id,applicant_id,maker_id,status,
@@ -257,9 +206,7 @@ final class LegacyV854RootSupplyFixture {
                         VALUES(?,?,?,?,1,?,0)
                         """, UUID.randomUUID(), item, request, source.get("qty"), world.superAdminUserId());
             }
-            Object defaults = ReflectionTestUtils.getField(AopTestUtils.<Object>getUltimateTargetObject(support.orders), "masterDefaultsSync");
-            ReflectionTestUtils.invokeMethod(defaults, "syncFromPurchaseOrder", id);
-            OrderSnapshot snapshot = support.orders.lockAndValidateFinanceSubmission(id);
+            OrderSnapshot snapshot=historicalOrderSnapshot(id);
             String json = ReflectionTestUtils.invokeMethod(AopTestUtils.<Object>getUltimateTargetObject(support.finance), "canonicalSnapshotJson", snapshot);
             String hash = HashUtil.sha256(json);
             support.db.update("""
@@ -284,12 +231,12 @@ final class LegacyV854RootSupplyFixture {
                         ELSE 'MASTER_AT_APPROVAL' END,goods_snapshot_locked_at=now()
                     WHERE order_id=? AND NOT is_deleted
                     """, order.id());
-            support.beans.getBean(ProductionSupplyTransitionPort.class).onPurchaseOrderApproved(order.id());
+            // Historical source counters are written explicitly, not by a current command.
             for (var source : sources) {
                 UUID request = (UUID) source.get("id");
                 support.db.update("UPDATE purchase_request_items SET ordered_qty=COALESCE(ordered_qty,0)+?,gift_ordered_qty=COALESCE(gift_ordered_qty,0) WHERE id=?",
                         source.get("qty"), request);
-                ReflectionTestUtils.invokeMethod(AopTestUtils.<Object>getUltimateTargetObject(support.orders), "recalcRequestClosed", request);
+                support.db.update("UPDATE purchase_requests SET is_closed=NOT EXISTS(SELECT 1 FROM purchase_request_items line WHERE line.request_id=purchase_requests.id AND NOT line.is_deleted AND line.qty>line.ordered_qty) WHERE id=(SELECT request_id FROM purchase_request_items WHERE id=?)",request);
             }
             support.db.update("UPDATE purchase_orders SET status=1,approver_id=?,updated_at=now() WHERE id=? AND status=0", reviewerEmployee, order.id());
             // V835 FX exists at V854. Deliberately no V865 finance_tax_rate write.
@@ -330,138 +277,130 @@ final class LegacyV854RootSupplyFixture {
         assertThat(support.db.queryForObject("SELECT to_regprocedure('public.fn_procurement_approved_tax_rate(text,uuid,numeric)') IS NULL", Boolean.class)).isTrue();
         assertThat(support.db.queryForObject("SELECT to_regprocedure('public.fn_preplan_aggregate_retained_private_sources(uuid)') IS NULL", Boolean.class)).isTrue();
         assertThat(support.db.queryForObject("SELECT to_regprocedure('public.fn_preplan_aggregate_cancelled_parent_receipt_blocks(uuid)') IS NULL", Boolean.class)).isTrue();
+        assertThat(support.db.queryForObject("SELECT to_regprocedure('public.fn_imported_business_document(text,uuid)') IS NULL",Boolean.class)).isTrue();
+        assertThat(support.db.queryForObject("SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='purchase_orders' AND column_name='termination_case_id'",Integer.class)).isZero();
     }
 
     private List<String> guardSnapshot() {
         String tables = "'production_material_analyses','production_material_analysis_items','production_material_analysis_materials','preplan_supply_actions','preplan_supply_action_allocations','purchase_requests','purchase_request_items','purchase_orders','purchase_order_items','purchase_order_item_sources','procurement_order_approval_cases','procurement_order_approval_events','purchase_receipts','purchase_receipt_items','preplan_root_output_events'";
         assertThat(support.db.queryForObject("SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND NOT t.tgisinternal AND c.relname IN ("+tables+") AND t.tgenabled NOT IN ('O','A')", Integer.class)).isZero();
-        return support.db.queryForList("SELECT c.relname::text||':'||t.tgname::text||':'||t.tgenabled::text||':'||pg_get_triggerdef(t.oid) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND NOT t.tgisinternal AND c.relname IN ("+tables+") UNION ALL SELECT c.relname::text||':'||k.conname::text||':'||k.convalidated::text||':'||pg_get_constraintdef(k.oid) FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname IN ("+tables+") ORDER BY 1", String.class);
+        return support.db.queryForList("SELECT c.relname::text||':'||t.tgname::text||':'||t.tgenabled::text||':'||pg_get_triggerdef(t.oid) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND NOT t.tgisinternal UNION ALL SELECT c.relname::text||':'||k.conname::text||':'||k.convalidated::text||':'||pg_get_constraintdef(k.oid) FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' UNION ALL SELECT 'FUNCTION:'||p.oid::text||':'||pg_get_functiondef(p.oid) FROM pg_proc p WHERE p.pronamespace='public'::regnamespace AND p.prokind IN('f','p') ORDER BY 1", String.class);
     }
 
-    /** Full pre-V895 command and helpers, with the original transaction advisors. */
-    private final class HistoricalInspectionPegging implements AutoCloseable {
-        private final PreplanAnalysisPegPort historical;
-        @SuppressWarnings("unchecked")
-        HistoricalInspectionPegging() {
-            Object target = AopTestUtils.getUltimateTargetObject(currentPegging);
-            var legacy = new LegacyV854PreplanAnalysisStockPegService(
-                    (EntityManager) ReflectionTestUtils.getField(target, "em"),
-                    (TxSessionVars) ReflectionTestUtils.getField(target, "tx"),
-                    (SecurityContextCurrentUser) ReflectionTestUtils.getField(target, "currentUser"),
-                    (InventoryMutationLock) ReflectionTestUtils.getField(target, "inventoryLock"),
-                    (PreplanStockEntitlementService) ReflectionTestUtils.getField(target, "entitlement"),
-                    (ObjectProvider<PreplanOriginEntitlementHook>) ReflectionTestUtils.getField(target, "originHooks"));
-            support.beans.autowireBean(legacy);
-            assertThat(currentPegging).isInstanceOf(Advised.class);
-            var proxy = new ProxyFactory(legacy);
-            proxy.setProxyTargetClass(true);
-            for (var advisor : ((Advised) currentPegging).getAdvisors()) proxy.addAdvisor(advisor);
-            historical = (PreplanAnalysisPegPort) proxy.getProxy();
-            assertThat(((Advised) historical).getAdvisors()).containsExactly(((Advised) currentPegging).getAdvisors());
-            ReflectionTestUtils.setField(stockInTarget, "preplanAnalysisPeg", historical);
-        }
-        void assertInstalled() { assertThat(ReflectionTestUtils.getField(stockInTarget, "preplanAnalysisPeg")).isSameAs(historical); }
-        @Override public void close() {
-            ReflectionTestUtils.setField(stockInTarget, "preplanAnalysisPeg", currentPegging);
-            assertThat(ReflectionTestUtils.getField(stockInTarget, "preplanAnalysisPeg")).isSameAs(currentPegging);
-        }
+
+    /** The only two root DML statements are pinned to the actual pre-V855 source. */
+    private void createHistoricalRoots(UUID analysis,UUID actor) {
+        assertThat(support.db.queryForObject("SELECT count(*) FROM production_material_analysis_items item JOIN goods ON goods.id=item.goods_id WHERE item.analysis_id=? AND (goods.unit_id IS NULL OR item.unit_id IS DISTINCT FROM goods.unit_id)",Integer.class,analysis)).isZero();
+        try(var input=LegacyV854RootSupplyFixture.class.getResourceAsStream("/legacy-v854-root-coverage/approved-root-supply-facts.sql")) {
+            assertThat(input).isNotNull();
+            String sql=new String(input.readAllBytes(),StandardCharsets.UTF_8).replace("\r\n","\n");
+            assertThat(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(sql.getBytes(StandardCharsets.UTF_8))))
+                    .isEqualTo("492cb3e131747cbd8198c5bdc2dae9c132f3cf2bb73f7ce7a581bd00fa4cafb2");
+            var jdbc=new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(support.db);
+            var statements=sql.split(";\\s*(?:\\r?\\n|$)");assertThat(statements).hasSize(2);
+            for(String statement:statements)jdbc.update(statement,Map.of("analysisId",analysis,"actorId",actor));
+        } catch(java.io.IOException|java.security.NoSuchAlgorithmException failure) { throw new IllegalStateException(failure); }
     }
 
-    /**
-     * IQC's real synchronous wakeup still refreshes the analysis. Only its two
-     * complete read statements use the actual pre-V895 projection. Parameters,
-     * transaction, locks and returned quantities remain the real JPA results.
-     * SQL resources are exact Java-evaluated statements from Git source
-     * 0bdab31f1784018f854a3954eef898c09ce3c90b (see provenance.json).
-     */
-    private final class HistoricalIqcCoverageReads implements AutoCloseable {
-        private final Map<String, HistoricalSelect> selects = new LinkedHashMap<>();
-        private int mappedReads;
-        HistoricalIqcCoverageReads() {
-            assertHistoricalSchema();
-            add("active-future-coverage", 3,
-                    "6c6d33546130daf01b7ab232a3dc2bef724c021e5cd41f12262c18bd1c0e4b49",
-                    "5ea9172ad5e72053588f712d10c42713c872cd9ef6ced0c07019f91aee2474ad");
-            add("parent-supply-commitments", 2,
-                    "44e31cd2b831051c10b36bc1085713f47b601fb6c0826de810cd506b019510f7",
-                    "57e2118eb4db8080419470e71de0366426569e14007c438497a01969b4479096");
-            var scoped = Proxy.newProxyInstance(EntityManager.class.getClassLoader(), new Class<?>[]{EntityManager.class},
-                    (proxy, method, args) -> {
-                        if (method.getName().equals("createNativeQuery") && args != null && args[0] instanceof String sql) {
-                            HistoricalSelect select = selects.get(sql);
-                            if (select != null) {
-                                Object[] actual = args.clone(); actual[0] = select.sql();
-                                var query = (jakarta.persistence.Query) invoke(method, currentAnalysisEntityManager, actual);
-                                return checkedQuery(query, select.columns());
-                            }
-                            if (sql.contains("fn_preplan_aggregate_retained_private_sources")
-                                    || sql.contains("fn_preplan_aggregate_cancelled_parent_receipt_blocks")) {
-                                throw new IllegalStateException("Unreviewed modern projection entered historical IQC preparation");
-                            }
-                        }
-                        return invoke(method, currentAnalysisEntityManager, args);
-                    });
-            ReflectionTestUtils.setField(analysisTarget, "em", scoped);
-        }
-        private void add(String name, int columns, String currentHash, String historicalHash) {
-            String current = sql("current." + name, currentHash);
-            String historical = sql("historical." + name, historicalHash);
-            assertThat(selects.put(current, new HistoricalSelect(historical, columns))).isNull();
-        }
-        private jakarta.persistence.Query checkedQuery(jakarta.persistence.Query actual, int columns) {
-            return (jakarta.persistence.Query) Proxy.newProxyInstance(jakarta.persistence.Query.class.getClassLoader(),
-                    new Class<?>[]{jakarta.persistence.Query.class}, (proxy, method, args) -> {
-                        Object result = invoke(method, actual, args);
-                        if (method.getName().equals("getResultList")) {
-                            mappedReads++;
-                            for (Object row : (List<?>) result) assertThat((Object[]) row).hasSize(columns);
-                        }
-                        return result == actual ? proxy : result;
-                    });
-        }
-        void assertUsed() { assertThat(mappedReads).isPositive(); }
-        @Override public void close() {
-            ReflectionTestUtils.setField(analysisTarget, "em", currentAnalysisEntityManager);
-            assertThat(ReflectionTestUtils.getField(analysisTarget, "em")).isSameAs(currentAnalysisEntityManager);
-        }
-        private String sql(String name, String hash) {
-            try (var input = LegacyV854RootSupplyFixture.class.getResourceAsStream("/legacy-v854-root-coverage/" + name + ".sql")) {
-                assertThat(input).isNotNull();
-                // Git source and Java text blocks are LF; accept only checkout
-                // CRLF normalization, with every resulting SQL byte hash pinned.
-                String sql = new String(input.readAllBytes(), StandardCharsets.UTF_8).replace("\r\n", "\n");
-                assertThat(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(sql.getBytes(StandardCharsets.UTF_8)))).isEqualTo(hash);
-                return sql;
-            } catch (java.io.IOException | java.security.NoSuchAlgorithmException failure) {
-                throw new IllegalStateException("Frozen historical SQL resource is unavailable", failure);
+    /** Actual historical columns, never a current ORM entity or a synthesized ORM result. */
+    private OrderSnapshot historicalOrderSnapshot(UUID order) {
+        var items=support.db.query("SELECT id,line_no,request_item_id,goods_id,color_id,unit_id,unit_rate,qty,price,amount_original,amount_local,deliver_date,gift_qty,quantity_semantics FROM purchase_order_items WHERE order_id=? AND NOT is_deleted ORDER BY line_no,id",
+                (row,index)->new com.uten.imp.application.port.ProcurementOrderApprovalPort.ItemSnapshot(
+                        row.getObject("id",UUID.class),row.getInt("line_no"),row.getObject("request_item_id",UUID.class),
+                        row.getObject("goods_id",UUID.class),row.getObject("color_id",UUID.class),row.getObject("unit_id",UUID.class),
+                        row.getBigDecimal("unit_rate"),row.getBigDecimal("qty"),row.getBigDecimal("price"),
+                        row.getBigDecimal("amount_original"),row.getBigDecimal("amount_local"),row.getObject("deliver_date",java.time.LocalDate.class),
+                        null,null,row.getBigDecimal("gift_qty"),row.getString("quantity_semantics")),order);
+        return support.db.queryForObject("SELECT * FROM purchase_orders WHERE id=?",(row,index)->new OrderSnapshot(
+                "PURCHASE",order,row.getString("bill_no"),row.getObject("bill_date",java.time.LocalDate.class),
+                row.getObject("supplier_id",UUID.class),row.getObject("warehouse_id",UUID.class),row.getObject("currency_id",UUID.class),
+                row.getBigDecimal("exchange_rate"),row.getObject("settlement_method_id",UUID.class),row.getBigDecimal("tax_rate"),
+                row.getObject("purchaser_id",UUID.class),row.getObject("maker_id",UUID.class),row.getObject("deliver_date",java.time.LocalDate.class),
+                row.getBigDecimal("total_original"),row.getBigDecimal("total_local"),items),order);
+    }
+
+    private UUID seedHistoricalReceipt(FullChainEndToEndTest.World world,UUID leaf,UUID settlement,LegacyOrder order) {
+        return support.transactions.execute(ignored->{
+            support.beans.getBean(TxSessionVars.class).bind();
+            UUID receipt=UUID.randomUUID();String no=support.beans.getBean(DocNumberService.class).nextNumber(DocNumberPrefix.PURCHASE_RECEIPT);
+            support.db.update("INSERT INTO purchase_receipts(id,bill_no,bill_date,supplier_id,warehouse_id,currency_id,exchange_rate,tax_rate,settlement_method_id,maker_id,total_original,total_local,status,quantity_semantics,created_by,updated_by) VALUES(?,?,?,?,?,?,1,0,?,?,?,?,1,?,?,?)",
+                    receipt,no,BusinessTime.today(),world.supplierId(),leaf,world.currencyId(),settlement,world.employeeId(),order.snapshot().totalOriginal(),order.snapshot().totalLocal(),ProcurementQuantities.EXTRA_GIFT,world.superAdminUserId(),world.superAdminUserId());
+            support.db.update("""
+                    INSERT INTO purchase_receipt_items(id,receipt_id,bill_no,bill_date,line_no,order_item_id,goods_id,color_id,unit_id,unit_rate,qty,price,amount_original,amount_local,gift_qty,quantity_semantics,replacement_intent,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,goods_snapshot_locked_at)
+                    SELECT gen_random_uuid(),?,?,?,line_no,id,goods_id,color_id,unit_id,unit_rate,qty,price,amount_original,amount_local,0,quantity_semantics,'NORMAL',goods_code_snapshot,goods_name_snapshot,'ORDER_ITEM_AT_APPROVAL',now()
+                    FROM purchase_order_items WHERE order_id=? AND NOT is_deleted
+                    """,receipt,no,BusinessTime.today(),order.id());
+            support.db.update("UPDATE purchase_order_items SET received_qty=qty WHERE order_id=?",order.id());
+            support.db.update("UPDATE purchase_orders SET is_closed=true WHERE id=?",order.id());
+            withHistoricalConnection(connection->{
+                com.uten.imp.support.ProcurementReceiptFixtureSupport.postOriginalReceiptPayable(connection,"PURCHASE",receipt,world.superAdminUserId());
+                com.uten.imp.support.ProcurementReceiptFixtureSupport.appendStandardReceipt(connection,"PURCHASE",receipt,world.superAdminUserId());
+            });
+            for(var item:support.db.queryForList("SELECT * FROM purchase_receipt_items WHERE receipt_id=? ORDER BY id",receipt)) {
+                UUID inspection=UUID.randomUUID();
+                support.db.update("""
+                        INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,receipt_item_id,warehouse_id,goods_id,color_id,unit_id,unit_rate,received_base_qty,received_amount_local,status,passed_base_qty)
+                        VALUES(?,'PURCHASE',?,?,?,?,?,?,1,500,25000,'RESOLVED',500)
+                        """,inspection,receipt,item.get("id"),leaf,item.get("goods_id"),item.get("color_id"),world.unitId());
+                support.db.update("INSERT INTO procurement_inspection_events(id,inspection_item_id,action,base_qty,reason,actor_employee_id,requires_warehouse_stock_in,released_amount_local) VALUES(?,?,'PASS',500,'Actual priced V854 fixture quality decision',?,true,25000)",UUID.randomUUID(),inspection,world.employeeId());
             }
-        }
-        private Object invoke(java.lang.reflect.Method method, Object target, Object[] args) throws Throwable {
-            try { return method.invoke(target, args); }
-            catch (InvocationTargetException failure) { throw failure.getCause(); }
-        }
+            withHistoricalConnection(connection->com.uten.imp.support.ProcurementReceiptFixtureSupport.appendExistingQualityConsideration(connection,"PURCHASE",receipt,world.superAdminUserId()));
+            return receipt;
+        });
     }
 
-    private record HistoricalSelect(String sql, int columns) { }
+    /** Guarded custody/value JDBC writes use V517/V527 structures, with no mapped business entity. */
+    private void seedHistoricalStockAndHandoffs(FullChainEndToEndTest.World world,RootSupplyActualWarehouseEndToEndTest.Fixture fixture) {
+        List<UUID> inspections=support.db.queryForList("SELECT id FROM procurement_inspection_items WHERE receipt_id=? ORDER BY id",UUID.class,fixture.receipt());
+        try(var connection=java.util.Objects.requireNonNull(support.db.getDataSource()).getConnection()) {
+            com.uten.imp.support.ProcurementReceiptFixtureSupport.stockPricedPasses(connection,inspections);
+        } catch(java.sql.SQLException failure) { throw new IllegalStateException(failure); }
+        support.transactions.executeWithoutResult(ignored->{
+            support.beans.getBean(TxSessionVars.class).bind();
+            for(var stock:support.db.queryForList("""
+                    SELECT stock.id stock_id,stock.pass_event_id,inspection.goods_id,allocation.id allocation_id,allocation.external_item_id,
+                           allocation.analysis_material_id,material.analysis_item_id
+                    FROM procurement_iqc_stock_in_batch_items stock
+                    JOIN procurement_inspection_items inspection ON inspection.id=stock.inspection_item_id
+                    JOIN preplan_supply_action_allocations allocation ON allocation.analysis_id=?
+                    JOIN production_material_analysis_materials material ON material.id=allocation.analysis_material_id AND material.goods_id=inspection.goods_id
+                    WHERE inspection.receipt_id=? ORDER BY stock.id
+                    """,fixture.analysis(),fixture.receipt())) {
+                UUID reservation=UUID.randomUUID(),exact=UUID.randomUUID(),origin=UUID.randomUUID(),release=UUID.randomUUID();
+                support.db.update("""
+                        INSERT INTO stock_reservations(id,goods_id,warehouse_id,qty,consumed_qty,released_qty,status,source,source_doc_type,source_doc_id,owner_type,owner_id,purpose,supply_type,supply_id,idempotency_key,created_by,updated_by)
+                        VALUES(?,?,?,500,0,0,0,3,'PURCHASE_RECEIPT',?,'PREPLAN_ANALYSIS',?,'PREPLAN_MATERIAL','PURCHASE_REQUEST_ITEM',?,?,?,?)
+                        """,reservation,stock.get("goods_id"),fixture.leaf(),fixture.receipt(),fixture.analysis(),stock.get("external_item_id"),"V854-RESERVE:"+reservation,world.superAdminUserId(),world.superAdminUserId());
+                support.db.update("""
+                        INSERT INTO preplan_analysis_stock_exact_pegs(id,stock_reservation_id,supply_action_allocation_id,origin_analysis_id,origin_analysis_material_id,beneficiary_analysis_id,beneficiary_analysis_material_id,qty,source_receipt_type,source_receipt_id,source_disposition_event_id,idempotency_key,created_by,updated_by)
+                        VALUES(?,?,?,?,?,?,?,500,'PURCHASE',?,?,?,?,?)
+                        """,exact,reservation,stock.get("allocation_id"),fixture.analysis(),stock.get("analysis_material_id"),fixture.analysis(),stock.get("analysis_material_id"),fixture.receipt(),stock.get("pass_event_id"),"V854-EXACT:"+exact,world.superAdminUserId(),world.superAdminUserId());
+                support.db.update("""
+                        INSERT INTO preplan_stock_entitlement_events(id,event_group_id,stock_reservation_id,beneficiary_analysis_id,beneficiary_analysis_material_id,event_type,qty,source_exact_peg_id,source_receipt_type,source_receipt_id,source_disposition_event_id,idempotency_key,created_by)
+                        VALUES(?,?,?,?,?,'ORIGIN_IQC',500,?,'PURCHASE',?,?,?,?)
+                        """,origin,stock.get("stock_id"),reservation,fixture.analysis(),stock.get("analysis_material_id"),exact,fixture.receipt(),stock.get("pass_event_id"),"V854-ORIGIN:"+origin,world.superAdminUserId());
+                assertThat(support.db.queryForObject("SELECT fn_preplan_reservation_has_qualified_origin(?)",Boolean.class,reservation)).isTrue();
+                support.db.update("""
+                        INSERT INTO preplan_stock_entitlement_events(id,event_group_id,stock_reservation_id,beneficiary_analysis_id,beneficiary_analysis_material_id,event_type,qty,source_entitlement_event_id,idempotency_key,created_by)
+                        VALUES(?,?,?,?,?,'RELEASE',500,?,?,?)
+                        """,release,release,reservation,fixture.analysis(),stock.get("analysis_material_id"),origin,"V854-RELEASE:"+release,world.superAdminUserId());
+                support.db.update("UPDATE stock_reservations SET released_qty=500,status=1,release_reason='ROOT_SUPPLY_HANDOFF' WHERE id=?",reservation);
+                support.db.update("""
+                        INSERT INTO preplan_root_output_events(analysis_id,analysis_item_id,root_material_id,event_kind,warehouse_id,goods_id,qty_base,source_reservation_id,release_entitlement_event_id,source_receipt_type,source_receipt_id,idempotency_key,created_by,route)
+                        VALUES(?,?,?,'FULFILL',?,?,500,?,?,'PURCHASE',?,?,?,'BUY')
+                        """,fixture.analysis(),stock.get("analysis_item_id"),stock.get("analysis_material_id"),fixture.leaf(),stock.get("goods_id"),reservation,release,fixture.receipt(),"V854-ROOT:"+origin,world.superAdminUserId());
+            }
+        });
+        assertThat(support.db.queryForObject("SELECT sum(qty) FROM stock_balances WHERE goods_id IN (?,?)",BigDecimal.class,fixture.goods().get(0),fixture.goods().get(1))).isEqualByComparingTo("1000");
+        assertThat(support.db.queryForObject("SELECT sum(amount_local) FROM stock_balances WHERE goods_id IN (?,?)",BigDecimal.class,fixture.goods().get(0),fixture.goods().get(1))).isEqualByComparingTo("50000");
+        assertThat(support.db.queryForObject("SELECT sum(amount_original) FROM ar_ap_ledger WHERE source_doc_id=? AND direction='AP'",BigDecimal.class,fixture.receipt())).isEqualByComparingTo("50000");
+    }
 
-    private final class HistoricalReceiptAmounts implements AutoCloseable {
-        private final PurchaseReceiptAmountAuthority original = (PurchaseReceiptAmountAuthority) ReflectionTestUtils.getField(receiptTarget, "receiptAmountAuthority");
-        HistoricalReceiptAmounts() {
-            Object target = AopTestUtils.<Object>getUltimateTargetObject(original);
-            var legacy = new LegacyV854PurchaseReceiptAmountAuthority(
-                    (EntityManager) ReflectionTestUtils.getField(target, "em"),
-                    (PurchaseReceiptItemRepository) ReflectionTestUtils.getField(target, "itemRepo"),
-                    (ProcurementIqcReplacementAllocationService) ReflectionTestUtils.getField(target, "replacementAllocation"));
-            var proxy = new ProxyFactory(legacy);
-            proxy.setProxyTargetClass(true);
-            assertThat(original).isInstanceOf(Advised.class);
-            for (var advisor : ((Advised) original).getAdvisors()) proxy.addAdvisor(advisor);
-            ReflectionTestUtils.setField(receiptTarget, "receiptAmountAuthority", proxy.getProxy());
-        }
-        @Override public void close() {
-            ReflectionTestUtils.setField(receiptTarget, "receiptAmountAuthority", original);
-            assertThat(ReflectionTestUtils.getField(receiptTarget, "receiptAmountAuthority")).isSameAs(original);
-        }
+    @FunctionalInterface private interface HistoricalSqlWork { void run(java.sql.Connection connection) throws java.sql.SQLException; }
+    private void withHistoricalConnection(HistoricalSqlWork work) {
+        var connection=org.springframework.jdbc.datasource.DataSourceUtils.getConnection(java.util.Objects.requireNonNull(support.db.getDataSource()));
+        try { work.run(connection); }
+        catch(java.sql.SQLException failure) { throw new IllegalStateException(failure); }
     }
 
     private record LegacyOrder(UUID id, UUID approval, OrderSnapshot snapshot, String hash) { }

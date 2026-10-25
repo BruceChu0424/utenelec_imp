@@ -31,5 +31,23 @@
     "activeFutureCoverage",
     "parentSupplyCommitments"
   ],
-  "purpose": "Exact two complete SELECT statements used only by real historical IQC synchronous refresh; no preview/detail/notify or SQL function replacement"
+  "purpose": "Create native V854 facts with installed guards and real priced JDBC valuation evidence; never run current receipt/order ORM on V854. Prove V855 standalone preservation, then full normal forward and real current receipt reversal of the same source slices.",
+  "previousSelectAdapters": "Retained frozen source evidence only; no longer substituted into current beans during a historical schema test.",
+  "activeHistoricalRootStatements": {
+    "commit": "9c5b1a95159cfc787e35ecd1dcaf9e718c5fd058",
+    "sourcePath": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisRootSupplyService.java",
+    "sourceSha256": "1bca9b1f68a08148b7fba0c10724c8d882842410779ec3c45bf30d16ea9e46c7",
+    "method": "ensureRootNodes",
+    "statements": 2,
+    "sqlSha256": "492cb3e131747cbd8198c5bdc2dae9c132f3cf2bb73f7ce7a581bd00fa4cafb2",
+    "resource": "approved-root-supply-facts.sql"
+  },
+  "historicalFactSources": [
+    "V307 exact stock pegs and immutable allocation identity",
+    "V309/V337 positive-origin and derived release entitlement shape",
+    "V478 root output identity/quantity projector and original same-warehouse guard",
+    "V517/V527 actual priced custody and reversal graphs",
+    "V535 exact real IQC stock-in provenance and capacity",
+    "JDBC fixture receipt/AP/consideration/PASS data with actual price50 qty500 and two real stock-in items"
+  ]
 }

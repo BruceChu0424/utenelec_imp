@@ -63,13 +63,15 @@ class SubcontractApplicationKitPostgresTest {
                     color_id uuid, unit_rate numeric(18,6) DEFAULT 1, qty numeric(18,4), ordered_qty numeric(18,4) DEFAULT 0,
                     is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_orders(id uuid PRIMARY KEY, status smallint DEFAULT 0,
-                    is_deleted boolean DEFAULT false, is_closed boolean DEFAULT false);
+                    is_deleted boolean DEFAULT false, is_closed boolean DEFAULT false, termination_case_id uuid);
                 CREATE TABLE subcontract_order_items(id uuid PRIMARY KEY, order_id uuid, goods_id uuid, color_id uuid,
                     qty numeric(18,4), unit_rate numeric(18,6) DEFAULT 1, is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_order_item_sources(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                     order_item_id uuid, application_item_id uuid, alloc_qty numeric(18,4), line_no integer);
                 CREATE TABLE procurement_order_approval_cases(order_type text, order_id uuid, status text,
-                    attempt integer DEFAULT 1, finance_tax_rate numeric(7,4), UNIQUE(order_type,order_id,attempt));
+                    attempt integer DEFAULT 1, finance_tax_rate numeric(7,4), decided_txid bigint, replacement_order_id uuid,
+                    request_type text NOT NULL DEFAULT 'ORDER' CHECK(request_type IN('ORDER','CLOSE','CLOSE_AND_REORDER')),
+                    UNIQUE(order_type,order_id,attempt));
                 CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, status text DEFAULT 'OPEN',
                     is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_material_plan_items(id uuid PRIMARY KEY, plan_id uuid, order_item_id uuid,

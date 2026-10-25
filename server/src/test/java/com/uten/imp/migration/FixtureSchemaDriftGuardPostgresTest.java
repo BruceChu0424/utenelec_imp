@@ -205,7 +205,18 @@ class FixtureSchemaDriftGuardPostgresTest {
             "com/uten/imp/migration/RuntimeDdlAndFlywayHistoryPrivilegesPostgresTest.java#ordinary_business",
             "com/uten/imp/migration/RuntimeDdlAndFlywayHistoryPrivilegesPostgresTest.java#controlled_import_provenance",
             "com/uten/imp/migration/RuntimeDdlAndFlywayHistoryPrivilegesPostgresTest.java#unapproved_ddl",
-            "com/uten/imp/migration/RuntimeDdlAndFlywayHistoryPrivilegesPostgresTest.java#next_maintenance");
+            "com/uten/imp/migration/RuntimeDdlAndFlywayHistoryPrivilegesPostgresTest.java#next_maintenance",
+            // Private ordinary CRUD/serial and future-default-ACL probes. acl_forbidden
+            // is a deliberately denied CREATE attempt, never a production relation.
+            "com/uten/imp/migration/ScopedRuntimePrivilegesPostgresTest.java#acl_business_probe",
+            "com/uten/imp/migration/ScopedRuntimePrivilegesPostgresTest.java#acl_forbidden",
+            "com/uten/imp/migration/ScopedRuntimePrivilegesPostgresTest.java#acl_later",
+            // An owner-only scratch table proves the unchanged seven-argument audit
+            // factory still resolves uniquely; it stores no business or hold facts.
+            "com/uten/imp/migration/StockMeasurementHoldAuditPostgresTest.java#hold_audit_scope_probe",
+            // Private two-parent DAG proves archive ancestry deduplication, cycles and
+            // fail-closed reachability. It is an algorithm oracle, not an ERP table.
+            "com/uten/imp/migration/ImportedDocumentAncestryWalkPostgresTest.java#fixture_origin_dag");
     private static final Set<String> CLASS_SCOPED_FIXTURE_COLUMNS = Set.of(
             // Exact V783 miniature source view: original task fact marker and trusted/unknown owner classification.
             "com/uten/imp/features/attachment/MasterStagingProtectionForwardPostgresTest.java#attachment_object_outbox.history_note",

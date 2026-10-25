@@ -91,7 +91,9 @@ class CompanyFileUploadPostgresTest {
     @AfterAll static void stop()throws Exception {if(entityFactory!=null)entityFactory.close();if(database!=null)database.close();}
     @SuppressWarnings("unchecked") static <T>T transactional(T target) {
         var factory=new ProxyFactory(target);factory.setProxyTargetClass(true);
-        factory.addAdvice(new TransactionInterceptor(transactions,new AnnotationTransactionAttributeSource(false)));
+        var interceptor=new TransactionInterceptor();interceptor.setTransactionManager(transactions);
+        interceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource(false));
+        factory.addAdvice(interceptor);
         return (T)factory.getProxy();
     }
     @BeforeEach void setup()throws Exception {
@@ -186,7 +188,7 @@ class CompanyFileUploadPostgresTest {
         Entry entry=reserve(folder().id(),"安全测试.txt");byte[] bytes="EICAR-STANDARD-ANTIVIRUS-TEST-FILE".getBytes(StandardCharsets.US_ASCII);
         var grant=presign(entry,"text/plain",bytes);raw(grant,"text/plain",bytes);
         mvc.perform(post("/api/attachments/confirm").contentType("application/json").content(json.writeValueAsBytes(request(entry,grant,"text/plain",bytes))))
-                .andExpect(status().isUnprocessableEntity());
+                .andExpect(status().isUnprocessableContent());
         assertThat(db.queryForObject("SELECT status FROM attachment_upload_sessions WHERE storage_key=?",String.class,grant.storageKey())).isEqualTo("REJECTED");
         assertThat(db.queryForObject("SELECT count(*) FROM attachments WHERE owner_id=?",Integer.class,entry.id())).isZero();
         mvc.perform(get("/api/attachments/raw/"+grant.storageKey())).andExpect(status().isNotFound());

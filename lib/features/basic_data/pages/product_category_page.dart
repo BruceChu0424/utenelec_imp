@@ -608,7 +608,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
               label: '订货倍数',
               type: MasterFieldType.money,
             ),
-            if (_perms.contains(Perm.goodsPriceEdit))
+            if (_canEditPrice)
               const MasterFieldDef(
                 key: 'price',
                 label: '价格',

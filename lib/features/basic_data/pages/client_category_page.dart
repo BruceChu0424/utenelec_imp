@@ -241,6 +241,8 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
   /// 客户明细区配置：列、仓储闭包、权限与客户特有动作(负责人/可见人)。
   MasterEntityPaneConfig<ClientListItem, ClientDetail> _paneConfig() {
     final perms = ref.read(currentPermissionsProvider);
+    final canCreate = perms.contains(Perm.clientCreate);
+    final canChangeStatus = perms.contains(Perm.clientStatus);
     final clients = ref.watch(clientRepositoryProvider);
     return MasterEntityPaneConfig<ClientListItem, ClientDetail>(
       noun: '客户', // TODO(l10n): 补 arb
@@ -248,7 +250,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
         namespace: 'clients.${pane.categoryId}',
         fields: masterInlineCreateFields(
           buildClientFields(const {}, const [], l10n: basicDataL10n(context)),
-          excluded: {if (!perms.contains(Perm.clientStatus)) 'status'},
+          excluded: {if (!canChangeStatus) 'status'},
           options: {
             'defaultSettlementMethodId': () async => [
               for (final value
@@ -268,7 +270,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
           },
         ),
         defaults: {'status': '使用', 'categoryId': pane.categoryId},
-        canCreate: perms.contains(Perm.clientCreate),
+        canCreate: canCreate,
         onCreate: (_, values) async {
           await ref.read(clientRepositoryProvider).create({
             'status': '使用',
@@ -430,10 +432,10 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
       },
       batchEntityPath: ApiEndpoints.clients,
       statusResourceOf: ApiEndpoints.client,
-      canCreate: perms.contains(Perm.clientCreate),
+      canCreate: canCreate,
       canEdit: perms.contains(Perm.clientEdit),
       canDelete: perms.contains(Perm.clientDelete),
-      canStatus: perms.contains(Perm.clientStatus),
+      canStatus: canChangeStatus,
       // 负责人列在服务端的 facet 字段是 empId(值=员工 UUID、label=人名)，
       // 筛选参数是 ownerEmployeeId；表格按列 key ownerEmployeeName 索引。
       columnOfFacetField: const {'empId': 'ownerEmployeeName'},

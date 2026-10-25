@@ -353,6 +353,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   /// 模具明细区配置：列、仓储闭包、权限；新建/编辑带车间树，单击行开详情弹层。
   MasterEntityPaneConfig<MouldListItem, MouldDetail> _paneConfig() {
     final perms = ref.read(currentPermissionsProvider);
+    final canCreate = perms.contains(Perm.mouldCreate);
     final moulds = ref.watch(mouldRepositoryProvider);
     return MasterEntityPaneConfig<MouldListItem, MouldDetail>(
       noun: '模具', // TODO(l10n): 补 arb
@@ -395,7 +396,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
             ),
         ],
         defaults: {'status': '使用', 'categoryId': pane.categoryId},
-        canCreate: perms.contains(Perm.mouldCreate),
+        canCreate: canCreate,
         onCreate: (_, values) async {
           await ref.read(mouldRepositoryProvider).create({
             'status': '使用',
@@ -453,7 +454,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       },
       batchEntityPath: ApiEndpoints.moulds,
       statusResourceOf: ApiEndpoints.mould,
-      canCreate: perms.contains(Perm.mouldCreate),
+      canCreate: canCreate,
       canEdit: perms.contains(Perm.mouldEdit),
       canDelete: perms.contains(Perm.mouldDelete),
       canStatus: perms.contains(Perm.mouldStatus),

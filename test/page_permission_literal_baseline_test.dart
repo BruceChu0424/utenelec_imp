@@ -79,11 +79,19 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
   'lib/features/finance/pages/finance_procurement_approval_review_page.dart': (
     legacyCount: 4,
     tokens: {
-      'Perm.financeOrderApprovalApprove': 4,
-      'Perm.financeOrderApprovalReject': 4,
+      // Read-boundary projection excludes live decision/reversal capabilities;
+      // the review claim and endpoint continue to authorize every mutation.
+      'Perm.financeOrderApprovalApprove': 5,
+      'Perm.financeOrderApprovalReject': 5,
       'Perm.financeOrderApprovalView': 3,
-      'Perm.purchaseOrderReverse': 1,
-      'Perm.subcontractOrderReverse': 1,
+      'Perm.purchaseOrderReverse': 2,
+      'Perm.subcontractOrderReverse': 2,
+      // A newly created replacement order opens only under its own view grant;
+      // its edit route additionally requires the original order edit grant.
+      'Perm.purchaseOrderView': 1,
+      'Perm.subcontractOrderView': 1,
+      'Perm.purchaseOrderEdit': 1,
+      'Perm.subcontractOrderEdit': 1,
     },
   ),
   // ADR-189/190: native read and write owners fence retained callbacks,
@@ -197,6 +205,9 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
   'lib/features/stock/pages/instant_inventory_page.dart': (
     legacyCount: 2,
     tokens: {
+      // Optional category-tree reads require their own view grant; stock rows
+      // remain usable without this grant and retain the stock:view boundary.
+      'Perm.materialCategoryView': 1,
       'Perm.goodsEdit': 1,
       'Perm.goodsView': 1,
       'Perm.stockReportExport': 2,
@@ -598,6 +609,11 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
   'lib/features/basic_data/widgets/goods_bom_tab.dart': (
     legacyCount: 2,
     tokens: {
+      // Editing component master fields is a separate goods:edit authority.
+      // These five live checks cover collection, each awaited command, read
+      // completion, rendering and input mutation; BOM grants alone never write
+      // another goods master. Server atomic command authorization remains final.
+      'Perm.goodsEdit': 5,
       'Perm.goodsBomAudit': 1,
       'Perm.goodsBomCreate': 2,
       'Perm.goodsBomDelete': 2,
@@ -630,6 +646,65 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.goodsBomEdit': 1,
       'Perm.goodsBomCreate': 1,
       'Perm.goodsBomDelete': 2,
+    },
+  ),
+  // ADR-193: termination/replacement entrances recheck the existing finance
+  // submission grant; links to replacement documents keep their original view
+  // and edit authorities. The endpoint still enforces state, owner and approval.
+  // Native FQC retains its read projection across approve-capability refresh.
+  // Exact pre-change counts come from published3de31ae, not the new widgets;
+  // these reviewed identities do not raise the global677 cap.
+  'lib/features/operations_workbench/pages/operations_workbench_page.dart': (
+    legacyCount: 1,
+    tokens: {
+      'Perm.purchaseOrderSubmitFinance': 1,
+      'Perm.purchaseReportExport': 1,
+      'Perm.subcontractOrderSubmitFinance': 1,
+    },
+  ),
+  'lib/features/purchase/pages/purchase_doc_detail_page.dart': (
+    legacyCount: 10,
+    tokens: {
+      'Perm.financeOrderApprovalView': 3,
+      'Perm.purchaseOrderCancel': 1,
+      'Perm.purchaseOrderChangeQty': 1,
+      'Perm.purchaseOrderCreate': 1,
+      'Perm.purchaseOrderDecompose': 2,
+      'Perm.purchaseOrderEdit': 1,
+      'Perm.purchaseOrderSubmitFinance': 2,
+      'Perm.purchaseOrderView': 2,
+      'Perm.purchaseRequestView': 1,
+    },
+  ),
+  'lib/features/quality/pages/production_fqc_handling_page.dart': (
+    legacyCount: 4,
+    tokens: {
+      'Perm.attachmentView': 1,
+      'Perm.productionQualityInspectionApprove': 3,
+      'Perm.productionQualityInspectionView': 1,
+    },
+  ),
+  'lib/features/subcontract/pages/subcontract_decomposition_page.dart': (
+    legacyCount: 4,
+    tokens: {
+      'Perm.subcontractApplicationView': 1,
+      'Perm.subcontractOrderCreate': 1,
+      'Perm.subcontractOrderDecompose': 1,
+      'Perm.subcontractOrderSubmitFinance': 1,
+      'Perm.subcontractOrderView': 1,
+    },
+  ),
+  'lib/features/subcontract/pages/subcontract_doc_detail_page.dart': (
+    legacyCount: 9,
+    tokens: {
+      'Perm.financeOrderApprovalView': 3,
+      'Perm.subcontractOrderChangeQty': 1,
+      'Perm.subcontractOrderCreate': 1,
+      'Perm.subcontractOrderDecompose': 1,
+      'Perm.subcontractOrderEdit': 1,
+      'Perm.subcontractOrderSubmitFinance': 2,
+      'Perm.subcontractOrderView': 3,
+      'Perm.subcontractShortDeliveryDecide': 1,
     },
   ),
 };
@@ -712,7 +787,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
   test('reviewed guards lock exact permission identities and multiplicity', () {
     final path = _reviewedSourceGuards.keys.first;
     final tokens = Map<String, int>.from(_reviewedSourceGuards[path]!.tokens);
-    expect(_reviewedIncrementFor(path, tokens), 9);
+    expect(_reviewedIncrementFor(path, tokens), 17);
     tokens.remove('Perm.financeOrderApprovalView');
     tokens['Perm.authorizationManage'] = 2;
     expect(() => _reviewedIncrementFor(path, tokens), throwsStateError);
@@ -730,7 +805,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      205, // Exact owner, cost and stock guards; the global cap stays 677.
+      231, // Reviewed exact action/read boundaries; the global cap stays677.
     );
   });
 

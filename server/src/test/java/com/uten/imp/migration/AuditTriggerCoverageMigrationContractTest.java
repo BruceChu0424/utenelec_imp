@@ -780,7 +780,11 @@ class AuditTriggerCoverageMigrationContractTest {
             }
             String expected = fullTables().containsKey(table) ? "FULL"
                     : scopedTables().containsKey(table) ? "COLUMN_SCOPED" : "NONE";
-            if (!"NONE".equals(expected) && !expected.equals(registered.get(table))) {
+            // NONE needs no registration when a new table starts without audit
+            // triggers. An explicit later registration must still agree with
+            // the independent policy; do not silently accept FULL on a ledger.
+            String actual = registered.get(table);
+            if ((!"NONE".equals(expected) || actual != null) && !expected.equals(actual)) {
                 missing.add(table + "@V" + version + " needs fn_audit_track_table('" + table + "', '"
                         + expected + "', ...)");
             }

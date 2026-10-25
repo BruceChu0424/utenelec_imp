@@ -92,7 +92,8 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 原守卫基数 204，新增路径另由下方精确登记；当前 243 条守卫 / 19 条豁免。
+/// 原守卫基数 204，新增路径另由下方精确登记；当前 244 条守卫 / 19 条豁免。
+/// 2026-10-25 公司资料中心增加精确 company_file:view 守卫，文件夹范围和写动作由后端裁决。
 /// 独立救援入口 /operations/recovery 不依赖业务会话，控制面保留独立认证与恢复门禁。
 /// 2026-10-18 销售订单进度详情整页退役（履约时间线并入订货单详情页），
 /// /sales/progress/:orderId 路由删除，守卫 205→204；
@@ -185,6 +186,9 @@ const _masterHistoryViewPermissions = <String>[
 ];
 
 const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
+  // V925: entering the library requires view; folder ACL and mutations remain
+  // independent server decisions, even for an employee holding this grant.
+  '/company-files': [Perm.companyFileView],
   // ADR-189: history and revision reading use the current master view grant;
   // restoring remains an independent server-side action.
   '/basicinfo/history': _masterHistoryViewPermissions,

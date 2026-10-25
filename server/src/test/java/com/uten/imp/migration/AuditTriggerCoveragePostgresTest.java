@@ -40,6 +40,10 @@ class AuditTriggerCoveragePostgresTest {
     private static final UUID ACTOR = UUID.randomUUID();
     private static JdbcTemplate db;
     private static long historyBefore;
+    private static long terminationHistoryId;
+    private static String terminationHistoryBefore;
+    private static Map<String, String> terminationGuardsBefore;
+    private static String terminationFunctionsBefore;
 
     @BeforeAll
     static void start() {
@@ -63,12 +67,81 @@ class AuditTriggerCoveragePostgresTest {
         historyBefore = db.queryForObject(
                 "SELECT (SELECT count(*) FROM audit_log) + (SELECT count(*) FROM audit_log_archive)", Long.class);
         com.uten.imp.testsupport.TestFlyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
+                .locations("classpath:db/migration").target("923").load().migrate();
+        for (String table : List.of("procurement_order_termination_sources", "procurement_order_termination_peg_changes")) {
+            assertEquals(2, rowAuditTriggerCount(table), "V923 really installed FULL before the forward correction");
+        }
+        // Synthetic already-stored audit marker: this checks preservation, not
+        // a claim that a real finance closure was executed by this fixture.
+        terminationHistoryId = db.queryForObject("""
+                INSERT INTO audit_log(actor_id, actor_account, action, target_type, target_id, result, event_source, risk_level, event_category)
+                VALUES (?, 'policy-upgrade-fixture', 'insert', 'procurement_order_termination_sources',
+                        'termination-ledger-before-v929', 'success', 'database', 'low', 'data_change') RETURNING id
+                """, Long.class, ACTOR);
+        terminationHistoryBefore = db.queryForObject("SELECT to_jsonb(audit_log)::text FROM audit_log WHERE id=?",
+                String.class, terminationHistoryId);
+        terminationGuardsBefore = terminationGuardDefinitions();
+        terminationFunctionsBefore = terminationGuardFunctions();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
                 .locations("classpath:db/migration").load().migrate();
     }
 
     @AfterAll
     static void stop() {
         DB.stop();
+    }
+
+    @Test
+    void terminationLedgerCorrectionPreservesFactGuardsAndPreviouslyWrittenAudit() {
+        for (String table : List.of("procurement_order_termination_sources", "procurement_order_termination_peg_changes")) {
+            assertTrue(AuditTriggerCoverageMigrationContractTest.noneTables().contains(table));
+            assertEquals(0, rowAuditTriggerCount(table), "append-only decision results do not duplicate the parent event");
+        }
+        assertEquals(terminationGuardsBefore, terminationGuardDefinitions(),
+                "immutable/quantity/deferred triggers and constraints must retain their exact definitions and enabled state");
+        assertEquals(terminationFunctionsBefore, terminationGuardFunctions(),
+                "the forward audit-policy change cannot replace the immutable or quantity guard function");
+        assertEquals(terminationHistoryBefore,
+                db.queryForObject("SELECT to_jsonb(audit_log)::text FROM audit_log WHERE id=?", String.class, terminationHistoryId),
+                "audit rows written while V923 used FULL remain unchanged");
+        assertEquals(2, rowAuditTriggerCount("procurement_order_approval_cases"), "the human finance decision remains FULL");
+        assertTrue(AuditTriggerCoverageMigrationContractTest.noneTables().contains("procurement_order_approval_events"),
+                "the immutable semantic event remains the actor/time/reason trail");
+    }
+
+    private static int rowAuditTriggerCount(String table) {
+        return db.queryForObject("""
+                SELECT count(*) FROM pg_trigger
+                WHERE tgrelid=CAST(? AS regclass) AND NOT tgisinternal
+                  AND tgfoid IN ('public.fn_audit()'::regprocedure,'public.fn_audit_route_columns()'::regprocedure)
+                """, Integer.class, table);
+    }
+
+    private static Map<String, String> terminationGuardDefinitions() {
+        Map<String, String> definitions = new java.util.TreeMap<>();
+        db.queryForList("""
+                SELECT 'trigger:'||c.relname||':'||t.tgname AS name,
+                       t.tgenabled::text||':'||t.tgdeferrable::text||':'||t.tginitdeferred::text||':'||pg_get_triggerdef(t.oid) AS definition
+                FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
+                WHERE c.oid IN ('procurement_order_termination_sources'::regclass,'procurement_order_termination_peg_changes'::regclass)
+                  AND t.tgfoid NOT IN ('public.fn_audit()'::regprocedure,'public.fn_audit_route_columns()'::regprocedure)
+                UNION ALL
+                SELECT 'constraint:'||conrelid::regclass::text||':'||conname,pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conrelid IN ('procurement_order_termination_sources'::regclass,'procurement_order_termination_peg_changes'::regclass)
+                """).forEach(row -> {
+                    String name = (String) row.get("name");
+                    assertFalse(definitions.containsKey(name), "duplicate guard snapshot key: " + name);
+                    definitions.put(name, (String) row.get("definition"));
+                });
+        return definitions;
+    }
+
+    private static String terminationGuardFunctions() {
+        return db.queryForObject("""
+                SELECT pg_get_functiondef('fn_guard_procurement_termination_source_fact()'::regprocedure)
+                     ||pg_get_functiondef('fn_check_procurement_termination_source_complete()'::regprocedure)
+                """, String.class);
     }
 
     @Test

@@ -222,6 +222,8 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
   /// 供应商明细区配置：列、仓储闭包、权限；新建/编辑走共享 supplier_master_edit。
   MasterEntityPaneConfig<SupplierListItem, SupplierDetail> _paneConfig() {
     final perms = ref.read(currentPermissionsProvider);
+    final canCreate = perms.contains(Perm.supplierCreate);
+    final canChangeStatus = perms.contains(Perm.supplierStatus);
     final suppliers = ref.watch(supplierRepositoryProvider);
     return MasterEntityPaneConfig<SupplierListItem, SupplierDetail>(
       noun: '供应商', // TODO(l10n): 补 arb
@@ -229,7 +231,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
         namespace: 'suppliers.${pane.categoryId}',
         fields: masterInlineCreateFields(
           buildSupplierFields(context, const {}, const [], ref),
-          excluded: {if (!perms.contains(Perm.supplierStatus)) 'status'},
+          excluded: {if (!canChangeStatus) 'status'},
           options: {
             'defaultSettlementMethodId': () async => [
               for (final value
@@ -249,7 +251,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
           },
         ),
         defaults: {'status': '使用', 'categoryId': pane.categoryId},
-        canCreate: perms.contains(Perm.supplierCreate),
+        canCreate: canCreate,
         onCreate: (_, values) async {
           await ref.read(supplierRepositoryProvider).create({
             'status': '使用',
@@ -388,10 +390,10 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
       },
       batchEntityPath: ApiEndpoints.suppliers,
       statusResourceOf: ApiEndpoints.supplier,
-      canCreate: perms.contains(Perm.supplierCreate),
+      canCreate: canCreate,
       canEdit: perms.contains(Perm.supplierEdit),
       canDelete: perms.contains(Perm.supplierDelete),
-      canStatus: perms.contains(Perm.supplierStatus),
+      canStatus: canChangeStatus,
       // 业务员列在服务端的 facet 字段是 empId(值=员工 UUID、label=人名)，
       // 筛选参数是 ownerEmployeeId；表格按列 key ownerEmployeeName 索引。
       columnOfFacetField: const {'empId': 'ownerEmployeeName'},

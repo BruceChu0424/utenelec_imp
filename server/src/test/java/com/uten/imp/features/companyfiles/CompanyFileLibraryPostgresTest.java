@@ -384,8 +384,10 @@ class CompanyFileLibraryPostgresTest {
         }).when(fencedJdbc).query(eq("SELECT * FROM company_file_nodes WHERE id=?"),any(org.springframework.jdbc.core.RowMapper.class),eq(folder.id()));
         var readerService=new CompanyFileService(fencedJdbc,current,attachments,mock(AuditService.class),new CompanyFileUnlocks());
         var readerProxy=new org.springframework.aop.framework.ProxyFactory(readerService);readerProxy.setProxyTargetClass(true);
-        readerProxy.addAdvice(new org.springframework.transaction.interceptor.TransactionInterceptor(transactions.getTransactionManager(),
-                new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource(false)));
+        var readerInterceptor=new org.springframework.transaction.interceptor.TransactionInterceptor();
+        readerInterceptor.setTransactionManager(transactions.getTransactionManager());
+        readerInterceptor.setTransactionAttributeSource(new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource(false));
+        readerProxy.addAdvice(readerInterceptor);
         CompanyFileService transactionalReader=(CompanyFileService)readerProxy.getProxy();
         var executor=Executors.newFixedThreadPool(2);
         try{

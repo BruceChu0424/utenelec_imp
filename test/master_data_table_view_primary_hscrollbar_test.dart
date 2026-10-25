@@ -174,8 +174,12 @@ void main() {
       _page(['ROW-0', 'ROW-1', 'ROW-2'], bottomContentPadding: 200),
     );
     await tester.pumpAndSettle();
-    final bodyList = find.byWidgetPredicate(
-      (widget) => widget is ListView && widget.primary == true,
+    final bodyList = find.descendant(
+      of: find.byType(MasterDataTableView<String>),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is ListView && widget.scrollDirection == Axis.vertical,
+      ),
     );
     expect(
       tester.widget<ListView>(bodyList).padding,

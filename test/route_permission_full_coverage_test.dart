@@ -33,7 +33,7 @@ class _StubVisitorSessionNotifier extends VisitorSessionNotifier {
   VisitorSessionState build() => initial;
 }
 
-/// 文档口径的「登录即可」路由（权限体系总设计.md §二豁免清单）。
+/// 不使用业务权限码的路由（权限体系总设计.md §二豁免清单）。
 /// 末尾通配 `*` 表示前缀豁免（访客门户）。
 const _documentedExempt = <String>{
   '/',
@@ -41,6 +41,8 @@ const _documentedExempt = <String>{
   '/change-password',
   '/access-denied',
   '/not-found',
+  // ERP 会话/API 不可用时仍可打开；恢复动作由独立控制面另行认证授权。
+  '/operations/recovery',
   // 工作台首页：全员可达，卡片逐个按权限过滤（设计决策，总设计 §三）。
   '/dashboard',
   // 本人资料/设置：字段策略由后端 ProfileFieldPolicy 管。
@@ -90,7 +92,8 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 原守卫基数 204，新增路径另由下方精确登记；当前 243 条守卫 / 18 条豁免。
+/// 原守卫基数 204，新增路径另由下方精确登记；当前 243 条守卫 / 19 条豁免。
+/// 独立救援入口 /operations/recovery 不依赖业务会话，控制面保留独立认证与恢复门禁。
 /// 2026-10-18 销售订单进度详情整页退役（履约时间线并入订货单详情页），
 /// /sales/progress/:orderId 路由删除，守卫 205→204；
 /// 两表共 36 项 any/all 登记，/workshop-material/count 同时登记两类守卫，去重为 35 条路径。
@@ -112,7 +115,7 @@ void _collect(RouteBase base, String parent, List<String> out) {
 /// 断言精确计数：新增路由必须同步改代码守卫 + 本处计数 + 文档数字，
 /// 防止「文档说 180、实际已 190」的静默漂移。
 const _legacyGuardedCount = 204;
-const _expectedExemptCount = 18;
+const _expectedExemptCount = 19;
 
 /// 2026-09-26 实际新增路径逐条核对，不能用总数 +5 代替路由身份/组合权限验证。
 const _reviewedNewGuardedRoutes = <String, List<String>>{

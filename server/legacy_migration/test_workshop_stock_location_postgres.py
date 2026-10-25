@@ -18,11 +18,10 @@ import uuid
 
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[2]
-OUTPUT = ROOT / "native-test"
+OUTPUT = HERE.parent / "target" / "workshop-stock-location-native"
 HELPER = HERE / "reviewed_workshop_stock_location.sql"
 IMAGE = "postgres:16.15"
-MIGRATIONS = Path("D:/Projects/uten_imp/server/src/main/resources/db/migration")
+MIGRATIONS = HERE.parent / "src" / "main" / "resources" / "db" / "migration"
 PRODUCTS = (
     (65919, "GD2056", "B款暗装轨道E极铜条（90型）", "8"),
     (65920, "GD2057", "B款暗装轨道LN极铜条（90型  磨床切割）", "15"),

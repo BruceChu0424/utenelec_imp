@@ -86,7 +86,6 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-import psycopg2
 import xlrd
 from prepare_clean_master_data import (ordinary_warehouse_targets, classify_owning_warehouse,
                                       workshop_warehouse_reference)
@@ -285,6 +284,9 @@ def main() -> None:
     if database_password is None or not database_password.strip():
         raise SystemExit("UTEN_DB_PASSWORD is required for legacy product-list import")
 
+    # File-only warehouse review and --emit-owning-csv never connect to a DB.
+    # Load the driver only after that branch and the credential requirement.
+    import psycopg2
     conn = psycopg2.connect(
         host=os.environ.get("UTEN_DB_HOST", "127.0.0.1"),
         port=int(os.environ.get("UTEN_DB_PORT", "5433")),

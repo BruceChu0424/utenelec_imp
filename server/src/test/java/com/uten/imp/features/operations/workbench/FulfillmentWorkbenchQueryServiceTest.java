@@ -379,7 +379,8 @@ class FulfillmentWorkbenchQueryServiceTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
         // One requested DRAW or one pending material-definition request is one task.
-        assertTrue(sql.getValue().contains("FROM v_fulfillment_workbench v"));
+        assertTrue(sql.getValue().contains("FROM (SELECT * FROM v_fulfillment_workbench archive_scope"));
+        assertTrue(sql.getValue().contains("WHERE NOT fn_imported_business_document('production_plans',archive_scope.plan_id)) v"));
         assertTrue(sql.getValue().contains("mapping.demand_id=v.task_id"));
         assertTrue(sql.getValue().contains("draw_doc.warehouse_id AS warehouse_id"));
         assertTrue(sql.getValue().contains("open_line_count > 0"));

@@ -315,6 +315,8 @@ public class PurchaseRequestService {
                                 JOIN purchase_requests r ON r.id = i.request_id
                                 %s
                                 WHERE i.id IN (:itemIds)
+                                  AND NOT fn_imported_business_document('purchase_request_items', i.id)
+                                  AND NOT fn_imported_business_document('purchase_requests', r.id)
                                   AND i.is_deleted = FALSE
                                   AND r.status = 1
                                   AND r.is_deleted = FALSE

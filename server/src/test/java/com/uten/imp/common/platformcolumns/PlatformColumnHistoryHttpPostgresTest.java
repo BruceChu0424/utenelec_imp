@@ -100,8 +100,11 @@ class PlatformColumnHistoryHttpPostgresTest extends AiPlatformPostgresTestSuppor
         assertThat(jdbc.queryForObject("SELECT current_user",String.class)).isEqualTo("uten");
         assertThat(jdbc.queryForObject("SELECT rolsuper FROM pg_roles WHERE rolname=current_user",Boolean.class)).isFalse();
         assertThat(jdbc.queryForObject("SELECT pg_has_role(current_user,'fixture_admin','MEMBER')",Boolean.class)).isFalse();
-        assertThat(jdbc.queryForObject("SELECT pg_get_userbyid(proowner)::text FROM pg_proc WHERE oid='public.business_data_reset()'::regprocedure",String.class)).isEqualTo("fixture_admin");
-        assertThat(jdbc.queryForObject("SELECT has_function_privilege(current_user,'public.business_data_reset()','EXECUTE')",Boolean.class)).isFalse();
+        assertThat(jdbc.queryForObject("SELECT to_regprocedure('public.business_data_reset()') IS NULL",Boolean.class)).isTrue();
+        // The forward-only retirement removes reset entirely; its replacement is
+        // the narrowly scoped, owner-only refresh authorization helper.
+        assertThat(jdbc.queryForObject("SELECT pg_get_userbyid(proowner)::text FROM pg_proc WHERE oid='public.fn_require_runtime_refresh()'::regprocedure",String.class)).isEqualTo("fixture_admin");
+        assertThat(jdbc.queryForObject("SELECT has_function_privilege(current_user,'public.fn_require_runtime_refresh()','EXECUTE')",Boolean.class)).isFalse();
     }
 
     @Test void existingUnregisteredAndRetiredItemsRemainReadableAfterParentLogicalDeletion() throws Exception {

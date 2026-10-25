@@ -252,7 +252,7 @@ class AiDocKnowledgeTest {
 
     /**
      * P0-6 who reads which rules (reviewed overrides): receiving and inspection rules for every department that works
-     * with them, the credit rule for sales and finance, personnel pages for personnel, data clearing for administrators,
+     * with them, the credit rule for sales and finance, personnel pages for personnel, server status for administrators,
      * the glossary and the assistant's own guide for everyone.
      */
     @Test void visibilityMatrixOfTheReviewedDocuments() {
@@ -264,7 +264,7 @@ class AiDocKnowledgeTest {
                 new Row("ADR-128-", Set.of("SALES", "FINANCE"), Set.of("WAREHOUSE", "PRODUCTION")),
                 new Row("03-页面/员工详情页", Set.of("HR"), Set.of("SALES", "WAREHOUSE")),
                 new Row("03-页面/员工编辑页", Set.of("HR"), Set.of("SALES", "WAREHOUSE")),
-                new Row("ADR-155-", Set.of("ADMIN"), Set.of("SALES", "FINANCE", "HR")),
+                new Row("03-页面/服务器状态页", Set.of("ADMIN"), Set.of("SALES", "FINANCE", "HR")),
                 new Row(AiDocGlossary.PATH, Set.of("SALES", "WAREHOUSE"), Set.of()));
         for (Row row : matrix) {
             var chunks = docs.chunks().stream().filter(chunk -> chunk.path().contains(row.path())).toList();
@@ -278,6 +278,7 @@ class AiDocKnowledgeTest {
                         .allSatisfy(chunk -> assertThat(AiDocKnowledge.visible(chunk, Set.of("SELF", domain))).isFalse());
             }
         }
+        assertThat(docs.chunks()).noneMatch(chunk -> chunk.path().contains("ADR-155-"));
         // Every chat user reads the glossary and the assistant's guide, with no business domain at all.
         assertThat(docs.chunks()).filteredOn(chunk -> chunk.path().equals(AiDocGlossary.PATH)
                         || chunk.path().equals("03-页面/AI工作助手使用说明.md"))

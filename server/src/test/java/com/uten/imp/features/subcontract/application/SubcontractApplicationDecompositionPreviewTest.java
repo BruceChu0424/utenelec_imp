@@ -57,8 +57,9 @@ class SubcontractApplicationDecompositionPreviewTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(fixture.em).createNativeQuery(sql.capture());
         assertThat(sql.getValue())
-                .contains("fn_procurement_order_latest_approval_status('SUBCONTRACT', o.id)")
-                .contains("IN ('PENDING', 'REJECTED')")
+                .contains("fn_procurement_order_reserves_source('SUBCONTRACT', o.id)")
+                .contains("NOT fn_imported_business_document('subcontract_application_items', i.id)")
+                .contains("NOT fn_imported_business_document('subcontract_applications', a.id)")
                 .doesNotContain("supplier_id", "price", "amount_original", "amount_local");
     }
 

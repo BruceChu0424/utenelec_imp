@@ -43,7 +43,7 @@ class MasterReferenceJoinPrecedenceContractTest {
     void readOnlyHistoricalProjectionsMayRemainUuidFirstWithLegacyFallback()
             throws Exception {
         assertFallbackUnitJoin(source("stock/StockQueryService.java"),
-                "u", "g.unit_id", "g.unit_legacy_id", 1);
+                "u", "g.unit_id", "g.unit_legacy_id", 2);
         assertFallbackUnitJoin(source("finance/cost/FinanceCostService.java"),
                 "u", "g.unit_id", "g.unit_legacy_id", 1);
 
@@ -88,11 +88,15 @@ class MasterReferenceJoinPrecedenceContractTest {
             String currentId,
             String legacyId,
             int expectedCount) {
-        String clause = canonical("LEFT JOIN units " + alias
-                + " ON (" + alias + ".id = " + currentId
+        String fallback = canonical("(" + alias + ".id = " + currentId
                 + " OR (" + currentId + " IS NULL AND "
                 + alias + ".legacy_id = NULLIF(" + legacyId + ", 0)))");
-        assertThat(occurrences(source, clause))
+        String direct = canonical("LEFT JOIN units " + alias + " ON ") + " " + fallback;
+        String valid = canonical("LEFT JOIN units " + alias + " ON NOT " + alias
+                + ".is_deleted AND NULLIF(BTRIM(" + alias + ".name), '') IS NOT NULL AND ") + " " + fallback;
+        String clause = "LEFT JOIN units " + alias + " with UUID-first fallback";
+        assertThat(occurrences(source.toLowerCase(java.util.Locale.ROOT), direct.toLowerCase(java.util.Locale.ROOT))
+                + occurrences(source.toLowerCase(java.util.Locale.ROOT), valid.toLowerCase(java.util.Locale.ROOT)))
                 .as("UUID-first unit join: %s", clause)
                 .isEqualTo(expectedCount);
         assertThat(source).doesNotContain(canonical(
@@ -123,6 +127,7 @@ class MasterReferenceJoinPrecedenceContractTest {
 
     private static String canonical(String source) {
         return source.replaceAll("\\s+", " ")
+                .replaceAll("\\s*,\\s*", ",")
                 .replaceAll("\\s*=\\s*", "=")
                 .replaceAll("\\(\\s+", "(")
                 .replaceAll("\\s+\\)", ")")

@@ -216,6 +216,8 @@ class PreplanAnalysisStockPegServiceTest {
         UUID planItemId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
         UUID colorId = UUID.randomUUID();
+        UUID stockDocumentId = UUID.randomUUID();
+        UUID planId = UUID.randomUUID();
         when(privateBudget.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[]{planItemId, BigDecimal.TEN}));
         when(context.getResultList()).thenReturn(List.<Object[]>of(new Object[]{
@@ -224,15 +226,19 @@ class PreplanAnalysisStockPegServiceTest {
         when(formalCommitment.getSingleResult()).thenReturn(BigDecimal.TEN);
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
-            if (sql.contains("FROM production_plan_items item")
-                    && sql.contains("SELECT item.id,GREATEST")) return privateBudget;
-            if (sql.contains("SELECT id FROM stock_document_items")
-                    && sql.contains("fn_finished_in_is_public_output")) return publicOutputs;
+            if (isPrivateMakeBudgetQuery(sql)) return privateBudget;
+            if (isPublicOutputQuery(sql)) return publicOutputs;
             if (sql.contains("SELECT EXISTS(SELECT 1 FROM production_material_analysis_materials material")
                     && sql.contains("parent.anchor_analysis_item_id=material.analysis_item_id")
                     && sql.contains("action.status='CANCELLED'")) return cancelledParentGuard;
-            if (sql.contains("FROM production_plans plan")) return context;
-            if (sql.contains("FROM production_material_supply_pegs peg")) {
+            if (isOriginalDemandContextQuery(sql)) return context;
+            if (sql.startsWith("SELECT COALESCE(SUM(GREATEST(")
+                    && sql.contains("FROM production_material_supply_pegs peg")) {
+                assertThat(sql)
+                        .contains("peg.allocated_qty - peg.consumed_qty - peg.released_qty")
+                        .contains("peg.supply_type = 'PRODUCTION_PLAN_ITEM'")
+                        .contains("peg.supply_item_id = :planItemId")
+                        .contains("peg.status <> 'REVERSED'");
                 return formalCommitment;
             }
             throw new AssertionError("unexpected SQL: " + sql);
@@ -246,7 +252,7 @@ class PreplanAnalysisStockPegServiceTest {
                 mock(OriginHooks.class));
 
         Runnable receipt = () -> service.pegFinishedInbound(
-                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                stockDocumentId, planId, UUID.randomUUID(),
                 List.of(new com.uten.imp.application.port.PreplanAnalysisPegPort
                         .FinishedInboundSlice(
                         UUID.randomUUID(), planItemId, goodsId, colorId,
@@ -255,6 +261,9 @@ class PreplanAnalysisStockPegServiceTest {
             ApiException error = assertThrows(ApiException.class, receipt::run);
             assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
             assertThat(error.getMessage()).contains("原共享父批次已撤回").contains("原始私有来源");
+            verify(privateBudget).setParameter("document", stockDocumentId);
+            verify(privateBudget).setParameter("items", List.of(planItemId));
+            verify(context).setParameter("planId", planId);
             verify(cancelledParentGuard).setParameter("material", parentMaterialId);
             verifyNoInteractions(inventoryLock);
             verify(formalCommitment, never()).getSingleResult();
@@ -266,8 +275,12 @@ class PreplanAnalysisStockPegServiceTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, atLeastOnce()).createNativeQuery(sql.capture());
         verify(privateBudget).getResultList();
+        verify(privateBudget).setParameter("document", stockDocumentId);
         verify(privateBudget).setParameter("items", List.of(planItemId));
         verify(context).getResultList();
+        verify(context).setParameter("planId", planId);
+        verify(publicOutputs).setParameter("document", stockDocumentId);
+        verify(publicOutputs).setParameter("documentId", stockDocumentId);
         verify(cancelledParentGuard).setParameter("material", parentMaterialId);
         verify(formalCommitment).getSingleResult();
         verify(formalCommitment).setParameter("planItemId", planItemId);
@@ -290,6 +303,7 @@ class PreplanAnalysisStockPegServiceTest {
         Query claims = mock(Query.class);
         UUID stockItem = UUID.randomUUID();
         UUID planItem = UUID.randomUUID(), goods = UUID.randomUUID();
+        UUID stockDocumentId = UUID.randomUUID();
         for (Query query : List.of(privateBudget, publicOutputs, alreadyClaimed, claims)) {
             when(query.setParameter(anyString(), any())).thenReturn(query);
         }
@@ -301,10 +315,23 @@ class PreplanAnalysisStockPegServiceTest {
         List<String> statements = new java.util.ArrayList<>();
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0); statements.add(sql);
-            if (sql.contains("SELECT item.id,GREATEST")) return privateBudget;
-            if (sql.contains("SELECT id FROM stock_document_items") && sql.contains("fn_finished_in_is_public_output")) return publicOutputs;
-            if (sql.contains("SELECT COALESCE(SUM(qty),0) FROM preplan_analysis_stock_exact_pegs")) return alreadyClaimed;
-            if (sql.contains("FROM preplan_make_public_claims claim")) return claims;
+            if (isPrivateMakeBudgetQuery(sql)) return privateBudget;
+            if (isPublicOutputQuery(sql)) return publicOutputs;
+            if (sql.startsWith("SELECT COALESCE(SUM(qty),0) FROM preplan_analysis_stock_exact_pegs")) {
+                assertThat(sql).contains("source_stock_document_item_id=:item AND make_public_claim_id IS NOT NULL");
+                return alreadyClaimed;
+            }
+            if (sql.startsWith("SELECT claim.id,claim.target_analysis_id,claim.target_material_id,")) {
+                assertNativeSources(sql, "stock_documents");
+                assertThat(sql)
+                        .contains("FROM preplan_make_public_claims claim")
+                        .contains("analysis.id=claim.target_analysis_id")
+                        .contains("NOT analysis.is_deleted AND analysis.status<>'CANCELLED'")
+                        .contains("claim.source_plan_item_id=:planItem")
+                        .contains("previous.source_stock_document_item_id=:stockItem")
+                        .contains("FOR UPDATE OF claim");
+                return claims;
+            }
             throw new AssertionError("Public output must not enter original-analysis pegging: " + sql);
         });
         InventoryMutationLock inventory = mock(InventoryMutationLock.class);
@@ -313,16 +340,21 @@ class PreplanAnalysisStockPegServiceTest {
                 em, mock(TxSessionVars.class), mock(SecurityContextCurrentUser.class),
                 inventory, entitlement, mock(OriginHooks.class));
 
-        service.pegFinishedInbound(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+        service.pegFinishedInbound(stockDocumentId, UUID.randomUUID(), UUID.randomUUID(),
                 List.of(new com.uten.imp.application.port.PreplanAnalysisPegPort.FinishedInboundSlice(
                         stockItem, planItem, goods, null, BigDecimal.TEN)));
 
         verify(inventory).lock(new InventoryKey(goods, null));
+        verify(privateBudget).setParameter("document", stockDocumentId);
+        verify(privateBudget).setParameter("items", List.of(planItem));
+        verify(publicOutputs).setParameter("document", stockDocumentId);
+        verify(alreadyClaimed).setParameter("item", stockItem);
         verify(claims).setParameter("planItem", planItem);
+        verify(claims).setParameter("document", stockDocumentId);
         verify(claims).setParameter("stockItem", stockItem);
         verify(claims).getResultList();
         verifyNoInteractions(entitlement);
-        assertThat(statements).noneMatch(sql -> sql.contains("FROM production_plans plan")
+        assertThat(statements).noneMatch(sql -> sql.startsWith("SELECT plan.material_analysis_id,")
                 || sql.contains("INSERT INTO stock_reservations"));
         verify(publicOutputs, never()).executeUpdate();
     }
@@ -580,4 +612,52 @@ class PreplanAnalysisStockPegServiceTest {
     }
 
 
+    private static boolean isPrivateMakeBudgetQuery(String sql) {
+        if (!sql.startsWith("SELECT item.id,GREATEST(item.qty*COALESCE(item.unit_rate,1)")) return false;
+        assertNativeSources(sql, "production_plan_items", "stock_document_items", "stock_documents");
+        assertThat(sql)
+                .contains("source.planned_public_qty")
+                .contains("stock.upstream_item_id=item.id AND stock.bill_type='FINISHED_IN'")
+                .contains("NOT stock.is_deleted AND NOT doc.is_deleted AND doc.status=1")
+                .contains("doc.id<>:document AND NOT fn_finished_in_is_public_output(stock.id)")
+                .contains("fn_preplan_make_public_supply_sources(NULL::uuid,item.id)")
+                .contains("WHERE item.id IN(:items) AND NOT item.is_deleted");
+        return true;
+    }
+
+    private static boolean isPublicOutputQuery(String sql) {
+        if (!sql.startsWith("SELECT id FROM ") || !sql.contains("fn_finished_in_is_public_output(id)")) return false;
+        assertNativeSources(sql, "stock_document_items");
+        assertThat((sql.contains("WHERE doc_id=:document") && sql.contains("AND NOT is_deleted"))
+                || sql.contains("WHERE doc_id = :documentId AND fn_finished_in_is_public_output(id)"))
+                .as("Public output identity must be scoped to the current stock document")
+                .isTrue();
+        return true;
+    }
+
+    private static boolean isOriginalDemandContextQuery(String sql) {
+        if (!sql.startsWith("SELECT plan.material_analysis_id,")) return false;
+        assertNativeSources(sql, "production_plans");
+        assertThat(sql)
+                .contains("analysis.id = plan.material_analysis_id")
+                .contains("analysis.is_deleted = FALSE")
+                .contains("item.id = plan.material_analysis_item_id")
+                .contains("item.analysis_id = plan.material_analysis_id")
+                .contains("item.is_deleted = FALSE")
+                .contains("WHERE plan.id = :planId")
+                .contains("plan.is_deleted = FALSE")
+                .contains("plan.material_analysis_id IS NOT NULL")
+                .contains("plan.material_analysis_item_id IS NOT NULL")
+                .contains("FOR UPDATE OF analysis, item");
+        return true;
+    }
+
+    private static void assertNativeSources(String sql, String... tables) {
+        for (String table : tables) {
+            assertThat(sql).contains("(SELECT * FROM " + table
+                    + " archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL"
+                    + " AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL"
+                    + " AND NOT fn_imported_business_document('" + table + "',archive_origin.id))");
+        }
+    }
 }

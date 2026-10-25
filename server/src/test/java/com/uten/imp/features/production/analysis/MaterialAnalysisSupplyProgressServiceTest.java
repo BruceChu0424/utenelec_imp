@@ -157,7 +157,7 @@ class MaterialAnalysisSupplyProgressServiceTest {
         assertThat(step(view, "DRAW").detail()).isEqualTo("领料计划尚未生成");
         assertThat(step(view, "RECEIVED").state()).isEqualTo("WAITING");
         assertThat(scenario.executions).noneMatch(execution ->
-                execution.sql().contains("FROM subcontract_material_issues i"));
+                execution.sql().startsWith("SELECT i.bill_no, i.updated_at, i.approver_id"));
     }
 
     @Test
@@ -264,9 +264,10 @@ class MaterialAnalysisSupplyProgressServiceTest {
         assertThat(plan.documentId()).isEqualTo(scenario.makePlanId);
         assertThat(scenario.executions)
                 .filteredOn(execution -> execution.sql().contains(
-                        "FROM production_plans plan"))
+                        "SELECT plan.id, plan.bill_no, plan.status, plan.is_closed"))
                 .singleElement()
                 .satisfies(execution -> {
+                    assertNativeSources(execution.sql(), "production_plans");
                     assertThat(execution.parameters())
                             .containsEntry("analysisId", scenario.analysisId)
                             .containsEntry("makeChildAnalysisItemId",
@@ -359,6 +360,10 @@ class MaterialAnalysisSupplyProgressServiceTest {
 
         private List<?> result(String sql, Map<String, Object> parameters) {
             if (sql.contains("fn_subcontract_draw_summary")) {
+                assertNativeSources(sql, "subcontract_order_items", "subcontract_orders",
+                        "subcontract_receipt_items", "subcontract_receipts");
+                assertThat(sql).contains("item.id IN (:orderItemIds)");
+                assertThat(parameters).containsEntry("orderItemIds", List.of(targetOrderItemId));
                 return rows(drawSummary);
             }
             if (sql.contains("SELECT maker_id FROM production_material_analyses")) {
@@ -371,7 +376,17 @@ class MaterialAnalysisSupplyProgressServiceTest {
             if (sql.contains("SELECT DISTINCT request.bill_no")) {
                 return rows(new Object[]{purchase ? "SQ-001" : "WW-001", AT});
             }
-            if (sql.contains("FROM production_plans plan")) {
+            if (sql.startsWith("SELECT plan.id, plan.bill_no, plan.status, plan.is_closed")) {
+                assertNativeSources(sql, "production_plans");
+                assertThat(sql)
+                        .contains("child.id = plan.material_analysis_item_id")
+                        .contains("child.analysis_id = plan.material_analysis_id")
+                        .contains("plan.material_analysis_id = :analysisId")
+                        .contains("plan.material_analysis_item_id = :makeChildAnalysisItemId")
+                        .contains("plan.is_deleted = FALSE");
+                assertThat(parameters)
+                        .containsEntry("analysisId", analysisId)
+                        .containsEntry("makeChildAnalysisItemId", makeChildAnalysisItemId);
                 return make
                         ? rows(new Object[]{makePlanId, "SJ-MAKE-001", 1,
                                 true, AT, makerId})
@@ -386,7 +401,13 @@ class MaterialAnalysisSupplyProgressServiceTest {
             if (sql.contains("FROM procurement_order_approval_cases")) {
                 return rows(new Object[]{"APPROVED", AT, makerId});
             }
-            if (sql.contains("FROM subcontract_material_issues i")) {
+            if (sql.startsWith("SELECT i.bill_no, i.updated_at, i.approver_id")) {
+                assertNativeSources(sql, "subcontract_material_issues", "subcontract_material_issue_items");
+                assertThat(sql)
+                        .contains("i.is_deleted = FALSE AND i.status = 1")
+                        .contains("ii.issue_id = i.id AND ii.is_deleted = FALSE")
+                        .contains("ii.order_item_id IN (:orderItemIds)");
+                assertThat(parameters).containsEntry("orderItemIds", List.of(targetOrderItemId));
                 return rows(new Object[]{"FL-001", AT, makerId});
             }
             if (sql.contains("FROM purchase_receipt_items receipt_item")) {
@@ -434,6 +455,15 @@ class MaterialAnalysisSupplyProgressServiceTest {
 
         private static List<Object[]> rows(Object[]... rows) {
             return List.of(rows);
+        }
+    }
+
+    private static void assertNativeSources(String sql, String... tables) {
+        for (String table : tables) {
+            assertThat(sql).contains("(SELECT * FROM " + table
+                    + " archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL"
+                    + " AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL"
+                    + " AND NOT fn_imported_business_document('" + table + "',archive_origin.id))");
         }
     }
 }

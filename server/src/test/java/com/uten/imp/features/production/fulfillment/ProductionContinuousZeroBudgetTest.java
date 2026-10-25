@@ -57,6 +57,7 @@ class ProductionContinuousZeroBudgetTest {
         constructor.setAccessible(true);
         Object row=constructor.newInstance(demand,goods,null,unit,new BigDecimal("100"),false);
         List<String> statements=new ArrayList<>();
+        List<Query> anomalyQueries=new ArrayList<>();
         when(em.createNativeQuery(anyString())).thenAnswer(call->{
             String sql=call.getArgument(0);statements.add(sql);
             Query query=mock(Query.class,RETURNS_SELF);
@@ -68,13 +69,55 @@ class ProductionContinuousZeroBudgetTest {
                         new BigDecimal(safety),true,true,"G","Goods","Warehouse",false,null,c}));
             } else if(sql.contains("SUM(r.qty-r.released_qty)")) {
                 when(query.getResultList()).thenReturn(Collections.singletonList(new Object[]{demand,BigDecimal.ZERO,new BigDecimal(future)}));
-            } else when(query.getResultList()).thenReturn(List.of());
+            } else if (sql.stripLeading().startsWith("SELECT DISTINCT warehouse.name")) {
+                assertTrue(sql.contains("JOIN production_workshop_direct_legacy_anomalies anomaly"));
+                assertTrue(sql.contains("anomaly.goods_id=demand.goods_id AND anomaly.color_id IS NOT DISTINCT FROM demand.color_id"));
+                assertTrue(sql.contains("direct.to_demand_id IN(demand.id,demand.split_root_demand_id) AND direct.reversal_id IS NULL"));
+                assertTrue(sql.contains("WHERE demand.id IN (:demands)") && sql.contains("LIMIT 3"));
+                // These budget fixtures have no legacy workshop anomaly. This
+                // independent safety query is not a receipt-lineage scan.
+                anomalyQueries.add(query);
+                when(query.getResultList()).thenReturn(List.of());
+            } else if (receiptLineage(sql)) {
+                assertNativeReceiptLineage(sql);
+                when(query.getResultList()).thenReturn(List.of());
+            } else throw new AssertionError("Unexpected continuous-increment SQL: " + sql);
             return query;
         });
         Object snapshot=ReflectionTestUtils.invokeMethod(service,"continuousIncrement",warehouse,List.of(row),UUID.randomUUID(),UUID.randomUUID(),
                 reclaim);
         List<?> increments=ReflectionTestUtils.invokeMethod(snapshot,"demands");
-        return new Result(increments,(int)statements.stream().filter(sql->sql.contains("JOIN purchase_receipt_items")
-                ||sql.contains("JOIN subcontract_receipt_items")||sql.contains("JOIN stock_document_items receipt_item")).count());
+        assertEquals(1,anomalyQueries.size());
+        verify(anomalyQueries.getFirst()).setParameter("demands",List.of(demand));
+        return new Result(increments,(int)statements.stream().filter(ProductionContinuousZeroBudgetTest::receiptLineage).count());
+    }
+
+    private static boolean receiptLineage(String sql) {
+        return sql.replaceAll("\\s+", "").startsWith("SELECTreceipt.id,receipt_item.id,peg.id,");
+    }
+
+    private static void assertNativeReceiptLineage(String sql) {
+        String compact = sql.replaceAll("\\s+", "");
+        String itemTable;
+        String headerTable;
+        if (compact.contains("'PURCHASE'::text")) {
+            itemTable = "purchase_receipt_items"; headerTable = "purchase_receipts";
+            assertTrue(compact.contains("'PURCHASE_ORDER_ITEM'"));
+        } else if (compact.contains("'SUBCONTRACT'::text")) {
+            itemTable = "subcontract_receipt_items"; headerTable = "subcontract_receipts";
+            assertTrue(compact.contains("'SUBCONTRACT_ORDER_ITEM'"));
+        } else {
+            assertTrue(compact.contains("'MAKE'::text"));
+            itemTable = "stock_document_items"; headerTable = "stock_documents";
+            assertTrue(compact.contains("'PRODUCTION_PLAN_ITEM'"));
+        }
+        for (String table : List.of(itemTable, headerTable)) {
+            assertTrue(compact.contains("NOTfn_imported_business_document('" + table + "',archive_origin.id)"),
+                    "receipt lineage must exclude imported " + table);
+        }
+        assertTrue(compact.contains("WHEREpeg.demand_id=:demandId")
+                || (compact.contains("FROMstock_reservationscustody")
+                    && compact.contains("custody.owner_type='WORKSHOP_CUSTODY'")
+                    && compact.contains("custody.owner_id=:demand")), "receipt sources must belong to the exact demand");
     }
 }

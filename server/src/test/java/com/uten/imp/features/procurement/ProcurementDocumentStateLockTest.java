@@ -48,7 +48,7 @@ class ProcurementDocumentStateLockTest {
                     "purchase/order/PurchaseOrderService.java",
                     "PurchaseOrder", "requireOrderForUpdate", "update", "delete", "cancel",
                     "requireFinanceSubmitterWritable", "lockAndValidateFinanceSubmission", "applyFinanceApproval",
-                    "reverse", "isFinanceApproved", "lockFinanceReconfirmationSnapshot", "changeQty"),
+                    "reverse", "isFinanceApproved", "lockFinanceReconfirmationSnapshot", "changeQty", "createRemainingDraft"),
             service("purchase/receipt/PurchaseReceiptService.java", "PurchaseReceipt", "requireReceiptForUpdate"),
             service("purchase/ret/PurchaseReturnService.java", "PurchaseReturn", "requireReturnForUpdate"),
             // V812 死代码清理删掉手动 approve/reverse(4→2)：申请=计划下达只读事实，
@@ -60,7 +60,7 @@ class ProcurementDocumentStateLockTest {
                     "subcontract/order/SubcontractOrderService.java",
                     "SubcontractOrder", "requireOrderForUpdate", "update", "delete", "requireFinanceSubmitterWritable",
                     "lockAndValidateFinanceSubmission", "isFinanceApproved",
-                    "lockFinanceReconfirmationSnapshot", "changeQtyInternal", "applyFinanceApproval", "reverse"),
+                    "lockFinanceReconfirmationSnapshot", "changeQtyInternal", "applyFinanceApproval", "reverse", "createRemainingDraft"),
             service("subcontract/receipt/SubcontractReceiptService.java", "SubcontractReceipt", "requireReceiptForUpdate"),
             service("subcontract/ret/SubcontractReturnService.java", "SubcontractReturn", "requireReturnForUpdate"),
             financeOrderService("subcontract/material_issue/SubcontractMaterialIssueService.java",

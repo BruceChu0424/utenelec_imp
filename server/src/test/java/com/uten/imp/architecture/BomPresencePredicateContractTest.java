@@ -35,6 +35,13 @@ class BomPresencePredicateContractTest {
     private static final String BOM_TABLE = "goods_bom_items";
     private static final List<String> PERIODIC_AWARE = List.of("issue_method", "fn_goods_has_");
     private static final Pattern CONCATENATION = Pattern.compile("\\s*\\+\\s*");
+    // Only an actual fully qualified identifier-membership classifier is non-SQL.
+    // Bare table arguments to formatted SQL, custom Set classes and later SQL in
+    // this same file remain readers. Offsets, rather than lines, distinguish them.
+    private static final Pattern IDENTIFIER_MEMBERSHIP = Pattern.compile(
+            "(?<![\\p{javaJavaIdentifierPart}.$])java\\.util\\.Set\\.of\\("
+                    + "(?<identifiers>\\s*\"[a-z][a-z0-9_]*\"(?:\\s*,\\s*\"[a-z][a-z0-9_]*\")*\\s*)"
+                    + "\\)\\s*\\.contains\\(\\s*[a-zA-Z_$][\\p{javaJavaIdentifierPart}]*\\s*\\)");
 
     /** 整个文件豁免 (相对 MAIN_SOURCE 的路径或路径前缀 → 理由)。 */
     private static final Map<String, String> FILE_EXEMPTIONS = Map.ofEntries(
@@ -141,21 +148,65 @@ class BomPresencePredicateContractTest {
                 "注释里的文字不算片段");
     }
 
+    @Test
+    void classificationIdentifiersAreNotReadersButUnfilteredSqlStillFails() {
+        String source = """
+                class Sample {
+                    boolean classified = java.util.Set.of("goods", "goods_bom_items").contains(name); String formatted = "SELECT * FROM %s".formatted("goods_bom_items");
+                    String unfiltered = "SELECT * FROM goods_bom_items";
+                    boolean custom = SqlSet.of("goods_bom_items").contains(name);
+                    boolean qualified = foo.java.util.Set.of("goods_bom_items").contains(name);
+                }
+                """;
+        List<Fragment> readers = bomFragments(source);
+        assertEquals(4, readers.size(), "only the actual Set classifier is excluded, including on the same line as SQL");
+        assertEquals(3, readers.stream().filter(fragment -> fragment.text().equals(BOM_TABLE)).count(),
+                "formatted SQL arguments and untrusted Set lookalikes stay covered");
+        assertTrue(readers.stream().noneMatch(BomPresencePredicateContractTest::periodicAware));
+        assertTrue(readsBom("goods_bom_items"), "a bare formatted SQL argument still identifies a reader");
+        for (String sql : List.of("SELECT * FROM goods_bom_items",
+                "EXISTS (SELECT 1 FROM public.goods_bom_items bom)",
+                "SELECT component_goods_id FROM goods_bom_items WHERE goods_id=:id")) {
+            assertTrue(readsBom(sql), sql);
+            assertFalse(periodicAware(new Fragment(1, sql)), "unfiltered real SQL remains a violation");
+        }
+        assertTrue(periodicAware(new Fragment(1,
+                "SELECT bom.id FROM goods_bom_items bom JOIN goods c ON c.id=bom.component_goods_id AND c.issue_method<>'PERIODIC'")));
+    }
+
     // -----------------------------------------------------------------
     // 片段切分: 跳过注释与字符字面量, 文本块与普通字符串各算字面量,
     // 相邻字面量之间只有 + 与空白时并成同一个片段。
     // -----------------------------------------------------------------
 
-    record Fragment(int line, String text) { }
+    record Fragment(int line, String text, int offset) {
+        Fragment(int line, String text) { this(line, text, -1); }
+    }
 
     private static List<Fragment> bomFragments(Path file) throws IOException {
-        return fragments(Files.readString(file)).stream().filter(fragment -> readsBom(fragment.text())).toList();
+        return bomFragments(Files.readString(file));
+    }
+
+    private static List<Fragment> bomFragments(String source) {
+        return fragments(source).stream().filter(fragment -> readsBom(fragment.text()))
+                .filter(fragment -> !identifierClassification(source, fragment)).toList();
+    }
+
+    private static boolean identifierClassification(String source, Fragment fragment) {
+        if (fragment.offset() < 0 || !fragment.text().equals(BOM_TABLE)) return false;
+        var membership = IDENTIFIER_MEMBERSHIP.matcher(source);
+        while (membership.find()) {
+            if (fragment.offset() >= membership.start("identifiers")
+                    && fragment.offset() < membership.end("identifiers")) return true;
+        }
+        return false;
     }
 
     static List<Fragment> fragments(String source) {
         List<Fragment> result = new ArrayList<>();
         StringBuilder current = null;
         int currentLine = 0;
+        int currentOffset = -1;
         StringBuilder between = new StringBuilder();
         int line = 1;
         int i = 0;
@@ -201,9 +252,10 @@ class BomPresencePredicateContractTest {
                 }
                 boolean concatenated = current != null && CONCATENATION.matcher(between).matches();
                 if (!concatenated) {
-                    if (current != null) result.add(new Fragment(currentLine, current.toString()));
+                    if (current != null) result.add(new Fragment(currentLine, current.toString(), currentOffset));
                     current = new StringBuilder();
                     currentLine = line;
+                    currentOffset = i;
                 }
                 current.append(text);
                 between.setLength(0);
@@ -215,7 +267,7 @@ class BomPresencePredicateContractTest {
             between.append(c);
             i++;
         }
-        if (current != null) result.add(new Fragment(currentLine, current.toString()));
+        if (current != null) result.add(new Fragment(currentLine, current.toString(), currentOffset));
         return result;
     }
 

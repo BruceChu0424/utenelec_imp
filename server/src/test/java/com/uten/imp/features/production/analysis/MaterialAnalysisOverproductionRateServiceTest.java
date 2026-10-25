@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -24,10 +25,7 @@ class MaterialAnalysisOverproductionRateServiceTest {
         var analyses=mock(MaterialAnalysisService.class);
         var rates=mock(ProductionOverproductionRateService.class);
         Query count=mock(Query.class),plans=mock(Query.class),command=mock(Query.class);
-        when(em.createNativeQuery(contains("COUNT(*)"))).thenReturn(count);
-        when(em.createNativeQuery(contains("SELECT id FROM production_plans"))).thenReturn(plans);
-        when(em.createNativeQuery(startsWith("SELECT pg_advisory"))).thenReturn(command);
-        when(em.createNativeQuery(contains("SELECT request_hash"))).thenReturn(command);
+        routeQueries(em, count, plans, command);
         when(count.setParameter(anyString(),any())).thenReturn(count);
         when(plans.setParameter(anyString(),any())).thenReturn(plans);
         when(command.setParameter(anyString(),any())).thenReturn(command);
@@ -50,6 +48,10 @@ class MaterialAnalysisOverproductionRateServiceTest {
         verify(analyses,times(2)).requireReadableAnalysis(analysis);
         verify(analyses,times(2)).requireWritableAnalysis(analysis);
         verify(plans,times(2)).getResultList();
+        verify(count,times(2)).setParameter("analysis",analysis);
+        verify(count,times(2)).setParameter("sources",Set.of(source));
+        verify(plans,times(2)).setParameter("analysis",analysis);
+        verify(plans,times(2)).setParameter("sources",Set.of(source));
     }
 
     @Test void sourceFromAnotherAnalysisIsRejectedBeforeTaskProjection() {
@@ -57,11 +59,14 @@ class MaterialAnalysisOverproductionRateServiceTest {
         var analyses=mock(MaterialAnalysisService.class);
         var rates=mock(ProductionOverproductionRateService.class);
         Query count=mock(Query.class);
-        when(em.createNativeQuery(contains("COUNT(*)"))).thenReturn(count);
+        routeQueries(em, count, null, null);
         when(count.setParameter(anyString(),any())).thenReturn(count);
         when(count.getSingleResult()).thenReturn(0L);
         var service=new MaterialAnalysisOverproductionRateService(em,analyses,rates,mock(SecurityContextCurrentUser.class),mock(TxSessionVars.class),new ObjectMapper());
-        assertThrows(ApiException.class,()->service.context(UUID.randomUUID(),Set.of(UUID.randomUUID())));
+        UUID analysis=UUID.randomUUID(),source=UUID.randomUUID();
+        assertThrows(ApiException.class,()->service.context(analysis,Set.of(source)));
+        verify(count).setParameter("analysis",analysis);
+        verify(count).setParameter("sources",Set.of(source));
         verifyNoInteractions(rates);
     }
 
@@ -70,8 +75,7 @@ class MaterialAnalysisOverproductionRateServiceTest {
         var analyses=mock(MaterialAnalysisService.class);
         var rates=mock(ProductionOverproductionRateService.class);
         Query count=mock(Query.class),plans=mock(Query.class);
-        when(em.createNativeQuery(contains("COUNT(*)"))).thenReturn(count);
-        when(em.createNativeQuery(contains("SELECT id FROM production_plans"))).thenReturn(plans);
+        routeQueries(em, count, plans, null);
         when(count.setParameter(anyString(),any())).thenReturn(count);
         when(plans.setParameter(anyString(),any())).thenReturn(plans);
         when(count.getSingleResult()).thenReturn(1L);
@@ -86,6 +90,40 @@ class MaterialAnalysisOverproductionRateServiceTest {
         org.junit.jupiter.api.Assertions.assertFalse(service.context(analysis,Set.of(source)).getFirst().canEdit());
         assertThrows(ApiException.class,()->service.change(analysis,Set.of(source),
                 List.of(new ProductionOverproductionRateService.PlanningRateVersion(segment,0)),new BigDecimal(".2"),"readonly-share-rate-test"));
+        verify(count,times(2)).setParameter("analysis",analysis);
+        verify(count,times(2)).setParameter("sources",Set.of(source));
+        verify(plans,times(2)).setParameter("analysis",analysis);
+        verify(plans,times(2)).setParameter("sources",Set.of(source));
         verify(rates,never()).changePlanningRates(anyCollection(),anyList(),any(),anyString(),any());
+    }
+
+    private static void routeQueries(EntityManager em, Query count, Query plans, Query command) {
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            if (sql.startsWith("SELECT COUNT(*) FROM production_material_analysis_items")) {
+                assertThat(sql).contains("analysis_id=:analysis AND id IN (:sources) AND NOT is_deleted");
+                return count;
+            }
+            if (plans != null && sql.startsWith("SELECT id FROM ")
+                    && sql.contains("material_analysis_item_id IN (:sources)")) {
+                assertThat(sql)
+                        .contains("(SELECT * FROM production_plans archive_origin WHERE"
+                                + " NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL"
+                                + " AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL"
+                                + " AND NOT fn_imported_business_document('production_plans',archive_origin.id))")
+                        .contains("WHERE material_analysis_id=:analysis")
+                        .contains("AND NOT is_deleted")
+                        .contains("status IN(0,1) AND NOT is_canceled ORDER BY id");
+                return plans;
+            }
+            if (command != null && sql.equals("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))")) {
+                return command;
+            }
+            if (command != null && sql.startsWith("SELECT request_hash FROM production_material_analysis_commands")) {
+                assertThat(sql).contains("analysis_id=:analysis AND operation='OVERPRODUCTION_RATE' AND idempotency_key=:key");
+                return command;
+            }
+            throw new AssertionError("Unexpected rate-change SQL: " + sql);
+        });
     }
 }

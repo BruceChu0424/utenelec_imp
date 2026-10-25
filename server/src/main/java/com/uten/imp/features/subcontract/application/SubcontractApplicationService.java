@@ -237,6 +237,8 @@ public class SubcontractApplicationService {
                                     GROUP BY src.application_item_id
                                 ) pending ON pending.application_item_id = i.id
                                 WHERE i.id IN (:itemIds)
+                                  AND NOT fn_imported_business_document('subcontract_application_items', i.id)
+                                  AND NOT fn_imported_business_document('subcontract_applications', a.id)
                                   AND i.is_deleted = FALSE
                                   AND a.status = 1
                                   AND a.is_deleted = FALSE

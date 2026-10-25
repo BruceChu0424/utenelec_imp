@@ -296,12 +296,17 @@ class StockDrawIssueBatchReceiptEndToEndTest {
                 .anyMatch(field -> field.getName().equals("drawIssueBatchReceipts")), "execute the expected compiled Stock candidate");
         var setup = setup(3, true);
         var command = command("receipt-measure-", setup.documents(), "三单相同夹具");
+        long expectedPostings = setup.documents().size() * 2L; // Every fixed A draw has exactly the B and E physical lines.
+        assertEquals(expectedPostings, setup.documents().stream().mapToLong(id -> items(id).size()).sum());
+        long movementsBefore = setup.documents().stream().mapToLong(this::movementCount).sum();
         var sample = ProductionJdbcMeasurement.begin();
         try { assertEquals(3, stock.issueFullBatch(command).issuedCount()); }
         finally { ProductionJdbcMeasurement.end(); }
         assertEquals(1, sample.commits);
         assertEquals(0, sample.rollbacks);
         System.out.println("STOCK-BATCH-PARENT first=" + sample.result());
+        assertEquals(expectedPostings, setup.documents().stream().mapToLong(this::movementCount).sum() - movementsBefore,
+                "exactly one real inventory movement for each issued physical line");
         var replay = ProductionJdbcMeasurement.begin();
         try { assertEquals(new StockDocIssueBatchResponse(0, 0, 3, true, List.of()), stock.issueFullBatch(command)); }
         finally { ProductionJdbcMeasurement.end(); }
@@ -312,10 +317,24 @@ class StockDrawIssueBatchReceiptEndToEndTest {
             long noticeScope = statementsWithLabel(sample,"workshop.arrival_notice_scope");
             assertEquals(setup.documents().size(),noticeScope,"one bounded arrival-capacity scope read per actually issued DRAW");
             assertEquals(0,statementsWithLabel(sample,"workshop.arrival_notice_watermark"),"FULL_KIT tasks do not change continuous-capacity watermarks");
-            assertTrue(sample.logicalStatements-noticeScope <= 479,
-                    "original work remains within 474 + 5 parent-command statements; arrival-capacity reads are counted separately");
+            long measurement = statementsWithLabel(sample, "measurement.operability");
+            assertEquals(expectedPostings, measurement, "one V928 measurement check per real inventory posting, not per read or replay");
+            assertEquals(0, statementsWithLabel(sample, "archive.mutable_origin"));
+            assertEquals(0, statementsWithLabel(sample, "archive.metadata_origin"));
+            assertEquals(0, statementsWithLabel(sample, "archive.source_origin"));
+            long originalWork = sample.logicalStatements - noticeScope - measurement;
+            System.out.println("STOCK-BATCH-BUDGET raw=" + sample.logicalStatements + " original=" + originalWork
+                    + " arrival=" + noticeScope + " movementMeasurement=" + measurement);
+            assertTrue(sample.logicalStatements <= 479 + setup.documents().size() + expectedPostings,
+                    "raw budget also bounds every independently justified arrival and physical-posting safety read");
+            assertTrue(originalWork <= 479,
+                    "original work remains within 474 + 5 parent-command statements; bounded new safety reads are counted separately");
             assertEquals(0,statementsWithLabel(replay,"workshop.arrival_notice_scope"),"receipt replay must not re-evaluate arrival capacity");
             assertEquals(0,statementsWithLabel(replay,"workshop.arrival_notice_watermark"),"receipt replay must not change arrival watermarks");
+            assertEquals(0, statementsWithLabel(replay, "measurement.operability"), "receipt replay must not post or recheck inventory");
+            assertEquals(0, statementsWithLabel(replay, "archive.mutable_origin"));
+            assertEquals(0, statementsWithLabel(replay, "archive.metadata_origin"));
+            assertEquals(0, statementsWithLabel(replay, "archive.source_origin"));
             assertTrue(replay.logicalStatements <= 12, "receipt replay must not rediscover or mutate the production graph");
         }
         String output = System.getProperty("uten.issue-batch.measurement-output");
@@ -338,9 +357,7 @@ class StockDrawIssueBatchReceiptEndToEndTest {
     }
 
     private static long statementsWithLabel(ProductionJdbcMeasurement.Sample sample,String label) {
-        return sample.fingerprints.entrySet().stream()
-                .filter(entry->label.equals(sample.labelsByFingerprint.get(entry.getKey())))
-                .mapToLong(java.util.Map.Entry::getValue).sum();
+        return sample.statementsWithLabel(label);
     }
 
     private record Setup(FullChainEndToEndTest fixture, FullChainEndToEndTest.World world, List<UUID> documents) { }

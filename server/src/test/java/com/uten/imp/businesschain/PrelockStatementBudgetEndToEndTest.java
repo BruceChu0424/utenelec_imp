@@ -121,9 +121,23 @@ class PrelockStatementBudgetEndToEndTest {
         assertEquals(1, sample.commits, "草稿保存必须是一笔事务");
         assertEquals(0, sample.md5Statements, "锁后复核只比行版本, 不再对整行做哈希");
         assertTrue(sample.setConfigStatements <= 1, "会话变量每事务只绑一次: " + sample.setConfigStatements);
-        assertTrue(sample.logicalStatements <= MATERIAL_ISSUE_UPDATE_BUDGET,
-                "委外发料草稿改一行用了 " + sample.logicalStatements + " 条语句, 超出预算 "
-                        + MATERIAL_ISSUE_UPDATE_BUDGET);
+        // V926 adds a check before the platform-field snapshot, a separate
+        // command-entry check, and one origin field in that snapshot's metadata.
+        // Trace proves both mutation checks name this locked header; there is
+        // no per-line source query in this command. Keep each role independently
+        // bounded, rather than excluding every query that mentions provenance.
+        long mutableOrigins = sample.statementsWithLabel("archive.mutable_origin");
+        long metadataOrigins = sample.statementsWithLabel("archive.metadata_origin");
+        assertEquals(2, mutableOrigins, "one origin check at each of the two protected entry stages");
+        assertEquals(1, metadataOrigins, "one bounded pre-save history metadata lookup");
+        assertEquals(0, sample.statementsWithLabel("archive.source_origin"), "no new per-line origin discovery");
+        long originalWork = sample.logicalStatements - mutableOrigins - metadataOrigins;
+        System.out.println("PRELOCK-BUDGET raw=" + sample.logicalStatements + " original=" + originalWork
+                + " mutableOrigin=" + mutableOrigins + " metadataOrigin=" + metadataOrigins);
+        assertTrue(sample.logicalStatements <= MATERIAL_ISSUE_UPDATE_BUDGET + 2 + 1,
+                "raw statements include at most the original budget plus the three bounded safety reads");
+        assertTrue(originalWork <= MATERIAL_ISSUE_UPDATE_BUDGET,
+                "委外发料草稿原业务用了 " + originalWork + " 条语句, 超出预算 " + MATERIAL_ISSUE_UPDATE_BUDGET);
         assertEquals(0, new BigDecimal("4").compareTo(issues.detail(issue).getItems().getFirst().getQty()));
     }
 

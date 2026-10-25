@@ -390,8 +390,28 @@ class WorkshopDirectTransferBatchEndToEndTest {
         assertEquals(1, profile.sample().commits, "审核必须是一笔事务，剖面才有意义");
         assertEquals(0, profile.calls().getOrDefault("fn_lock_goods_quantity_unit_from_references", 0L),
                 "货品单位锁已改为改单位时按需检查，写业务行不再走语句级触发器");
-        assertTrue(profile.triggerCalls() <= APPROVE_TRIGGER_CALLS_BUDGET,
-                "一行直送审核触发器函数被调了 " + profile.triggerCalls() + " 次，超出预算 "
+        // V926/V928 add before-row protection to this fixed one-line FULL_KIT
+        // action. Its reviewed write graph permits 59 document/source-row events,
+        // two physical movement inserts + two balance upserts (one conflict UPDATE),
+        // and two reservation creations followed by their two consumptions.
+        // Bound each exact new function separately; all other trigger functions
+        // retain the original 450-call ceiling. This is not an all-function count.
+        long archive = profile.calls().getOrDefault("fn_guard_imported_business_document_archive", 0L);
+        long physicalMeasurement = profile.calls().getOrDefault("fn_guard_stock_measurement_operability", 0L);
+        long reservationMeasurement = profile.calls().getOrDefault("fn_guard_stock_reservation_measurement_operability", 0L);
+        assertTrue(archive > 0 && archive <= 59, "V926 document/source protection must run without duplicate row events: " + archive);
+        assertTrue(physicalMeasurement > 0 && physicalMeasurement <= 2 + 2 + 1,
+                "V928 protects exactly the two movements and their balance write attempts: " + physicalMeasurement);
+        assertTrue(reservationMeasurement > 0 && reservationMeasurement <= 2 + 2,
+                "V928 reservation protection stays bounded by the two creates and consumes: " + reservationMeasurement);
+        long originalCalls = profile.triggerCalls() - archive - physicalMeasurement - reservationMeasurement;
+        System.out.println("APPROVE-TRIGGER-BUDGET raw=" + profile.triggerCalls() + " original=" + originalCalls
+                + " archive=" + archive + " physicalMeasurement=" + physicalMeasurement
+                + " reservationMeasurement=" + reservationMeasurement);
+        assertTrue(profile.triggerCalls() <= APPROVE_TRIGGER_CALLS_BUDGET + 59 + (2 + 2 + 1) + (2 + 2),
+                "raw trigger calls retain the original budget plus only the separately bounded new guard events");
+        assertTrue(originalCalls <= APPROVE_TRIGGER_CALLS_BUDGET,
+                "一行直送审核原有触发器函数被调了 " + originalCalls + " 次，超出预算 "
                         + APPROVE_TRIGGER_CALLS_BUDGET + "；先看剖面是哪条触发器又对无关列更新起跳");
         assertEquals("none", db.queryForObject("SHOW track_functions", String.class),
                 "track_functions 只在被测事务里打开，不能漏到后面的用例");

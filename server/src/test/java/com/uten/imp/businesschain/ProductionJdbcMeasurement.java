@@ -21,11 +21,13 @@ import org.springframework.jdbc.datasource.DelegatingDataSource;
 /** Opt-in, test-context-only JDBC accounting. SQL/parameters are never emitted. */
 final class ProductionJdbcMeasurement {
     private static final ThreadLocal<Sample> ACTIVE = new ThreadLocal<>();
+    private static final java.util.concurrent.atomic.AtomicLong SAMPLE_SEQUENCE = new java.util.concurrent.atomic.AtomicLong();
     private static final Map<String, QueryMetadata> METADATA = new java.util.concurrent.ConcurrentHashMap<>();
     private record QueryMetadata(String fingerprint, String label, boolean explainable,
                                  boolean md5, boolean setConfig) {}
 
     static final class Sample {
+        final long sequence = SAMPLE_SEQUENCE.incrementAndGet();
         long jdbcCalls;
         long logicalStatements;
         long jdbcNanos;
@@ -48,6 +50,12 @@ final class ProductionJdbcMeasurement {
         final Map<String, CapturedQuery> explainCandidates = new LinkedHashMap<>();
         /** Opt-in diagnosis records only SQL shape fingerprints, table identifiers and code locations. */
         final List<Map<String,Object>> statementOrigins = new java.util.ArrayList<>();
+
+        long statementsWithLabel(String label) {
+            return fingerprints.entrySet().stream()
+                    .filter(entry -> label.equals(labelsByFingerprint.get(entry.getKey())))
+                    .mapToLong(Map.Entry::getValue).sum();
+        }
 
         Map<String, Object> result() {
             Map<String,Object> result = new LinkedHashMap<>(Map.of("jdbcCalls", jdbcCalls, "logicalStatements", logicalStatements,
@@ -124,7 +132,9 @@ final class ProductionJdbcMeasurement {
             try {
                 var directory = java.nio.file.Path.of(traceDirectory);
                 java.nio.file.Files.createDirectories(directory);
-                var file = directory.resolve(caller().replace('#','_') + ".json");
+                // A command and its replay can be measured from the same test
+                // method. Keep both traces instead of overwriting the command.
+                var file = directory.resolve(caller().replace('#','_') + "-sample-" + sample.sequence + ".json");
                 new com.fasterxml.jackson.databind.ObjectMapper().writerWithDefaultPrettyPrinter()
                         .writeValue(file.toFile(), output);
             } catch (java.io.IOException failure) {
@@ -295,8 +305,22 @@ final class ProductionJdbcMeasurement {
     }
 
     /** Fixed diagnostic labels only; never emit SQL text, query values or bindings. */
-    private static String queryLabel(String sql) {
+    static String queryLabel(String sql) {
         String normalized = sql.replaceAll("\\s+", " ").trim().toLowerCase(java.util.Locale.ROOT);
+        // These complete standalone queries were added for V926 command/source
+        // provenance and returned history metadata. An ordinary business SELECT
+        // with an embedded provenance predicate must keep its existing label.
+        String ids = "\\?(?:\\s*,\\s*\\?)*";
+        if (normalized.matches("select fn_imported_business_document\\(\\?\\s*,\\s*\\?\\)"))
+            return "archive.mutable_origin";
+        if (normalized.matches("select id,\\s*fn_imported_business_document\\(\\?\\s*,\\s*id\\) "
+                + "from public\\.[a-z][a-z0-9_]* where id in \\(" + ids + "\\)"))
+            return "archive.metadata_origin";
+        if (normalized.matches("select id from public\\.[a-z][a-z0-9_]* where id in \\(" + ids
+                + "\\) and fn_imported_business_document\\(\\?\\s*,\\s*id\\)"))
+            return "archive.source_origin";
+        if (normalized.matches("select fn_stock_measurement_usable\\(\\?\\s*,\\s*\\?\\s*,\\s*cast\\(\\? as uuid\\)\\)"))
+            return "measurement.operability";
         if (normalized.startsWith("with recursive walk")
                 || normalized.startsWith("with recursive roots(") && normalized.contains(", walk as (")) return "bom.validation";
         if (normalized.startsWith("with recursive roots as")) return "bom.lock_footprint";

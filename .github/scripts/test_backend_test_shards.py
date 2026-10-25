@@ -74,12 +74,16 @@ class InventoryAndBalanceTests(unittest.TestCase):
         self.assertLessEqual(max(shard["estimated_seconds"] for shard in shards), 170)
 
     def test_failsafe_is_owned_once_and_never_dropped(self):
-        classes = [test_class("example.A" + str(i) + "Test") for i in range(5)]
+        classes = [test_class("example.A" + str(i) + "Test") for i in range(8)]
         classes += [test_class("example.PackagingIT", phase="failsafe"), test_class("example.SecondIT", phase="failsafe")]
-        shards = runner.balance(classes, 4, {})
-        self.assertIn("example.PackagingIT", shards[0]["classes"])
-        self.assertIn("example.SecondIT", shards[0]["classes"])
-        self.assertEqual(7, sum(len(shard["classes"]) for shard in shards))
+        for count in (4, 8):
+            with self.subTest(partitions=count):
+                shards = runner.balance(classes, count, {})
+                self.assertIn("example.PackagingIT", shards[0]["classes"])
+                self.assertIn("example.SecondIT", shards[0]["classes"])
+                self.assertEqual(10, sum(len(shard["classes"]) for shard in shards))
+                self.assertEqual({row["name"] for row in classes},
+                                 {name for shard in shards for name in shard["classes"]})
 
     def test_overloaded_or_duplicate_discovery_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "Ambiguous"):
@@ -1062,9 +1066,10 @@ class WorkflowGatingTests(unittest.TestCase):
 
     def test_optional_reference_never_disables_any_full_partition(self):
         planning, shards = self.job("backend-plan"), self.job("backend-shards")
-        self.assertIn("--shards 4", planning)
+        self.assertIn("--shards 8", planning)
         self.assertEqual({"backend-plan"}, self.needs(shards))
-        self.assertRegex(shards, r"(?m)^        shard: \[0, 1, 2, 3\]$")
+        self.assertRegex(shards, r"(?m)^        shard: \[0, 1, 2, 3, 4, 5, 6, 7\]$")
+        self.assertRegex(shards, r"(?m)^      max-parallel: 8$")
         self.assertRegex(shards, r"(?m)^      fail-fast: false$")
         for job in (planning, shards):
             self.assertNotIn("compare_reference", job)

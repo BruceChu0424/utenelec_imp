@@ -82,10 +82,10 @@ jobs:
         run: |
           python3 -m unittest discover -s .github/scripts -p 'test_backend_test_shards.py' -v
           python3 -m unittest discover -s .github/scripts -p 'test_safe_artifact_extract.py' -v
-      - name: Discover all tests and balance four complete partitions
+      - name: Discover all tests and balance eight complete partitions
         env:
           UTEN_RUN_DB_TESTS: "true"
-        run: python3 .github/scripts/backend_test_shards.py plan --output server/target-ci-plan --shards 4 --history .github/test-timings/backend.json
+        run: python3 .github/scripts/backend_test_shards.py plan --output server/target-ci-plan --shards 8 --history .github/test-timings/backend.json
       - name: Preserve exact test plan
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -102,9 +102,9 @@ jobs:
     strategy:
       # Collect all failures in one run; no partition is allowed to fail silently.
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 8
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

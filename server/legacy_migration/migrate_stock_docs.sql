@@ -38,13 +38,11 @@
 -- =====================================================================
 
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
--- 清旧：仓库源流水 + 统一单据 + 余额（余额从 StockGoods 全量重建）
-DELETE FROM stock_movements WHERE source_doc_type = 'STOCK_DOC';
--- V743(ADR-135) 重量调整账随库存账一起重建(导入后没有重量账链, 从第一笔新流水起算)。
-DELETE FROM stock_weight_adjustments;
-DELETE FROM stock_document_items;
-DELETE FROM stock_documents;
-DELETE FROM stock_balances;
+-- Both supported launchers prepend the reviewed opening/crosswalk consumer.
+DO $$ BEGIN
+ IF to_regclass('pg_temp.reviewed_workshop_stock_location_stage') IS NULL THEN
+  RAISE EXCEPTION 'Reviewed workshop stock-location prelude must run before stock import'; END IF;
+END $$;
 
 -- ======================== staging（统一形状 + doc_type） ========================
 CREATE TEMP TABLE doc_stage (
@@ -122,6 +120,14 @@ FROM warehouse_crosswalk_stage crosswalk
 LEFT JOIN warehouses target ON target.code = crosswalk.target_code AND NOT target.is_deleted
 WHERE crosswalk.legacy_id IS NOT NULL;
 
+DO $ordinary_stock_warehouse_targets$
+BEGIN
+ IF EXISTS(SELECT 1 FROM warehouse_target_stage t JOIN warehouses w ON w.id=t.warehouse_id
+           WHERE t.action<>'DROP' AND w.is_line_side) THEN
+  RAISE EXCEPTION 'Ordinary legacy warehouse crosswalk cannot target any line-side bin; use exact reviewed item location';
+ END IF;
+END $ordinary_stock_warehouse_targets$;
+
 -- 不迁的单据/明细/余额(对账按它扣减；全量导入时保留到运行结束)。
 CREATE TEMP TABLE IF NOT EXISTS bootstrap_warehouse_exclusions (
     source_file text NOT NULL, source_row_id text NOT NULL, legacy_warehouse_id int,
@@ -150,6 +156,20 @@ BEGIN
     END IF;
 END;
 $$;
+
+-- Validate the narrow workshop scope before any old business row is deleted.
+DO $$ BEGIN
+ IF EXISTS(SELECT 1 FROM item_stage i JOIN reviewed_workshop_stock_location_stage x
+      ON x.goods_legacy_id=i.goods_legacy_id
+      WHERE i.unit_legacy_id IS NULL OR i.unit_legacy_id=0
+         OR NOT EXISTS(SELECT 1 FROM units u WHERE u.legacy_id=i.unit_legacy_id)) THEN
+  RAISE EXCEPTION 'Reviewed workshop historical item unit is unknown; no inferred unit'; END IF;
+END $$;
+DELETE FROM stock_movements WHERE source_doc_type = 'STOCK_DOC';
+DELETE FROM stock_weight_adjustments;
+DELETE FROM stock_document_items;
+DELETE FROM stock_documents;
+DELETE FROM stock_balances;
 
 -- ======================== 自动补录缺失基础资料（此时 staging 满） ========================
 -- 货品历史 FK 锚（盘点等可能引用已删货品）：legacy_id+name+auto_created=TRUE；V177/V181 要求选择器/BOM/MRP 隔离。
@@ -205,12 +225,14 @@ ON CONFLICT (legacy_id) DO NOTHING;
 CREATE TEMP TABLE goods_split_warehouse_stage AS
 SELECT material.legacy_id AS goods_legacy_id,
        COALESCE(
+           reviewed.warehouse_id,
            CASE WHEN fn_warehouse_is_good_stock_leaf(material.owning_warehouse_id)
                 THEN material.owning_warehouse_id END,
            (SELECT fallback.id FROM warehouses fallback
              WHERE fallback.code = NULLIF(current_setting('uten.legacy_unassigned_warehouse_code', true), '')
                AND NOT fallback.is_deleted)) AS warehouse_id
 FROM goods material
+LEFT JOIN reviewed_workshop_stock_location_stage reviewed ON reviewed.goods_legacy_id=material.legacy_id
 WHERE material.legacy_id IS NOT NULL;
 
 

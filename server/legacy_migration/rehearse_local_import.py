@@ -34,6 +34,7 @@ import verify_candidate
 import validate_loader_csv_contract
 import default_settlement_source_policy
 import finance_cash_source_policy as cash_policy
+import prepare_workshop_stock_location_policy as workshop_locations
 from verify_finance_master_sources import load_seed_baseline, sealed_seed_baseline, BASELINE_FILE
 
 PGOPTIONS = '-c client_encoding=UTF8 -c jit=off -c DateStyle=ISO,YMD -c TimeZone=Asia/Shanghai'
@@ -70,6 +71,7 @@ def executable_modules(directory: Path, scope: str="full"):
         if scope==scoped_bootstrap.SCOPE and name=='migrate_production.sql':
             content=scoped_bootstrap.production(content)
         if name=='migrate_stock_docs.sql':
+            content=compose_bootstrap.reviewed_loader_content(content,name)
             content+=b'\n'+(HERE/'migrate_rehearsal_stock_checks.sql').read_bytes()
             content+=b'\n'+(HERE/'migrate_rehearsal_stock_movement_checks.sql').read_bytes()
         # Capture only source identity/default before compose drops each stage.
@@ -327,7 +329,7 @@ def reconcile_sql(manifest_path: Path, run_id: str) -> str:
         sys.argv = original
 
 
-def prepare_inputs(raw: Path, clean: Path, overlay: Path, hr: Path, output: Path, excel: Path, reference: Path, hr_xls: Path, masters: Path, semantics: Path | None=None, injection: Path | None=None, topology: Path | None=None, source_backup: Path | None=None, media: Path | None=None, completeness_audit: Path | None=None, finance_seed_baseline: Path | None=None, finance_seed_baseline_sha256: str | None=None, scope: str="full", finance_cash_source_policy: Path | None=None) -> dict:
+def prepare_inputs(raw: Path, clean: Path, overlay: Path, hr: Path, output: Path, excel: Path, reference: Path, hr_xls: Path, masters: Path, semantics: Path | None=None, injection: Path | None=None, topology: Path | None=None, source_backup: Path | None=None, media: Path | None=None, completeness_audit: Path | None=None, finance_seed_baseline: Path | None=None, finance_seed_baseline_sha256: str | None=None, scope: str="full", finance_cash_source_policy: Path | None=None, workshop_stock_location_policy: Path | None=None) -> dict:
     importer_commit=verify_frozen_source()
     raw_manifest = verify_raw(raw)
     if source_backup is not None and digest(source_backup)!=raw_manifest['sourceBackupSha256']:
@@ -389,7 +391,8 @@ def prepare_inputs(raw: Path, clean: Path, overlay: Path, hr: Path, output: Path
             raise ValueError('Derived source missing: ' + name)
         shutil.copy2(source, output / name)
     for directory, patterns in ((clean, ('warehouse_crosswalk.csv',)),
-                                (overlay, ('goods_owning_warehouse.csv', 'goods_excel_attributes.sql')),
+                                (overlay, ('goods_owning_warehouse.csv', 'goods_excel_attributes.sql',
+                                           'goods_workshop_stock_location_review.csv')),
                                 (hr, ('hr_rehearsal.csv', 'hr_managers.csv')),
                                 (reference, ('legacy_injection_machines.csv',)),*auxiliary):
         for pattern in patterns:
@@ -397,7 +400,19 @@ def prepare_inputs(raw: Path, clean: Path, overlay: Path, hr: Path, output: Path
                 if (output / path.name).exists():
                     raise ValueError('Two prepared inputs claim one file: ' + path.name)
                 shutil.copy2(path, output / path.name)
+    workshop_policy_provenance=None
+    if workshop_stock_location_policy is not None:
+        policy=workshop_locations.validate_package(workshop_stock_location_policy)
+        if digest(overlay/'goods_workshop_stock_location_review.csv')!=policy['source_review_sha256']:
+            raise ValueError('Reviewed workshop stock policy belongs to a different exact Excel/legacy review')
+        for name in workshop_locations.FILES:
+            shutil.copyfile(workshop_stock_location_policy/name,output/name)
+        workshop_policy_provenance={'directory':str(workshop_stock_location_policy.resolve()),
+            'manifest_sha256':digest(workshop_stock_location_policy/'LOCATION_POLICY_MANIFEST.json')}
+    else:
+        for name in workshop_locations.FILES:shutil.copyfile(overlay/name,output/name)
     required_files={'warehouse_crosswalk.csv','goods_owning_warehouse.csv','goods_excel_attributes.sql',
+                    'goods_workshop_stock_location_review.csv','workshop_stock_location_crosswalk.csv','workshop_stock_location_authority.csv',
                     'hr_rehearsal.csv','hr_managers.csv','legacy_injection_machines.csv'}
     if semantics is not None:
         required_files.update(('goods_note_semantics.csv','mould_location_semantics.csv','goods_mould_semantics.csv','goods_legacy_semantics.sql'))
@@ -417,6 +432,7 @@ def prepare_inputs(raw: Path, clean: Path, overlay: Path, hr: Path, output: Path
     loader_contracts=validate_execution_inputs(output,scope)
     scripts = {p.name: digest(p) for p in HERE.glob('*.py')}
     scripts.update({p.name: digest(p) for p in HERE.glob('migrate_*.sql')})
+    scripts['reviewed_workshop_stock_location.sql']=digest(HERE/'reviewed_workshop_stock_location.sql')
     scripts.update({name:digest(HERE/name) for name in ('export_legacy.ps1','export_rehearsal_reference_audit.ps1','mapping-version.txt','migrate.sh')})
     scripts['export_legacy_goods_media.ps1']=digest(HERE/'export_legacy_goods_media.ps1')
     for name in ('source_schema_contract.json','source_profile_contract.json'):
@@ -443,12 +459,15 @@ def prepare_inputs(raw: Path, clean: Path, overlay: Path, hr: Path, output: Path
                                      if directory is not None},
                   'extraInputs': {name: digest(output / name) for name in
                                   ('warehouse_crosswalk.csv','goods_owning_warehouse.csv','goods_excel_attributes.sql',
+                                   'goods_workshop_stock_location_review.csv','workshop_stock_location_crosswalk.csv','workshop_stock_location_authority.csv',
                                    'goods_legacy_semantics.sql','goods_material_identity.sql','goods_bom_topology.sql',
                                    'goods_legacy_media.sql',*cash_policy.PACKAGE_FILES) if (output/name).is_file()},
                   'layers': {str(directory): {p.name: digest(p) for p in sorted(directory.glob('*.json'))}
                              for directory in (clean, masters, overlay, hr)}}
     if cash_policy_provenance is not None:
         provenance['financeCashSourcePolicy']=cash_policy_provenance
+    if workshop_policy_provenance is not None:
+        provenance['workshopStockLocationPolicy']=workshop_policy_provenance
     if os.environ.get('UTEN_LOCAL_IMPORT_SOURCE_MANIFEST'):
         from local_source_freeze import verify
         provenance['localSourceFreeze']=verify(ROOT,os.environ['UTEN_LOCAL_IMPORT_SOURCE_MANIFEST'],os.environ.get('UTEN_LOCAL_IMPORT_SOURCE_SHA256'))
@@ -458,7 +477,8 @@ def prepare_inputs(raw: Path, clean: Path, overlay: Path, hr: Path, output: Path
     manifest = {'formatVersion': 4, 'target': 'All',
                 'sourceSnapshotAsOfUtc': raw_manifest['sourceSnapshotAsOfUtc'],
                 'files': [csv_record(p) for p in sorted(output.glob('*.csv'))
-                          if p.name not in ('warehouse_crosswalk.csv', 'goods_owning_warehouse.csv')],
+                          if p.name not in ('warehouse_crosswalk.csv', 'goods_owning_warehouse.csv',
+                                            'goods_workshop_stock_location_review.csv',*workshop_locations.FILES)],
                 'provenance': provenance}
     (output / 'derived_inputs.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
     return manifest
@@ -515,6 +535,11 @@ def apply(db: Database, directory: Path, env: Path, log: Path, confirmation: str
     for name, sha in manifest['provenance']['extraInputs'].items():
         if digest(directory / name) != sha:
             raise ValueError('Prepared extra input drift: ' + name)
+    if manifest['provenance'].get('workshopStockLocationPolicy'):
+        policy=manifest['provenance']['workshopStockLocationPolicy'];directory_path=Path(policy['directory'])
+        if digest(directory_path/'LOCATION_POLICY_MANIFEST.json')!=policy['manifest_sha256']:
+            raise ValueError('Reviewed workshop location authority package drift')
+        workshop_locations.validate_package(directory_path)
     for name, sha in manifest['provenance']['referenceAudit'].items():
         if digest(Path(name))!=sha:
             raise ValueError('Supplemental source audit drift: ' + Path(name).name)
@@ -723,6 +748,7 @@ def main():
         prepare.add_argument('--' + name, type=Path, required=True)
     prepare.add_argument('--scope',choices=('full',scoped_bootstrap.SCOPE),default='full')
     prepare.add_argument('--finance-cash-source-policy',type=Path)
+    prepare.add_argument('--workshop-stock-location-policy',type=Path)
     prepare.add_argument('--finance-seed-baseline',type=Path,required=True)
     prepare.add_argument('--finance-seed-baseline-sha256',required=True)
     execute = sub.add_parser('apply')
@@ -739,7 +765,7 @@ def main():
     execute.add_argument('--approval-reference', required=True)
     args = parser.parse_args()
     if args.command == 'prepare':
-        result = prepare_inputs(args.raw,args.clean,args.overlay,args.hr,args.output,args.excel,args.reference,args.hr_xls,args.masters,args.semantics,args.injection,args.topology,args.source_backup,args.media,args.completeness_audit,args.finance_seed_baseline,args.finance_seed_baseline_sha256,args.scope,args.finance_cash_source_policy)
+        result = prepare_inputs(args.raw,args.clean,args.overlay,args.hr,args.output,args.excel,args.reference,args.hr_xls,args.masters,args.semantics,args.injection,args.topology,args.source_backup,args.media,args.completeness_audit,args.finance_seed_baseline,args.finance_seed_baseline_sha256,args.scope,args.finance_cash_source_policy,args.workshop_stock_location_policy)
         print(json.dumps({'preparedCsvFiles':len(result['files']), 'output':str(args.output)}))
     else:
         apply(IsolatedCanonicalDatabase(args.container,args.database,args.user,args.expected_system_identifier,args.expected_database_oid),args.input,args.env_file,args.log,args.confirm,args.approval_reference,args.scope)

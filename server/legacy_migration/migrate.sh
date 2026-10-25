@@ -770,6 +770,9 @@ preflight () {
 }
 
 run_sql () {  # $1 = sql 文件名（HERE 下）
+    if [ "$1" = migrate_stock_docs.sql ]; then
+        record_run_file "$HERE/reviewed_workshop_stock_location.sql" reviewed_workshop_stock_location.sql
+    fi
     record_run_file "$HERE/$1" "$1"
     local verified_sha="$RECORDED_FILE_SHA256"
     local verified_bytes="$RECORDED_FILE_BYTES"
@@ -1103,7 +1106,10 @@ migrate_stock_docs () {
              legacy_workers legacy_operators_ref; do
         copy_csv "$f.csv"
     done
-    copy_repo_csv warehouse_crosswalk.csv
+    copy_manual_csv warehouse_crosswalk.csv "Use the prepared ordinary warehouse crosswalk, never the raw retired XW03 map"
+    copy_manual_csv goods_workshop_stock_location_review.csv "Run prepare_goods_excel; preserve workshop references"
+    copy_manual_csv workshop_stock_location_crosswalk.csv "Build an explicit reviewed open-bin location package"
+    copy_manual_csv workshop_stock_location_authority.csv "Build an explicit reviewed open-bin location package"
     echo "→ [仓库单据] 执行迁移 SQL（统一表 + 余额 + 流水 + 人员补录）..."
     run_sql migrate_stock_docs.sql
 }

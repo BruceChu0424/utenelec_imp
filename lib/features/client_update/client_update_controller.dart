@@ -40,6 +40,7 @@ class ClientUpdateController extends ChangeNotifier {
   Object? error;
   double progress = 0;
   bool hasSuccessfulCheck = false;
+  DateTime? lastCheckedAt;
   int checkIntervalSeconds = 300;
   bool _disposed = false;
   final _ownerDisposedListeners = <VoidCallback>{};
@@ -104,6 +105,7 @@ class ClientUpdateController extends ChangeNotifier {
           ? candidate
           : null;
       hasSuccessfulCheck = true;
+      lastCheckedAt = DateTime.now();
       stage = release == null
           ? ClientUpdateStage.idle
           : ClientUpdateStage.available;

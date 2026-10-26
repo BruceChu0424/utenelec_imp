@@ -7,6 +7,7 @@ import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/maintenance_text.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../models/server_operations.dart';
@@ -455,6 +456,7 @@ class _JobPanelState extends State<ServerUpdateJobPanel> {
         : [
             'CHECKING',
             'DOWNLOADING',
+            'NOTIFYING',
             'BACKING_UP',
             'MIGRATING',
             'ACTIVATING',
@@ -710,6 +712,7 @@ String serverUpdatePhaseLabel(BuildContext context, String phase) {
   return switch (phase) {
     'CHECKING' => l.serverUpdatePhaseChecking,
     'DOWNLOADING' => l.serverUpdatePhaseDownload,
+    'NOTIFYING' => maintenanceText(context, '通知用户保存工作'),
     'BACKING_UP' => l.serverUpdatePhaseBackup,
     'MIGRATING' => l.serverUpdatePhaseMigrate,
     'ACTIVATING' => l.serverUpdatePhaseActivate,

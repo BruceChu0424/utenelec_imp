@@ -5,7 +5,7 @@
 #   uten-imp-updater latest             # 显式联网读取版本号
 #   uten-imp-updater stage <version>    # 显式下载、验签、暂存，不激活
 #   uten-imp-updater check              # 人工检查并暂存，不激活
-#   uten-imp-updater activate <version> # 人工激活含迁移版本：先 pg_dump 全量备份再执行
+#   activate <version> 为独立授权worker内部入口；既有部署必须先完成公共预告，直接CLI被拒绝。
 #   uten-imp-updater status             # 查看当前/最新/已暂存版本
 #
 # 信任模型：只信 /etc/uten-imp-updater/allowed_signers 钉住的 Ed25519 公钥。
@@ -347,7 +347,7 @@ PY
 
 # ------------------------------------------------------------- activate ----
 do_activate() {
-  local version=$1 mode=${2:-auto} expected=${3:-} prev prev_ver code_only backup_file rc
+  local version=$1 mode=${2:-auto} expected=${3:-} prev prev_ver code_only backup_file rc bootstrap_state bootstrap_pid
   [[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
     || die "版本号非法：$version"
   [ -d "$RELEASES_DIR/$version" ] || die "版本未暂存：$RELEASES_DIR/$version"
@@ -389,6 +389,28 @@ do_activate() {
     runuser -u uten-imp -- test -r "$RELEASES_DIR/$version/server/uten-imp-migrator.jar" \
       || die "应用账号无法读取迁移程序，未停应用、未改数据库"
     validate_migrator_config
+  fi
+
+  # Existing installations have exactly one ordinary update entry. The fixed
+  # helper checks the live worker parent, durable job, ten-minute announcement
+  # and public gate. This never starts a second countdown or recursive update.
+  # A genuinely empty first installation has no existing users to disconnect.
+  if [ "$prev_ver" != none ] || [ "$(current_version)" != none ]; then
+    if ! /usr/bin/python3 -I /usr/local/lib/uten-imp/host_operations.py \
+        assert-activation-authorized "$version" "${expected:-$prev_ver}"; then
+      printf '%s\n' '请从服务器运维页面发起更新；直接激活不能跳过十分钟预告。' >&2
+      return 44
+    fi
+  else
+    # Missing metadata on a running old installation is not a blank bootstrap.
+    # Require both an absent current path and a positively stopped known unit.
+    if [ -e "$UTEN_BASE/current" ] || [ -L "$UTEN_BASE/current" ] \
+        || ! bootstrap_state=$(systemctl show "$UTEN_APP_SERVICE" --property=ActiveState --value) \
+        || ! bootstrap_pid=$(systemctl show "$UTEN_APP_SERVICE" --property=MainPID --value) \
+        || [ "$bootstrap_state" != inactive ] || [ "$bootstrap_pid" != 0 ]; then
+      printf '%s\n' '无法确认空白首装且应用已停止；未执行停服，请先核对现有部署。' >&2
+      return 44
+    fi
   fi
 
   systemctl stop "$UTEN_APP_SERVICE"

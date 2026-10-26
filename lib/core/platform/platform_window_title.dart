@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../constants/app_info.dart';
 import '../network/server_config.dart';
-import '../../shared/platform_branding/platform_branding_provider.dart';
 
 /// Changes only the visible native caption. Installation identifiers and
 /// preference/storage directory metadata remain independent and fixed.
@@ -118,16 +117,14 @@ final platformWindowTitleControllerProvider =
       final controller = PlatformWindowTitleController(
         isCurrent: (title, source) =>
             ref.read(apiBaseUrlProvider) == source &&
-            ref.read(platformBrandingSnapshotProvider).platformName == title,
+            title == AppInfo.displayName,
       );
       ref.onDispose(controller.dispose);
       return controller;
     });
 
 final platformWindowTitleSyncProvider = Provider<void>((ref) {
-  final title = ref.watch(
-    platformBrandingSnapshotProvider.select((brand) => brand.platformName),
-  );
+  const title = AppInfo.displayName;
   final source = ref.watch(apiBaseUrlProvider);
   unawaited(
     ref

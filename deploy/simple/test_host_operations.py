@@ -35,6 +35,16 @@ class HostOperationsTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.state = self.root / 'state'
         self.state.mkdir(mode=0o700)
+        self.public_state = self.root / 'public'
+        self.public_state.mkdir(mode=0o755)
+        public_patcher = patch.object(host, 'PUBLIC_STATE', self.public_state)
+        public_patcher.start()
+        self.addCleanup(public_patcher.stop)
+        self.real_notify = host.Operations.notify_before_activation
+        # Real ten-minute delay has a fake-clock regression below.
+        notice_patcher = patch.object(host.Operations, 'notify_before_activation')
+        self.notice_mock = notice_patcher.start()
+        self.addCleanup(notice_patcher.stop)
         self.env = self.root / 'source.env'
         host.atomic(self.env, b'')
         self.source = host.ReleaseSource(self.env)
@@ -170,6 +180,168 @@ class HostOperationsTest(unittest.TestCase):
         self.assertTrue(status['manualOnly'])
         self.assertFalse(status['sourceConfigured'])
         self.assertTrue(all(c[0] == '/usr/bin/systemctl' for c in self.calls))
+
+    def public_status(self):
+        return json.loads((self.public_state / 'maintenance.json').read_text())
+
+    def test_lower_activation_guard_requires_live_worker_and_completed_matching_window(self):
+        self.source.save(self.payload())
+        ops = self.operations()
+        job = ops.dispatch(self.request('UPDATE_START', self.start_payload()))
+        current = dt.datetime.now(dt.timezone.utc)
+        job.update(state='RUNNING', phase='ACTIVATING', targetVersion='v2.5.18',
+                   noticePublishedAt=(current - dt.timedelta(seconds=601)).isoformat(),
+                   noticeStartsAt=(current - dt.timedelta(seconds=1)).isoformat())
+        ops.store_job(job)
+        ops.runner = lambda args, timeout=15: subprocess.CompletedProcess(args, 0, '999\n', '')
+        with patch.object(host, 'process_parent', return_value=999):
+            ops.assert_activation_authorized('v2.5.18', 'none')
+            for target, expected in (('v2.5.19', 'none'), ('v2.5.18', 'v2.5.16')):
+                with self.subTest(target=target, expected=expected), self.assertRaises(host.OperationError):
+                    ops.assert_activation_authorized(target, expected)
+            job['noticePublishedAt'] = (current - dt.timedelta(seconds=100)).isoformat()
+            ops.store_job(job)
+            with self.assertRaises(host.OperationError):
+                ops.assert_activation_authorized('v2.5.18', 'none')
+            job['noticePublishedAt'] = (current - dt.timedelta(seconds=601)).isoformat()
+            job['state'] = 'FAILED'
+            ops.store_job(job)
+            with self.assertRaises(host.OperationError):
+                ops.assert_activation_authorized('v2.5.18', 'none')
+        with patch.object(host, 'process_parent', return_value=998), self.assertRaises(host.OperationError):
+            ops.assert_activation_authorized('v2.5.18', 'none')
+
+    def test_recovery_receipt_stays_bound_to_job_and_release_without_reopening_on_source_change(self):
+        self.source.save(self.payload())
+        ops = self.operations()
+        job = ops.dispatch(self.request('UPDATE_START', self.start_payload()))
+        base = self.root / 'application'
+        release = base / 'releases/v2.5.18'
+        release.mkdir(parents=True)
+        (release / 'SHA256SUMS').write_bytes(b'fixture signed inventory')
+        (base / 'current').symlink_to('releases/v2.5.18')
+        (base / 'active-version.txt').write_text('v2.5.18\n')
+        env = host.parse_env(host.read_private(self.env))
+        env['UTEN_BASE'] = str(base)
+        host.atomic(self.env, ''.join(f'{k}={v}\n' for k, v in env.items()).encode())
+        job.update(state='RECOVERY_REQUIRED', phase='HEALTH_CHECK', targetVersion='v2.5.18')
+        ops.store_job(job)
+        original = host.read_private(self.state / ('job-' + job['id'] + '.json'))
+        receipt = {'format': 'uten-service-restored-v1', 'jobId': job['id'], 'verifiedVersion': 'v2.5.18',
+                   'health': 'UP', 'sourceRevision': self.source.view()['revision'],
+                   'jobSha256': host.hashlib.sha256(original).hexdigest(),
+                   'manifestSha256': host.hashlib.sha256((release / 'SHA256SUMS').read_bytes()).hexdigest()}
+        path = self.state / ('service-restored-' + job['id'] + '.json')
+        host.write_json(path, receipt)
+        ops.publish_maintenance(job)
+        self.assertTrue(ops.recovery_confirmed(job))
+        self.assertFalse((self.public_state / 'updating').exists())
+        # Configuration remains an ordinary operation after recovery; changing
+        # release credentials must not revive a completed old maintenance event.
+        update = self.payload()
+        update['bucket'] = 'changed-fixture-bucket'
+        ops.dispatch(self.request('CONFIG_SAVE', update))
+        self.assertNotEqual(receipt['sourceRevision'], self.source.view()['revision'])
+        ops.publish_maintenance(job)
+        self.assertEqual('available', self.public_status()['state'])
+        self.assertFalse((self.public_state / 'updating').exists())
+        self.assertEqual(original, host.read_private(self.state / ('job-' + job['id'] + '.json')))
+        for key in ('jobSha256', 'manifestSha256', 'verifiedVersion'):
+            host.write_json(path, {**receipt, key: 'wrong'})
+            self.assertFalse(ops.recovery_confirmed(job))
+        host.write_json(path, receipt)
+        job['message'] = 'changed original incident'
+        ops.store_job(job)
+        self.assertFalse(ops.recovery_confirmed(job))
+        self.assertTrue((self.public_state / 'updating').exists())
+
+    def test_public_maintenance_lifecycle_keeps_only_safe_fields_and_gate(self):
+        self.source.save(self.payload())
+        ops = self.operations()
+        job = ops.dispatch(self.request('UPDATE_START', self.start_payload()))
+        job.update(targetVersion='v2.5.18', state='RUNNING', phase='NOTIFYING',
+                   noticeStartsAt=(dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=10)).isoformat(),
+                   backupPath='/private/backup', message='private subprocess text')
+        ops.store_job(job)
+        status = self.public_status()
+        self.assertEqual('scheduled', status['state'])
+        self.assertEqual(job['id'], status['noticeId'])
+        self.assertNotIn('private', json.dumps(status))
+        self.assertNotIn('actorId', status)
+        self.assertNotIn('runtimeBinding', status)
+        self.assertFalse((self.public_state / 'updating').exists())
+        stale = dict(job)
+        ops.phase(job, 'ACTIVATING')
+        self.assertEqual('updating', self.public_status()['state'])
+        self.assertEqual(0o644, (self.public_state / 'maintenance.json').stat().st_mode & 0o777)
+        self.assertTrue((self.public_state / 'updating').exists())
+        ops.publish_maintenance(stale)
+        self.assertEqual('updating', self.public_status()['state'])
+        self.assertTrue((self.public_state / 'updating').exists())
+        job.update(state='RECOVERY_REQUIRED', finishedAt=host.now())
+        ops.store_job(job)
+        self.assertEqual('recovery_required', self.public_status()['state'])
+        self.assertTrue((self.public_state / 'updating').exists())
+        job.update(state='SUCCEEDED', phase='DONE', health='UP')
+        ops.store_job(job)
+        self.assertEqual('available', self.public_status()['state'])
+        self.assertFalse((self.public_state / 'updating').exists())
+
+    def test_ten_minute_notification_is_real_and_pre_activation_failure_clears_it(self):
+        self.source.save(self.payload())
+        ops = self.operations()
+        job = ops.dispatch(self.request('UPDATE_START', self.start_payload()))
+        job.update(state='RUNNING', targetVersion='v2.5.18')
+        elapsed = [0.0]
+        def sleep(seconds):
+            self.assertLessEqual(seconds, 10)
+            self.assertEqual('scheduled', self.public_status()['state'])
+            self.assertFalse((self.public_state / 'updating').exists())
+            elapsed[0] += seconds
+        with patch.object(host.time, 'monotonic', side_effect=lambda: elapsed[0]), patch.object(host.time, 'sleep', side_effect=sleep):
+            self.real_notify(ops, job)
+        self.assertEqual(600, elapsed[0])
+        self.assertEqual('NOTIFYING', ops.job()['phase'])
+        job.update(state='FAILED', finishedAt=host.now())
+        ops.store_job(job)
+        self.assertEqual('available', self.public_status()['state'])
+        self.assertFalse((self.public_state / 'updating').exists())
+
+    def test_cancelled_appointment_withdraws_announcement(self):
+        self.source.save(self.payload())
+        ops = self.operations()
+        job = ops.dispatch(self.scheduled_request(ops))
+        self.assertEqual('scheduled', self.public_status()['state'])
+        ops.dispatch(self.request('UPDATE_CANCEL', {'jobId': job['id']}))
+        self.assertEqual('available', self.public_status()['state'])
+        self.assertIsNone(self.public_status()['noticeId'])
+        self.assertFalse((self.public_state / 'updating').exists())
+
+    def test_appointment_cannot_skip_required_warning_time(self):
+        with self.assertRaises(host.OperationError):
+            host.future_instant((dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=9)).isoformat())
+
+    def test_root_confirmation_reports_safe_rejection_without_traceback(self):
+        module = Mock()
+        module.confirm_service_restored.side_effect = host.OperationError('RECOVERY_REQUIRED', '恢复版本与实际进程不一致。')
+        diagnostic = io.StringIO()
+        with patch.object(host, 'secure_directory'), patch.object(host, 'load_maintenance_recovery', return_value=module), \
+                patch.object(host.sys, 'argv', ['host_operations.py', 'confirm-service-restored', str(uuid.uuid4()), 'v2.5.18']), \
+                patch.object(host.sys, 'stderr', diagnostic):
+            self.assertEqual(1, host.main())
+        self.assertIn('RECOVERY_NOT_CONFIRMED:RECOVERY_REQUIRED', diagnostic.getvalue())
+        self.assertNotIn('Traceback', diagnostic.getvalue())
+
+    def test_root_confirmation_unexpected_error_never_exposes_paths_or_credentials(self):
+        module = Mock()
+        module.confirm_service_restored.side_effect = RuntimeError('https://user:SECRET@example.test/private-path')
+        diagnostic = io.StringIO()
+        with patch.object(host, 'secure_directory'), patch.object(host, 'load_maintenance_recovery', return_value=module), \
+                patch.object(host.sys, 'argv', ['host_operations.py', 'confirm-service-restored', str(uuid.uuid4()), 'v2.5.18']), \
+                patch.object(host.sys, 'stderr', diagnostic):
+            self.assertEqual(1, host.main())
+        self.assertEqual('RECOVERY_NOT_CONFIRMED:UNAVAILABLE\n', diagnostic.getvalue())
+        self.assertNotIn('SECRET', diagnostic.getvalue())
 
     def test_repeated_ready_status_cache_and_job_reads_never_check_oss(self):
         self.source.save(self.payload())
@@ -614,7 +786,7 @@ class HostOperationsTest(unittest.TestCase):
             (base / 'active-version.txt').write_text(target)
         with patch.object(host, 'BACKUP_CONFIG', str(config)), patch.object(ops, 'activate', side_effect=activate), patch.object(ops, 'stable_health', side_effect=lambda env: events.append('stable-health')):
             self.assertEqual(0, ops.worker())
-        self.assertEqual(['instance-identity', 'latest', 'stage', 'backup', 'verify', 'backup-toc', 'activate', 'database-catalog', 'stable-health'], events)
+        self.assertEqual(['instance-identity', 'latest', 'stage', 'backup', 'verify', 'backup-toc', 'instance-identity', 'activate', 'database-catalog', 'stable-health'], events)
         self.assertEqual('SUCCEEDED', ops.job()['state'])
         self.assertEqual('UP', ops.job()['health'])
 

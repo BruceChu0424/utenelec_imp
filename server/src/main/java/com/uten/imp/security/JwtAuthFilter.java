@@ -145,7 +145,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = SecurityRequestPath.withinApplication(request);
-        return PublicPlatformBrandingRequest.matches(request)
+        return PublicPlatformBrandingRequest.matches(request) || PublicMaintenanceRequest.matches(request)
                 || PUBLIC_STAFF_AUTH_PATHS.contains(path)
                 || path.startsWith("/api/visitor/auth/");
     }

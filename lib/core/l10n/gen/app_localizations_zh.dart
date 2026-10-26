@@ -45,7 +45,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get clientUpdateInstalling => '正在安装更新';
 
   @override
-  String get clientUpdateWindowsHint => '更新将自动下载，关闭并重新启动软件，保留本机设置和已保存的草稿。请先保存当前工作。';
+  String get clientUpdateWindowsHint =>
+      '更新将自动下载，关闭并重新启动软件，保留本机设置和已保存的草稿。请先保存当前工作。';
 
   @override
   String get clientUpdateAndroidHint => '更新下载后会打开系统安装确认。如需允许安装来源，请授权后返回重试。';
@@ -102,16 +103,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get clientUpdatePublished => '客户端新版本已发布';
 
   @override
-  String get clientUpdatePublishInvalid => '请完整填写版本信息，构建号需高于已发布版本，并选择对应更新包或填写官方商店地址。';
+  String get clientUpdatePublishInvalid =>
+      '请完整填写版本信息，构建号需高于已发布版本，并选择对应更新包或填写官方商店地址。';
 
   @override
-  String get clientUpdatePackageHint => 'Windows 选择专用更新 ZIP，Android 选择正式签名 APK。每次发布需增加构建号。';
+  String get clientUpdatePackageHint =>
+      'Windows 选择专用更新 ZIP，Android 选择正式签名 APK。每次发布需增加构建号。';
 
   @override
   String get clientUpdateWithdraw => '撤回发布';
 
   @override
-  String get clientUpdateWithdrawConfirm => '撤回后，其他设备将不再收到此版本。已经更新的设备不会降级。确定撤回吗？';
+  String get clientUpdateWithdrawConfirm =>
+      '撤回后，其他设备将不再收到此版本。已经更新的设备不会降级。确定撤回吗？';
 
   @override
   String get clientUpdateReleaseList => '版本发布记录';
@@ -361,25 +365,32 @@ class AppLocalizationsZh extends AppLocalizations {
   String get tableCopySelectedText => '复制所选文字';
 
   @override
-  String get release2518ServerUpdates => '有权限人员可手动检查服务器新版本，选择立即更新或按服务器当地时间预约；发现更新后显示提醒和徽章，平时不自动检查更新源。';
+  String get release2518ServerUpdates =>
+      '有权限人员可手动检查服务器新版本，选择立即更新或按服务器当地时间预约；发现更新后显示提醒和徽章，平时不自动检查更新源。';
 
   @override
-  String get release2518Storage => '服务器存储可查看内存、磁盘、数据库、上传和备份明细；经授权预览并清理符合条件的资源，当前版本、回滚与恢复所需备份和上传原件受保护。';
+  String get release2518Storage =>
+      '服务器存储可查看内存、磁盘、数据库、上传和备份明细；经授权预览并清理符合条件的资源，当前版本、回滚与恢复所需备份和上传原件受保护。';
 
   @override
-  String get release2518CompanyConnections => '超级管理员可配置每家公司的 OSS 更新源与短信网关；密钥只写不回显，短信网关配置用于下一次发码。';
+  String get release2518CompanyConnections =>
+      '超级管理员可配置每家公司的 OSS 更新源与短信网关；密钥只写不回显，短信网关配置用于下一次发码。';
 
   @override
-  String get release2518LayoutAndTrace => '统一表格和编辑区布局，完善财务核税与车间物料身份沿用；双向物料追溯保留真实数量、单位和来源，关联委外领料支持准确定位与分页。';
+  String get release2518LayoutAndTrace =>
+      '统一表格和编辑区布局，完善财务核税与车间物料身份沿用；双向物料追溯保留真实数量、单位和来源，关联委外领料支持准确定位与分页。';
 
   @override
-  String get release2517PickerLayout => '选择滑窗的清空、取消、确定统一放在右下角；清空用红色提示，页码输入与分类列表更紧凑、易操作。';
+  String get release2517PickerLayout =>
+      '选择滑窗的清空、取消、确定统一放在右下角；清空用红色提示，页码输入与分类列表更紧凑、易操作。';
 
   @override
-  String get release2517Lifecycle => '日常列表集中显示进行中和即将办理的业务；已完成、已取消等记录统一进入“历史单据”，仍可随时查看。';
+  String get release2517Lifecycle =>
+      '日常列表集中显示进行中和即将办理的业务；已完成、已取消等记录统一进入“历史单据”，仍可随时查看。';
 
   @override
-  String get release2517Paging => '查看历史时，清除状态筛选、翻页和刷新仍停留在历史范围；询盘末页最后一条办结后自动返回有效页。';
+  String get release2517Paging =>
+      '查看历史时，清除状态筛选、翻页和刷新仍停留在历史范围；询盘末页最后一条办结后自动返回有效页。';
 
   @override
   String get release2517Drafts => '历史记录不再混入待办草稿或办理操作；未完成的草稿仍关联原任务，可继续填写。';
@@ -391,7 +402,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get editorSessionIdentityChanged => '登录身份或服务器已变化，请重新进入页面';
 
   @override
-  String get release2511DailyReport => '生产日报改为紧凑货品卡片，支持展开去向与子件；审核余料处理保留完整数量和来源。';
+  String get release2511DailyReport =>
+      '生产日报改为紧凑货品卡片，支持展开去向与子件；审核余料处理保留完整数量和来源。';
 
   @override
   String get release2511Workshop => '车间任务弹窗按状态呈现操作，物料默认显示一项并可展开全部。';
@@ -400,7 +412,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get release2511Batch => '物料批量下单与品质批量处理共用写入流程，减少重复读取、锁定和收尾计算。';
 
   @override
-  String get release2511Platform => '新增平台设置，超级管理员可配置公司品牌、Logo和主题色；升级保留已有配置及个人偏好。';
+  String get release2511Platform =>
+      '新增平台设置，超级管理员可配置公司品牌、Logo和主题色；升级保留已有配置及个人偏好。';
 
   @override
   String get serverAlertAcknowledge => '已知悉';
@@ -447,10 +460,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get release253Maintenance => '清理旧代码和过时文档，补充权限、并发与数据一致性检查；点击版本号可查看本说明。';
 
   @override
-  String get release254QuantityPrecision => '物料下单保留完整精度，报工与直送也按原始数量核对；修复最小数量、单位换算、分单及重复提交回执中的偏差。';
+  String get release254QuantityPrecision =>
+      '物料下单保留完整精度，报工与直送也按原始数量核对；修复最小数量、单位换算、分单及重复提交回执中的偏差。';
 
   @override
-  String get release254AiAuthorization => 'AI 使用权限改为单独授权；未获授权的账号不显示助手，也不能调用相关功能。';
+  String get release254AiAuthorization =>
+      'AI 使用权限改为单独授权；未获授权的账号不显示助手，也不能调用相关功能。';
 
   @override
   String get release254SensitiveAuthorization => '修改敏感权限时需要再次验证身份，让重要授权得到本人确认。';
@@ -459,13 +474,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get release254OverLimit => '实际超产可完整报工；超限部分交计划处置，审批、质检、入库和成本保持同一来源。';
 
   @override
-  String get release254PlanningReminders => '计划人员晚开通账号或后来获得权限时，可补收尚未接手订单的任务提醒，已处理任务不重复提示。';
+  String get release254PlanningReminders =>
+      '计划人员晚开通账号或后来获得权限时，可补收尚未接手订单的任务提醒，已处理任务不重复提示。';
 
   @override
-  String get release254PeoplePicker => '选人窗口按部门左右分栏，显示工号和账号状态，支持搜索及跨部门多选；候选继续按原权限筛选。';
+  String get release254PeoplePicker =>
+      '选人窗口按部门左右分栏，显示工号和账号状态，支持搜索及跨部门多选；候选继续按原权限筛选。';
 
   @override
-  String get release254AccountSupport => '员工详情支持验证身份后生成临时密码，员工首次登录须修改；身份或权限变化后立即停止展示。';
+  String get release254AccountSupport =>
+      '员工详情支持验证身份后生成临时密码，员工首次登录须修改；身份或权限变化后立即停止展示。';
 
   @override
   String get release254Dashboard => '工作台指标横向排列，待办只显示一行，其余任务通过「还有 XX 项任务」查看。';
@@ -474,10 +492,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get release254Publishing => '统一应用和安装包的版本信息，加强发布前检查，减少升级异常。';
 
   @override
-  String get businessColumnAmountUnavailable => '当前账号不能把这列算进金额。请联系管理员恢复价格权限，或改选写说明、记数字。';
+  String get businessColumnAmountUnavailable =>
+      '当前账号不能把这列算进金额。请联系管理员恢复价格权限，或改选写说明、记数字。';
 
   @override
-  String get businessColumnEditorSubtitle => '给单子加一列：可以写说明，也可以填运费、优惠等费用，费用会计入金额。';
+  String get businessColumnEditorSubtitle =>
+      '给单子加一列：可以写说明，也可以填运费、优惠等费用，费用会计入金额。';
 
   @override
   String get businessColumnBrowse => '选择已有列';
@@ -534,7 +554,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get businessColumnRemove => '从本单移除';
 
   @override
-  String get businessColumnRemoveHint => '移除后，这列在各行的内容会清掉，金额重新算；保存单子后生效，其他单子不受影响。';
+  String get businessColumnRemoveHint =>
+      '移除后，这列在各行的内容会清掉，金额重新算；保存单子后生效，其他单子不受影响。';
 
   @override
   String get platformColumnDeleteTitle => '删除列';
@@ -584,7 +605,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get bomLearningTitle => 'BOM 学习记录';
 
   @override
-  String get bomLearningHelp => '真实使用数量 = 已完工且核清余料的生产累计净耗料 ÷ 用到该物料的累计产量。物料分析和车间领料优先按真实使用数量计算，没有数据时按设计使用数量；已下达的任务仍按下达时的用量执行。日报登记的不良数只作记录，不计入产量；实产单耗按良品加不良算。';
+  String get bomLearningHelp =>
+      '真实使用数量 = 已完工且核清余料的生产累计净耗料 ÷ 用到该物料的累计产量。物料分析和车间领料优先按真实使用数量计算，没有数据时按设计使用数量；已下达的任务仍按下达时的用量执行。日报登记的不良数只作记录，不计入产量；实产单耗按良品加不良算。';
 
   @override
   String get bomLearningInactive => '还没有学习记录。本厂生产的货品完工并核清余料后开始累计。';
@@ -631,7 +653,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get bomDesignReasonOutputUnitChanged => '父件单位变了，需重新学习';
 
   @override
-  String get bomDesignReasonSubcontractOutbound => '上级委外件按领料把这个物料发给委外商，按委外合同(设计)用量';
+  String get bomDesignReasonSubcontractOutbound =>
+      '上级委外件按领料把这个物料发给委外商，按委外合同(设计)用量';
 
   @override
   String get bomDesignReasonOther => '没有可用的真实数据';
@@ -648,7 +671,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get bomDesignQtyInvalid => '设计使用数量必须是大于 0 的数字';
 
   @override
-  String get bomLearnedEdgeEditHint => '这是系统按真实用料学出的组件；改设计使用数量后转为人工维护，真实使用数量照常累计';
+  String get bomLearnedEdgeEditHint =>
+      '这是系统按真实用料学出的组件；改设计使用数量后转为人工维护，真实使用数量照常累计';
 
   @override
   String bomLearnedEdgeDeleteNote(int count) {
@@ -750,13 +774,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialDiscoveryTitle => '填写实际领料';
 
   @override
-  String get materialDiscoveryHelp => '请与领料人核对，为本工单添加一种或多种材料，填写数量和实际发料仓。保存后进入领料单办理实际出库。';
+  String get materialDiscoveryHelp =>
+      '请与领料人核对，为本工单添加一种或多种材料，填写数量和实际发料仓。保存后进入领料单办理实际出库。';
 
   @override
-  String get materialDiscoveryRequestHelp => '这些自制件尚未登记底层材料。知道用料时可按工单选填材料和申请数量；不填也可提交，由仓库补充。仓库会带入已填内容，核对实际发料仓后办理领料，实际发料后才能开工。';
+  String get materialDiscoveryRequestHelp =>
+      '这些自制件尚未登记底层材料。知道用料时可按工单选填材料和申请数量；不填也可提交，由仓库补充。仓库会带入已填内容，核对实际发料仓后办理领料，实际发料后才能开工。';
 
   @override
-  String get materialDiscoveryPrefilledHelp => '已带入车间填写的材料和申请数量，无需重复选料。请核对实际发料仓和数量；如有变化，可在表内调整。';
+  String get materialDiscoveryPrefilledHelp =>
+      '已带入车间填写的材料和申请数量，无需重复选料。请核对实际发料仓和数量；如有变化，可在表内调整。';
 
   @override
   String get materialDiscoveryPending => '待仓库填写物料';
@@ -774,7 +801,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialDiscoverySaved => '物料已登记，请在领料单核对并实际出库';
 
   @override
-  String get materialDiscoveryInvalid => '请逐行选择材料和实际仓库，填写大于0且最多4位小数的数量；单位采用货品基本单位';
+  String get materialDiscoveryInvalid =>
+      '请逐行选择材料和实际仓库，填写大于0且最多4位小数的数量；单位采用货品基本单位';
 
   @override
   String get materialDiscoveryUncertain => '回执尚未确认，输入已保留。请核对结果或使用相同内容重试';
@@ -846,10 +874,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get productionDailyReportReversedStateVerified => '当前已红冲，页面已刷新。';
 
   @override
-  String get productionDailyReportStateChangedReview => '日报状态已变化，页面已刷新，请核对当前状态。';
+  String get productionDailyReportStateChangedReview =>
+      '日报状态已变化，页面已刷新，请核对当前状态。';
 
   @override
-  String get appTitle => '优腾·综合管理平台';
+  String get appTitle => 'UTEN';
 
   @override
   String get commonConfirm => '确认';
@@ -925,7 +954,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String loginFooter(int year) {
-    return '© $year 优腾 · 综合管理平台';
+    return '© $year UTEN';
   }
 
   @override
@@ -1514,7 +1543,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeOnboardSubmitFailed => '提交失败，请重试';
 
   @override
-  String get employeeOnboardNote => '提交后将自动生成工号(UT 前缀)、以手机号作为登录账号，初始密码为证件号码后六位，不足六位时由系统随机生成(只显示一次，限时有效)；首次登录必须修改密码。';
+  String get employeeOnboardNote =>
+      '提交后将自动生成工号(UT 前缀)、以手机号作为登录账号，初始密码为证件号码后六位，不足六位时由系统随机生成(只显示一次，限时有效)；首次登录必须修改密码。';
 
   @override
   String get employeeOnboardCodeAutoNote => '工号提交后自动生成(UT 前缀，唯一递增)';
@@ -1700,7 +1730,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeOnboardCredentialTitle => '账号已创建';
 
   @override
-  String get employeeOnboardCredentialWarning => '临时密码只显示这一次。请立即通过安全方式交给员工；关闭后系统不会再次显示或保存明文。';
+  String get employeeOnboardCredentialWarning =>
+      '临时密码只显示这一次。请立即通过安全方式交给员工；关闭后系统不会再次显示或保存明文。';
 
   @override
   String get employeeOnboardAccountLabel => '登录账号';
@@ -1792,7 +1823,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeUnlockAccountSuccess => '账号已解锁';
 
   @override
-  String get employeeProvisionConfirm => '将为该员工开通登录账号：账号默认为手机号；初始密码为档案证件号码的后六位，档案没有证件号码或不足六位时由系统随机生成(只显示一次，限时有效)；首次登录需修改。是否继续？';
+  String get employeeProvisionConfirm =>
+      '将为该员工开通登录账号：账号默认为手机号；初始密码为档案证件号码的后六位，档案没有证件号码或不足六位时由系统随机生成(只显示一次，限时有效)；首次登录需修改。是否继续？';
 
   @override
   String get employeeIdIssueBadge => '待核对';
@@ -1818,19 +1850,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeIdIssueDetailMissing => '请人事补录证件号码。不影响开通和使用登录账号。';
 
   @override
-  String get employeeIdIssueDetailUnchecked => '请人事对照员工证件核对，必要时修改。不影响开通和使用登录账号。';
+  String get employeeIdIssueDetailUnchecked =>
+      '请人事对照员工证件核对，必要时修改。不影响开通和使用登录账号。';
 
   @override
   String get employeeIdIssueProvisionHint => '可以继续开通，不受影响。人事任务中心会提醒人事核对修改。';
 
   @override
-  String get employeeIdIssueCredentialInvalid => '初始密码按档案里的证件号码生成(不足六位时随机生成)，可能和员工本人证件后六位不一样，请把这里显示的密码告诉员工。';
+  String get employeeIdIssueCredentialInvalid =>
+      '初始密码按档案里的证件号码生成(不足六位时随机生成)，可能和员工本人证件后六位不一样，请把这里显示的密码告诉员工。';
 
   @override
   String get employeeIdIssueCredentialMissing => '初始密码由系统随机生成，请复制后交给员工。';
 
   @override
-  String get employeeIdIssueCredentialUnchecked => '初始密码按档案证件号码后六位生成；号码读取不出来或不足六位时由系统随机生成。请以这里显示的密码为准告诉员工。';
+  String get employeeIdIssueCredentialUnchecked =>
+      '初始密码按档案证件号码后六位生成；号码读取不出来或不足六位时由系统随机生成。请以这里显示的密码为准告诉员工。';
 
   @override
   String get employeeIdentityCorrectAction => '修改证件信息';
@@ -1887,7 +1922,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeRehireTitle => '确认复职？';
 
   @override
-  String get employeeRehireBody => '复职后员工状态将恢复为「在职」，登录账号重新启用。离职时原密码已作废，需请账号支持人员为其重置密码，并把新的临时密码当面交给员工。';
+  String get employeeRehireBody =>
+      '复职后员工状态将恢复为「在职」，登录账号重新启用。离职时原密码已作废，需请账号支持人员为其重置密码，并把新的临时密码当面交给员工。';
 
   @override
   String get employeeRehireSuccess => '复职完成';
@@ -2110,7 +2146,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticePublishScopeSelected => '指定范围';
 
   @override
-  String get noticePublishScopeSelectedHint => '部门与人员可以同时选择；部门包含其下级组织，重复接收人会自动去重。';
+  String get noticePublishScopeSelectedHint =>
+      '部门与人员可以同时选择；部门包含其下级组织，重复接收人会自动去重。';
 
   @override
   String get noticePublishDepartmentsLabel => '接收部门(可多选)';
@@ -2148,12 +2185,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticePublishValidateAudience => '请至少选择一个部门或人员';
 
   @override
-  String noticePublishAudienceSummary(Object departmentCount, Object employeeCount) {
+  String noticePublishAudienceSummary(
+    Object departmentCount,
+    Object employeeCount,
+  ) {
     return '已选 $departmentCount 个部门、$employeeCount 人';
   }
 
   @override
-  String get noticePublishAudienceRecalculateHint => '发布前会按当前组织与账号状态重新核算实际接收人数。';
+  String get noticePublishAudienceRecalculateHint =>
+      '发布前会按当前组织与账号状态重新核算实际接收人数。';
 
   @override
   String noticePublishConfirmAudience(Object summary, Object count) {
@@ -2540,7 +2581,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileFieldGroupOrganization => '组织信息';
 
   @override
-  String get profileEditPolicyHint => '绿色「可直接修改」提交后立即生效；黄色「需 HR 审核」由人事核对后生效；其余字段由人事统一维护。';
+  String get profileEditPolicyHint =>
+      '绿色「可直接修改」提交后立即生效；黄色「需 HR 审核」由人事核对后生效；其余字段由人事统一维护。';
 
   @override
   String profileEditPendingConflictHint(int count) {
@@ -3005,7 +3047,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get exportDialogTitle => '导出 Excel';
 
   @override
-  String get exportPasswordOptionalHint => '密码可不填。不填将下载普通 Excel；填写 1–128 位密码则加密文件。';
+  String get exportPasswordOptionalHint =>
+      '密码可不填。不填将下载普通 Excel；填写 1–128 位密码则加密文件。';
 
   @override
   String get exportPasswordOptionalLabel => '打开密码(可选，1–128 位)';
@@ -3078,10 +3121,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileEmploymentHistoryTitle => '任职记录';
 
   @override
-  String get profileCompensationBoundaryDescription => '薪酬与银行信息不会在“我的”页展示；这是有意设置的隐私边界。本人月度收入请从工资条核对，其他问题请联系授权人事。';
+  String get profileCompensationBoundaryDescription =>
+      '薪酬与银行信息不会在“我的”页展示；这是有意设置的隐私边界。本人月度收入请从工资条核对，其他问题请联系授权人事。';
 
   @override
-  String get profileMissingEmergencyContact => '尚未登记紧急联系人，请先联系人事登记；登记后可在这里申请修改。';
+  String get profileMissingEmergencyContact =>
+      '尚未登记紧急联系人，请先联系人事登记；登记后可在这里申请修改。';
 
   @override
   String get historyEventConfirm => '转正';
@@ -3114,10 +3159,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get pagePermissionAccountNotProvisionedTitle => '此人还未开通账号，暂不能设置权限';
 
   @override
-  String get pagePermissionAccountNotProvisionedCanProvision => '请先开通登录账号；初始密码确认保存后，将自动加载此人的权限详情。';
+  String get pagePermissionAccountNotProvisionedCanProvision =>
+      '请先开通登录账号；初始密码确认保存后，将自动加载此人的权限详情。';
 
   @override
-  String get pagePermissionAccountNotProvisionedNoAccess => '请联系具备“账号支持”权限的人员开通登录账号。';
+  String get pagePermissionAccountNotProvisionedNoAccess =>
+      '请联系具备“账号支持”权限的人员开通登录账号。';
 
   @override
   String get employeePermissionSettingsTooltip => '设置员工权限';
@@ -3129,7 +3176,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeResignedCannotProvision => '该员工已离职，不能开通登录账号';
 
   @override
-  String get employeeAccountNotProvisionedContactSupport => '该员工还未开通账号，请联系账号支持人员处理';
+  String get employeeAccountNotProvisionedContactSupport =>
+      '该员工还未开通账号，请联系账号支持人员处理';
 
   @override
   String get materialMainWarehouse => '主仓库';
@@ -3165,7 +3213,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialShortage => '还缺数量';
 
   @override
-  String get materialSupplyProgressHint => '跟踪下单、财务审批、收货、检验与入库进度；双击行查看明细。下达后仍保留实物缺口，合格入库后更新。';
+  String get materialSupplyProgressHint =>
+      '跟踪下单、财务审批、收货、检验与入库进度；双击行查看明细。下达后仍保留实物缺口，合格入库后更新。';
 
   @override
   String get materialToSupply => '下单数量';
@@ -3236,7 +3285,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialTaskSectionHint => '按供应方式集中处理待处理、进行中和需处理任务。';
 
   @override
-  String get materialWarehouseLimit => '本次分析最多支持 100 个实际仓库，当前主仓范围超出限制，请调整仓库范围后再分析';
+  String get materialWarehouseLimit =>
+      '本次分析最多支持 100 个实际仓库，当前主仓范围超出限制，请调整仓库范围后再分析';
 
   @override
   String materialRoutesNext(int count) {
@@ -3244,7 +3294,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get materialIssueNext => '下一步：进入“下达采购 / 下达委外 / 下达车间”，按未下达余量办理并查看已下达进度。';
+  String get materialIssueNext =>
+      '下一步：进入“下达采购 / 下达委外 / 下达车间”，按未下达余量办理并查看已下达进度。';
 
   @override
   String materialWorkshopNext(int count) {
@@ -3294,7 +3345,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get orderChangeQtyTitle => '订单改量';
 
   @override
-  String get orderChangeQtyWarning => '批准后改量立即生效，并自动重回财务复核；财务将看到修改清单（以前→现在）。驳回不会自动还原数量。';
+  String get orderChangeQtyWarning =>
+      '批准后改量立即生效，并自动重回财务复核；财务将看到修改清单（以前→现在）。驳回不会自动还原数量。';
 
   @override
   String orderChangeQtyCurrent(String qty) {
@@ -3340,16 +3392,19 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get procurementApprovalQtyChangesHint => '订货单在财务批准后修改过数量，已自动重回财务复核；请逐行核对 以前→现在 后再复核。';
+  String get procurementApprovalQtyChangesHint =>
+      '订货单在财务批准后修改过数量，已自动重回财务复核；请逐行核对 以前→现在 后再复核。';
 
   @override
   String get productionMaterialRecheck => '重新核对备料';
 
   @override
-  String get productionMaterialRecheckReady => '物料已齐套，请在「我的车间任务」勾选并提交领料；仓库发料完成后再开工。';
+  String get productionMaterialRecheckReady =>
+      '物料已齐套，请在「我的车间任务」勾选并提交领料；仓库发料完成后再开工。';
 
   @override
-  String get productionMaterialRecheckWaiting => '已重新检查，当前仍有物料未满足，请核对实际入库和其他任务的预留。';
+  String get productionMaterialRecheckWaiting =>
+      '已重新检查，当前仍有物料未满足，请核对实际入库和其他任务的预留。';
 
   @override
   String get fieldAutofilledReview => '已自动带出上次记录或默认值，请核对后使用';
@@ -3358,10 +3413,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get workflowQuantityHint => '按本行单位填写本次数量，箱、个、千克不要混填；引用来源时不能超过当前可用数量。';
 
   @override
-  String get workflowOrderQuantityHint => '按本行单位填写客户订购数量。财务正在审核时不能修改；财务通过后再改会重新送审。';
+  String get workflowOrderQuantityHint =>
+      '按本行单位填写客户订购数量。财务正在审核时不能修改；财务通过后再改会重新送审。';
 
   @override
-  String get workflowReturnQuantityHint => '按原出货明细的单位填写实际退回量，不能超过尚可退数量。退回实物审核后先待检，不会直接成为可销售库存。';
+  String get workflowReturnQuantityHint =>
+      '按原出货明细的单位填写实际退回量，不能超过尚可退数量。退回实物审核后先待检，不会直接成为可销售库存。';
 
   @override
   String get workflowPriceHint => '单价按本行单位和币种填写，金额随数量重新计算。不要把整行总金额填成单价。';
@@ -3373,7 +3430,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get workflowDiscountHint => '折扣填小数：1是不打折，0.9是九折；不要填9或90。';
 
   @override
-  String get workflowExchangeRateHint => '填写1单位原币折合多少本币，最多6位小数。自动带出的汇率也要核对本次单据。';
+  String get workflowExchangeRateHint =>
+      '填写1单位原币折合多少本币，最多6位小数。自动带出的汇率也要核对本次单据。';
 
   @override
   String get workflowTaxRateHint => '填百分数，例如13表示13%；不要填0.13。';
@@ -3385,25 +3443,31 @@ class AppLocalizationsZh extends AppLocalizations {
   String get workflowSettlementHint => '按与供应商约定的结算方式选择。不同供应商、币种或结算条款可能拆成不同订货单。';
 
   @override
-  String get workflowWorkshopQuantityHint => '填写本次交给车间的数量。任务可先下达，但开工和领料仍须满足物料及状态条件。';
+  String get workflowWorkshopQuantityHint =>
+      '填写本次交给车间的数量。任务可先下达，但开工和领料仍须满足物料及状态条件。';
 
   @override
-  String get workflowReportQuantityHint => '按计划行单位填写本次实际完成量，不填累计产量。审核报工后还要经仓库登记、品质检查和入库。';
+  String get workflowReportQuantityHint =>
+      '按计划行单位填写本次实际完成量，不填累计产量。审核报工后还要经仓库登记、品质检查和入库。';
 
   @override
-  String get workflowArrivalQuantityHint => '按本行单位填写本次实到数量。少到、多到都按实物登记；超出批准量的部分进入异常处理，不直接计入可用库存。';
+  String get workflowArrivalQuantityHint =>
+      '按本行单位填写本次实到数量。少到、多到都按实物登记；超出批准量的部分进入异常处理，不直接计入可用库存。';
 
   @override
-  String get workflowIqcPassHint => '只填本次判定合格的数量，与本次不合格量合计不能超过剩余待检量。品质通过后仍需仓库确认入库。';
+  String get workflowIqcPassHint =>
+      '只填本次判定合格的数量，与本次不合格量合计不能超过剩余待检量。品质通过后仍需仓库确认入库。';
 
   @override
   String get workflowIqcFailHint => '只填本次判定不合格的数量。它不会进入可用库存，后续还要处理退回、返工或其它处置。';
 
   @override
-  String get workflowPrepaymentAmountHint => '填写本次实际收到的预收款，按订单币种计。登记到账只记一次；以后用预收抵扣应收时不会再次记收款。';
+  String get workflowPrepaymentAmountHint =>
+      '填写本次实际收到的预收款，按订单币种计。登记到账只记一次；以后用预收抵扣应收时不会再次记收款。';
 
   @override
-  String get workflowReceiptAllocationHint => '把本次到账款分配到这张应收单，按应收币种填写，不能超过当前可收余额。同一笔到账款不要重复分配。';
+  String get workflowReceiptAllocationHint =>
+      '把本次到账款分配到这张应收单，按应收币种填写，不能超过当前可收余额。同一笔到账款不要重复分配。';
 
   @override
   String get workflowBankFeeHint => '填写本次实际银行手续费。到账中已经扣除的费用，不要再作为另付费用重复登记。';
@@ -3412,16 +3476,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String get workflowOtherFeeHint => '只填写银行手续费以外的本次费用，并选择对应费用项目；同一笔费用不要重复记录。';
 
   @override
-  String get workflowReturnReasonHint => '写清退货原因和原出货来源。审核退货会形成待处理贷项，实物先待检；退款、换货等客户处理方案须另行确认。';
+  String get workflowReturnReasonHint =>
+      '写清退货原因和原出货来源。审核退货会形成待处理贷项，实物先待检；退款、换货等客户处理方案须另行确认。';
 
   @override
-  String get workflowPrepaymentOrderHint => '先选这笔预收所属的销售订单，客户和币种会随订单确定；选错时请更换订单。';
+  String get workflowPrepaymentOrderHint =>
+      '先选这笔预收所属的销售订单，客户和币种会随订单确定；选错时请更换订单。';
 
   @override
-  String get workflowPrepaymentApplyHint => '说明用哪笔预收抵扣哪些欠款及依据。抵扣只调整预收和应收余额，不会再次增加实收现金。';
+  String get workflowPrepaymentApplyHint =>
+      '说明用哪笔预收抵扣哪些欠款及依据。抵扣只调整预收和应收余额，不会再次增加实收现金。';
 
   @override
-  String get workflowFinanceReviewHint => '写下核对结果；订单有修改时先对照修改前后内容。财务确认不等于已经收款、出货或开工。';
+  String get workflowFinanceReviewHint =>
+      '写下核对结果；订单有修改时先对照修改前后内容。财务确认不等于已经收款、出货或开工。';
 
   @override
   String get workflowFinanceRejectHint => '写明哪里不对、需要怎样修改。原因会通知销售，修改后再送财务审核。';
@@ -3631,7 +3699,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get productionMaterialRecheckHelp => '重新核对本任务已合格到货和可用库存；不能代替仓库入库或登记实耗。';
+  String get productionMaterialRecheckHelp =>
+      '重新核对本任务已合格到货和可用库存；不能代替仓库入库或登记实耗。';
 
   @override
   String get productionMaterialViewUsage => '查看用料记录';
@@ -3655,7 +3724,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get systemSettingUnsavedRefresh => '请先保存或还原修改，再刷新设置';
 
   @override
-  String get systemSettingEffectTiming => '安全阈值在后续操作生效，令牌有效期在下次登录签发时生效；庆典与审计留存在各自的计划任务生效。修改会记录审计并需要账号密码确认。';
+  String get systemSettingEffectTiming =>
+      '安全阈值在后续操作生效，令牌有效期在下次登录签发时生效；庆典与审计留存在各自的计划任务生效。修改会记录审计并需要账号密码确认。';
 
   @override
   String get auditSummaryUnavailable => '统计暂不可用，操作记录仍可核查';
@@ -3694,7 +3764,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseOutboundBatchReview => '销售出库批量核对';
 
   @override
-  String get warehouseOutboundBatchHint => '请逐项核对所选单据的货品、数量、单位、仓库与实际库位；确认后一次性出库。';
+  String get warehouseOutboundBatchHint =>
+      '请逐项核对所选单据的货品、数量、单位、仓库与实际库位；确认后一次性出库。';
 
   @override
   String warehouseOutboundBatchConfirm(String action, int count) {
@@ -3799,7 +3870,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get warehouseStockOutboundHint => '核对货品、出库数量、单位和实际仓库。同一单据的明细一同勾选、整单出库；如需改量，请先返回编辑草稿。';
+  String get warehouseStockOutboundHint =>
+      '核对货品、出库数量、单位和实际仓库。同一单据的明细一同勾选、整单出库；如需改量，请先返回编辑草稿。';
 
   @override
   String get warehouseStockOutboundLoadFailed => '出库详情加载失败，请重试。';
@@ -3840,10 +3912,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseSubcontractOutboundBatchConfirm => '确认批量出库';
 
   @override
-  String get warehouseSubcontractOutboundReviewHint => '请逐行核对本次出库数量和实际仓库，再确认出库。';
+  String get warehouseSubcontractOutboundReviewHint =>
+      '请逐行核对本次出库数量和实际仓库，再确认出库。';
 
   @override
-  String get warehouseSubcontractOutboundBatchHint => '明细按整张出库单勾选，本次数量可改小分批出库；某条物料这次不发就填 0(保存时删掉这一行)，整张单都不发请到单张拣货页「退回委外(不发)」。各单独立保存并审核，保留已完成结果；中途出错时会暂停，核实后继续办理尚未执行的单据。';
+  String get warehouseSubcontractOutboundBatchHint =>
+      '明细按整张出库单勾选，本次数量可改小分批出库；某条物料这次不发就填 0(保存时删掉这一行)，整张单都不发请到单张拣货页「退回委外(不发)」。各单独立保存并审核，保留已完成结果；中途出错时会暂停，核实后继续办理尚未执行的单据。';
 
   @override
   String get warehouseSubcontractOutboundDocuments => '单据信息';
@@ -3921,7 +3995,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseSubcontractOutboundLoadFailed => '出库详情加载失败，请重试。';
 
   @override
-  String get warehouseSubcontractOutboundConfirmResponsibility => '确认后，系统将以当前登录员工记录本次出库审核责任。';
+  String get warehouseSubcontractOutboundConfirmResponsibility =>
+      '确认后，系统将以当前登录员工记录本次出库审核责任。';
 
   @override
   String warehouseSubcontractOutboundBatchResult(int done, int total) {
@@ -3968,16 +4043,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseSubcontractOutboundLineRemark => '明细备注';
 
   @override
-  String get warehouseSubcontractOutboundWarehouseSyncHint => '默认带出原出库单的实际仓库。同一出库单的所有明细共用发出仓，修改后同步更新。';
+  String get warehouseSubcontractOutboundWarehouseSyncHint =>
+      '默认带出原出库单的实际仓库。同一出库单的所有明细共用发出仓，修改后同步更新。';
 
   @override
-  String get warehouseSubcontractOutboundDocumentRemarkHint => '同一出库单共用此备注，修改后在该单所有明细同步显示。单行说明填写在明细备注中。';
+  String get warehouseSubcontractOutboundDocumentRemarkHint =>
+      '同一出库单共用此备注，修改后在该单所有明细同步显示。单行说明填写在明细备注中。';
 
   @override
   String get warehouseSubcontractOutboundOpenPicking => '进入拣货出仓';
 
   @override
-  String get warehouseSubcontractOutboundBannerScope => '仓库作业视图不含价格与金额, 也不提供委外业务编辑操作。';
+  String get warehouseSubcontractOutboundBannerScope =>
+      '仓库作业视图不含价格与金额, 也不提供委外业务编辑操作。';
 
   @override
   String get warehouseSubcontractOutboundApprove => '审核出仓';
@@ -4006,7 +4084,11 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String productionBatchSubmitted(String quantity, String unit, String remaining) {
+  String productionBatchSubmitted(
+    String quantity,
+    String unit,
+    String remaining,
+  ) {
     return '已提交本批 $quantity $unit 领料；剩余 $remaining $unit 留待后续安排';
   }
 
@@ -4110,7 +4192,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get productionBatchDirectTransferBadge => '车间直送 · 自动投入';
 
   @override
-  String get productionBatchDirectTransferHint => '本批物料全部来自本车间直送 (内料仓)：确认后自动投入本批，无需提交领料申请、不等仓库发料；回车间任务直接开工。';
+  String get productionBatchDirectTransferHint =>
+      '本批物料全部来自本车间直送 (内料仓)：确认后自动投入本批，无需提交领料申请、不等仓库发料；回车间任务直接开工。';
 
   @override
   String productionBatchSubmittedDirectTransfer(String quantity, String unit) {
@@ -4155,7 +4238,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get productionBatchMaterialQuantity => '本批领料数量';
 
   @override
-  String get productionBatchMaterialQuantityHint => '仅为本批需要新增领取的数量，按本行单位和实际仓库办理。';
+  String get productionBatchMaterialQuantityHint =>
+      '仅为本批需要新增领取的数量，按本行单位和实际仓库办理。';
 
   @override
   String get productionBatchNoAdditionalMaterials => '本批无需新增领料，沿已有物料来源安排生产';
@@ -4209,7 +4293,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get securityBlacklistRemove => '解除拉黑';
 
   @override
-  String get securityBlacklistRemoveConfirm => '确认解除拉黑？解除后该访客可重新登录与提交申请，历史申请状态不变。';
+  String get securityBlacklistRemoveConfirm =>
+      '确认解除拉黑？解除后该访客可重新登录与提交申请，历史申请状态不变。';
 
   @override
   String get securityBlacklistRemoveDone => '已解除拉黑';
@@ -4389,7 +4474,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get visitorApprovalApproveNoticeLabel => '访客审批通过';
 
   @override
-  String get visitorApprovalApproveNoticeDesc => '确认后系统将记录当前审核员和审批结果，请对本次访客放行决定负责。';
+  String get visitorApprovalApproveNoticeDesc =>
+      '确认后系统将记录当前审核员和审批结果，请对本次访客放行决定负责。';
 
   @override
   String get visitorApprovalRejectNoticeLabel => '访客审批拒绝';
@@ -4461,10 +4547,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get expenseFlowFlowGuide => '填写费用 → 保存草稿 → 上传原件并登记凭证 → 提交审批 → 财务登记付款';
 
   @override
-  String get expenseFlowInvoiceGuide => '请先保存草稿，再上传发票或其他合法凭证原件。电子凭证应保留收到的原始文件；图片识别仅辅助填写，不能代替查验或归档。';
+  String get expenseFlowInvoiceGuide =>
+      '请先保存草稿，再上传发票或其他合法凭证原件。电子凭证应保留收到的原始文件；图片识别仅辅助填写，不能代替查验或归档。';
 
   @override
-  String get expenseFlowNoInvoiceGuide => '无发票时，请在说明中写明原因及凭证情况，上传能够证明真实业务的合法凭证，由财务审核。';
+  String get expenseFlowNoInvoiceGuide =>
+      '无发票时，请在说明中写明原因及凭证情况，上传能够证明真实业务的合法凭证，由财务审核。';
 
   @override
   String get expenseFlowApplicant => '申请人';
@@ -4554,7 +4642,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get expenseFlowInvoiceDateRequired => '请选择凭证日期';
 
   @override
-  String get expenseFlowOtherNumberInvalid => '其他凭证号码可包含字母、数字、斜线和短横线，最多 60 位；请填写开具方';
+  String get expenseFlowOtherNumberInvalid =>
+      '其他凭证号码可包含字母、数字、斜线和短横线，最多 60 位；请填写开具方';
 
   @override
   String get expenseFlowVerify => '登记查验结果';
@@ -4563,7 +4652,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get expenseFlowVerifyTitle => '凭证人工查验';
 
   @override
-  String get expenseFlowVerifyGuide => '先核对业务真实性和附件原件。税务发票请在国家税务总局发票查验平台或电子税务局查验；其他合法凭证按其适用渠道核实。金额勾稽与图片识别均不代表税务查验。';
+  String get expenseFlowVerifyGuide =>
+      '先核对业务真实性和附件原件。税务发票请在国家税务总局发票查验平台或电子税务局查验；其他合法凭证按其适用渠道核实。金额勾稽与图片识别均不代表税务查验。';
 
   @override
   String get expenseFlowVerifyOfficial => '打开国家税务总局查验平台';
@@ -4590,7 +4680,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get expenseFlowPaymentConfirm => '确认已付款';
 
   @override
-  String get expenseFlowPaymentGuide => '请先在线下完成实际付款。此操作只登记已发生的付款、扣减系统账户余额并生成财务记录，不会向银行发起转账。';
+  String get expenseFlowPaymentGuide =>
+      '请先在线下完成实际付款。此操作只登记已发生的付款、扣减系统账户余额并生成财务记录，不会向银行发起转账。';
 
   @override
   String get expenseFlowPaymentDone => '已登记付款，财务记录已生成';
@@ -4689,7 +4780,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get shelfMasterOnly => '主档建议(未指定仓库)';
 
   @override
-  String get shelfChooseWarehouseForRack => '当前包含多个仓库，请选择具体仓库查看货架图。下表按实际仓库分别列示。';
+  String get shelfChooseWarehouseForRack =>
+      '当前包含多个仓库，请选择具体仓库查看货架图。下表按实际仓库分别列示。';
 
   @override
   String get materialPreparationReview => '核对并下单';
@@ -4712,7 +4804,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialPreparationNoActions => '当前没有可办理的物料';
 
   @override
-  String get materialPreparationAvailableHint => '本行可安排的现货和已下达供给，包含在途及未办理余量；其它订单已占用的量不重复计入，实际领料以实物为准。';
+  String get materialPreparationAvailableHint =>
+      '本行可安排的现货和已下达供给，包含在途及未办理余量；其它订单已占用的量不重复计入，实际领料以实物为准。';
 
   @override
   String get materialPreparationPending => '待下单';
@@ -4783,7 +4876,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get wmSecondMaterialConfirm => '这个产品要同时用两种料吗 (双色 / 双料)? 如果只是换料, 请改原来那一行';
+  String get wmSecondMaterialConfirm =>
+      '这个产品要同时用两种料吗 (双色 / 双料)? 如果只是换料, 请改原来那一行';
 
   @override
   String get wmRequestIssue => '申请领料';
@@ -4892,7 +4986,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wmWeighLoose => '散料';
 
   @override
-  String get wmFillGuide => '满按容量、半按一半估算；空按 0 记录，仅用于确实无料。容器有余料时可称重后直接填公斤。满/半/空属于估盘，会影响本期和下期耗用。';
+  String get wmFillGuide =>
+      '满按容量、半按一半估算；空按 0 记录，仅用于确实无料。容器有余料时可称重后直接填公斤。满/半/空属于估盘，会影响本期和下期耗用。';
 
   @override
   String get wmMachineIdle => '本机停机、全空';
@@ -5029,7 +5124,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wmIncludeWorkshopStore => '含内料仓';
 
   @override
-  String get workshopMaterialSetupHubDesc => '机台与容器、上线准备 (产品的颗粒与单个重量); 开通内料仓、开启整批领料在「车间内料仓」总览里办';
+  String get workshopMaterialSetupHubDesc =>
+      '机台与容器、上线准备 (产品的颗粒与单个重量); 开通内料仓、开启整批领料在「车间内料仓」总览里办';
 
   @override
   String get workshopMaterialReportsHubDesc => '按期间看盘点推算耗用、耗用差异率与结算状态';
@@ -5083,7 +5179,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseSuggestedDestinationHint => '已带入建议存放仓，请核对本次实际仓库';
 
   @override
-  String get warehouseBatchRegistrationHelp => '成品仓、库位号逐行必填；优先带入货品主档默认仓，缺项再参考个人选仓上下文。勾选多行后改仓或填写库位可批量应用。每张报工单各生成一份送检，品质放行后再最终点收。';
+  String get warehouseBatchRegistrationHelp =>
+      '成品仓、库位号逐行必填；优先带入货品主档默认仓，缺项再参考个人选仓上下文。勾选多行后改仓或填写库位可批量应用。每张报工单各生成一份送检，品质放行后再最终点收。';
 
   @override
   String get goodsNameEnLabel => '英文名称';
@@ -5092,10 +5189,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get goodsNameEnHint => '如 DOUBLE 3 PIN SOCKET WITH SWITCH';
 
   @override
-  String get goodsNameEnInfo => '客户报价单或订货单上对这个货品的英文叫法。识别客户文件时, 系统用它把英文品名对应到这个货品。';
+  String get goodsNameEnInfo =>
+      '客户报价单或订货单上对这个货品的英文叫法。识别客户文件时, 系统用它把英文品名对应到这个货品。';
 
   @override
-  String get goodsNameEnColumnInfo => '客户文件里对这个货品的英文叫法。销售保存带英文品名的单据时会自动记住, 也可以在货品详情里修改。';
+  String get goodsNameEnColumnInfo =>
+      '客户文件里对这个货品的英文叫法。销售保存带英文品名的单据时会自动记住, 也可以在货品详情里修改。';
 
   @override
   String get goodsNameEnSearchHint => '搜索货品(名称/英文名称/编号/型号/规格/系列)';
@@ -5110,7 +5209,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get goodsNameEnEdit => '修改英文名称';
 
   @override
-  String get goodsNameEnEditDescription => '填客户文件上写的英文品名。保存后, 以后识别客户文件都按这个名称对应到本货品。留空表示不用英文名称。';
+  String get goodsNameEnEditDescription =>
+      '填客户文件上写的英文品名。保存后, 以后识别客户文件都按这个名称对应到本货品。留空表示不用英文名称。';
 
   @override
   String get goodsNameEnSaving => '正在保存…';
@@ -5136,7 +5236,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get clientNameEnHint => '如 SUNAS TRADING LIMITED';
 
   @override
-  String get clientNameEnInfo => '客户公司的英文或其他外文名称。识别客户文件时, 系统用它找到这个客户; 销售保存单据时也会自动补上。';
+  String get clientNameEnInfo =>
+      '客户公司的英文或其他外文名称。识别客户文件时, 系统用它找到这个客户; 销售保存单据时也会自动补上。';
 
   @override
   String get clientNameEnSearchHint => '搜索客户(简称/编码/全称/外文名称/联系人/手机/邮箱)';
@@ -5148,7 +5249,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get clientGoodsAliasTitle => '客户对货品的叫法';
 
   @override
-  String get clientGoodsAliasDescription => '客户报价单、订货单上的型号和品名, 对应到我们的哪个货品。识别这个客户的文件时, 系统优先按这里对应。';
+  String get clientGoodsAliasDescription =>
+      '客户报价单、订货单上的型号和品名, 对应到我们的哪个货品。识别这个客户的文件时, 系统优先按这里对应。';
 
   @override
   String get clientGoodsAliasSearchHint => '搜索客户的叫法、货品名称或编号';
@@ -5311,10 +5413,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSettingsHeroNeedsKey => '还没有填写密钥, 目前不会调用 AI';
 
   @override
-  String get aiSettingsSecurityNote => '密钥加密保存, 页面只显示尾号; 保存、删除和用已存密钥测试都要再次确认登录密码。';
+  String get aiSettingsSecurityNote =>
+      '密钥加密保存, 页面只显示尾号; 保存、删除和用已存密钥测试都要再次确认登录密码。';
 
   @override
-  String get aiSettingsOutboundOff => '这台服务器关闭了对外调用 AI(测试环境默认如此), 配置可以保存, 但不会真正调用';
+  String get aiSettingsOutboundOff =>
+      '这台服务器关闭了对外调用 AI(测试环境默认如此), 配置可以保存, 但不会真正调用';
 
   @override
   String get aiSettingsProvidersSection => '服务商';
@@ -5329,7 +5433,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSettingsEmptyTitle => '还没有配置 AI 服务';
 
   @override
-  String get aiSettingsEmptyHint => '支持 DeepSeek、通义千问、Kimi、智谱等国内服务商, 也可以接本机部署的模型';
+  String get aiSettingsEmptyHint =>
+      '支持 DeepSeek、通义千问、Kimi、智谱等国内服务商, 也可以接本机部署的模型';
 
   @override
   String get aiSettingsLoadFailed => '加载 AI 服务设置失败';
@@ -5494,7 +5599,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get aiSettingsOverseasOffHint => '境外服务商默认关闭。如需使用, 请联系部署人员在服务器配置中开启, 并完成数据出境评估';
+  String get aiSettingsOverseasOffHint =>
+      '境外服务商默认关闭。如需使用, 请联系部署人员在服务器配置中开启, 并完成数据出境评估';
 
   @override
   String aiSettingsPresetUnavailable(String label) {
@@ -5516,7 +5622,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get aiSettingsBaseUrlInfo => '服务商文档里的 Base URL; 只能用 https, 本机部署可以用 http://127.0.0.1';
+  String get aiSettingsBaseUrlInfo =>
+      '服务商文档里的 Base URL; 只能用 https, 本机部署可以用 http://127.0.0.1';
 
   @override
   String get aiSettingsBaseUrlRequired => '请填写接口地址';
@@ -5569,10 +5676,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSettingsUrlChangedNeedKey => '改了接口地址, 需要重新填写密钥';
 
   @override
-  String get aiSettingsUrlChangedNeedKeyDetail => '为了安全, 已存的密钥只会发给原来的地址。请重新粘贴密钥后再保存。';
+  String get aiSettingsUrlChangedNeedKeyDetail =>
+      '为了安全, 已存的密钥只会发给原来的地址。请重新粘贴密钥后再保存。';
 
   @override
-  String get aiSettingsUrlChangedNeedKeyLocalDetail => '为了安全, 已存的密钥只会发给原来的地址。请重新粘贴密钥; 新地址不需要密钥的, 点「清除密钥」。';
+  String get aiSettingsUrlChangedNeedKeyLocalDetail =>
+      '为了安全, 已存的密钥只会发给原来的地址。请重新粘贴密钥; 新地址不需要密钥的, 点「清除密钥」。';
 
   @override
   String get aiSettingsAdvanced => '高级设置';
@@ -5581,7 +5690,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSettingsProtocol => '接口协议';
 
   @override
-  String get aiSettingsProtocolInfo => '国内服务商和本机部署基本都是 OpenAI 兼容; 只有 Claude 用 Anthropic';
+  String get aiSettingsProtocolInfo =>
+      '国内服务商和本机部署基本都是 OpenAI 兼容; 只有 Claude 用 Anthropic';
 
   @override
   String get aiSettingsProtocolOpenAi => 'OpenAI 兼容';
@@ -5608,7 +5718,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSettingsThinking => '思考参数写法';
 
   @override
-  String get aiSettingsThinkingInfo => 'AI 对话的「思考程度」按这里的写法发给服务商; 识别表格等不需要思考的用途仍会关掉思考。选好服务商会自动选对; 选「不发送」时对话设置里不能调整思考程度。通义千问写法只用来关掉思考(通义的思考只支持流式输出、不能和 JSON 同用); Claude Haiku 4.5 等不认思考参数的模型会自动不发。「测试连接」会按对话默认档实测一次。';
+  String get aiSettingsThinkingInfo =>
+      'AI 对话的「思考程度」按这里的写法发给服务商; 识别表格等不需要思考的用途仍会关掉思考。选好服务商会自动选对; 选「不发送」时对话设置里不能调整思考程度。通义千问写法只用来关掉思考(通义的思考只支持流式输出、不能和 JSON 同用); Claude Haiku 4.5 等不认思考参数的模型会自动不发。「测试连接」会按对话默认档实测一次。';
 
   @override
   String get aiSettingsThinkingNone => '不发送';
@@ -5638,7 +5749,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSettingsMaxTokens => '最大输出长度';
 
   @override
-  String get aiSettingsMaxTokensInfo => '256 ~ 65536; 行数多的文件需要更长。这是单次输出(含思考)的上限, 对话选「深入」时不会超过它, 想多留思考空间可以调大';
+  String get aiSettingsMaxTokensInfo =>
+      '256 ~ 65536; 行数多的文件需要更长。这是单次输出(含思考)的上限, 对话选「深入」时不会超过它, 想多留思考空间可以调大';
 
   @override
   String get aiSettingsTimeout => '超时秒数';
@@ -5676,7 +5788,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSettingsTestNeedsKey => '测试前请先填写密钥';
 
   @override
-  String get aiSettingsTestStoredMismatch => '用已存的密钥测试时, 接口地址和模型要与已保存的一致。请先保存, 或重新填写密钥再测试';
+  String get aiSettingsTestStoredMismatch =>
+      '用已存的密钥测试时, 接口地址和模型要与已保存的一致。请先保存, 或重新填写密钥再测试';
 
   @override
   String get aiSettingsTestResultTitle => '连接测试';
@@ -5720,7 +5833,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSettingsTestPassedWithNotes => '连上了, 但有需要留意的地方, 请看上面的黄色提示';
 
   @override
-  String get aiSettingsTestStoredUnsavedAdvanced => '高级设置改过了, 用已存的密钥测试不会带上这些改动。请先保存再测试, 或重新填写密钥后测试';
+  String get aiSettingsTestStoredUnsavedAdvanced =>
+      '高级设置改过了, 用已存的密钥测试不会带上这些改动。请先保存再测试, 或重新填写密钥后测试';
 
   @override
   String get aiSettingsModelChoices => '可选模型:';
@@ -5767,7 +5881,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesQuoteStatusHistory => '历史记录';
 
   @override
-  String get salesQuoteStatusBannerDraft => '草稿: 填好后点「提交财务核价」, 财务定好价格和折扣后才能转订货单。';
+  String get salesQuoteStatusBannerDraft =>
+      '草稿: 填好后点「提交财务核价」, 财务定好价格和折扣后才能转订货单。';
 
   @override
   String get salesQuoteStatusBannerPending => '已提交财务核价, 正在等财务定价格。需要改内容请先「撤回」。';
@@ -5836,19 +5951,23 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesQuoteStatusActionBack => '返回列表';
 
   @override
-  String get salesQuoteStatusSubmitConfirmBody => '提交后财务会逐行定价格和折扣, 这期间你不能修改这张报价。确定提交?';
+  String get salesQuoteStatusSubmitConfirmBody =>
+      '提交后财务会逐行定价格和折扣, 这期间你不能修改这张报价。确定提交?';
 
   @override
-  String get salesQuoteStatusWithdrawConfirmBody => '撤回后报价回到草稿, 可以继续修改; 改好后需要重新提交财务核价。确定撤回?';
+  String get salesQuoteStatusWithdrawConfirmBody =>
+      '撤回后报价回到草稿, 可以继续修改; 改好后需要重新提交财务核价。确定撤回?';
 
   @override
-  String get salesQuoteStatusReopenConfirmBody => '财务已经核好价格。重新修改会让报价回到草稿, 改完要再交财务核价才能转订货单。确定重新修改?';
+  String get salesQuoteStatusReopenConfirmBody =>
+      '财务已经核好价格。重新修改会让报价回到草稿, 改完要再交财务核价才能转订货单。确定重新修改?';
 
   @override
   String get salesQuoteStatusDeleteConfirmBody => '确定删除这张报价草稿? 删除后不能恢复。';
 
   @override
-  String get salesQuoteStatusConvertConfirmBody => '根据双方同意的当前报价生成订货单草稿，带入核定单价、折扣及条款。请核对信息后保存、审查并提交财务审核。';
+  String get salesQuoteStatusConvertConfirmBody =>
+      '根据双方同意的当前报价生成订货单草稿，带入核定单价、折扣及条款。请核对信息后保存、审查并提交财务审核。';
 
   @override
   String get salesQuoteStatusConfirm => '确定';
@@ -6003,7 +6122,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get quoteFinanceEmptyPending => '目前没有等待核价的报价';
 
   @override
-  String get quoteFinanceEmptyPendingHint => '销售提交核价后会出现在这里; 你定好价格并确认后, 销售才能转订货单。';
+  String get quoteFinanceEmptyPendingHint =>
+      '销售提交核价后会出现在这里; 你定好价格并确认后, 销售才能转订货单。';
 
   @override
   String get quoteFinanceEmptyConfirmed => '还没有已核价的报价';
@@ -6169,7 +6289,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get quoteFinanceColListPrice => '标价';
 
   @override
-  String get quoteFinanceColListPriceInfo => '货品资料里的售价。没有标价, 或成交单价高于标价时, 由财务直接定成交单价; 低于标价一律算成折扣。';
+  String get quoteFinanceColListPriceInfo =>
+      '货品资料里的售价。没有标价, 或成交单价高于标价时, 由财务直接定成交单价; 低于标价一律算成折扣。';
 
   @override
   String get quoteFinanceColFilePrice => '文件单价(原币)';
@@ -6181,13 +6302,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get quoteFinanceColDealPrice => '成交单价';
 
   @override
-  String get quoteFinanceColDealPriceInfo => '客户最终每件付多少钱。改成交单价会自动算出折扣; 改折扣会自动算出成交单价。';
+  String get quoteFinanceColDealPriceInfo =>
+      '客户最终每件付多少钱。改成交单价会自动算出折扣; 改折扣会自动算出成交单价。';
 
   @override
   String get quoteFinanceColDiscount => '折扣';
 
   @override
-  String get quoteFinanceColDiscountInfo => '折扣 = 成交单价 ÷ 标价, 保留 4 位小数, 1 表示按标价。';
+  String get quoteFinanceColDiscountInfo =>
+      '折扣 = 成交单价 ÷ 标价, 保留 4 位小数, 1 表示按标价。';
 
   @override
   String get quoteFinanceColLineAmount => '金额';
@@ -6196,7 +6319,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get quoteFinanceColFileDiff => '与文件差额';
 
   @override
-  String get quoteFinanceColFileDiffInfo => '本行金额减去客户文件里的金额(已折合本币)。0 表示和客户文件一致。';
+  String get quoteFinanceColFileDiffInfo =>
+      '本行金额减去客户文件里的金额(已折合本币)。0 表示和客户文件一致。';
 
   @override
   String get quoteFinanceColLastConfirmed => '上次确认折扣';
@@ -6395,7 +6519,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get quoteFinanceConfirmBody => '确认后价格和折扣就定下来了, 销售可以转成订货单。以后要改, 可以在转单前「重新核价」。';
+  String get quoteFinanceConfirmBody =>
+      '确认后价格和折扣就定下来了, 销售可以转成订货单。以后要改, 可以在转单前「重新核价」。';
 
   @override
   String get quoteFinanceConfirmResponsibility => '报价核价确认';
@@ -6438,7 +6563,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get quoteFinanceReopenTitle => '重新核价';
 
   @override
-  String get quoteFinanceReopenBody => '报价将回到「待核价」，由核价人员重新核对并确认。在重新确认前，销售不能转订货单。确定继续？';
+  String get quoteFinanceReopenBody =>
+      '报价将回到「待核价」，由核价人员重新核对并确认。在重新确认前，销售不能转订货单。确定继续？';
 
   @override
   String get quoteFinanceCancel => '取消';
@@ -6479,7 +6605,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get quoteFinanceOrderChipHint => '这张订单由财务核过价的报价转来, 价格和折扣与报价一致时, 本次只需核对信用和条款。';
+  String get quoteFinanceOrderChipHint =>
+      '这张订单由财务核过价的报价转来, 价格和折扣与报价一致时, 本次只需核对信用和条款。';
 
   @override
   String get quoteFinanceOrderColQuotePrice => '报价单价';
@@ -6601,7 +6728,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesIntakeSendWholeFileTitle => '整份文件会发送给 AI 服务识别';
 
   @override
-  String get salesIntakeSendWholeFileMessage => '这是 PDF/图片, 系统需要把整份文件发给 AI 服务来识别。文件里如有银行账号等敏感信息, 请先确认可以发送。';
+  String get salesIntakeSendWholeFileMessage =>
+      '这是 PDF/图片, 系统需要把整份文件发给 AI 服务来识别。文件里如有银行账号等敏感信息, 请先确认可以发送。';
 
   @override
   String get salesIntakeSendWholeFileConfirm => '继续识别';
@@ -6610,7 +6738,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesIntakeAiRequired => 'PDF/图片需要开启 AI 才能识别, 请上传 Excel 或联系管理员';
 
   @override
-  String get salesIntakeVisionRequired => '这是图片格式的文件, 需要管理员在 AI 服务设置中启用支持图片识别的模型';
+  String get salesIntakeVisionRequired =>
+      '这是图片格式的文件, 需要管理员在 AI 服务设置中启用支持图片识别的模型';
 
   @override
   String salesIntakeFileTooLarge(String max) {
@@ -6886,7 +7015,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesIntakeDuplicateTitle => '这个文件可能已经录过';
 
   @override
-  String salesIntakeDuplicateItem(String doc, String billNo, String date, String reason) {
+  String salesIntakeDuplicateItem(
+    String doc,
+    String billNo,
+    String date,
+    String reason,
+  ) {
     return '$doc $billNo ($date, $reason)';
   }
 
@@ -6994,7 +7128,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesIntakeMarkerOrderDiscount => '折扣没能自动算出, 请按文件单价核对后填写';
 
   @override
-  String get salesIntakeQuoteLineReplaced => '这一行原来是报价里财务核定的货品, 换成别的货品后不再按报价的单价和折扣, 保存时按货品标价重新计算';
+  String get salesIntakeQuoteLineReplaced =>
+      '这一行原来是报价里财务核定的货品, 换成别的货品后不再按报价的单价和折扣, 保存时按货品标价重新计算';
 
   @override
   String get salesIntakeMarkerBundlePart => '组合件已拆开, 请核对货品和折扣';
@@ -7003,13 +7138,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesIntakeColClientModel => '文件型号';
 
   @override
-  String get salesIntakeColClientModelInfo => '客户文件里的型号/货号。保存后系统会记住客户的叫法, 下次识别更准。';
+  String get salesIntakeColClientModelInfo =>
+      '客户文件里的型号/货号。保存后系统会记住客户的叫法, 下次识别更准。';
 
   @override
   String get salesIntakeColClientGoodsName => '文件品名';
 
   @override
-  String get salesIntakeColClientGoodsNameInfo => '客户文件里的品名。手工选货品时会带出货品的英文名称, 可改。';
+  String get salesIntakeColClientGoodsNameInfo =>
+      '客户文件里的品名。手工选货品时会带出货品的英文名称, 可改。';
 
   @override
   String get salesIntakeColClientPrice => '文件单价';
@@ -7020,10 +7157,12 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get salesIntakeColClientPriceInfo => '客户文件里的单价(文件币种), 只作核对参考; 单价以货品资料标价为准, 折扣按它计算。';
+  String get salesIntakeColClientPriceInfo =>
+      '客户文件里的单价(文件币种), 只作核对参考; 单价以货品资料标价为准, 折扣按它计算。';
 
   @override
-  String get salesIntakeQuotePriceHint => '单价由货品标价带入，可修改本次报价的单价和折扣，不改变货品资料。提交后由财务核价；没有单价可留空交财务填写。';
+  String get salesIntakeQuotePriceHint =>
+      '单价由货品标价带入，可修改本次报价的单价和折扣，不改变货品资料。提交后由财务核价；没有单价可留空交财务填写。';
 
   @override
   String get salesIntakeFinancePriced => '财务定价';
@@ -7041,7 +7180,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesIntakeQuoteLockedDiscount => '(报价核定)';
 
   @override
-  String get salesIntakeQuoteLockedDiscountInfo => '该行折扣已由财务在报价中核定, 如需改价请重新打开报价';
+  String get salesIntakeQuoteLockedDiscountInfo =>
+      '该行折扣已由财务在报价中核定, 如需改价请重新打开报价';
 
   @override
   String get quoteTemplateDownload => '下载报价表格';
@@ -7088,7 +7228,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get businessColumnLimit => '每张单子最多能加 32 列';
 
   @override
-  String get businessColumnAmountHint => '按列添加的先后顺序，逐行算到本行金额上；拖动表头只改显示位置，不改计算顺序。空着不算，不能除以 0，结果不能是负数。';
+  String get businessColumnAmountHint =>
+      '按列添加的先后顺序，逐行算到本行金额上；拖动表头只改显示位置，不改计算顺序。空着不算，不能除以 0，结果不能是负数。';
 
   @override
   String get businessColumnType => '内容类型';
@@ -7604,7 +7745,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get inventoryCostPolicy => '对账与启用策略';
 
   @override
-  String get inventoryCostPolicyHint => '先核对原库存价值与历史成本凭证。启用后仅追加新凭证；历史冲突和跨期差额须单独核定。';
+  String get inventoryCostPolicyHint =>
+      '先核对原库存价值与历史成本凭证。启用后仅追加新凭证；历史冲突和跨期差额须单独核定。';
 
   @override
   String get inventoryCostEnabled => '实际成本过账已启用';
@@ -7688,7 +7830,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get inventoryCostPost => '追加成本凭证';
 
   @override
-  String get inventoryCostPostHint => '按原价值变动逐笔生成借贷平衡凭证，包含退回及后补差额；重试不重复入账，不改写旧凭证。';
+  String get inventoryCostPostHint =>
+      '按原价值变动逐笔生成借贷平衡凭证，包含退回及后补差额；重试不重复入账，不改写旧凭证。';
 
   @override
   String get inventoryCostClosePeriod => '关闭成本期间';
@@ -7736,7 +7879,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get costConvertCurrency => '转换成本币种';
 
   @override
-  String get costCurrencyConversionHint => '服务端按来源与目标汇率转换金额，用量和百分比保持不变。成功后才替换本单输入，失败保留原值。';
+  String get costCurrencyConversionHint =>
+      '服务端按来源与目标汇率转换金额，用量和百分比保持不变。成功后才替换本单输入，失败保留原值。';
 
   @override
   String get costSourceExchangeRate => '当前币种折合本币汇率';
@@ -7748,7 +7892,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get costExchangeRateRequired => '请输入明确且大于0的十进制汇率';
 
   @override
-  String get costPriceNormalizedHelp => '单价按本成本单币种和物料基本单位显示。原始采购单价、计价单位换算及税口径在来源详情查看。';
+  String get costPriceNormalizedHelp =>
+      '单价按本成本单币种和物料基本单位显示。原始采购单价、计价单位换算及税口径在来源详情查看。';
 
   @override
   String get costCurrencyConverted => '成本金额已按目标币种转换，尚未保存';
@@ -7981,7 +8126,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get costProductionScopeHelp => '当前可见生产范围的旁证：已审核报工完成量扣除已确认FQC失效；返工恢复按原来源抵扣。未审核草稿不计入，与入库数量、成本测算数量分开，不代表成本已核清。';
+  String get costProductionScopeHelp =>
+      '当前可见生产范围的旁证：已审核报工完成量扣除已确认FQC失效；返工恢复按原来源抵扣。未审核草稿不计入，与入库数量、成本测算数量分开，不代表成本已核清。';
 
   @override
   String get costProductionBatch => '生产批次';
@@ -8060,10 +8206,12 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get costEstimateAmountHelp => '本物料的计价用量×采用单价，加上本行费用。例如按1000件测算、每件用料2个，则按2000个计价。这是成本测算金额，不是生产实产或实际过账金额。';
+  String get costEstimateAmountHelp =>
+      '本物料的计价用量×采用单价，加上本行费用。例如按1000件测算、每件用料2个，则按2000个计价。这是成本测算金额，不是生产实产或实际过账金额。';
 
   @override
-  String get costUnitContributionHelp => '本行材料及费用对每一个成品计量单位的成本贡献；测算金额除以测算数量。成品单位由本成本版本确定。';
+  String get costUnitContributionHelp =>
+      '本行材料及费用对每一个成品计量单位的成本贡献；测算金额除以测算数量。成品单位由本成本版本确定。';
 
   @override
   String get costMaterialPriceNotApplied => '汇总件或客供材料不单独计入材料单价；查看计算依据了解本行口径。';
@@ -8072,7 +8220,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesQuoteCustomerConfirm => '登记客户同意';
 
   @override
-  String get salesQuoteCustomerConfirmBody => '确认客户已同意当前版本的货品、数量、单价、折扣与商业条款。登记后可生成订货单草稿；报价再次修改后须重新核价并取得客户同意。';
+  String get salesQuoteCustomerConfirmBody =>
+      '确认客户已同意当前版本的货品、数量、单价、折扣与商业条款。登记后可生成订货单草稿；报价再次修改后须重新核价并取得客户同意。';
 
   @override
   String get salesQuoteCustomerConfirmed => '已登记客户同意，可生成订货单';
@@ -8084,7 +8233,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesQuoteAwaitingConversion => '待生成订货单';
 
   @override
-  String get salesQuoteAwaitingCustomerBody => '财务已核价，请与客户确认当前报价；客户同意后登记确认并生成订货单，也可重新修改报价或取消。';
+  String get salesQuoteAwaitingCustomerBody =>
+      '财务已核价，请与客户确认当前报价；客户同意后登记确认并生成订货单，也可重新修改报价或取消。';
 
   @override
   String get salesQuoteCancelQuote => '取消报价';
@@ -8102,7 +8252,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get quoteTemplateMissingTitle => '此客户还没有报价模板';
 
   @override
-  String get quoteTemplateMissingHint => '上传客户的 Excel 模板，核对列对应关系后保存。也可以先用标准格式下载。';
+  String get quoteTemplateMissingHint =>
+      '上传客户的 Excel 模板，核对列对应关系后保存。也可以先用标准格式下载。';
 
   @override
   String get quoteTemplateUpload => '上传并学习模板';
@@ -8111,7 +8262,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get quoteTemplateReviewTitle => '核对客户模板';
 
   @override
-  String get quoteTemplateReviewHint => '核对工作表和各列对应后，保存为此客户的报价模板。相似版式更新版本，不同版式保留供选择。';
+  String get quoteTemplateReviewHint =>
+      '核对工作表和各列对应后，保存为此客户的报价模板。相似版式更新版本，不同版式保留供选择。';
 
   @override
   String get quoteTemplateSaveDownload => '保存模板并下载';
@@ -8150,7 +8302,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatResetTitle => '开始新对话？';
 
   @override
-  String get aiChatResetHint => '开始新对话后, AI 不再关联前面的问答。之前的记录仍会保留, 可以在对话设置里清空。已执行的业务操作不会撤销。';
+  String get aiChatResetHint =>
+      '开始新对话后, AI 不再关联前面的问答。之前的记录仍会保留, 可以在对话设置里清空。已执行的业务操作不会撤销。';
 
   @override
   String get aiChatCancel => '取消';
@@ -8162,7 +8315,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatWelcome => '今天需要处理什么？';
 
   @override
-  String get aiChatBoundary => '按当前账号权限回答。AI 提出的操作会先出确认卡, 你点确认后才执行, 执行时仍会按你的权限做系统检查。';
+  String get aiChatBoundary =>
+      '按当前账号权限回答。AI 提出的操作会先出确认卡, 你点确认后才执行, 执行时仍会按你的权限做系统检查。';
 
   @override
   String get aiChatUnavailable => '暂时只能回答部分业务问题。';
@@ -8192,7 +8346,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatRemoveFile => '移除文件';
 
   @override
-  String get aiChatFileHint => '支持 Excel、CSV/TXT、PDF、图片和 DOCX，最大15MB；先识别用途，再辅助填写。';
+  String get aiChatFileHint =>
+      '支持 Excel、CSV/TXT、PDF、图片和 DOCX，最大15MB；先识别用途，再辅助填写。';
 
   @override
   String get aiChatFileFailed => '无法读取文件，请重新选择。';
@@ -8249,7 +8404,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatPageOff => '未读取当前页面(可在对话设置里打开)';
 
   @override
-  String get aiChatPageHint => '会读取当前页面你能看到的表格和字段, 发给管理员配置的 AI 服务。成本、工资、信用额度和证件号、银行账号、手机号等个人信息只发名称不发数值; 工资、人事和个人资料页面, 以及系统设置、AI 服务、权限、审计、服务器状态等系统管理页面不读取。';
+  String get aiChatPageHint =>
+      '会读取当前页面你能看到的表格和字段, 发给管理员配置的 AI 服务。成本、工资、信用额度和证件号、银行账号、手机号等个人信息只发名称不发数值; 工资、人事和个人资料页面, 以及系统设置、AI 服务、权限、审计、服务器状态等系统管理页面不读取。';
 
   @override
   String get aiChatPageQuestion => '这个页面怎么填写？请举个例子。';
@@ -8267,7 +8423,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatSendAgain => '再次发送';
 
   @override
-  String get aiChatPrivacyNotice => '对话文字、同一对话里最近几轮的问答和当前页面上你能看到的内容, 由管理员配置的 AI 服务处理, 请勿输入密码等敏感信息。回答以页面为准。AI 只解答平台怎么用、业务规则和你有权限看的业务数据, 不处理代码、服务器、命令、数据库或密码。';
+  String get aiChatPrivacyNotice =>
+      '对话文字、同一对话里最近几轮的问答和当前页面上你能看到的内容, 由管理员配置的 AI 服务处理, 请勿输入密码等敏感信息。回答以页面为准。AI 只解答平台怎么用、业务规则和你有权限看的业务数据, 不处理代码、服务器、命令、数据库或密码。';
 
   @override
   String get aiChatReceived => '已送达，正在等待回复…';
@@ -8751,7 +8908,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseMasterUseDefective => '不良品仓';
 
   @override
-  String get warehouseMasterUseHint => '不良品仓只放判为不良的货, 不计入可用量; 有库存或还是货品的所属仓库时不能改用途';
+  String get warehouseMasterUseHint =>
+      '不良品仓只放判为不良的货, 不计入可用量; 有库存或还是货品的所属仓库时不能改用途';
 
   @override
   String get warehouseMasterParentLabel => '上级仓库';
@@ -8784,7 +8942,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseDefectiveBlockedHint => '不良品仓, 这里不能选';
 
   @override
-  String get stockTransferSameClassHint => '普通调拨两端必须同是良品仓或同是不良品仓; 良品转不良、复判合格转回请在库存详情里用「不良品处置」';
+  String get stockTransferSameClassHint =>
+      '普通调拨两端必须同是良品仓或同是不良品仓; 良品转不良、复判合格转回请在库存详情里用「不良品处置」';
 
   @override
   String get defectiveMoveAction => '不良品处置';
@@ -8796,7 +8955,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get defectiveMoveRelease => '不良复判转回';
 
   @override
-  String get defectiveMoveToDefectiveExplain => '把判为不良的货从良品仓转入不良品仓; 转入后不再计入任何可用量 (销售可预留、MRP、物料分析、领料都不算它)。';
+  String get defectiveMoveToDefectiveExplain =>
+      '把判为不良的货从良品仓转入不良品仓; 转入后不再计入任何可用量 (销售可预留、MRP、物料分析、领料都不算它)。';
 
   @override
   String get defectiveMoveReleaseExplain => '品质复判合格后把货从不良品仓转回良品仓; 转回后重新计入可用量。';
@@ -8967,7 +9127,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get wmBinNotOpenDescription => '开通后同一车间的上下道工序可以直送; 颗粒等原料要整批存放在车间时, 再开启整批领料。';
+  String get wmBinNotOpenDescription =>
+      '开通后同一车间的上下道工序可以直送; 颗粒等原料要整批存放在车间时, 再开启整批领料。';
 
   @override
   String get wmBinNotOpenAskWarehouse => '请找仓库在「车间内料仓」里开通。';
@@ -8984,7 +9145,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get wmBinSourceHint => '仓库往这个内料仓发料时, 有货就默认从这里出; 不选就按货品所属仓库。先点主仓, 再点子仓。';
+  String get wmBinSourceHint =>
+      '仓库往这个内料仓发料时, 有货就默认从这里出; 不选就按货品所属仓库。先点主仓, 再点子仓。';
 
   @override
   String get wmBinSourcePickerTitle => '选择内料仓的发料来源仓';
@@ -9005,7 +9167,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wmBinAlsoPeriodicHint => '颗粒等原料整批存放在车间, 按盘点计耗; 不开就只收车间直送。';
 
   @override
-  String get wmBinPeriodicFlowNotice => '开启后，使用内料仓原料的产品首次只需认料，不需要先提交工单领料。缺单重可先生产，补齐后才能计算预计用量和结算。需要嵌件等按单材料的产品，仍按原规则领这些材料。';
+  String get wmBinPeriodicFlowNotice =>
+      '开启后，使用内料仓原料的产品首次只需认料，不需要先提交工单领料。缺单重可先生产，补齐后才能计算预计用量和结算。需要嵌件等按单材料的产品，仍按原规则领这些材料。';
 
   @override
   String get wmBinPendingNone => '所选车间现在没有需要认料的在产任务。';
@@ -9096,7 +9259,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wmSetupOpeningGuideTitle => '上线前清点车间余料';
 
   @override
-  String get wmSetupOpeningGuideBody => '先记录料架整袋、开口袋、搅拌待用料和机台容器余料；称重与容器估算分别记录。\n\n已有库存账的余料：核对原仓库和工单。已按工单发出的先按原流程退料清账；仍在普通仓库账上的，由仓库整批调入车间内料仓。\n\n从未入账的余料：经核定数量和金额后办理其它入库，再整批调入内料仓，不要同时新增一份库存或把历史已用掉的料再记入。\n\n这是上线库存衔接，不要求生产员工为每张工单重新领料。后续按实际交接登记补料、退回，按需要盘点；机桶估算会影响耗用差异，不能当作精确实耗。';
+  String get wmSetupOpeningGuideBody =>
+      '先记录料架整袋、开口袋、搅拌待用料和机台容器余料；称重与容器估算分别记录。\n\n已有库存账的余料：核对原仓库和工单。已按工单发出的先按原流程退料清账；仍在普通仓库账上的，由仓库整批调入车间内料仓。\n\n从未入账的余料：经核定数量和金额后办理其它入库，再整批调入内料仓，不要同时新增一份库存或把历史已用掉的料再记入。\n\n这是上线库存衔接，不要求生产员工为每张工单重新领料。后续按实际交接登记补料、退回，按需要盘点；机桶估算会影响耗用差异，不能当作精确实耗。';
 
   @override
   String get wmSetupOpeningGuideOk => '知道了';
@@ -9113,19 +9277,22 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get handoffLotBatchesHint => '一张报工可按入库仓库分成几个登记批次，每个仓库一张品质检查单；品质尚未处理的批次可撤回登记，撤回后这些批重新回到待登记。';
+  String get handoffLotBatchesHint =>
+      '一张报工可按入库仓库分成几个登记批次，每个仓库一张品质检查单；品质尚未处理的批次可撤回登记，撤回后这些批重新回到待登记。';
 
   @override
   String get handoffLotSplitColumn => '其中';
 
   @override
-  String get handoffLotSplitColumnInfo => '同一批实物里需求份、计划公共备货、实际超产各多少(服务端算出)。品质判定和仓库点收都按整批：合格 / 实收先满足需求份，不良 / 短收先扣实际超产。';
+  String get handoffLotSplitColumnInfo =>
+      '同一批实物里需求份、计划公共备货、实际超产各多少(服务端算出)。品质判定和仓库点收都按整批：合格 / 实收先满足需求份，不良 / 短收先扣实际超产。';
 
   @override
   String get inboundArrivalRegistrationTitle => '登记实际到货';
 
   @override
-  String get fqcWholeLotOnlyHint => '这批实物分成了需求、计划公共备货或实际超产几份，请在检查单里按整批判定合格与不良数量(合格先满足需求份，不良先扣实际超产)。';
+  String get fqcWholeLotOnlyHint =>
+      '这批实物分成了需求、计划公共备货或实际超产几份，请在检查单里按整批判定合格与不良数量(合格先满足需求份，不良先扣实际超产)。';
 
   @override
   String get fqcOpenSheetForLot => '到检查单整批判定';
@@ -9145,10 +9312,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseScopePickerTitle => '筛选仓库';
 
   @override
-  String get warehouseScopeSupervisorTooltip => '你是仓库主管：可看全部仓库，也可只看某一个仓。任务列表、分段计数都按所选范围由服务端给出，不改变办理权限。';
+  String get warehouseScopeSupervisorTooltip =>
+      '你是仓库主管：可看全部仓库，也可只看某一个仓。任务列表、分段计数都按所选范围由服务端给出，不改变办理权限。';
 
   @override
-  String get warehouseScopeKeeperTooltip => '任务中心只显示你负责的仓库的任务，徽章和通知也只算这些仓。要调整负责的仓库，请联系仓库主管在「仓库资料」里设置负责人。';
+  String get warehouseScopeKeeperTooltip =>
+      '任务中心只显示你负责的仓库的任务，徽章和通知也只算这些仓。要调整负责的仓库，请联系仓库主管在「仓库资料」里设置负责人。';
 
   @override
   String warehouseKeeperDialogTitle(String name) {
@@ -9156,7 +9325,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get warehouseKeeperRolesHint => '负责人决定谁看、谁收这个仓的任务：\n1. 登记在主仓「仓库(14年版)」上的人和仓储部负责人是仓库主管，能看全部仓库，也能在任务中心挑任一个仓；\n2. 登记在子仓上的人只看、只收自己负责的仓的任务(徽章也只算这些仓)，负责多个仓时可以在它们之间切换；\n3. 没登记负责人的同事看还没人负责的仓和还没定仓的任务；某个仓没登记负责人时，它的通知发给仓库主管。\n有同名员工时请按工号核对，没有登录账号的人不算有效负责人。';
+  String get warehouseKeeperRolesHint =>
+      '负责人决定谁看、谁收这个仓的任务：\n1. 登记在主仓「仓库(14年版)」上的人和仓储部负责人是仓库主管，能看全部仓库，也能在任务中心挑任一个仓；\n2. 登记在子仓上的人只看、只收自己负责的仓的任务(徽章也只算这些仓)，负责多个仓时可以在它们之间切换；\n3. 没登记负责人的同事看还没人负责的仓和还没定仓的任务；某个仓没登记负责人时，它的通知发给仓库主管。\n有同名员工时请按工号核对，没有登录账号的人不算有效负责人。';
 
   @override
   String get warehouseKeeperNoAccount => '没有启用的登录账号，看不到任务也收不到通知';
@@ -9309,7 +9479,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesAiActionConfirmReview => '确认货品对应无误(保存时记住客户料号)';
 
   @override
-  String get salesAiConfirmReviewRowHint => '只用于货品对应待核对的行(如颜色没对上、型号不一致); 只是单位换算、金额对不上或重复货品提醒的行要直接改数值';
+  String get salesAiConfirmReviewRowHint =>
+      '只用于货品对应待核对的行(如颜色没对上、型号不一致); 只是单位换算、金额对不上或重复货品提醒的行要直接改数值';
 
   @override
   String get salesAiActionSave => '保存单据';
@@ -9352,7 +9523,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatAttachWithheld => '这个页面含工资或个人信息, 不读取页面内容, 只发送问题';
 
   @override
-  String get aiChatAttachProtected => '系统管理页面(系统设置、AI 服务、权限、审计、服务器状态等)不读取页面内容, AI 也不能在这里代办操作, 只发送问题';
+  String get aiChatAttachProtected =>
+      '系统管理页面(系统设置、AI 服务、权限、审计、服务器状态等)不读取页面内容, AI 也不能在这里代办操作, 只发送问题';
 
   @override
   String get aiChatCardProtectedPage => '系统管理页面不能由 AI 代办操作, 请在页面上直接办理';
@@ -9436,7 +9608,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatCardFormNotOpened => '填写页面没有打开, 这张卡已作废, 请重新上传文件再试';
 
   @override
-  String get aiChatCardFormNoAccess => '当前账号没有打开这个填写页面的权限, 这张卡已作废, 请联系管理员开通后重新上传文件';
+  String get aiChatCardFormNoAccess =>
+      '当前账号没有打开这个填写页面的权限, 这张卡已作废, 请联系管理员开通后重新上传文件';
 
   @override
   String aiChatDocumentChosen(String title) {
@@ -9529,7 +9702,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatSettingsReasoning => '思考程度';
 
   @override
-  String get aiChatSettingsReasoningHint => '默认快速回答; 问题里写「详细分析」时这一次会想得更深。深入更周到但更慢。';
+  String get aiChatSettingsReasoningHint =>
+      '默认快速回答; 问题里写「详细分析」时这一次会想得更深。深入更周到但更慢。';
 
   @override
   String get aiChatSettingsReasoningFast => '快速';
@@ -9550,13 +9724,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatSettingsShowSources => '显示回答依据';
 
   @override
-  String get aiChatSettingsShowSourcesHint => '关掉后不显示「依据」那一行; AI 仍按页面和资料核对后再回答。';
+  String get aiChatSettingsShowSourcesHint =>
+      '关掉后不显示「依据」那一行; AI 仍按页面和资料核对后再回答。';
 
   @override
   String get aiChatSettingsMemory => '连续对话记忆';
 
   @override
-  String get aiChatSettingsMemoryHint => 'AI 会参考同一对话里最近几轮的问答, 换了页面也接得上; 含敏感数据的回答不会带入。';
+  String get aiChatSettingsMemoryHint =>
+      'AI 会参考同一对话里最近几轮的问答, 换了页面也接得上; 含敏感数据的回答不会带入。';
 
   @override
   String get aiChatSettingsMemoryOff => '关闭';
@@ -9621,7 +9797,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatSettingsConfirmAlways => '始终开启';
 
   @override
-  String get aiChatSettingsConfirmHint => 'AI 要做任何操作, 都先给你一张确认卡, 你点确认后才执行; 这一项不能关闭。';
+  String get aiChatSettingsConfirmHint =>
+      'AI 要做任何操作, 都先给你一张确认卡, 你点确认后才执行; 这一项不能关闭。';
 
   @override
   String get aiChatSettingsClear => '清空对话记录';
@@ -9633,7 +9810,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatSettingsClearTitle => '清空全部对话记录?';
 
   @override
-  String get aiChatSettingsClearBody => '会清空你账号下全部 AI 对话记录, 清空后不能恢复。已经执行的业务操作不受影响。';
+  String get aiChatSettingsClearBody =>
+      '会清空你账号下全部 AI 对话记录, 清空后不能恢复。已经执行的业务操作不受影响。';
 
   @override
   String get aiChatSettingsClearDone => '对话记录已清空';
@@ -9648,7 +9826,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatMemorySettingLabel => '记住我的常用操作';
 
   @override
-  String get aiChatMemorySettingHint => '记住你让我打开过的表单和常用的查询, 下次同类问题我直接准备操作, 不再重新思考。';
+  String get aiChatMemorySettingHint =>
+      '记住你让我打开过的表单和常用的查询, 下次同类问题我直接准备操作, 不再重新思考。';
 
   @override
   String get aiChatMemoryClear => '清除记录';
@@ -9671,13 +9850,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatRestored => '以下是你最近的对话, 继续提问会接着聊。';
 
   @override
-  String get aiChatRestoredDataChanged => '这条回答引用的业务数据已经变化, 不再显示旧内容; 需要的话请重新问一次。';
+  String get aiChatRestoredDataChanged =>
+      '这条回答引用的业务数据已经变化, 不再显示旧内容; 需要的话请重新问一次。';
 
   @override
   String get aiSettingsThinkingZhipu => '智谱 GLM 写法';
 
   @override
-  String get aiSettingsThinkingAnthropic => 'Anthropic effort 写法(Opus 4.5 / Sonnet 4.6 及以上)';
+  String get aiSettingsThinkingAnthropic =>
+      'Anthropic effort 写法(Opus 4.5 / Sonnet 4.6 及以上)';
 
   @override
   String get hrReconcileTitle => '员工资料核对更正';
@@ -10190,7 +10371,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiRecordsBillingOpen => '计费设置';
 
   @override
-  String get release258StatusColors => '全站状态颜色统一口径：状态列用稳定的整格底色标示，仓库单据出库进度一眼可辨（未出库黄、部分出库橙、已出完绿）。';
+  String get release258StatusColors =>
+      '全站状态颜色统一口径：状态列用稳定的整格底色标示，仓库单据出库进度一眼可辨（未出库黄、部分出库橙、已出完绿）。';
 
   @override
   String get release258IqcPending => '待检处置队列的货品名称与待检数量恢复显示，并按基本单位分组汇总，不再显示「—」。';
@@ -10205,46 +10387,60 @@ class AppLocalizationsZh extends AppLocalizations {
   String get release258LockReason => '委外任务中心锁定行改版：行首锁图标标注，点击弹窗查看锁定原因。';
 
   @override
-  String get release259RollbackMerge => '采购与委外申请恢复逐物料分开订货：上一版误并入的滚动合单已整体撤销，任务中心重新按物料逐行分解下单。';
+  String get release259RollbackMerge =>
+      '采购与委外申请恢复逐物料分开订货：上一版误并入的滚动合单已整体撤销，任务中心重新按物料逐行分解下单。';
 
   @override
-  String get release259SubcontractPending => '委外任务中心「待处理」拍平成一张表：委外申请与领料任务同表混排，可领标红、已提交待仓库发标黄，多选后批量领料。';
+  String get release259SubcontractPending =>
+      '委外任务中心「待处理」拍平成一张表：委外申请与领料任务同表混排，可领标红、已提交待仓库发标黄，多选后批量领料。';
 
   @override
-  String get release259InProgressGate => '委外「进行中」门槛收紧：领料没有结束的订货单不再计入进行中，领完料（或无需领料）才进入；领料中的单挂黄色在办数。';
+  String get release259InProgressGate =>
+      '委外「进行中」门槛收紧：领料没有结束的订货单不再计入进行中，领完料（或无需领料）才进入；领料中的单挂黄色在办数。';
 
   @override
-  String get release259NoticeGrouping => '通知中心默认只看未读并按来源分组叠放；回执与详情已读口径补齐，操作过的事项不再显示未读。';
+  String get release259NoticeGrouping =>
+      '通知中心默认只看未读并按来源分组叠放；回执与详情已读口径补齐，操作过的事项不再显示未读。';
 
   @override
-  String get release259PopupSettings => '工作台右上角新增通知设置：可按类别逐项关闭弹窗提醒，通知中心列表与办结撤回不受影响。';
+  String get release259PopupSettings =>
+      '工作台右上角新增通知设置：可按类别逐项关闭弹窗提醒，通知中心列表与办结撤回不受影响。';
 
   @override
-  String get release259HrAndProfile => '员工入职改为五步向导（字段全开放、必填最小化）；盘点审核待审核段补红色徽章；我的页小屏布局改版。';
+  String get release259HrAndProfile =>
+      '员工入职改为五步向导（字段全开放、必填最小化）；盘点审核待审核段补红色徽章；我的页小屏布局改版。';
 
   @override
-  String get release2510TableAlignment => '全站表格数字列统一左对齐；数量与金额就地带单位显示（金额改「元」后缀式），阅读与核对动线一致。';
+  String get release2510TableAlignment =>
+      '全站表格数字列统一左对齐；数量与金额就地带单位显示（金额改「元」后缀式），阅读与核对动线一致。';
 
   @override
-  String get release2510TransferOpen => '汇总视图调拨放开：根供行可直接调拨，聚合行按维度池最大可调量下单，顶层支持整批撤回最新计划包。';
+  String get release2510TransferOpen =>
+      '汇总视图调拨放开：根供行可直接调拨，聚合行按维度池最大可调量下单，顶层支持整批撤回最新计划包。';
 
   @override
-  String get release2510BatchReport => '品质检验整份报告一次提交：批量送检/判定单事务联合预锁，任一单失败整批回滚并按单号报错。';
+  String get release2510BatchReport =>
+      '品质检验整份报告一次提交：批量送检/判定单事务联合预锁，任一单失败整批回滚并按单号报错。';
 
   @override
-  String get release2510FinanceRate => '采购/委外财务审批可填当日汇率：折合本币随批准落账，未填写时按已批汇率→提交快照→1 逐级兜底。';
+  String get release2510FinanceRate =>
+      '采购/委外财务审批可填当日汇率：折合本币随批准落账，未填写时按已批汇率→提交快照→1 逐级兜底。';
 
   @override
-  String get release2510NeedDate => '任务中心「申请待分解」需求日期兜底为计划下达日期，不再整列空白；逾期判定仍只看真实需求日期。';
+  String get release2510NeedDate =>
+      '任务中心「申请待分解」需求日期兜底为计划下达日期，不再整列空白；逾期判定仍只看真实需求日期。';
 
   @override
-  String get release2510DirectTransfer => '车间内流转不再要求预先开通内料仓：报工直送下道工序审核时自动开仓；颗粒散料整批领料仍需显式开通。';
+  String get release2510DirectTransfer =>
+      '车间内流转不再要求预先开通内料仓：报工直送下道工序审核时自动开仓；颗粒散料整批领料仍需显式开通。';
 
   @override
-  String get release2510SessionIdentity => '修复会话静默刷新时误报「登录身份已变化」：身份比较改为语义相等，无变化不再重建登录态。';
+  String get release2510SessionIdentity =>
+      '修复会话静默刷新时误报「登录身份已变化」：身份比较改为语义相等，无变化不再重建登录态。';
 
   @override
-  String get release2510Misc => '出货审核筛选工具条与全站统一；订货审批/IQC 责任提示横幅退役；BOM 按产品视图连线两色轮换；HR 任务中心徽章回到今日口径；委外损耗「不允许」口径列表与详情一致。';
+  String get release2510Misc =>
+      '出货审核筛选工具条与全站统一；订货审批/IQC 责任提示横幅退役；BOM 按产品视图连线两色轮换；HR 任务中心徽章回到今日口径；委外损耗「不允许」口径列表与详情一致。';
 
   @override
   String badgeModuleProgressTooltip(int count) {
@@ -10470,7 +10666,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get serverUpdateCloseTemporarily => '暂时关闭';
 
   @override
-  String get serverUpdateReadbackRequired => '保存结果尚未确认。重新读取服务器配置后才可再次保存；不会重放原请求。';
+  String get serverUpdateReadbackRequired =>
+      '保存结果尚未确认。重新读取服务器配置后才可再次保存；不会重放原请求。';
 
   @override
   String get serverUpdateExitCode => '退出码';
@@ -10550,7 +10747,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get financeProcurementReviewAccessHint => '需要订货审批的查看权限，请联系权限管理员授权。';
 
   @override
-  String get financeArrivalReviewAccessHint => '具有相应查看和审批权限的员工可处理超量到货，无需额外的部门或个人点名资格。';
+  String get financeArrivalReviewAccessHint =>
+      '具有相应查看和审批权限的员工可处理超量到货，无需额外的部门或个人点名资格。';
 
   @override
   String get dashboardAuthorizedScope => '按已授权功能和数据范围展示';
@@ -10577,10 +10775,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get financeBatchReviewRefreshFailed => '批量审批已完成，但页面刷新未完成，请刷新核对最新单据状态。';
 
   @override
-  String get financeReviewAuthorityChanged => '审核内容或版本已变化，原填写内容已保留。请重新加载并核对后再审核。';
+  String get financeReviewAuthorityChanged =>
+      '审核内容或版本已变化，原填写内容已保留。请重新加载并核对后再审核。';
 
   @override
-  String get permissionMissingReads => '授权配置已保留，但当前未生效，且缺少对应页面所需的查看权限。请核对授权状态；需要进入该页面时再补齐查看权限。';
+  String get permissionMissingReads =>
+      '授权配置已保留，但当前未生效，且缺少对应页面所需的查看权限。请核对授权状态；需要进入该页面时再补齐查看权限。';
 
   @override
   String get permissionCompleteReads => '补齐所需查看权限';
@@ -10595,7 +10795,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get permissionRemoveInactiveGrant => '移除未生效授权';
 
   @override
-  String get permissionPendingReads => '保存时只补齐允许自动授予的普通查看权限；需要恢复已收回的权限或授予敏感权限时，请在相应授权项中单独确认。';
+  String get permissionPendingReads =>
+      '保存时只补齐允许自动授予的普通查看权限；需要恢复已收回的权限或授予敏感权限时，请在相应授权项中单独确认。';
 
   @override
   String get permissionBatchNormalOnly => '本组授权(不含敏感及锁定项)';
@@ -10619,61 +10820,77 @@ class AppLocalizationsZh extends AppLocalizations {
   String get permissionRevokeOnly => '当前只能移除原有授权，不能重新授权。';
 
   @override
-  String get release2523TaskAudience => '工作台待办、红黄徽章和行动通知按真实授予的操作权限与单据责任计算：仅能查看不再生成运营任务，跨部门真实授权正常收到任务，系统管理员不再默认接收全部业务待办。';
+  String get release2523TaskAudience =>
+      '工作台待办、红黄徽章和行动通知按真实授予的操作权限与单据责任计算：仅能查看不再生成运营任务，跨部门真实授权正常收到任务，系统管理员不再默认接收全部业务待办。';
 
   @override
-  String get release2523PermissionTransfer => '权限配置支持跨部门导入、预览与整套迁移，共享工具权限分类自动保持一致，过程留有审计记录。';
+  String get release2523PermissionTransfer =>
+      '权限配置支持跨部门导入、预览与整套迁移，共享工具权限分类自动保持一致，过程留有审计记录。';
 
   @override
-  String get release2523PickerTables => '客户、员工、货品等选择器升级为表格视图并统一底部确认条，列清晰可比较；浏览面板宽度档位统一，窄屏自动适配。';
+  String get release2523PickerTables =>
+      '客户、员工、货品等选择器升级为表格视图并统一底部确认条，列清晰可比较；浏览面板宽度档位统一，窄屏自动适配。';
 
   @override
-  String get release2523PlatformSettings => '平台设置页重构为简洁标题、权限徽标与共享连接状态摘要，分区响应式布局，切换分区保留未保存草稿。';
+  String get release2523PlatformSettings =>
+      '平台设置页重构为简洁标题、权限徽标与共享连接状态摘要，分区响应式布局，切换分区保留未保存草稿。';
 
   @override
-  String get release2523LoginOtp => '登录二次验证挑战与账号、服务器上下文隔离，切换账号或服务器不再残留旧挑战，过期回调自动失效。';
+  String get release2523LoginOtp =>
+      '登录二次验证挑战与账号、服务器上下文隔离，切换账号或服务器不再残留旧挑战，过期回调自动失效。';
 
   @override
   String get release2523ServerAlert => '服务器状态告警恢复系统管理员接收例外口径，告警池按真实授权解析。';
 
   @override
-  String get release2521Permissions => '财务审核、出厂质检等操作按有效权限开放，取消额外的部门归属和个人点名授权门槛，继续保留业务数据范围与单据状态校验。';
+  String get release2521Permissions =>
+      '财务审核、出厂质检等操作按有效权限开放，取消额外的部门归属和个人点名授权门槛，继续保留业务数据范围与单据状态校验。';
 
   @override
   String get release2521Session => '授权变化后，会话和页面操作随最新权限同步；未保存的开关调整单独标为待保存。';
 
   @override
-  String get release2521PermissionSettings => '普通授权开关只调整所选项目，保存时按规则补齐可自动授予的普通查看权限；敏感授权和恢复已收回权限仍需单独确认。';
+  String get release2521PermissionSettings =>
+      '普通授权开关只调整所选项目，保存时按规则补齐可自动授予的普通查看权限；敏感授权和恢复已收回权限仍需单独确认。';
 
   @override
-  String get release2521ReviewFeedback => '审核占用失败显示实际原因；批量审核结果未确认时，明确提示刷新核对单据状态。';
+  String get release2521ReviewFeedback =>
+      '审核占用失败显示实际原因；批量审核结果未确认时，明确提示刷新核对单据状态。';
 
   @override
-  String get release2521ServerUpdates => '服务器更新按任务显示当前阶段与结果，重新打开页面可继续查看；失败时展示已确认原因和处理建议。';
+  String get release2521ServerUpdates =>
+      '服务器更新按任务显示当前阶段与结果，重新打开页面可继续查看；失败时展示已确认原因和处理建议。';
 
   @override
-  String get release2521TableSearchCopy => '名称、编号等文本列可在表头输入关键词，回车或点击搜索后在表格中显示结果，多列条件可组合。候选支持搜索和继续加载，表格文字可拖选复制，不影响业务勾选。';
+  String get release2521TableSearchCopy =>
+      '名称、编号等文本列可在表头输入关键词，回车或点击搜索后在表格中显示结果，多列条件可组合。候选支持搜索和继续加载，表格文字可拖选复制，不影响业务勾选。';
 
   @override
-  String get release2521FieldHints => '普通空字段直接显示字段名称，格式示例与填写说明放在说明入口；表单、选择器和日期字段统一空状态，已有有效数值和个人显示设置保留。';
+  String get release2521FieldHints =>
+      '普通空字段直接显示字段名称，格式示例与填写说明放在说明入口；表单、选择器和日期字段统一空状态，已有有效数值和个人显示设置保留。';
 
   @override
-  String get release2521ReferencePickers => '模具与组件选择改为左侧分类、右侧明细表，清楚显示系列、名称、编号、规格和颜色。输入可查看近似候选，按钮打开完整选择窗口并带入关键词，原有选择范围、用量和校验继续保留。';
+  String get release2521ReferencePickers =>
+      '模具与组件选择改为左侧分类、右侧明细表，清楚显示系列、名称、编号、规格和颜色。输入可查看近似候选，按钮打开完整选择窗口并带入关键词，原有选择范围、用量和校验继续保留。';
 
   @override
-  String get release2521MasterDataImport => '货品导出补齐模板回导所需字段，修改后按真实分类路径和原校验导入；分类编号前缀支持数字开头，分类名称旁可显示备注，原编号与类别身份保留。';
+  String get release2521MasterDataImport =>
+      '货品导出补齐模板回导所需字段，修改后按真实分类路径和原校验导入；分类编号前缀支持数字开头，分类名称旁可显示备注，原编号与类别身份保留。';
 
   @override
-  String get release2521PurchaseDocuments => '采购订货单可预览打印，审核栏显示实际财务审核员；采购任务历史按真实物料逐行展示并增加供应商，申请待分解和工作台可按当前筛选导出。';
+  String get release2521PurchaseDocuments =>
+      '采购订货单可预览打印，审核栏显示实际财务审核员；采购任务历史按真实物料逐行展示并增加供应商，申请待分解和工作台可按当前筛选导出。';
 
   @override
-  String get release2521GoodsHistory => '可查看本人最近十次货品资料修改，并按当前条件撤回或取消撤回；后续修改、业务引用和权限会再次核对，过程留有操作记录。';
+  String get release2521GoodsHistory =>
+      '可查看本人最近十次货品资料修改，并按当前条件撤回或取消撤回；后续修改、业务引用和权限会再次核对，过程留有操作记录。';
 
   @override
   String get goodsHistoryTitle => '货品操作记录';
 
   @override
-  String get goodsHistoryHint => '保留最近 10 次资料修改，可选择其中一次撤回。取消撤回会恢复上次撤回；后续修改或业务引用可能限制恢复。';
+  String get goodsHistoryHint =>
+      '保留最近 10 次资料修改，可选择其中一次撤回。取消撤回会恢复上次撤回；后续修改或业务引用可能限制恢复。';
 
   @override
   String get goodsHistoryUndo => '撤回';
@@ -10800,7 +11017,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get materialBomIssueGuidance => '问题需求保留在本页；其它需求可另开分析。工程部修复后重新检查，仍有问题的需求不能下达。';
+  String get materialBomIssueGuidance =>
+      '问题需求保留在本页；其它需求可另开分析。工程部修复后重新检查，仍有问题的需求不能下达。';
 
   @override
   String materialBomIssueForwardedTask(String taskNo) {
@@ -10845,7 +11063,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get rdInitialUnitTitle => '核对首次基本单位';
 
   @override
-  String get rdInitialUnitGuidance => '请对照原始资料选择单位并填写核对依据。只允许尚无基本单位且没有BOM以外数量事实的货品首次赋单位；已有历史数量或非空单位时不能更换。原历史单位桥接存在时须一致。';
+  String get rdInitialUnitGuidance =>
+      '请对照原始资料选择单位并填写核对依据。只允许尚无基本单位且没有BOM以外数量事实的货品首次赋单位；已有历史数量或非空单位时不能更换。原历史单位桥接存在时须一致。';
 
   @override
   String get rdInitialUnitLabel => '核对后的基本单位';
@@ -11063,13 +11282,16 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get goodsBomBatchOverwriteDescription => '使用已复制组件覆盖当前货品的顶层组装清单；新清单没有的原顶层组件将移除。嵌套共享子件自身的组装清单保持不变。';
+  String get goodsBomBatchOverwriteDescription =>
+      '使用已复制组件覆盖当前货品的顶层组装清单；新清单没有的原顶层组件将移除。嵌套共享子件自身的组装清单保持不变。';
 
   @override
-  String get goodsBomBatchRemoveDescription => '仅移除所选货品顶层命中的指定组件；未命中时跳过，不删除嵌套子件自身的组件。';
+  String get goodsBomBatchRemoveDescription =>
+      '仅移除所选货品顶层命中的指定组件；未命中时跳过，不删除嵌套子件自身的组件。';
 
   @override
-  String get goodsBomBatchAddDescription => '向所选货品顶层追加指定组件；已有相同组件时直接跳过，保留原数量及其他字段。';
+  String get goodsBomBatchAddDescription =>
+      '向所选货品顶层追加指定组件；已有相同组件时直接跳过，保留原数量及其他字段。';
 
   @override
   String get goodsBomBatchChooseComponents => '选择组件';
@@ -11089,12 +11311,23 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String goodsBomBatchSummary(int targets, int added, int updated, int removed, int skipped) {
+  String goodsBomBatchSummary(
+    int targets,
+    int added,
+    int updated,
+    int removed,
+    int skipped,
+  ) {
     return '将修改 $targets 个货品：添加 $added、更新 $updated、移除 $removed、跳过 $skipped。';
   }
 
   @override
-  String goodsBomBatchTargetCounts(int added, int updated, int removed, int skipped) {
+  String goodsBomBatchTargetCounts(
+    int added,
+    int updated,
+    int removed,
+    int skipped,
+  ) {
     return '添加 $added / 更新 $updated / 移除 $removed / 跳过 $skipped';
   }
 
@@ -11109,7 +11342,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get goodsBomBatchConfirmImpact => '请核对所选货品、跳过项与同步影响。确认后整批保存，任何一项失败都不会修改。';
+  String get goodsBomBatchConfirmImpact =>
+      '请核对所选货品、跳过项与同步影响。确认后整批保存，任何一项失败都不会修改。';
 
   @override
   String get goodsBomBatchCloseVerify => '关闭并刷新核对';
@@ -11124,7 +11358,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get goodsBomBatchConfirmCommit => '确认整批修改';
 
   @override
-  String goodsBomBatchCompleted(int targets, int added, int updated, int removed, int skipped) {
+  String goodsBomBatchCompleted(
+    int targets,
+    int added,
+    int updated,
+    int removed,
+    int skipped,
+  ) {
     return '已完成 $targets 个货品：添加 $added、更新 $updated、移除 $removed、跳过 $skipped。';
   }
 
@@ -11172,7 +11412,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get whereUsedReplacementHistory => '本次替换只修改当前组装信息，历史凭证、冻结需求与已发生的实际耗用保持原记录。';
+  String get whereUsedReplacementHistory =>
+      '本次替换只修改当前组装信息，历史凭证、冻结需求与已发生的实际耗用保持原记录。';
 
   @override
   String whereUsedReplacementImpact(int edges, int products) {
@@ -11209,7 +11450,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get whereUsedExportFiltered => '导出筛选结果';
 
   @override
-  String get whereUsedExportDescription => '导出全部筛选结果，并附组件、筛选条件、操作员、导出时间和证据来源说明。Excel 适合继续筛选，PDF 适合查阅与打印。';
+  String get whereUsedExportDescription =>
+      '导出全部筛选结果，并附组件、筛选条件、操作员、导出时间和证据来源说明。Excel 适合继续筛选，PDF 适合查阅与打印。';
 
   @override
   String get whereUsedExportExcel => 'Excel';
@@ -11221,7 +11463,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get whereUsedExportFilename => '物料反查筛选结果';
 
   @override
-  String get whereUsedReplacementCommitUncertain => '提交结果暂未确认。请重试本次提交以核对原结果，暂勿更换组件。';
+  String get whereUsedReplacementCommitUncertain =>
+      '提交结果暂未确认。请重试本次提交以核对原结果，暂勿更换组件。';
 
   @override
   String get whereUsedRetryReplacementCommit => '重试本次提交';
@@ -11381,7 +11624,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get permissionTemplateEmptyHint => '新建模板，或从员工已生效的操作权限保存。';
 
   @override
-  String get permissionTemplateSnapshotNote => '模板保存操作权限快照；以后编辑或删除模板，不会改动已应用的账号。';
+  String get permissionTemplateSnapshotNote =>
+      '模板保存操作权限快照；以后编辑或删除模板，不会改动已应用的账号。';
 
   @override
   String get permissionTemplateScopeNote => '只设置操作权限。数据范围、部门、账号身份及外网访问资格仍分别管理。';
@@ -11605,12 +11849,23 @@ class AppLocalizationsZh extends AppLocalizations {
   String get importMatchPathName => '同分类同名称';
 
   @override
-  String importReviewSummary(int added, int filled, int conflicts, int unchanged) {
+  String importReviewSummary(
+    int added,
+    int filled,
+    int conflicts,
+    int unchanged,
+  ) {
     return '新增 $added，补齐 $filled，冲突 $conflicts，相同 $unchanged';
   }
 
   @override
-  String importResultSummary(int created, int filled, int updated, int ignored, int unchanged) {
+  String importResultSummary(
+    int created,
+    int filled,
+    int updated,
+    int ignored,
+    int unchanged,
+  ) {
     return '新增 $created，补齐 $filled，替换 $updated，忽略 $ignored，相同 $unchanged';
   }
 
@@ -11621,13 +11876,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get importReviewUnchanged => '无变化';
 
   @override
-  String get goodsImportTemplateHint => '可使用「导出货品」文件作为新增或更新模板；必填列为类别(用 - 拼分类路径)和货品名称，编号可留空。更新时保留系统标识；编号留空保留原号，改为未占用的新编号会进入差异核对。新增行清空系统标识，可填写新编号；曾被复用的编号必须通过系统标识确认当前货品。';
+  String get goodsImportTemplateHint =>
+      '可使用「导出货品」文件作为新增或更新模板；必填列为类别(用 - 拼分类路径)和货品名称，编号可留空。更新时保留系统标识；编号留空保留原号，改为未占用的新编号会进入差异核对。新增行清空系统标识，可填写新编号；曾被复用的编号必须通过系统标识确认当前货品。';
 
   @override
-  String get goodsImportMergeHint => '系统标识确定原货品；没有系统标识时按编号匹配。两者都为空时新增货品并自动编号；新编号也可新增同名、不同颜色、材质或规格的货品，名称不用于匹配身份。更新时空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值。同编号已删除货品按清单内容恢复。';
+  String get goodsImportMergeHint =>
+      '系统标识确定原货品；没有系统标识时按编号匹配。两者都为空时新增货品并自动编号；新编号也可新增同名、不同颜色、材质或规格的货品，名称不用于匹配身份。更新时空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值。同编号已删除货品按清单内容恢复。';
 
   @override
-  String get goodsImportUndoHint => '普通资料导入可从工具栏「撤回」撤销；涉及编号变更时，请从「修改历史」选择版本，按当前编号规则恢复。';
+  String get goodsImportUndoHint =>
+      '普通资料导入可从工具栏「撤回」撤销；涉及编号变更时，请从「修改历史」选择版本，按当前编号规则恢复。';
 
   @override
   String get dropdownMoveResizeHint => '拖动此处移动，拖动边缘调整大小';
@@ -11686,7 +11944,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get importRetryPrevious => '重试上次提交';
 
   @override
-  String get importFilesTransactionNote => '可一次选择多个文件，按顺序检测并导入。每个文件独立保存，后续失败或关闭不会撤销已成功的文件。';
+  String get importFilesTransactionNote =>
+      '可一次选择多个文件，按顺序检测并导入。每个文件独立保存，后续失败或关闭不会撤销已成功的文件。';
 
   @override
   String importFilesCompleted(int completed, int total) {
@@ -11719,7 +11978,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get importFilesFinished => '所选文件已全部处理完成';
 
   @override
-  String get orderClosureUnverifiedQuantity => '本单旧库计量未核验。直接结束只停止后续履约，保留原始数量与已发生记录，不推算剩余量，也不能按剩余量重建订单。';
+  String get orderClosureUnverifiedQuantity =>
+      '本单旧库计量未核验。直接结束只停止后续履约，保留原始数量与已发生记录，不推算剩余量，也不能按剩余量重建订单。';
 
   @override
   String get orderClosureHandleBlocker => '前往对应任务处理';
@@ -11728,7 +11988,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get orderClosureContactQuality => '请由有权限的品质人员完成本单质检后，再核对并结束订单。';
 
   @override
-  String get orderClosureContactWarehouse => '请由有权限的仓库人员办清本单收退货或实物处置后，再核对并结束订单。';
+  String get orderClosureContactWarehouse =>
+      '请由有权限的仓库人员办清本单收退货或实物处置后，再核对并结束订单。';
 
   @override
   String get orderClosureContactSubcontract => '请由有权限的委外人员核对本单领料任务后，再核对并结束订单。';
@@ -11737,10 +11998,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get orderClosureContactFinance => '本单原订单条款正在财务审批，请先处理当前审批，再核对并结束订单。';
 
   @override
-  String get orderClosureQualityPreserved => '质检中的实物和检验任务继续保留，申请结束不会取消质检，也不会把未检实物当作已处理。';
+  String get orderClosureQualityPreserved =>
+      '质检中的实物和检验任务继续保留，申请结束不会取消质检，也不会把未检实物当作已处理。';
 
   @override
-  String get orderClosureRejectHint => '驳回的是本次结束申请，原订单继续按已批准条款履约。请申请人核对退回原因后重新申请结束。';
+  String get orderClosureRejectHint =>
+      '驳回的是本次结束申请，原订单继续按已批准条款履约。请申请人核对退回原因后重新申请结束。';
 
   @override
   String get orderClosureAction => '取消/结束订单';
@@ -11788,7 +12051,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get orderClosureMissingPermission => '缺少采购或委外订单办理权限，请联系管理员授权。';
 
   @override
-  String get orderClosureWholeOrderHint => '本次结束整张订货单的剩余履约，包含全部明细；同一订单勾选多条货品只办理一次。确认后立即生效，无需财务批准，历史记录保留。';
+  String get orderClosureWholeOrderHint =>
+      '本次结束整张订货单的剩余履约，包含全部明细；同一订单勾选多条货品只办理一次。确认后立即生效，无需财务批准，历史记录保留。';
 
   @override
   String get orderClosureAlreadyPending => '本单已有待处理财务审批，请先处理当前审批。';
@@ -11800,10 +12064,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get orderClosureReadOnly => '当前单据只读，请由原制单人或有该单据写入范围的人员办理。';
 
   @override
-  String get orderClosureApprovalHint => '采购或委外确认后立即取消未收余量，无需财务批准。已有收货、库存和应付记录保留，在外材料责任仍须处理；财务详情同步显示取消数量和原因。';
+  String get orderClosureApprovalHint =>
+      '采购或委外确认后立即取消未收余量，无需财务批准。已有收货、库存和应付记录保留，在外材料责任仍须处理；财务详情同步显示取消数量和原因。';
 
   @override
-  String get orderClosureReceiptFinalityHint => '结束前请办清收退货和质检处置；结束后不能直接更改原单已核定实收。';
+  String get orderClosureReceiptFinalityHint =>
+      '结束前请办清收退货和质检处置；结束后不能直接更改原单已核定实收。';
 
   @override
   String get orderClosureCloseHint => '立即取消本单未收余量，仓库不再等待剩余到货。';
@@ -11812,7 +12078,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get orderClosureReorder => '结束并重新生成剩余订单';
 
   @override
-  String get orderClosureReorderHint => '立即结束原单，按核定剩余量生成关联草稿并保留价格参考；新单须重新选择供应商、核对条款，再提交正常财务审批。';
+  String get orderClosureReorderHint =>
+      '立即结束原单，按核定剩余量生成关联草稿并保留价格参考；新单须重新选择供应商、核对条款，再提交正常财务审批。';
 
   @override
   String get orderClosureReason => '结束原因';
@@ -11851,7 +12118,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get orderClosureRejected => '结束已驳回';
 
   @override
-  String get orderClosureApproveHint => '批准后结束原单剩余履约，仓库不再等待未到货量。选择重建时生成关联草稿，保留价格参考；新单须重新选择供应商、核对条款后再送审。已有库存和账务记录保留，在外材料责任仍须处理。';
+  String get orderClosureApproveHint =>
+      '批准后结束原单剩余履约，仓库不再等待未到货量。选择重建时生成关联草稿，保留价格参考；新单须重新选择供应商、核对条款后再送审。已有库存和账务记录保留，在外材料责任仍须处理。';
 
   @override
   String get orderClosureReviewTitle => '结束申请';
@@ -11860,7 +12128,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get orderClosureApprovedToast => '结束申请已批准，原单剩余履约已结束';
 
   @override
-  String get orderClosureBatchHint => '所选内容含结束申请。批准后原单剩余履约结束，选择重建的订单生成新草稿；请逐单核对结束原因与剩余量。';
+  String get orderClosureBatchHint =>
+      '所选内容含结束申请。批准后原单剩余履约结束，选择重建的订单生成新草稿；请逐单核对结束原因与剩余量。';
 
   @override
   String get companyFilesTitle => '公司资料库';
@@ -12022,7 +12291,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get companyFilesDeleteHint => '文件夹及其全部子项将一起移到回收站，原件保留。还原后仍按当前权限访问。';
 
   @override
-  String get companyFilesPasswordHint => '密码是当前资料的额外保护，不代替人员或部门授权。修改密码后，所有临时解锁失效。';
+  String get companyFilesPasswordHint =>
+      '密码是当前资料的额外保护，不代替人员或部门授权。修改密码后，所有临时解锁失效。';
 
   @override
   String get companyFilesNewPassword => '新密码';
@@ -12052,7 +12322,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get companyFilesParent => '上一级';
 
   @override
-  String get companyFilesAccessHint => '这些规则只适用于当前资料及其继承项，不会修改系统授权。拒绝规则优先；操作仍需已获授的使用资格。';
+  String get companyFilesAccessHint =>
+      '这些规则只适用于当前资料及其继承项，不会修改系统授权。拒绝规则优先；操作仍需已获授的使用资格。';
 
   @override
   String get companyFilesInherit => '继承上级权限';
@@ -12202,7 +12473,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get companyFilesSpecificReaders => '指定人员或部门';
 
   @override
-  String get companyFilesSpecificReadersHint => '向指定人员及部门开放阅读，所选部门包含下级。上级拒绝仍有效，创建者保留原本已有的操作权限。';
+  String get companyFilesSpecificReadersHint =>
+      '向指定人员及部门开放阅读，所选部门包含下级。上级拒绝仍有效，创建者保留原本已有的操作权限。';
 
   @override
   String get companyFilesAllowedReaders => '允许查看';
@@ -12352,7 +12624,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get orderClosureCancelledByPurchase => '采购已取消以下剩余未收数量，原单按实际收货继续结算。';
 
   @override
-  String get orderClosureCancelledBySubcontract => '委外已取消以下剩余未收数量，原单按实际收货继续结算，在外材料责任保留。';
+  String get orderClosureCancelledBySubcontract =>
+      '委外已取消以下剩余未收数量，原单按实际收货继续结算，在外材料责任保留。';
 
   @override
   String get orderClosureOperator => '办理人';
@@ -12373,7 +12646,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get orderClosureCancelledGift => '取消未收赠品';
 
   @override
-  String get orderClosureLegacyPendingHint => '这是历史待审批结束申请。请采购或委外重新核对后直接结束，无需财务批准。';
+  String get orderClosureLegacyPendingHint =>
+      '这是历史待审批结束申请。请采购或委外重新核对后直接结束，无需财务批准。';
 
   @override
   String get orderClosureReturned => '累计退货';
@@ -12400,5 +12674,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get orderClosureRequestCanceled => '历史结束申请已撤回';
 
   @override
-  String get orderClosureQuantityBasisHint => '取消数量按实际留存、质检实退和已结清损耗核定；累计收货不等于净留存数量。';
+  String get orderClosureQuantityBasisHint =>
+      '取消数量按实际留存、质检实退和已结清损耗核定；累计收货不等于净留存数量。';
 }

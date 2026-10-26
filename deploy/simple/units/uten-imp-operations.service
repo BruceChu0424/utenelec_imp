@@ -22,6 +22,7 @@ PrivateDevices=true
 ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/run/uten-imp-operations /var/lib/uten-imp-operations
+ReadWritePaths=/var/lib/uten-imp-public
 ReadWritePaths=/etc/uten-imp-updater
 # Inventory cleanup is confined again by fd-relative allowlists and host config.
 ReadWritePaths=-/opt/uten-imp/releases -/var/log/uten-imp -/var/cache/uten-imp

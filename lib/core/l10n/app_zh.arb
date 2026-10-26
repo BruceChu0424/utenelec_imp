@@ -357,7 +357,7 @@
   "productionDailyReportApprovedStateVerified": "当前已审核，页面已刷新。",
   "productionDailyReportReversedStateVerified": "当前已红冲，页面已刷新。",
   "productionDailyReportStateChangedReview": "日报状态已变化，页面已刷新，请核对当前状态。",
-  "appTitle": "优腾·综合管理平台",
+  "appTitle": "UTEN",
   "@appTitle": {
     "description": "应用标题"
   },
@@ -385,7 +385,7 @@
   "loginServerRecoveryHint": "登录异常或更换网络时使用；只会在此安装包内置的公司与云端地址之间自动选择。",
   "loginServerRecoverySuccess": "已恢复自动选择，请重新登录",
   "loginServerRecoveryFailed": "服务器选择恢复失败，请稍后重试或联系管理员",
-  "loginFooter": "© {year} 优腾 · 综合管理平台",
+  "loginFooter": "© {year} UTEN",
   "@loginFooter": {
     "placeholders": {
       "year": {

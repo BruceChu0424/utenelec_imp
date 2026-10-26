@@ -57,7 +57,14 @@ Map<String, dynamic> _materialShortcutForest(Map<String, dynamic> data) {
 
 Future<void> _ctrlMaterialToggle(WidgetTester tester, String key) async {
   final toggle = find.byKey(ValueKey('material-table-toggle-$key'));
-  await tester.ensureVisible(toggle);
+  await Scrollable.ensureVisible(tester.element(toggle), alignment: 0.5);
+  // A pinned leading region can cover the position chosen by the default
+  // ensureVisible alignment after visiting a deeply indented child.
+  await Scrollable.of(
+    tester.element(toggle),
+    axis: Axis.horizontal,
+  ).position.ensureVisible(tester.renderObject(toggle), alignment: 1);
+  await tester.pumpAndSettle();
   await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
   try {
     await tester.tap(toggle);
@@ -127,7 +134,7 @@ void materialTreeShortcutCases() {
   );
 
   testWidgets(
-    'Ctrl tree: product peers open one level and nested peers keep their parent scope',
+    'Ctrl tree: product and nested peers toggle within their parent and preserve descendants',
     (tester) async {
       await _pump(
         tester,
@@ -161,6 +168,19 @@ void materialTreeShortcutCases() {
           findsNothing,
         );
       }
+      await tester.tap(
+        find.byKey(
+          const ValueKey('material-table-toggle-PRODUCT|shortcut-product-2'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _ctrlMaterialToggle(tester, 'PRODUCT|shortcut-product-0');
+      expect(
+        find.byKey(const ValueKey('material-table-tree-MATERIAL|shortcut-2-0')),
+        findsOneWidget,
+        reason:
+            'an open arrow in a mixed sibling group opens the remaining peers',
+      );
       await _ctrlMaterialToggle(tester, 'MATERIAL|shortcut-0-0');
       for (var branch = 0; branch < 2; branch++) {
         expect(
@@ -181,19 +201,54 @@ void materialTreeShortcutCases() {
         requestCount,
         reason: 'tree expansion is presentation work and makes no API calls',
       );
-      final before = debugMaterialProjectionSteps;
+      await _ctrlMaterialToggle(tester, 'MATERIAL|shortcut-0-1');
+      for (var branch = 0; branch < 2; branch++) {
+        expect(
+          find.byKey(
+            ValueKey('material-table-tree-MATERIAL|shortcut-0-$branch-leaf'),
+          ),
+          findsNothing,
+          reason: 'Ctrl on any fully open peer closes only this sibling group',
+        );
+      }
       await _ctrlMaterialToggle(tester, 'MATERIAL|shortcut-0-0');
+      final quantityController = tester
+          .widget<TextField>(_orderQty('shortcut-0-0'))
+          .controller;
+      await _ctrlMaterialToggle(tester, 'PRODUCT|shortcut-product-1');
+      for (var root = 0; root < 3; root++) {
+        expect(
+          find.byKey(ValueKey('material-table-tree-MATERIAL|shortcut-$root-0')),
+          findsNothing,
+        );
+      }
+      await _ctrlMaterialToggle(tester, 'PRODUCT|shortcut-product-2');
+      for (var branch = 0; branch < 2; branch++) {
+        expect(
+          find.byKey(
+            ValueKey('material-table-tree-MATERIAL|shortcut-0-$branch-leaf'),
+          ),
+          findsOneWidget,
+          reason: 'closing the roots retains their descendant expansion state',
+        );
+        expect(
+          find.byKey(
+            ValueKey('material-table-tree-MATERIAL|shortcut-1-$branch-leaf'),
+          ),
+          findsNothing,
+        );
+      }
       expect(
-        debugMaterialProjectionSteps,
-        before,
-        reason: 'repeating Ctrl on open peers is a no-op',
+        tester.widget<TextField>(_orderQty('shortcut-0-0')).controller,
+        same(quantityController),
       );
+      expect(requests.length, requestCount);
       expect(tester.takeException(), isNull);
     },
   );
 
   testWidgets(
-    'Ctrl tree: material summary opens aggregate peers without database reads',
+    'Ctrl tree: material summary toggles aggregate peers without database reads',
     (tester) async {
       await _pump(
         tester,
@@ -209,6 +264,7 @@ void materialTreeShortcutCases() {
           .where((key) => key.startsWith('AGGREGATE|'))
           .toList();
       expect(aggregates.length, greaterThan(1));
+      final otherAggregate = aggregates[1];
       final initialCount = _presentationTable(tester).items.length;
       final requestCount = requests.length;
       await _ctrlMaterialToggle(tester, aggregates.first);
@@ -216,12 +272,24 @@ void materialTreeShortcutCases() {
         _presentationTable(tester).items.length,
         greaterThan(initialCount),
       );
-      for (final aggregate in aggregates) {
-        final toggle = tester.widget<IconButton>(
-          find.byKey(ValueKey('material-table-toggle-$aggregate')),
-        );
-        expect(toggle.tooltip, contains('收起下级'));
-      }
+      final expandedCount = _presentationTable(tester).items.length;
+      expect(
+        expandedCount,
+        initialCount + aggregates.length,
+        reason:
+            'each fixture aggregate exposes its one source, including virtualized offscreen peers',
+      );
+      await _ctrlMaterialToggle(tester, otherAggregate);
+      expect(_presentationTable(tester).items, hasLength(initialCount));
+      await _ctrlMaterialToggle(tester, aggregates.first);
+      expect(_presentationTable(tester).items, hasLength(expandedCount));
+      await tester.tap(
+        find.byKey(ValueKey('material-table-toggle-${aggregates.first}')),
+      );
+      await tester.pumpAndSettle();
+      expect(_presentationTable(tester).items.length, lessThan(expandedCount));
+      await _ctrlMaterialToggle(tester, otherAggregate);
+      expect(_presentationTable(tester).items, hasLength(expandedCount));
       expect(requests.length, requestCount);
       expect(tester.takeException(), isNull);
     },

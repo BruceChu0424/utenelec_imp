@@ -149,7 +149,7 @@ jobs:
           dart format --output=none --set-exit-if-changed lib test
           flutter analyze --no-pub
           flutter test --no-pub
-          node --test web/update_check.test.cjs
+          node --test web/update_check.test.cjs web/maintenance.test.cjs
           pwsh -NoLogo -NoProfile -File .github/scripts/verify-font-assets.ps1
           flutter build web --release --no-pub --no-web-resources-cdn \
             --dart-define="APP_VERSION=$GITHUB_REF_NAME" \

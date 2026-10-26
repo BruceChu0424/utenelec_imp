@@ -285,7 +285,7 @@ jobs:
       - run: flutter analyze --no-pub
       - run: flutter test --no-pub
       - name: Verify browser update and stale-bundle behavior before release
-        run: node --test web/update_check.test.cjs
+        run: node --test web/update_check.test.cjs web/maintenance.test.cjs
       - name: Verify browser draft reset, receipts, and exact material quantities
         run: |
           worker=test/.uten-ci-codec-worker.js

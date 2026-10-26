@@ -2,8 +2,42 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../core/network/api_exception.dart';
+
+const websiteAllowLoopbackHttp = bool.fromEnvironment(
+  'UTEN_WEBSITE_ALLOW_LOOPBACK_HTTP',
+);
+
+/// Public-site and editor handoffs share one origin policy. Callers opt into
+/// local HTTP explicitly; a real Release build cannot override HTTPS protection.
+Uri websiteOriginUri(
+  String configured, {
+  required bool releaseMode,
+  required bool allowLoopbackHttp,
+}) {
+  final uri = Uri.tryParse(configured);
+  final localHttp =
+      !kReleaseMode &&
+      !releaseMode &&
+      allowLoopbackHttp &&
+      uri?.scheme == 'http' &&
+      const {'127.0.0.1', 'localhost', '::1'}.contains(uri?.host);
+  if (uri == null ||
+      !uri.hasAuthority ||
+      uri.host.isEmpty ||
+      (uri.scheme != 'https' && !localHttp) ||
+      uri.userInfo.isNotEmpty ||
+      // Uri canonicalization can discard an empty user-info marker.
+      configured.contains('@') ||
+      uri.hasQuery ||
+      uri.hasFragment ||
+      (uri.path.isNotEmpty && uri.path != '/')) {
+    throw ApiException('WEBSITE_UNTRUSTED_TARGET', 'Website target rejected');
+  }
+  return uri;
+}
 
 class WebsiteManagementInfo {
   const WebsiteManagementInfo({
@@ -133,25 +167,28 @@ Uri websiteEditorUri({
   required WebsiteEditorGrant grant,
   required WebsiteHandoffProof proof,
   required DateTime now,
+  required bool releaseMode,
+  required bool allowLoopbackHttp,
 }) {
-  final origin = Uri.tryParse(info.adminOrigin);
+  final origin = websiteOriginUri(
+    info.adminOrigin,
+    releaseMode: releaseMode,
+    allowLoopbackHttp: allowLoopbackHttp,
+  );
+  final public = websiteOriginUri(
+    info.publicOrigin,
+    releaseMode: releaseMode,
+    allowLoopbackHttp: allowLoopbackHttp,
+  );
   final entry = Uri.tryParse(grant.entryUrl);
-  final public = Uri.tryParse(info.publicOrigin);
-  bool validOrigin(Uri? uri) =>
-      uri != null &&
-      uri.scheme == 'https' &&
-      uri.host.isNotEmpty &&
-      uri.userInfo.isEmpty &&
-      !uri.hasQuery &&
-      !uri.hasFragment &&
-      (uri.path.isEmpty || uri.path == '/');
-  if (!validOrigin(origin) ||
-      !validOrigin(public) ||
-      origin!.origin != public!.origin ||
+  if (origin.origin != public.origin ||
       info.adminEntryPath != '/admin/imp-entry' ||
       entry == null ||
-      entry.scheme != 'https' ||
+      entry.scheme != origin.scheme ||
+      !entry.hasAuthority ||
+      entry.host.isEmpty ||
       entry.userInfo.isNotEmpty ||
+      grant.entryUrl.contains('@') ||
       entry.origin != origin.origin ||
       entry.path != '/admin/imp-entry' ||
       entry.hasQuery ||

@@ -117,7 +117,7 @@ jobs:
       - name: Build Flutter Web
         run: |
           set -euo pipefail
-          node --test web/update_check.test.cjs
+          node --test web/update_check.test.cjs web/maintenance.test.cjs
           flutter pub get --enforce-lockfile
           flutter build web --release --no-pub --no-web-resources-cdn --no-wasm-dry-run \
             --dart-define="APP_VERSION=$VERSION" \

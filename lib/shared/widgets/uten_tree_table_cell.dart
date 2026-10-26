@@ -31,7 +31,7 @@ class UtenTreeTableCell extends StatelessWidget {
     bool hasChildren = false,
     bool expanded = false,
     VoidCallback? onToggle,
-    VoidCallback? onExpandPeers,
+    VoidCallback? onTogglePeers,
     Key? toggleKey,
     String? toggleTooltip,
     int maxVisualDepth = defaultMaxVisualDepth,
@@ -57,7 +57,7 @@ class UtenTreeTableCell extends StatelessWidget {
          hasChildren: hasChildren,
          expanded: expanded,
          onToggle: onToggle,
-         onExpandPeers: onExpandPeers,
+         onTogglePeers: onTogglePeers,
          toggleKey: toggleKey,
          toggleTooltip: toggleTooltip,
          maxVisualDepth: maxVisualDepth,
@@ -78,6 +78,20 @@ class UtenTreeTableCell extends StatelessWidget {
       UtenControlMetrics.cellHeight;
   static const double compactCellVerticalPadding = UtenSpacing.s4;
 
+  /// Mixed sibling groups open together; a fully open group closes together.
+  /// Callers supply only expandable peers in the same occurrence-parent scope.
+  static bool shouldCollapsePeers<T>(
+    Iterable<T> peers, {
+    required bool Function(T peer) isExpanded,
+  }) {
+    var hasPeers = false;
+    for (final peer in peers) {
+      hasPeers = true;
+      if (!isExpanded(peer)) return false;
+    }
+    return hasPeers;
+  }
+
   const UtenTreeTableCell({
     super.key,
     required this.depth,
@@ -94,7 +108,7 @@ class UtenTreeTableCell extends StatelessWidget {
     this.hasChildren = false,
     this.expanded = false,
     this.onToggle,
-    this.onExpandPeers,
+    this.onTogglePeers,
     this.toggleKey,
     this.toggleTooltip,
     this.maxVisualDepth = defaultMaxVisualDepth,
@@ -261,9 +275,9 @@ class UtenTreeTableCell extends StatelessWidget {
   final bool expanded;
   final VoidCallback? onToggle;
 
-  /// Ctrl + click opens only this occurrence's siblings under the same parent.
+  /// Ctrl + click toggles only this occurrence's siblings under the same parent.
   /// Hosts keep ownership of their tree, loading and edit-session boundaries.
-  final VoidCallback? onExpandPeers;
+  final VoidCallback? onTogglePeers;
   final Key? toggleKey;
 
   /// 展开钮悬停文案（可选）：默认「展开下级/收起下级」；分组头等需要更具体
@@ -413,15 +427,15 @@ class UtenTreeTableCell extends StatelessWidget {
                           padding: EdgeInsets.zero,
                           tooltip:
                               '${toggleTooltip ?? (expanded ? '收起下级' : (childCount != null ? '展开 $childCount 个下级' : '展开下级'))}'
-                              '${onExpandPeers == null ? '' : '\nCtrl + 点击：展开同层'}',
+                              '${onTogglePeers == null ? '' : '\nCtrl + 点击：展开/收起同层'}',
                           onPressed: onToggle == null
                               ? null
                               : () {
                                   if (HardwareKeyboard
                                           .instance
                                           .isControlPressed &&
-                                      onExpandPeers != null) {
-                                    onExpandPeers!();
+                                      onTogglePeers != null) {
+                                    onTogglePeers!();
                                   } else {
                                     onToggle!();
                                   }

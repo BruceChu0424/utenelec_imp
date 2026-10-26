@@ -37,6 +37,8 @@ import uuid
 from zoneinfo import ZoneInfo
 
 STATE = Path('/var/lib/uten-imp-operations')
+PUBLIC_STATE = Path('/var/lib/uten-imp-public')
+UPDATE_NOTICE_SECONDS = 10 * 60
 SOCKET = Path('/run/uten-imp-operations/control.sock')
 CONFIG = Path('/etc/uten-imp-updater/source.env')
 UPDATER = '/usr/local/sbin/uten-imp-updater'
@@ -53,7 +55,7 @@ MIGRATOR_PORT = 5432
 MIGRATOR_USER = 'uten_migrator'
 MIGRATOR_PASSWORD_ENV = 'UTEN_MIGRATOR_DB_PASSWORD'
 VERSION = re.compile(r'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)')
-PHASES = {'CHECKING', 'DOWNLOADING', 'BACKING_UP', 'MIGRATING', 'ACTIVATING', 'HEALTH_CHECK', 'DONE'}
+PHASES = {'CHECKING', 'DOWNLOADING', 'BACKING_UP', 'NOTIFYING', 'MIGRATING', 'ACTIVATING', 'HEALTH_CHECK', 'DONE'}
 TERMINAL = {'SUCCEEDED', 'FAILED', 'RECOVERY_REQUIRED', 'CANCELLED'}
 # Public failure text is selected here; subprocess/config text is never public.
 # retrySafe permits a new explicit check after the stated remedy, never replaying
@@ -94,6 +96,7 @@ FAILURE_CATALOG = {
     'WORKER_INTERRUPTED': ('更新任务已中断', '负责本次操作的主机任务已退出或被中断，没有自动重放。', '请管理员结合当前版本、数据库与备份核对结果；不要直接重放旧更新请求。', 'CONTACT_ADMIN', False),
     'WORKER_START_FAILED': ('更新任务无法启动', '主机未能启动独立的更新服务，本次任务没有进入执行。', '请管理员核对运维服务安装、系统服务状态及本机执行权限。', 'CONTACT_ADMIN', False),
     'CURRENT_VERSION_CHANGED': ('当前版本已被其他操作改变', '执行前发现运行版本已变化，本次未停服或迁移。', '请刷新当前状态并重新检查版本，核对后再提交新的操作。', 'REFRESH_STATUS', True),
+    'UPDATE_NOTICE_REQUIRED': ('更新预告尚未获得确认', '当前激活没有匹配正在执行的授权任务和完整十分钟预告，未停服或迁移。', '请从服务器运维页面重新检查并发起更新，不要直接重放激活命令。', 'CONTACT_ADMIN', False),
     'CUTOVER_BACKUP_FAILED_RECOVERED': ('最终备份失败，原服务已恢复', '切换前的最终数据库备份未成功；没有执行迁移，原服务已恢复健康。', '请管理员核对最终备份失败原因与备份磁盘，修复后重新检查，不要重放旧任务。', 'CONTACT_ADMIN', False),
     'HOST_HELPER_UNAVAILABLE': ('无法连接主机运维助手', '后端未能与本机运维服务建立可信连接。', '请管理员核对运维助手服务、受保护连接与组件安装状态。', 'CONTACT_ADMIN', False),
     'HOST_RESPONSE_INVALID': ('主机响应未通过安全校验', '主机运维响应不符合当前支持的协议，不能据此确认操作结果。', '请管理员核对后端与主机组件版本并查看本机诊断；不要再次提交尚未确认的更新。', 'REFRESH_STATUS', False),
@@ -235,6 +238,7 @@ def attach_failure(job, error, *, step=None, preserved=None):
 MESSAGES = {
     'CHECKING': '正在检查发布通道。', 'DOWNLOADING': '正在下载并验证发布签名和文件。',
     'BACKING_UP': '正在创建和核验数据库及上传文件配套备份。',
+    'NOTIFYING': '已通知在线用户，请保存工作；十分钟预告结束后才会切换版本。',
     'MIGRATING': '正在执行数据库迁移；请勿关闭服务器。',
     'ACTIVATING': '正在激活新版本，后端会短暂重启。',
     'HEALTH_CHECK': '正在检查后端启动、数据库和健康状态。', 'DONE': '更新已完成。',
@@ -252,8 +256,13 @@ def now() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
 
+def process_parent(pid: int) -> int:
+    # /proc comm can contain spaces and parentheses; split after its final ')'.
+    return int(Path('/proc/' + str(pid) + '/stat').read_text().rsplit(') ', 1)[1].split()[1])
+
+
 def interrupted_state(job):
-    return 'FAILED' if job.get('phase') in {'CHECKING', 'DOWNLOADING', 'BACKING_UP'} else 'RECOVERY_REQUIRED'
+    return 'FAILED' if job.get('phase') in {'CHECKING', 'DOWNLOADING', 'BACKING_UP', 'NOTIFYING'} else 'RECOVERY_REQUIRED'
 
 
 def identifier(value) -> str:
@@ -266,11 +275,11 @@ def identifier(value) -> str:
     return canonical
 
 
-def atomic(path: Path, value: bytes) -> None:
+def atomic(path: Path, value: bytes, mode: int = 0o600) -> None:
     fd, name = tempfile.mkstemp(prefix='.operations-', dir=path.parent)
     try:
         with os.fdopen(fd, 'wb') as output:
-            os.fchmod(output.fileno(), 0o600)
+            os.fchmod(output.fileno(), mode)
             output.write(value)
             output.flush()
             os.fsync(output.fileno())
@@ -516,11 +525,11 @@ def future_instant(value):
         if parsed.tzinfo is None:
             raise ValueError()
         seconds = (parsed - dt.datetime.now(dt.timezone.utc)).total_seconds()
-        if not 60 <= seconds <= 30 * 86400:
+        if not UPDATE_NOTICE_SECONDS <= seconds <= 30 * 86400:
             raise ValueError()
         return parsed.astimezone(dt.timezone.utc).isoformat()
     except (ValueError, TypeError, AttributeError):
-        raise OperationError('INVALID_SCHEDULE', '预约时间须在一分钟后、三十天内。') from None
+        raise OperationError('INVALID_SCHEDULE', '预约时间须在十分钟后、三十天内，以便提醒在线用户。') from None
 
 
 def schedule_preview(payload):
@@ -545,6 +554,17 @@ def schedule_preview(payload):
     instant, zoned = next(iter(candidates.items()))
     return {'scheduledAt': future_instant(instant.isoformat()), 'serverTimeZone': zone.key,
             'displayLocalTime': zoned.isoformat()}
+
+
+def load_maintenance_recovery():
+    name = 'uten_maintenance_recovery'
+    loaded = sys.modules.get(name)
+    if loaded is None:
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name('maintenance_recovery.py'))
+        loaded = importlib.util.module_from_spec(spec)
+        sys.modules[name] = loaded
+        spec.loader.exec_module(loaded)
+    return loaded
 
 
 def load_storage():
@@ -572,6 +592,130 @@ class Operations:
 
     def store_job(self, job: dict):
         write_json(self.state / ('job-' + identifier(job['id']) + '.json'), job)
+        self.publish_maintenance(job)
+
+    def recovery_confirmed(self, job: dict) -> bool:
+        try:
+            receipt = read_json(self.state / ('service-restored-' + identifier(job['id']) + '.json'))
+            env = self.source.load()[1]
+            version = current_version(env)
+            if not isinstance(version, str) or not VERSION.fullmatch(version):
+                return False
+            base = Path(env.get('UTEN_BASE', '/opt/uten-imp'))
+            # This records a completed recovery event. A later ordinary source
+            # change, same-version app restart or PostgreSQL restart must not
+            # resurrect the old incident and interrupt every active client.
+            return (receipt.get('format') == 'uten-service-restored-v1' and receipt.get('jobId') == job['id']
+                    and receipt.get('verifiedVersion') == version and receipt.get('health') == 'UP'
+                    and receipt.get('jobSha256') == hashlib.sha256(read_private(self.state / ('job-' + job['id'] + '.json'))).hexdigest()
+                    and receipt.get('manifestSha256') == hashlib.sha256((base / 'releases' / version / 'SHA256SUMS').read_bytes()).hexdigest())
+        except (OSError, ValueError, OperationError, KeyError, TypeError, AttributeError, subprocess.SubprocessError):
+            return False
+
+    def assert_activation_authorized(self, version: str, expected: str):
+        """Lower activator guard: a direct CLI cannot bypass the common window.
+
+        This is deliberately not an RPC or HTTP operation. The shell must be a
+        direct child of the live independent worker, not a replay of an old job.
+        """
+        try:
+            main_pid = int(self.runner(['/usr/bin/systemctl', 'show', SERVICE, '--property=MainPID', '--value']).stdout.strip())
+            if main_pid <= 0 or process_parent(os.getppid()) != main_pid:
+                raise ValueError()
+            job = self.job()
+            if (not job or job.get('state') != 'RUNNING' or job.get('phase') != 'ACTIVATING'
+                    or job.get('mode') not in {'CHECK_AND_UPDATE', 'SCHEDULE_UPDATE'}
+                    or job.get('targetVersion') != version or (job.get('currentVersion') or 'none') != expected):
+                raise ValueError()
+            starts = job.get('noticeStartsAt') or job.get('scheduledAt')
+            published = job.get('noticePublishedAt') or (job.get('startedAt') if job.get('mode') == 'SCHEDULE_UPDATE' else None)
+            starts_at, published_at = (dt.datetime.fromisoformat(value.replace('Z', '+00:00')) for value in (starts, published))
+            if (starts_at.tzinfo is None or published_at.tzinfo is None
+                    or (starts_at - published_at).total_seconds() < UPDATE_NOTICE_SECONDS
+                    or starts_at > dt.datetime.now(dt.timezone.utc)):
+                raise ValueError()
+            # JSON and gate must name the same window already exposed to users.
+            fd = os.open(PUBLIC_STATE / 'maintenance.json', os.O_RDONLY | os.O_NOFOLLOW)
+            with os.fdopen(fd, 'rb') as stream:
+                info = os.fstat(stream.fileno())
+                if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022 or info.st_size > 4096:
+                    raise ValueError()
+                public = json.loads(stream.read(4097))
+            marker = (PUBLIC_STATE / 'updating').lstat()
+            if (public.get('state') != 'updating' or public.get('noticeId') != job['id']
+                    or public.get('targetVersion') != version or not stat.S_ISREG(marker.st_mode)
+                    or marker.st_uid != os.geteuid() or marker.st_mode & 0o022):
+                raise ValueError()
+        except (OSError, ValueError, TypeError, AttributeError, OperationError, subprocess.SubprocessError):
+            raise OperationError('INVALID_JOB_STATE', '激活必须由已完成十分钟预告的服务器运维任务执行；请从运维页面发起，不要直接重放激活命令。') from None
+
+    def publish_maintenance(self, job: dict | None):
+        """Allowlisted projection; never expose private jobs, actors, sources or diagnostics."""
+        # Serialize the heartbeat and worker, then reread durable state so a stale
+        # heartbeat cannot clear the gate after activation has already begun.
+        fd = os.open(PUBLIC_STATE / '.maintenance.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+                raise OperationError('UNSAFE_HOST_CONFIG', '维护状态锁权限不安全。')
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            if job:
+                job = self.job(job['id'])
+            active = self.job()
+            if active and (not job or active.get('startedAt', '') >= job.get('startedAt', '')):
+                job = active
+            if job is None and (PUBLIC_STATE / 'updating').exists():
+                # Missing private evidence never proves recovery after reboot.
+                return
+            self._publish_maintenance_locked(job)
+        finally:
+            os.close(fd)
+
+    def _publish_maintenance_locked(self, job: dict | None):
+        state, starts_at = 'available', None
+        if job and job.get('mode') != 'CHECK_ONLY':
+            if job.get('state') == 'RECOVERY_REQUIRED' and not self.recovery_confirmed(job):
+                state = 'recovery_required'
+            elif job.get('state') == 'RUNNING' and job.get('phase') in {'ACTIVATING', 'MIGRATING', 'HEALTH_CHECK'}:
+                state = 'updating'
+            elif job.get('state') not in TERMINAL:
+                starts_at = job.get('noticeStartsAt') or job.get('scheduledAt')
+                if starts_at:
+                    state = 'scheduled'
+        version = job.get('targetVersion') if job else None
+        version = version if isinstance(version, str) and VERSION.fullmatch(version) else None
+        value = {'schemaVersion': 1, 'state': state, 'noticeId': job['id'] if job and state != 'available' else None,
+                 'serverTime': now(), 'startsAt': starts_at, 'targetVersion': version, 'retryAfterSeconds': 10}
+        marker = PUBLIC_STATE / 'updating'
+        # Gate first, before activation effects. Clear only after a safe receipt.
+        if state in {'updating', 'recovery_required'}:
+            atomic(marker, b'updating\n', 0o644)
+        atomic(PUBLIC_STATE / 'maintenance.json', (json.dumps(value) + '\n').encode(), 0o644)
+        if state in {'available', 'scheduled'}:
+            try:
+                marker.unlink()
+            except FileNotFoundError:
+                pass
+
+    def notify_before_activation(self, job: dict):
+        # An appointment is advertised when saved. An immediate update grants a
+        # full ten minutes after the release and backup have been verified.
+        if job.get('mode') == 'SCHEDULE_UPDATE' and job.get('scheduledAt'):
+            scheduled = dt.datetime.fromisoformat(job['scheduledAt'].replace('Z', '+00:00'))
+            created = dt.datetime.fromisoformat(job['startedAt'].replace('Z', '+00:00'))
+            if (scheduled - created).total_seconds() >= UPDATE_NOTICE_SECONDS:
+                return
+        published = dt.datetime.now(dt.timezone.utc)
+        job['noticePublishedAt'] = published.isoformat()
+        job['noticeStartsAt'] = (published + dt.timedelta(seconds=UPDATE_NOTICE_SECONDS)).isoformat()
+        self.phase(job, 'NOTIFYING')
+        deadline = time.monotonic() + UPDATE_NOTICE_SECONDS
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            time.sleep(min(10, remaining))
+            self.publish_maintenance(job)
 
     def no_running_job(self):
         existing = self.observe_job(lock_held=True)
@@ -675,7 +819,7 @@ class Operations:
             if old is not None:
                 return old
             existing = self.no_running_job()
-            if existing and existing['state'] == 'RECOVERY_REQUIRED':
+            if existing and existing['state'] == 'RECOVERY_REQUIRED' and not self.recovery_confirmed(existing):
                 raise OperationError('RECOVERY_REQUIRED', '上次更新需要先完成恢复核对，未启动新的检查或更新。')
             status = self.status()
             if not status['manualOnly']:
@@ -908,6 +1052,16 @@ class Operations:
                 job['backupPath'] = str(published)
                 env = self.source.load()[1]
                 job['migrationRequired'] = migration_digest(candidate_jar) != migration_digest(base / 'current/server/uten-imp-server.jar') if current else True
+                step = 'NOTIFYING'
+                self.notify_before_activation(job)
+                # The warning is a real delay. Recheck source, running version
+                # and database/storage binding after it, before stopping writes.
+                step = 'CHECK_PRECONDITIONS'
+                if self.source.view()['revision'] != job['request']['expectedSourceRevision']:
+                    raise OperationError('STALE_CONFIG', '发布来源已变化，未执行停服。')
+                if current_version(self.source.load()[1]) != job['currentVersion']:
+                    raise OperationError('CURRENT_VERSION_CHANGED', '运行版本已变化，未执行停服。')
+                self.backup_binding(job['request']['runtimeBinding'])
                 self.phase(job, 'ACTIVATING')
                 activation_started = True
                 step = 'ACTIVATE'
@@ -927,7 +1081,7 @@ class Operations:
                 # Details stay private. Never return subprocess output, config,
                 # provider XML or exception strings which might contain a secret.
                 precondition = isinstance(error, OperationError) and isinstance(error.code, str) and error.code in {
-                    'CURRENT_VERSION_CHANGED', 'CUTOVER_BACKUP_FAILED_RECOVERED'}
+                    'CURRENT_VERSION_CHANGED', 'CUTOVER_BACKUP_FAILED_RECOVERED', 'UPDATE_NOTICE_REQUIRED'}
                 job.update(state='RECOVERY_REQUIRED' if activation_started and not precondition else 'FAILED', finishedAt=now())
                 attach_failure(job, error, step=step, preserved=not activation_started or precondition)
                 self.store_job(job)
@@ -981,6 +1135,8 @@ class Operations:
                 raise OperationError('CURRENT_VERSION_CHANGED', '当前版本已变化；未停服、未执行迁移，请重新检查。')
             if code == 43:
                 raise OperationError('CUTOVER_BACKUP_FAILED_RECOVERED', '最终备份未通过，数据库未迁移，原服务已恢复。')
+            if code == 44:
+                raise OperationError('UPDATE_NOTICE_REQUIRED', '当前激活未获得已预告授权任务的确认，未停服或迁移。')
             if code != 0:
                 classified = classify_failure(subprocess.CalledProcessError(code, [UPDATER, 'activate'],
                                                 stderr=private_tail), job.get('phase'), 'ACTIVATE')
@@ -1219,11 +1375,36 @@ def secure_directory(path: Path, mode: int, gid: int):
 
 
 def main() -> int:
-    if os.geteuid() != 0 or len(sys.argv) != 2 or sys.argv[1] not in {'serve', 'worker', 'record-restore-proof'}:
+    commands = {'serve': 2, 'worker': 2, 'record-restore-proof': 2,
+                'assert-activation-authorized': 4, 'confirm-service-restored': 4}
+    if os.geteuid() != 0 or len(sys.argv) != commands.get(sys.argv[1] if len(sys.argv) > 1 else '', -1):
         raise SystemExit('Use root-owned operations service.')
     secure_directory(STATE, 0o700, 0)
+    secure_directory(PUBLIC_STATE, 0o755, 0)
     secure_directory(Path('/run/uten-imp-updater'), 0o700, 0)
     operations = Operations()
+    if sys.argv[1] == 'assert-activation-authorized':
+        try:
+            operations.assert_activation_authorized(sys.argv[2], sys.argv[3])
+        except OperationError:
+            print('UTEN_ACTIVATION_BLOCKED:UPDATE_NOTICE_REQUIRED', file=sys.stderr)
+            return 44
+        return 0
+    if sys.argv[1] == 'confirm-service-restored':
+        try:
+            module = load_maintenance_recovery()
+            receipt = module.confirm_service_restored(operations, sys.argv[2], sys.argv[3])
+        except OperationError as error:
+            code = error.code if error.code in PUBLIC_OPERATION_CODES else 'RECOVERY_REQUIRED'
+            print('RECOVERY_NOT_CONFIRMED:' + code + ' ' + ' '.join(str(error).split())[:1000], file=sys.stderr)
+            return 1
+        except Exception:
+            # Paths, argv and provider diagnostics must never escape a failed
+            # local confirmation. The gate remains tied to durable evidence.
+            print('RECOVERY_NOT_CONFIRMED:UNAVAILABLE', file=sys.stderr)
+            return 1
+        print(json.dumps(receipt))
+        return 0
     if sys.argv[1] == 'worker':
         return operations.worker()
     if sys.argv[1] == 'record-restore-proof':
@@ -1252,6 +1433,16 @@ def main() -> int:
             raise RuntimeError('Unsafe socket path')
         SOCKET.unlink()
     load_storage()
+    # Anonymous polls read one fixed file, without authenticating or executing
+    # systemctl once per user. Keep the timestamp fresh while appointments wait.
+    def refresh_public_status():
+        while True:
+            try:
+                operations.publish_maintenance(operations.observe_job())
+            except Exception as error:
+                print('Maintenance status refresh unavailable: ' + type(error).__name__, file=sys.stderr)
+            time.sleep(10)
+    threading.Thread(target=refresh_public_status, daemon=True).start()
     with Server(str(SOCKET), Handler) as server:
         os.chmod(SOCKET, 0o660)
         os.chown(SOCKET, 0, app_gid)

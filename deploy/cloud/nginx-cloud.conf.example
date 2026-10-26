@@ -13,6 +13,14 @@ limit_conn_zone $binary_remote_addr zone=uten_cloud_goods_import_conn:10m;
 limit_req_zone $binary_remote_addr zone=uten_cloud_ai_jobs_ip:10m rate=12r/m;
 limit_conn_zone $binary_remote_addr zone=uten_cloud_ai_jobs_conn:10m;
 
+map $uri $uten_maintenance_cache_control {
+    default "";
+    /api/system/maintenance "no-store";
+    /maintenance.html "no-store";
+    /maintenance.css "no-store";
+    /maintenance.js "no-store";
+}
+
 upstream uten_imp_cloud_backend {
     # Loopback is a required trust boundary. Keep the application bound to
     # 127.0.0.1:8080 and deny direct security-group/firewall access to 8080.
@@ -83,6 +91,17 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "DENY" always;
     add_header Cross-Origin-Opener-Policy "same-origin" always;
+    add_header Cache-Control $uten_maintenance_cache_control always;
+
+    location = /api/system/maintenance {
+        alias /var/lib/uten-imp-public/maintenance.json;
+        default_type application/json;
+        limit_except GET { deny all; }
+    }
+    error_page 503 /maintenance.html;
+    location = /maintenance.html { alias /var/lib/uten-imp-public/maintenance.html; default_type text/html; }
+    location = /maintenance.css { alias /var/lib/uten-imp-public/maintenance.css; default_type text/css; }
+    location = /maintenance.js { alias /var/lib/uten-imp-public/maintenance.js; default_type application/javascript; }
 
     # Exact health endpoints must precede the generic Actuator deny so Flutter,
     # watchdogs and load balancers never receive SPA index.html as a false 200.
@@ -283,6 +302,7 @@ server {
 
     # Flutter Web SPA entry and client-side routes.
     location / {
+        if (-f /var/lib/uten-imp-public/updating) { return 503; }
         try_files $uri $uri/ /index.html;
         expires -1;
     }

@@ -30,13 +30,7 @@ class ClientUpdateTile extends ConsumerWidget {
               : '${l10n.clientUpdateLatest} ${controller.release!.version}',
         ),
         trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: () async {
-          final dialog = openClientUpdatePage(context, controller);
-          if (controller.release == null && !controller.busy) {
-            await controller.check();
-          }
-          await dialog;
-        },
+        onTap: () => openClientUpdatePage(context, controller),
       ),
     );
   }

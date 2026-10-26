@@ -374,7 +374,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Ctrl展开根层兄弟仅加载一层，共享组件只读一次', (tester) async {
+  testWidgets('Ctrl根层兄弟切换展开收起，混合状态只展开且共享组件只读一次', (tester) async {
     final repo = _TreeRepo();
     await _pump(tester, repo);
     await _ctrlTap(tester, _toggle('root/root-a', 'root-a'));
@@ -387,13 +387,28 @@ void main() {
     expect(repo.count('deep-leaf'), 0);
     final calls = repo.calls.length;
     await _ctrlTap(tester, _toggle('root/root-b', 'root-b'));
-    expect(_row('root/root-a/a-x'), findsOneWidget, reason: '已展开兄弟不被收起');
+    expect(_row('root/root-a/a-x'), findsNothing);
+    expect(_row('root/root-b/b-x'), findsNothing);
+    expect(_row('root/root-c/a-x'), findsNothing);
+    expect(repo.calls, hasLength(calls), reason: '同层全部收起不读请求');
+    await _ctrlTap(tester, _toggle('root/root-c', 'root-c'));
+    expect(_row('root/root-a/a-x'), findsOneWidget);
+    expect(_row('root/root-b/b-x'), findsOneWidget);
+    expect(_row('root/root-c/a-x'), findsOneWidget);
+    expect(repo.calls, hasLength(calls), reason: '同层再次展开复用已加载children');
+    await tester.tap(_toggle('root/root-b', 'root-b'));
+    await tester.pumpAndSettle();
+    expect(_row('root/root-b/b-x'), findsNothing);
+    await _ctrlTap(tester, _toggle('root/root-a', 'root-a'));
+    expect(_row('root/root-a/a-x'), findsOneWidget, reason: '部分折叠时保留已展开兄弟');
+    expect(_row('root/root-b/b-x'), findsOneWidget);
+    expect(_row('root/root-c/a-x'), findsOneWidget);
     expect(repo.calls, hasLength(calls));
     expect(repo.writes, 0);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Ctrl内层限定occurrence父路径，刷新后也不展开其他父树alias', (tester) async {
+  testWidgets('Ctrl内层切换隔离父路径，保留后代展开且收起剪裁隐藏勾选', (tester) async {
     final repo = _TreeRepo();
     await _pump(tester, repo);
     await _ctrlTap(tester, _toggle('root/root-a', 'root-a'));
@@ -415,6 +430,38 @@ void main() {
     expect(_row('root/root-b/b-x/shared-leaf'), findsNothing);
     expect(_row('root/root-c/a-x/shared-leaf'), findsNothing);
     expect(repo.count('assembly-a'), 2, reason: '显式刷新取得新快照，别名共用本次读取');
+    await tester.tap(_toggle('root/root-a/a-x/shared-leaf', 'shared-leaf'));
+    await tester.pumpAndSettle();
+    final descendant = _row('root/root-a/a-x/shared-leaf/last-leaf');
+    expect(descendant, findsOneWidget);
+    final descendantCheckbox = find.descendant(
+      of: descendant,
+      matching: find.byType(Checkbox),
+    );
+    await tester.ensureVisible(descendantCheckbox.first);
+    await tester.pumpAndSettle();
+    await tester.tap(descendantCheckbox.hitTestable().first);
+    await tester.pumpAndSettle();
+    final selectedTable = tester.widget<MasterDataTableView<dynamic>>(
+      find.byKey(const ValueKey('goods-bom-table-true-false')),
+    );
+    expect(selectedTable.selectedIds, {'deep-leaf|last-leaf'});
+    final calls = repo.calls.length;
+    await _ctrlTap(tester, _toggle('root/root-a/a-x', 'a-x'));
+    expect(_row('root/root-a/a-x/shared-leaf'), findsNothing);
+    expect(_row('root/root-a/a-y/y-leaf'), findsNothing);
+    final collapsedTable = tester.widget<MasterDataTableView<dynamic>>(
+      find.byKey(const ValueKey('goods-bom-table-true-false')),
+    );
+    expect(collapsedTable.selectedIds, isEmpty);
+    expect(_row('root/root-b/b-x'), findsOneWidget);
+    expect(_row('root/root-c/a-x'), findsOneWidget);
+    await _ctrlTap(tester, _toggle('root/root-a/a-y', 'a-y'));
+    expect(descendant, findsOneWidget, reason: '同层收起不递归修改后代展开状态');
+    expect(_row('root/root-a/a-y/y-leaf'), findsOneWidget);
+    expect(_row('root/root-b/b-x/shared-leaf'), findsNothing);
+    expect(_row('root/root-c/a-x/shared-leaf'), findsNothing);
+    expect(repo.calls, hasLength(calls), reason: '同层收起再展开不重新请求');
     expect(repo.writes, 0);
     expect(tester.takeException(), isNull);
   });
@@ -442,7 +489,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('慢Ctrl重复点击不重复请求，编辑原始输入和控制器保全', (tester) async {
+  testWidgets('慢Ctrl连点忽略，展开收起切换保全编辑原文及控制器', (tester) async {
     final repo = _TreeRepo();
     final api = await _pump(tester, repo, editing: true);
     final activateQty = find.byKey(
@@ -473,6 +520,20 @@ void main() {
     b.complete(repo.tree['assembly-b']!);
     await tester.pumpAndSettle();
     expect(_row('root/root-c/a-x'), findsOneWidget);
+    expect(tester.widget<TextField>(qty).controller, same(controller));
+    expect(controller?.text, '1.23000');
+    final calls = repo.calls.length;
+    await _ctrlTap(tester, _toggle('root/root-b', 'root-b'));
+    expect(_row('root/root-a/a-x'), findsNothing);
+    expect(_row('root/root-b/b-x'), findsNothing);
+    expect(_row('root/root-c/a-x'), findsNothing);
+    expect(tester.widget<TextField>(qty).controller, same(controller));
+    expect(controller?.text, '1.23000');
+    await _ctrlTap(tester, _toggle('root/root-a', 'root-a'));
+    expect(_row('root/root-a/a-x'), findsOneWidget);
+    expect(_row('root/root-b/b-x'), findsOneWidget);
+    expect(_row('root/root-c/a-x'), findsOneWidget);
+    expect(repo.calls, hasLength(calls));
     expect(tester.widget<TextField>(qty).controller, same(controller));
     expect(controller?.text, '1.23000');
     expect(api.previewCalls, 0);

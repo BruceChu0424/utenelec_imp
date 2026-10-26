@@ -5,7 +5,7 @@ import 'package:uten_imp/shared/widgets/uten_tree_table_cell.dart';
 
 void main() {
   testWidgets(
-    'Ctrl dispatch opens peers once and ordinary click keeps its action',
+    'Ctrl dispatches only the peer toggle and ordinary click keeps its action',
     (tester) async {
       var toggles = 0;
       var peers = 0;
@@ -19,7 +19,7 @@ void main() {
                 title: '同层组件',
                 hasChildren: true,
                 onToggle: () => toggles++,
-                onExpandPeers: () => peers++,
+                onTogglePeers: () => peers++,
                 toggleKey: const Key('ctrl-peer-toggle'),
               ),
             ),

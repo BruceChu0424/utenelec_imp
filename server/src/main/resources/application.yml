@@ -145,9 +145,18 @@ uten:
     # 代码保留，置 true（或环境变量 UTEN_GOODS_OWNER_SCOPE_ENABLED=true）即恢复按归属人+授权过滤。
     goods-owner-scope-enabled: ${UTEN_GOODS_OWNER_SCOPE_ENABLED:false}
   website:
-    # 官网询盘 ingest 共享密钥（fail closed：留空时 /api/website-inquiries/ingest 拒绝全部推送）。
-    # 与官网 .env 的 IMP_INGEST_TOKEN 成对设置；官网侧推送地址 IMP_INGEST_URL 指向本服务。
+    # 旧版服务推送的兼容入口；新官网使用下方出站拉取及精确 ACK。
+    # fail closed：留空时 /api/website-inquiries/ingest 拒绝全部推送。
     inquiry-ingest-token: ${UTEN_WEBSITE_INQUIRY_INGEST_TOKEN:}
+    bridge:
+      # 仅服务器持有服务身份；持久连接仍须超管在官网管理中明确启用。
+      allowed-origins: ${UTEN_WEBSITE_BRIDGE_ALLOWED_ORIGINS:}
+      token: ${UTEN_WEBSITE_BRIDGE_TOKEN:}
+      site-id: ${UTEN_WEBSITE_BRIDGE_SITE_ID:uten}
+      # 仅隔离本地测试可显式启用，生产始终使用 HTTPS。
+      allow-loopback-http: ${UTEN_WEBSITE_BRIDGE_ALLOW_LOOPBACK_HTTP:false}
+      poll-delay-ms: ${UTEN_WEBSITE_BRIDGE_POLL_DELAY_MS:30000}
+      initial-delay-ms: ${UTEN_WEBSITE_BRIDGE_INITIAL_DELAY_MS:30000}
   audit:
     retention:
       enabled: ${UTEN_AUDIT_RETENTION_ENABLED:true}

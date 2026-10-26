@@ -134,7 +134,7 @@ nginx -t && systemctl enable --now nginx
 
 # 7. 发首个版本：本机打 tag v1.0.0 push → GitHub 出制品进 OSS
 /usr/local/sbin/uten-imp-updater check          # 下载暂存（会提示首装需人工激活）
-/usr/local/sbin/uten-imp-updater activate v1.0.0   # 备份→建库→切换→健康检查
+/usr/local/sbin/uten-imp-updater activate v1.0.0   # 仅current与active均none的空白首装bootstrap
 
 # 8. 通过后开机自启 + 定时更新
 systemctl enable --now uten-imp.service
@@ -290,21 +290,23 @@ git tag v1.4.1 && git push origin v1.4.1
   应用重启不会终止作业。首次安装、权限、预约窗口和安全清理详见
   [SERVER_OPERATIONS.zh-CN.md](SERVER_OPERATIONS.zh-CN.md)。
 - `uten-imp-updater status` 仅本机状态；显式 `latest` 才检查云端；`check`/`stage <version>` 只暂存，
-  不自动激活。人工 `activate` 保留作受控恢复/首装入口，不是日常页面更新的必需步骤。
+  不自动激活。既有部署的 `activate` 只由完成十分钟预告的独立运维 worker 调用，直接 CLI 在停服前拒绝；
+  只有 current 与 active 均为 none 的真正空白首装保留 bootstrap。人工恢复后的解除维护使用独立核验命令，
+  不把旧任务重放或改成成功，详见服务器运维说明。
 - **OSS 只保留最新一版**：发布流水线上传本版后自动删除 `releases/` 下旧版本
   （含版本控制桶的历史版本与删除标记），并分页清理精确 `LATEST.txt` 的历史版本。
   清理前后确认最新指针仍是本版；当前版本目录的全部对象版本与当前指针保留。
   SDK、分页或权限错误会使 Purge 步骤和发布工作流报红，已上传的本版制品保持有效。
   若报 `AccessDenied`，先核对发布身份的 `ListObjectVersions`、`DeleteObjectVersion`
   权限及精确对象范围；修正后可以用同一脚本重试清理，不通过忽略错误伪造绿灯；
-- **动了数据库**（`server/src/main/resources/db/migration/` 有增改）的版本：等 CI 完成
-  → `uten-imp-updater check` 暂存 → 在维护窗口 SSH：
+- **动了数据库**（`server/src/main/resources/db/migration/` 有增改）的版本：等 CI 完成，
+  确认主机组件与独立维护页面已安装，在“服务器运维”中检查并选择立即/预约更新：
 
   ```bash
   /usr/local/sbin/uten-imp-updater status
-  /usr/local/sbin/uten-imp-updater activate v1.5.0
-  # 自动：pg_dump 全量备份 → migrator → 原子切换 → 健康检查
-  # 失败：代码回滚、应用停止、备份文件路径会打印出来，按路径人工恢复
+  # 页面授权任务：验签暂存 → 配套备份核验 → 十分钟在线预告 → 重新核对身份
+  # → 最终停服dump → migrator → 原子切换 → 连续健康检查。
+  # 迁移或切换后失败保持维护页，按原任务与备份完成人工恢复，再使用confirm-service-restored核验。
   ```
 
 迁移前备份由更新器以`0700`目录和`0600`文件保存，文件名带随机后缀，重复激活不会覆盖同秒的旧备份。`pg_dump`先写`<正式名>.partial`，成功且非空后才以硬链接发布为正式名 (不覆盖已有文件)；失败、为空时立即删掉`.partial`，所以目录里不会出现像正式备份的半截文件。空备份、目录权限设置失败或`pg_dump`失败都会停止激活。权限在备份创建处单独设置，发行目录和JAR继续保留应用/Nginx需要的读取权限。
@@ -318,7 +320,8 @@ git tag v1.4.1 && git push origin v1.4.1
 ### 已有服务器安装手动/预约更新组件
 
 只发布应用包不会替换已安装的主机助手/systemd 单元。先核对实际单元、drop-in、当前更新作业、
-磁盘挂载和备份恢复结果，从同一已核验提交取得完整 `deploy/simple/`，运行：
+磁盘挂载和备份恢复结果，从同一已核验提交取得完整源码目录，保留 `deploy/simple/`、
+`deploy/postgres/backup/` 与 `web/maintenance.html/css/js` 的原相对位置，运行：
 
 ```bash
 sudo bash deploy/simple/install-server-operations.sh deploy/simple
@@ -330,6 +333,9 @@ systemctl is-active uten-imp-operations.service
 旧 timer 必须 disabled/inactive，operations bridge 必须 active。安装器私有备份旧助手及单元，
 配置来源保存在 root `/etc/uten-imp-updater/source.env`，已有 legacy env 复制后保留，后续由超管页面修改。
 安装不访问 OSS、不启动更新、不改数据库。应用保持无 sudo/特权，通过固定 Unix socket 操作主机。
+三件维护资产独立安装到 `/var/lib/uten-imp-public/`，不依赖旧版 `current/web`；按同一提交的相应 Nginx 模板
+接入状态 alias 和维护门闩，检查配置与实际读回后重载。旧已打开网页和旧 Windows 版本没有新控制器，不能宣称已收到弹窗；
+更新期间新打开的网页仍能显示独立维护页，客户端升级后共用十分钟预告和恢复控制器。
 
 安装器还将 `uten-imp-updater.tmpfiles.conf` 安装到 `/etc/tmpfiles.d/uten-imp-updater.conf`
 并立即创建 root:root、0700 的 `/run/uten-imp-updater`。两个运维单元都在开机 tmpfiles 初始化之后启动，
@@ -585,7 +591,7 @@ sudo rm -rf /srv/uten-backup/drill/pg /srv/uten-backup/drill/sock
    跑 `validate-server-env.sh` / `validate-migrator-env.sh`；整文件换装 `deploy/simple/units/uten-imp.service`
    并删除并入的 `uten-v538-mounts.conf` drop-in；先在当前版本上启动验证 (readiness、登录切账号、
    上传附件过 ClamAV、导出打印、AI 识别、服务器状态页)。
-3. **停机段二 (约 3-10 分钟)**：`uten-imp-updater activate <新版本>`，升级前 dump 应落在
+3. **停机段二**：在服务器运维页面发起已核验版本的更新，完成十分钟预告后进入切换；升级前 dump 应落在
    `/srv/uten-backup/pre-activation/`。健康检查失败先看 `journalctl -u uten-imp` 有没有 Started。
 4. **更新器换新 + web 分组 (ERP 不停, nginx 两次秒级重启)**：按第四节「发行目录权限」切换 `uten-web`，
    换装新的 `uten-imp-updater` 与 `uten-imp-updater.service`，`uten-imp-updater status && check` 必须成功

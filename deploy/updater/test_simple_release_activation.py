@@ -17,9 +17,11 @@ class SimpleReleaseActivationTest(unittest.TestCase):
                    candidate_health=True, restart=True, old_health=True, migrate=True, final_stop=True,
                    backup_dir_blocked=False, backup_dir_symlink=False, install_noop=False,
                    web_group=True, migrator_readable=True, backup=True, expected='',
-                   database='uten_imp', port='5432', migrator_extra='', migrator_mode=0o600):
+                   database='uten_imp', port='5432', migrator_extra='', migrator_mode=0o600, maintenance_guard=True,
+                   bootstrap_running=False):
         source = SCRIPT.read_text(encoding="utf-8")
         activate = re.search(r"(?ms)^do_activate\(\) \{.*?^\}", source).group(0)
+        activate = activate.replace('/usr/bin/python3 -I /usr/local/lib/uten-imp/host_operations.py', 'maintenance_guard')
         preflight = re.search(r"(?ms)^validate_migrator_config\(\) \{.*?^\}", source).group(0)
         with tempfile.TemporaryDirectory(prefix="uten-activation-") as temp:
             root = Path(temp)
@@ -50,12 +52,14 @@ class SimpleReleaseActivationTest(unittest.TestCase):
                        FINAL_STOP=str(int(final_stop)), UTEN_BACKUP_DIR=backup_dir.as_posix(),
                        WEB_GROUP_PRESENT=str(int(web_group)), MIGRATOR_READABLE=str(int(migrator_readable)),
                        BACKUP_SUCCEEDS=str(int(backup)), UTEN_PG_DATABASE=database, UTEN_PG_PORT=port,
-                       UTEN_OSS_KEY_SECRET='FixtureCloudSecretOnly', JAVA_TOOL_OPTIONS='FixtureNoRealJvm')
+                       UTEN_OSS_KEY_SECRET='FixtureCloudSecretOnly', JAVA_TOOL_OPTIONS='FixtureNoRealJvm',
+                       MAINTENANCE_GUARD=str(int(maintenance_guard)), BOOTSTRAP_RUNNING=str(int(bootstrap_running)))
             fixture = r'''
 set -euo pipefail
 log() { printf '%s\n' "$*"; }
 die() { printf '%s\n' "$*" >&2; exit 1; }
 verify_sums() { printf 'verify\n' >> "$EVENTS"; }
+maintenance_guard() { [[ "$MAINTENANCE_GUARD" == 1 ]]; }
 flock() { :; }
 migration_digest() {
   if [[ "$1" == *"releases/v1.1.0/"* && "$MIGRATION" == 1 ]]; then printf new; else printf old; fi
@@ -70,6 +74,14 @@ timeout() {
 }
 systemctl() {
   local current
+  if [[ "$1" == show ]]; then
+    if [[ "$3" == --property=ActiveState ]]; then
+      if [[ "$BOOTSTRAP_RUNNING" == 1 ]]; then printf active; else printf inactive; fi
+    else
+      if [[ "$BOOTSTRAP_RUNNING" == 1 ]]; then printf 123; else printf 0; fi
+    fi
+    return 0
+  fi
   current=$(basename "$(readlink -f "$UTEN_BASE/current" 2>/dev/null)" || true)
   printf '%s:%s\n' "$1" "$current" >> "$EVENTS"
   case "$1" in
@@ -98,6 +110,20 @@ prune_database_backups() { printf 'prune-dumps\n' >> "$EVENTS"; }
             link = root / "current"
             return result, (root / "events").read_text().splitlines(), active.read_text().strip(), (
                 os.readlink(link) if link.is_symlink() else None)
+
+    def test_direct_activation_cannot_bypass_ten_minute_worker_authorization(self):
+        result, events, active, link = self.activation(maintenance_guard=False)
+        self.assertEqual(44, result.returncode)
+        self.assertFalse(any(event.startswith('stop:') for event in events))
+        self.assertEqual('v1.0.0', active)
+        self.assertEqual('releases/v1.0.0', link)
+
+    def test_missing_metadata_on_running_service_is_not_blank_bootstrap(self):
+        result, events, active, link = self.activation(first=True, bootstrap_running=True)
+        self.assertEqual(44, result.returncode)
+        self.assertFalse(any(event.startswith('stop:') for event in events))
+        self.assertEqual('none', active)
+        self.assertIsNone(link)
 
     def migration_launch(self, *, launcher_exit=0):
         """Execute the shipped migration subshell, with real timeout and no role launcher on PATH."""

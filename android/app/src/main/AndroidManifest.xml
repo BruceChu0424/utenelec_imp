@@ -6,7 +6,7 @@
     <!-- 访客扫码（保安端 mobile_scanner） -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <application
-        android:label="优腾综合管理平台"
+        android:label="UTEN"
         android:name="${applicationName}"
         android:allowBackup="false"
         android:fullBackupContent="@xml/backup_rules"

@@ -2621,7 +2621,7 @@ abstract class _MaterialAnalysisMaterialTableState
     row.depth == 0 ? null : row.parentMaterialLineId,
   );
 
-  void _expandMaterialTreePeers(_MaterialTableRow row) {
+  void _toggleMaterialTreePeers(_MaterialTableRow row) {
     if (!identical(_materialPresentedAnalysis, _analysis) ||
         _materialPresentedScope != _sessionScopeKey()) {
       return;
@@ -2640,19 +2640,43 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     final peers = _materialPeerGroups[_materialTreePeerScope(row)];
     if (peers == null || !peers.contains(row)) return;
+    final collapse = UtenTreeTableCell.shouldCollapsePeers(
+      peers,
+      isExpanded: (peer) {
+        if (peer.product case final product?) {
+          return !_collapsedBomProducts.contains(product.analysisLineId);
+        }
+        if (peer.aggregate case final aggregate?) {
+          return _expandedMaterialAggregates.contains(aggregate.key);
+        }
+        if (peer.material case final material?) {
+          return !_collapsedBomBranches.contains(material.materialLineId);
+        }
+        return true;
+      },
+    );
     var changed = false;
     for (final peer in peers) {
       if (peer.product case final product?) {
         changed =
-            _collapsedBomProducts.remove(product.analysisLineId) || changed;
+            (collapse
+                ? _collapsedBomProducts.add(product.analysisLineId)
+                : _collapsedBomProducts.remove(product.analysisLineId)) ||
+            changed;
       } else if (peer.aggregate case final aggregate?) {
-        changed = _expandedMaterialAggregates.add(aggregate.key) || changed;
+        changed =
+            (collapse
+                ? _expandedMaterialAggregates.remove(aggregate.key)
+                : _expandedMaterialAggregates.add(aggregate.key)) ||
+            changed;
       } else if (peer.material case final material?) {
         changed =
-            _collapsedBomBranches.remove(material.materialLineId) || changed;
+            (collapse
+                ? _collapsedBomBranches.add(material.materialLineId)
+                : _collapsedBomBranches.remove(material.materialLineId)) ||
+            changed;
       }
     }
-    // A repeated Ctrl click on an already-open sibling set needs no projection.
     if (changed) setState(() {});
   }
 
@@ -2749,8 +2773,8 @@ abstract class _MaterialAnalysisMaterialTableState
       childCount: aggregate == null ? row.childCount : null,
       expanded: expanded,
       onToggle: toggle,
-      onExpandPeers: row.hasChildren
-          ? () => _expandMaterialTreePeers(row)
+      onTogglePeers: row.hasChildren
+          ? () => _toggleMaterialTreePeers(row)
           : null,
       ancestorContinuations: row.ancestorContinuations,
       isLastChild: row.isLastChild,
@@ -6061,8 +6085,9 @@ abstract class _MaterialAnalysisMaterialTableState
           builder: (fieldContext) => Focus(
             skipTraversal: true,
             onFocusChange: (focused) {
-              if (!focused && fieldContext.mounted)
+              if (!focused && fieldContext.mounted) {
                 onFinished?.call(fieldContext);
+              }
             },
             child: RequiredCellFrame(
               listenable: Listenable.merge([controller, _tableEstimateTick]),

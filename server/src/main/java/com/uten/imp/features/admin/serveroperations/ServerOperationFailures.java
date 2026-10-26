@@ -53,6 +53,7 @@ final class ServerOperationFailures {
             Map.entry("WORKER_INTERRUPTED", new Definition("更新任务已中断", "负责本次操作的主机任务已退出或被中断，没有自动重放。", "请管理员结合当前版本、数据库与备份核对结果；不要直接重放旧更新请求。", "CONTACT_ADMIN", false)),
             Map.entry("WORKER_START_FAILED", new Definition("更新任务无法启动", "主机未能启动独立的更新服务，本次任务没有进入执行。", "请管理员核对运维服务安装、系统服务状态及本机执行权限。", "CONTACT_ADMIN", false)),
             Map.entry("CURRENT_VERSION_CHANGED", new Definition("当前版本已被其他操作改变", "执行前发现运行版本已变化，本次未停服或迁移。", "请刷新当前状态并重新检查版本，核对后再提交新的操作。", "REFRESH_STATUS", true)),
+            Map.entry("UPDATE_NOTICE_REQUIRED", new Definition("更新预告尚未获得确认", "当前激活没有匹配正在执行的授权任务和完整十分钟预告，未停服或迁移。", "请从服务器运维页面重新检查并发起更新，不要直接重放激活命令。", "CONTACT_ADMIN", false)),
             Map.entry("CUTOVER_BACKUP_FAILED_RECOVERED", new Definition("最终备份失败，原服务已恢复", "切换前的最终数据库备份未成功；没有执行迁移，原服务已恢复健康。", "请管理员核对最终备份失败原因与备份磁盘，修复后重新检查，不要重放旧任务。", "CONTACT_ADMIN", false)),
             Map.entry("HOST_HELPER_UNAVAILABLE", new Definition("无法连接主机运维助手", "后端未能与本机运维服务建立可信连接。", "请管理员核对运维助手服务、受保护连接与组件安装状态。", "CONTACT_ADMIN", false)),
             Map.entry("HOST_RESPONSE_INVALID", new Definition("主机响应未通过安全校验", "主机运维响应不符合当前支持的协议，不能据此确认操作结果。", "请管理员核对后端与主机组件版本并查看本机诊断；不要再次提交尚未确认的更新。", "REFRESH_STATUS", false)),
@@ -62,10 +63,10 @@ final class ServerOperationFailures {
             Map.entry("AUTOMATIC_UPDATES_ENABLED", new Definition("自动更新尚未停用", "主机仍配置了自动更新任务，当前手动执行条件未满足。", "请管理员完成手动更新组件安装并核对自动任务已停用。", "CONTACT_ADMIN", false))
     );
 
-    private static final Set<String> PRE_ACTIVATION = Set.of("CHECKING", "DOWNLOADING", "BACKING_UP");
+    private static final Set<String> PRE_ACTIVATION = Set.of("CHECKING", "DOWNLOADING", "BACKING_UP", "NOTIFYING");
     private static final Set<String> RECOVERY_PHASES = Set.of("MIGRATING", "ACTIVATING", "HEALTH_CHECK", "DONE");
     private static final Set<String> PRESERVED_PRECONDITIONS = Set.of(
-            "CURRENT_VERSION_CHANGED", "CUTOVER_BACKUP_FAILED_RECOVERED");
+            "CURRENT_VERSION_CHANGED", "CUTOVER_BACKUP_FAILED_RECOVERED", "UPDATE_NOTICE_REQUIRED");
     private static final String RECOVERY_TITLE = "更新需要恢复核对";
     private static final String RECOVERY_REASON = "本次更新未获得可确认的恢复结果，当前代码、数据库与服务状态需要管理员核对。";
     private static final String RECOVERY_SUGGESTION = "请管理员结合任务标识和已验证备份完成恢复核对；不要再次更新、激活或回滚数据库。";

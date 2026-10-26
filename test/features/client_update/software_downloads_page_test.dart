@@ -192,7 +192,7 @@ void main() {
         find.byKey(const ValueKey('software-downloads-windows')),
         findsOneWidget,
       );
-      expect(find.text('优腾综合管理平台(UIMP)'), findsWidgets);
+      expect(find.text('UTEN'), findsWidgets);
       expect(tester.takeException(), isNull);
       if (platform != SoftwareDownloadPlatform.windows) {
         await _screenshot(tester, key, 'downloads-current-${platform.name}');
@@ -201,7 +201,7 @@ void main() {
   }
 
   for (final language in ['en', 'ko']) {
-    testWidgets('$language uses the full English UIMP name', (tester) async {
+    testWidgets('$language uses the same UTEN software name', (tester) async {
       final key = GlobalKey();
       await _pump(
         tester,
@@ -212,10 +212,7 @@ void main() {
         scale: 2,
         boundaryKey: key,
       );
-      expect(
-        find.text('Uten Integrated Management Platform (UIMP)'),
-        findsWidgets,
-      );
+      expect(find.text('UTEN'), findsWidgets);
       expect(find.text('优腾综合管理平台(UIMP)'), findsNothing);
       expect(tester.takeException(), isNull);
       if (language == 'en') {

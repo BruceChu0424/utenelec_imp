@@ -114,8 +114,9 @@ class WindowsSetupSourceTest(unittest.TestCase):
         script = setup.SCRIPT.read_text(encoding="utf-8-sig")
         self.assertIn("AppId=com.uten.uten_imp.local_test", script)
         self.assertIn("DefaultDirName={localappdata}\\Programs\\Uten\\UIMP-LocalTest", script)
-        self.assertIn("chinesesimp.AppDisplayName=优腾综合管理平台(UIMP) - 本地测试", script)
-        self.assertIn("english.AppDisplayName=Uten Integrated Management Platform (UIMP) - Local Test", script)
+        self.assertIn("chinesesimp.AppDisplayName=UTEN - 本地测试", script)
+        self.assertIn("english.AppDisplayName=UTEN - 本地测试", script)
+        self.assertIn("#ifdef LocalTest\nUsePreviousAppDir=no\n#else\nUsePreviousAppDir=yes\n#endif", script)
         self.assertIn("VersionInfoProductName=" + setup.LOCAL_PRODUCT_NAME, script)
         self.assertIn("VersionInfoOriginalFileName=" + setup.LOCAL_ORIGINAL_FILENAME, script)
 
@@ -407,8 +408,8 @@ class WindowsSetupSourceTest(unittest.TestCase):
             "VersionInfoProductName=Uten IMP Windows Setup",
             "VersionInfoOriginalFileName=UtenIMPSetup.exe",
             "VersionInfoDescription=Uten IMP Windows Setup ({#PayloadArchitecture})",
-            "english.AppDisplayName=Uten Integrated Management Platform (UIMP)",
-            "chinesesimp.AppDisplayName=优腾综合管理平台(UIMP)",
+            "english.AppDisplayName=UTEN",
+            "chinesesimp.AppDisplayName=UTEN",
             'Name: "{autoprograms}\\{cm:AppDisplayName}"',
             'Name: "{userdesktop}\\{cm:AppDisplayName}"',
         ):

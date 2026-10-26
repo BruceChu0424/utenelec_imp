@@ -11,19 +11,17 @@
 //   const UtenBrandMascot.background(expand: true)        // 全屏铺底（用作启动屏）
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/assets.dart';
-import '../../shared/platform_branding/platform_branding_provider.dart';
-import '../../shared/platform_branding/platform_brand_logo.dart';
+import '../../core/constants/app_info.dart';
 
-class UtenBrandMascot extends ConsumerWidget {
+class UtenBrandMascot extends StatelessWidget {
   const UtenBrandMascot({
     super.key,
     this.width,
     this.height,
     this.fit = BoxFit.contain,
-    this.semanticLabel = 'Uten 优腾 德国工程师',
+    this.semanticLabel = AppInfo.displayName,
   });
 
   /// 正方形快捷构造：边长 [size]，避免同时算 width/height。
@@ -31,14 +29,14 @@ class UtenBrandMascot extends ConsumerWidget {
     : width = size,
       height = size,
       fit = BoxFit.contain,
-      semanticLabel = 'Uten 优腾 德国工程师';
+      semanticLabel = AppInfo.displayName;
 
   /// 启动屏 / 全屏铺底快捷构造：用 [SizedBox.expand] 占满父空间。
   const UtenBrandMascot.background({super.key})
     : width = double.infinity,
       height = double.infinity,
       fit = BoxFit.contain,
-      semanticLabel = 'Uten 优腾 德国工程师';
+      semanticLabel = AppInfo.displayName;
 
   final double? width;
   final double? height;
@@ -46,16 +44,7 @@ class UtenBrandMascot extends ConsumerWidget {
   final String semanticLabel;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final branding = ref.watch(platformBrandingSnapshotProvider);
-    if (!branding.usesDefaultArtwork) {
-      return PlatformBrandLogo(
-        branding: branding,
-        width: width?.isFinite == true ? width! : 88,
-        height: height?.isFinite == true ? height! : 88,
-        compact: true,
-      );
-    }
+  Widget build(BuildContext context) {
     final image = Image.asset(
       UtenAssets.logoIp,
       fit: fit,

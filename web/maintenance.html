@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex, nofollow">
+  <title>服务器正在更新中 · 优腾</title>
+  <link rel="icon" href="/favicon.png">
+  <link rel="stylesheet" href="/maintenance.css">
+  <script src="/maintenance.js" defer></script>
+</head>
+<body>
+  <main>
+    <div class="brand">优腾<span>综合管理平台</span></div>
+    <div class="server" aria-hidden="true"><i></i><i></i><i></i></div>
+    <h1 id="heading">服务器正在更新中</h1>
+    <p class="intro" id="intro">正在更新服务并检查运行状态。请保留当前窗口，恢复后会自动进入系统。</p>
+    <section class="progress" aria-label="更新状态">
+      <p id="version" hidden></p>
+      <p id="start" hidden></p>
+      <ol>
+        <li class="done" id="step-notice">更新预告已发布</li>
+        <li class="current" id="step-update">服务更新中</li>
+        <li id="step-return">恢复后返回工作</li>
+      </ol>
+    </section>
+    <p class="hint" id="hint">如果您在其他窗口编辑单据，请保留那些窗口。恢复连接后，先核对提交结果，再继续操作。</p>
+    <div class="actions">
+      <button id="retry" type="button">检查恢复状态</button>
+      <p id="status" role="status" aria-live="polite">将自动检查服务恢复状态</p>
+    </div>
+    <noscript>浏览器已停用 JavaScript。请稍后刷新此页面，或联系管理员确认更新进度。</noscript>
+  </main>
+</body>
+</html>

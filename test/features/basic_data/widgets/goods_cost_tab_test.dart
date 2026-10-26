@@ -1805,7 +1805,7 @@ void main() {
       expect(cell.depth, 0);
       expect(cell.hasChildren, isFalse);
       expect(cell.onToggle, isNull);
-      expect(cell.onExpandPeers, isNull);
+      expect(cell.onTogglePeers, isNull);
       expect(cell.ancestorContinuations, isEmpty);
       expect(
         find.byKey(const ValueKey('goods-cost-tree-toggle-assembly-a')),
@@ -2029,7 +2029,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
   testWidgets(
-    'Ctrl cost expansion uses projected peers and preserves descendants',
+    'Ctrl cost toggles projected peers and preserves descendants and raw edits',
     (tester) async {
       final repo = _PeerHierarchyCosts();
       await _pump(tester, repo, platform: TargetPlatform.windows);
@@ -2040,6 +2040,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
       await tester.pumpAndSettle();
       final projections = debugGoodsCostTreeProjectionBuilds;
+      final previewCalls = repo.previewCalls;
       await tester.tap(find.byKey(const Key('cost-tree-expansion')));
       await tester.pumpAndSettle();
       await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
@@ -2053,7 +2054,62 @@ void main() {
         expect(find.text('opaque-leaf-a'), findsNothing);
         expect(find.text('opaque-leaf-b'), findsNothing);
         await tester.tap(
+          find.byKey(const ValueKey('goods-cost-tree-toggle-root-a')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('opaque-shared-a'), findsNothing);
+        expect(find.text('opaque-shared-b'), findsNothing);
+        await tester.tap(
+          find.byKey(const ValueKey('goods-cost-tree-toggle-root-b')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('opaque-shared-a'), findsOneWidget);
+        expect(find.text('opaque-shared-b'), findsOneWidget);
+        expect(find.text('opaque-leaf-a'), findsNothing);
+        await tester.tap(
           find.byKey(const ValueKey('goods-cost-tree-toggle-opaque-shared-a')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('opaque-leaf-a'), findsOneWidget);
+        expect(find.text('opaque-other-leaf-a'), findsOneWidget);
+        expect(find.text('opaque-leaf-b'), findsNothing);
+        await tester.tap(
+          find.byKey(const ValueKey('goods-cost-tree-toggle-opaque-shared-a')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('opaque-leaf-a'), findsNothing);
+        expect(find.text('opaque-other-leaf-a'), findsNothing);
+        expect(find.text('opaque-shared-b'), findsOneWidget);
+        await tester.tap(
+          find.byKey(const ValueKey('goods-cost-tree-toggle-opaque-other-a')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('opaque-leaf-a'), findsOneWidget);
+        expect(find.text('opaque-other-leaf-a'), findsOneWidget);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(
+          find.byKey(const ValueKey('goods-cost-tree-toggle-opaque-shared-a')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('opaque-leaf-a'), findsNothing);
+        expect(find.text('opaque-other-leaf-a'), findsOneWidget);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        // A mixed peer group expands all of that layer, even when the clicked
+        // peer is already expanded. Its other parent's layer stays collapsed.
+        await tester.tap(
+          find.byKey(const ValueKey('goods-cost-tree-toggle-opaque-other-a')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('opaque-leaf-a'), findsOneWidget);
+        expect(find.text('opaque-other-leaf-a'), findsOneWidget);
+        expect(find.text('opaque-leaf-b'), findsNothing);
+        await tester.tap(
+          find.byKey(const ValueKey('goods-cost-tree-toggle-root-a')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('opaque-shared-a'), findsNothing);
+        await tester.tap(
+          find.byKey(const ValueKey('goods-cost-tree-toggle-root-a')),
         );
         await tester.pumpAndSettle();
         expect(find.text('opaque-leaf-a'), findsOneWidget);
@@ -2064,9 +2120,12 @@ void main() {
           '0.987654321123456789',
         );
       } finally {
-        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        if (HardwareKeyboard.instance.isControlPressed) {
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        }
       }
       expect(debugGoodsCostTreeProjectionBuilds, projections);
+      expect(repo.previewCalls, previewCalls);
       await tester.tap(find.byKey(const Key('cost-save')));
       await tester.pumpAndSettle();
       final override = costMaps(repo.saved?['lineOverrides']).single;

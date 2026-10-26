@@ -213,10 +213,20 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     _visibleMaterialRows = null;
   });
 
-  void _expandCostPeers(String path) {
+  void _toggleCostPeers(String path) {
     final peers = _materialPeersByPath[path] ?? const [];
-    if (!peers.any(_collapsed.contains)) return;
-    _changeMaterialVisibility(() => _collapsed.removeAll(peers));
+    if (peers.isEmpty) return;
+    final collapse = UtenTreeTableCell.shouldCollapsePeers(
+      peers,
+      isExpanded: (peer) => !_collapsed.contains(peer),
+    );
+    _changeMaterialVisibility(() {
+      if (collapse) {
+        _collapsed.addAll(peers);
+      } else {
+        _collapsed.removeAll(peers);
+      }
+    });
   }
 
   GoodsCostSnapshot? _historical;

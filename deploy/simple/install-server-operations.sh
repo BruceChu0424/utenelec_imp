@@ -5,7 +5,7 @@ set -euo pipefail
 umask 077
 SRC=${1:?Usage: sudo bash install-server-operations.sh /reviewed/deploy/simple}
 [ "$(id -u)" -eq 0 ] || { echo 'Root is required' >&2; exit 1; }
-for f in host_operations.py operations_storage.py update_schedule.py uten-imp-updater.sh \
+for f in host_operations.py operations_storage.py update_schedule.py maintenance_recovery.py uten-imp-updater.sh \
   units/uten-imp-operations.service units/uten-imp-update-job.service \
   uten-imp-updater.tmpfiles.conf operations.example.json; do
   [ -f "$SRC/$f" ] && [ ! -L "$SRC/$f" ] || { echo "Missing reviewed source: $f" >&2; exit 1; }
@@ -22,6 +22,10 @@ CLIENT_BACKUP_SOURCE="$SRC/../postgres/backup/client_release_state_backup.py"
 [ -f "$CLIENT_BACKUP_SOURCE" ] && [ ! -L "$CLIENT_BACKUP_SOURCE" ] || {
   echo 'Missing reviewed client-release backup helper from the same source checkout' >&2; exit 1
 }
+for asset in maintenance.html maintenance.css maintenance.js; do
+  [ -f "$SRC/../../web/$asset" ] && [ ! -L "$SRC/../../web/$asset" ] \
+    || { echo "Missing reviewed maintenance asset: $asset" >&2; exit 1; }
+done
 [ -x /usr/bin/systemd-tmpfiles ] || { echo 'systemd-tmpfiles is required' >&2; exit 1; }
 getent passwd uten-imp >/dev/null
 getent group uten-imp >/dev/null
@@ -52,7 +56,7 @@ for directory in /var/lib/uten-imp-operations /run/uten-imp-updater /etc/uten-im
   fi
   install -d -o root -g root -m 0700 "$directory"
 done
-for directory in /usr/local/lib/uten-imp /etc/uten-imp /etc/tmpfiles.d; do
+for directory in /usr/local/lib/uten-imp /etc/uten-imp /etc/tmpfiles.d /var/lib/uten-imp-public; do
   [ ! -L "$directory" ] || { echo 'Unsafe deployment directory' >&2; exit 1; }
   if [ -e "$directory" ]; then
     [ -d "$directory" ] && [ "$(stat -c %u "$directory")" = 0 ] \
@@ -118,9 +122,13 @@ chmod 0700 "$backup_dir"
 for f in /usr/local/sbin/uten-imp-updater /etc/systemd/system/uten-imp-updater.service \
   /usr/local/lib/uten-imp/host_operations.py /usr/local/lib/uten-imp/operations_storage.py \
   /usr/local/lib/uten-imp/update_schedule.py \
+  /usr/local/lib/uten-imp/maintenance_recovery.py \
   /usr/local/lib/uten-imp/paired_internal_backup.py \
   /usr/local/lib/uten-imp/market_state_backup.py \
   /usr/local/lib/uten-imp/client_release_state_backup.py \
+  /var/lib/uten-imp-public/maintenance.html \
+  /var/lib/uten-imp-public/maintenance.css \
+  /var/lib/uten-imp-public/maintenance.js \
   /etc/tmpfiles.d/uten-imp-updater.conf \
   /etc/systemd/system/uten-imp-updater.timer /etc/systemd/system/uten-imp-operations.service \
   /etc/systemd/system/uten-imp-update-job.service; do
@@ -168,8 +176,13 @@ PY
   atomic_install "$initial_config" /etc/uten-imp/operations.json 0600
   rm -f -- "$initial_config"
 fi
-for helper in host_operations.py operations_storage.py update_schedule.py; do
+for helper in host_operations.py operations_storage.py update_schedule.py maintenance_recovery.py; do
   atomic_install "$SRC/$helper" "/usr/local/lib/uten-imp/$helper" 0644
+done
+# Independent of current/web: the first update from an old release must already
+# have a maintenance page before current can switch to the new build.
+for asset in maintenance.html maintenance.css maintenance.js; do
+  atomic_install "$SRC/../../web/$asset" "/var/lib/uten-imp-public/$asset" 0644
 done
 atomic_install "$MARKET_BACKUP_SOURCE" /usr/local/lib/uten-imp/market_state_backup.py 0644
 atomic_install "$CLIENT_BACKUP_SOURCE" /usr/local/lib/uten-imp/client_release_state_backup.py 0644

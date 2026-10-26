@@ -1690,7 +1690,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     });
   }
 
-  Future<void> _expandPeerBomBranches(_BomRow row) async {
+  Future<void> _togglePeerBomBranches(_BomRow row) async {
     if (_writeBusy ||
         _loading ||
         _auditBusyRows.isNotEmpty ||
@@ -1721,13 +1721,32 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         }
       }
     }
-    final targets = [
+    final branches = [
       for (final node in siblings ?? const <_BomNode>[])
-        if (!node.expanded &&
-            !node.loading &&
-            (node.item.hasChildren ||
-                _childAppendParents.contains(node.item.componentGoodsId)))
+        if (node.item.hasChildren ||
+            _childAppendParents.contains(node.item.componentGoodsId))
           node,
+    ];
+    if (branches.isEmpty) return;
+    if (UtenTreeTableCell.shouldCollapsePeers(
+      branches,
+      isExpanded: (node) => node.expanded,
+    )) {
+      setState(() {
+        for (final node in branches) {
+          node.expanded = false;
+          _occurrenceExpansion['$parentPath/${node.item.id}'] = false;
+        }
+        // Only this parent occurrence changes. Descendant expansion and their
+        // loaded children remain available when these peers are opened again.
+        _visibleRowsCache = null;
+        _pruneSelection();
+      });
+      return;
+    }
+    final targets = [
+      for (final node in branches)
+        if (!node.expanded && !node.loading) node,
     ];
     if (targets.isEmpty) return;
     final token = ++_peerExpansionRevision;
@@ -3585,9 +3604,9 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
             onToggle: r.node.loading || _writeBusy || _loading
                 ? null
                 : () => _toggle(r.node),
-            onExpandPeers: _writeBusy || _loading || _auditBusyRows.isNotEmpty
+            onTogglePeers: _writeBusy || _loading || _auditBusyRows.isNotEmpty
                 ? null
-                : () => unawaited(_expandPeerBomBranches(r)),
+                : () => unawaited(_togglePeerBomBranches(r)),
             ancestorContinuations: r.ancestorContinuations,
             isLastChild: r.isLastChild,
             leafAction: _canCreate

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -121,6 +122,8 @@ class _WebsiteWorkspaceState extends ConsumerState<_WebsiteWorkspace> {
       grant: grant,
       proof: proof,
       now: DateTime.now().toUtc(),
+      releaseMode: kReleaseMode,
+      allowLoopbackHttp: websiteAllowLoopbackHttp,
     );
     // Verify immediately before the external side effect, too.
     await scope.verify();
@@ -133,16 +136,11 @@ class _WebsiteWorkspaceState extends ConsumerState<_WebsiteWorkspace> {
   Future<void> _openPublic(WebsiteManagementInfo info) => _perform((
     scope,
   ) async {
-    final uri = Uri.tryParse(info.publicOrigin);
-    if (uri == null ||
-        uri.scheme != 'https' ||
-        uri.host.isEmpty ||
-        uri.userInfo.isNotEmpty ||
-        uri.hasQuery ||
-        uri.hasFragment ||
-        (uri.path.isNotEmpty && uri.path != '/')) {
-      throw ApiException('WEBSITE_UNTRUSTED_TARGET', 'Website target rejected');
-    }
+    final uri = websiteOriginUri(
+      info.publicOrigin,
+      releaseMode: kReleaseMode,
+      allowLoopbackHttp: websiteAllowLoopbackHttp,
+    );
     await scope.verify();
     final opened = await ref.read(websiteExternalLauncherProvider)(uri);
     if (!opened && mounted) {

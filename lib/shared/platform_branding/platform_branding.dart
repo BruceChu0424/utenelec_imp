@@ -1,3 +1,5 @@
+import '../../core/constants/app_info.dart';
+
 /// Public company presentation. This does not change legal document ownership,
 /// permissions, trusted server endpoints, or per-user appearance preferences.
 class PlatformBranding {
@@ -24,6 +26,9 @@ class PlatformBranding {
   final String companyName;
   final String companyAliases;
   final String platformName;
+
+  /// Software identity is fixed; company metadata and historical platformName remain intact.
+  String get appName => AppInfo.displayName;
   final String tagline;
   final String primaryColor;
   final String secondaryColor;

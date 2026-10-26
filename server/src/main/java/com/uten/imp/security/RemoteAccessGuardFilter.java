@@ -36,7 +36,7 @@ public class RemoteAccessGuardFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return PublicPlatformBrandingRequest.matches(request);
+        return PublicPlatformBrandingRequest.matches(request) || PublicMaintenanceRequest.matches(request);
     }
 
     @Override

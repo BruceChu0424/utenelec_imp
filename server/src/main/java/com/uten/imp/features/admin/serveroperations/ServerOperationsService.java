@@ -201,7 +201,7 @@ public class ServerOperationsService {
             if (result.id() == null || result.requestId() == null || result.actorId() == null
                     || !Set.of("CHECK_ONLY", "CHECK_AND_UPDATE", "SCHEDULE_UPDATE").contains(result.mode())
                     || !Set.of("SCHEDULED", "QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "RECOVERY_REQUIRED", "CANCELLED").contains(result.state())
-                    || !Set.of("CHECKING", "DOWNLOADING", "BACKING_UP", "MIGRATING", "ACTIVATING", "HEALTH_CHECK", "DONE").contains(result.phase())
+                    || !Set.of("CHECKING", "DOWNLOADING", "BACKING_UP", "NOTIFYING", "MIGRATING", "ACTIVATING", "HEALTH_CHECK", "DONE").contains(result.phase())
                     || ("SCHEDULED".equals(result.state()) && result.scheduledAt() == null)
                     || (result.message() != null && result.message().length() > 1000)) throw new HostOperationsException("INVALID_RESPONSE");
             var failure = ServerOperationFailures.project(rawFailure, result.state(), result.phase());

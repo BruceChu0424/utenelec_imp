@@ -52,6 +52,18 @@ const _info = WebsiteManagementInfo(
 const _ownerA = AuthenticatedScope(userId: 'a');
 final _owner = StateProvider<AuthenticatedScope?>((ref) => _ownerA);
 
+WebsiteManagementInfo _originInfo(String origin, {String? publicOrigin}) =>
+    WebsiteManagementInfo(
+      version: 1,
+      displayName: 'Local acceptance',
+      publicOrigin: publicOrigin ?? origin,
+      adminOrigin: origin,
+      enabled: true,
+      configured: true,
+      tokenConfigured: true,
+      permissions: _permissions,
+    );
+
 class _EmployeeSession extends SessionNotifier {
   @override
   SessionState build() => const SessionState(
@@ -261,10 +273,217 @@ void main() {
         grant: _Repository().grant(),
         proof: proof,
         now: DateTime.now().toUtc(),
+        releaseMode: false,
+        allowLoopbackHttp: false,
       );
       expect(uri.hasQuery, isFalse);
       expect(Uri.splitQueryString(uri.fragment)['verifier'], proof.verifier);
       expect(uri.path, '/admin/imp-entry');
+    },
+  );
+
+  for (final origin in [
+    'http://127.0.0.1:3008',
+    'http://localhost:3008',
+    'http://[::1]:3008',
+  ]) {
+    test(
+      'loopback origin requires an explicit non-Release opt-in: $origin',
+      () {
+        final info = _originInfo(origin);
+        final proof = WebsiteHandoffProof.create();
+        final now = DateTime.now().toUtc();
+        final grant = WebsiteEditorGrant(
+          entryUrl: '$origin/admin/imp-entry',
+          code: 'abcdefghijklmnopqrstuvwxyz0123456789ABCD',
+          expiresAt: now.add(const Duration(seconds: 60)),
+        );
+        expect(
+          () => websiteOriginUri(
+            origin,
+            releaseMode: false,
+            allowLoopbackHttp: false,
+          ),
+          throwsA(isA<ApiException>()),
+        );
+        expect(
+          () => websiteEditorUri(
+            info: info,
+            grant: grant,
+            proof: proof,
+            now: now,
+            releaseMode: false,
+            allowLoopbackHttp: false,
+          ),
+          throwsA(isA<ApiException>()),
+        );
+        final uri = websiteEditorUri(
+          info: info,
+          grant: grant,
+          proof: proof,
+          now: now,
+          releaseMode: false,
+          allowLoopbackHttp: true,
+        );
+        expect(uri.origin, Uri.parse(origin).origin);
+        expect(uri.path, '/admin/imp-entry');
+        expect(uri.hasQuery, isFalse);
+        expect(Uri.splitQueryString(uri.fragment)['verifier'], proof.verifier);
+        expect(
+          websiteOriginUri(
+            origin,
+            releaseMode: false,
+            allowLoopbackHttp: true,
+          ).origin,
+          uri.origin,
+        );
+        expect(
+          () => websiteOriginUri(
+            origin,
+            releaseMode: true,
+            allowLoopbackHttp: true,
+          ),
+          throwsA(isA<ApiException>()),
+        );
+        expect(
+          () => websiteEditorUri(
+            info: info,
+            grant: grant,
+            proof: proof,
+            now: now,
+            releaseMode: true,
+            allowLoopbackHttp: true,
+          ),
+          throwsA(isA<ApiException>()),
+        );
+      },
+    );
+  }
+
+  for (final origin in [
+    'http://192.168.1.10:3008',
+    'http://10.0.0.5:3008',
+    'http://www.ch-uten.com',
+    'http://localhost.evil.test:3008',
+    'http://localhost.:3008',
+    'http://127.0.0.1.evil.test:3008',
+    'http://127.0.0.2:3008',
+    'http://127.1:3008',
+    'http://[::ffff:127.0.0.1]:3008',
+    'http://user@localhost:3008',
+    'http://@localhost:3008',
+    'http://localhost:3008/path',
+    'http://localhost:3008?x=1',
+    'http://localhost:3008?',
+    'http://localhost:3008#x',
+    'http://localhost:3008#',
+  ]) {
+    test(
+      'local opt-in cannot trust other origins or decorated URLs: $origin',
+      () {
+        expect(
+          () => websiteOriginUri(
+            origin,
+            releaseMode: false,
+            allowLoopbackHttp: true,
+          ),
+          throwsA(isA<ApiException>()),
+        );
+      },
+    );
+  }
+
+  test('local opt-in keeps all editor origin, fixed path and grant checks', () {
+    const origin = 'http://127.0.0.1:3008';
+    final now = DateTime.now().toUtc();
+    final proof = WebsiteHandoffProof.create();
+    for (final entry in [
+      'http://localhost:3008/admin/imp-entry',
+      'http://127.0.0.1:3009/admin/imp-entry',
+      'https://127.0.0.1:3008/admin/imp-entry',
+      '$origin/admin/users',
+      '$origin/admin/imp-entry?code=in-query',
+      '$origin/admin/imp-entry#existing',
+      'http://@127.0.0.1:3008/admin/imp-entry',
+    ]) {
+      expect(
+        () => websiteEditorUri(
+          info: _originInfo(origin),
+          grant: WebsiteEditorGrant(
+            entryUrl: entry,
+            code: 'abcdefghijklmnopqrstuvwxyz0123456789ABCD',
+            expiresAt: now.add(const Duration(seconds: 60)),
+          ),
+          proof: proof,
+          now: now,
+          releaseMode: false,
+          allowLoopbackHttp: true,
+        ),
+        throwsA(isA<ApiException>()),
+        reason: entry,
+      );
+    }
+    expect(
+      () => websiteEditorUri(
+        info: _originInfo(origin, publicOrigin: 'http://localhost:3008'),
+        grant: WebsiteEditorGrant(
+          entryUrl: '$origin/admin/imp-entry',
+          code: 'abcdefghijklmnopqrstuvwxyz0123456789ABCD',
+          expiresAt: now.add(const Duration(seconds: 60)),
+        ),
+        proof: proof,
+        now: now,
+        releaseMode: false,
+        allowLoopbackHttp: true,
+      ),
+      throwsA(isA<ApiException>()),
+    );
+    for (final expiresAt in [
+      now,
+      now.add(const Duration(minutes: 2, seconds: 1)),
+    ]) {
+      expect(
+        () => websiteEditorUri(
+          info: _originInfo(origin),
+          grant: WebsiteEditorGrant(
+            entryUrl: '$origin/admin/imp-entry',
+            code: 'abcdefghijklmnopqrstuvwxyz0123456789ABCD',
+            expiresAt: expiresAt,
+          ),
+          proof: proof,
+          now: now,
+          releaseMode: false,
+          allowLoopbackHttp: true,
+        ),
+        throwsA(isA<ApiException>()),
+      );
+    }
+  });
+
+  test(
+    'HTTPS production origins remain valid with either local flag value',
+    () {
+      for (final allowLocal in [false, true]) {
+        expect(
+          websiteOriginUri(
+            _info.publicOrigin,
+            releaseMode: true,
+            allowLoopbackHttp: allowLocal,
+          ).scheme,
+          'https',
+        );
+        expect(
+          websiteEditorUri(
+            info: _info,
+            grant: _Repository().grant(),
+            proof: WebsiteHandoffProof.create(),
+            now: DateTime.now().toUtc(),
+            releaseMode: true,
+            allowLoopbackHttp: allowLocal,
+          ).scheme,
+          'https',
+        );
+      }
     },
   );
 
@@ -285,6 +504,8 @@ void main() {
           grant: repository.grant(),
           proof: WebsiteHandoffProof.create(),
           now: DateTime.now().toUtc(),
+          releaseMode: false,
+          allowLoopbackHttp: false,
         ),
         throwsA(isA<ApiException>()),
       );
@@ -301,6 +522,8 @@ void main() {
         ),
         proof: WebsiteHandoffProof.create(),
         now: DateTime.now().toUtc(),
+        releaseMode: false,
+        allowLoopbackHttp: false,
       ),
       throwsA(isA<ApiException>()),
     );

@@ -19,7 +19,8 @@ class HostInstallationContractTest(unittest.TestCase):
     def test_shared_lock_directory_is_created_before_both_service_sandboxes(self):
         entries = [line.split() for line in TMPFILES.read_text().splitlines()
                    if line.strip() and not line.startswith("#")]
-        self.assertEqual([["d", "/run/uten-imp-updater", "0700", "root", "root", "-"]], entries)
+        self.assertEqual([["d", "/run/uten-imp-updater", "0700", "root", "root", "-"],
+                          ["d", "/var/lib/uten-imp-public", "0755", "root", "root", "-"]], entries)
         for name in ("uten-imp-operations.service", "uten-imp-update-job.service"):
             unit = (SIMPLE / "units" / name).read_text()
             after = " ".join(line.split("=", 1)[1] for line in unit.splitlines()

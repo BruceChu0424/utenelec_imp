@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'components/layout/uten_page_scrollbar_host.dart';
+import 'core/constants/app_info.dart';
 
 import 'components/feedback/uten_context_menu_policy.dart';
 import 'core/l10n/gen/app_localizations.dart';
@@ -32,6 +33,7 @@ import 'shared/platform_branding/platform_branding_provider.dart';
 import 'shared/widgets/reauth_dialog.dart';
 import 'features/auth/widgets/remote_mfa_prompt.dart';
 import 'shared/widgets/user_activity_tracker.dart';
+import 'shared/widgets/server_maintenance_host.dart';
 import 'platform_tables_host.dart';
 import 'features/client_update/client_update_host.dart';
 import 'features/client_update/client_update_tile.dart';
@@ -78,9 +80,7 @@ class UtenApp extends ConsumerWidget {
     final darkTheme = buildDarkTheme(branding: branding);
 
     return MaterialApp.router(
-      onGenerateTitle: (context) => branding.usesDefaultArtwork
-          ? AppLocalizations.of(context).appTitle
-          : branding.platformName,
+      onGenerateTitle: (context) => AppInfo.displayName,
       debugShowCheckedModeBanner: false,
 
       // 主题
@@ -128,81 +128,83 @@ class UtenApp extends ConsumerWidget {
               fontFactor: fontScale.factor,
               autoLadder: FontScale.ladder,
               child: UtenControlTheme(
-                child: Column(
-                  children: [
-                    // 通知目标路由桥（不渲染）：导航到有通知指向的路由时自动已读。
-                    const NoticeRouteReadBridge(),
-                    // 敏感操作再认证宿主 (不渲染)：服务端要求重新输入密码时弹统一密码框 (ADR-110)。
-                    const StepUpPromptHost(),
-                    const RemoteMfaPromptHost(),
-                    // 人为输入采集 (不渲染)：用户没在操作时发出的请求不续期服务端会话 (ADR-110)。
-                    const UserActivityTracker(),
-                    // 登录会话重建门（不渲染）：重新登录时立即重拉全局角标，
-                    // 不再等 60s 轮询/手动刷新。
-                    const SessionRehydrateGate(),
-                    ClientUpdateHost(
-                      key: ValueKey((
-                        session.status,
-                        session.user?.id,
-                        session.actor?.id,
-                        ref.watch(apiBaseUrlProvider),
-                      )),
-                      enabled: session.isLoggedIn && !impersonating,
-                      dialogContext: () => appNavigatorKey.currentContext,
-                    ),
-                    // V459 登录检查门（不渲染）：登录后拉待审，有则弹居中审核弹窗。
-                    ReviewPendingLoginGate(
-                      enabled: noticeArrivalEnabled,
-                      identityKey: noticeIdentityKey,
-                      dialogContext: () => appNavigatorKey.currentContext,
-                    ),
-                    // 模拟身份横幅：占顶「固定」、把页面整体下推，不再覆盖 AppBar/返回键。
-                    // 非模拟时返回 SizedBox.shrink，自动收起不占空间。
-                    const ImpersonationBanner(),
-                    // 连接恢复横幅：占顶「下推」通栏（与模拟身份横幅同形态）。断连期间
-                    // 不再以悬浮卡片盖住页面搜索框/标签页；恢复后整条自动收起不占空间。
-                    const ConnectionRecoveryBanner(),
-                    Expanded(
-                      child: Builder(
-                        builder: (context) {
-                          // 取整体缩放之下（画布口径）的 MediaQuery，再按模拟态调 padding。
-                          final mediaQuery = MediaQuery.of(context);
-                          return MediaQuery(
-                            // 模拟时状态栏 top 留白已由顶部横幅承担，下方页面 top 置 0，
-                            // 避免 AppBar 再加一次状态栏高度（双重留白）。
-                            // 非模拟时保持原 padding，由页面自己处理状态栏。
-                            data: impersonating
-                                ? mediaQuery.copyWith(
-                                    padding: mediaQuery.padding.copyWith(
-                                      top: 0,
-                                    ),
-                                    viewPadding: mediaQuery.viewPadding
-                                        .copyWith(top: 0),
-                                  )
-                                : mediaQuery,
-                            child: Stack(
-                              children: [
-                                UtenPageScrollbarHost(child: settingsChild),
-                                const Positioned(
-                                  top: 0,
-                                  left: 0,
-                                  right: 0,
-                                  child: SafeArea(
-                                    bottom: false,
-                                    // 普通通知横幅：瞬时悬浮居中、自动消失。连接横幅
-                                    // 不在此处——它占顶下推，见上方 Column。
-                                    child: AppNotificationHost(
-                                      useSafeArea: false,
+                child: ServerMaintenanceHost(
+                  child: Column(
+                    children: [
+                      // 通知目标路由桥（不渲染）：导航到有通知指向的路由时自动已读。
+                      const NoticeRouteReadBridge(),
+                      // 敏感操作再认证宿主 (不渲染)：服务端要求重新输入密码时弹统一密码框 (ADR-110)。
+                      const StepUpPromptHost(),
+                      const RemoteMfaPromptHost(),
+                      // 人为输入采集 (不渲染)：用户没在操作时发出的请求不续期服务端会话 (ADR-110)。
+                      const UserActivityTracker(),
+                      // 登录会话重建门（不渲染）：重新登录时立即重拉全局角标，
+                      // 不再等 60s 轮询/手动刷新。
+                      const SessionRehydrateGate(),
+                      ClientUpdateHost(
+                        key: ValueKey((
+                          session.status,
+                          session.user?.id,
+                          session.actor?.id,
+                          ref.watch(apiBaseUrlProvider),
+                        )),
+                        enabled: session.isLoggedIn && !impersonating,
+                        dialogContext: () => appNavigatorKey.currentContext,
+                      ),
+                      // V459 登录检查门（不渲染）：登录后拉待审，有则弹居中审核弹窗。
+                      ReviewPendingLoginGate(
+                        enabled: noticeArrivalEnabled,
+                        identityKey: noticeIdentityKey,
+                        dialogContext: () => appNavigatorKey.currentContext,
+                      ),
+                      // 模拟身份横幅：占顶「固定」、把页面整体下推，不再覆盖 AppBar/返回键。
+                      // 非模拟时返回 SizedBox.shrink，自动收起不占空间。
+                      const ImpersonationBanner(),
+                      // 连接恢复横幅：占顶「下推」通栏（与模拟身份横幅同形态）。断连期间
+                      // 不再以悬浮卡片盖住页面搜索框/标签页；恢复后整条自动收起不占空间。
+                      const ConnectionRecoveryBanner(),
+                      Expanded(
+                        child: Builder(
+                          builder: (context) {
+                            // 取整体缩放之下（画布口径）的 MediaQuery，再按模拟态调 padding。
+                            final mediaQuery = MediaQuery.of(context);
+                            return MediaQuery(
+                              // 模拟时状态栏 top 留白已由顶部横幅承担，下方页面 top 置 0，
+                              // 避免 AppBar 再加一次状态栏高度（双重留白）。
+                              // 非模拟时保持原 padding，由页面自己处理状态栏。
+                              data: impersonating
+                                  ? mediaQuery.copyWith(
+                                      padding: mediaQuery.padding.copyWith(
+                                        top: 0,
+                                      ),
+                                      viewPadding: mediaQuery.viewPadding
+                                          .copyWith(top: 0),
+                                    )
+                                  : mediaQuery,
+                              child: Stack(
+                                children: [
+                                  UtenPageScrollbarHost(child: settingsChild),
+                                  const Positioned(
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    child: SafeArea(
+                                      bottom: false,
+                                      // 普通通知横幅：瞬时悬浮居中、自动消失。连接横幅
+                                      // 不在此处——它占顶下推，见上方 Column。
+                                      child: AppNotificationHost(
+                                        useSafeArea: false,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
+                                ],
+                              ),
+                            );
+                          },
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

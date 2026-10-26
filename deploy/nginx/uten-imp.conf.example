@@ -30,6 +30,14 @@ limit_conn_zone $binary_remote_addr zone=uten_goods_import_conn:10m;
 limit_req_zone $binary_remote_addr zone=uten_ai_jobs_ip:10m rate=12r/m;
 limit_conn_zone $binary_remote_addr zone=uten_ai_jobs_conn:10m;
 
+map $uri $uten_maintenance_cache_control {
+    default "";
+    /api/system/maintenance "no-store";
+    /maintenance.html "no-store";
+    /maintenance.css "no-store";
+    /maintenance.js "no-store";
+}
+
 upstream uten_imp_backend {
     # The documented on-prem topology runs App + PostgreSQL on the same host.
     # Keep 8080 loopback-only; use another explicit private address only after
@@ -163,6 +171,17 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "DENY" always;
     add_header Cross-Origin-Opener-Policy "same-origin" always;
+    add_header Cache-Control $uten_maintenance_cache_control always;
+
+    location = /api/system/maintenance {
+        alias /var/lib/uten-imp-public/maintenance.json;
+        default_type application/json;
+        limit_except GET { deny all; }
+    }
+    error_page 503 /maintenance.html;
+    location = /maintenance.html { alias /var/lib/uten-imp-public/maintenance.html; default_type text/html; }
+    location = /maintenance.css { alias /var/lib/uten-imp-public/maintenance.css; default_type text/css; }
+    location = /maintenance.js { alias /var/lib/uten-imp-public/maintenance.js; default_type application/javascript; }
 
     # Browser recovery probes Actuator outside the /api application namespace.
     # Keep this exact route before the SPA fallback; otherwise index.html could
@@ -393,6 +412,7 @@ server {
     }
 
     location / {
+        if (-f /var/lib/uten-imp-public/updating) { return 503; }
         try_files $uri $uri/ /index.html;
         expires -1;
     }

@@ -167,15 +167,14 @@ void main() {
   );
 
   test(
-    'the app sync follows only the current platform name and current endpoint',
+    'the app sync keeps UTEN while company metadata and current endpoint change',
     () async {
       late ProviderContainer container;
       controller = PlatformWindowTitleController(
         enabled: true,
         isCurrent: (title, source) =>
             container.read(apiBaseUrlProvider) == source &&
-            container.read(platformBrandingSnapshotProvider).platformName ==
-                title,
+            title == AppInfo.displayName,
       );
       container = ProviderContainer(
         overrides: [
@@ -197,17 +196,22 @@ void main() {
         platformName: '乙公司平台',
       );
       await Future<void>.delayed(Duration.zero);
-      expect(calls.map((call) => call.arguments), ['乙公司平台']);
+      expect(calls, isEmpty);
+      expect(
+        container.read(platformBrandingSnapshotProvider).platformName,
+        '乙公司平台',
+      );
       subscription.close();
     },
   );
 
   test(
-    'runtime captions keep the Windows preference storage identity and original startup caption stable',
+    'UTEN captions preserve the existing Windows preference storage identity',
     () async {
       // path_provider_windows derives the preference directory from these EXE
       // fields, so changing them during branding work would lose old settings.
       final resource = File('windows/runner/Runner.rc').readAsStringSync();
+      expect(resource, contains('VALUE "FileDescription", "UTEN"'));
       expect(resource, contains('VALUE "CompanyName", "Uten"'));
       expect(resource, contains('VALUE "ProductName", "优腾综合管理平台"'));
       expect(
@@ -216,7 +220,7 @@ void main() {
       );
       expect(
         File('windows/runner/main.cpp').readAsStringSync(),
-        contains('window.Create(L"优腾综合管理平台"'),
+        contains('window.Create(L"UTEN"'),
       );
       await controller.update(title: '其他公司平台', source: 'https://b.example/api');
       expect(calls.single.arguments, '其他公司平台');

@@ -971,9 +971,9 @@ extension _GoodsCostEditor on _GoodsCostTabState {
                 ? const []
                 : tree.ancestorContinuations,
             isLastChild: _onlyPending || tree.isLastChild,
-            onExpandPeers: _onlyPending
+            onTogglePeers: _onlyPending
                 ? null
-                : () => _expandCostPeers(row['path'].toString()),
+                : () => _toggleCostPeers(row['path'].toString()),
             onToggle: _onlyPending
                 ? null
                 : () => _changeMaterialVisibility(() {

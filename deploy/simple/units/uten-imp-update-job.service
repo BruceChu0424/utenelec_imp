@@ -29,6 +29,7 @@ PrivateDevices=true
 ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/opt/uten-imp /run/uten-imp-updater /var/lib/uten-imp-operations
+ReadWritePaths=/var/lib/uten-imp-public
 ReadWritePaths=-/srv/uten-backup/pre-activation -/data/uten-imp-backups/paired -/var/log/uten-imp
 ProtectKernelTunables=true
 ProtectKernelModules=true

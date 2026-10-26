@@ -15,7 +15,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/brand/uten_brand_mascot.dart';
 import '../../../components/brand/uten_wordmark_logo.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
@@ -263,25 +262,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 品牌区：吉祥物 + 横向字标
-          if (branding.usesDefaultArtwork) ...[
-            const Center(child: UtenBrandMascot.size(88)),
-            const SizedBox(height: UtenSpacing.s16),
-          ],
-          Center(
-            child: UtenWordmarkLogo(
-              width: 220,
-              height: branding.usesDefaultArtwork ? 220 / (405 / 74) : 72,
-            ),
-          ),
-          if (branding.hasLogo) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Text(
-              branding.platformName,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleMedium,
-            ),
-          ],
+          // Software identity is fixed; the company notice, tagline and copyright remain below.
+          const Center(child: UtenWordmarkLogo(width: 260, height: 88)),
           if (branding.tagline.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s8),
             Text(

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/constants/app_info.dart';
 
 enum SoftwareDownloadPlatform {
   windows('Windows', Icons.window_rounded),
@@ -26,6 +27,4 @@ final softwareDevicePlatformProvider = Provider<SoftwareDownloadPlatform?>((
   };
 });
 
-String softwareProductName(Locale locale) => locale.languageCode == 'zh'
-    ? '优腾综合管理平台(UIMP)'
-    : 'Uten Integrated Management Platform (UIMP)';
+String softwareProductName(Locale locale) => AppInfo.displayName;

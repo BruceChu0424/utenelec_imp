@@ -47,6 +47,7 @@ http {
     limit_req_zone $server_name zone=remote_health:1m rate=20r/s;
     map $uri $remote_cache_control {
         default "no-cache";
+        ~^/maintenance\.(?:html|css|js)$ "no-store";
         ~^/api(?:/|$) "private, no-store";
         ~^/actuator(?:/|$) "private, no-store";
         "~*^/(?!api/|actuator/).*\.[0-9a-f]{8,}\.(?:js|mjs|wasm|css|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|otf)$" "public, max-age=31536000, immutable";
@@ -111,6 +112,15 @@ http {
         add_header Cross-Origin-Opener-Policy same-origin always;
         add_header Cache-Control $remote_cache_control always;
         add_header X-Request-Id $request_id always;
+        location = /api/system/maintenance {
+            alias /var/lib/uten-imp-public/maintenance.json;
+            default_type application/json;
+            limit_except GET { deny all; }
+        }
+        error_page 503 /maintenance.html;
+        location = /maintenance.html { alias /var/lib/uten-imp-public/maintenance.html; default_type text/html; }
+        location = /maintenance.css { alias /var/lib/uten-imp-public/maintenance.css; default_type text/css; }
+        location = /maintenance.js { alias /var/lib/uten-imp-public/maintenance.js; default_type application/javascript; }
         location = /actuator/health { limit_req zone=remote_health burst=60 nodelay; proxy_pass http://remote_app; proxy_read_timeout 5s; gzip off; }
         location ~ ^/actuator/health/(?:liveness|readiness)$ { limit_req zone=remote_health burst=60 nodelay; proxy_pass http://remote_app; proxy_read_timeout 5s; gzip off; }
         location /actuator { return 404; }
@@ -195,6 +205,9 @@ http {
         location ~* "\.(?:js|mjs|wasm|css|json|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|otf)$" {
             try_files $uri =404;
         }
-        location / { try_files $uri $uri/ /index.html; }
+        location / {
+            if (-f /var/lib/uten-imp-public/updating) { return 503; }
+            try_files $uri $uri/ /index.html;
+        }
     }
 }

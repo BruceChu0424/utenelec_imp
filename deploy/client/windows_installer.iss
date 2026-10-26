@@ -45,7 +45,11 @@ AppPublisher=Uten
 DefaultGroupName={cm:AppDisplayName}
 DisableDirPage=yes
 DisableProgramGroupPage=yes
+#ifdef LocalTest
+UsePreviousAppDir=no
+#else
 UsePreviousAppDir=yes
+#endif
 UsePreviousLanguage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed={#AllowedArchitectures}
@@ -86,15 +90,15 @@ Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 
 [CustomMessages]
 #ifdef LocalTest
-english.AppDisplayName=Uten Integrated Management Platform (UIMP) - Local Test
-chinesesimp.AppDisplayName=优腾综合管理平台(UIMP) - 本地测试
-english.LaunchUimp=Open UIMP - Local Test
-chinesesimp.LaunchUimp=打开优腾综合管理平台(UIMP) - 本地测试
+english.AppDisplayName=UTEN - 本地测试
+chinesesimp.AppDisplayName=UTEN - 本地测试
+english.LaunchUimp=Open UTEN - Local Test
+chinesesimp.LaunchUimp=打开 UTEN - 本地测试
 #else
-english.AppDisplayName=Uten Integrated Management Platform (UIMP)
-chinesesimp.AppDisplayName=优腾综合管理平台(UIMP)
-english.LaunchUimp=Open Uten Integrated Management Platform (UIMP)
-chinesesimp.LaunchUimp=打开优腾综合管理平台(UIMP)
+english.AppDisplayName=UTEN
+chinesesimp.AppDisplayName=UTEN
+english.LaunchUimp=Open UTEN
+chinesesimp.LaunchUimp=打开 UTEN
 #endif
 
 [Files]

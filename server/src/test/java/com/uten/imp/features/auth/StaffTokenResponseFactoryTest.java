@@ -115,8 +115,11 @@ class StaffTokenResponseFactoryTest {
         var after = state(employeeId, "E2002", false, false, 7, 11);
         UUID replacement = UUID.randomUUID();
         when(after.getBusinessDatasetId()).thenReturn(replacement);
-        when(users.findAccountStateById(target.getId())).thenReturn(
-                Optional.of(before), Optional.of(after), Optional.of(after), Optional.of(after));
+        when(users.findAccountStateById(target.getId()))
+                .thenReturn(Optional.of(before))
+                .thenReturn(Optional.of(after))
+                .thenReturn(Optional.of(after))
+                .thenReturn(Optional.of(after));
         when(permissions.authorizationSnapshot(target.getId(), employeeId, false))
                 .thenReturn(new PermissionResolver.AuthorizationSnapshot(Set.of("old:view")),
                         new PermissionResolver.AuthorizationSnapshot(Set.of("current:view")));

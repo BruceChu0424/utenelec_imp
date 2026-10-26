@@ -28,6 +28,9 @@ import static org.mockito.Mockito.when;
  * 冲突，commit 走 [GoodsService.restoreImported]（同 UUID 原编号复活），不再新建身份。
  */
 class GoodsImportRestoreDeletedTest {
+    @org.junit.jupiter.api.AfterEach void clearAuthentication() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
 
     @Test
     void detect_plansRestoreInsteadOfConflictForASoftDeletedCode() throws Exception {
@@ -64,11 +67,16 @@ class GoodsImportRestoreDeletedTest {
 
     @Test
     void commit_restoresTheSoftDeletedIdentityInsteadOfCreatingANewOne() throws Exception {
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("restore-importer","unused",
+                        java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("goods:edit"))));
         GoodsRepository goods = mock(GoodsRepository.class);
         GoodsService goodsService = mock(GoodsService.class);
         UUID deletedId = UUID.randomUUID();
         var deleted = new com.uten.imp.features.master.goods.Goods();
         deleted.setId(deletedId);
+        deleted.setDeleted(true);
+        when(goods.findById(deletedId)).thenReturn(Optional.of(deleted));
         when(goods.existsByCodeAndDeletedFalse("208035801")).thenReturn(false);
         when(goods.findFirstByCodeAndDeletedTrueOrderByIdAsc("208035801"))
                 .thenReturn(Optional.of(deleted));

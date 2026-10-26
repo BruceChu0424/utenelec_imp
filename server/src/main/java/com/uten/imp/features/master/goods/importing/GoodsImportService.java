@@ -206,7 +206,6 @@ public class GoodsImportService {
         Set<String> willCreateUnit = new LinkedHashSet<>();
         Set<String> seenCodes = new HashSet<>();
         Set<UUID> seenGoods = new HashSet<>();
-        Set<String> seenUnnamedIdentities = new HashSet<>();
         List<GoodsImportIdentity> goodsSnapshot = goodsRepo.findImportIdentities();
         List<PlannedRow> plannedRows = new ArrayList<>();
         List<GoodsImportReviewRow> reviewRows = new ArrayList<>();
@@ -291,34 +290,10 @@ public class GoodsImportService {
             if (r.status != null && !r.status.isEmpty() && !VALID_STATUSES.contains(r.status)) {
                 errors.add(new GoodsImportError(r.rowNum, "状态", "状态必须为 使用/禁用"));
             }
-            // A supplied UUID identifies an update, while an unused explicit code
-            // without a UUID identifies a new variant. Names are not unique goods
-            // identifiers: colors, materials and models may legitimately differ.
-            // Only legacy files missing both identifiers use the name fallback.
-            if (existingGoods == null && restoreGoodsId == null && category != null
-                    && r.goodsId == null && (r.code == null || r.code.isEmpty())) {
-                UUID categoryId = existingCategoryId(category);
-                List<GoodsImportIdentity> matches = categoryId == null ? List.of() : goodsSnapshot.stream()
-                        .filter(g -> !g.deleted() && categoryId.equals(g.categoryId())
-                                && Objects.equals(normName(g.name()), r.name)).toList();
-                if (matches.size() > 1) {
-                    errors.add(new GoodsImportError(r.rowNum, "货品名称", "同分类同名货品不唯一，请填入现有货品编号或 UUID 后重传"));
-                } else if (matches.size() == 1) {
-                    Goods matched = goodsRepo.findById(matches.getFirst().id())
-                            .orElseThrow(() -> stalePlan("匹配货品在检测期间已变化"));
-                    existingGoods = matched;
-                    matchType = "PATH_NAME";
-                } else if (goodsSnapshot.stream()
-                        .anyMatch(g -> !g.deleted() && Objects.equals(normName(g.name()), r.name))) {
-                    errors.add(new GoodsImportError(r.rowNum, "货品名称",
-                            "其他分类存在同名货品，请填现有编号确认更新；若确为新货品，请填写新编号"));
-                }
-            }
+            // UUID/code are the only goods identities. A blank pair creates a
+            // new row with an allocated code. Names, colors and materials are
+            // descriptive: a same-name row must never silently update a variant.
             if (existingGoods != null) writeAccess.requireWritable(existingGoods.getId());
-            if (existingGoods != null && r.goodsId == null && (r.code == null || r.code.isEmpty())
-                    && goodsRepo.codeHasReuseHistory(existingGoods.getCode())) {
-                errors.add(new GoodsImportError(r.rowNum, "系统标识", "该货品编号曾复用，请重新导出并保留系统标识后导入"));
-            }
             boolean preserveLegacyColor = existingGoods != null && existingGoods.getColor() == null
                     && existingGoods.getColorLegacyId() != null
                     && legacyNameUnchanged(masters.colors(), existingGoods.getColorLegacyId(), r.colorName,
@@ -333,14 +308,6 @@ public class GoodsImportService {
                     r.rowNum, "单位", r.unitName, unitIndex, willCreateUnit, errors);
             List<GoodsImportReviewRow.Change> changes = List.of();
             String goodsFingerprint = null;
-            if (existingGoods == null && restoreGoodsId == null && category != null
-                    && (r.code == null || r.code.isEmpty()) && r.name != null && !r.name.isEmpty()) {
-                PlannedCategorySegment target = category.segments().getLast();
-                String identity = Objects.toString(target.existingId(), "NEW:" + target.newToken()) + "\u0000" + r.name;
-                if (!seenUnnamedIdentities.add(identity)) {
-                    errors.add(new GoodsImportError(r.rowNum, "货品名称", "本文件同分类同名的无编号货品重复，请合并为一行后重传"));
-                }
-            }
             if (existingGoods != null) {
                 if (!seenGoods.add(existingGoods.getId())) {
                     errors.add(new GoodsImportError(r.rowNum, "货品名称", "本文件多行对应同一货品，请合并为一行后重传"));
@@ -426,6 +393,17 @@ public class GoodsImportService {
             }
             lockedGoods.put(goods.getId(), goods);
         }
+        // Restoring an old identity is also a merge. Read its complete baseline
+        // under the same table lock; omitted workbook columns never mean clear.
+        for (PlannedRow row : plan.rows()) {
+            if (row.restoreGoodsId() == null) continue;
+            goodsService.requireRestoreImportedWriteAccess(row.restoreGoodsId());
+            Goods goods = goodsRepo.findById(row.restoreGoodsId())
+                    .orElseThrow(() -> stalePlan("待恢复货品已不存在"));
+            em.refresh(goods);
+            if (!goods.isDeleted()) throw stalePlan("待恢复货品已恢复");
+            lockedGoods.put(goods.getId(), goods);
+        }
         MasterSnapshot currentMasters = loadMasterSnapshot();
         if (!MessageDigest.isEqual(
                 plan.masterFingerprint().getBytes(StandardCharsets.US_ASCII),
@@ -459,6 +437,23 @@ public class GoodsImportService {
         int createdCats = 0, createdColors = 0, createdUnits = 0;
         int created = 0, restored = 0, updated = 0, merged = 0, filled = 0, ignored = 0, unchanged = 0;
 
+        // Authorize the complete reviewed update set before materializing any category,
+        // color or unit. New records still use the independent import capability.
+        for (int authorizationIndex=0;authorizationIndex<plan.rows().size();authorizationIndex++) {
+            PlannedRow planned=plan.rows().get(authorizationIndex);
+            if(planned.existingGoodsId()!=null) {
+                boolean replacing=replacements.contains(rowKey(planned.rowNum()));
+                com.uten.imp.features.master.goods.GoodsFieldEditPolicy.requireFields(
+                        planned.changes().stream().filter(change -> "FILL".equals(change.kind()) || replacing)
+                                .map(GoodsImportReviewRow.Change::field).toList());
+            } else if(planned.restoreGoodsId()!=null) {
+                com.uten.imp.features.master.goods.GoodsFieldEditPolicy.requireFields(
+                        changes(parsed.rows.get(authorizationIndex),lockedGoods.get(planned.restoreGoodsId()),
+                                planned.category(),planned.color(),planned.unit()).stream()
+                                .map(GoodsImportReviewRow.Change::field).toList());
+            }
+        }
+
         for (int rowIndex = 0; rowIndex < parsed.rows.size(); rowIndex++) {
             ParsedRow r = parsed.rows.get(rowIndex);
             PlannedRow planned = plan.rows().get(rowIndex);
@@ -474,15 +469,6 @@ public class GoodsImportService {
             if (merging && applied.isEmpty()) {
                 if (planned.changes().isEmpty()) unchanged++;
                 continue;
-            }
-            if (merging) {
-                com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:edit");
-                if (applied.stream().anyMatch(change -> "price".equals(change.field()))) {
-                    com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:price:edit");
-                }
-                if (applied.stream().anyMatch(change -> "status".equals(change.field()))) {
-                    com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:status");
-                }
             }
             int[] catCnt = new int[1];
             UUID categoryId = !merging || hasChange(applied, "categoryId") ? materializeCategory(
@@ -509,6 +495,16 @@ public class GoodsImportService {
                 if (applied.stream().anyMatch(change -> "FILL".equals(change.kind()))) filled++;
                 continue;
             }
+            if (planned.restoreGoodsId() != null) {
+                Goods deleted = lockedGoods.get(planned.restoreGoodsId());
+                List<GoodsImportReviewRow.Change> restoreChanges = changes(
+                        r, deleted, planned.category(), planned.color(), planned.unit());
+                GoodsSaveRequest request = mergeRequest(deleted, r, restoreChanges, categoryId, colorId, unitId);
+                UUID goodsId = goodsService.restoreImported(deleted.getId(), request);
+                recordCreation(batchId, "GOODS", goodsId);
+                restored++;
+                continue;
+            }
             GoodsSaveRequest req = new GoodsSaveRequest();
             req.setCode(r.code);
             req.setName(r.name);
@@ -523,19 +519,17 @@ public class GoodsImportService {
             req.setPaper(emptyToNull(r.paper));
             if (r.nameEn != null) req.setNameEn(r.nameEn);
             req.setSourceType(emptyToNull(r.sourceType));
-            req.setPrice(r.price);
+            if (r.price != null) req.setPrice(r.price);
             req.setMinOrderQty(r.minOrderQty);
             req.setOrderMultipleQty(r.orderMultipleQty);
-            req.setStatus(emptyToNull(r.status));
+            if (emptyToNull(r.status) != null) req.setStatus(emptyToNull(r.status));
             // Runtime relationships are UUID-only. legacy_id is never used to
             // resolve or write an imported goods relationship.
             if (colorId != null) req.setColorId(colorId);
             if (unitId != null) req.setUnitId(unitId);
-            UUID goodsId = planned.restoreGoodsId() != null
-                    ? goodsService.restoreImported(planned.restoreGoodsId(), req)
-                    : goodsService.saveImported(req);
+            UUID goodsId = goodsService.saveImported(req);
             recordCreation(batchId, "GOODS", goodsId);
-            if (planned.restoreGoodsId() == null) created++; else restored++;
+            created++;
         }
 
         em.flush();
@@ -1160,7 +1154,7 @@ public class GoodsImportService {
         org.springframework.beans.BeanUtils.copyProperties(old, request,
                 "unitLegacyId", "colorLegacyId", "mouldLegacyId", "clientLegacyId", "vendLegacyId", "vend2LegacyId",
                 "thicknessUnitLegacyId", "mWeightUnitLegacyId", "MWeightUnitLegacyId",
-                "nameEn", "cNumber", "CNumber", "clientGoodsName", "subcontractAllowedLossPct");
+                "nameEn", "cNumber", "CNumber", "clientGoodsName", "subcontractAllowedLossPct", "status");
         request.setCategoryId(old.getCategory() == null ? null : old.getCategory().getId());
         request.setVersion(old.getVersion());
         for (GoodsImportReviewRow.Change change : changes) {

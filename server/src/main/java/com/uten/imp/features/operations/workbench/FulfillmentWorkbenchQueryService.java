@@ -453,7 +453,7 @@ public class FulfillmentWorkbenchQueryService {
                        materials_defined, production_product_code, production_product_name, material_request_no,
                        workshop_name, worker_name, draw_batch_no, lines,
                        rd_task_no, bom_missing_item_ids, orderable_qty,
-                       supplier_name
+                       supplier_name, difference_qty
                 FROM %s
                 WHERE %s
                 ORDER BY %s
@@ -658,6 +658,7 @@ public class FulfillmentWorkbenchQueryService {
             values.put("allocatedQty", row.allocatedQty());
             values.put("fulfilledQty", row.fulfilledQty());
             values.put("openQty", row.openQty());
+            values.put("differenceQty", row.differenceQty());
             values.put("exception", exceptionLabel);
             values.put("warehouseName", row.warehouseName());
             values.put("needDate", row.needDate() == null ? null : row.needDate().toString());
@@ -677,6 +678,7 @@ public class FulfillmentWorkbenchQueryService {
                 new ExportColumn("allocatedQty", "已分配", ExportColumn.QTY, null, null, "unitName"),
                 new ExportColumn("fulfilledQty", "已履约", ExportColumn.QTY, null, null, "unitName"),
                 new ExportColumn("openQty", "未完成", ExportColumn.QTY, null, null, "unitName"),
+                new ExportColumn("differenceQty", "差异数", ExportColumn.QTY, null, null, "unitName"),
                 new ExportColumn("exception", "异常", ExportColumn.TEXT),
                 new ExportColumn("warehouseName", "仓库", ExportColumn.TEXT),
                 new ExportColumn("needDate", "需求日期", ExportColumn.DATE),
@@ -1158,6 +1160,13 @@ public class FulfillmentWorkbenchQueryService {
                 )
                 """.formatted(source) : "";
         if (subcontract) source = "kit_base";
+        String difference = (purchase || subcontract)
+                ? "CASE WHEN base.action_doc_type='" + (subcontract ? "SUBCONTRACT" : "PURCHASE")
+                    + "_ORDER' THEN (SELECT "
+                    + com.uten.imp.common.finance.ProcurementDeliveryDifference.sql("difference_item.qty", "difference_item.received_qty", "difference_item.returned_qty")
+                    + " FROM " + (subcontract ? "subcontract" : "purchase")
+                    + "_order_items difference_item WHERE difference_item.id=base.action_item_id) END"
+                : "NULL::numeric";
         // An order item can have several source issues. Its earliest issue remains
         // the displayed date; later application creation never substitutes for it.
         return """
@@ -1181,7 +1190,8 @@ public class FulfillmentWorkbenchQueryService {
                         %s AS rd_task_no, %s AS bom_missing_item_ids,
                         %s AS orderable_qty,
                         CASE WHEN %s IS NOT NULL THEN base.supplier_name END AS supplier_name,
-                        base.search_goods_names, base.search_goods_codes
+                        base.search_goods_names, base.search_goods_codes,
+                        %s AS difference_qty
                  FROM %s base %s %s %s %s %s)
                 """.formatted(kitPrefix, exceptionExpression, subcontract ? "issue.issued_at" : "NULL::timestamptz",
                         canCreate ? "TRUE" : "FALSE", requestType,
@@ -1195,7 +1205,7 @@ public class FulfillmentWorkbenchQueryService {
                         subcontract ? "bom_gap.rd_task_no" : "NULL::text",
                         subcontract ? "COALESCE(bom_gap.item_ids, ARRAY[]::text[])" : "ARRAY[]::text[]",
                         subcontract ? "kit.orderable_qty" : "NULL::numeric",
-                        visibleDoc,
+                        visibleDoc, difference,
                         source, issueJoin, progressJoin, bomGapJoin, productionProductJoin, closureJoin);
     }
 
@@ -1276,7 +1286,8 @@ public class FulfillmentWorkbenchQueryService {
                 row.length > 45 ? (String) row[45] : null,
                 row.length > 46 ? stringArray(row[46]) : List.of(),
                 row.length > 47 && row[47] != null ? decimal(row[47]) : null,
-                row.length > 48 ? (String) row[48] : null);
+                row.length > 48 ? (String) row[48] : null,
+                row.length > 49 && row[49] != null ? decimal(row[49]) : null);
     }
 
     private static final com.fasterxml.jackson.databind.ObjectMapper LINES_MAPPER =
@@ -1435,7 +1446,8 @@ public class FulfillmentWorkbenchQueryService {
                 row.productionProductCode(), row.productionProductName(), restricted ? null : row.materialRequestNo(),
                 row.workshopName(), row.workerName(), row.drawBatchNo(), row.lines(),
                 row.rdTaskNo(), restricted ? List.of() : row.bomMissingItemIds(),
-                restricted ? null : row.orderableQty(), restricted ? null : row.supplierName());
+                restricted ? null : row.orderableQty(), restricted ? null : row.supplierName(),
+                restricted ? null : row.differenceQty());
     }
 
     private static BigDecimal decimal(Object value) {

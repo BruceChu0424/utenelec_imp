@@ -717,6 +717,22 @@ class AuditQueryServiceTest {
                 null, null, null, null, false));
     }
 
+    @Test void employeeTargetSearchExpandsVerifiedAliasesWhileActorUuidStaysExact() {
+        UUID canonical=UUID.randomUUID(),alias=UUID.randomUUID();
+        var identities=mock(com.uten.imp.application.port.EmployeeIdentityLookupPort.class);
+        when(identities.employeeIdentityMembers(canonical)).thenReturn(List.of(canonical,alias));
+        AuditQueryService service=new AuditQueryService(mock(AuditLogRepository.class),
+                new AuditEventInterpreter(),emptyActorDirectory(),null,identities);
+        Root<AuditLog> root=mock(Answers.RETURNS_DEEP_STUBS);
+        CriteriaBuilder cb=mock(CriteriaBuilder.class,Answers.RETURNS_DEEP_STUBS);
+        var criteria=new AuditSearchCriteria(null,null,null,null,null,null,null,"employees",canonical.toString(),
+                null,null,null,null,null,null,SELECTED_ACTOR,false);
+        service.specification(criteria).toPredicate(root,null,cb);
+        verify(cb.lower(root.<String>get("targetId"))).in(List.of(canonical.toString(),alias.toString()));
+        verify(cb).equal(root.get("actorId"),SELECTED_ACTOR);
+        verify(identities).employeeIdentityMembers(canonical);
+    }
+
     @Test
     void activityViewUsesExactActorAndExcludesDatabaseDerivedRows() {
         AuditQueryService service = new AuditQueryService(

@@ -40,6 +40,8 @@ import '../../../shared/widgets/uten_tree_row_projection.dart';
 import '../models/currency_node.dart';
 import '../models/goods_cost_sheet.dart';
 import '../models/goods_node.dart';
+import '../models/goods_field_edit_policy.dart';
+import '../../../shared/auth/permissions.dart';
 import '../repositories/currency_repository.dart';
 import '../repositories/client_repository.dart';
 import '../repositories/goods_cost_repository.dart';
@@ -1083,7 +1085,12 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       if (_editable && _capability.canManageTemplates)
         (_l.costSaveTemplate, _saveTemplate),
       if (_editable) (_l.costImport, _importWorkbook),
-      if (widget.canEdit) (_l.costLossPolicy, _lossPolicy),
+      if (widget.canEdit &&
+          GoodsFieldEditPolicy.canEditField(
+            'subcontractAllowedLossPct',
+            ref.watch(currentPermissionsProvider),
+          ))
+        (_l.costLossPolicy, _lossPolicy),
       if (_sheet != null) (_l.costCompare, _compareVersions),
       if (_sheet != null) (_l.costHistory, _showSnapshots),
     ];

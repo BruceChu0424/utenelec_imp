@@ -21,6 +21,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/presentation/procurement_delivery_difference_l10n.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter/foundation.dart' show mapEquals, setEquals;
@@ -519,7 +520,11 @@ class _OperationsWorkbenchPageState
               : ChinaDateTime.formatDate(range.start),
           dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
           // 排序键走服务端白名单名(本页列 key 与 facet key 不同名, 见 _serverKeyByColumn)。
-          sort: _sortColumn == null ? null : _serverKeyByColumn[_sortColumn],
+          sort: _sortColumn == 'differenceQty'
+              ? 'differenceQty'
+              : _sortColumn == null
+              ? null
+              : _serverKeyByColumn[_sortColumn],
           order: _sortAscending ? 'asc' : 'desc',
           columnFilters: _columnFilters,
         );
@@ -797,7 +802,9 @@ class _OperationsWorkbenchPageState
         'dateTo': ChinaDateTime.formatDate(range.end),
       },
       if (_sortColumn != null) ...{
-        'sort': _serverKeyByColumn[_sortColumn],
+        'sort': _sortColumn == 'differenceQty'
+            ? 'differenceQty'
+            : _serverKeyByColumn[_sortColumn],
         'order': _sortAscending ? 'asc' : 'desc',
       },
       for (final entry in _columnFilters.entries)
@@ -1631,6 +1638,18 @@ class _DesktopTaskTable extends StatelessWidget {
               ? '—'
               : _quantity(item.fulfilledQty, item.unitName),
         ),
+        if (mergedStageColumn)
+          MasterColumnDef(
+            key: 'differenceQty',
+            label: procurementDeliveryDifferenceL10n(context).label,
+            width: 130,
+            type: 'number',
+            sortable: true,
+            info: procurementDeliveryDifferenceL10n(context).hint,
+            value: (item) => item.differenceQtyText == null
+                ? '—'
+                : '${item.differenceQtyText} ${item.unitName}'.trim(),
+          ),
         MasterColumnDef(
           key: 'openQty',
           label: '未完成',

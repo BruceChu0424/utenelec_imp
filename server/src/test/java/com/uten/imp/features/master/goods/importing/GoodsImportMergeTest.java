@@ -136,24 +136,27 @@ class GoodsImportMergeTest {
         verifyNoInteractions(f.goodsService);
     }
 
-    @Test void samePathAndNameWithoutCodeResolvesTheSingleExistingUuid() throws Exception {
+    @Test void samePathAndNameWithoutIdentifiersCreatesANewVariant() throws Exception {
         Fixture f = fixture();
         byte[] file = workbook("", "现有货品", "222", "", "");
         var report = f.service.detect(file);
         assertTrue(report.errors().isEmpty());
-        assertEquals("PATH_NAME", report.reviewRows().getFirst().matchType());
+        assertTrue(report.reviewRows().isEmpty());
+        assertEquals(1, report.addedRows());
         f.service.commit(report.planId(), file, "goods.xlsx");
-        verify(f.goodsService).updateImported(eq(f.goods.getId()), any());
-        verify(f.goodsService, never()).saveImported(any());
+        verify(f.goodsService).saveImported(any());
+        verify(f.goodsService, never()).updateImported(any(), any());
     }
 
-    @Test void ambiguousSamePathAndNameIsNeverGuessed() throws Exception {
+    @Test void existingSameNameVariantsDoNotBlockANewAutomaticCode() throws Exception {
         Fixture f = fixture();
         Goods duplicate = goods(f.category, "G2", "现有货品");
         when(f.repo.findImportIdentities()).thenReturn(List.of(identity(f.goods), identity(duplicate)));
         var report = f.service.detect(workbook("", "现有货品", "222", "", ""));
-        assertNull(report.planId());
-        assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("不唯一")));
+        assertNotNull(report.planId());
+        assertTrue(report.errors().isEmpty());
+        assertEquals(1, report.addedRows());
+        assertTrue(report.reviewRows().isEmpty());
     }
 
     @Test void samePathAndNameWithAnUnusedExplicitCodeCreatesANewVariant() throws Exception {
@@ -307,12 +310,13 @@ class GoodsImportMergeTest {
         verifyNoInteractions(f.goodsService);
     }
 
-    @Test void sameNameInAnotherCategoryNeedsAnExplicitNewCodeBeforeCreatingNewGoods() throws Exception {
+    @Test void sameNameInAnotherCategoryAllowsAnAutomaticOrExplicitNewCode() throws Exception {
         Fixture f = fixture();
         f.goods.setCategory(category("另一分类"));
         var report = f.service.detect(workbook("", "现有货品", "222", "", ""));
-        assertNull(report.planId());
-        assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("其他分类存在同名")));
+        assertNotNull(report.planId());
+        assertTrue(report.errors().isEmpty());
+        assertEquals(1, report.addedRows());
         report = f.service.detect(workbook("NEW-CODE", "现有货品", "222", "", ""));
         assertTrue(report.errors().isEmpty(), report.errors().toString());
         assertEquals(1, report.addedRows());
@@ -372,7 +376,7 @@ class GoodsImportMergeTest {
         assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("不同货品")));
     }
 
-    @Test void twoNewUnnamedRowsUnderANewCategoryAreRejectedBeforeCreatingDuplicates() throws Exception {
+    @Test void sameNameRowsWithDifferentCustomerModelsAllocateSeparateIdentities() throws Exception {
         Fixture f = fixture();
         try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
             var sheet = book.createSheet("货品");
@@ -387,8 +391,9 @@ class GoodsImportMergeTest {
             }
             book.write(out);
             var report = f.service.detect(out.toByteArray());
-            assertNull(report.planId());
-            assertTrue(report.errors().stream().anyMatch(error -> error.rowNum() == 3 && error.message().contains("合并为一行")));
+            assertNotNull(report.planId());
+            assertTrue(report.errors().isEmpty(), report.errors().toString());
+            assertEquals(2, report.addedRows());
             verifyNoInteractions(f.goodsService);
         }
     }
@@ -479,8 +484,10 @@ class GoodsImportMergeTest {
         assertTrue(report.errors().stream().anyMatch(error -> error.column().equals("系统标识") && error.message().contains("曾复用")));
         verifyNoInteractions(f.goodsService);
         report = f.service.detect(workbook("", "现有货品", "222", "", ""));
-        assertNull(report.planId());
-        assertTrue(report.errors().stream().anyMatch(error -> error.column().equals("系统标识") && error.message().contains("曾复用")));
+        assertNotNull(report.planId());
+        assertTrue(report.errors().isEmpty());
+        assertEquals(1, report.addedRows());
+        assertTrue(report.reviewRows().isEmpty());
         report = f.service.detect(workbookWithUuid(f.goods.getId().toString()));
         assertTrue(report.errors().isEmpty(), report.errors().toString());
         assertEquals(1, report.unchangedRows());
@@ -509,7 +516,7 @@ class GoodsImportMergeTest {
     private static GoodsSaveRequest capturedAgain(Fixture f) { return captured(f); }
 
     private static Fixture fixture() {
-        authorities("goods:import", "goods:edit");
+        authorities("goods:import", "goods:edit", "goods:sales:edit", "goods:purchase:edit");
         GoodsRepository repo = mock(GoodsRepository.class);
         GoodsService goodsService = mock(GoodsService.class);
         MaterialCategoryRepository categories = mock(MaterialCategoryRepository.class);

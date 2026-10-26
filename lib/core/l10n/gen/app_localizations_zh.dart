@@ -11881,7 +11881,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get goodsImportMergeHint =>
-      '系统标识确定原货品；没有系统标识时按编号匹配，新编号可新增同名、不同颜色或材质的货品。系统标识和编号都为空时，才按同分类同名称唯一匹配，多条同名须补充编号或系统标识。空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值。同编号已删除货品按清单内容恢复。';
+      '系统标识确定原货品；没有系统标识时按编号匹配。两者都为空时新增货品并自动编号；新编号也可新增同名、不同颜色、材质或规格的货品，名称不用于匹配身份。更新时空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值。同编号已删除货品按清单内容恢复。';
 
   @override
   String get goodsImportUndoHint =>
@@ -12571,4 +12571,49 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get companyFilesPreview => '预览文件';
+
+  @override
+  String get mouldManufacturerLabel => '模具制造商';
+
+  @override
+  String get mouldManufacturerMissing => '待补充';
+
+  @override
+  String get mouldManufacturerMissingHint => '制造商尚未登记';
+
+  @override
+  String get mouldManufacturerMissingEditableHint => '制造商尚未登记，可在编辑模具或编辑模式中补充';
+
+  @override
+  String get mouldManufacturerHistoryUnavailable => '候选加载失败，仍可直接输入';
+
+  @override
+  String get mouldManufacturerHistoryEmpty => '暂无历史候选，可直接输入';
+
+  @override
+  String get mouldManufacturerSupplierCandidates => '供应商名称(供核实选用)';
+
+  @override
+  String get mouldManufacturerSupplierUnavailable => '供应商候选加载失败，仍可直接输入';
+
+  @override
+  String get mouldManufacturerSupplierEmpty => '暂无匹配供应商，可继续输入查找';
+
+  @override
+  String get mouldManufacturerInputHint => '待补充，可输入制造商名称';
+
+  @override
+  String get mouldManufacturerInputHelp => '可直接输入或选择候选，核实后保存';
+
+  @override
+  String get mouldManufacturerChooseHistoryTooltip => '选择历史制造商';
+
+  @override
+  String get employeeIdentitySectionTitle => '证件信息';
+
+  @override
+  String get employeeIdentitySavedReadbackFailed => '证件信息已保存，读取最新资料失败，请重试读取。';
+
+  @override
+  String get employeeIdentitySeparateSaveHint => '证件信息单独保存，现有登录账号继续保留。';
 }

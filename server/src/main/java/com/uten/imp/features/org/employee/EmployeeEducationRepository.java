@@ -8,6 +8,7 @@ import java.util.UUID;
 public interface EmployeeEducationRepository extends JpaRepository<EmployeeEducation, UUID> {
 
     List<EmployeeEducation> findByEmployeeIdOrderByEndDateDesc(UUID employeeId);
+    List<EmployeeEducation> findByEmployeeIdInOrderByEndDateDescIdAsc(java.util.Collection<UUID> employeeIds);
 
     void deleteByEmployeeId(UUID employeeId);
 }

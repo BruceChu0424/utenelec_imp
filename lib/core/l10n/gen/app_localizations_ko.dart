@@ -12190,7 +12190,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get goodsImportMergeHint =>
-      '시스템 식별자로 기존 품목을 확인합니다. 식별자가 없으면 코드로 일치시키며 새 코드로 이름이 같고 색상이나 재질이 다른 품목을 추가할 수 있습니다. 식별자와 코드가 모두 비어 있을 때만 동일 분류와 이름의 유일한 품목을 찾습니다. 여러 품목이 일치하면 코드나 식별자가 필요합니다. 누락 값은 자동 보완하며 나머지 차이는 전체 페이지에서 교체 또는 무시합니다. 빈 셀은 기존 값을 지우지 않습니다. 동일 코드의 삭제 품목은 파일 내용으로 복원됩니다.';
+      '시스템 식별자로 기존 품목을 확인하며 식별자가 없으면 코드로 일치시킵니다. 둘 다 비어 있으면 행마다 자동 코드로 새 품목을 만듭니다. 새 코드도 새 품목을 만듭니다. 이름은 식별 기준이 아니므로 같은 이름에 색상, 재질, 규격이 달라도 됩니다. 기존 품목의 빈 값은 보완하고 나머지 차이는 교체 또는 무시합니다. 빈 셀은 기존 값을 지우지 않습니다. 동일 코드의 삭제 품목은 파일 내용으로 복원됩니다.';
 
   @override
   String get goodsImportUndoHint =>
@@ -12912,4 +12912,56 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get companyFilesPreview => '파일 미리 보기';
+
+  @override
+  String get mouldManufacturerLabel => '금형 제조사';
+
+  @override
+  String get mouldManufacturerMissing => '미등록';
+
+  @override
+  String get mouldManufacturerMissingHint => '제조사가 등록되지 않았습니다.';
+
+  @override
+  String get mouldManufacturerMissingEditableHint =>
+      '제조사가 등록되지 않았습니다. 금형 편집 또는 표 편집에서 추가하세요.';
+
+  @override
+  String get mouldManufacturerHistoryUnavailable =>
+      '후보를 불러오지 못했습니다. 이름을 직접 입력할 수 있습니다.';
+
+  @override
+  String get mouldManufacturerHistoryEmpty =>
+      '기존 제조사가 없습니다. 이름을 직접 입력할 수 있습니다.';
+
+  @override
+  String get mouldManufacturerSupplierCandidates => '공급업체명 (확인 후 선택)';
+
+  @override
+  String get mouldManufacturerSupplierUnavailable =>
+      '공급업체 후보를 불러오지 못했습니다. 이름을 직접 입력할 수 있습니다.';
+
+  @override
+  String get mouldManufacturerSupplierEmpty =>
+      '일치하는 공급업체가 없습니다. 계속 입력하여 검색하세요.';
+
+  @override
+  String get mouldManufacturerInputHint => '미등록. 제조사명을 입력하세요.';
+
+  @override
+  String get mouldManufacturerInputHelp => '이름을 입력하거나 선택한 후 확인하고 저장하세요.';
+
+  @override
+  String get mouldManufacturerChooseHistoryTooltip => '기존 제조사 선택';
+
+  @override
+  String get employeeIdentitySectionTitle => '신분증 정보';
+
+  @override
+  String get employeeIdentitySavedReadbackFailed =>
+      '신분증 정보는 저장되었지만 최신 자료를 불러오지 못했습니다. 다시 불러오세요.';
+
+  @override
+  String get employeeIdentitySeparateSaveHint =>
+      '신분증 정보는 별도로 저장되며 기존 로그인 계정은 유지됩니다.';
 }

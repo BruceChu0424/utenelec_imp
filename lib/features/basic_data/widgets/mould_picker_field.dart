@@ -16,6 +16,7 @@ import '../../../components/layout/uten_split_view.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/auth/permissions.dart';
+import 'mould_manufacturer_field.dart';
 import '../models/product_category_node.dart';
 import '../repositories/mould_category_repository.dart';
 import 'master_data_table_view.dart';
@@ -636,6 +637,8 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
                             label: '制造商',
                             width: 110,
                             value: (m) => m.manufacturer,
+                            cellBuilder: (_, m) =>
+                                MouldManufacturerValue(value: m.manufacturer),
                           ),
                           MasterColumnDef(
                             key: 'remark',

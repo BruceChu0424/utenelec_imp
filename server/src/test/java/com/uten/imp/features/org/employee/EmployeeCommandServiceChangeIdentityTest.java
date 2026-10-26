@@ -144,6 +144,28 @@ class EmployeeCommandServiceChangeIdentityTest {
     }
 
     @Test
+    void existingOrdinaryLoginAccountDoesNotBlockIdentityCorrectionOrChangeCredentials() {
+        UserAccount account = new UserAccount();
+        account.setEmployeeId(employee.getId());
+        account.setLoginAccount("13800000000");
+        account.setPasswordHash("existing-password-hash");
+        account.setStatus("active");
+        account.setMustChangePassword(false);
+        when(userRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(account));
+        when(tx.hmac(VALID_ID)).thenReturn("corrected-id-hmac");
+        when(tx.encrypt(VALID_ID)).thenReturn("v2:corrected-id");
+
+        service.changeIdentity(employee.getId(), "身份证", VALID_ID);
+
+        verify(empRepo).save(employee);
+        assertEquals("13800000000", account.getLoginAccount());
+        assertEquals("existing-password-hash", account.getPasswordHash());
+        assertEquals("active", account.getStatus());
+        assertEquals(false, account.isMustChangePassword());
+        verify(userRepo, never()).save(any(UserAccount.class));
+    }
+
+    @Test
     void missingSensitiveRowIsCreated() {
         when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.empty());
         when(tx.hmac("H1234567")).thenReturn("hk-hmac");

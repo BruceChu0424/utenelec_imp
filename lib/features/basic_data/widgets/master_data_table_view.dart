@@ -5923,7 +5923,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             if (_platform.error != null)
               PlatformTableStatus(
                 error: _platform.error,
-                retry: _platform.reload,
+                retry: _platform.retryRead,
+                loading: _platform.loading,
+                failure: _platform.readFailure,
               ),
             if (widget.showColumnChooser)
               UtenColumnChooserButton(

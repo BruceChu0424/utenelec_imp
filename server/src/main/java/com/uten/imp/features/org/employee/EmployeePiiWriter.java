@@ -23,9 +23,17 @@ public class EmployeePiiWriter {
 
     static final String DUPLICATE_IDENTITY_MESSAGE =
             "该证件号码已被其他员工使用，请核对是否录错或与其他员工档案重复";
+    static final String HISTORICAL_IDENTITY_MESSAGE =
+            "该号码保存在此人员的历史档案中，需核对历史证件资料后处理";
 
     private final TxSessionVars tx;
     private final EmployeeSensitiveRepository sensitiveRepo;
+    private com.uten.imp.application.port.EmployeeIdentityLookupPort employeeIdentities;
+
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public void setEmployeeIdentities(com.uten.imp.application.port.EmployeeIdentityLookupPort identities) {
+        this.employeeIdentities=identities;
+    }
 
     public void applyIdentity(
             EmployeeSensitive target,
@@ -47,6 +55,12 @@ public class EmployeePiiWriter {
         }
         String hash = tx.hmac(normalized);
         if (hash != null && sensitiveRepo.existsByIdCardHashAndEmployeeIdNot(hash, employeeId)) {
+            if(employeeIdentities!=null) {
+                var historical=employeeIdentities.employeeIdentityMembers(employeeId).stream()
+                        .filter(member -> !member.equals(employeeId)).toList();
+                if(!historical.isEmpty() && sensitiveRepo.existsByIdCardHashAndEmployeeIdIn(hash,historical))
+                    throw new ApiException(ErrorCode.CONFLICT,HISTORICAL_IDENTITY_MESSAGE);
+            }
             // 各类证件共用一句话 (护照、港澳台通行证也走这里)；不说出是哪位员工，免得借查重探出别人的证件号。
             throw new ApiException(ErrorCode.CONFLICT, DUPLICATE_IDENTITY_MESSAGE);
         }

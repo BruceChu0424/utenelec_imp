@@ -65,19 +65,19 @@ class _TemplatesViewState extends ConsumerState<AdminPermissionTemplatesView> {
         boundary == ref.read(sensitiveReadBoundaryProvider);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => UtenAlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         icon: const Icon(Icons.delete_outline),
         title: Text(l.permissionTemplateDelete),
         content: Text('${template.name}\n\n${l.permissionTemplateDeleteHint}'),
         actions: [
           UtenButton(
             type: UtenButtonType.secondary,
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: Text(l.permissionTemplateCancel),
           ),
           UtenButton(
             type: UtenButtonType.danger,
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: Text(l.permissionTemplateDelete),
           ),
         ],

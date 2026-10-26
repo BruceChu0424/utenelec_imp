@@ -12636,7 +12636,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get goodsImportMergeHint =>
-      'The system identifier selects the original goods. Without it, the code selects existing goods; a new code can create goods with the same name and different colors or materials. Only when both identifier and code are blank does a unique category/name match apply; multiple matches require a code or identifier. Missing values are filled automatically; review other differences on the full page and choose replace or ignore. Blank cells keep existing values. Deleted goods with the same code are restored from the file.';
+      'The system identifier selects the original goods; otherwise the code matches existing goods. When both are blank, each row creates new goods with an automatic code. A new code also creates a new variant. Names never identify goods, so colors, materials and specifications may differ. Updates fill missing values; review other differences and choose replace or ignore. Blank cells keep existing values. Deleted goods with the same code are restored from the file.';
 
   @override
   String get goodsImportUndoHint =>
@@ -13383,4 +13383,61 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get companyFilesPreview => 'Preview file';
+
+  @override
+  String get mouldManufacturerLabel => 'Mould manufacturer';
+
+  @override
+  String get mouldManufacturerMissing => 'Not recorded';
+
+  @override
+  String get mouldManufacturerMissingHint =>
+      'The manufacturer has not been recorded.';
+
+  @override
+  String get mouldManufacturerMissingEditableHint =>
+      'The manufacturer is not recorded. Add it by editing the mould or the table.';
+
+  @override
+  String get mouldManufacturerHistoryUnavailable =>
+      'Suggestions could not load. You can still type a name.';
+
+  @override
+  String get mouldManufacturerHistoryEmpty =>
+      'No previous manufacturers. You can type a name.';
+
+  @override
+  String get mouldManufacturerSupplierCandidates =>
+      'Supplier names (verify before use)';
+
+  @override
+  String get mouldManufacturerSupplierUnavailable =>
+      'Supplier suggestions could not load. You can still type a name.';
+
+  @override
+  String get mouldManufacturerSupplierEmpty =>
+      'No matching suppliers. Keep typing to search.';
+
+  @override
+  String get mouldManufacturerInputHint =>
+      'Not recorded. Enter the manufacturer name.';
+
+  @override
+  String get mouldManufacturerInputHelp =>
+      'Type or select a name, then verify it before saving.';
+
+  @override
+  String get mouldManufacturerChooseHistoryTooltip =>
+      'Choose a previous manufacturer';
+
+  @override
+  String get employeeIdentitySectionTitle => 'Identity details';
+
+  @override
+  String get employeeIdentitySavedReadbackFailed =>
+      'Identity details were saved, but the updated record could not be loaded. Retry loading.';
+
+  @override
+  String get employeeIdentitySeparateSaveHint =>
+      'Identity details are saved separately. The existing login account is retained.';
 }

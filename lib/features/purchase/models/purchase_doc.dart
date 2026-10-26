@@ -191,6 +191,7 @@ class PurchaseDocItem {
     this.pendingQtyText,
     this.remainingQty,
     this.remainingQtyText,
+    this.differenceQtyText,
     this.receivedQty,
     this.receivedQtyText,
     this.returnedQty,
@@ -256,6 +257,9 @@ class PurchaseDocItem {
   final String? pendingQtyText;
   final double? remainingQty;
   final String? remainingQtyText;
+
+  /// Server authority: received - returned - ordered; closing never makes it zero.
+  final String? differenceQtyText;
   final double? receivedQty;
   final String? receivedQtyText;
   final double? returnedQty;
@@ -346,6 +350,7 @@ class PurchaseDocItem {
     pendingQtyText: receiptRecordedDecimal(json, 'pendingQty'),
     remainingQty: (json['remainingQty'] as num?)?.toDouble(),
     remainingQtyText: receiptRecordedDecimal(json, 'remainingQty'),
+    differenceQtyText: receiptRecordedDecimal(json, 'differenceQty'),
     receivedQty: (json['receivedQty'] as num?)?.toDouble(),
     receivedQtyText: receiptRecordedDecimal(json, 'receivedQty'),
     returnedQty: (json['returnedQty'] as num?)?.toDouble(),

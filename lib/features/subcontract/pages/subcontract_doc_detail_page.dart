@@ -17,6 +17,7 @@ import '../../../shared/business_columns/business_columns_table.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/presentation/procurement_delivery_difference_l10n.dart';
 import '../../../shared/widgets/legacy_continuation_notice.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -1359,6 +1360,17 @@ class _SubcontractDocDetailPageState
                         width: 100,
                         type: 'number',
                         value: (it) => qtyWithUnit(it, it.returnedQty),
+                      ),
+                    if (widget.docType == SubcontractDocType.order)
+                      MasterColumnDef(
+                        key: 'differenceQty',
+                        label: procurementDeliveryDifferenceL10n(context).label,
+                        width: 130,
+                        type: 'number',
+                        info: procurementDeliveryDifferenceL10n(context).hint,
+                        value: (it) => it.differenceQtyText == null
+                            ? '—'
+                            : '${it.differenceQtyText} ${names.unit(it.unitId)}',
                       ),
                     if (_cfg.showWasted)
                       MasterColumnDef(

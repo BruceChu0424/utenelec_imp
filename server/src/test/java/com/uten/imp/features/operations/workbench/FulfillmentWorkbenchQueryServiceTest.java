@@ -516,6 +516,9 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertEquals("open_qty DESC NULLS LAST, task_id",
                 new FulfillmentWorkbenchTableQuery("openQty", "desc", java.util.Map.of(),
                         null, null, null, null).orderSql());
+        assertEquals("difference_qty ASC NULLS LAST, task_id",
+                new FulfillmentWorkbenchTableQuery("differenceQty", "asc", java.util.Map.of(),
+                        null, null, null, null).orderSql());
         org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
                 () -> new FulfillmentWorkbenchTableQuery("warehouseName", "asc",
                         java.util.Map.of("warehouseName", "成品仓库"), null, null, null, null));

@@ -15,7 +15,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/master/inline-edit/goods")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('goods:edit') and hasAuthority('goods:view')")
+@PreAuthorize("hasAuthority('goods:view') and hasAnyAuthority('goods:edit', 'goods:purchase:edit', 'goods:sales:edit', 'goods:price:edit', 'goods:name_en:edit')")
 public class GoodsInlineEditController {
     private final GoodsInlineEditService service;
 

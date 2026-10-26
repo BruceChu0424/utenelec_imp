@@ -14,6 +14,15 @@ import '../../core/network/server_config.dart';
 
 enum PlatformColumnDeletionFailure { forbidden, referenced, busy, unavailable }
 
+enum PlatformTableReadFailure {
+  connection,
+  forbidden,
+  session,
+  recordsChanged,
+  initialization,
+  unavailable,
+}
+
 class PlatformColumnDeletionException extends FormatException {
   const PlatformColumnDeletionException(this.failure)
     : super('Column deletion is unavailable');
@@ -31,6 +40,7 @@ class PlatformTableController<T> extends ChangeNotifier {
   PlatformTableCapabilities? capabilities;
   PlatformTableLayout layout = const PlatformTableLayout();
   String? error;
+  PlatformTableReadFailure? readFailure;
   bool loading = false;
   bool disposed = false;
   bool layoutTouched = false;
@@ -163,6 +173,9 @@ class PlatformTableController<T> extends ChangeNotifier {
       _catalogDefinitions.clear();
       capabilities = null;
       error = bootstrapError;
+      readFailure = bootstrapError == null
+          ? null
+          : PlatformTableReadFailure.initialization;
       layoutTouched = false;
       _layoutSubscription?.close();
       _repositorySubscription?.close();
@@ -274,6 +287,7 @@ class PlatformTableController<T> extends ChangeNotifier {
     _values.clear();
     _catalogDefinitions.clear();
     error = null;
+    readFailure = null;
     for (final item in _items) {
       final draft = draftOf?.call(item);
       if (draft != null) {
@@ -620,20 +634,37 @@ class PlatformTableController<T> extends ChangeNotifier {
     }
   }
 
+  /// User retry refreshes capability metadata too; cached grants may have changed.
+  /// Only reads are repeated. Cell saves and uncertain submissions are never replayed.
+  Future<void> retryRead() async {
+    if (disposed || loading) return;
+    try {
+      repository ??= _container?.read(platformTableRepositoryProvider);
+    } on UnimplementedError {
+      error = '扩展字段服务未初始化';
+      readFailure = PlatformTableReadFailure.initialization;
+      _emit();
+      return;
+    }
+    repository?.invalidateScopes();
+    await reload();
+  }
+
   Future<void> reload() async {
     final repo = repository;
     final owner = binding;
     if (repo == null || owner == null || disposed) return;
     final generation = ++_generation;
     loading = true;
-    error = null;
     _emit();
     try {
       final scopes = await repo.scopes();
       if (disposed || generation != _generation) return;
       final matches = scopes.where((scope) => scope.scope == owner.scope);
       capabilities = matches.isEmpty ? null : matches.first;
-      if (capabilities == null) throw const FormatException('当前账号不能访问此表的扩展字段');
+      if (capabilities == null) {
+        throw ApiException('FORBIDDEN', '当前账号不能访问此表的扩展字段');
+      }
       if (draftOf != null) {
         for (final item in _items) {
           draftOf!(item)?.priceVisible = capabilities!.priceVisible;
@@ -680,6 +711,7 @@ class PlatformTableController<T> extends ChangeNotifier {
             )
             .map((d) => d.id)
             .toList();
+        final pending = <PlatformRowValues>[];
         for (var start = 0; start < ids.length; start += 200) {
           final end = (start + 200).clamp(0, ids.length);
           final records = await repo.rows(
@@ -688,24 +720,27 @@ class PlatformTableController<T> extends ChangeNotifier {
             columnIds: columns,
           );
           if (disposed || generation != _generation) return;
-          for (final row in records) {
-            if (!revisions.containsKey(row.recordId) ||
-                (_edits[row.recordId] ?? 0) != revisions[row.recordId] ||
-                (_values[row.recordId]?.version ?? -1) > row.version) {
-              continue;
+          pending.addAll(records);
+        }
+        // Publish a complete read only. A later batch failure retains the prior
+        // snapshot and never partially replaces a form's staged values.
+        for (final row in pending) {
+          if (!revisions.containsKey(row.recordId) ||
+              (_edits[row.recordId] ?? 0) != revisions[row.recordId] ||
+              (_values[row.recordId]?.version ?? -1) > row.version) {
+            continue;
+          }
+          _values[row.recordId] = row;
+          if (draftOf != null) {
+            for (final item in _items.where(
+              (item) => owner.recordIdOf(item) == row.recordId,
+            )) {
+              draftOf!(item)?.adopt(row);
             }
-            _values[row.recordId] = row;
-            if (draftOf != null) {
-              for (final item in _items.where(
-                (item) => owner.recordIdOf(item) == row.recordId,
-              )) {
-                draftOf!(item)?.adopt(row);
-              }
-            }
-            for (final cell in row.cells) {
-              _definitions[cell.columnId] = cell.definition;
-              if (cell.persisted) _recordColumnIds.add(cell.columnId);
-            }
+          }
+          for (final cell in row.cells) {
+            _definitions[cell.columnId] = cell.definition;
+            if (cell.persisted) _recordColumnIds.add(cell.columnId);
           }
         }
         _values.removeWhere(
@@ -713,6 +748,8 @@ class PlatformTableController<T> extends ChangeNotifier {
         );
         _stageSelectedCalculations();
       }
+      error = null;
+      readFailure = null;
     } catch (failure) {
       if (!disposed && generation == _generation) {
         if (failure is ApiException &&
@@ -726,6 +763,20 @@ class PlatformTableController<T> extends ChangeNotifier {
           _invalidateAccess();
         }
         error = platformTableError(failure);
+        readFailure = switch (failure) {
+          ApiException(code: 'NETWORK' || 'NETWORK_TIMEOUT') =>
+            PlatformTableReadFailure.connection,
+          ApiException(code: 'UNAUTHORIZED') =>
+            PlatformTableReadFailure.session,
+          ApiException(code: 'FORBIDDEN') => PlatformTableReadFailure.forbidden,
+          ApiException(code: 'NOT_FOUND') =>
+            PlatformTableReadFailure.recordsChanged,
+          ApiException(httpStatus: 401) => PlatformTableReadFailure.session,
+          ApiException(httpStatus: 403) => PlatformTableReadFailure.forbidden,
+          ApiException(httpStatus: 404) =>
+            PlatformTableReadFailure.recordsChanged,
+          _ => PlatformTableReadFailure.unavailable,
+        };
       }
     } finally {
       if (!disposed && generation == _generation) {

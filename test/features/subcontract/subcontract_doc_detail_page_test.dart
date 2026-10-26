@@ -69,6 +69,7 @@ Map<String, dynamic> _pendingOrderDetail() => {
       'colorId': 'c1',
       'unitId': 'u1',
       'qty': 10,
+      'differenceQtyExact': '-10',
       'price': 5,
     },
   ],
@@ -364,6 +365,13 @@ void main() {
     final keys = {for (final column in table.columns) column.key};
     expect(keys, isNot(contains('price')));
     expect(keys, isNot(contains('amount')));
+    expect(keys, contains('differenceQty'));
+    expect(
+      table.columns
+          .singleWhere((column) => column.key == 'differenceQty')
+          .value(table.items.first),
+      startsWith('-10'),
+    );
     expect(find.text('合计(本币)'), findsNothing);
   });
 

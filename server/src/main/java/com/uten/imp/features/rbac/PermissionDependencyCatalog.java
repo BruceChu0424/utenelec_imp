@@ -39,6 +39,8 @@ public final class PermissionDependencyCatalog {
         add(hard, catalog, "company_file:download", "attachment:view");
         add(hard, catalog, "company_file:download", "attachment:download");
         add(hard, catalog, "goods:price_analysis:view", "goods:view");
+        add(hard, catalog, "goods:purchase:edit", "goods:view");
+        add(hard, catalog, "goods:sales:edit", "goods:view");
         add(hard, catalog, "production_material_analysis:forward_rd", "production_material_analysis:view");
         // Import preview legitimately edits cost inputs without general goods browsing.
         add(hard, catalog, "goods:cost:edit", "goods:cost:view");
@@ -131,6 +133,9 @@ public final class PermissionDependencyCatalog {
         add(rules, catalog, "supplier:create", "supplier_category:view");
         add(rules, catalog, "mould:create", "mould_category:view");
         add(rules, catalog, "employee:create", "department:view");
+        add(rules, catalog, "employee:edit", "department:view");
+        add(rules, catalog, "goods:purchase:edit", "supplier:view");
+        add(rules, catalog, "goods:sales:edit", "client:view");
         // These reads belong to specific pages/previews. The same action also has
         // legal consumers that do not require them, so they cannot prune authority.
         add(rules, catalog, "purchase_order:decompose", "purchase_request:view");

@@ -131,6 +131,8 @@ abstract final class Perm {
   /// 货品主档（基础资料；已将 goods:view 授予全部部门）
   static const goodsView = 'goods:view';
   static const goodsEdit = 'goods:edit';
+  static const goodsPurchaseEdit = 'goods:purchase:edit';
+  static const goodsSalesEdit = 'goods:sales:edit';
   static const goodsNameEnEdit = 'goods:name_en:edit';
   static const goodsExport = 'goods:export';
 

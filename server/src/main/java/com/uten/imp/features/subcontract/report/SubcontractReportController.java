@@ -40,7 +40,7 @@ import java.util.UUID;
  *   <li>{@code GET /api/subcontract/reports/monthly} —— 月度汇总（MV 兜底，前端不再暴露入口）。</li>
  * </ul>
  *
- * <p>询价/申请/订货/损耗 无报表（用户要求删）。docType 取值见 {@link SubcontractReportService#monthly}。
+ * <p>另提供 ORDER/detail 核对订单累计到货差异；询价/申请/损耗不提供报表。
  */
 @RestController
 @RequestMapping("/api/subcontract/reports")
@@ -79,6 +79,7 @@ public class SubcontractReportController {
         // 归一化 doc：大小写不敏感 + 连字符/下划线等价（receipt|material-issue 与 RECEIPT|MATERIAL_ISSUE 均匹配）
         String key = doc.replace('-', '_').toUpperCase(java.util.Locale.ROOT) + "/" + view;
         return switch (key) {
+            case "ORDER/detail"          -> service.orderDetail(billNo, supplierId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
             case "RECEIPT/detail"        -> service.receiptDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
             case "RECEIPT/summary"       -> service.receiptSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
             case "RETURN/detail"         -> service.returnDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);

@@ -105,6 +105,41 @@ class GoodsOperationHistoryPostgresTest {
         var entry=service.list().entries().getFirst();assertFalse(entry.canUndo());assertTrue(entry.blockedReason().contains("goods:cost:view"));
         assertThrows(ApiException.class,()->inTx(()->service.undo(op,0)));
     }
+    @Test void revokingGeneralGoodsEditBlocksCostOnlyUndoAndRedoEvenWithCostVisibility() {
+        UUID id=goods("cost field group");
+        inTx(()->{update("UPDATE goods SET g_total=16 WHERE id=:id",id);return null;});
+        UUID operation=inTx(()->{provenance("/api/master/goods/"+id,"PUT");update("UPDATE goods SET g_total=17,version=version+1 WHERE id=:id",id);return latest();});
+        login(Set.of("goods:view","goods:cost:view"),false);
+        assertFalse(service.list().entries().getFirst().canUndo());
+        assertThrows(ApiException.class,()->inTx(()->service.undo(operation,0)));
+        assertEquals("17.0000",scalar("SELECT g_total::text FROM goods WHERE id=:id",id));
+        assertEquals(0,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
+        login(Set.of("goods:view","goods:edit","goods:cost:view"),false);
+        inTx(()->service.undo(operation,0));
+        assertEquals("16.0000",scalar("SELECT g_total::text FROM goods WHERE id=:id",id));
+        login(Set.of("goods:view","goods:cost:view"),false);
+        assertThrows(ApiException.class,()->inTx(()->service.redo(operation,1)));
+        assertEquals("16.0000",scalar("SELECT g_total::text FROM goods WHERE id=:id",id));
+        assertEquals(1,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
+    }
+    @Test void importedPriceDiscountAndStatusChangesRecheckTheirRightsForUndoAndRedo() {
+        UUID id=goods("imported field rights");
+        inTx(()->{update("UPDATE goods SET price=10,zk=1,status='使用' WHERE id=:id",id);return null;});
+        UUID operation=inTx(()->{provenance("/api/master/goods/import/commit","POST");update("UPDATE goods SET price=20,zk=0.9,status='禁用',version=version+1 WHERE id=:id",id);return latest();});
+        assertEquals("GOODS_IMPORT",scalar("SELECT operation_type FROM goods_operation_history WHERE id=:id",operation));
+        login(Set.of("goods:view","goods:edit","goods:import","goods:import:undo","goods:discount:view"),false);
+        var entry=service.list().entries().getFirst();assertFalse(entry.canUndo());
+        assertTrue(entry.blockedReason().contains("goods:price:edit"));assertTrue(entry.blockedReason().contains("goods:status"));
+        assertThrows(ApiException.class,()->inTx(()->service.undo(operation,0)));
+        assertEquals("禁用",scalar("SELECT status FROM goods WHERE id=:id",id));
+        login(Set.of("goods:view","goods:edit","goods:import","goods:import:undo","goods:price:edit","goods:discount:view","goods:status"),false);
+        inTx(()->service.undo(operation,0));
+        assertEquals("10.0000",scalar("SELECT price::text FROM goods WHERE id=:id",id));assertEquals("使用",scalar("SELECT status FROM goods WHERE id=:id",id));
+        login(Set.of("goods:view","goods:edit","goods:import","goods:import:undo","goods:discount:view"),false);
+        assertThrows(ApiException.class,()->inTx(()->service.redo(operation,1)));
+        assertEquals("10.0000",scalar("SELECT price::text FROM goods WHERE id=:id",id));
+        assertEquals(1,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
+    }
 
     @Test void aRestoredGoodsCannotPointToItsNowDeletedCategory() {
         UUID category=category("original"),other=category("other"),id=goodsIn(category,"reference");

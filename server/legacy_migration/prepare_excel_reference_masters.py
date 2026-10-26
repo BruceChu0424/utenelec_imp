@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Enrich mould/supplier masters from explicit product-Excel references, offline.
 
-Original identities and names remain intact. All display codes use GY/MJ from 1;
-old numbers remain in evidence/remarks. Ambiguous names, numeric mould noise and
+Original identities and names remain intact. Supplier codes use GY from 1;
+unique mould business codes remain visible. Ambiguous names, numeric mould noise and
 inconsistent new mould code/name pairs never create guessed relationships.
 """
 from __future__ import annotations
@@ -142,7 +142,7 @@ def new_identity(domain: str, value: str, occupied: set[int]) -> str:
     return str(identity)
 
 
-def enrich(supplier_headers, suppliers, mould_headers, moulds, references):
+def enrich(supplier_headers, suppliers, mould_headers, moulds, references, mould_code_overrides=None):
     suppliers = [dict(row) for row in suppliers]
     moulds = [dict(row) for row in moulds]
     supplier_refs, mould_refs = defaultdict(list), defaultdict(list)
@@ -260,13 +260,38 @@ def enrich(supplier_headers, suppliers, mould_headers, moulds, references):
             mould_mapped(records, identity, "NEW_EXCEL_MASTER", "CONSISTENT_EXPLICIT_MOULD_CODE_AND_NAME")
 
     original_codes = []
+    overrides = mould_code_overrides or {}
+    mould_by_id = {str(row["legacy_id"]): row for row in moulds}
+    for identity, decision in overrides.items():
+        row = mould_by_id.get(str(identity))
+        if (row is None or not isinstance(decision, dict)
+                or decision.get("expected_code") != (row.get("code") or row.get("mnumber") or "")
+                or not isinstance(decision.get("code"), str) or not decision["code"].strip()):
+            raise ValueError("reviewed mould-code decision no longer matches its source identity")
+    mould_candidates = {str(row["legacy_id"]): overrides.get(str(row["legacy_id"]), {}).get("code")
+                        or row.get("code") or row.get("mnumber") or "" for row in moulds}
+    candidate_counts = Counter(key(value) for value in mould_candidates.values() if value)
+    if any(candidate_counts[key(decision["code"])] != 1 for decision in overrides.values()):
+        raise ValueError("reviewed mould codes must identify separate moulds")
+    occupied = {key(value) for value in mould_candidates.values() if value}
     for domain, records, prefix in (("supplier", suppliers, "GY"), ("mould", moulds, "MJ")):
         new_source = {row["legacy_id"]: row["source_value"] for row in creations if row["domain"] == domain}
         records.sort(key=lambda row: (int(row["legacy_id"]) < 0,
                                      int(row["legacy_id"]) if int(row["legacy_id"]) >= 0 else key(new_source.get(row["legacy_id"], row["name"]))))
         for number, row in enumerate(records, 1):
             old_code, old_mnumber = row.get("code", ""), row.get("mnumber", "")
-            row["code"] = f"{prefix}{number:06d}"
+            candidate = mould_candidates.get(str(row["legacy_id"]), "") if domain == "mould" else ""
+            if candidate and candidate_counts[key(candidate)] == 1:
+                row["code"] = candidate
+            else:
+                suffix = number
+                generated = f"{prefix}{suffix:06d}"
+                while domain == "mould" and key(generated) in occupied:
+                    suffix += 1
+                    generated = f"{prefix}{suffix:06d}"
+                row["code"] = generated
+                if domain == "mould":
+                    occupied.add(key(generated))
             original_codes.append({"domain": domain, "legacy_id": row["legacy_id"], "original_code": old_code,
                                    "original_mnumber": old_mnumber, "new_code": row["code"]})
             if old_code:
@@ -275,7 +300,7 @@ def enrich(supplier_headers, suppliers, mould_headers, moulds, references):
     return suppliers, moulds, mapping, conflicts, creations, original_codes
 
 
-def prepare(source_dir: Path, excel_dir: Path, output_dir: Path):
+def prepare(source_dir: Path, excel_dir: Path, output_dir: Path, mould_code_overrides: Path | None = None):
     source_dir, excel_dir, output_dir = source_dir.resolve(), excel_dir.resolve(), output_dir.resolve()
     if source_dir == output_dir or source_dir in output_dir.parents:
         raise ValueError("output must be outside the immutable clean input directory")
@@ -294,7 +319,13 @@ def prepare(source_dir: Path, excel_dir: Path, output_dir: Path):
     source_paths.append(parent_manifest)
     source_inputs = [{"path": str(path), "sha256": digest(path)} for path in source_paths]
     references, excel_inputs = load_excel(excel_dir)
-    result = enrich(supplier_headers, suppliers, mould_headers, moulds, references)
+    overrides = None
+    if mould_code_overrides is not None:
+        overrides = json.loads(mould_code_overrides.read_text(encoding="utf-8-sig"))
+        if not isinstance(overrides, dict):
+            raise ValueError("reviewed mould-code decisions must be an object keyed by legacy ID")
+        source_inputs.append({"path": str(mould_code_overrides.resolve()), "sha256": digest(mould_code_overrides)})
+    result = enrich(supplier_headers, suppliers, mould_headers, moulds, references, overrides)
     suppliers, moulds, mapping, conflicts, creations, original_codes = result
     output_dir.mkdir(parents=True, exist_ok=True)
     write_csv(output_dir / "supplier.csv", supplier_headers, suppliers)
@@ -321,7 +352,7 @@ def prepare(source_dir: Path, excel_dir: Path, output_dir: Path):
     manifest = {"format": "uten-excel-reference-masters-v1", "script_sha256": digest(Path(__file__)),
                 "source_inputs": source_inputs, "excel_inputs": excel_inputs, "outputs": outputs,
                 "raw_manifest_sha256": parent.get("raw_manifest_sha256"),
-                "identity_policy": "positive original identities retained; stable negative Excel reference identities; GY/MJ from 1",
+                "identity_policy": "positive original identities retained; stable negative Excel reference identities; GY supplier codes; unique original or reviewed mould codes; ambiguous mould codes keep unique MJ labels",
                 "summary": summary}
     (output_dir / "reference_masters_manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return summary
@@ -332,8 +363,9 @@ def main():
     parser.add_argument("--source-dir", type=Path, required=True)
     parser.add_argument("--excel-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--mould-code-overrides", type=Path, help="Reviewed source-ID keyed decisions with expected_code and code")
     args = parser.parse_args()
-    print(json.dumps(prepare(args.source_dir, args.excel_dir, args.output_dir), ensure_ascii=False, indent=2))
+    print(json.dumps(prepare(args.source_dir, args.excel_dir, args.output_dir, args.mould_code_overrides), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

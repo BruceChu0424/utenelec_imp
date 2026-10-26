@@ -29,6 +29,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/goods_node.dart';
+import '../models/goods_field_edit_policy.dart';
 import '../models/goods_bom_item.dart';
 import '../models/product_category_node.dart';
 import '../providers/goods_clipboard.dart';
@@ -559,7 +560,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   MasterEntityPaneConfig<GoodsListItem, GoodsDetail> _paneConfig() {
     final goods = ref.watch(goodsRepositoryProvider);
     final facetRepository = ref.watch(goodsFacetRepositoryProvider);
-    final canInlineEdit = _perms.contains(shellReadStableWritePermission);
+    final canInlineEdit = GoodsFieldEditPolicy.canEditAny(_perms);
     final includeRelated = _includeRelated;
     final categoryBrowsing = shellCanViewCategories;
     return MasterEntityPaneConfig<GoodsListItem, GoodsDetail>(

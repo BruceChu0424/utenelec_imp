@@ -111,6 +111,7 @@ Future<ProviderContainer> _pump(
     overrides: [
       currentPermissionsProvider.overrideWithValue({
         Perm.employeeCreate,
+        Perm.departmentView,
         Perm.employeePiiEdit,
         Perm.employeeCompensationEdit,
       }),
@@ -155,6 +156,39 @@ Future<ProviderContainer> _pump(
 }
 
 void main() {
+  testWidgets('入职只授查看部门仍可打开并确认部门，不需要部门编辑权限', (tester) async {
+    final container = await _pump(tester, _OnboardingRepository());
+    final permissions = container.read(currentPermissionsProvider);
+    expect(permissions, contains(Perm.departmentView));
+    expect(permissions, isNot(contains(Perm.departmentEdit)));
+    await tester.enterText(_inputByLabel('姓名'), '李慕白');
+    await tester.enterText(_inputByLabel('证件号码'), _validIdNumber);
+    await tester.enterText(_inputByLabel('手机号'), '13800138000');
+    await _tapNext(tester);
+    expect(_currentStep(tester), 1);
+    final field = find
+        .descendant(
+          of: find.byType(UtenDepartmentPicker),
+          matching: find.byType(InputDecorator),
+        )
+        .first;
+    await tester.ensureVisible(field);
+    await tester.tap(field);
+    await tester.pumpAndSettle();
+    expect(find.text('选择部门'), findsWidgets);
+    await tester.tap(find.text('确定').last);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<UtenDepartmentPicker>(find.byType(UtenDepartmentPicker))
+          .initialSelection
+          .single
+          .id,
+      'dept-1',
+    );
+    expect(tester.takeException(), isNull);
+    await _disposePage(tester);
+  });
   testWidgets('第 1 步必填未填或身份证非法时不能进入第 2 步', (tester) async {
     final repo = _OnboardingRepository();
     final container = await _pump(tester, repo);

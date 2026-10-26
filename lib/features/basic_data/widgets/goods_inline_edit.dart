@@ -10,6 +10,7 @@ import '../../../shared/widgets/warehouse_selection.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../models/goods_node.dart';
+import '../models/goods_field_edit_policy.dart';
 import '../providers/color_unit_dict.dart';
 import '../repositories/goods_repository.dart';
 import 'master_edit_dialog.dart';
@@ -50,7 +51,7 @@ Map<String, MasterInlineField<GoodsListItem>> goodsInlineFields(
         ? '不能小于 0'
         : null,
   );
-  return {
+  final fields = <String, MasterInlineField<GoodsListItem>>{
     'name': text('name', (g) => g.name, required: true),
     'nameEn': MasterInlineField(
       key: 'nameEn',
@@ -131,6 +132,11 @@ Map<String, MasterInlineField<GoodsListItem>> goodsInlineFields(
       'price': number('price', (g) => g.price),
       'discount': number('discount', (g) => g.discount),
     },
+  };
+  return {
+    for (final entry in fields.entries)
+      if (GoodsFieldEditPolicy.canEditField(entry.value.key, permissions))
+        entry.key: entry.value,
   };
 }
 

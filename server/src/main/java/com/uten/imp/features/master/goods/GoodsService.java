@@ -992,6 +992,7 @@ public class GoodsService {
     @Transactional
     public GoodsDetail create(GoodsSaveRequest req) {
         tx.bind();
+        GoodsFieldEditPolicy.validateStatus(req);
         if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:status");
         }
@@ -1015,6 +1016,7 @@ public class GoodsService {
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public UUID saveImported(GoodsSaveRequest req) {
+        GoodsFieldEditPolicy.validateStatus(req);
         GoodsCostValuePolicy.validateRequest(req);
         Goods g = new Goods();
         apply(req, g, true, false);
@@ -1033,34 +1035,46 @@ public class GoodsService {
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public UUID restoreImported(UUID id, GoodsSaveRequest req) {
+        Goods g = requireWritableDeletedImportGoods(id);
         if (repo.isReleasedGoodsIdentity(id)) {
             throw new ApiException(ErrorCode.CONFLICT, "原编号已回用于新 UUID 的货品，不能恢复旧货品；请重新导出并核对当前货品");
         }
-        Goods g = repo.findById(id)
-                .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "编号对应的已删除货品不存在，请重新检测文件"));
-        if (!g.isDeleted()) {
-            throw new ApiException(ErrorCode.CONFLICT, "编号对应的货品已恢复，请重新检测文件");
-        }
+        GoodsFieldEditPolicy.requireChanged(g, req, false);
         GoodsCostValuePolicy.validateRequest(req);
         GoodsQuantityUnitPolicy.requireUnchangedIfUsed(g, req, repo.quantityUnitInUse(g.getId()));
-        apply(req, g, true, repo.quantityUnitInUse(g.getId()));
+        apply(req, g, false, repo.quantityUnitInUse(g.getId()));
         g.setDeleted(false);
         g.setDeletedAt(null);
         repo.save(g);
         return g.getId();
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY, readOnly = true)
+    public void requireRestoreImportedWriteAccess(UUID id) {
+        requireWritableDeletedImportGoods(id);
+    }
+
+    private Goods requireWritableDeletedImportGoods(UUID id) {
+        Goods goods=repo.findById(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND,"货品不存在"));
+        requireVisible(goods);
+        requireWritable(goods);
+        if(!goods.isDeleted()) throw new ApiException(ErrorCode.CONFLICT,"编号对应的货品已恢复，请重新检测文件");
+        return goods;
+    }
+
     /** Import merge: the caller preserves omitted cells and supplies the detected version. */
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import') and hasAuthority('goods:edit')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public UUID updateImported(UUID id, GoodsSaveRequest req) {
         tx.bind();
         Goods g = requireGoods(id);
         requireWritable(g);
+        GoodsFieldEditPolicy.requireChanged(g, req, true);
         OptimisticLocks.requireUpToDate(g.getVersion(), req.getVersion());
         boolean quantityUnitInUse = repo.quantityUnitInUse(id);
         GoodsQuantityUnitPolicy.requireUnchangedIfUsed(g, req, quantityUnitInUse);
-        if (req.getStatus() != null && !Objects.equals(g.getStatus(), req.getStatus())) {
+        if (req.hasStatus() && !Objects.equals(g.getStatus(), req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:status");
         }
         ensurePriceEditIfTouched(g, req);
@@ -1076,19 +1090,19 @@ public class GoodsService {
         return id;
     }
 
-    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('goods:edit', 'goods:status')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('goods:edit', 'goods:purchase:edit', 'goods:sales:edit', 'goods:price:edit', 'goods:name_en:edit', 'goods:status')")
     @Transactional
     public GoodsDetail update(UUID id, GoodsSaveRequest req) {
         tx.bind();
-        com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:edit");
         Goods g = requireGoods(id);
         requireWritable(g);
+        GoodsFieldEditPolicy.requireChanged(g, req);
         // 基本单位是否已被数量引用：按需现查一次(V675)，拦截、写入与回显共用。
         boolean quantityUnitInUse = repo.quantityUnitInUse(g.getId());
         GoodsQuantityUnitPolicy.requireUnchangedIfUsed(g, req, quantityUnitInUse);
         // 乐观锁：编辑回传版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
         OptimisticLocks.requireUpToDate(g.getVersion(), req.getVersion());
-        if (req.getStatus() != null && !Objects.equals(g.getStatus(), req.getStatus())) {
+        if (req.hasStatus() && !Objects.equals(g.getStatus(), req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:status");
         }
         ensurePriceEditIfTouched(g, req);      // 编辑：与既有值比对，未改价/折扣则放行
@@ -1110,28 +1124,7 @@ public class GoodsService {
      * 新建 oldGoods=null：提交了非空价/折扣即视为触碰；编辑则与既有值比对。未触碰（含原样回传）放行。
      */
     private void ensurePriceEditIfTouched(Goods oldGoods, GoodsSaveRequest req) {
-        if (hasPriceEdit()) return;
-        BigDecimal oldPrice = oldGoods == null ? null : oldGoods.getPrice();
-        BigDecimal oldDiscount = oldGoods == null ? null : oldGoods.getDiscount();
-        // 售价触碰仅可查看者（goods:price:view，或持有 goods:price:edit）参与判定——
-        // 不可查看者前端隐藏价格字段、不提交价格（req.price=null 是脱敏产物而非改价意图），
-        // 若恒判触碰会把他们改名字等正常编辑一并 403。apply 同步对不可查看者保留原价（见 apply）。
-        if (canViewPrice() && bigDecimalChanged(oldPrice, req.getPrice())) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "修改售价或折扣需要「编辑货品售价/折扣」权限，请联系权限管理员开通");
-        }
-        // 折扣仅可查看者（goods:discount:view）才参与触碰判定——不可查看者前端隐藏折扣字段、
-        // 不提交折扣（req.discount=null 是脱敏产物而非改价意图），若仍判触碰会把他们改名字等
-        // 正常编辑一并 403。apply 同步对不可查看者保留原折扣（见 apply）。
-        if (canViewDiscount() && bigDecimalChanged(oldDiscount, req.getDiscount())) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "修改售价或折扣需要「编辑货品售价/折扣」权限，请联系权限管理员开通");
-        }
-    }
-
-    private boolean hasPriceEdit() {
-        return currentUser.get()
-                .map(AuthUser::getPermissions)
-                .map(p -> p.contains("goods:price:edit"))
-                .orElse(false);
+        GoodsFieldEditPolicy.requirePriceIfTouched(oldGoods,req,canViewPrice(),canViewDiscount());
     }
 
     /** 售价可见性（goods:price:view，V570）：未授权者后端价格置 null、前端隐藏字段/列；持有 goods:price:edit 视为可见。 */
@@ -1207,7 +1200,7 @@ public class GoodsService {
      * 清空时来源一并清空。旧值由 goods 行级审计保留。
      */
     @org.springframework.security.access.prepost.PreAuthorize(
-            "hasAnyAuthority('goods:name_en:edit', 'goods:edit')")
+            "hasAnyAuthority('goods:name_en:edit', 'goods:sales:edit')")
     @Transactional
     public GoodsDetail updateNameEn(UUID id, String nameEn, Long version) {
         tx.bind();
@@ -1259,8 +1252,14 @@ public class GoodsService {
      * 整单保存里的英文名称: 请求带了 nameEn 键才处理(没带 = 保持, 老客户端不误清)。
      * 值有变化才写, 来源记 MANUAL; 清空时来源一并清空。
      */
+    private static String trimChangedText(String current,String incoming,boolean blankToNull) {
+        if(Objects.equals(current,incoming)) return current;
+        if(incoming==null || blankToNull && incoming.isBlank()) return null;
+        return incoming.trim();
+    }
+
     private static void applyNameEn(GoodsSaveRequest req, Goods g) {
-        if (!req.hasNameEn()) return;
+        if (!req.hasNameEn() || Objects.equals(req.getNameEn(),g.getNameEn())) return;
         String value = GoodsNameEn.normalizeForWrite(req.getNameEn());
         if (Objects.equals(value, g.getNameEn())) return;
         g.setNameEn(value);
@@ -1399,28 +1398,26 @@ public class GoodsService {
         g.setCategory(requireCategory(req.getCategoryId()));
         g.setName(req.getName());
         if (req.hasClientGoodsName()) {
-            g.setClientGoodsName(req.getClientGoodsName() == null || req.getClientGoodsName().isBlank()
-                    ? null : req.getClientGoodsName().trim());
+            g.setClientGoodsName(trimChangedText(g.getClientGoodsName(),req.getClientGoodsName(),true));
         }
         g.setShortName(req.getShortName());
         g.setModel(req.getModel());
         if (req.hasCNumber()) {
-            g.setCNumber(req.getCNumber() == null || req.getCNumber().isBlank()
-                    ? null : req.getCNumber().trim());
+            g.setCNumber(trimChangedText(g.getCNumber(),req.getCNumber(),true));
         }
         g.setSpec(req.getSpec());
         applyNameEn(req, g);
-        g.setSeries(req.getSeries() == null ? null : req.getSeries().trim());
-        g.setStockPlace(req.getStockPlace() == null ? null : req.getStockPlace().trim());
+        g.setSeries(trimChangedText(g.getSeries(),req.getSeries(),false));
+        g.setStockPlace(trimChangedText(g.getStockPlace(),req.getStockPlace(),false));
         // 售价：仅可查看者（goods:price:view，含 price:edit）提交的价格才落库。
         // 不可查看者前端隐藏价格字段不提交（null=脱敏产物）——保留原值，避免误清。
-        if (canViewPrice()) {
+        if (canViewPrice() && req.hasPrice()) {
             g.setPrice(req.getPrice());
         }
         // 折扣（goods.zk）：仅可查看折扣者（goods:discount:view）提交的折扣才落库。
         // 不可查看者前端隐藏折扣字段不提交——保留原值，避免误清；亦防遗漏 setDiscount
         // 导致折扣任何人都存不进。
-        if (canViewDiscount()) {
+        if (canViewDiscount() && req.hasDiscount()) {
             g.setDiscount(req.getDiscount());
         }
         g.setMaterial(req.getMaterial());
@@ -1437,12 +1434,12 @@ public class GoodsService {
         if (req.hasSubcontractAllowedLossPct()) {
             g.setSubcontractAllowedLossPct(req.getSubcontractAllowedLossPct());
         }
-        g.setMinOrderQty(req.getMinOrderQty());
-        g.setOrderMultipleQty(
+        if (req.hasMinOrderQty()) g.setMinOrderQty(req.getMinOrderQty());
+        if (req.hasOrderMultipleQty()) g.setOrderMultipleQty(
                 req.getOrderMultipleQty() == null
                         || req.getOrderMultipleQty().signum() == 0
                         ? null : req.getOrderMultipleQty());
-        g.setStatus(req.getStatus());
+        if (req.hasStatus()) g.setStatus(req.getStatus());
         applyColorReference(req, g);
         applyOwningWarehouseReference(req, g);
         // Used units were checked before apply. Preserve their exact UUID and
@@ -1468,11 +1465,9 @@ public class GoodsService {
             }
         }
         // 后模镶件编号（V457）：与备注同界面的短码；空白归一为 NULL。
-        g.setRearInsertCode(
-                req.getRearInsertCode() == null || req.getRearInsertCode().isBlank()
-                        ? null : req.getRearInsertCode().trim());
+        g.setRearInsertCode(trimChangedText(g.getRearInsertCode(),req.getRearInsertCode(),true));
         // 备注（老库 Paper 真身）：原样落库，仅 trim。
-        g.setPaper(req.getPaper() == null ? null : req.getPaper().trim());
+        g.setPaper(trimChangedText(g.getPaper(),req.getPaper(),false));
         if (req.hasClientReference()) {
             if (clearsReference(req.getClientId(), req.getClientLegacyId())) {
                 g.setClient(null);
@@ -1503,7 +1498,7 @@ public class GoodsService {
                 g.setVend2LegacyId(target.getLegacyId());
             }
         }
-        g.setSourceType(req.getSourceType());
+        if (req.hasSourceType()) g.setSourceType(req.getSourceType());
         // 成本预算：无 goods:cost:view 的普通编辑保留实体原值，避免脱敏 null 覆盖历史成本。
         // 导入是独立特权入口，显式传 writeCosts=true 保持批量导入能力。
         if (writeCosts) {

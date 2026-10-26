@@ -71,6 +71,12 @@ public class GoodsSaveRequest {
     private BigDecimal price;    // Price（NUMERIC(18,4)）
     @Digits(integer = 14, fraction = 4)
     private BigDecimal discount; // 折扣倍率 1.00=原价 0.90=9折（复用老库 B_Goods.zk；改需 goods:price:edit 权限）
+    @JsonIgnore private boolean pricePresent;
+    @JsonIgnore private boolean discountPresent;
+    @JsonSetter("price") public void setPrice(BigDecimal value) { price=value; pricePresent=true; }
+    @JsonSetter("discount") public void setDiscount(BigDecimal value) { discount=value; discountPresent=true; }
+    public boolean hasPrice() { return pricePresent; }
+    public boolean hasDiscount() { return discountPresent; }
     private String material;     // Material 材质
     private BigDecimal thickness;
     private UUID thicknessUnitId;
@@ -85,10 +91,19 @@ public class GoodsSaveRequest {
     /** 最小起订量（供应商 MOQ，基本单位）；留空=未登记，0=已确认无起订量。 */
     @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal minOrderQty;
+    @JsonIgnore private boolean minOrderQtyPresent;
+    @JsonSetter("minOrderQty") public void setMinOrderQty(BigDecimal value) { minOrderQty=value; minOrderQtyPresent=true; }
+    public boolean hasMinOrderQty() { return minOrderQtyPresent; }
     /** 订货倍数/整包装量（基本单位，整箱 50 填 50）；留空或 0=无倍数要求（服务端归一为 null）。 */
     @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal orderMultipleQty;
+    @JsonIgnore private boolean orderMultipleQtyPresent;
+    @JsonSetter("orderMultipleQty") public void setOrderMultipleQty(BigDecimal value) { orderMultipleQty=value; orderMultipleQtyPresent=true; }
+    public boolean hasOrderMultipleQty() { return orderMultipleQtyPresent; }
     private String status;       // Status（使用/禁用）
+    @JsonIgnore private boolean statusPresent;
+    @JsonSetter("status") public void setStatus(String value) { status=value; statusPresent=true; }
+    public boolean hasStatus() { return statusPresent; }
     private UUID colorId;
     private Integer colorLegacyId;  // MColorID 旧库快照；颜色下拉只提交 colorId UUID
     private UUID unitId;
@@ -300,6 +315,9 @@ public class GoodsSaveRequest {
     private BigDecimal gTotal;       // GTotal 出厂价（防 Jackson 连续大写 quirk）
 
     private String sourceType;   // 来源（自制/采购/委外）
+    @JsonIgnore private boolean sourceTypePresent;
+    @JsonSetter("sourceType") public void setSourceType(String value) { sourceType=value; sourceTypePresent=true; }
+    public boolean hasSourceType() { return sourceTypePresent; }
 
     /** 乐观锁版本（编辑时回传详情读到的 version；新建忽略。不符即 409）。 */
     private Long version;

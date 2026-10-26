@@ -25,6 +25,7 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/goods_node.dart';
+import '../models/goods_field_edit_policy.dart';
 import '../repositories/goods_repository.dart';
 import '../repositories/master_status_repository.dart';
 import '../widgets/goods_detail_body.dart';
@@ -348,7 +349,8 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
     bool can(String permission) => isAdmin || permissions.contains(permission);
     final canCreate = can(Perm.goodsCreate);
     final writable = _isCreate || _detail?.writable == true;
-    final canEdit = can(Perm.goodsEdit) && writable;
+    final canEdit =
+        (isAdmin || GoodsFieldEditPolicy.canEditAny(permissions)) && writable;
     final canDelete = can(Perm.goodsDelete) && writable && !_loading;
     final canStatus = can(Perm.goodsStatus) && writable && !_loading;
     final canBomCreate = can(Perm.goodsBomCreate);

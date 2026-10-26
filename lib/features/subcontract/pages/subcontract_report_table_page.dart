@@ -1,7 +1,7 @@
 // 委外报表页（委外管理，subcontract_report:view）：
 //
 // 3 张卡（明细/汇总/出入状况）共用本页，由 [kind] 区分；明细/汇总卡内用 UtenFilterToolbar 分段切 4 类单据
-// （进仓/退货/材料出/材料退）。出入状况表为综合报表（无单据类型切换）。
+// （进仓/退货/材料出/材料退，明细另含订货）。出入状况表为综合报表（无单据类型切换）。
 // 布局镜像销售报表（sales_report_page.dart）。
 //
 // 后端 GET /api/subcontract/reports/{docType}/{kind} 或 /api/subcontract/reports/in-out-status
@@ -16,6 +16,7 @@
 // 筛选口径（单据类型/日期范围/facet/排序）按账号服务端持久化
 // （report.subcontract.detail|summary|inOutStatus，ReportFilterPrefs）；关键字不持久化。
 import 'package:flutter/material.dart';
+import '../../../shared/presentation/procurement_delivery_difference_l10n.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import 'package:go_router/go_router.dart';
@@ -132,6 +133,9 @@ class _SubcontractReportTablePageState
           (t) => t.code == p.docType,
           orElse: () => _docType,
         );
+      }
+      if (!_kind.isDetail && _docType == SubcontractReportDocType.order) {
+        _docType = SubcontractReportDocType.receipt;
       }
       // 日期范围与 facet 筛选不回灌：进页始终用默认日期范围（上月今日..今日）
       // + 空 filters = 「时间范围内的全部」，避免历史持久化的过时日期范围或失效
@@ -276,6 +280,7 @@ class _SubcontractReportTablePageState
   /// 与 SubcontractDocType.pathSegment 对齐：RECEIPT→receipts / RETURN→returns /
   /// MATERIAL_ISSUE→material-issues / MATERIAL_RETURN→material-returns。
   static const Map<String, String> _docTypeSeg = {
+    'ORDER': 'orders',
     'RECEIPT': 'receipts',
     'RETURN': 'returns',
     'MATERIAL_ISSUE': 'material-issues',
@@ -304,8 +309,11 @@ class _SubcontractReportTablePageState
     _load();
   }
 
-  String get _title =>
-      _kind.isInOut ? _kind.label : '${_docType.label}${_kind.shortLabel}报表';
+  String get _title => _kind.isInOut
+      ? _kind.label
+      : _docType == SubcontractReportDocType.order
+      ? procurementDeliveryDifferenceL10n(context).orderDetailTitle
+      : '${_docType.label}${_kind.shortLabel}报表';
 
   /// 导出报表 key（与 GET 路径一致：出入状况=独立 endpoint，其余=docType/endpoint）。
   String get _exportReport =>
@@ -396,8 +404,18 @@ class _SubcontractReportTablePageState
             segments: _kind.isInOut
                 ? const []
                 : [
-                    for (final t in SubcontractReportDocType.values)
-                      UtenFilterSegment(value: t, label: t.label),
+                    for (final t in SubcontractReportDocType.values.where(
+                      (t) =>
+                          _kind.isDetail || t != SubcontractReportDocType.order,
+                    ))
+                      UtenFilterSegment(
+                        value: t,
+                        label: t == SubcontractReportDocType.order
+                            ? procurementDeliveryDifferenceL10n(
+                                context,
+                              ).orderLabel
+                            : t.label,
+                      ),
                   ],
             selected: _kind.isInOut ? const {} : {_docType},
             onSelectionChanged: _changeDocType,

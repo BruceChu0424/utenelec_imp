@@ -150,6 +150,7 @@ class SubcontractDocItem {
     this.amountLocalText,
     this.checkQty,
     this.orderQty,
+    this.differenceQtyText,
     this.receivedQty,
     this.settledLossQty,
     this.legacyIssuedQty,
@@ -205,6 +206,9 @@ class SubcontractDocItem {
   final String? amountLocalText;
   final double? checkQty;
   final double? orderQty;
+
+  /// Server-authoritative charged delivery variance, separate from settled loss.
+  final String? differenceQtyText;
   final double? receivedQty;
 
   /// 已核销的结案损耗，按订货行单位返回；不能用子件损耗或数量差额代算。
@@ -289,6 +293,7 @@ class SubcontractDocItem {
         amountLocalText: receiptRecordedDecimal(json, 'amountLocal'),
         checkQty: (json['checkQty'] as num?)?.toDouble(),
         orderQty: (json['orderQty'] as num?)?.toDouble(),
+        differenceQtyText: receiptRecordedDecimal(json, 'differenceQty'),
         receivedQty: (json['receivedQty'] as num?)?.toDouble(),
         settledLossQty: (json['settledLossQty'] as num?)?.toDouble(),
         legacyIssuedQty: (json['issuedQty'] as num?)?.toDouble(),

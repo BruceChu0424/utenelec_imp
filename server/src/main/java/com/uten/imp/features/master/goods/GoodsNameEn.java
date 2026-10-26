@@ -26,7 +26,7 @@ public final class GoodsNameEn {
 
     /** 专门维护英文名称的权限码; 持有 goods:edit 的人同样可以改。 */
     public static final String EDIT_AUTHORITY = "goods:name_en:edit";
-    public static final String GOODS_EDIT_AUTHORITY = "goods:edit";
+    public static final String GOODS_EDIT_AUTHORITY = "goods:sales:edit";
 
     private static final Pattern WHITESPACE = Pattern.compile("(?U)\\s+");
     private static final Pattern ZERO_WIDTH = Pattern.compile("[\u200B\u200C\u200D\uFEFF]");

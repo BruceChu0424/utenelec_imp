@@ -70,6 +70,7 @@ class ProcurementOrderClosureEndToEndTest {
     @Autowired PlatformTransactionManager transactions;
     @Autowired com.uten.imp.security.TxSessionVars tx;
     @Autowired EntityManager em;
+    @Autowired com.uten.imp.features.purchase.report.PurchaseReportService reports;
     private FullChainEndToEndTest harness;
 
     private record Fixture(FullChainEndToEndTest.World world, UUID reviewer,
@@ -86,6 +87,9 @@ class ProcurementOrderClosureEndToEndTest {
         Fixture f = fixture("closure-partial", "2");
         UUID receipt = receipt(f, "4", "1");
         String physicalBefore = physicalFacts(receipt);
+        String billNo = db.queryForObject("SELECT bill_no FROM purchase_orders WHERE id=?",String.class,f.order());
+        assertThat(orders.detail(f.order()).getItems().getFirst().getDifferenceQty()).isEqualByComparingTo("-6");
+        assertThat(reports.expediting(billNo,null,null,null,null,java.util.Map.of(),1,50,null,null).rows()).hasSize(1);
         var preview = closure.preview("PURCHASE", f.order());
         assertThat(preview.canSubmit()).isTrue();
         var pending = closure.submit("PURCHASE", f.order(),
@@ -112,6 +116,11 @@ class ProcurementOrderClosureEndToEndTest {
                 .isInstanceOf(org.springframework.dao.DataAccessException.class);
         assertThat(number("SELECT qty FROM purchase_order_items WHERE id=?", f.item())).isEqualByComparingTo("10");
         assertThat(number("SELECT received_qty FROM purchase_order_items WHERE id=?", f.item())).isEqualByComparingTo("4");
+        assertThat(orders.detail(f.order()).getItems().getFirst().getDifferenceQty()).isEqualByComparingTo("-6");
+        var differenceRows=reports.orderDetail(billNo,null,null,null,null,null,java.util.Map.of(),1,50,null,null).rows();
+        assertThat(differenceRows).hasSize(1);
+        assertThat(differenceRows.getFirst().get("differenceQtyExact")).isEqualTo("-6.0000");
+        assertThat(reports.expediting(billNo,null,null,null,null,java.util.Map.of(),1,50,null,null).rows()).isEmpty();
         assertThat(number("SELECT ordered_qty FROM purchase_request_items WHERE id=?", f.source())).isEqualByComparingTo("4");
         assertThat(number("SELECT gift_ordered_qty FROM purchase_request_items WHERE id=?", f.source())).isEqualByComparingTo("1");
         assertThat(requests.detail(f.request()).getItems().getFirst().getPhysicalRemainingQty()).isEqualByComparingTo("7");

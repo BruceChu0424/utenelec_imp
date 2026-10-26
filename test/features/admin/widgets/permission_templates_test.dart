@@ -27,6 +27,47 @@ const _capture = bool.fromEnvironment('UTEN_CAPTURE_PERMISSION_TEMPLATES');
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  testWidgets('delete confirms on the dialog navigator inside a nested page', (
+    tester,
+  ) async {
+    final repository = _Repository();
+    final nested = GlobalKey<NavigatorState>();
+    await _mount(
+      tester,
+      repository,
+      Navigator(
+        key: nested,
+        onGenerateRoute: (_) => MaterialPageRoute<void>(
+          builder: (_) => const Scaffold(body: Text('parent page')),
+        ),
+      ),
+    );
+    nested.currentState!.push(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(
+          body: AdminPermissionTemplatesView(navigation: SizedBox()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('采购模板'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除模板'));
+    await tester.pumpAndSettle();
+    final confirm = find
+        .descendant(
+          of: find.byType(UtenAlertDialog),
+          matching: find.text('删除模板'),
+        )
+        .last;
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+    expect(repository.deletedId, 'template');
+    expect(repository.savedVersion, 3);
+    expect(find.byType(UtenAlertDialog), findsNothing);
+    expect(find.byType(AdminPermissionTemplatesView), findsOneWidget);
+    expect(nested.currentState!.canPop(), isTrue);
+  });
   for (final width in [375.0, 1440.0]) {
     testWidgets('template detail and editor fit at $width with large text', (
       tester,
@@ -398,6 +439,7 @@ class _Repository extends PermissionTemplateRepository {
     version: 3,
   );
   int writes = 0;
+  String? deletedId;
   String? savedName;
   Set<String>? savedCodes;
   int? savedVersion;
@@ -407,6 +449,13 @@ class _Repository extends PermissionTemplateRepository {
   final previewModes = <bool>[];
   @override
   Future<List<PermissionTemplate>> list() async => [template];
+  @override
+  Future<void> delete(PermissionTemplate template) async {
+    deletedId = template.id;
+    savedVersion = template.version;
+    writes++;
+  }
+
   @override
   Future<void> save({
     PermissionTemplate? template,

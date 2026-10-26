@@ -32,7 +32,8 @@ public record FulfillmentWorkbenchTableQuery(
      * 不进 {@link #FIELDS}: 那张表同时决定分面查询要算哪些列, 加进去会让采购/委外每次多算两组分面。
      */
     static final Map<String, String> SORT_ONLY_FIELDS = Map.of(
-            "warehouseName", "NULLIF(warehouse_name,'')", "openQty", "open_qty");
+            "warehouseName", "NULLIF(warehouse_name,'')", "openQty", "open_qty",
+            "differenceQty", "difference_qty");
     private record FilterField(String key, String expression, String parameter, boolean search) {}
     private static final List<FilterField> FILTER_FIELDS = filterFields();
 

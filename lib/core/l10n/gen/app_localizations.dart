@@ -21791,7 +21791,7 @@ abstract class AppLocalizations {
   /// No description provided for @goodsImportMergeHint.
   ///
   /// In zh, this message translates to:
-  /// **'系统标识确定原货品；没有系统标识时按编号匹配，新编号可新增同名、不同颜色或材质的货品。系统标识和编号都为空时，才按同分类同名称唯一匹配，多条同名须补充编号或系统标识。空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值。同编号已删除货品按清单内容恢复。'**
+  /// **'系统标识确定原货品；没有系统标识时按编号匹配。两者都为空时新增货品并自动编号；新编号也可新增同名、不同颜色、材质或规格的货品，名称不用于匹配身份。更新时空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值。同编号已删除货品按清单内容恢复。'**
   String get goodsImportMergeHint;
 
   /// No description provided for @goodsImportUndoHint.
@@ -23125,6 +23125,96 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'预览文件'**
   String get companyFilesPreview;
+
+  /// No description provided for @mouldManufacturerLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'模具制造商'**
+  String get mouldManufacturerLabel;
+
+  /// No description provided for @mouldManufacturerMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'待补充'**
+  String get mouldManufacturerMissing;
+
+  /// No description provided for @mouldManufacturerMissingHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'制造商尚未登记'**
+  String get mouldManufacturerMissingHint;
+
+  /// No description provided for @mouldManufacturerMissingEditableHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'制造商尚未登记，可在编辑模具或编辑模式中补充'**
+  String get mouldManufacturerMissingEditableHint;
+
+  /// No description provided for @mouldManufacturerHistoryUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'候选加载失败，仍可直接输入'**
+  String get mouldManufacturerHistoryUnavailable;
+
+  /// No description provided for @mouldManufacturerHistoryEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无历史候选，可直接输入'**
+  String get mouldManufacturerHistoryEmpty;
+
+  /// No description provided for @mouldManufacturerSupplierCandidates.
+  ///
+  /// In zh, this message translates to:
+  /// **'供应商名称(供核实选用)'**
+  String get mouldManufacturerSupplierCandidates;
+
+  /// No description provided for @mouldManufacturerSupplierUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'供应商候选加载失败，仍可直接输入'**
+  String get mouldManufacturerSupplierUnavailable;
+
+  /// No description provided for @mouldManufacturerSupplierEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无匹配供应商，可继续输入查找'**
+  String get mouldManufacturerSupplierEmpty;
+
+  /// No description provided for @mouldManufacturerInputHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'待补充，可输入制造商名称'**
+  String get mouldManufacturerInputHint;
+
+  /// No description provided for @mouldManufacturerInputHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'可直接输入或选择候选，核实后保存'**
+  String get mouldManufacturerInputHelp;
+
+  /// No description provided for @mouldManufacturerChooseHistoryTooltip.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择历史制造商'**
+  String get mouldManufacturerChooseHistoryTooltip;
+
+  /// No description provided for @employeeIdentitySectionTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'证件信息'**
+  String get employeeIdentitySectionTitle;
+
+  /// No description provided for @employeeIdentitySavedReadbackFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'证件信息已保存，读取最新资料失败，请重试读取。'**
+  String get employeeIdentitySavedReadbackFailed;
+
+  /// No description provided for @employeeIdentitySeparateSaveHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'证件信息单独保存，现有登录账号继续保留。'**
+  String get employeeIdentitySeparateSaveHint;
 }
 
 class _AppLocalizationsDelegate

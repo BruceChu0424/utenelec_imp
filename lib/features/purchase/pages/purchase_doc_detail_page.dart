@@ -16,6 +16,7 @@ import '../../../shared/business_columns/business_columns_table.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/presentation/procurement_delivery_difference_l10n.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
 import '../../../shared/widgets/historical_receipt_totals.dart';
@@ -2024,6 +2025,17 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     type: 'number',
                     value: (it) =>
                         '${financeExactTrimmed(it.returnedQtyText ?? it.returnedQty?.toString()) ?? '—'} ${names.unit(it.unitId)}',
+                  ),
+                if (widget.docType == PurchaseDocType.order)
+                  MasterColumnDef(
+                    key: 'differenceQty',
+                    label: procurementDeliveryDifferenceL10n(context).label,
+                    width: 130,
+                    type: 'number',
+                    info: procurementDeliveryDifferenceL10n(context).hint,
+                    value: (it) => it.differenceQtyText == null
+                        ? '—'
+                        : '${it.differenceQtyText} ${names.unit(it.unitId)}',
                   ),
                 MasterColumnDef(
                   key: 'remark',

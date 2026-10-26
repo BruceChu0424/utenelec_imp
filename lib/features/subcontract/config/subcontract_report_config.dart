@@ -4,8 +4,8 @@
 //   · 委外明细报表（kind=detail）→ /subcontract/report/detail
 //   · 委外汇总报表（kind=summary）→ /subcontract/report/summary
 //   · 委外出入状况表（kind=inOutStatus）→ /subcontract/report/in-out-status（综合，无明细/汇总之分）
-// 明细/汇总卡内用 ChoiceChip 切 4 类单据（进仓/退货/材料出/材料退）。
-// 询价/申请/订货/损耗 无报表（用户要求删）。
+// 明细可切订货/进仓/退货/材料出/材料退；汇总保留进仓/退货/材料出/材料退。
+// 订货明细用于核对累计到货差异；询价/申请/损耗不新增报表。
 //
 // 后端：GET /api/subcontract/reports/{docType}/{detail|summary} 或 /api/subcontract/reports/in-out-status
 //   返回 ReportTableResponse {columns, rows, facets, page, totalPages, total}。
@@ -43,8 +43,9 @@ enum SubcontractReportKind {
       SubcontractReportKind.values.firstWhere((k) => k.routeSegment == seg);
 }
 
-/// 报表单据类型（4 类，无询价/申请/订货/损耗）。docType 决定查哪张表 + 列集。
+/// 报表单据类型；订货仅提供明细，避免汇总跨计量单位加总。
 enum SubcontractReportDocType {
+  order('订货', 'ORDER'),
   receipt('进仓', 'RECEIPT'),
   returnDoc('退货', 'RETURN'),
   materialIssue('材料出', 'MATERIAL_ISSUE'),

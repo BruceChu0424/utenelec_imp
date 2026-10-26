@@ -76,7 +76,10 @@ public class AuditQueryService {
             "material_categories", List.of(
                     "material_categories", "api/master/material-categories"),
             "clients", List.of("clients", "api/master/clients"),
-            "suppliers", List.of("suppliers", "api/master/suppliers"));
+            "suppliers", List.of("suppliers", "api/master/suppliers"),
+            "employee", List.of("employee", "employees", "api/employees"),
+            "employees", List.of("employee", "employees", "api/employees"),
+            "api/employees", List.of("employee", "employees", "api/employees"));
     private static final DateTimeFormatter EXPORT_TIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final List<ExportColumn> EXPORT_COLUMNS = List.of(
@@ -129,6 +132,13 @@ public class AuditQueryService {
     private final AuditEventInterpreter interpreter;
     private final AuditActorDirectory actorDirectory;
     private final AuditSummaryAggregation summaryAggregation;
+    private final com.uten.imp.application.port.EmployeeIdentityLookupPort employeeIdentities;
+
+    /** Compatibility for focused tests; production injects the organization-owned read port. */
+    public AuditQueryService(AuditLogRepository repo, AuditEventInterpreter interpreter,
+            AuditActorDirectory actorDirectory, AuditSummaryAggregation summaryAggregation) {
+        this(repo,interpreter,actorDirectory,summaryAggregation,null);
+    }
 
     /** Package-local compatibility constructor for focused specification tests. */
     AuditQueryService(
@@ -385,6 +395,7 @@ public class AuditQueryService {
         String outcome = normalizedFilter(criteria.outcome());
         String eventSource = normalizedFilter(criteria.eventSource());
         UUID parsedRequestId = parseRequestId(criteria.requestId());
+        List<String> employeeTargetIds = employeeIdentityTargets(criteria);
         if (criteria.snapshotId() != null) {
             validateSnapshotId(criteria.snapshotId());
         }
@@ -419,8 +430,9 @@ public class AuditQueryService {
                         : storedTarget.in(aliases));
             }
             if (hasText(criteria.targetId())) {
-                ps.add(cb.equal(cb.lower(root.get("targetId")),
-                        criteria.targetId().trim().toLowerCase(Locale.ROOT)));
+                Expression<String> targetId = cb.lower(root.get("targetId"));
+                ps.add(employeeTargetIds.size()>1 ? targetId.in(employeeTargetIds)
+                        : cb.equal(targetId,criteria.targetId().trim().toLowerCase(Locale.ROOT)));
             }
             if (eventSource != null) {
                 ps.add(cb.equal(cb.lower(root.get("eventSource")),
@@ -514,6 +526,17 @@ public class AuditQueryService {
             base = base.and(outcomeSpecification(outcome));
         }
         return base;
+    }
+
+    private List<String> employeeIdentityTargets(AuditSearchCriteria criteria) {
+        if(employeeIdentities==null || !hasText(criteria.targetId()) || !hasText(criteria.targetType())
+                || !Set.of("employee","employees","api/employees","employee_sensitive","employee_compensation")
+                    .contains(criteria.targetType().trim().toLowerCase(Locale.ROOT)))
+            return List.of();
+        try {
+            UUID raw=UUID.fromString(criteria.targetId().trim());
+            return employeeIdentities.employeeIdentityMembers(raw).stream().map(UUID::toString).toList();
+        } catch(IllegalArgumentException invalidUuid) { return List.of(); }
     }
 
     static void validateFilterValues(AuditSearchCriteria criteria) {

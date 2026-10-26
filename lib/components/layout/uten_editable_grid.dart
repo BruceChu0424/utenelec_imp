@@ -3638,7 +3638,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
         !editMode &&
         widget.showRemoveRowsAction &&
         (widget.showAddRow || widget.onRemoveRows != null);
-    if (widget.showColumnSettings ||
+    if (_platform.error != null ||
+        widget.showColumnSettings ||
         widget.batchActionsBuilder != null ||
         widget.toolbarActions.isNotEmpty ||
         hasSelectAll ||
@@ -3661,6 +3662,13 @@ class _UtenEditableGridState<T extends EditableGridRow>
               // 默认的 start 会让矮按钮顶在上沿，看起来像没对齐。
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
+                if (_platform.error != null)
+                  PlatformTableStatus(
+                    error: _platform.error,
+                    retry: _platform.retryRead,
+                    loading: _platform.loading,
+                    failure: _platform.readFailure,
+                  ),
                 if (widget.showColumnSettings)
                   UtenColumnChooserButton(
                     entries: [

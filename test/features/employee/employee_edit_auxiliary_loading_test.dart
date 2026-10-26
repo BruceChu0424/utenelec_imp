@@ -45,7 +45,7 @@ class _Repository extends Fake implements EmployeeRepository {
 }
 
 Future<void> _pump(WidgetTester tester, _Repository repository) async {
-  await tester.binding.setSurfaceSize(const Size(1200, 900));
+  await tester.binding.setSurfaceSize(const Size(1200, 1800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();

@@ -13,6 +13,14 @@ public final class NestedDtos {
     private NestedDtos() {}
 
     @Getter
+    @lombok.Setter
+    public abstract static class IdentityOrigin {
+        private UUID sourceEmployeeId;
+        private String sourceEmployeeCode;
+        private boolean historicalReadOnly;
+    }
+
+    @Getter
     @AllArgsConstructor
     public static class EmergencyContactDto {
         private UUID id;
@@ -23,7 +31,7 @@ public final class NestedDtos {
 
     @Getter
     @AllArgsConstructor
-    public static class EmploymentHistoryDto {
+    public static class EmploymentHistoryDto extends IdentityOrigin {
         private UUID id;
         private String eventType;        // onboard/transfer/resign
         private UUID fromDeptId;
@@ -36,7 +44,7 @@ public final class NestedDtos {
 
     @Getter
     @AllArgsConstructor
-    public static class CredentialDto {
+    public static class CredentialDto extends IdentityOrigin {
         private UUID id;
         private String type;
         private String name;
@@ -47,7 +55,7 @@ public final class NestedDtos {
 
     @Getter
     @AllArgsConstructor
-    public static class EducationDto {
+    public static class EducationDto extends IdentityOrigin {
         private UUID id;
         private String degree;
         private String school;

@@ -13,28 +13,31 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/goods_operation_history.dart';
+import '../models/goods_field_edit_policy.dart';
 import '../repositories/goods_operation_history_repository.dart';
 import 'basic_data_l10n.dart';
 
 /// Entry visibility is only a convenience. The server authorizes each change.
-bool canOpenGoodsOperationHistory(Set<String> permissions) => const {
-  Perm.goodsCreate,
-  Perm.goodsEdit,
-  Perm.goodsNameEnEdit,
-  Perm.goodsDelete,
-  Perm.goodsStatus,
-  Perm.goodsImport,
-  Perm.goodsImportUndo,
-  Perm.goodsBomCreate,
-  Perm.goodsBomEdit,
-  Perm.goodsBomDelete,
-  Perm.goodsBomAudit,
-  Perm.materialCategoryCreate,
-  Perm.materialCategoryEdit,
-  Perm.materialCategoryDelete,
-  Perm.materialCategoryMove,
-  Perm.materialCategoryReorder,
-}.any(permissions.contains);
+bool canOpenGoodsOperationHistory(Set<String> permissions) =>
+    GoodsFieldEditPolicy.canEditAny(permissions) ||
+    const {
+      Perm.goodsCreate,
+      Perm.goodsEdit,
+      Perm.goodsNameEnEdit,
+      Perm.goodsDelete,
+      Perm.goodsStatus,
+      Perm.goodsImport,
+      Perm.goodsImportUndo,
+      Perm.goodsBomCreate,
+      Perm.goodsBomEdit,
+      Perm.goodsBomDelete,
+      Perm.goodsBomAudit,
+      Perm.materialCategoryCreate,
+      Perm.materialCategoryEdit,
+      Perm.materialCategoryDelete,
+      Perm.materialCategoryMove,
+      Perm.materialCategoryReorder,
+    }.any(permissions.contains);
 
 Future<void> showGoodsOperationHistory(
   BuildContext context, {

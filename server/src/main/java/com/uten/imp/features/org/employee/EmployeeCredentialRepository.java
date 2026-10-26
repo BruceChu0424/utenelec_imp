@@ -8,6 +8,7 @@ import java.util.UUID;
 public interface EmployeeCredentialRepository extends JpaRepository<EmployeeCredential, UUID> {
 
     List<EmployeeCredential> findByEmployeeId(UUID employeeId);
+    List<EmployeeCredential> findByEmployeeIdIn(java.util.Collection<UUID> employeeIds);
 
     void deleteByEmployeeId(UUID employeeId);
 }

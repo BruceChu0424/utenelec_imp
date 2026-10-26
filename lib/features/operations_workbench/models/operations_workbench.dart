@@ -303,6 +303,7 @@ class OperationsWorkbenchTask {
     this.orderableQty,
     this.warehouseId,
     this.supplierName,
+    this.differenceQtyText,
   });
 
   final String taskId;
@@ -371,6 +372,9 @@ class OperationsWorkbenchTask {
   /// subcontract_applications→suppliers 下发，委外任务中心「待处理」列表直接显示；
   /// 未定商为 null——那是业务事实，不是缺数据）。其他段恒 null。
   final String? supplierName;
+
+  /// Signed quantity from the server; no client-side reconstruction from openQty.
+  final String? differenceQtyText;
 
   /// 状态列用的阶段码：优先服务端展示阶段，老响应回落 taskStatus。
   String get progressStatus => displayStage ?? taskStatus;
@@ -486,6 +490,8 @@ class OperationsWorkbenchTask {
       orderableQty: _optionalNumber(json, 'orderableQty'),
       warehouseId: _optionalString(json, 'warehouseId'),
       supplierName: _optionalString(json, 'supplierName'),
+      differenceQtyText: (json['differenceQtyExact'] ?? json['differenceQty'])
+          ?.toString(),
       actionDocument: OperationsActionDocument.fromTaskJson(json, department),
       actionDocItemId: _optionalString(json, 'actionDocItemId'),
       actionDocumentRestricted: json['actionDocRestricted'] == true,

@@ -269,6 +269,40 @@ public class SubcontractReportService {
     // addApprovedByDefault / addCommonDocFilters / addSummaryKw 2026-09-16 收敛到
     // com.uten.imp.common.report.ReportQueryKit（与 purchase 两份逐字一致），调用点见各报表方法。
 
+    /** Current order delivery facts, including imported archive orders; no inventory mutation. */
+    @Transactional(readOnly = true)
+    public ReportTableResponse orderDetail(String billNo, UUID supplierId, Short status,
+            LocalDate dateFrom, LocalDate dateTo, String kw, Map<String,String> facets,
+            int page, int size, String sort, String order) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
+                ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.date("deliverDate", "交货日期"),
+                ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("goodsCode", "编号", 110),
+                ReportColumn.text("colorName", "颜色", 80), ReportColumn.text("spec", "规格", 140),
+                ReportColumn.number("qty", "订货数量").withUnitKey("__unitName"),
+                ReportColumn.number("receivedQty", "收货数量").withUnitKey("__unitName"),
+                ReportColumn.number("returnedQty", "退货数量").withUnitKey("__unitName"),
+                ReportColumn.number("differenceQty", "差异数").withUnitKey("__unitName"),
+                ReportColumn.bool("closed", "是否结束"), ReportColumn.text("remark", "摘要", 200),
+                ReportColumn.text("__srcId", ""));
+        String select = """
+                SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName",
+                       COALESCE(i.deliver_date,o.deliver_date) AS "deliverDate",
+                       i.goods_name_snapshot AS "goodsName", i.goods_code_snapshot AS "goodsCode",
+                       col.name AS "colorName", g.spec AS "spec", i.qty AS "qty",
+                       i.received_qty AS "receivedQty", i.returned_qty AS "returnedQty",
+                       %s AS "differenceQty", o.is_closed AS "closed", i.remark AS "remark", o.id AS "__srcId"
+                """.formatted(com.uten.imp.common.finance.ProcurementDeliveryDifference.sql("i.qty", "i.received_qty", "i.returned_qty"));
+        String from = """
+                FROM subcontract_order_items i JOIN subcontract_orders o ON o.id=i.order_id
+                LEFT JOIN suppliers sup ON sup.id=o.supplier_id
+                LEFT JOIN goods g ON g.id=i.goods_id LEFT JOIN colors col ON col.id=i.color_id
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE NOT COALESCE(i.is_deleted,false) AND NOT COALESCE(o.is_deleted,false)");
+        ReportQueryKit.addCommonDocFilters(w,billNo,supplierId,null,status,dateFrom,dateTo,kw,"o.bill_no","i.bill_date");
+        return execute(cols,select,from,w,"o.bill_date DESC,o.bill_no,i.line_no",List.of(facetBillNo(),facetSupplier()),facets,page,size,sort,order);
+    }
+
     // ======================== ① 委外进仓明细 ========================
 
     @Transactional(readOnly = true)
@@ -873,6 +907,7 @@ public class SubcontractReportService {
         String kw = p == null ? null : p.get("keyword");
         Map<String, String> facets = ReportQueryKit.facetsOf(p);
         BiFunction<Integer, Integer, ReportTableResponse> loader = switch (report) {
+            case "ORDER/detail"           -> (pg, sz) -> orderDetail(billNo, supplierId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             case "RECEIPT/detail"         -> (pg, sz) -> receiptDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             case "RECEIPT/summary"        -> (pg, sz) -> receiptSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             case "RETURN/detail"          -> (pg, sz) -> returnDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);

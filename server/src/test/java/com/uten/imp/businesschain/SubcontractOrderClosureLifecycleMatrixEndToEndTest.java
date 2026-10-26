@@ -82,6 +82,7 @@ class SubcontractOrderClosureLifecycleMatrixEndToEndTest {
     @Autowired JdbcTemplate db;
     @Autowired SubcontractApplicationService applications;
     @Autowired SubcontractOrderService orders;
+    @Autowired com.uten.imp.features.subcontract.report.SubcontractReportService orderReports;
     @Autowired ProcurementFinanceApprovalService finance;
     @Autowired ProcurementOrderClosureService closures;
     @Autowired TaskClaimService claims;
@@ -123,6 +124,9 @@ class SubcontractOrderClosureLifecycleMatrixEndToEndTest {
     @ParameterizedTest @ValueSource(strings={"0","4","10"})
     void closureRetiresOnlyFutureWorkAtUnstartedPartlyIssuedAndFullyIssuedStages(String issued) {
         Fixture f=fixture(true);BigDecimal amount=new BigDecimal(issued);
+        var beforeReport=orderReports.orderDetail(f.billNo(),null,null,null,null,null,java.util.Map.of(),1,50,null,null);
+        assertThat(beforeReport.rows()).hasSize(1);
+        assertThat(new BigDecimal(beforeReport.rows().getFirst().get("differenceQtyExact").toString())).isEqualByComparingTo("-10");
         if(amount.signum()>0) issue(f,amount);
         BigDecimal stockBefore=stock(f,f.material());
         BigDecimal custodyBefore=custody(f,"at_supplier_qty");
@@ -131,6 +135,11 @@ class SubcontractOrderClosureLifecycleMatrixEndToEndTest {
         long financialBefore=count("SELECT COUNT(*) FROM ar_ap_ledger WHERE source_doc_id=?",f.order());
 
         approveClosure(f,"CLOSE");
+
+        var afterReport=orderReports.export("ORDER/detail",java.util.Map.of("billNo",f.billNo()),null,null);
+        assertThat(afterReport.rows()).hasSize(1);
+        assertThat(afterReport.columns()).anyMatch(column->column.key().equals("differenceQty"));
+        assertThat(new BigDecimal(afterReport.rows().getFirst().get("differenceQtyExact").toString())).isEqualByComparingTo("-10");
 
         assertEndedWork(f);
         assertThat(stock(f,f.material())).isEqualByComparingTo(stockBefore);

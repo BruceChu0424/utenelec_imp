@@ -795,7 +795,9 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
   void _focusChanged() {
     if (_focus?.hasFocus != true) {
       if (widget.controller.patchFor(widget.id).containsKey(widget.field.key)) {
-        _syncDraftText(widget.controller.valueFor(widget.id, widget.field, widget.row));
+        _syncDraftText(
+          widget.controller.valueFor(widget.id, widget.field, widget.row),
+        );
       } else {
         _syncExternalText();
       }
@@ -804,7 +806,10 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
 
   void _syncDraftText(Object? value) {
     final text = _text;
-    if (text == null || _focus?.hasFocus == true || !text.value.composing.isCollapsed) return;
+    if (text == null ||
+        _focus?.hasFocus == true ||
+        !text.value.composing.isCollapsed)
+      return;
     final current = value?.toString() ?? '';
     if (text.text != current) text.text = current;
   }

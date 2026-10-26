@@ -99,10 +99,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       expect(repository.calls, hasLength(3));
       expect(repository.calls.last.single['colorId'], 'red');
-    revisions.value++;
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
-    expect(repository.calls, hasLength(3));
+      revisions.value++;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(repository.calls, hasLength(3));
       expect(tester.takeException(), isNull);
     },
   );

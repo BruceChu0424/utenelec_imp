@@ -46,7 +46,7 @@ class _ProductionFqcReplenishmentBannerState
   // Unknown command outcomes keep their original key when the reader changes.
   // A different server or actor must not borrow that command's recovery key.
   final _confirmationKeysByOwner =
-      <(String, String?, String?, int), Map<String, String>>{};
+      <(String, String?, String?, int, String?), Map<String, String>>{};
   Map<String, String> get _confirmationKeys {
     final scope = ref.read(authenticatedScopeProvider);
     final owner = (
@@ -54,6 +54,7 @@ class _ProductionFqcReplenishmentBannerState
       scope?.userId,
       scope?.actorId,
       scope?.businessResetGeneration ?? 0,
+      scope?.businessDatasetId,
     );
     return _confirmationKeysByOwner.putIfAbsent(owner, () => {});
   }

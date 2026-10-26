@@ -14,6 +14,7 @@ import 'package:uten_imp/features/auth/models/auth_session.dart';
 import 'package:uten_imp/features/auth/repositories/auth_repository.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import '../../support/fake_auth_logout_fence.dart';
@@ -43,6 +44,8 @@ Map<String, dynamic> _me({
   'superAdmin': user.superAdmin,
   'permissions': permissions ?? user.permissions,
   'businessResetGeneration': user.businessResetGeneration,
+  if (user.businessDatasetId != null)
+    'businessDatasetId': user.businessDatasetId,
   if (includeSession)
     'session': {
       'delegableSurfaceKeys': ['sales.orders'],
@@ -158,6 +161,116 @@ void main() {
     RecentMeSnapshot.clear();
   });
   tearDown(RecentMeSnapshot.clear);
+
+  test(
+    'current /me binds the dataset identity through session and scope',
+    () async {
+      const dataset = 'bd6a3b4a-474e-48d6-8c42-c8ed99030bcd';
+      final f = await _Fixture.create();
+      await f.completeInitial();
+      final before = f.session;
+      final request = f.owner.captureProfileRead()!;
+      expect(
+        f.owner.applyMeProfileIfCurrent(
+          _me()..['businessDatasetId'] = dataset,
+          request: request,
+        ),
+        isTrue,
+      );
+      expect(f.session.user?.businessDatasetId, dataset);
+      expect(f.session.isSameIdentity(before), isFalse);
+      expect(
+        f.container.read(authenticatedScopeProvider)?.businessDatasetId,
+        dataset,
+      );
+      await pumpEventQueue();
+      await f.api.calls(2);
+      f.api.replies[1].complete(_me()..['businessDatasetId'] = dataset);
+      await f.container.read(sessionSnapshotProvider.future);
+    },
+  );
+
+  test(
+    'a legacy /me cannot downgrade a bound dataset or change permissions',
+    () async {
+      const user = AppUser(
+        id: 'user-1',
+        code: 'U1',
+        name: '员工一',
+        permissions: ['sales_order_finance:view'],
+        businessDatasetId: 'bd6a3b4a-474e-48d6-8c42-c8ed99030bcd',
+      );
+      final f = await _Fixture.create(
+        initial: const SessionState(
+          status: AuthStatus.authenticated,
+          user: user,
+        ),
+      );
+      f.api.replies.first.complete(_me(user: user));
+      await f.container.read(sessionSnapshotProvider.future);
+      final before = f.session;
+      final request = f.owner.captureProfileRead()!;
+      expect(
+        f.owner.applyMeProfileIfCurrent(
+          _me(user: user, permissions: ['authorization:manage'])
+            ..remove('businessDatasetId'),
+          request: request,
+        ),
+        isFalse,
+      );
+      expect(identical(f.session, before), isTrue);
+      expect(
+        f.container.read(authenticatedScopeProvider)?.businessDatasetId,
+        user.businessDatasetId,
+      );
+    },
+  );
+
+  test(
+    'a delayed /me from the old dataset cannot overwrite its replacement',
+    () async {
+      const original = AppUser(
+        id: 'user-1',
+        code: 'U1',
+        name: '员工一',
+        businessDatasetId: 'bd6a3b4a-474e-48d6-8c42-c8ed99030bcd',
+      );
+      const replacement = AppUser(
+        id: 'user-1',
+        code: 'U1',
+        name: '员工一',
+        businessDatasetId: 'ae4221bb-e660-4b30-a745-44bc62c4f14c',
+      );
+      final f = await _Fixture.create(
+        initial: const SessionState(
+          status: AuthStatus.authenticated,
+          user: original,
+        ),
+      );
+      f.api.replies.first.complete(_me(user: original));
+      await f.container.read(sessionSnapshotProvider.future);
+      final oldRead = f.owner.captureProfileRead()!;
+      f.owner.replace(
+        const SessionState(status: AuthStatus.authenticated, user: replacement),
+      );
+      expect(
+        f.owner.applyMeProfileIfCurrent(
+          _me(user: original, permissions: ['authorization:manage']),
+          request: oldRead,
+        ),
+        isFalse,
+      );
+      expect(f.session.user, replacement);
+      await pumpEventQueue();
+      await f.api.calls(2);
+      f.api.replies[1].complete(_me(user: replacement));
+      await f.container.read(sessionSnapshotProvider.future);
+      expect(
+        f.container.read(authenticatedScopeProvider)?.businessDatasetId,
+        replacement.businessDatasetId,
+      );
+    },
+  );
 
   test(
     'same /me synchronizes permissions and profile without a duplicate GET or changing lease identity',

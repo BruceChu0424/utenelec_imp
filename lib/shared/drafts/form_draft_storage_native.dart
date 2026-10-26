@@ -172,7 +172,7 @@ class NativeFormDraftStorage
     return _locked('${reset.owner}__business_reset', (marker) async {
       final latest = int.parse(await _read(marker) ?? '0');
       if (reset.generation < latest) {
-        throw StateError('业务数据已清空，这份旧草稿已失效，请重新登录');
+        throw FormDraftGenerationMismatch(reset.generation, latest);
       }
       return _namespace(prefix, action);
     });
@@ -187,7 +187,7 @@ class NativeFormDraftStorage
     await _locked('${ownerPrefix}__business_reset', (marker) async {
       final latest = int.parse(await _read(marker) ?? '0');
       if (generation < latest) {
-        throw StateError('业务数据已清空，请重新登录后使用草稿');
+        throw FormDraftGenerationMismatch(generation, latest);
       }
       // Persist the fence before cleanup. An interrupted deletion retries on
       // next sign-in; old pages cannot recreate a visible draft meanwhile.

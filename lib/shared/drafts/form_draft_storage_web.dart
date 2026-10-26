@@ -267,7 +267,7 @@ class BrowserFormDraftStorage
             ? 0
             : int.parse((request.result as JSString).toDart);
         if (generation < latest) {
-          throw StateError('业务数据已清空，请重新登录后使用草稿');
+          throw FormDraftGenerationMismatch(generation, latest);
         }
         heads.put('$generation'.toJS, marker);
         if (generation == 0) return;
@@ -493,7 +493,9 @@ class BrowserFormDraftStorage
               ? 0
               : int.parse((fence.result as JSString).toDart);
           if (reset.generation < latest) {
-            result.completeError(StateError('业务数据已清空，这份旧草稿已失效，请重新登录'));
+            result.completeError(
+              FormDraftGenerationMismatch(reset.generation, latest),
+            );
             transaction.abort();
             return;
           }

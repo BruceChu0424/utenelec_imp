@@ -13,6 +13,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -63,6 +64,7 @@ class SessionSnapshotPostgresTest {
     @Autowired MockMvc http;
     @Autowired ObjectMapper json;
     @Autowired DocumentScopeCapabilityService documentScopes;
+    @Autowired JdbcTemplate jdbc;
 
     private FullChainEndToEndTest fixture;
 
@@ -105,6 +107,11 @@ class SessionSnapshotPostgresTest {
         assertThat(me.path("id").asText()).as("资料字段平铺在顶层, 与登录响应里的 user 同形")
                 .isEqualTo(seller.toString());
         assertThat(me.path("permissions").isArray()).isTrue();
+        assertThat(me.path("businessDatasetId").asText())
+                .as("native UUID projection is returned as the persisted canonical dataset ID")
+                .isEqualTo(jdbc.queryForObject(
+                        "SELECT business_dataset_id FROM authorization_state WHERE singleton_id=1",
+                        UUID.class).toString());
         JsonNode session = me.path("session");
         assertThat(session.path("delegableSurfaceKeys").isArray()).isTrue();
         assertThat(session.path("delegableSurfaceKeys")).as("普通员工不是负责人: 没有可委派页面").isEmpty();

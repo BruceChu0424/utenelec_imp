@@ -42,6 +42,16 @@ abstract interface class BusinessResetFormDraftStorage {
   Future<void> synchronizeBusinessReset(String ownerPrefix, int generation);
 }
 
+/// A lower generation can mean a rebuilt/restored database, not a new reset.
+/// Retain the fence and originals; callers must not bypass the pre-submit save.
+class FormDraftGenerationMismatch extends StateError {
+  FormDraftGenerationMismatch(this.generation, this.latestGeneration)
+    : super('当前数据版本与本机草稿记录不一致，原草稿已保留。请刷新并重新登录；若仍无法保存，请联系管理员核对。');
+
+  final int generation;
+  final int latestGeneration;
+}
+
 ({String owner, int generation})? formDraftResetScope(String prefix) {
   final match = RegExp(
     r'^(?:daily_report_approval_)?([a-f0-9]{64}_)(?:g([1-9][0-9]*)_)?$',

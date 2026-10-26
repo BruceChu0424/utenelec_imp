@@ -319,6 +319,7 @@ Object? _editorSourceIdentity(Object? source) {
         'readOnly': scope.readOnly,
         'epoch': scope.epoch,
         'businessResetGeneration': scope.businessResetGeneration,
+        'businessDatasetId': scope.businessDatasetId,
       },
     };
   }

@@ -258,6 +258,65 @@ void main() {
   );
 
   test(
+    'new server dataset saves at generation zero without altering legacy fence or pending history',
+    () async {
+      // The shared owner-hash contract is covered by
+      // business_dataset_identity_test.dart. Exercise its distinct scopes here
+      // against real IndexedDB transactions without importing application state.
+      final legacyOwner = '${'a' * 64}_';
+      final legacyPrefix = '${legacyOwner}g45_';
+      final legacy = open();
+      await legacy.synchronizeBusinessReset(legacyOwner, 45);
+      final pending = jsonDecode(_payload('pending')) as Map<String, dynamic>;
+      (pending['data'] as Map)[formDraftUnknownSubmissionKey] = true;
+      final original = const JsonEncoder.withIndent('  ').convert(pending);
+      await legacy.write('${legacyPrefix}pending', original);
+      final originalHistory = await _rawHistory(
+        databaseName,
+        '$legacyPrefix:000000000000001',
+      );
+
+      final current = open();
+      final currentOwner = '${'c' * 64}_';
+      final currentPrefix = currentOwner;
+      expect(currentOwner, isNot(legacyOwner));
+      await current.synchronizeBusinessReset(currentOwner, 0);
+      expect(await current.readAll(currentPrefix), isEmpty);
+      expect(
+        await current.compareAndSet(
+          '${currentPrefix}new',
+          expectedValue: null,
+          value: _payload('new'),
+        ),
+        isTrue,
+      );
+      final reopened = open();
+      await reopened.synchronizeBusinessReset(currentOwner, 0);
+      expect(await reopened.read('${currentPrefix}new'), _payload('new'));
+      expect(await legacy.read('${legacyPrefix}pending'), original);
+      expect(
+        await _rawHistory(databaseName, '$legacyPrefix:000000000000001'),
+        originalHistory,
+      );
+      expect(
+        (await legacy.readHistoryRecord(
+          legacyPrefix,
+          '1',
+        ))!.draft.hasUnknownSubmission,
+        isTrue,
+      );
+      await expectLater(
+        legacy.synchronizeBusinessReset(legacyOwner, 0),
+        throwsA(isA<FormDraftGenerationMismatch>()),
+      );
+      await expectLater(
+        legacy.write('${legacyOwner}late', _payload('late')),
+        throwsA(isA<FormDraftGenerationMismatch>()),
+      );
+    },
+  );
+
+  test(
     'business reset atomically purges old drafts and history across connections',
     () async {
       final owner = '${'a' * 64}_';

@@ -1386,6 +1386,7 @@ abstract class _MaterialAnalysisMaterialTableState
         session.actor?.id,
         session.impersonationReadOnly,
         session.user?.businessResetGeneration,
+        session.user?.businessDatasetId,
         _canRoute,
         _canNotify,
         _canGenerate,

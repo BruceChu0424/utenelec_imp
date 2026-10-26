@@ -181,6 +181,53 @@ void main() {
     },
   );
 
+  for (final impersonating in [false, true]) {
+    test(
+      'profile advisory cannot remove an established dataset during impersonation=$impersonating',
+      () async {
+        const dataset = 'bd6a3b4a-474e-48d6-8c42-c8ed99030bcd';
+        final fixture = await _Fixture.create(datasetId: dataset);
+        if (impersonating) {
+          await fixture.notifier.startImpersonation(targetEmployeeId: 'A');
+        }
+        final before = fixture.container.read(sessionProvider);
+        final auth = await fixture.storage.getAuthTokenSnapshot();
+        final body = <String, dynamic>{
+          'id': 'admin',
+          'loginAccount': 'admin',
+          'name': 'must-not-replace-bound-profile',
+          'employeeId': 'employee-admin',
+          'permissions': <String>['finance:extra'],
+          'superAdmin': true,
+          '_utenAuthTokenGeneration': auth.generation,
+          '_utenAuthIntentGeneration': auth.intentGeneration,
+          '_utenAuthSessionLineage': auth.sessionLineage,
+        };
+        SessionEventBus.instance.publishProfile(body);
+        await pumpEventQueue();
+        expect(
+          identical(fixture.container.read(sessionProvider), before),
+          isTrue,
+        );
+
+        // A complete current response still updates the intended profile.
+        SessionEventBus.instance.publishProfile({
+          ...body,
+          'name': 'current-complete-profile',
+          'businessDatasetId': dataset,
+        });
+        await pumpEventQueue();
+        final after = fixture.container.read(sessionProvider);
+        final refreshed = impersonating ? after.actor : after.user;
+        expect(refreshed?.businessDatasetId, dataset);
+        expect(refreshed?.name, 'current-complete-profile');
+        if (impersonating) {
+          expect(identical(after.user, before.user), isTrue);
+        }
+      },
+    );
+  }
+
   test('late switch A cannot overwrite a completed switch B', () async {
     final fixture = await _Fixture.create();
     final delayed = fixture.repository.delay('A');
@@ -382,7 +429,10 @@ class _Fixture {
   final ProviderContainer container;
   final SessionNotifier notifier;
 
-  static Future<_Fixture> create({SecureStorage? configuredStorage}) async {
+  static Future<_Fixture> create({
+    SecureStorage? configuredStorage,
+    String? datasetId,
+  }) async {
     final storage =
         configuredStorage ?? SecureStorage(const FlutterSecureStorage());
     await storage.saveTokens(
@@ -395,7 +445,7 @@ class _Fixture {
         apiBaseUrlProvider.overrideWithValue(_base),
         secureStorageProvider.overrideWithValue(storage),
         authLogoutFenceProvider.overrideWithValue(FakeAuthLogoutFence()),
-        authRepositoryProvider.overrideWithValue(_AuthRepository()),
+        authRepositoryProvider.overrideWithValue(_AuthRepository(datasetId)),
         impersonationRepositoryProvider.overrideWithValue(repository),
       ],
     );
@@ -419,13 +469,14 @@ class _Fixture {
   }
 }
 
-UserProfile _profile(String id) => UserProfile(
+UserProfile _profile(String id, {String? datasetId}) => UserProfile(
   id: id,
   loginAccount: id,
   name: id,
   employeeId: 'employee-$id',
   permissions: const [],
   superAdmin: id == 'admin',
+  businessDatasetId: datasetId,
 );
 
 ImpersonationStartResult _result(String id) => ImpersonationStartResult(
@@ -479,8 +530,10 @@ class _ImpersonationRepository extends ImpersonationRepository {
 }
 
 class _AuthRepository extends Fake implements AuthRepository {
+  _AuthRepository(this.datasetId);
+  final String? datasetId;
   @override
-  Future<UserProfile> me() async => _profile('admin');
+  Future<UserProfile> me() async => _profile('admin', datasetId: datasetId);
 }
 
 class _ModeReadGateStorage extends SecureStorage {

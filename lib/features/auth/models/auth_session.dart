@@ -14,6 +14,7 @@ class UserProfile {
     this.department,
     this.position,
     this.businessResetGeneration = 0,
+    this.businessDatasetId,
   });
 
   final String id;
@@ -26,6 +27,9 @@ class UserProfile {
   final String? department;
   final String? position;
   final int businessResetGeneration;
+
+  /// Persistent server dataset identity; absent only on legacy servers.
+  final String? businessDatasetId;
   final List<String> permissions;
   final bool mustChangePassword;
 
@@ -42,6 +46,7 @@ class UserProfile {
     department: json['department'] as String?,
     position: json['position'] as String?,
     businessResetGeneration: _businessResetGeneration(json),
+    businessDatasetId: _businessDatasetId(json),
     mustChangePassword: json['mustChangePassword'] as bool? ?? false,
     superAdmin: json['superAdmin'] as bool? ?? false,
     permissions: ((json['permissions'] as List<dynamic>?) ?? const [])
@@ -55,6 +60,18 @@ class UserProfile {
     final value = json['businessResetGeneration'];
     if (!json.containsKey('businessResetGeneration')) return 0;
     if (value is! int || value < 0) {
+      throw const FormatException('登录信息异常，请重新登录');
+    }
+    return value;
+  }
+
+  static String? _businessDatasetId(Map<String, dynamic> json) {
+    if (!json.containsKey('businessDatasetId')) return null;
+    final value = json['businessDatasetId'];
+    if (value is! String ||
+        !RegExp(
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+        ).hasMatch(value)) {
       throw const FormatException('登录信息异常，请重新登录');
     }
     return value;

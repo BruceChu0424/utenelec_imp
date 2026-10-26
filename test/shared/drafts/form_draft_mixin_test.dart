@@ -25,6 +25,8 @@ import 'package:uten_imp/shared/drafts/form_draft_storage_api.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
 
@@ -33,6 +35,34 @@ final _testScope = StateProvider<AuthenticatedScope?>(
 );
 final _testServer = StateProvider<String>((ref) => 'https://test.example/api');
 final _testPermissions = StateProvider<Set<String>>((ref) => {'test:create'});
+
+class _DatasetSession extends SessionNotifier {
+  _DatasetSession(this.initial);
+  final SessionState initial;
+  @override
+  SessionState build() => initial;
+  void replace(SessionState next) => state = next;
+}
+
+SessionState _datasetImpersonation({
+  String? targetDataset = 'bd6a3b4a-474e-48d6-8c42-c8ed99030bcd',
+  String? actorDataset = 'bd6a3b4a-474e-48d6-8c42-c8ed99030bcd',
+  String actorName = '管理员',
+}) => SessionState(
+  status: AuthStatus.authenticated,
+  user: AppUser(
+    id: 'user-1',
+    code: 'TARGET',
+    name: '员工',
+    businessDatasetId: targetDataset,
+  ),
+  actor: AppUser(
+    id: 'admin',
+    code: 'ADMIN',
+    name: actorName,
+    businessDatasetId: actorDataset,
+  ),
+);
 
 class MemoryDraftStorage implements FormDraftStorage {
   final records = <String, String>{};
@@ -262,10 +292,16 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
   bool failReload = false,
   Future<void>? reloadGate,
   Future<void> Function(TestEditorState)? onSubmit,
+  AuthenticatedScope? initialScope,
+  SessionState? initialSession,
 }) async {
   final container = ProviderContainer(
     overrides: [
-      authenticatedScopeProvider.overrideWith((ref) => ref.watch(_testScope)),
+      if (initialScope != null) _testScope.overrideWith((ref) => initialScope),
+      if (initialSession != null)
+        sessionProvider.overrideWith(() => _DatasetSession(initialSession))
+      else
+        authenticatedScopeProvider.overrideWith((ref) => ref.watch(_testScope)),
       currentPermissionsProvider.overrideWith(
         (ref) => ref.watch(_testPermissions),
       ),
@@ -390,7 +426,7 @@ void main() {
       env.container.dispose();
     },
   );
-  for (final change in ['account', 'server', 'session epoch']) {
+  for (final change in ['account', 'server', 'session epoch', 'dataset']) {
     testWidgets(
       'live capability editor keeps sticky $change ABA identity fence',
       (tester) async {
@@ -409,17 +445,20 @@ void main() {
         if (change == 'account') {
           env.container.read(_testScope.notifier).state =
               const AuthenticatedScope(userId: 'other');
-        } else if (change == 'session epoch') {
+        } else if (change == 'session epoch' || change == 'dataset') {
           env.container.read(_testScope.notifier).state = AuthenticatedScope(
             userId: owner!.userId,
-            epoch: owner.epoch + 1,
+            epoch: owner.epoch + (change == 'session epoch' ? 1 : 0),
+            businessDatasetId: change == 'dataset'
+                ? 'bd6a3b4a-474e-48d6-8c42-c8ed99030bcd'
+                : owner.businessDatasetId,
           );
         } else {
           env.container.read(_testServer.notifier).state =
               'https://other.example/api';
         }
         await tester.pump();
-        if (change == 'account' || change == 'session epoch') {
+        if (change != 'server') {
           env.container.read(_testScope.notifier).state = owner;
         } else {
           env.container.read(_testServer.notifier).state = server;
@@ -428,6 +467,12 @@ void main() {
         editor.startFormDraftIdentityGuard();
         expect(editor.formDraftIdentityIsCurrent, isFalse);
         await expectLater(editor.saveFormDraftNow(), throwsStateError);
+        var sends = 0;
+        await expectLater(
+          editor.runFormDraftSubmission(() async => sends++),
+          throwsStateError,
+        );
+        expect(sends, 0);
         expect(storage.records, before);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
@@ -436,6 +481,135 @@ void main() {
       },
     );
   }
+  testWidgets('a replacement dataset blocks the old editor before any create', (
+    tester,
+  ) async {
+    final storage = MemoryDraftStorage();
+    final env = await pumpEditor(
+      tester,
+      storage,
+      initialScope: const AuthenticatedScope(
+        userId: 'user-1',
+        businessDatasetId: 'bd6a3b4a-474e-48d6-8c42-c8ed99030bcd',
+      ),
+    );
+    final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+    editor.text.text = '旧数据集的未完成输入';
+    await editor.saveFormDraftNow();
+    final before = Map<String, String>.of(storage.records);
+    env.container.read(_testScope.notifier).state = const AuthenticatedScope(
+      userId: 'user-1',
+      businessDatasetId: 'ae4221bb-e660-4b30-a745-44bc62c4f14c',
+    );
+    await tester.pumpAndSettle();
+    expect(editor.formDraftIdentityIsCurrent, isFalse);
+    var sends = 0;
+    await expectLater(
+      editor.runFormDraftSubmission(() async => sends++),
+      throwsStateError,
+    );
+    expect(sends, 0);
+    expect(storage.records, before);
+    expect(env.container.read(formDraftsProvider), isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+    env.router.dispose();
+    env.container.dispose();
+  });
+  for (final mismatch in [
+    'actor replacement',
+    'actor missing',
+    'target missing',
+  ]) {
+    testWidgets(
+      'impersonation $mismatch fences the old editor and its ABA return',
+      (tester) async {
+        final storage = MemoryDraftStorage();
+        final initial = _datasetImpersonation();
+        final env = await pumpEditor(tester, storage, initialSession: initial);
+        final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+        editor.text.text = '原数据集的未完成代操作输入';
+        await editor.saveFormDraftNow();
+        final before = Map<String, String>.of(storage.records);
+        final owner =
+            env.container.read(sessionProvider.notifier) as _DatasetSession;
+        final changed = _datasetImpersonation(
+          targetDataset: mismatch == 'target missing'
+              ? null
+              : initial.user!.businessDatasetId,
+          actorDataset: mismatch == 'actor replacement'
+              ? 'ae4221bb-e660-4b30-a745-44bc62c4f14c'
+              : mismatch == 'actor missing'
+              ? null
+              : initial.actor!.businessDatasetId,
+        );
+        owner.replace(changed);
+        await tester.pumpAndSettle();
+        expect(env.container.read(authenticatedScopeProvider), isNull);
+        expect(changed.isSameIdentity(initial), isFalse);
+        expect(editor.formDraftIdentityIsCurrent, isFalse);
+        var sends = 0;
+        await expectLater(
+          editor.runFormDraftSubmission(() async => sends++),
+          throwsStateError,
+        );
+        owner.replace(initial);
+        await tester.pumpAndSettle();
+        expect(env.container.read(authenticatedScopeProvider), isNotNull);
+        expect(editor.formDraftIdentityIsCurrent, isFalse);
+        await expectLater(
+          editor.runFormDraftSubmission(() async => sends++),
+          throwsStateError,
+        );
+        expect(sends, 0);
+        expect(storage.records, before);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        env.router.dispose();
+        env.container.dispose();
+      },
+    );
+  }
+  testWidgets(
+    'same-dataset actor refresh leaves the editor able to checkpoint and submit once',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      final initial = _datasetImpersonation();
+      final env = await pumpEditor(tester, storage, initialSession: initial);
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      editor.text.text = '同数据集可继续提交';
+      await editor.saveFormDraftNow();
+      final beforeScope = env.container.read(authenticatedScopeProvider);
+      var scopeNotifications = 0;
+      env.container.listen(
+        authenticatedScopeProvider,
+        (_, _) => scopeNotifications++,
+      );
+      (env.container.read(sessionProvider.notifier) as _DatasetSession).replace(
+        _datasetImpersonation(actorName: '管理员最新姓名'),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        identical(env.container.read(authenticatedScopeProvider), beforeScope),
+        isTrue,
+      );
+      expect(scopeNotifications, 0);
+      expect(editor.formDraftIdentityIsCurrent, isTrue);
+      var sends = 0;
+      await editor.runFormDraftSubmission(() async {
+        sends++;
+        expect(
+          env.container.read(formDraftsProvider).single.hasUnknownSubmission,
+          isTrue,
+        );
+      });
+      expect(sends, 1);
+      await editor.completeFormDraft();
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
   testWidgets(
     'default early source guard preserves permission ABA before draft initialization',
     (tester) async {
@@ -784,7 +958,7 @@ void main() {
       env.container.dispose();
     },
   );
-  for (final change in ['account', 'server']) {
+  for (final change in ['account', 'server', 'dataset']) {
     testWidgets(
       'ABA $change during initial draft storage read cannot bind old state again',
       (tester) async {
@@ -797,12 +971,17 @@ void main() {
         if (change == 'account') {
           env.container.read(_testScope.notifier).state =
               const AuthenticatedScope(userId: 'other');
+        } else if (change == 'dataset') {
+          env.container.read(_testScope.notifier).state = AuthenticatedScope(
+            userId: owner!.userId,
+            businessDatasetId: 'bd6a3b4a-474e-48d6-8c42-c8ed99030bcd',
+          );
         } else {
           env.container.read(_testServer.notifier).state =
               'https://other.example/api';
         }
         await tester.pump();
-        if (change == 'account') {
+        if (change != 'server') {
           env.container.read(_testScope.notifier).state = owner;
         } else {
           env.container.read(_testServer.notifier).state = server;
@@ -832,12 +1011,17 @@ void main() {
         if (change == 'account') {
           env.container.read(_testScope.notifier).state =
               const AuthenticatedScope(userId: 'other');
+        } else if (change == 'dataset') {
+          env.container.read(_testScope.notifier).state = AuthenticatedScope(
+            userId: owner!.userId,
+            businessDatasetId: 'bd6a3b4a-474e-48d6-8c42-c8ed99030bcd',
+          );
         } else {
           env.container.read(_testServer.notifier).state =
               'https://other.example/api';
         }
         await tester.pump();
-        if (change == 'account') {
+        if (change != 'server') {
           env.container.read(_testScope.notifier).state = owner;
         } else {
           env.container.read(_testServer.notifier).state = server;

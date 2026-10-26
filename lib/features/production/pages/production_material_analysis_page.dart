@@ -954,7 +954,8 @@ abstract class _MaterialAnalysisPageBase
         '${ref.read(exportContextEpochProvider)}|'
         '${session.status}|${session.user?.id}|${session.actor?.id}|'
         '${session.impersonationReadOnly}|'
-        '${session.user?.businessResetGeneration ?? 0}';
+        '${session.user?.businessResetGeneration ?? 0}|'
+        '${session.user?.businessDatasetId}';
     if (identity == _sessionScopeIdentity &&
         setEquals(permissions, _sessionScopePermissions)) {
       return _sessionComputedScope!;

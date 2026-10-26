@@ -24,13 +24,21 @@ final formDraftStorageProvider = Provider<FormDraftStorage>(
   (ref) => createFormDraftStorage(),
 );
 
-/// Login and permission changes retain drafts; a business reset starts a new
-/// durable namespace on every device the next time its owner signs in.
+/// Login and permission changes retain drafts within their dataset. Rebuilt
+/// databases at the same address must never inherit a previous dataset's fence
+/// or pending submissions. Legacy records stay on disk in their original scope.
 String formDraftStoragePrefix(String server, AuthenticatedScope scope) =>
     '${formDraftStorageOwnerPrefix(server, scope)}${scope.businessResetGeneration == 0 ? '' : 'g${scope.businessResetGeneration}_'}';
 
-String formDraftStorageOwnerPrefix(String server, AuthenticatedScope scope) =>
-    '${sha256.convert(utf8.encode(jsonEncode([server, scope.userId, scope.actorId])))}_';
+String formDraftStorageOwnerPrefix(String server, AuthenticatedScope scope) {
+  final identity = [
+    server,
+    scope.userId,
+    scope.actorId,
+    if (scope.businessDatasetId != null) scope.businessDatasetId,
+  ];
+  return '${sha256.convert(utf8.encode(jsonEncode(identity)))}_';
+}
 
 final formDraftsProvider =
     NotifierProvider<FormDraftsNotifier, List<FormDraft>>(

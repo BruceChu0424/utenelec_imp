@@ -17,6 +17,7 @@ class AppUser {
     this.superAdmin = false,
     this.employeeId,
     this.businessResetGeneration = 0,
+    this.businessDatasetId,
   });
 
   final String id;
@@ -37,6 +38,7 @@ class AppUser {
   /// 自助编辑等场景直接拿这个去查 /api/org/employees/{id}。
   final String? employeeId;
   final int businessResetGeneration;
+  final String? businessDatasetId;
 
   /// 是否拥有指定功能权限点（super admin 一律 true）。
   bool can(String perm) => superAdmin || permissions.contains(perm);
@@ -56,6 +58,7 @@ class AppUser {
       other.superAdmin == superAdmin &&
       other.employeeId == employeeId &&
       other.businessResetGeneration == businessResetGeneration &&
+      other.businessDatasetId == businessDatasetId &&
       _samePermissions(other.permissions);
 
   /// 权限点按集合比较：服务端合成顺序不稳定，同内容不同序仍是同一份档案。
@@ -75,6 +78,7 @@ class AppUser {
     superAdmin,
     employeeId,
     businessResetGeneration,
+    businessDatasetId,
     Object.hashAllUnordered(permissions),
   );
 }

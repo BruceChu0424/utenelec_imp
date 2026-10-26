@@ -240,6 +240,108 @@ void main() {
   );
 
   test(
+    'rebuilt dataset can save behind a legacy generation 45 fence without moving unknown submissions',
+    () async {
+      const server = 'https://history/api';
+      const legacyScope = AuthenticatedScope(userId: 'one');
+      const archivedScope = AuthenticatedScope(
+        userId: 'one',
+        businessResetGeneration: 45,
+      );
+      const currentScope = AuthenticatedScope(
+        userId: 'one',
+        businessDatasetId: 'bd6a3b4a-474e-48d6-8c42-c8ed99030bcd',
+      );
+      final legacyOwner = formDraftStorageOwnerPrefix(server, legacyScope);
+      final archivedPrefix = formDraftStoragePrefix(server, archivedScope);
+      await storage.synchronizeBusinessReset(legacyOwner, 45);
+      final unknown = _draft('unknown').toJson();
+      (unknown['data'] as Map<String, dynamic>).addAll(<String, dynamic>{
+        '_formDraftSubmissionPending': true,
+        formDraftUnknownSubmissionKey: true,
+        'originalInput': '0001000.',
+      });
+      final original = const JsonEncoder.withIndent('  ').convert(unknown);
+      await storage.write('${archivedPrefix}unknown', original);
+      final originalHistory = await storage.readHistoryPage(archivedPrefix);
+      final preservedFiles = <String, List<int>>{};
+      await for (final entity in directory.list(recursive: true)) {
+        if (entity is File && entity.path.contains(legacyOwner)) {
+          preservedFiles[entity.path] = await entity.readAsBytes();
+        }
+      }
+      final stale = _container(storage);
+      addTearDown(stale.dispose);
+      final mismatch = isA<FormDraftGenerationMismatch>()
+          .having((error) => error.generation, 'current generation', 0)
+          .having((error) => error.latestGeneration, 'retained generation', 45);
+      await expectLater(
+        stale.read(formDraftsProvider.notifier).ready,
+        throwsA(mismatch),
+      );
+
+      final current = _container(storage, scope: currentScope);
+      addTearDown(current.dispose);
+      final notifier = current.read(formDraftsProvider.notifier);
+      await notifier.ready;
+      expect(current.read(formDraftsProvider), isEmpty);
+      final currentPrefix = formDraftStoragePrefix(server, currentScope);
+      expect(await storage.read('${currentPrefix}unknown'), isNull);
+      final saved = await notifier.save(_draft('fresh'));
+      expect(saved.hasUnknownSubmission, isFalse);
+      expect(current.read(formDraftsProvider).single.id, 'fresh');
+      expect(await notifier.readHistory('1'), isNotNull);
+      expect(
+        (await storage.readHistoryPage(currentPrefix)).entries.single.draftId,
+        'fresh',
+      );
+
+      // Signing in again uses the same isolated namespace, without reattaching
+      // the original pending command or changing any retained legacy bytes.
+      final reopened = NativeFormDraftStorage(
+        directoryProvider: () async => directory,
+      );
+      final signedInAgain = _container(
+        reopened,
+        scope: const AuthenticatedScope(
+          userId: 'one',
+          epoch: 2,
+          businessDatasetId: 'bd6a3b4a-474e-48d6-8c42-c8ed99030bcd',
+        ),
+      );
+      addTearDown(signedInAgain.dispose);
+      await signedInAgain.read(formDraftsProvider.notifier).ready;
+      expect(signedInAgain.read(formDraftsProvider).single.id, 'fresh');
+      await expectLater(
+        stale.read(formDraftsProvider.notifier).save(_draft('late')),
+        throwsA(mismatch),
+      );
+      await expectLater(
+        reopened.synchronizeBusinessReset(legacyOwner, 0),
+        throwsA(mismatch),
+      );
+      expect(await reopened.read('${archivedPrefix}unknown'), original);
+      expect(
+        (await reopened.readHistoryPage(archivedPrefix)).entries.single.id,
+        originalHistory.entries.single.id,
+      );
+      for (final entry in preservedFiles.entries) {
+        expect(
+          await File(entry.key).readAsBytes(),
+          entry.value,
+          reason: 'Dataset isolation must preserve ${entry.key}',
+        );
+      }
+      expect(
+        await File(
+          '${directory.path}/${legacyOwner}__business_reset.json',
+        ).readAsString(),
+        '45',
+      );
+    },
+  );
+
+  test(
     'native CAS remains pending until durable apply and lock cleanup complete',
     () async {
       final journalFlushed = Completer<void>();

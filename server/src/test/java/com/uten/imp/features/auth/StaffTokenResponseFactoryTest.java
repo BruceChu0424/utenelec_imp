@@ -2,6 +2,8 @@
 package com.uten.imp.features.auth;
 
 import com.uten.imp.features.auth.dto.TokenResponse;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.employee.Employee;
@@ -12,15 +14,19 @@ import org.junit.jupiter.api.Test;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 class StaffTokenResponseFactoryTest {
+    private static final UUID DATASET = UUID.fromString("9be34a91-a856-4b7c-b275-83ba7025c061");
 
     @Test
     void responseUsesFreshProjectionIdentityAndAuthorizationShapeForMinimalJwt() {
@@ -59,6 +65,7 @@ class StaffTokenResponseFactoryTest {
 
         assertEquals("small-access-token", response.accessToken());
         assertEquals(9L, response.user().businessResetGeneration());
+        assertEquals(DATASET.toString(), response.user().businessDatasetId());
         assertEquals("refresh-token", response.refreshToken());
         assertEquals("E2002", response.user().loginAccount());
         assertEquals(currentEmployeeId.toString(), response.user().employeeId());
@@ -69,6 +76,70 @@ class StaffTokenResponseFactoryTest {
         assertEquals(java.util.List.of("employee:view", "stock:view"), response.user().permissions());
         verify(jwt).issueAccess(detached.getId(), 7, 11, sessionId);
         verify(permissions).authorizationSnapshot(detached.getId(), currentEmployeeId, false);
+    }
+
+    @Test
+    void profileAndImpersonationReturnTheSameCanonicalPersistentDatasetIdentity() throws Exception {
+        UserAccountRepository users = mock(UserAccountRepository.class);
+        EmployeeRepository employees = mock(EmployeeRepository.class);
+        JwtService jwt = mock(JwtService.class);
+        PermissionResolver permissions = mock(PermissionResolver.class);
+        UserAccount target = new UserAccount();
+        UUID employeeId = UUID.randomUUID();
+        var current = state(employeeId, "E2002", false, false, 7, 11);
+        when(users.findAccountStateById(target.getId())).thenReturn(Optional.of(current));
+        when(permissions.authorizationSnapshot(target.getId(), employeeId, false))
+                .thenReturn(new PermissionResolver.AuthorizationSnapshot(Set.of("stock:view")));
+        when(employees.findById(employeeId)).thenReturn(Optional.empty());
+        var factory = new StaffTokenResponseFactory(users, employees, jwt, permissions);
+
+        var profile = factory.profile(target);
+        assertEquals(DATASET.toString(), profile.businessDatasetId());
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        assertEquals(DATASET.toString(), mapper.readTree(mapper.writeValueAsBytes(profile))
+                .path("businessDatasetId").asText());
+        var impersonated = factory.buildImpersonation(target, UUID.randomUUID(),
+                Instant.now().plusSeconds(300), UUID.randomUUID());
+        assertEquals(DATASET.toString(), impersonated.user().businessDatasetId());
+    }
+
+    @Test
+    void datasetChangeDuringPermissionResolutionRetriesTheWholeSnapshot() {
+        UserAccountRepository users = mock(UserAccountRepository.class);
+        EmployeeRepository employees = mock(EmployeeRepository.class);
+        JwtService jwt = mock(JwtService.class);
+        PermissionResolver permissions = mock(PermissionResolver.class);
+        UserAccount target = new UserAccount();
+        UUID employeeId = UUID.randomUUID();
+        var before = state(employeeId, "E2002", false, false, 7, 11);
+        var after = state(employeeId, "E2002", false, false, 7, 11);
+        UUID replacement = UUID.randomUUID();
+        when(after.getBusinessDatasetId()).thenReturn(replacement);
+        when(users.findAccountStateById(target.getId())).thenReturn(
+                Optional.of(before), Optional.of(after), Optional.of(after), Optional.of(after));
+        when(permissions.authorizationSnapshot(target.getId(), employeeId, false))
+                .thenReturn(new PermissionResolver.AuthorizationSnapshot(Set.of("old:view")),
+                        new PermissionResolver.AuthorizationSnapshot(Set.of("current:view")));
+        when(employees.findById(employeeId)).thenReturn(Optional.empty());
+
+        var profile = new StaffTokenResponseFactory(users, employees, jwt, permissions).profile(target);
+        assertEquals(replacement.toString(), profile.businessDatasetId());
+        assertEquals(java.util.List.of("current:view"), profile.permissions());
+        verify(permissions, times(2)).authorizationSnapshot(target.getId(), employeeId, false);
+    }
+
+    @Test
+    void missingDatasetIdentityCannotIssueAnAmbiguousProfile() {
+        UserAccountRepository users = mock(UserAccountRepository.class);
+        UserAccount target = new UserAccount();
+        var current = state(UUID.randomUUID(), "E2002", false, false, 7, 11);
+        when(current.getBusinessDatasetId()).thenReturn(null);
+        when(users.findAccountStateById(target.getId())).thenReturn(Optional.of(current));
+        var factory = new StaffTokenResponseFactory(users, mock(EmployeeRepository.class),
+                mock(JwtService.class), mock(PermissionResolver.class));
+
+        assertEquals(ErrorCode.INTERNAL, assertThrows(ApiException.class,
+                () -> factory.profile(target)).getCode());
     }
 
     private UserAccountRepository.AccountState state(
@@ -87,6 +158,7 @@ class StaffTokenResponseFactoryTest {
         when(state.isMustChangePassword()).thenReturn(mustChangePassword);
         when(state.getAuthVersion()).thenReturn(authVersion);
         when(state.getAuthorizationEpoch()).thenReturn(authorizationEpoch);
+        when(state.getBusinessDatasetId()).thenReturn(DATASET);
         return state;
     }
 }

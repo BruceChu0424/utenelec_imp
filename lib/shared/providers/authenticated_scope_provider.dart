@@ -16,6 +16,7 @@ class AuthenticatedScope {
     this.readOnly = false,
     this.epoch = 0,
     this.businessResetGeneration = 0,
+    this.businessDatasetId,
   });
 
   final String userId;
@@ -30,6 +31,9 @@ class AuthenticatedScope {
   /// 保留历史数据代次，避免旧版本遗留草稿和缓存重新进入当前会话。
   final int businessResetGeneration;
 
+  /// Distinguishes rebuilt databases served at the same API address.
+  final String? businessDatasetId;
+
   @override
   bool operator ==(Object other) =>
       other is AuthenticatedScope &&
@@ -37,11 +41,18 @@ class AuthenticatedScope {
       other.actorId == actorId &&
       other.readOnly == readOnly &&
       other.epoch == epoch &&
-      other.businessResetGeneration == businessResetGeneration;
+      other.businessResetGeneration == businessResetGeneration &&
+      other.businessDatasetId == businessDatasetId;
 
   @override
-  int get hashCode =>
-      Object.hash(userId, actorId, readOnly, epoch, businessResetGeneration);
+  int get hashCode => Object.hash(
+    userId,
+    actorId,
+    readOnly,
+    epoch,
+    businessResetGeneration,
+    businessDatasetId,
+  );
 }
 
 /// 当前已登录会话; 未登录 / 必须改密 / 会话失效时为 null。
@@ -54,17 +65,24 @@ final authenticatedScopeProvider = Provider<AuthenticatedScope?>((ref) {
         session.actor?.id,
         session.impersonationReadOnly,
         session.user?.businessResetGeneration,
+        session.user?.businessDatasetId,
+        session.actor?.businessDatasetId,
       ),
     ),
   );
   if (identity.$1 != AuthStatus.authenticated || identity.$2 == null) {
     return null;
   }
+  // A management-token refresh may observe a replacement database before the
+  // impersonated target is refreshed. Neither identity can authorize the old
+  // target editor against that new dataset; re-enter the target session first.
+  if (identity.$3 != null && identity.$6 != identity.$7) return null;
   return AuthenticatedScope(
     userId: identity.$2!,
     actorId: identity.$3,
     readOnly: identity.$4,
     epoch: ref.watch(sessionEpochProvider),
     businessResetGeneration: identity.$5 ?? 0,
+    businessDatasetId: identity.$6,
   );
 });

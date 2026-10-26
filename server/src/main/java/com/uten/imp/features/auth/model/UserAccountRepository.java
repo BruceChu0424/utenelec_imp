@@ -77,6 +77,7 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
         long getAuthVersion();
         long getAuthorizationEpoch();
         long getBusinessResetGeneration();
+        UUID getBusinessDatasetId();
     }
 
     @Query(value = """
@@ -89,7 +90,8 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
                    u.is_deleted AS "deleted",
                    u.auth_version AS "authVersion",
                    s.epoch AS "authorizationEpoch",
-                   s.business_reset_generation AS "businessResetGeneration"
+                   s.business_reset_generation AS "businessResetGeneration",
+                   s.business_dataset_id AS "businessDatasetId"
             FROM users u
             CROSS JOIN authorization_state s
             WHERE u.id = :id

@@ -62,7 +62,9 @@ class SessionState {
       user?.id == other.user?.id &&
       actor?.id == other.actor?.id &&
       (user?.businessResetGeneration ?? 0) ==
-          (other.user?.businessResetGeneration ?? 0);
+          (other.user?.businessResetGeneration ?? 0) &&
+      user?.businessDatasetId == other.user?.businessDatasetId &&
+      actor?.businessDatasetId == other.actor?.businessDatasetId;
 
   @override
   bool operator ==(Object other) =>
@@ -220,6 +222,8 @@ class SessionNotifier extends Notifier<SessionState> {
         json['id'] != state.user?.id ||
         json['loginAccount'] is! String ||
         json['permissions'] is! List ||
+        (state.user?.businessDatasetId != null &&
+            !json.containsKey('businessDatasetId')) ||
         (json['permissions'] as List).any((value) => value is! String)) {
       return false;
     }
@@ -272,6 +276,14 @@ class SessionNotifier extends Notifier<SessionState> {
       }
       _rememberVisibleRecord(current);
       final refreshed = _toAppUser(UserProfile.fromJson(userJson));
+      final previous = state.isImpersonating ? state.actor : state.user;
+      // An incomplete/older response cannot move an established dataset back
+      // into the legacy draft namespace. Explicit sign-in remains compatible
+      // with older servers that never supplied a dataset identity.
+      if (previous?.businessDatasetId != null &&
+          refreshed.businessDatasetId == null) {
+        return;
+      }
       // 内容未变就换状态对象是当年"登录身份已变化"误报的根因：全站栅栏
       // 曾用对象同一性当身份指纹。相同档案（含权限集）直接跳过，保持实例。
       // 模拟中：刷新的是 admin 的 profile（管理端点用 admin 令牌）→ 更新 actor，
@@ -932,6 +944,7 @@ class SessionNotifier extends Notifier<SessionState> {
     superAdmin: profile.superAdmin,
     employeeId: profile.employeeId,
     businessResetGeneration: profile.businessResetGeneration,
+    businessDatasetId: profile.businessDatasetId,
   );
 }
 

@@ -126,7 +126,8 @@ public class StaffTokenResponseFactory {
                 snapshot.mustChangePassword(),
                 snapshot.superAdmin(),
                 permissions,
-                snapshot.businessResetGeneration());
+                snapshot.businessResetGeneration(),
+                snapshot.businessDatasetId().toString());
     }
 
     /**
@@ -153,7 +154,8 @@ public class StaffTokenResponseFactory {
                         after.isMustChangePassword(),
                         after.getAuthVersion(),
                         after.getAuthorizationEpoch(),
-                        after.getBusinessResetGeneration());
+                        after.getBusinessResetGeneration(),
+                        after.getBusinessDatasetId());
             }
         }
         throw new ApiException(ErrorCode.CONFLICT, "权限正在更新，请重试登录");
@@ -165,6 +167,7 @@ public class StaffTokenResponseFactory {
         return before.getAuthVersion() == after.getAuthVersion()
                 && before.getAuthorizationEpoch() == after.getAuthorizationEpoch()
                 && before.getBusinessResetGeneration() == after.getBusinessResetGeneration()
+                && Objects.equals(before.getBusinessDatasetId(), after.getBusinessDatasetId())
                 && Objects.equals(before.getEmployeeId(), after.getEmployeeId())
                 && Objects.equals(before.getLoginAccount(), after.getLoginAccount())
                 && before.isSuperAdmin() == after.isSuperAdmin()
@@ -181,6 +184,9 @@ public class StaffTokenResponseFactory {
                 || state.getLoginAccount().isBlank()) {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
+        if (state.getBusinessDatasetId() == null) {
+            throw new ApiException(ErrorCode.INTERNAL, "业务数据身份未就绪，请联系管理员检查数据库更新");
+        }
         return state;
     }
 
@@ -192,6 +198,7 @@ public class StaffTokenResponseFactory {
             boolean mustChangePassword,
             long authVersion,
             long authorizationEpoch,
-            long businessResetGeneration) {
+            long businessResetGeneration,
+            UUID businessDatasetId) {
     }
 }

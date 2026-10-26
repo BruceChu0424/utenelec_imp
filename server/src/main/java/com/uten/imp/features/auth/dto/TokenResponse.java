@@ -31,7 +31,9 @@ public record TokenResponse(
             boolean mustChangePassword,
             boolean superAdmin,
             List<String> permissions,
-            /** Durable draft namespace; changes only when business data is cleared. */
-            long businessResetGeneration
+            /** Historical dataset generation, retained as a draft/result fence. */
+            long businessResetGeneration,
+            /** Persistent database identity, serialized as a canonical UUID. */
+            String businessDatasetId
     ) {}
 }

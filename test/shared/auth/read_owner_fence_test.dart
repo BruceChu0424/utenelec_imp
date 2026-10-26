@@ -116,6 +116,21 @@ Future<void> _changeOwner(
       container.read(_permissions.notifier).change({});
     case 'server':
       container.read(_server.notifier).change('https://b.invalid/api');
+    case 'reset':
+      container
+          .read(_owner.notifier)
+          .change(
+            const AuthenticatedScope(userId: 'A', businessResetGeneration: 1),
+          );
+    case 'dataset':
+      container
+          .read(_owner.notifier)
+          .change(
+            const AuthenticatedScope(
+              userId: 'A',
+              businessDatasetId: 'replacement',
+            ),
+          );
     case 'A-B-A':
       container
           .read(_owner.notifier)
@@ -131,7 +146,14 @@ Future<void> _changeOwner(
 }
 
 void main() {
-  for (final transition in ['account', 'permissions', 'server', 'A-B-A']) {
+  for (final transition in [
+    'account',
+    'permissions',
+    'server',
+    'A-B-A',
+    'reset',
+    'dataset',
+  ]) {
     for (final lateError in [false, true]) {
       testWidgets(
         'read owner $transition blocks decoded ${lateError ? 'error' : 'page'} and loading',

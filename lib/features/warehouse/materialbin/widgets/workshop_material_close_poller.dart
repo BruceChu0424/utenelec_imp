@@ -26,6 +26,7 @@ class WmClosePoller {
   Timer? _timer;
   int _ticks = 0;
   bool _inFlight = false;
+  int _generation = 0;
 
   bool get active => _timer != null;
 
@@ -37,6 +38,7 @@ class WmClosePoller {
 
   Future<void> _tick() async {
     if (_inFlight) return;
+    final generation = _generation;
     _ticks++;
     if (_ticks > maxTicks) {
       stop();
@@ -45,9 +47,9 @@ class WmClosePoller {
     _inFlight = true;
     try {
       final status = await load();
-      if (_timer == null) return;
+      if (_timer == null || generation != _generation) return;
       onStatus(status);
-      if (!status.settling) stop();
+      if (generation == _generation && !status.settling) stop();
     } catch (_) {
       // 读失败不打断: 下一次再问; 到上限自然停止。
     } finally {
@@ -56,6 +58,7 @@ class WmClosePoller {
   }
 
   void stop() {
+    _generation++;
     _timer?.cancel();
     _timer = null;
   }

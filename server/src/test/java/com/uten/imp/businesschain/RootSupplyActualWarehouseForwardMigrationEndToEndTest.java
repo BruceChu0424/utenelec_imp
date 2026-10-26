@@ -72,6 +72,7 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
             var historical=new LegacyV854RootSupplyFixture(support);
             var fixture=historical.createAndPass();
             historical.assertCurrentComponentsRestored();
+            assertThat(db.queryForObject("SELECT to_regclass('public.v_stock_operable_balances') IS NULL",Boolean.class)).isTrue();
             assertThat(db.queryForObject("SELECT max(version::integer) FROM flyway_schema_history WHERE success",Integer.class)).isEqualTo(854);
             assertThat(db.queryForObject("SELECT pg_get_functiondef('fn_guard_root_output_event()'::regprocedure)",String.class))
                     .contains("a.warehouse_id=NEW.warehouse_id");

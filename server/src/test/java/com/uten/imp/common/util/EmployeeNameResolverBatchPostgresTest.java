@@ -23,6 +23,8 @@ import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
 
 /** Actual Hibernate bindings and PostgreSQL reads; fixture columns come from the current migrated catalog. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
@@ -204,6 +206,131 @@ class EmployeeNameResolverBatchPostgresTest {
         });
         assertThat(STATEMENTS).hasSize(1);
         assertThat(STATEMENTS.getFirst()).doesNotContain("FROM employees", "JOIN employees", "FROM users");
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"CLIENT", "SUPPLIER"})
+    void masterListOwnersUseOneRealSqlForOneHundredMixedRows(String domain) {
+        List<UUID> ids = new ArrayList<>();
+        List<String> expected = new ArrayList<>();
+        for (int index = 0; index < 100; index++) {
+            UUID person = employee("MASTER" + index, "负责人" + index, index % 3 == 0);
+            ids.add(index < 50 ? person : user(UUID.randomUUID(), person, false));
+            expected.add("负责人" + index);
+        }
+        STATEMENTS.clear();
+        assertThat(masterOwners(domain, ids, false)).isEqualTo(expected);
+        System.out.println("MASTER-OWNER-LIST domain=" + domain + " rows=" + ids.size() + " nameSql=" + STATEMENTS.size());
+        assertThat(STATEMENTS).hasSize(1);
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"CLIENT", "SUPPLIER"})
+    void masterExportsUseOneNameReadPerPageAndKeepEveryRow(String domain) {
+        UUID person = employee("EXPORT", "导出负责人", false);
+        UUID alias = user(UUID.randomUUID(), person, true);
+        List<UUID> ids = new ArrayList<>(Collections.nCopies(130, alias));
+        ids.set(127, null);
+        ids.set(128, UUID.randomUUID());
+        STATEMENTS.clear();
+        List<String> actual = masterOwners(domain, ids, true);
+        assertThat(actual).hasSize(130);
+        assertThat(actual.subList(0, 127)).containsOnly("导出负责人");
+        assertThat(actual.subList(127, 129)).containsExactly("未分配", "未分配");
+        assertThat(actual.getLast()).isEqualTo("导出负责人");
+        System.out.println("MASTER-OWNER-EXPORT domain=" + domain + " rows=" + ids.size() + " nameSql=" + STATEMENTS.size());
+        assertThat(STATEMENTS).hasSize(2);
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"CLIENT", "SUPPLIER"})
+    void masterNamesKeepNullUnknownDuplicateAndNextReadSemantics(String domain) {
+        UUID person = employee("SCOPE", "原负责人", true);
+        UUID alias = user(UUID.randomUUID(), person, true);
+        List<UUID> ids = Arrays.asList(person, alias, person, null, UUID.randomUUID());
+        STATEMENTS.clear();
+        List<String> first = masterOwners(domain, ids, false);
+        assertThat(first).containsExactly("原负责人", "原负责人", "原负责人", null, null);
+        assertThat(STATEMENTS).hasSize(1);
+        db.update("UPDATE employees SET full_name='当前负责人' WHERE id=?", person);
+        STATEMENTS.clear();
+        assertThat(masterOwners(domain, ids, false))
+                .containsExactly("当前负责人", "当前负责人", "当前负责人", null, null);
+        assertThat(first).containsExactly("原负责人", "原负责人", "原负责人", null, null);
+        assertThat(STATEMENTS).hasSize(1);
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"CLIENT", "SUPPLIER"})
+    void emptyAndUnassignedMasterPagesNeedNoNameSql(String domain) {
+        STATEMENTS.clear();
+        assertThat(masterOwners(domain, List.of(), false)).isEmpty();
+        assertThat(masterOwners(domain, Arrays.asList(null, null), false)).containsExactly(null, null);
+        assertThat(STATEMENTS).isEmpty();
+    }
+
+    /** The real shared name reader is measured; repositories only supply authorized page facts. */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private List<String> masterOwners(String domain, List<UUID> owners, boolean export) {
+        var projection = mock(EntityManager.class);
+        var query = mock(jakarta.persistence.Query.class);
+        when(projection.createNativeQuery(any(String.class))).thenReturn(query);
+        when(query.setParameter(any(String.class), any())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.of());
+        var codes = mock(com.uten.imp.common.mastercode.CategoryDrivenCodeService.class);
+        var employees = mock(com.uten.imp.features.org.employee.EmployeeRepository.class);
+        var session = mock(com.uten.imp.security.TxSessionVars.class);
+        if (domain.equals("CLIENT")) {
+            var repo = mock(com.uten.imp.features.master.client.ClientRepository.class);
+            List<com.uten.imp.features.master.client.Client> records = new ArrayList<>();
+            for (int index = 0; index < owners.size(); index++) {
+                var row = new com.uten.imp.features.master.client.Client();
+                row.setId(new UUID(0, index + 1)); row.setCode("CL" + index); row.setName("客户" + index);
+                row.setOwnerEmployeeId(owners.get(index)); row.setVersion(7L); row.setStatus("使用");
+                row.setCredit(new java.math.BigDecimal("123.4567"));
+                records.add(row);
+            }
+            when(repo.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(org.springframework.data.domain.Pageable.class)))
+                    .thenAnswer(call -> page(records, call.getArgument(1)));
+            var access = mock(com.uten.imp.features.master.client.ClientAccessPolicy.class);
+            when(access.evaluate()).thenReturn(new com.uten.imp.features.master.client.ClientAccessPolicy.ClientScope(
+                    new com.uten.imp.security.OwnerVisibility.OwnerScope(true, Set.of(), Set.of()), Set.of(), true));
+            var service = new com.uten.imp.features.master.client.ClientService(repo,
+                    mock(com.uten.imp.features.master.clientcategory.ClientCategoryRepository.class), session,
+                    projection, codes, access, employees, names);
+            var filter = mock(com.uten.imp.features.master.client.dto.ClientQueryFilter.class);
+            if (export) return service.export(filter, null, null, owners.size() + 1).rows().stream()
+                    .map(row -> (String) row.get("ownerEmployeeName")).toList();
+            var result = service.list(filter, 1, 100, null, null);
+            assertThat(result.getTotal()).isEqualTo(owners.size());
+            assertThat(result.getItems()).allSatisfy(row -> {
+                assertThat(row.getVersion()).isEqualTo(7L);
+                assertThat(row.getCredit()).isEqualByComparingTo("123.4567");
+            });
+            return result.getItems().stream().map(com.uten.imp.features.master.client.dto.ClientListItem::getOwnerEmployeeName).toList();
+        }
+        var repo = mock(com.uten.imp.features.master.supplier.SupplierRepository.class);
+        List<com.uten.imp.features.master.supplier.Supplier> records = new ArrayList<>();
+        for (int index = 0; index < owners.size(); index++) {
+            var row = new com.uten.imp.features.master.supplier.Supplier();
+            row.setId(new UUID(0, index + 1)); row.setCode("SP" + index); row.setName("供应商" + index);
+            row.setOwnerEmployeeId(owners.get(index)); row.setVersion(7L); row.setStatus("使用");
+            records.add(row);
+        }
+        when(repo.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(org.springframework.data.domain.Pageable.class)))
+                .thenAnswer(call -> page(records, call.getArgument(1)));
+        var service = new com.uten.imp.features.master.supplier.SupplierService(repo,
+                mock(com.uten.imp.features.master.suppliercategory.SupplierCategoryRepository.class), session,
+                projection, codes, employees, names);
+        var filter = mock(com.uten.imp.features.master.supplier.dto.SupplierQueryFilter.class);
+        if (export) return service.export(filter, null, null, owners.size() + 1).rows().stream()
+                .map(row -> (String) row.get("ownerEmployeeName")).toList();
+        var result = service.list(filter, 1, 100, null, null);
+        assertThat(result.getTotal()).isEqualTo(owners.size());
+        assertThat(result.getItems()).allSatisfy(row -> assertThat(row.getVersion()).isEqualTo(7L));
+        return result.getItems().stream().map(com.uten.imp.features.master.supplier.dto.SupplierListItem::getOwnerEmployeeName).toList();
+    }
+
+    private static <T> org.springframework.data.domain.Page<T> page(List<T> rows, org.springframework.data.domain.Pageable paging) {
+        int from = Math.min(rows.size(), (int) paging.getOffset());
+        int to = Math.min(rows.size(), from + paging.getPageSize());
+        return new org.springframework.data.domain.PageImpl<>(rows.subList(from, to), paging, rows.size());
     }
 
     private UUID employee(String code, String name, boolean deleted) {

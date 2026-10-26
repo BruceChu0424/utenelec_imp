@@ -15,8 +15,38 @@ import 'package:uten_imp/features/subcontract/pages/subcontract_order_edit_page.
 import 'package:uten_imp/features/subcontract/repositories/subcontract_repository.dart';
 import 'package:uten_imp/features/subcontract/widgets/subcontract_grid_columns.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
 
 void main() {
+  testWidgets('新建委外订货纯勾选变化自动保存业务选择且不发业务写入', (tester) async {
+    final drafts = MemoryFormDraftStorage();
+    final api = await _pumpPrefill(tester, _defaultLines, drafts: drafts);
+    final grid = tester
+        .widget<UtenEditableGrid<SubcontractGridRow>>(
+          find.byType(UtenEditableGrid<SubcontractGridRow>),
+        )
+        .controller;
+    final writesBefore = drafts.successfulWrites;
+    final commandsBefore = api.writes.length;
+    expect(grid.rows, hasLength(2));
+
+    grid.setSelected([grid.rows.first], false);
+    await tester.pumpAndSettle();
+
+    expect(drafts.successfulWrites, greaterThan(writesBefore));
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SubcontractOrderEditPage)),
+    );
+    final rows = container.read(formDraftsProvider).single.data['rows'] as List;
+    expect(rows.map((row) => (row as Map)['selected']), [false, true]);
+    expect(api.writes, hasLength(commandsBefore));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     '1000-row subcontract order save reveals first invalid selected row without writing',
     (tester) async {
@@ -269,8 +299,9 @@ void main() {
 
 Future<_SelectionApi> _pumpPrefill(
   WidgetTester tester,
-  List<SubcontractDecompositionLine> lines,
-) async {
+  List<SubcontractDecompositionLine> lines, {
+  MemoryFormDraftStorage? drafts,
+}) async {
   await tester.binding.setSurfaceSize(const Size(1400, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final api = _SelectionApi();
@@ -288,7 +319,20 @@ Future<_SelectionApi> _pumpPrefill(
             lines: lines,
           ),
         ),
-        sessionProvider.overrideWith(_EmptySessionNotifier.new),
+        if (drafts == null)
+          sessionProvider.overrideWith(_EmptySessionNotifier.new)
+        else ...[
+          sessionProvider.overrideWith(_DraftSessionNotifier.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'draft-subcontractor'),
+          ),
+          formDraftStorageProvider.overrideWithValue(drafts),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.subcontractOrderView,
+            Perm.subcontractOrderCreate,
+            Perm.subcontractOrderDecompose,
+          }),
+        ],
       ],
       child: const MaterialApp(
         home: Column(
@@ -311,6 +355,23 @@ Future<_SelectionApi> _pumpPrefill(
 class _EmptySessionNotifier extends SessionNotifier {
   @override
   SessionState build() => const SessionState();
+}
+
+class _DraftSessionNotifier extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: 'draft-subcontractor',
+      code: 'SUBCONTRACT',
+      name: '委外员',
+      permissions: [
+        Perm.subcontractOrderCreate,
+        Perm.subcontractOrderDecompose,
+      ],
+      businessDatasetId: 'bd6a3b4a-474e-48d6-8c42-c8ed99030bcd',
+    ),
+  );
 }
 
 class _SelectionApi extends ApiClient {

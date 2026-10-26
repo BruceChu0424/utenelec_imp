@@ -9,6 +9,7 @@ import '../../security/secure_storage.dart';
 import '../api_exception.dart';
 import '../authenticated_request_scope.dart';
 import '../network_policy.dart';
+import '../owned_dio.dart';
 import '../session_event_bus.dart';
 import 'token_refresh_result.dart';
 
@@ -16,6 +17,7 @@ class AuthInterceptor extends Interceptor {
   AuthInterceptor({
     required this.storage,
     required this.baseUrl,
+    // Each call transfers a fresh client's ownership to this interceptor.
     Dio Function()? dioFactory,
     AuthRefreshLock? refreshLock,
   }) : _dioFactory = dioFactory ?? (() => Dio(buildApiBaseOptions(baseUrl))),
@@ -397,13 +399,14 @@ class AuthInterceptor extends Interceptor {
       final opts = err.requestOptions
         ..extra['retried'] = true
         ..headers['Authorization'] = 'Bearer ${latest.accessToken!}';
-      final retryDio = _dioFactory();
-      // The factory may include asynchronous device-audit work. Re-run the
-      // immutable request fence after it, immediately before replay dispatch.
-      if (!retryDio.interceptors.contains(this)) {
-        retryDio.interceptors.add(this);
-      }
-      final response = await retryDio.fetch<dynamic>(opts);
+      final response = await withOwnedDio(_dioFactory, (retryDio) {
+        // The factory may include asynchronous device-audit work. Re-run the
+        // immutable request fence after it, immediately before replay dispatch.
+        if (!retryDio.interceptors.contains(this)) {
+          retryDio.interceptors.add(this);
+        }
+        return retryDio.fetch<dynamic>(opts);
+      });
       if (!await _requestSessionMatches(opts)) {
         handler.next(_sessionChangedError(opts));
         return;
@@ -473,10 +476,12 @@ class AuthInterceptor extends Interceptor {
     // active token. Refresh that exact latest record and preserve its lineage.
     final submitted = current;
     try {
-      final dio = _dioFactory();
-      final response = await dio.post<dynamic>(
-        '/auth/refresh',
-        data: <String, String?>{'refreshToken': submitted.refreshToken},
+      final response = await withOwnedDio(
+        _dioFactory,
+        (dio) => dio.post<dynamic>(
+          '/auth/refresh',
+          data: <String, String?>{'refreshToken': submitted.refreshToken},
+        ),
       );
       final data = response.data;
       final body = data is Map<String, dynamic> ? data : null;

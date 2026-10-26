@@ -1,5 +1,40 @@
 part of 'material_analysis_one_table_test.dart';
 
+class _ProjectionOwnerPermissions extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => _permissions;
+  void revoke() => state = {};
+}
+
+class _ProjectionOwnerServer extends Notifier<String> {
+  @override
+  String build() => 'https://a.invalid/api';
+  void change() => state = 'https://b.invalid/api';
+}
+
+class _ProjectionOwnerSession extends _OrderAuthoritySession {
+  void replaceDataset({bool reset = false}) {
+    state = SessionState(
+      status: AuthStatus.authenticated,
+      user: AppUser(
+        id: 'first-account',
+        code: 'FIRST',
+        name: '计划甲',
+        businessResetGeneration: reset ? 1 : 0,
+        businessDatasetId: reset ? null : 'replacement-dataset',
+      ),
+    );
+  }
+}
+
+final _projectionOwnerPermissions =
+    NotifierProvider<_ProjectionOwnerPermissions, Set<String>>(
+      _ProjectionOwnerPermissions.new,
+    );
+final _projectionOwnerServer = NotifierProvider<_ProjectionOwnerServer, String>(
+  _ProjectionOwnerServer.new,
+);
+
 MasterDataTableView<dynamic> _presentationTable(WidgetTester tester) =>
     tester.widget<MasterDataTableView<dynamic>>(
       find.byKey(const Key('material-analysis-material-table')),
@@ -73,6 +108,69 @@ Map<String, dynamic> _fiveHundredProductPresentation(
 }
 
 void materialAnalysisPresentationWorkCases() {
+  for (final transition in [
+    'account',
+    'A-B-A',
+    'permissions',
+    'server',
+    'reset',
+    'dataset',
+  ]) {
+    testWidgets('presentation owner: $transition stops old checkpoint work', (
+      tester,
+    ) async {
+      final session = _ProjectionOwnerSession();
+      final publicationsBefore = debugMaterialProjectionPublications;
+      var changed = false;
+      int? stepsAtChange;
+      int? stepsAtEvent;
+      int? publicationsAtEvent;
+      debugMaterialProjectionStepObserver = () {
+        if (changed) return;
+        changed = true;
+        stepsAtChange = debugMaterialProjectionSteps;
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(ProductionMaterialAnalysisPage)),
+        );
+        switch (transition) {
+          case 'account':
+          case 'A-B-A':
+            session.switchAccount('second-account');
+            container.read(exportContextEpochProvider);
+            if (transition == 'A-B-A') {
+              session.switchAccount('first-account');
+            }
+          case 'permissions':
+            container.read(_projectionOwnerPermissions.notifier).revoke();
+          case 'server':
+            container.read(_projectionOwnerServer.notifier).change();
+          case 'reset':
+            session.replaceDataset(reset: true);
+          case 'dataset':
+            session.replaceDataset();
+        }
+        container.read(exportContextEpochProvider);
+        Timer.run(() {
+          stepsAtEvent = debugMaterialProjectionSteps;
+          publicationsAtEvent = debugMaterialProjectionPublications;
+        });
+      };
+      addTearDown(() => debugMaterialProjectionStepObserver = null);
+      await _pump(
+        tester,
+        session: session,
+        projectionOwnerControls: true,
+        mutate: _fiveHundredProductPresentation,
+      );
+      expect(changed, isTrue);
+      expect(stepsAtEvent, isNotNull);
+      expect(stepsAtEvent! - stepsAtChange!, lessThanOrEqualTo(1));
+      expect(publicationsAtEvent, publicationsBefore);
+      expect(_submits(), isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final aba in [false, true]) {
     for (final decodingFails in [false, true]) {
       testWidgets(

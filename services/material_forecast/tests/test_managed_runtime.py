@@ -29,6 +29,53 @@ spec.loader.exec_module(builder)
 
 
 class ManagedRuntimeTests(unittest.TestCase):
+    def test_idle_collector_does_not_load_forecasting_libraries(self):
+        script = (
+            "import json,sys;sys.path.insert(0,sys.argv[1]);"
+            "import forecast_worker.autofeed;"
+            "print(json.dumps([name for name in "
+            "('forecast_worker.engine','statsforecast','pandas','numpy') if name in sys.modules]))")
+        result = subprocess.run([sys.executable, "-I", "-c", script, str(PREPARE.parent)],
+                                capture_output=True, text=True, timeout=60,
+                                env=prepare.child_environment())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), [],
+                         "idle collection and heartbeat must not initialize model libraries")
+
+    def test_empty_and_cached_history_do_not_initialize_the_model_engine(self):
+        script = """
+import hashlib, json, sys, tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from forecast_worker.autofeed import AutoFeed
+with tempfile.TemporaryDirectory() as temporary:
+    now = datetime(2026, 10, 25, tzinfo=timezone.utc)
+    worker = AutoFeed(Path(temporary), now=lambda: now)
+    assert worker.publish_models([]) == {}
+    indices = [{'date': day, 'tradeSequence': index + 1, 'sha256': str(index) * 64,
+        'rows': [{'contract': symbol + '2611', 'settlement': '100', 'open_interest': '100'}
+                 for symbol in ('cu', 'al', 'ag')]}
+        for index, day in enumerate(('2026-10-19', '2026-10-20'))]
+    digest = hashlib.sha256(json.dumps([(item['date'], item['sha256']) for item in indices]).encode()).hexdigest()
+    expected = {}
+    for benchmark in worker.benchmarks:
+        series = benchmark['seriesId']
+        expected[series] = benchmark['symbol'] + '2611'
+        worker.state.setdefault('models', {})[series] = {'digest': digest,
+            'generatedAt': '2026-10-25T00:00:00Z'}
+        (worker.output / (series + '.json')).write_text('{}')
+    assert worker.publish_models(indices) == expected
+    assert all((worker.output / (series + '.json')).read_text() == '{}' for series in expected)
+    print(json.dumps([name for name in ('forecast_worker.automatic_engine',
+        'forecast_worker.engine', 'statsforecast', 'pandas', 'numpy') if name in sys.modules]))
+"""
+        result = subprocess.run([sys.executable, "-I", "-c", script, str(PREPARE.parent)],
+                                capture_output=True, text=True, timeout=60,
+                                env=prepare.child_environment())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), [])
+
     def test_heartbeat_remains_fresh_while_a_real_backup_blocks_persistent_writes(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()

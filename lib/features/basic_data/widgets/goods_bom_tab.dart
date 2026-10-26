@@ -3511,11 +3511,12 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     );
     final identityHasEditor =
         _canEdit || _visibleRows.any((row) => row.isPlaceholder);
+    final canViewStock = _hasPermission(Perm.stockView);
     final scope = (
       l10n,
       _canEdit,
       _auditMode,
-      _hasPermission(Perm.stockView),
+      canViewStock,
       identityMaxDepth,
       identityHasEditor,
       UtenTreeTableCell.toggleExtentOf(
@@ -3748,7 +3749,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         cellBuilder: (context, r) =>
             _masterCell(r, 'material', r.node.item.componentMaterial),
       ),
-      if (_hasPermission(Perm.stockView))
+      if (canViewStock)
         MasterColumnDef(
           key: 'stockQty',
           label: '库存数量',

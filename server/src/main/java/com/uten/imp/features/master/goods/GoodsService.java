@@ -983,8 +983,7 @@ public class GoodsService {
         for (Goods candidate : candidates) {
             UUID owner = candidate.getOwnerEmployeeId();
             if (scope.seeAll() || owner == null || scope.visibleOwners().contains(owner)) {
-                result.put(candidate.getId(), scope.seeAll() || owner == null
-                        || scope.writableOwners().contains(owner));
+                result.put(candidate.getId(), canWrite(candidate, scope));
             }
         }
         return result;

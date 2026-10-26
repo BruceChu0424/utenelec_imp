@@ -20,6 +20,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
+import 'package:uten_imp/core/network/data_write_revision.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_page.dart';
@@ -27,6 +29,8 @@ import 'package:uten_imp/features/production/providers/material_analysis_warehou
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 
 const _permissions = {
   Perm.productionMaterialAnalysisView,
@@ -37,6 +41,236 @@ const _permissions = {
 };
 
 void main() {
+  for (final lateError in [false, true]) {
+    testWidgets(
+      'request budget: old ${lateError ? 'error' : 'result'} cannot replace a post-write read',
+      (tester) async {
+        final old = Completer<Object?>();
+        final fresh = Completer<Object?>();
+        final server = _Server()
+          ..futureResponses.addAll([old.future, fresh.future]);
+        final session = _ProfileSession();
+        final before = debugFutureTransferReadPublications;
+        await _pumpPage(
+          tester,
+          server,
+          const ProductionMaterialAnalysisSeed(
+            analysisId: 'analysis-1',
+            warehouseId: 'warehouse-1',
+          ),
+          session: session,
+        );
+        await tester.pumpAndSettle();
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(ProductionMaterialAnalysisPage)),
+        );
+        container.read(dataWriteRevisionProvider.notifier).state++;
+        session.refreshName();
+        await tester.pumpAndSettle();
+        expect(server.count('/future-transfers'), 2);
+        fresh.complete(<Object>[]);
+        await tester.pumpAndSettle();
+        expect(debugFutureTransferReadPublications - before, 1);
+        if (lateError) {
+          old.completeError(
+            DioException(requestOptions: RequestOptions(path: '/old')),
+          );
+        } else {
+          old.complete(<Object>[]);
+        }
+        await tester.pumpAndSettle();
+        expect(debugFutureTransferReadPublications - before, 1);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('request budget: failed companion reads can be requested again', (
+    tester,
+  ) async {
+    final server = _Server()..futureFailures = 1;
+    final session = _ProfileSession();
+    await _pumpPage(
+      tester,
+      server,
+      const ProductionMaterialAnalysisSeed(
+        analysisId: 'analysis-1',
+        warehouseId: 'warehouse-1',
+      ),
+      session: session,
+    );
+    await tester.pumpAndSettle();
+    expect(server.count('/future-transfers'), 1);
+    session.refreshName();
+    await tester.pumpAndSettle();
+    expect(server.count('/future-transfers'), 2);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final invalidation in [
+    'write revision',
+    'explicit refresh',
+    'account ABA',
+    'permissions',
+    'server',
+  ]) {
+    testWidgets('request budget: $invalidation starts a fresh companion read', (
+      tester,
+    ) async {
+      final server = _Server();
+      final session = _ProfileSession();
+      final gate = server.gate('/future-transfers');
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+      await _pumpPage(
+        tester,
+        server,
+        const ProductionMaterialAnalysisSeed(
+          analysisId: 'analysis-1',
+          warehouseId: 'warehouse-1',
+        ),
+        session: session,
+        scopeControls: true,
+      );
+      await tester.pumpAndSettle();
+      expect(server.count('/future-transfers'), 1);
+      switch (invalidation) {
+        case 'write revision':
+          final container = ProviderScope.containerOf(
+            tester.element(find.byType(ProductionMaterialAnalysisPage)),
+          );
+          container.read(dataWriteRevisionProvider.notifier).state++;
+          session.refreshName();
+        case 'explicit refresh':
+          await tester.tap(find.byTooltip('按最新库存刷新分析').hitTestable().first);
+        case 'account ABA':
+          session.refreshName(id: 'other-account');
+          await tester.pumpAndSettle();
+          expect(server.count('/future-transfers'), 2);
+          session.refreshName();
+        case 'permissions':
+          session.refreshName(
+            permissions: _permissions.difference({
+              Perm.productionMaterialAnalysisRoute,
+            }),
+          );
+        case 'server':
+          final container = ProviderScope.containerOf(
+            tester.element(find.byType(ProductionMaterialAnalysisPage)),
+          );
+          container.read(_readEndpoint.notifier).change();
+          session.refreshName();
+      }
+      await tester.pumpAndSettle();
+      final expected = invalidation == 'account ABA' ? 3 : 2;
+      expect(server.count('/future-transfers'), expected);
+      gate.complete();
+      await tester.pumpAndSettle();
+      session.refreshName(name: 'Another profile update');
+      await tester.pumpAndSettle();
+      expect(server.count('/future-transfers'), expected);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final existing in [true, false]) {
+    testWidgets(
+      'request budget: opening existing=$existing reads each fact once',
+      (tester) async {
+        final server = _Server();
+        await _pumpPage(
+          tester,
+          server,
+          ProductionMaterialAnalysisSeed(
+            analysisId: existing ? 'analysis-1' : null,
+            warehouseId: 'warehouse-1',
+            sources: existing
+                ? const []
+                : const [
+                    MaterialAnalysisSourceInput(
+                      salesOrderItemId: 'sales-1',
+                      requestedQty: 1000,
+                    ),
+                  ],
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(_requestCounts(server), {
+          'GET /master/warehouses/dict': 1,
+          if (existing)
+            'GET /production/material-analyses/analysis-1': 1
+          else
+            'POST /production/material-analyses/preview': 1,
+          'GET /production/material-analyses/analysis-1/future-transfers': 1,
+          'GET /production/material-analyses/analysis-1/workshop-urges': 1,
+        });
+      },
+    );
+  }
+
+  testWidgets('request budget: repeated refresh clicks submit one request', (
+    tester,
+  ) async {
+    final server = _Server();
+    await _pumpPage(
+      tester,
+      server,
+      const ProductionMaterialAnalysisSeed(
+        analysisId: 'analysis-1',
+        warehouseId: 'warehouse-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+    server.requests.clear();
+    final gate = server.gate('/preview');
+    addTearDown(() {
+      if (!gate.isCompleted) gate.complete();
+    });
+    final refresh = find.byTooltip('按最新库存刷新分析').hitTestable().first;
+    for (var click = 0; click < 3; click++) {
+      await tester.tap(refresh);
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(_requestCounts(server), {
+      'POST /production/material-analyses/preview': 1,
+    });
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(_requestCounts(server), {
+      'POST /production/material-analyses/preview': 1,
+      'GET /production/material-analyses/analysis-1/future-transfers': 1,
+    });
+  });
+
+  testWidgets(
+    'request budget: same owner profile refresh reuses an active read',
+    (tester) async {
+      final server = _Server();
+      final session = _ProfileSession();
+      final gate = server.gate('/future-transfers');
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+      await _pumpPage(
+        tester,
+        server,
+        const ProductionMaterialAnalysisSeed(
+          analysisId: 'analysis-1',
+          warehouseId: 'warehouse-1',
+        ),
+        session: session,
+      );
+      await tester.pumpAndSettle();
+      expect(server.count('/future-transfers'), 1);
+      session.refreshName();
+      await tester.pumpAndSettle();
+      expect(server.count('/future-transfers'), 1);
+      gate.complete();
+      await tester.pumpAndSettle();
+    },
+  );
+
   for (final existing in [true, false]) {
     testWidgets('进页只等仓库字典，不被颜色单位币种拖住 existing=$existing', (tester) async {
       final server = _Server();
@@ -303,6 +537,8 @@ List<String> _notices(WidgetTester tester) => ProviderScope.containerOf(
 class _Server {
   Map<String, dynamic> data = _analysis();
   int autoConfirmedOnPreview = 0;
+  int futureFailures = 0;
+  final List<Future<Object?>> futureResponses = [];
   final List<RequestOptions> requests = [];
   final Map<String, Completer<void>> _gates = {};
 
@@ -342,7 +578,22 @@ class _Server {
       return {...data, 'autoConfirmedRouteCount': autoConfirmedOnPreview};
     }
     if (path == '/production/material-analyses/analysis-1') return data;
-    if (path.endsWith('/future-transfers')) return <Object>[];
+    if (path.endsWith('/future-transfers')) {
+      if (futureResponses.isNotEmpty) return await futureResponses.removeAt(0);
+      if (futureFailures > 0) {
+        futureFailures--;
+        throw DioException(
+          requestOptions: request,
+          response: Response<dynamic>(
+            requestOptions: request,
+            statusCode: 503,
+            data: {'code': 'TEMPORARY', 'message': 'temporary read failure'},
+          ),
+          type: DioExceptionType.badResponse,
+        );
+      }
+      return <Object>[];
+    }
     if (path.endsWith('/workshop-urges')) return <Object>[];
     if (path.endsWith('/transferable-in-summary')) {
       return {'qtyByMaterialLineId': <String, Object>{}};
@@ -352,11 +603,64 @@ class _Server {
   }
 }
 
+Map<String, int> _requestCounts(_Server server) {
+  final result = <String, int>{};
+  for (final request in server.requests) {
+    final key = '${request.method} ${request.path}';
+    result.update(key, (count) => count + 1, ifAbsent: () => 1);
+  }
+  return result;
+}
+
+class _ProfileSession extends SessionNotifier {
+  @override
+  SessionState build() => SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: 'same-account',
+      code: 'E001',
+      name: 'Original',
+      permissions: _permissions.toList(),
+    ),
+  );
+
+  void refreshName({
+    String name = 'Updated',
+    String id = 'same-account',
+    Set<String>? permissions,
+  }) {
+    state = SessionState(
+      status: AuthStatus.authenticated,
+      user: AppUser(
+        id: id,
+        code: 'E001',
+        name: name,
+        permissions:
+            permissions?.toList() ??
+            state.user?.permissions ??
+            _permissions.toList(),
+      ),
+    );
+  }
+}
+
+class _ReadEndpoint extends Notifier<String> {
+  @override
+  String build() => 'https://a.invalid/api';
+  void change() => state = 'https://b.invalid/api';
+}
+
+final _readEndpoint = NotifierProvider<_ReadEndpoint, String>(
+  _ReadEndpoint.new,
+);
+
 Future<void> _pumpPage(
   WidgetTester tester,
   _Server server,
-  ProductionMaterialAnalysisSeed seed,
-) async {
+  ProductionMaterialAnalysisSeed seed, {
+  SessionNotifier? session,
+  bool scopeControls = false,
+}) async {
   tester.view.physicalSize = const Size(1600, 1000);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -366,7 +670,13 @@ Future<void> _pumpPage(
     InterceptorsWrapper(
       onRequest: (request, handler) async {
         server.requests.add(request);
-        final result = await server.respond(request);
+        final Object? result;
+        try {
+          result = await server.respond(request);
+        } on DioException catch (error) {
+          handler.reject(error);
+          return;
+        }
         handler.resolve(
           Response<dynamic>(
             requestOptions: request,
@@ -386,7 +696,15 @@ Future<void> _pumpPage(
         ),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         materialAnalysisWarehousePrefsProvider.overrideWith(_Prefs.new),
-        currentPermissionsProvider.overrideWithValue(_permissions),
+        if (scopeControls)
+          currentPermissionsProvider.overrideWith(
+            (ref) => ref.watch(sessionProvider).user?.permissions.toSet() ?? {},
+          )
+        else
+          currentPermissionsProvider.overrideWithValue(_permissions),
+        if (scopeControls)
+          apiBaseUrlProvider.overrideWith((ref) => ref.watch(_readEndpoint)),
+        if (session != null) sessionProvider.overrideWith(() => session),
       ],
       child: MaterialApp(
         locale: const Locale('zh'),

@@ -20,6 +20,17 @@ import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.d
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
+final _liveBomPermissions = NotifierProvider<_LiveBomPermissions, Set<String>>(
+  _LiveBomPermissions.new,
+);
+
+class _LiveBomPermissions extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => const {Perm.goodsView};
+
+  void replace(Set<String> permissions) => state = Set.of(permissions);
+}
+
 class _FakeBomRepo implements GoodsBomRepository {
   _FakeBomRepo({this.withLearned = false});
 
@@ -253,6 +264,57 @@ void main() {
     await _pumpTab(tester, _FakeBomRepo(), permissions: {Perm.stockView});
     expect(find.text('库存数量'), findsOneWidget);
     expect(find.text('12.3456 个'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('同一组装页在库存授权和撤权后更新列缓存', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          goodsBomRepositoryProvider.overrideWithValue(_FakeBomRepo()),
+          currentPermissionsProvider.overrideWith(
+            (ref) => ref.watch(_liveBomPermissions),
+          ),
+          isSuperAdminProvider.overrideWithValue(false),
+        ],
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: Scaffold(
+            body: GoodsBomTab(
+              goodsId: 'goods-a',
+              canCreate: false,
+              canEdit: false,
+              canDelete: false,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final tab = find.byType(GoodsBomTab);
+    final state = tester.state<GoodsBomTabState>(tab);
+    final container = ProviderScope.containerOf(tester.element(tab));
+    expect(find.text('库存数量'), findsNothing);
+    expect(find.text('12.3456 个'), findsNothing);
+
+    container.read(_liveBomPermissions.notifier).replace({
+      Perm.goodsView,
+      Perm.stockView,
+    });
+    await tester.pumpAndSettle();
+    expect(tester.state<GoodsBomTabState>(tab), same(state));
+    expect(find.text('库存数量'), findsOneWidget);
+    expect(find.text('12.3456 个'), findsOneWidget);
+
+    container.read(_liveBomPermissions.notifier).replace({Perm.goodsView});
+    await tester.pumpAndSettle();
+    expect(tester.state<GoodsBomTabState>(tab), same(state));
+    expect(find.text('库存数量'), findsNothing);
+    expect(find.text('12.3456 个'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

@@ -4,6 +4,9 @@ part of 'production_material_analysis_page.dart';
 int debugMaterialBucketSummaryEvaluations = 0;
 
 @visibleForTesting
+int debugMaterialCandidateSortEvaluations = 0;
+
+@visibleForTesting
 class MaterialAnalysisMakeChildDetails extends StatelessWidget {
   const MaterialAnalysisMakeChildDetails({
     super.key,
@@ -627,9 +630,20 @@ abstract class _MaterialAnalysisProductTasksState
         ),
       );
     }
+    final readinessByCandidate = <_PendingMakeCandidate, bool>{};
+    for (final candidate in result) {
+      assert(() {
+        debugMaterialCandidateSortEvaluations++;
+        return true;
+      }());
+      readinessByCandidate[candidate] = _canArrangePendingMakeCandidate(
+        candidate,
+      );
+    }
     result.sort((left, right) {
-      final readiness = (_canArrangePendingMakeCandidate(left) ? 0 : 1)
-          .compareTo(_canArrangePendingMakeCandidate(right) ? 0 : 1);
+      final readiness = (readinessByCandidate[left]! ? 0 : 1).compareTo(
+        readinessByCandidate[right]! ? 0 : 1,
+      );
       if (readiness != 0) return readiness;
       return left.material.materialLineId.compareTo(
         right.material.materialLineId,

@@ -22,6 +22,7 @@ import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
@@ -7597,6 +7598,7 @@ Future<void> _pump(
   TextScaler? textScaler,
   Set<String> permissions = _permissions,
   _OrderAuthoritySession? session,
+  bool projectionOwnerControls = false,
   // 夹具已有十几行物料, 视口给高一点: 页面级滚动下看不见的行不会被建出来,
   // 排在后面的行(以及别的用例 mutate 追加的行)的输入框会找不到。
   Size size = const Size(1800, 1800),
@@ -7937,7 +7939,16 @@ Future<void> _pump(
         materialAnalysisWarehousePrefsProvider.overrideWith(
           _WarehousePrefs.new,
         ),
-        currentPermissionsProvider.overrideWithValue(permissions),
+        if (projectionOwnerControls)
+          currentPermissionsProvider.overrideWith(
+            (ref) => ref.watch(_projectionOwnerPermissions),
+          )
+        else
+          currentPermissionsProvider.overrideWithValue(permissions),
+        if (projectionOwnerControls)
+          apiBaseUrlProvider.overrideWith(
+            (ref) => ref.watch(_projectionOwnerServer),
+          ),
         if (session != null) sessionProvider.overrideWith(() => session),
         // 部门仓库一律接到假后端(riverpod 3 起 apiClientProvider 在测试里可构造，
         // 不覆写会让真实 Dio 的 /org/departments/tree 在假时钟下永不完成，拖死

@@ -3235,9 +3235,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 同一份数据换个 List 实例不再整表重量，静默刷新时列宽也不跳。
   final Map<String, _ColumnTextMeasure> _textMeasures = {};
 
-  /// 数据变了(列集合不变)：待本帧之后补量新值、需要时加宽。
+  /// 数据变了(列集合不变)：通过有界事件补量新值、需要时加宽。
   bool _widthGrowthPending = false;
   bool _widthGrowthScheduled = false;
+  Timer? _widthGrowthTimer;
+  int _widthMeasuredThisFrame = 0;
+  int? _widthFrameReset;
   List<T>? _widthGrowthPool;
   List<double>? _widthGrowthTarget;
   int _widthGrowthOffset = 0;
@@ -4497,7 +4500,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 按当前列与已加载数据自动测算各列宽度：取表头标签与单元格值的最大文本宽，加内边距/图标富余。
   /// 用户已手动拖拽的列([_manualResized])保留原宽度不重算。全量只在 [_widthsDirty] 时执行
-  /// (首帧/换列/换字号档)；数据刷新走帧后增量补量([_scheduleWidthGrowth])，不占当前帧。
+  /// (首帧/换列/换字号档)；数据刷新走事件循环增量补量([_scheduleWidthGrowth])，不占当前帧。
   void _ensureWidths(BuildContext context) {
     // 字号档（textScaler）变化也要重算：渲染时文字按放大字号铺，但量宽用的 TextPainter
     // 必须显式带上同一 textScaler 才量得准（否则按 1.0 量偏窄，大字号下要拖才显示全）。
@@ -4686,13 +4689,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return math.max(measured, def.width.clamp(minimum, maximum));
   }
 
-  /// 数据刷新后的增量量宽：挪到本帧之后执行，只量新出现的值；有列需要加宽才重建一次。
+  /// 缓存尾部通过事件继续扫描；新量宽仍共享每帧预算，避免缓存命中也反复排帧。
   void _scheduleWidthGrowth() {
     if (_widthGrowthScheduled) return;
     _widthGrowthScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    _widthGrowthTimer = Timer(Duration.zero, () {
+      _widthGrowthTimer = null;
       _widthGrowthScheduled = false;
       if (!mounted || !_widthGrowthPending) return;
+      if (_widthMeasuredThisFrame >= _widthMeasureCellBudget) return;
       final textScaler = MediaQuery.textScalerOf(context);
       if (_widthsDirty ||
           _lastScale != textScaler ||
@@ -4721,6 +4726,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           final measure = _measureColumn(context, def, [row], textScaler);
           if (measure.bodyRevision != previous) {
             measuredCells++;
+            _widthMeasuredThisFrame++;
+            _widthFrameReset ??= WidgetsBinding.instance.scheduleFrameCallback((
+              _,
+            ) {
+              _widthFrameReset = null;
+              _widthMeasuredThisFrame = 0;
+              if (mounted && _widthGrowthPending) {
+                _scheduleWidthGrowth();
+                WidgetsBinding.instance.scheduleFrame();
+              }
+            });
             final fitted = _fitColumnWidth(context, def, measure);
             if (fitted > next[i] + 0.5) {
               next[i] = fitted;
@@ -4730,6 +4746,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         // Cached/manual cells do not spend shaping slots. The elapsed limit
         // still applies to every visited cell, including cache-only scans.
         if (measuredCells >= _widthMeasureCellBudget ||
+            _widthMeasuredThisFrame >= _widthMeasureCellBudget ||
             clock.elapsed >= _widthMeasureTimeBudget) {
           break;
         }
@@ -4737,8 +4754,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _widthGrowthPending =
           _columns.isNotEmpty && _widthGrowthOffset < pool.length;
       if (_widthGrowthPending) {
-        _scheduleWidthGrowth();
-        WidgetsBinding.instance.ensureVisualUpdate();
+        if (_widthMeasuredThisFrame < _widthMeasureCellBudget) {
+          _scheduleWidthGrowth();
+        }
       } else {
         // Publish one complete geometry update, while scanning still yields
         // every 2ms. Multiple partial widths would relayout every visible row
@@ -4851,6 +4869,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   @override
   void dispose() {
     _readWindowBinding?.detachPresentation(_readWindowOwner);
+    _widthGrowthTimer?.cancel();
+    _widthGrowthTimer = null;
+    final widthFrameReset = _widthFrameReset;
+    if (widthFrameReset != null) {
+      WidgetsBinding.instance.cancelFrameCallbackWithId(widthFrameReset);
+    }
     widget.appendRowsSource?.removeListener(_appendRowsChanged);
     _removeFullscreenPresentation();
     // 拖拽中表被卸载（翻页/切路由）：清计时器、键监听与幽灵卡，防止悬挂。

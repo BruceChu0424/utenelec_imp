@@ -1,10 +1,12 @@
 import asyncio
 import io
+import threading
 import unittest
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from PIL import Image
+from starlette.datastructures import Headers, UploadFile
 
 import ocr_server as server
 
@@ -85,6 +87,62 @@ class OcrServerTest(unittest.TestCase):
     def test_health_does_not_pretend_the_engine_is_ready(self):
         with patch.object(server, "_engine", None):
             self.assertFalse(self.client.get("/health").json()["engine_loaded"])
+
+
+class OcrCancellationTest(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        await asyncio.to_thread(lambda: __import__("numpy"))
+
+    async def test_cancelled_request_keeps_inference_serial_until_worker_finishes(self):
+        started, release, finished = threading.Event(), threading.Event(), threading.Event()
+        calls = []
+
+        class BlockingEngine:
+            def predict(self, bitmap):
+                calls.append(threading.get_ident())
+                started.set()
+                if len(calls) == 1 and not release.wait(15):
+                    raise TimeoutError("test inference barrier")
+                yield {"rec_texts": ["invoice"]}
+
+        original_infer = server.infer
+
+        def tracked_infer(*args):
+            try:
+                return original_infer(*args)
+            finally:
+                finished.set()
+
+        def upload():
+            return UploadFile(io.BytesIO(png()), filename="invoice.png",
+                              headers=Headers({"content-type": "image/png"}))
+
+        server._request_lock = asyncio.Lock()
+        first = upload()
+        with patch.object(server, "engine", return_value=BlockingEngine()), \
+                patch.object(server, "infer", side_effect=tracked_infer):
+            task = asyncio.create_task(server.ocr_invoice(first))
+            try:
+                self.assertTrue(await asyncio.to_thread(started.wait, 15))
+                task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await task
+                self.assertFalse(finished.is_set())
+                second = upload()
+                with self.assertRaises(server.HTTPException) as busy:
+                    await server.ocr_invoice(second)
+                self.assertEqual(busy.exception.status_code, 429)
+                self.assertTrue(second.file.closed)
+                self.assertEqual(len(calls), 1)
+            finally:
+                release.set()
+                self.assertTrue(await asyncio.to_thread(finished.wait, 15))
+                if not task.done():
+                    await task
+            result = await server.ocr_invoice(upload())
+            self.assertEqual(result.lines[0].text, "invoice")
+            self.assertEqual(len(calls), 2)
+        self.assertTrue(first.file.closed)
 
 
 if __name__ == "__main__":

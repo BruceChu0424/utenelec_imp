@@ -20,6 +20,7 @@ Image.MAX_IMAGE_PIXELS = MAX_PIXELS
 _engine = None
 _engine_lock = threading.Lock()
 _request_lock = asyncio.Lock()
+_inference_lock = threading.Lock()
 
 
 def engine():
@@ -65,6 +66,17 @@ def health():
 
 
 def infer(raw: bytes, content_type: str) -> OcrResult:
+    # Cancelling the HTTP coroutine cannot stop its CPU worker. Keep ownership
+    # in that worker until decoding and lazy prediction have actually finished.
+    if not _inference_lock.acquire(blocking=False):
+        raise HTTPException(429, "ocr engine is busy")
+    try:
+        return _infer_image(raw, content_type)
+    finally:
+        _inference_lock.release()
+
+
+def _infer_image(raw: bytes, content_type: str) -> OcrResult:
     expected_format = {"image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WEBP"}
     try:
         with warnings.catch_warnings():
@@ -109,7 +121,7 @@ async def ocr_invoice(file: UploadFile = File(...)):
     try:
         if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
             raise HTTPException(422, "only JPEG, PNG and WebP are supported")
-        if _request_lock.locked():
+        if _request_lock.locked() or _inference_lock.locked():
             raise HTTPException(429, "ocr engine is busy")
         async with _request_lock:
             raw = await file.read(MAX_BYTES + 1)

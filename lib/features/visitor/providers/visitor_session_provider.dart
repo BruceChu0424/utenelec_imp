@@ -3,6 +3,7 @@
 // 恢复——先调 /visitor/me 服务端校验（令牌过期时拦截器自动刷新，刷新被拒则触发
 // 会话失效），网络不可用等临时失败降级为本地解码 JWT，不打断离线访客。
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,31 +29,52 @@ class VisitorSessionState {
 }
 
 class VisitorSessionNotifier extends Notifier<VisitorSessionState> {
+  int _lifecycle = 0;
+
   @override
   VisitorSessionState build() {
-    Future.microtask(_restore);
-    VisitorSessionEventBus.instance.onSessionExpired.listen((_) {
-      state = const VisitorSessionState();
+    final lifecycle = ++_lifecycle;
+    Future.microtask(() => _restore(lifecycle));
+    final expiration = VisitorSessionEventBus.instance.onSessionExpired.listen((
+      _,
+    ) {
+      if (_current(lifecycle)) state = const VisitorSessionState();
+    });
+    ref.onDispose(() {
+      _lifecycle++;
+      unawaited(expiration.cancel());
     });
     return const VisitorSessionState();
   }
 
+  bool _current(int lifecycle) => lifecycle == _lifecycle;
+
   VisitorRepository get _repo => ref.read(visitorRepositoryProvider);
   SecureStorage get _storage => ref.read(secureStorageProvider);
 
-  Future<void> _restore() async {
-    final token = await _storage.getVisitorAccessToken();
-    if (token == null || token.isEmpty) return;
+  Future<void> _restore(int lifecycle) async {
+    if (!_current(lifecycle)) return;
+    final storage = _storage;
+    final String? token;
+    try {
+      token = await storage.getVisitorAccessToken();
+    } catch (_) {
+      return;
+    }
+    if (!_current(lifecycle) || token == null || token.isEmpty) return;
+    final repo = _repo;
     try {
       // 服务端校验：令牌过期先走拦截器刷新，刷新被拒会清存储并广播过期；
       // 成功则用服务器资料激活会话（姓名等可能已在别处更新）。
-      final me = await _repo.me();
+      final me = await repo.me();
+      if (!_current(lifecycle)) return;
       state = VisitorSessionState(
         status: VisitorAuthStatus.active,
         visitor: me,
       );
       return;
     } on ApiException catch (e) {
+      if (!_current(lifecycle)) return;
       // 401/403/404：令牌或账号已失效（拦截器已处理过期广播），结束恢复。
       final definitive =
           e.httpStatus == 401 ||
@@ -60,26 +82,29 @@ class VisitorSessionNotifier extends Notifier<VisitorSessionState> {
           e.code == 'UNAUTHORIZED' ||
           e.code == 'FORBIDDEN';
       if (definitive) {
-        await _storage.clearVisitorTokens();
+        await storage.clearVisitorTokens();
         return;
       }
       // 其它业务错误按临时失败处理，降级本地解码。
     } catch (_) {
       // 网络不可用等：降级本地解码，离线访客不被误登出。
     }
+    if (!_current(lifecycle)) return;
     final v = _decodeVisitor(token);
     if (v != null) {
       state = VisitorSessionState(status: VisitorAuthStatus.active, visitor: v);
     } else {
       // 本地令牌已损坏：清掉避免每次冷启动都走无效恢复。
-      await _storage.clearVisitorTokens();
+      await storage.clearVisitorTokens();
     }
   }
 
   Future<String?> sendCode(String phone) => _repo.sendCode(phone);
 
   Future<void> login(String phone, String code) async {
+    final lifecycle = _lifecycle;
     final res = await _repo.login(phone, code);
+    if (!_current(lifecycle)) return;
     state = VisitorSessionState(
       status: VisitorAuthStatus.active,
       visitor: Visitor(
@@ -92,7 +117,9 @@ class VisitorSessionNotifier extends Notifier<VisitorSessionState> {
   }
 
   Future<void> logout() async {
+    final lifecycle = _lifecycle;
     await _repo.logout();
+    if (!_current(lifecycle)) return;
     state = const VisitorSessionState();
   }
 

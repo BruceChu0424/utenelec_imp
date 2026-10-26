@@ -487,6 +487,7 @@ abstract class _MaterialAnalysisMaterialTableState
       return _materialPresentationWork!;
     }
     final epoch = ++_materialPresentationEpoch;
+    final readOwnerCurrent = captureReadOwner(ref);
     final aggregate = _requestedAggregateLayout;
     _materialPresentationRequestedAnalysis = analysis;
     _materialPresentationRequestedScope = scope;
@@ -495,7 +496,7 @@ abstract class _MaterialAnalysisMaterialTableState
         mounted &&
         epoch == _materialPresentationEpoch &&
         identical(_analysis, analysis) &&
-        _sessionScopeKey() == scope;
+        readOwnerCurrent();
     // A real event turn: never notify listeners or compute projections in build.
     final work = Future<void>(() async {
       if (!current()) return;
@@ -566,6 +567,7 @@ abstract class _MaterialAnalysisMaterialTableState
           }
         }
         budget.ensureCurrent();
+        if (_sessionScopeKey() != scope) return;
         // Local editors can change without replacing the analysis object.
         // Recheck their exact presentation fingerprint before publishing.
         if (key != _materialPresentationKey()) return;

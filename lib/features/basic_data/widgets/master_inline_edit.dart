@@ -808,10 +808,13 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
     final text = _text;
     if (text == null ||
         _focus?.hasFocus == true ||
-        !text.value.composing.isCollapsed)
+        !text.value.composing.isCollapsed) {
       return;
+    }
     final current = value?.toString() ?? '';
-    if (text.text != current) text.text = current;
+    if (text.text != current) {
+      text.text = current;
+    }
   }
 
   void _syncExternalText({bool force = false}) {

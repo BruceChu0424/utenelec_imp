@@ -240,6 +240,40 @@ class CompanyFileEntryAccessPostgresTest {
         assertThat(denied.allowedActions()).isEmpty();
         assertThatThrownBy(()->run(()->service.reserveFile(request))).isInstanceOf(ApiException.class);
     }
+    @Test void committedCreationRetryDoesNotRehashOrConsumeAnotherPasswordHashPermit() {
+        CompanyFileUnlocks counting=spy(new CompanyFileUnlocks());
+        var crypto=new CryptoProperties();crypto.setHmacKey("isolated-entry-access-test-key");
+        service=new CompanyFileService(db,current,attachments,audit,counting,new CompanyFileCreationFingerprint(crypto));
+        UUID requestId=UUID.randomUUID();
+        Create request=new Create(null,"hash-replay-"+requestId,null,requestId,access(true,"initial-password"));
+        Entry created=run(()->service.createFolder(request));
+        Entry replay=run(()->service.createFolder(request));
+        assertThat(replay.id()).isEqualTo(created.id());
+        verify(counting,times(1)).hash("initial-password");
+    }
+    @SuppressWarnings("unchecked")
+    @Test void readingAndValidatingAclSubjectsUsesOneBatchPerTypeAndStillRejectsInactiveSubjects() {
+        JdbcTemplate counted=spy(db);
+        var crypto=new CryptoProperties();crypto.setHmacKey("isolated-entry-access-test-key");
+        service=new CompanyFileService(counted,current,attachments,audit,new CompanyFileUnlocks(),new CompanyFileCreationFingerprint(crypto));
+        InitialAccess access=access(true,null,
+                new Rule("USER",actor,null,"ALLOW",List.of("view")),
+                new Rule("USER",actor,null,"DENY",List.of("download")),
+                new Rule("DEPARTMENT",department,null,"ALLOW",List.of("view")),
+                new Rule("DEPARTMENT",department,null,"DENY",List.of("download")));
+        Entry created=folder(null,access);
+        verify(counted,times(1)).query(contains("AND NOT u.is_deleted AND u.status='active'"),any(org.springframework.jdbc.core.RowMapper.class),any(Object[].class));
+        verify(counted,times(1)).query(startsWith("SELECT id,name,code detail FROM departments WHERE id IN ("),any(org.springframework.jdbc.core.RowMapper.class),any(Object[].class));
+        clearInvocations(counted);
+        Permissions permissions=run(()->service.permissions(created.id()));
+        assertThat(permissions.rules()).hasSize(4).allSatisfy(rule->assertThat(rule.subjectName()).isNotBlank());
+        verify(counted,times(1)).query(contains("AND NOT u.is_deleted AND u.status='active'"),any(org.springframework.jdbc.core.RowMapper.class),any(Object[].class));
+        verify(counted,times(1)).query(startsWith("SELECT id,name,code detail FROM departments WHERE id IN ("),any(org.springframework.jdbc.core.RowMapper.class),any(Object[].class));
+        UUID inactive=UUID.randomUUID(),inactiveEmployee=UUID.randomUUID();insertUser(inactive,inactiveEmployee,department);
+        db.update("UPDATE users SET status='disabled' WHERE id=?",inactive);
+        assertThatThrownBy(()->run(()->service.setPermissions(created.id(),new Permissions(true,List.of(allow(inactive)),created.version())))).isInstanceOf(ApiException.class);
+        assertThat(run(()->service.permissions(created.id())).rules()).hasSize(4);
+    }
     @Test void matchingRulesAreCanonicalForRetriesAndUnknownRequestNeverPublishesTwice() {
         UUID id=UUID.randomUUID();Rule first=new Rule("USER",actor,null,"ALLOW",List.of("download","view"));
         Create request=new Create(null,"canonical-"+id,null,id,access(true,null,first));

@@ -1,7 +1,7 @@
+import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -17,6 +17,8 @@ import '../providers/production_execution_refresh.dart';
 import '../repositories/production_execution_workbench_repository.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_navigation_session.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 
 /// Planning-facing ongoing list: one row per outer analysis/root plan.
 ///
@@ -42,7 +44,26 @@ class ProductionExecutionGroupPanel extends ConsumerStatefulWidget {
 
 class _ProductionExecutionGroupPanelState
     extends ConsumerState<ProductionExecutionGroupPanel>
-    with UtenRefreshParticipant<ProductionExecutionGroupPanel> {
+    with
+        UtenRefreshParticipant<ProductionExecutionGroupPanel>,
+        ScopedPagedReadViewMixin<ProductionExecutionGroupPanel> {
+  final _navigation = PageNavigationSession();
+  final _tableRows =
+      MasterDataTableRowsController<ProductionExecutionWorkbenchGroup>();
+  Object? _acceptedReadQuery;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
+  void dispose() {
+    _navigation.dispose();
+    super.dispose();
+  }
+
   /// 宿主页路径(创建时捕获), 精准刷新信号只在它就在栈顶时立即重拉。
   String? _hostLocation;
 
@@ -54,10 +75,21 @@ class _ProductionExecutionGroupPanelState
   String? _error;
   int _loadGeneration = 0;
 
+  @override
+  void scopedPagedReadOwnerChanged() => setState(() {
+    _loadGeneration++;
+    _tableRows.update(const []);
+    _acceptedReadQuery = null;
+    _items = const [];
+    _totalPages = 0;
+    _loading = false;
+    _error = scopedPagedReadRejection?.message;
+  });
+
   // 2026-09-25 单号列统一：关联订单列表头排序 + 值筛选（服务端白名单/facets）。
   String? _sortColumn;
   bool _sortAscending = true;
-  Map<String, List<MasterFacetBucket>> _ordersFacets = const {};
+  final Map<String, List<MasterFacetBucket>> _ordersFacets = const {};
   String? _salesOrderFilter;
 
   @override
@@ -81,41 +113,64 @@ class _ProductionExecutionGroupPanelState
     }
   }
 
-  Future<void> _load() => trackRefresh(_loadPage(), replaceKey: 'rows');
+  Future<void> _load({bool useCache = false}) =>
+      trackRefresh(_loadPage(useCache: useCache), replaceKey: 'rows');
 
-  Future<void> _loadPage() async {
+  Future<void> _loadPage({bool useCache = false}) async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
-    final requestedPage = _page;
+    final readQuery = (
+      widget.keyword,
+      _sortColumn,
+      _sortAscending,
+      _salesOrderFilter,
+    );
+    final requestedPage = !useCache && _acceptedReadQuery == readQuery
+        ? _tableRows.visiblePage ?? _page
+        : _page;
     final requestedKeyword = widget.keyword;
     final requestedSort = _sortColumn;
     final requestedOrder = _sortColumn == null
         ? null
         : (_sortAscending ? 'asc' : 'desc');
     final requestedSalesOrder = _salesOrderFilter;
+    final requestedAscending = _sortAscending;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final repo = ref.read(productionExecutionWorkbenchRepositoryProvider);
-      final result = await repo.groups(
-        page: requestedPage,
-        keyword: requestedKeyword,
-        sort: requestedSort,
-        order: requestedOrder,
-        salesOrder: requestedSalesOrder,
+      final result = await readScopedPage<ProductionExecutionWorkbenchGroup>(
+        requestedPage,
+        query: (
+          repo,
+          requestedKeyword,
+          requestedSort,
+          requestedAscending,
+          requestedSalesOrder,
+        ),
+        currentQuery: () => (
+          ref.read(productionExecutionWorkbenchRepositoryProvider),
+          widget.keyword,
+          _sortColumn,
+          _sortAscending,
+          _salesOrderFilter,
+        ),
+        useCache: useCache,
+        fetchPage: (page) => repo.groups(
+          page: page,
+          keyword: requestedKeyword,
+          sort: requestedSort,
+          order: requestedOrder,
+          salesOrder: requestedSalesOrder,
+        ),
       );
       // 关联订单 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
-      Map<String, List<MasterFacetBucket>> facets = const {};
-      try {
-        facets = await repo.groupFacets(keyword: requestedKeyword);
-      } catch (_) {
-        facets = const {};
-      }
+
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _ordersFacets = facets;
+        _acceptedReadQuery = readQuery;
         _items = result.items;
         _page = result.page;
         _totalPages = result.totalPages;
@@ -138,14 +193,15 @@ class _ProductionExecutionGroupPanelState
     setState(() => _opening = true);
     try {
       if (group.rootType == 'ANALYSIS') {
-        await context.push(
+        await _navigation.push(
           RouteName.productionMaterialAnalysis,
           extra: ProductionMaterialAnalysisSeed(analysisId: group.rootId),
         );
       } else {
-        await context.push(RoutePath.productionPlanDetail(group.rootId));
+        await _navigation.push(RoutePath.productionPlanDetail(group.rootId));
       }
-      if (mounted) await _load();
+      // Board return refresh advances refreshRevision for every active panel.
+      // The visit owns only its navigation lock, not a second list request.
     } finally {
       if (mounted) setState(() => _opening = false);
     }
@@ -160,12 +216,26 @@ class _ProductionExecutionGroupPanelState
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, UtenSpacing.s8, 0, UtenSpacing.s8),
       child: MasterDataTableView<ProductionExecutionWorkbenchGroup>(
+        rowsController: _tableRows,
+        expensiveRowMounts: false,
         tableKey:
             'features.production.widgets.production_execution_group_panel.ProductionExecutionGroupPanelState.build.1',
         columns: _columns,
         items: _items,
         // 2026-09-25 单号列统一：关联订单值来自服务端 facets（与列表同一过滤上下文）。
         facets: {'orders': _ordersFacets['orders'] ?? const []},
+        facetPageLoaders: nativeFacetLoaders(
+          ref,
+          path: '/production/execution-workbench/facets',
+          fields: const ['orders'],
+          filters: {'keyword': widget.keyword},
+        ),
+        facetSearchScope: nativeFacetSearchScope(
+          ref,
+          '/production/execution-workbench/facets',
+          {'keyword': widget.keyword},
+        ),
+
         nullCounts: const {},
         filters: {'orders': ?_salesOrderFilter},
         onFilterChanged: (key, value) {
@@ -204,7 +274,7 @@ class _ProductionExecutionGroupPanelState
         paginationScope: widget.keyword,
         onPageChange: (page) {
           _page = page;
-          _load();
+          return _load(useCache: true);
         },
         isLoading: _loading,
         error: _error,

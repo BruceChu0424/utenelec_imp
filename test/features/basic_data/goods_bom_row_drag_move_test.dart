@@ -20,6 +20,7 @@ import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/widgets/uten_tree_table_cell.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import '../../support/goods_bom_edit_test_api.dart';
@@ -191,13 +192,27 @@ Future<TestGesture> _pickUp(
           (widget.key! as ValueKey<String>).value.startsWith('row-drag-slot:'),
     ),
   );
-  final handle = slots.evaluate().isEmpty
-      ? rowText
-      : find
-            .descendant(of: slots.first, matching: find.textContaining('组件 '))
-            .first;
+  var start = tester.getCenter(rowText);
+  if (slots.evaluate().isNotEmpty) {
+    final tree = find.descendant(
+      of: slots.first,
+      matching: find.byWidgetPredicate((widget) => widget is UtenTreeTableCell),
+    );
+    final cell = tester.widget<UtenTreeTableCell>(tree);
+    final bounds = tester.getRect(tree);
+    final prefix = UtenTreeTableCell.prefixWidthOf(
+      tester.element(tree),
+      depth: cell.depth,
+      indent: cell.indent,
+      maxVisualDepth: cell.maxVisualDepth,
+      desktopToggleExtent: cell.desktopToggleExtent,
+    );
+    // The gap after the keyed tree prefix belongs to the row drag recognizer;
+    // the name editor and the expand/add-child button keep their own gestures.
+    start = Offset(bounds.left + prefix + 2, bounds.center.dy);
+  }
   final gesture = await tester.startGesture(
-    tester.getCenter(handle),
+    start,
     pointer: pointer,
     kind: PointerDeviceKind.mouse,
   );

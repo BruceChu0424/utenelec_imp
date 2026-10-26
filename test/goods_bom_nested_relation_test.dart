@@ -1,6 +1,11 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:ui' as ui;
+
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
@@ -8,20 +13,30 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_floating_window.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'support/goods_bom_edit_test_api.dart';
+import 'support/audit_screenshot_support.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 
 class _FakeGoodsBomRepository implements GoodsBomRepository {
-  _FakeGoodsBomRepository({this.empty = false, this.nestedLearned = false});
+  _FakeGoodsBomRepository({
+    this.empty = false,
+    this.nestedLearned = false,
+    this.nestedHasChildren = false,
+  });
 
   final bool empty;
 
   /// 嵌套组件是系统学出的组件(ADR-129 编辑/删除提示用例)。
   final bool nestedLearned;
+  final bool nestedHasChildren;
+  Object? grandchildReadFailureOnce;
+  Completer<List<GoodsBomItem>>? grandchildRead;
   final listCalls = <String>[];
   final parent = const GoodsBomItem(
     id: 'row-b',
@@ -46,6 +61,14 @@ class _FakeGoodsBomRepository implements GoodsBomRepository {
     allowPartialPackage: false,
     hardGate: false,
     systemLearned: nestedLearned,
+    hasChildren: nestedHasChildren,
+  );
+  final grandchild = const GoodsBomItem(
+    id: 'row-d',
+    componentGoodsId: 'goods-d',
+    componentCode: 'D',
+    componentName: 'Unloaded grandchild',
+    qty: 3,
   );
 
   /// 批量删除调用记录：(父货品 id, 提交的关系行 id)。
@@ -61,6 +84,12 @@ class _FakeGoodsBomRepository implements GoodsBomRepository {
   Future<List<GoodsBomItem>> list(String goodsId) async {
     listCalls.add(goodsId);
     if (empty) return const [];
+    if (goodsId == 'goods-c') {
+      final failure = grandchildReadFailureOnce;
+      grandchildReadFailureOnce = null;
+      if (failure != null) throw failure;
+      return grandchildRead?.future ?? Future.value([grandchild]);
+    }
     return switch (goodsId) {
       'goods-a' => [parent],
       'goods-b' => [nested],
@@ -125,13 +154,24 @@ final _editQtyField = find.descendant(
   matching: find.byType(TextField),
 );
 
-Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
+Future<void> _pumpBom(
+  WidgetTester tester,
+  _FakeGoodsBomRepository repo, {
+  bool editMode = true,
+  bool expandParent = true,
+  bool screenshot = false,
+  ValueChanged<bool>? interactionChanged,
+  TargetPlatform platform = TargetPlatform.windows,
+}) async {
   await tester.binding.setSurfaceSize(const Size(1600, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         goodsBomRepositoryProvider.overrideWithValue(repo),
+        bomComponentSuggestionsProvider.overrideWithValue(
+          (ref, query) async => const [],
+        ),
         apiClientProvider.overrideWithValue(GoodsBomEditTestApi(repo)),
         localServerReachableProvider.overrideWith(
           (ref) => LocalServerReachabilityNotifier(null, web: true),
@@ -144,16 +184,25 @@ Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
         }),
         isSuperAdminProvider.overrideWithValue(false),
       ],
-      child: const MaterialApp(
+      child: MaterialApp(
+        theme: screenshot
+            ? auditScreenshotTheme(
+                buildLightTheme().copyWith(platform: platform),
+              )
+            : ThemeData(platform: platform),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        locale: Locale('zh'),
-        home: Scaffold(
-          body: GoodsBomTab(
-            goodsId: 'goods-a',
-            canCreate: true,
-            canEdit: true,
-            canDelete: true,
+        locale: const Locale('zh'),
+        home: RepaintBoundary(
+          key: const Key('goods-bom-test-capture'),
+          child: Scaffold(
+            body: GoodsBomTab(
+              goodsId: 'goods-a',
+              canCreate: true,
+              canEdit: true,
+              canDelete: true,
+              onInteractionChanged: interactionChanged,
+            ),
           ),
         ),
       ),
@@ -161,23 +210,25 @@ Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
   );
   await tester.pumpAndSettle();
 
-  await enterBomEdit(tester);
+  if (editMode) await enterBomEdit(tester);
+  if (!expandParent) return;
   final parentToggle = find.byKey(
     const ValueKey('goods-bom-tree-toggle-row-b'),
   );
   await tester.ensureVisible(parentToggle);
   // 层级列的明确箭头负责展开；整行单击只负责选择。
-  expect(tester.getSize(parentToggle), const Size(48, 48));
+  final toggleExtent = platform == TargetPlatform.android ? 48.0 : 32.0;
+  expect(tester.getSize(parentToggle), Size.square(toggleExtent));
   await tester.tap(parentToggle);
   await tester.pumpAndSettle();
   expect(repo.listCalls, contains('goods-b'));
   final nestedName = find.textContaining('Nested component');
   expect(nestedName, findsOneWidget);
-  expect(find.text('1.1'), findsOneWidget);
-  expect(find.text('组件 2 级'), findsOneWidget);
-  // 2026-09-12 用户口径「只显示名字和组件X级」：身份格不再有路径行，
-  // 编号也不再堆进副标题（看「编号」列）。
+  expect(find.text('1.1'), findsNothing);
+  expect(find.text('组件 2 级'), findsNothing);
+  // 层级交给缩进和连续连接线；编号看独立「编号」列。
   expect(find.textContaining('路径：'), findsNothing);
+  if (!editMode) return;
   // The name is now an editable input. Select the actual nested relationship
   // through its checkbox without replacing or focusing the component name.
   await tester.tap(
@@ -193,6 +244,213 @@ Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
 }
 
 void main() {
+  testWidgets('全部展开读取未加载孙层，全部收起剪裁隐藏行勾选', (tester) async {
+    final repo = _FakeGoodsBomRepository(nestedHasChildren: true);
+    await _pumpBom(tester, repo, editMode: false, expandParent: false);
+    final expansion = find.byKey(const Key('goods-bom-tree-expansion'));
+    expect(find.text('Nested component'), findsNothing);
+    expect(repo.listCalls, ['goods-a']);
+    await tester.tap(expansion);
+    await tester.pumpAndSettle();
+    expect(find.text('Unloaded grandchild'), findsOneWidget);
+    expect(repo.listCalls, containsAll(['goods-b', 'goods-c']));
+    expect(find.text('全部收起'), findsOneWidget);
+    final grandchildRow = find.byKey(
+      const ValueKey('row:goods-a/row-b/row-c/row-d'),
+    );
+    await tester.tap(
+      find.descendant(of: grandchildRow, matching: find.byType(Checkbox)).first,
+    );
+    await tester.pumpAndSettle();
+    final selectedTable = tester.widget<MasterDataTableView<dynamic>>(
+      find.byKey(const ValueKey('goods-bom-table-true-false')),
+    );
+    expect(selectedTable.selectedIds, {'goods-c|row-d'});
+    final readCount = repo.listCalls.length;
+    await tester.tap(expansion);
+    await tester.pumpAndSettle();
+    expect(find.text('Nested component'), findsNothing);
+    expect(find.text('Unloaded grandchild'), findsNothing);
+    expect(find.text('全部展开'), findsOneWidget);
+    final collapsedTable = tester.widget<MasterDataTableView<dynamic>>(
+      find.byKey(const ValueKey('goods-bom-table-true-false')),
+    );
+    expect(collapsedTable.selectedIds, isEmpty);
+    expect(repo.listCalls, hasLength(readCount), reason: '收起只改变显示，不读写业务');
+    expect(repo.updatedBody, isNull);
+    expect(repo.batchDeleteCalls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('编辑中全部展开及收起保留正在输入的原始数量和控制器', (tester) async {
+    final repo = _FakeGoodsBomRepository(nestedHasChildren: true);
+    await _pumpBom(tester, repo, expandParent: false);
+    final activateQty = find.byKey(
+      const ValueKey('goods-bom-activate-qty-goods-a/row-b'),
+    );
+    await tester.ensureVisible(activateQty);
+    await tester.pumpAndSettle();
+    await tester.tap(activateQty);
+    await tester.pumpAndSettle();
+    final qtyEditor = find.byKey(
+      const ValueKey('goods-bom-inline-qty-goods-a/row-b'),
+    );
+    await tester.enterText(qtyEditor, '1.234500');
+    final controller = tester.widget<TextField>(qtyEditor).controller!;
+    final expansion = find.byKey(const Key('goods-bom-tree-expansion'));
+    await tester.tap(expansion);
+    await tester.pumpAndSettle();
+    expect(find.text('Unloaded grandchild'), findsOneWidget);
+    expect(tester.widget<TextField>(qtyEditor).controller, same(controller));
+    expect(controller.text, '1.234500');
+    await tester.tap(expansion);
+    await tester.pumpAndSettle();
+    expect(find.text('Nested component'), findsNothing);
+    expect(tester.widget<TextField>(qtyEditor).controller, same(controller));
+    expect(controller.text, '1.234500');
+    await tester.tap(expansion);
+    await tester.pumpAndSettle();
+    expect(find.text('Unloaded grandchild'), findsOneWidget);
+    expect(tester.widget<TextField>(qtyEditor).controller, same(controller));
+    expect(controller.text, '1.234500');
+    expect(repo.updatedBody, isNull, reason: '展开、收起不暂存或提交用户输入');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('全部展开子树读取失败保留原树并允许重试', (tester) async {
+    final repo = _FakeGoodsBomRepository(nestedHasChildren: true)
+      ..grandchildReadFailureOnce = StateError('temporary read failure');
+    await _pumpBom(tester, repo, editMode: false, expandParent: false);
+    final expansion = find.byKey(const Key('goods-bom-tree-expansion'));
+    await tester.tap(expansion);
+    await tester.pumpAndSettle();
+    expect(find.text('Unloaded grandchild'), findsNothing);
+    expect(find.text('全部收起'), findsNothing);
+    expect(find.text('全部展开'), findsOneWidget);
+    await tester.tap(expansion);
+    await tester.pumpAndSettle();
+    expect(find.text('Unloaded grandchild'), findsOneWidget);
+    expect(find.text('全部收起'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('全部展开读取返回时页面已退出，不回写旧树', (tester) async {
+    final pending = Completer<List<GoodsBomItem>>();
+    final repo = _FakeGoodsBomRepository(nestedHasChildren: true)
+      ..grandchildRead = pending;
+    final interactions = <bool>[];
+    await _pumpBom(
+      tester,
+      repo,
+      editMode: false,
+      expandParent: false,
+      interactionChanged: interactions.add,
+    );
+    await tester.tap(find.byKey(const Key('goods-bom-tree-expansion')));
+    for (
+      var frame = 0;
+      frame < 20 && !repo.listCalls.contains('goods-c');
+      frame++
+    ) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(repo.listCalls, contains('goods-c'));
+    final state = tester.state<GoodsBomTabState>(find.byType(GoodsBomTab));
+    expect(await state.finishEditing(), isTrue, reason: '只读加载不拦离开页面');
+    expect(interactions, isNot(contains(true)), reason: '只读展开不向宿主申请导航锁');
+    await tester.pumpWidget(const SizedBox.shrink());
+    pending.complete([repo.grandchild]);
+    await tester.pumpAndSettle();
+    expect(find.text('Unloaded grandchild'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
+    testWidgets(
+      'compact BOM keeps view, active editors and new rows aligned: $platform',
+      (tester) async {
+        final repo = _FakeGoodsBomRepository();
+        await _pumpBom(tester, repo, editMode: false, platform: platform);
+        final controlHeight = platform == TargetPlatform.android ? 48.0 : 32.0;
+        final nestedRow = find.byKey(const ValueKey('row:goods-a/row-b/row-c'));
+        void expectCompactRow(Finder row) {
+          expect(row, findsOneWidget);
+          expect(
+            tester.getSize(row).height,
+            inInclusiveRange(controlHeight + 8, controlHeight + 9),
+            reason: '单行内容、公共桌面/触控控件与上下各4px留白决定行高',
+          );
+          expect(tester.takeException(), isNull);
+        }
+
+        expectCompactRow(nestedRow);
+        await enterBomEdit(tester);
+        expectCompactRow(nestedRow);
+
+        final activateName = find.byKey(
+          const ValueKey('goods-bom-activate-name-goods-a/row-b/row-c'),
+        );
+        await tester.ensureVisible(activateName);
+        await tester.tap(activateName);
+        await tester.pumpAndSettle();
+        final nameEditor = find.byKey(
+          const ValueKey('goods-bom-name-row:goods-b|row-c'),
+        );
+        expect(nameEditor, findsOneWidget);
+        expectCompactRow(nestedRow);
+
+        final activateQty = find.byKey(
+          const ValueKey('goods-bom-activate-qty-goods-a/row-b/row-c'),
+        );
+        await tester.ensureVisible(activateQty);
+        await tester.tap(activateQty);
+        await tester.pumpAndSettle();
+        final qtyEditor = find.byKey(
+          const ValueKey('goods-bom-inline-qty-goods-a/row-b/row-c'),
+        );
+        await tester.enterText(qtyEditor, '3');
+        await tester.pumpAndSettle();
+        expect(tester.widget<TextField>(qtyEditor).controller?.text, '3');
+        expectCompactRow(nestedRow);
+        for (final editor in [nameEditor, qtyEditor]) {
+          final bounds = tester.getRect(nestedRow);
+          final editorBounds = tester.getRect(editor);
+          expect(editorBounds.top, greaterThanOrEqualTo(bounds.top));
+          expect(editorBounds.bottom, lessThanOrEqualTo(bounds.bottom));
+          expect(
+            tester.getSize(editor).height,
+            greaterThanOrEqualTo(controlHeight),
+          );
+        }
+
+        final addChild = find.byKey(
+          const ValueKey('goods-bom-add-child-goods-a/row-b/row-c'),
+        );
+        await tester.ensureVisible(addChild);
+        await tester.tap(addChild);
+        await tester.pumpAndSettle();
+        final newChildRow = find.byKey(
+          const ValueKey('row:goods-a/row-b/row-c/__new-child'),
+        );
+        expectCompactRow(newChildRow);
+        final newChildEditor = find.descendant(
+          of: find.byKey(const ValueKey('goods-bom-name-child:goods-c')),
+          matching: find.byType(TextField),
+        );
+        await tester.enterText(newChildEditor, '待选子组件');
+        await tester.pumpAndSettle();
+        expectCompactRow(newChildRow);
+        expect(
+          tester.getRect(newChildEditor).bottom,
+          lessThanOrEqualTo(tester.getRect(newChildRow).bottom),
+        );
+        expect(find.text('1.1.1'), findsNothing);
+        expect(find.textContaining('组件 3 级'), findsNothing);
+        expect(repo.updatedBody, isNull, reason: '几何与交互验证不提交草稿');
+      },
+    );
+  }
+
   testWidgets(
     'goods:view + goods:bom:create cannot bypass edit mode permission',
     (tester) async {
@@ -312,7 +570,7 @@ void main() {
     await _pumpBom(tester, repo);
 
     await tester.tap(
-      find.text('组件 2 级'),
+      find.byKey(const ValueKey('goods-bom-tree-cell-row-c')),
       buttons: kSecondaryMouseButton,
       kind: PointerDeviceKind.mouse,
     );
@@ -351,7 +609,7 @@ void main() {
     await _pumpBom(tester, repo);
 
     await tester.tap(
-      find.text('组件 2 级'),
+      find.byKey(const ValueKey('goods-bom-tree-cell-row-c')),
       buttons: kSecondaryMouseButton,
       kind: PointerDeviceKind.mouse,
     );
@@ -385,7 +643,7 @@ void main() {
     await _pumpBom(tester, repo);
 
     await tester.tap(
-      find.text('组件 2 级'),
+      find.byKey(const ValueKey('goods-bom-tree-cell-row-c')),
       buttons: kSecondaryMouseButton,
       kind: PointerDeviceKind.mouse,
     );
@@ -507,4 +765,34 @@ void main() {
     expect(item.colorId, 'color-uuid');
     expect(item.defaultSupplierId, 'supplier-uuid');
   });
+
+  testWidgets(
+    'BOM compact editing visual fixture',
+    (tester) async {
+      await loadAuditScreenshotFonts(tester);
+      final repo = _FakeGoodsBomRepository(nestedHasChildren: true);
+      await _pumpBom(tester, repo, screenshot: true);
+      await tester.tap(find.byKey(const Key('goods-bom-tree-expansion')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          const ValueKey('goods-bom-activate-name-goods-a/row-b/row-c'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(const Key('goods-bom-test-capture')),
+      );
+      await tester.runAsync(() async {
+        final picture = await boundary.toImage();
+        final bytes = await picture.toByteData(format: ui.ImageByteFormat.png);
+        final file = File('build/goods-bom-compact-edit-preview.png');
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(bytes!.buffer.asUint8List());
+        picture.dispose();
+      });
+      expect(tester.takeException(), isNull);
+    },
+    skip: !const bool.fromEnvironment('UTEN_BOM_CAPTURE'),
+  );
 }

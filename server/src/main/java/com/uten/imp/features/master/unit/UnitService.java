@@ -270,7 +270,7 @@ public class UnitService {
         };
         Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "code"));
         var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
-        Page<Unit> p = repo.findAll(searchPage.specification(), searchPage.pageable());
+        Page<Unit> p = com.uten.imp.common.export.MasterExportSource.page(repo, em, Unit.class, searchPage.specification(), searchPage.pageable(), f);
         List<Unit> content = p.getContent();
         Map<UUID, MeasurementSetting> settings = measurementByUnitId(
                 content.stream().map(Unit::getId).toList());
@@ -321,14 +321,14 @@ public class UnitService {
      * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限防 OOM。
      * 列集与日常单位资料一致：名称 / 编号 / 状态。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ExportPayload export(UnitQueryFilter f, int maxRows) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "编号", ExportColumn.TEXT),
                 new ExportColumn("name", "单位名称", ExportColumn.TEXT),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
                 maxRows, (p, size) -> list(f, p, size), u -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("_platformRecordId", u.getId());
@@ -337,7 +337,6 @@ public class UnitService {
                     row.put("status", u.getStatus());
                     return row;
                 });
-        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets（各字段 distinct + 空值计数） =====

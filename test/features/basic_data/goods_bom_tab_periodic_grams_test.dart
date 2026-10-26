@@ -9,6 +9,7 @@
 //  5. 页面没问到、服务端回 422 要人确认时，弹框确认后带上确认字段原样重发；
 //  6. 组件单位不能按克换算时按基本单位填，只提交 qty。
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -196,13 +197,14 @@ SensitiveReadBoundary _bomBoundary({
 );
 
 Future<void> _openEditForRow(WidgetTester tester, String itemId) async {
-  final level = find.descendant(
-    of: find.byKey(ValueKey('goods-bom-tree-cell-$itemId')),
-    matching: find.text('组件 1 级'),
+  final identity = find.byKey(ValueKey('goods-bom-tree-cell-$itemId'));
+  await tester.tap(
+    identity,
+    buttons: kSecondaryMouseButton,
+    kind: PointerDeviceKind.mouse,
   );
-  await tester.tap(level);
-  await tester.pump();
-  await tester.tap(level);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('编辑').last);
   await tester.pumpAndSettle();
 }
 

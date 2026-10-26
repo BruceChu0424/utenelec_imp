@@ -171,6 +171,22 @@ class HostOperationsTest(unittest.TestCase):
         self.assertFalse(status['sourceConfigured'])
         self.assertTrue(all(c[0] == '/usr/bin/systemctl' for c in self.calls))
 
+    def test_repeated_ready_status_cache_and_job_reads_never_check_oss(self):
+        self.source.save(self.payload())
+        ops = self.operations()
+        self.checked_version(ops)
+        self.calls.clear()
+        for _ in range(5):
+            status = ops.dispatch(self.request('STATUS'))
+            self.assertTrue(status['sourceConfigured'])
+            self.assertTrue(status['updateAvailable'])
+            self.assertEqual('v2.5.18', status['latestVersion'])
+            self.assertIsNone(ops.dispatch(self.request('UPDATE_JOB')))
+            self.assertTrue(ops.dispatch(self.request('CONFIG_READ'))['accessKeyConfigured'])
+            self.assertEqual(0, ops.worker())
+        self.assertTrue(self.calls)
+        self.assertTrue(all(c[0] == '/usr/bin/systemctl' and 'start' not in c for c in self.calls))
+
     def test_start_persists_before_ack_and_is_idempotent_across_object_restart(self):
         self.source.save(self.payload())
         request_id = str(uuid.uuid4())

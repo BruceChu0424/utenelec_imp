@@ -1,4 +1,5 @@
 import '../../../shared/search/keyword_search.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -55,12 +56,14 @@ class FinanceAssetLedgerPanel extends ConsumerStatefulWidget {
 }
 
 class _FinanceAssetLedgerPanelState
-    extends ConsumerState<FinanceAssetLedgerPanel> {
+    extends ConsumerState<FinanceAssetLedgerPanel>
+    with ScopedPagedReadViewMixin<FinanceAssetLedgerPanel> {
   final _requestGuard = LatestRequestGuard();
   final _categoryGuard = LatestRequestGuard();
   FinanceAssetQuery _query = const FinanceAssetQuery();
   PagedResult<FinanceAssetSummary>? _result;
   int? _draftTotal;
+  final _tableRows = MasterDataTableRowsController<FinanceAssetSummary>();
   bool _loading = true;
   String? _error;
   List<FinanceAssetCategory> _categories = const [];
@@ -82,14 +85,16 @@ class _FinanceAssetLedgerPanelState
       _query = _query.copyWith(page: 1);
     }
     if (oldWidget.refreshToken != widget.refreshToken) {
-      _refresh();
+      _refresh(
+        page: oldWidget.creationToken != widget.creationToken ? 1 : null,
+      );
     }
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({int? page}) async {
     final completion = widget.refreshCompletion;
     try {
-      await Future.wait([_load(), _loadCategories()]);
+      await Future.wait([_load(page: page), _loadCategories()]);
     } finally {
       if (completion != null && !completion.isCompleted) {
         completion.complete();
@@ -106,32 +111,70 @@ class _FinanceAssetLedgerPanelState
     super.dispose();
   }
 
-  Future<void> _load() async {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _requestGuard.begin();
+    _categoryGuard.begin();
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _draftTotal = null;
+      _categories = const [];
+      _categoriesLoading = false;
+      _categoriesError = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+    });
+  }
+
+  Map<String, dynamic> get _cacheQuery => {
+    'repository': ref.read(financeAssetWorkbenchRepositoryProvider),
+    'ledger': widget.ledger,
+    'query': Map<String, dynamic>.of(_query.toQuery())..remove('page'),
+  };
+
+  Future<void> _load({int? page, bool useCache = false}) async {
+    final cacheQuery = _cacheQuery;
+    final query = _query.copyWith(
+      page: page ?? _tableRows.visiblePage ?? _query.page,
+    );
+    final ledger = widget.ledger;
+    final repository = ref.read(financeAssetWorkbenchRepositoryProvider);
     final generation = _requestGuard.begin();
     setState(() {
       _loading = true;
       _error = null;
-      _draftTotal = null;
+      if (!useCache) _draftTotal = null;
     });
     try {
-      var result = await ref
-          .read(financeAssetWorkbenchRepositoryProvider)
-          .list(widget.ledger, query: _query);
+      var result = await readScopedPage<FinanceAssetSummary>(
+        query.page,
+        query: cacheQuery,
+        currentQuery: () => _cacheQuery,
+        useCache: useCache,
+        fetchPage: (target) =>
+            repository.list(ledger, query: query.copyWith(page: target)),
+      );
       if (result.items.isEmpty &&
-          _query.page > 1 &&
-          result.totalPages < _query.page) {
-        _query = _query.copyWith(page: result.totalPages.clamp(1, _query.page));
-        result = await ref
-            .read(financeAssetWorkbenchRepositoryProvider)
-            .list(widget.ledger, query: _query);
+          query.page > 1 &&
+          result.totalPages < query.page) {
+        _query = _query.copyWith(page: result.totalPages.clamp(1, query.page));
+        result = await readScopedPage<FinanceAssetSummary>(
+          _query.page,
+          query: cacheQuery,
+          currentQuery: () => _cacheQuery,
+          fetchPage: (target) =>
+              repository.list(ledger, query: query.copyWith(page: target)),
+        );
       }
       if (!mounted || !_requestGuard.isCurrent(generation)) return;
       setState(() {
         _result = result;
+        _query = query.copyWith(page: result.page);
         _loading = false;
         if (_query.status == 'DRAFT') _draftTotal = result.total;
       });
-      if (_query.status != 'DRAFT') {
+      if (_query.status != 'DRAFT' && _draftTotal == null) {
         await _loadDraftTotal(generation, _query);
       }
     } catch (_) {
@@ -186,9 +229,9 @@ class _FinanceAssetLedgerPanelState
     }
   }
 
-  void _changeQuery(FinanceAssetQuery query) {
+  void _changeQuery(FinanceAssetQuery query, {bool useCache = false}) {
     setState(() => _query = query);
-    _load();
+    _load(page: query.page, useCache: useCache);
   }
 
   Future<void> _edit(FinanceAssetSummary item) async {
@@ -214,7 +257,7 @@ class _FinanceAssetLedgerPanelState
     final saved = await showFinanceAssetForm(context, ledger: widget.ledger);
     if (!mounted || !saved) return;
     _query = _query.copyWith(page: 1);
-    await _load();
+    await _load(page: 1);
   }
 
   Future<void> _delete(FinanceAssetSummary item) async {
@@ -624,6 +667,7 @@ class _FinanceAssetLedgerPanelState
     final result = _result;
     return _withFormDraftRows(
       MasterDataTableView<FinanceAssetSummary>(
+        rowsController: _tableRows,
         tableKey: 'finance.asset.${widget.ledger.name}.ledger',
         toolbarLeadingActions: _filterFields(filterWidth),
         onFullscreenChanged: (fullscreen) {
@@ -755,7 +799,9 @@ class _FinanceAssetLedgerPanelState
           _query.categoryId,
           _query.departmentId,
         ),
-        onPageChange: (page) => _changeQuery(_query.copyWith(page: page)),
+        expensiveRowMounts: false,
+        onPageChange: (page) =>
+            _changeQuery(_query.copyWith(page: page), useCache: true),
       ),
     );
   }

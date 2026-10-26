@@ -155,7 +155,7 @@ validate_supported_environment_keys() {
       BOOTSTRAP_ADMIN_LOGIN|BOOTSTRAP_ADMIN_PASSWORD|UTEN_SMS_PROVIDER|UTEN_SMS_EXPOSE_CODE|\
       UTEN_AI_OUTBOUND_ENABLED|UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED|\
       UTEN_LEGACY_ENABLED|UTEN_STORAGE_PROVIDER|\
-      UTEN_STORAGE_LOCAL_DIR|UTEN_ATTACHMENT_UPLOADS_ENABLED|\
+      UTEN_STORAGE_LOCAL_DIR|UTEN_CLIENT_RELEASES_DIR|UTEN_CLIENT_UPDATE_MIN_FREE_BYTES|UTEN_ATTACHMENT_UPLOADS_ENABLED|\
       UTEN_ATTACHMENT_SCANNER_PROVIDER|UTEN_ATTACHMENT_RECONCILIATION_ENABLED|\
       UTEN_STORAGE_MAX_BYTES|UTEN_STORAGE_PRESIGN_EXPIRY)
         ;;
@@ -380,6 +380,16 @@ expect_exact UTEN_LEGACY_ENABLED false
 
 expect_exact UTEN_STORAGE_PROVIDER local
 expect_exact UTEN_STORAGE_LOCAL_DIR /data/uten-imp/attachments
+# Client package storage remains within the fixed local media write boundary.
+# Missing values preserve older env files; the installed unit supplies defaults.
+if [[ "$(env_count UTEN_CLIENT_RELEASES_DIR)" != 0 ]]; then
+  expect_exact UTEN_CLIENT_RELEASES_DIR /data/uten-imp/attachments/client-releases
+fi
+if [[ "$(env_count UTEN_CLIENT_UPDATE_MIN_FREE_BYTES)" != 0 ]]; then
+  client_reserve="$(env_value UTEN_CLIENT_UPDATE_MIN_FREE_BYTES)"
+  [[ "$client_reserve" =~ ^[1-9][0-9]{0,14}$ && "$client_reserve" -ge 10737418240 ]] \
+    || die 'client package uploads must preserve at least 10 GiB of local media space'
+fi
 expect_exact UTEN_ATTACHMENT_UPLOADS_ENABLED false
 expect_exact UTEN_ATTACHMENT_SCANNER_PROVIDER disabled
 expect_exact UTEN_ATTACHMENT_RECONCILIATION_ENABLED false

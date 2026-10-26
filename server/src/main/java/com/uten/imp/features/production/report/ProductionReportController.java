@@ -57,6 +57,7 @@ public class ProductionReportController {
 
     // ===== 生产计划（PLAN） =====
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/plan/detail")
     @PreAuthorize("hasAuthority('production_report:view')")
     public ReportTableResponse planDetail(
@@ -74,6 +75,7 @@ public class ProductionReportController {
         return service.planDetail(billNo, goodsId, status, dateFrom, dateTo, keyword, ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/plan/summary")
     @PreAuthorize("hasAuthority('production_report:view')")
     public ReportTableResponse planSummary(
@@ -96,6 +98,7 @@ public class ProductionReportController {
      * 查一个原材料（materialGoodsId）被用在了哪些产成品上（按产成品汇总）。
      * GET /api/production/reports/where-used?materialGoodsId=&source=&dateFrom=&dateTo=&page=&size=&sort=&order=
      */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/where-used")
     @PreAuthorize("hasAuthority('production_where_used:view')")
     public ReportTableResponse whereUsed(
@@ -114,6 +117,7 @@ public class ProductionReportController {
      * 物料反查专用货品搜索。它与报表共用权限，不要求 {@code goods:view}，
      * 因此工程/生产用户不会在“选材料”阶段被货品主档权限意外拦住。
      */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/where-used/materials")
     @PreAuthorize("hasAuthority('production_where_used:view')")
     public PageResponse<WhereUsedMaterialOption> whereUsedMaterials(
@@ -132,6 +136,7 @@ public class ProductionReportController {
     }
 
     /** Picker categories share the report's dedicated scope, including historical uncategorized goods. */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/where-used/material-categories")
     @PreAuthorize("hasAuthority('production_where_used:view')")
     public Map<String, List<WhereUsedMaterialCategory>> whereUsedMaterialCategories() {
@@ -139,6 +144,7 @@ public class ProductionReportController {
     }
 
     /** Full search category matches let the shared picker navigate beyond the first candidate page. */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/where-used/material-category-matches")
     @PreAuthorize("hasAuthority('production_where_used:view')")
     public Map<String, List<String>> whereUsedMaterialCategoryMatches(
@@ -181,6 +187,7 @@ public class ProductionReportController {
 
     // ===== 生产日报（DAILY · 本期 0 行，结构留位；前端未挂入口） =====
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/daily/detail")
     @PreAuthorize("hasAuthority('production_report:view')")
     public List<DailyDetailRow> dailyDetail(
@@ -194,6 +201,7 @@ public class ProductionReportController {
         return service.dailyDetail(dateFrom, dateTo, goodsId, status, billNo, page, size);
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/daily/summary")
     @PreAuthorize("hasAuthority('production_report:view')")
     public List<MonthlySummaryRow> dailySummary(

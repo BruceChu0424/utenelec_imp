@@ -57,6 +57,7 @@ import '../services/quality_batch_submission.dart';
 import '../widgets/inspection_report_confirm_dialog.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/formatters/quantity_display.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 /// 列表页多选结果（extra 传入）：IQC 收货单 + FQC 检查单 + 无检查单 FQC 任务。
 class QualityBatchApprovalSelection {
@@ -939,37 +940,40 @@ class _QualityBatchApprovalPageState
       for (final group in sheetGroups)
         if (group.loadError != null) '${group.label} 明细加载失败：${group.loadError}',
     ];
-    return ListView(
-      controller: _pageScroll,
+    return UtenPageEdgePadding.scroll(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s12,
         UtenSpacing.s12,
         UtenSpacing.s12,
         UtenFloatingActionGroup.scrollClearance,
       ),
-      children: [
-        for (final failure in failures)
-          Padding(
-            padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-            child: Text(
-              failure,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.error,
+      builder: (context, resolvedPagePadding) => ListView(
+        controller: _pageScroll,
+        padding: resolvedPagePadding,
+        children: [
+          for (final failure in failures)
+            Padding(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+              child: Text(
+                failure,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
               ),
             ),
-          ),
-        if (failures.isNotEmpty)
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              key: const Key('batch-approval-reload-failed'),
-              onPressed: () => _load(retryFailuresOnly: true),
-              icon: const Icon(Icons.refresh),
-              label: const Text('重试加载失败的单据'),
+          if (failures.isNotEmpty)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                key: const Key('batch-approval-reload-failed'),
+                onPressed: () => _load(retryFailuresOnly: true),
+                icon: const Icon(Icons.refresh),
+                label: const Text('重试加载失败的单据'),
+              ),
             ),
-          ),
-        _unifiedTable(theme, rows),
-      ],
+          _unifiedTable(theme, rows),
+        ],
+      ),
     );
   }
 

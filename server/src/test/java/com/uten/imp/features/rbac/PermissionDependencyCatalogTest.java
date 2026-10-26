@@ -296,6 +296,17 @@ class PermissionDependencyCatalogTest {
     private static PermissionDependencyCatalog catalog(Permission... permissions) {
         return new PermissionDependencyCatalog(Arrays.asList(permissions));
     }
+    @Test void fieldGroupAndEmployeeNavigationAddsReadAccessWithoutGrantingMasterWrites() {
+        var catalog=catalog(view("goods:view"),view("supplier:view"),view("client:view"),view("employee:view"),view("department:view"),
+                action("goods:purchase:edit"),action("goods:sales:edit"),action("employee:edit"),action("department:edit"),action("supplier:edit"),action("client:edit"));
+        assertThat(catalog.requiredPermissions("goods:purchase:edit",Set.of())).containsExactlyInAnyOrder("goods:view","supplier:view");
+        assertThat(catalog.requiredPermissions("goods:sales:edit",Set.of())).containsExactlyInAnyOrder("goods:view","client:view");
+        assertThat(catalog.requiredPermissions("employee:edit",Set.of())).containsExactlyInAnyOrder("employee:view","department:view");
+        assertThat(catalog.lookupPermissions(Set.of("goods:purchase:edit","goods:sales:edit","employee:edit")))
+                .doesNotContain("department:edit","supplier:edit","client:edit");
+        assertThat(catalog.usablePermissions(Set.of("goods:view","goods:purchase:edit","goods:sales:edit")))
+                .contains("goods:purchase:edit","goods:sales:edit");
+    }
 
     private static Permission view(String code) { return permission(code, "VIEW"); }
     private static Permission action(String code) { return permission(code, "APPROVE"); }

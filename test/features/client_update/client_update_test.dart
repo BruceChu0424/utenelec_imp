@@ -153,6 +153,11 @@ void main() {
       releaseJson(build: 2526),
       releaseJson(platform: 'android'),
       releaseJson(architecture: 'arm64'),
+      {
+        ...releaseJson(),
+        'packageKind': 'installer',
+        'installMode': 'windows_bundle',
+      },
     ]) {
       expect(ClientRelease.fromJson(candidate).matches(installed), isFalse);
     }

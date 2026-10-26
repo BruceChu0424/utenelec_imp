@@ -669,9 +669,7 @@ public class EmployeeCommandService {
     @PreAuthorize("hasAuthority('employee:view')")
     @Transactional(readOnly = true)
     public List<NestedDtos.EmploymentHistoryDto> history(UUID id) {
-        queryService.requireEmployee(id);
-        return historyRepo.findByEmployeeIdOrderByEventDateDesc(id).stream()
-                .map(queryService::toHistory).toList();
+        return queryService.history(id);
     }
 
     private void clearManagedDepartments(Employee employee) {

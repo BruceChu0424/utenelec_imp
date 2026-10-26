@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 
 /// Shared, keyboard-safe shell for column selection, formulas and cell editing.
 /// The body has one scroll region; actions remain reachable on small screens.
@@ -72,17 +73,15 @@ class ColumnEditorDialog extends StatelessWidget {
                           ),
                           const SizedBox(width: UtenSpacing.s12),
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Row(
                               children: [
-                                Text(title, style: theme.textTheme.titleLarge),
-                                const SizedBox(height: UtenSpacing.s4),
-                                Text(
-                                  subtitle,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
+                                Flexible(
+                                  child: Text(
+                                    title,
+                                    style: theme.textTheme.titleLarge,
                                   ),
                                 ),
+                                UtenFieldHintIcon(info: subtitle, dense: true),
                               ],
                             ),
                           ),
@@ -133,16 +132,13 @@ class ColumnEditorSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(title, style: theme.textTheme.titleSmall),
-          if (description != null) ...[
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              description!,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
+          Row(
+            children: [
+              Flexible(child: Text(title, style: theme.textTheme.titleSmall)),
+              if (description?.trim().isNotEmpty ?? false)
+                UtenFieldHintIcon(info: description, dense: true),
+            ],
+          ),
           const SizedBox(height: UtenSpacing.s12),
           child,
         ],

@@ -1,3 +1,5 @@
+import 'dart:async';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // 应收应付核销引入面板（收款/付款编辑页"从应收应付引入"用）。
 //
 // 右滑入大面板（browse 档 75% 屏宽、840 小屏下限，与销售/采购/委外引入统一，外壳 showUtenAdaptivePanel），
@@ -15,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_load_more_boundary.dart';
 import '../../../core/network/api_exception.dart';
@@ -103,7 +106,7 @@ Future<List<AppliedArAp>?> showArApPickerDialog(
 class _LedgerRow extends EditableGridRow {
   _LedgerRow(this.item, bool selected)
     : selectedNotifier = ValueNotifier<bool>(selected);
-  final ArApLedgerItem item;
+  ArApLedgerItem item;
   final ValueNotifier<bool> selectedNotifier;
   bool get selected => selectedNotifier.value;
 
@@ -130,7 +133,8 @@ class _ArApPickerSheet extends ConsumerStatefulWidget {
   ConsumerState<_ArApPickerSheet> createState() => _ArApPickerSheetState();
 }
 
-class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
+class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
+    with ScopedPagedReadViewMixin<_ArApPickerSheet> {
   List<ArApLedgerItem> _items = const [];
   final Map<String, ArApLedgerItem> _knownItems = {};
   bool _loading = false;
@@ -138,6 +142,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
   String? _error;
   String? _moreError;
   int _requestVersion = 0;
+  bool _readRetired = false;
   int _page = 1;
   int _totalPages = 1;
 
@@ -171,7 +176,33 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
     super.dispose();
   }
 
+  @override
+  void scopedPagedReadOwnerChanged() {
+    ++_requestVersion;
+    if (!mounted) return;
+    setState(() {
+      _readRetired = true;
+      _items = const [];
+      _knownItems.clear();
+      _selectedIds.clear();
+      _loading = false;
+      _loadingMore = false;
+      _error = scopedPagedReadRejection?.message ?? '读取身份已变化，请关闭后重新打开';
+      _moreError = null;
+    });
+    _rebuildGrid();
+  }
+
+  Object get _readQuery => [
+    ref.read(arApLedgerRepositoryProvider),
+    widget.direction,
+    widget.partyId,
+    widget.lockedCurrencyId,
+    _keyword,
+  ];
+
   Future<void> _load({bool reset = true}) async {
+    if (!mounted || _readRetired) return;
     if (!reset && (_loading || _loadingMore || _page >= _totalPages)) return;
     final version = ++_requestVersion;
     final keyword = _keyword;
@@ -193,13 +224,31 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
     });
     try {
       final requestedPage = reset ? 1 : _page + 1;
-      final r = await ref
-          .read(arApLedgerRepositoryProvider)
-          .openItemsForParty(
-            direction: widget.direction,
-            partyId: widget.partyId!,
-            page: requestedPage,
-            keyword: keyword,
+      final repository = ref.read(arApLedgerRepositoryProvider);
+      final direction = widget.direction;
+      final partyId = widget.partyId!;
+      final query = _readQuery;
+      final r = await readScopedPage<ArApLedgerItem>(
+        requestedPage,
+        query: query,
+        currentQuery: () => _readQuery,
+        useCache: !reset,
+        canPrefetch: () => false,
+        fetchPage: (target) => repository.openItemsForParty(
+          direction: direction,
+          partyId: partyId,
+          page: target,
+          keyword: keyword,
+        ),
+      );
+      if (!mounted || version != _requestVersion) return;
+      await ref
+          .read(financeNameServiceProvider)
+          .loadPartyNames(
+            clientIds: widget.direction == 'AR' ? [widget.partyId!] : const [],
+            supplierIds: widget.direction == 'AP'
+                ? [widget.partyId!]
+                : const [],
           );
       if (!mounted || version != _requestVersion) return;
       for (final it in r.items) {
@@ -227,6 +276,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
         _loadingMore = false;
       });
       _rebuildGrid();
+      unawaited(prepareScopedNext<ArApLedgerItem>(r.page));
     } on ApiException catch (e) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
@@ -256,9 +306,20 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
   List<ArApLedgerItem> get _visibleItems => _items;
 
   void _rebuildGrid() {
-    _grid.replaceAll(
-      _visibleItems.map((it) => _LedgerRow(it, _selectedIds.contains(it.id))),
-    );
+    final previous = {for (final row in _grid.rows) row.item.id: row};
+    final next = <_LedgerRow>[];
+    for (final item in _visibleItems) {
+      final row =
+          previous.remove(item.id) ??
+          _LedgerRow(item, _selectedIds.contains(item.id));
+      row.item = item;
+      row.selectedNotifier.value = _selectedIds.contains(item.id);
+      next.add(row);
+    }
+    _grid.swapRows(next);
+    for (final removed in previous.values) {
+      removed.dispose();
+    }
   }
 
   /// 每次键入先同步更新关键词（供空态判断），检索交给 UtenSearchBar
@@ -343,6 +404,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
   }
 
   void _confirm() {
+    if (_readRetired) return;
     final out = <AppliedArAp>[];
     var currencyId = widget.lockedCurrencyId;
     for (final id in _selectedIds) {
@@ -456,6 +518,24 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    if (_readRetired) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('读取范围已变化')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_error ?? '请关闭后重新打开'),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('关闭'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final theme = Theme.of(context);
     final names = ref.watch(financeNameServiceProvider);
     final partyName = _isAr
@@ -476,41 +556,11 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
 
   Widget _buildHeader(ThemeData theme, String partyName) {
     final title = _isAr ? '引用应收' : '引用应付';
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s12,
-        UtenSpacing.s12,
-        UtenSpacing.s4,
-        UtenSpacing.s8,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  partyName,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            key: const ValueKey('ar-ap-close'),
-            icon: const Icon(Icons.close_rounded),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
-      ),
+    return UtenPanelHeader(
+      title: title,
+      subtitle: partyName,
+      closeButtonKey: const ValueKey('ar-ap-close'),
+      onClose: () => Navigator.of(context).pop(),
     );
   }
 
@@ -739,7 +789,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
               ),
             FilledButton.icon(
               key: const ValueKey('ar-ap-confirm'),
-              onPressed: n == 0 ? null : _confirm,
+              onPressed: _readRetired || n == 0 ? null : _confirm,
               icon: const Icon(Icons.check_rounded, size: 18),
               label: Text(_isAr ? '引用应收' : '引用应付'), // TODO(l10n): 补 arb
             ),

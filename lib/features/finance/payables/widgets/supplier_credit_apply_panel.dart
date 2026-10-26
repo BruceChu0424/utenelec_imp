@@ -1,3 +1,7 @@
+import 'dart:async';
+import '../../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import '../../../../shared/paging/scoped_paged_read.dart';
+import '../../../../shared/models/paged_result.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -75,13 +79,16 @@ class _SupplierCreditApplyPanel extends ConsumerStatefulWidget {
 }
 
 class _SupplierCreditApplyPanelState
-    extends ConsumerState<_SupplierCreditApplyPanel> {
+    extends ConsumerState<_SupplierCreditApplyPanel>
+    with ScopedPagedReadViewMixin<_SupplierCreditApplyPanel> {
   final _reason = TextEditingController();
   final Map<String, TextEditingController> _amounts = {};
   final Set<String> _selected = {};
   List<FinancePayableItem> _targets = const [];
   DateTime _effectiveDate = DateTime.now();
   bool _loading = false;
+  bool _readRetired = false;
+  int _requestVersion = 0;
   int _page = 0;
   int _totalPages = 1;
   String? _error;
@@ -105,8 +112,33 @@ class _SupplierCreditApplyPanelState
       '${value.year}-${value.month.toString().padLeft(2, '0')}-'
       '${value.day.toString().padLeft(2, '0')}';
 
+  @override
+  void scopedPagedReadOwnerChanged() {
+    ++_requestVersion;
+    if (!mounted) return;
+    setState(() {
+      _readRetired = true;
+      _targets = const [];
+      _selected.clear();
+      _loading = false;
+      _error = scopedPagedReadRejection?.message ?? '读取身份已变化，请关闭后重新打开';
+    });
+  }
+
+  Object get _readQuery => [
+    ref.read(financePayablesRepositoryProvider),
+    widget.source.id,
+    widget.source.supplierId,
+    widget.source.currencyId,
+    widget.source.bookingRate,
+    widget.source.outstandingOriginal,
+    200,
+  ];
+
   Future<void> _load({bool more = false}) async {
+    if (!mounted || _readRetired) return;
     if (_loading || (more && _page >= _totalPages)) return;
+    final version = ++_requestVersion;
     final supplierId = widget.source.supplierId;
     if (supplierId == null) {
       setState(() {
@@ -120,17 +152,43 @@ class _SupplierCreditApplyPanelState
       _error = null;
     });
     try {
-      final result = await ref
-          .read(financePayablesRepositoryProvider)
-          .list(
-            page: more ? _page + 1 : 1,
+      final repository = ref.read(financePayablesRepositoryProvider);
+      final filter = FinancePayablesFilter(
+        supplierId: supplierId,
+        currencyId: widget.source.currencyId,
+      );
+      final cached = await readScopedPage<FinancePayableItem>(
+        more ? _page + 1 : 1,
+        query: _readQuery,
+        currentQuery: () => _readQuery,
+        useCache: more,
+        canPrefetch: () => false,
+        fetchPage: (target) async {
+          final result = await repository.list(
+            page: target,
             size: 200,
-            filter: FinancePayablesFilter(
-              supplierId: supplierId,
-              currencyId: widget.source.currencyId,
-            ),
+            filter: filter,
           );
-      if (!mounted) return;
+          return PagedReadSnapshot<FinancePayableItem, FinancePayablesResult>(
+            page: PagedResult(
+              items: result.items,
+              page: result.page,
+              size: result.size,
+              total: result.total,
+              totalPages: result.totalPages,
+            ),
+            snapshot: result,
+          );
+        },
+      );
+      final result =
+          (cached
+                  as PagedReadSnapshot<
+                    FinancePayableItem,
+                    FinancePayablesResult
+                  >)
+              .snapshot;
+      if (!mounted || version != _requestVersion) return;
       setState(() {
         _targets = {
           if (more)
@@ -143,14 +201,15 @@ class _SupplierCreditApplyPanelState
         _totalPages = result.totalPages;
         _loading = false;
       });
+      unawaited(prepareScopedNext<FinancePayableItem>(result.page));
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || version != _requestVersion) return;
       setState(() {
         _loading = false;
         _error = error.message;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || version != _requestVersion) return;
       setState(() {
         _loading = false;
         _error = '加载可抵销正应付失败';
@@ -169,6 +228,7 @@ class _SupplierCreditApplyPanelState
   }
 
   void _confirm() {
+    if (_readRetired) return;
     if (!widget.source.canApplyCredit) {
       context.appError('历史资金不能作为贷项来源');
       return;
@@ -225,6 +285,24 @@ class _SupplierCreditApplyPanelState
 
   @override
   Widget build(BuildContext context) {
+    if (_readRetired) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('读取范围已变化')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_error ?? '请关闭后重新打开'),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('关闭'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final source = widget.source;
     return Scaffold(
       appBar: AppBar(
@@ -284,7 +362,7 @@ class _SupplierCreditApplyPanelState
             type: UtenButtonType.danger,
             size: UtenButtonSize.large,
             icon: Icons.link_rounded,
-            onPressed: _loading ? null : _confirm,
+            onPressed: _loading || _readRetired ? null : _confirm,
             child: Text('确认应用 (${_selected.length})'),
           ),
         ],

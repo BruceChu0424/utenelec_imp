@@ -55,7 +55,7 @@ public class ProductionScheduleController {
     }
 
     /** 待排产 facets（表头值筛选下拉用）：{status:[紧急/正常], orderBillNo:[各销售单号]}。 */
-    @GetMapping("/pending/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/pending/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('production_plan:view')")
     public Map<String, List<Map<String, Object>>> pendingFacets(
             @RequestParam(required = false) String keyword,

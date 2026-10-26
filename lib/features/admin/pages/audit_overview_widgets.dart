@@ -366,6 +366,10 @@ class _AuditFilterPanel extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              const UtenFieldHintIcon(
+                info: '搜索只在当前人员和所选日期内生效，不会扩大查询范围。',
+                dense: true,
+              ),
               const Spacer(),
               TextButton.icon(
                 onPressed: onClear,
@@ -385,14 +389,6 @@ class _AuditFilterPanel extends StatelessWidget {
               onChanged: onSearchChanged,
             ),
           ),
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            '搜索只在当前人员和所选日期内生效，不会扩大查询范围。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-
           if (activeLabels.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: UtenSpacing.s8),
@@ -567,31 +563,33 @@ class _AuditFilterMenu extends StatelessWidget {
       (item) => item.$2 == value,
       orElse: () => options.first,
     );
-    return PopupMenuButton<String>(
-      tooltip: label,
-      onSelected: (selectedValue) =>
-          onChanged(selectedValue.isEmpty ? null : selectedValue),
-      itemBuilder: (context) => [
-        for (final option in options)
-          PopupMenuItem<String>(
-            value: option.$2 ?? '',
-            child: Row(
-              children: [
-                Icon(
-                  option.$2 == value
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_unchecked,
-                  size: 18,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Text(option.$1),
-              ],
+    return UtenDropdownScrollScope(
+      child: PopupMenuButton<String>(
+        tooltip: label,
+        onSelected: (selectedValue) =>
+            onChanged(selectedValue.isEmpty ? null : selectedValue),
+        itemBuilder: (context) => [
+          for (final option in options)
+            PopupMenuItem<String>(
+              value: option.$2 ?? '',
+              child: Row(
+                children: [
+                  Icon(
+                    option.$2 == value
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    size: 18,
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Text(option.$1),
+                ],
+              ),
             ),
-          ),
-      ],
-      child: Chip(
-        avatar: const Icon(Icons.tune_rounded, size: 18),
-        label: Text('$label：${selected.$1}'),
+        ],
+        child: Chip(
+          avatar: const Icon(Icons.tune_rounded, size: 18),
+          label: Text('$label：${selected.$1}'),
+        ),
       ),
     );
   }
@@ -1097,6 +1095,7 @@ class _AuditEventTable extends StatelessWidget {
           'features.admin.pages.audit_overview_widgets.AuditEventTable.build.1',
       key: const Key('audit-event-table'),
       embedded: true,
+      expensiveRowMounts: false,
       rowsController: rowsController,
       rowDecorationBuilder: (_, row, child) =>
           row.id.toString() ==
@@ -1269,6 +1268,7 @@ class _AuditSessionTable extends StatelessWidget {
           'features.admin.pages.audit_overview_widgets.AuditSessionTable.build.1',
       key: const Key('audit-session-table'),
       embedded: true,
+      expensiveRowMounts: false,
       rowsController: rowsController,
       rowDecorationBuilder: (_, row, child) =>
           row.sessionId ==

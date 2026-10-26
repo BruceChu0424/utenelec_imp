@@ -1,3 +1,5 @@
+import '../../paging/scoped_paged_read.dart';
+import '../../paging/scoped_paged_read_view_mixin.dart';
 import 'package:flutter/material.dart';
 import '../../../components/layout/uten_refresh_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -61,7 +63,31 @@ class GoodsProductionTraceView extends ConsumerStatefulWidget {
 }
 
 class _TraceState extends ConsumerState<GoodsProductionTraceView>
-    with UtenRefreshParticipant<GoodsProductionTraceView> {
+    with
+        UtenRefreshParticipant<GoodsProductionTraceView>,
+        ScopedPagedReadViewMixin<GoodsProductionTraceView> {
+  final _readViewportRows = MasterDataTableRowsController<GoodsProductionTraceRow>();
+  int get _visibleReadPage => _data == null ? (_data?.page ?? 1) : (_readViewportRows.visiblePage ?? (_data?.page ?? 1));
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    ++_request;
+    ++_readEpoch;
+    _closeDetails();
+    if (mounted) {
+      setState(() {
+        _data = null;
+        _result = null;
+        _loading = false;
+      });
+    }
+    if (mounted) {
+      setState(() {
+        _error = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   String _direction = 'usage';
   PagedResult<GoodsProductionTraceRow>? _data;
   MaterialTraceResult? _result;
@@ -134,40 +160,64 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
     }
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     final request = ++_request;
     setState(() {
       _loading = true;
       _error = null;
     });
+    final subject = widget.subject,
+        goodsId = widget.goodsId,
+        direction = _direction;
+    final from = widget.dateFrom, to = widget.dateTo;
+    final traceRepository = ref.read(materialTraceRepositoryProvider);
+    final ledgerRepository = ref.read(goodsStockLedgerRepositoryProvider);
+    Object pagingQuery() => [
+      ref.read(materialTraceRepositoryProvider),
+      ref.read(goodsStockLedgerRepositoryProvider),
+      widget.goodsId,
+      widget.subject?.identity,
+      _direction,
+      widget.dateFrom,
+      widget.dateTo,
+      widget.reloadTick,
+    ];
     try {
-      final subject = widget.subject;
-      final MaterialTraceResult? result;
-      final PagedResult<GoodsProductionTraceRow> data;
-      if (subject != null) {
-        result = await ref
-            .read(materialTraceRepositoryProvider)
-            .trace(
-              subject: subject,
-              direction: _direction,
-              dateFrom: widget.dateFrom,
-              dateTo: widget.dateTo,
-              page: page,
+      final cached = await readScopedPage<GoodsProductionTraceRow>(
+        page,
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        fetchPage: (target) async {
+          if (subject == null) {
+            return ledgerRepository.productionTrace(
+              goodsId!,
+              direction: direction,
+              page: target,
             );
-        if (result.subject?.identity != subject.identity) {
-          throw ApiException('INVALID_TRACE_RESPONSE', '追溯结果与当前对象不一致，请重新查询');
-        }
-        data = result.page;
-      } else {
-        result = null;
-        data = await ref
-            .read(goodsStockLedgerRepositoryProvider)
-            .productionTrace(
-              widget.goodsId!,
-              direction: _direction,
-              page: page,
-            );
-      }
+          }
+          final result = await traceRepository.trace(
+            subject: subject,
+            direction: direction,
+            dateFrom: from,
+            dateTo: to,
+            page: target,
+          );
+          if (result.subject?.identity != subject.identity) {
+            throw ApiException('INVALID_TRACE_RESPONSE', '追溯结果与当前对象不一致，请重新查询');
+          }
+          return PagedReadSnapshot<
+            GoodsProductionTraceRow,
+            MaterialTraceResult
+          >(page: result.page, snapshot: result);
+        },
+      );
+      final data = cached;
+      final result =
+          cached
+              is PagedReadSnapshot<GoodsProductionTraceRow, MaterialTraceResult>
+          ? cached.snapshot
+          : null;
       if (!mounted || request != _request) return;
       setState(() {
         _data = data;
@@ -255,6 +305,8 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
         const SizedBox(height: 8),
         Expanded(
           child: MasterDataTableView<GoodsProductionTraceRow>(
+                rowsController: _readViewportRows,
+            expensiveRowMounts: false,
             tableKey: 'goods.production_trace.$_direction',
             key: ValueKey(('goods-production-trace', _direction, _readEpoch)),
             primary: true,
@@ -274,7 +326,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
             isLoading: _loading && _data == null,
             loadingMore: _loading && _data != null,
             error: _error,
-            onRetry: () => _load(1),
+            onRetry: () => _load(_visibleReadPage),
             emptyMessage: _result?.sources.isNotEmpty == true
                 ? '已找到来源凭证，暂无当前范围内可显示的后续用料记录'
                 : '暂无权限范围内的实际用料记录',
@@ -288,7 +340,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
               _direction,
               _readEpoch,
             ),
-            onPageChange: _load,
+            onPageChange: (page) => _load(page, useCache: true),
           ),
         ),
       ],

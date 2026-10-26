@@ -38,14 +38,7 @@ public class BusinessTaskAudienceService implements TaskAudiencePort {
                 || !(authentication.getPrincipal() instanceof AuthUser actor) || actor.isVisitor()) {
             return work.read();
         }
-        Set<String> granted = new HashSet<>(permissions.grantedPermsOf(actor.getId()));
-        // A task read cannot resurrect authority absent from this authenticated session.
-        granted.retainAll(actor.getPermissions());
-        if (!actor.isAccountNonLocked() || actor.isMustChangePassword()) granted.clear();
-        AuthUser taskActor = new AuthUser(actor.getId(), actor.getEmployeeId(), actor.getLoginAccount(),
-                Set.copyOf(granted), actor.isMustChangePassword(), actor.isAccountNonLocked(), false,
-                actor.isRemoteAccess(), actor.getImpersonatedBy(), actor.getSessionId(),
-                actor.getMfaVerifiedAt(), actor.isRemotePolicyEnabled());
+        AuthUser taskActor = freshTaskSubject(actor);
         var taskAuthentication = UsernamePasswordAuthenticationToken.authenticated(
                 taskActor, null, taskActor.getAuthorities());
         taskAuthentication.setDetails(authentication.getDetails());
@@ -59,6 +52,18 @@ public class BusinessTaskAudienceService implements TaskAudiencePort {
             SecurityContextHolder.setContext(original);
             reading.remove();
         }
+    }
+
+    @Override
+    public AuthUser freshTaskSubject(AuthUser actor) {
+        Set<String> granted = new HashSet<>(permissions.grantedPermsOf(actor.getId()));
+        // A task read cannot resurrect authority absent from this authenticated session.
+        granted.retainAll(actor.getPermissions());
+        if (!actor.isAccountNonLocked() || actor.isMustChangePassword()) granted.clear();
+        return new AuthUser(actor.getId(), actor.getEmployeeId(), actor.getLoginAccount(),
+                Set.copyOf(granted), actor.isMustChangePassword(), actor.isAccountNonLocked(), false,
+                actor.isRemoteAccess(), actor.getImpersonatedBy(), actor.getSessionId(),
+                actor.getMfaVerifiedAt(), actor.isRemotePolicyEnabled());
     }
 
     @Override

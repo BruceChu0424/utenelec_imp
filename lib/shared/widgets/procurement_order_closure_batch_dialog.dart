@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
@@ -11,14 +10,15 @@ import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/authenticated_request_scope.dart';
 import '../../core/network/server_config.dart';
+import '../../core/router/page_navigation_session.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
 import '../auth/permissions.dart';
 import '../badges/badge_registry.dart';
-import '../formatters/exact_decimal.dart';
 import '../models/procurement_order_closure.dart';
 import '../providers/authenticated_scope_provider.dart';
 import 'procurement_order_closure_blocker_action.dart';
+import 'procurement_order_closure_quantities.dart';
 
 Future<bool?> showProcurementOrderClosureBatchDialog(
   BuildContext context, {
@@ -59,6 +59,7 @@ class _BatchDialog extends ConsumerStatefulWidget {
 class _BatchDialogState extends ConsumerState<_BatchDialog> {
   static const _path = '/finance/procurement-approvals/order-closures';
   final _reason = TextEditingController();
+  final _navigation = PageNavigationSession();
   final _form = GlobalKey<FormState>();
   final Map<String, ProcurementOrderClosurePreview> _previews = {};
   AuthenticatedRequestScope? _scope;
@@ -107,6 +108,7 @@ class _BatchDialogState extends ConsumerState<_BatchDialog> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _navigation.attach(context);
     _route ??= ModalRoute.of(context);
   }
 
@@ -120,6 +122,7 @@ class _BatchDialogState extends ConsumerState<_BatchDialog> {
 
   @override
   void dispose() {
+    _navigation.dispose();
     _reason.dispose();
     super.dispose();
   }
@@ -175,7 +178,7 @@ class _BatchDialogState extends ConsumerState<_BatchDialog> {
     try {
       await _scope?.verify();
       if (!mounted || !_current) return;
-      await context.push<void>(route);
+      await _navigation.push<void>(route);
       if (mounted && _current) await _load();
     } catch (error) {
       if (mounted && _current) context.appApiError(error);
@@ -195,7 +198,7 @@ class _BatchDialogState extends ConsumerState<_BatchDialog> {
     }
     setState(() => _busy = true);
     try {
-      await _scope!.run(
+      final result = await _scope!.run(
         () => ref
             .read(apiClientProvider)
             .post(
@@ -216,6 +219,20 @@ class _BatchDialogState extends ConsumerState<_BatchDialog> {
       );
       if (!mounted || !_current) return;
       refreshBadges(ref);
+      final approvals = result['approvals'];
+      if (result['submittedCount'] != _eligibleOrders.length ||
+          approvals is! List ||
+          approvals.length != _eligibleOrders.length ||
+          approvals.any(
+            (item) => item is! Map || item['status'] != 'APPROVED',
+          )) {
+        setState(
+          () => _error = AppLocalizations.of(
+            context,
+          ).orderClosureResultUnconfirmed,
+        );
+        return;
+      }
       context.appSuccess(AppLocalizations.of(context).orderClosureSubmitted);
       Navigator.of(context).pop(true);
     } catch (error) {
@@ -264,6 +281,7 @@ class _BatchDialogState extends ConsumerState<_BatchDialog> {
                       Text('$label: ${l10n.orderClosureUnsupportedRowReason}'),
                     const SizedBox(height: UtenSpacing.s8),
                     Text(l10n.orderClosureReceiptFinalityHint),
+                    Text(l10n.orderClosureQuantityBasisHint),
                     RadioGroup<String>(
                       groupValue: _mode,
                       onChanged: (mode) {
@@ -389,9 +407,7 @@ class _BatchDialogState extends ConsumerState<_BatchDialog> {
             in preview?.items ?? const <ProcurementOrderClosureLine>[])
           Padding(
             padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            child: Text(
-              '${line.goodsCode} ${line.goodsName}\n${l10n.orderClosureRemaining}: ${financeExactTrimmed(line.remainingQty) ?? '—'} ${line.unitName} · ${l10n.orderClosureRemainingGift}: ${financeExactTrimmed(line.remainingGiftQty) ?? '—'} ${line.unitName}',
-            ),
+            child: ProcurementOrderClosureQuantities(line: line),
           ),
       ],
     );

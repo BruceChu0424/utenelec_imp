@@ -1,7 +1,9 @@
+import '../providers/party_reference_read_controller.dart';
+import '../providers/master_party_options.dart';
+import '../providers/export_context_epoch_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_context_menu.dart';
@@ -10,6 +12,7 @@ import '../../components/layout/uten_filter_toolbar.dart';
 import '../../components/layout/uten_refresh_scope.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/data_write_revision.dart';
+import '../../core/router/page_navigation_session.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
 import '../../features/basic_data/models/master_facet.dart';
@@ -153,13 +156,33 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
   String _search = '';
   final _filters = <String, String?>{};
   Map<String, DraftWorkspaceRow> _visible = {};
+  int _localReferenceRefresh = 0;
+  late final _localReferences = PartyReferenceReadController(ref);
+  final _navigation = PageNavigationSession();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
 
   @override
   void initState() {
     super.initState();
+    _localReferences.addListener(() {
+      if (mounted) setState(() {});
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) trackRefresh(_waitForRows());
     });
+  }
+
+  @override
+  void dispose() {
+    _navigation.dispose();
+    _localReferences.dispose();
+    super.dispose();
   }
 
   Future<void> _waitForRows() async {
@@ -173,7 +196,17 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
     }
   }
 
-  String? _resolveLocalParty(FormDraft draft) {
+  String? _resolveLocalParty(FormDraft draft) => _readLocalParty(
+    draft,
+    clients: _localReferences.snapshot.clients,
+    suppliers: _localReferences.snapshot.suppliers,
+  );
+
+  String? _readLocalParty(
+    FormDraft draft, {
+    Map<String, String>? clients,
+    Map<String, String>? suppliers,
+  }) {
     final kind = formDraftBusinessKind(draft) ?? '';
     final finance = kind.startsWith('finance');
     final clientFirst = kind.startsWith('sales') || kind == 'financeReceipt';
@@ -188,6 +221,8 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
       final ids = formDraftColumnRawValues(draft, field);
       if (ids.isEmpty) continue;
       final entries = switch (field) {
+        'supplier' when suppliers != null => suppliers,
+        'client' when clients != null => clients,
         'supplier' =>
           finance
               ? ref.read(financeNameServiceProvider).supplierEntries
@@ -240,6 +275,7 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
   }
 
   Future<void> _refresh({bool reportFailure = false}) async {
+    if (mounted) setState(() => ++_localReferenceRefresh);
     final kinds = _kinds;
     for (final kind in kinds) {
       ref.invalidate(draftWorkspaceRowsProvider(kind));
@@ -356,9 +392,14 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
     if (widget.selectionLocked || draftDeleteBusy) return;
     if (row.stockType?.isLegacyReadOnly != true &&
         row.recoveryDrafts.length > 1) {
-      await resumeTaskFormDraft(context, ref, row.recoveryDrafts);
+      await resumeTaskFormDraft(
+        context,
+        ref,
+        row.recoveryDrafts,
+        navigation: _navigation,
+      );
     } else {
-      await context.push(row.location);
+      await _navigation.push<void>(row.location);
     }
     if (mounted) {
       try {
@@ -379,6 +420,9 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
     });
     ref.watch(currentPermissionsProvider);
     ref.watch(authenticatedScopeProvider);
+    ref.watch(masterNameServiceProvider);
+    ref.watch(salesMasterNameServiceProvider);
+    ref.watch(financeNameServiceProvider);
     final formal = <DraftWorkspaceRow>[];
     final failures = <String>[];
     var loading = false;
@@ -395,6 +439,25 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
         .watch(formDraftCategoryProvider(widget.localScope))
         .where((draft) => !isTaskFormDraft(draft))
         .toList();
+    final referenceKey = [
+      for (final draft in local)
+        '${draft.id}:${formDraftColumnRawValues(draft, 'client').join(',')}:${formDraftColumnRawValues(draft, 'supplier').join(',')}',
+    ]..sort();
+    final signature = (
+      ref.watch(exportContextEpochProvider),
+      _localReferenceRefresh,
+      widget.localScope,
+      referenceKey.join('|'),
+    );
+    _localReferences.prepare(
+      signature,
+      clients: partyReferenceIds(
+        local.expand((draft) => formDraftColumnRawValues(draft, 'client')),
+      ),
+      suppliers: partyReferenceIds(
+        local.expand((draft) => formDraftColumnRawValues(draft, 'supplier')),
+      ),
+    );
     final search = '${widget.search} $_search'.trim().toLowerCase();
     final searchable = rankedKeywordMatches(
       mergeDraftWorkspaceRows(

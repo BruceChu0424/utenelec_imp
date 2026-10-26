@@ -12,6 +12,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -451,9 +452,20 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
                           '清理请求：${_pending ?? _receipt!.requestId}',
                         ),
                       if (summary != null) ...[
-                        Text(
-                          '本机资源用量',
-                          style: Theme.of(context).textTheme.titleLarge,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '本机资源用量',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                            ),
+                            const UtenFieldHintIcon(
+                              info:
+                                  '按资源分类查看。逻辑大小、磁盘占用和预计可释放空间分别计量；受保护资源不会提供删除选项。',
+                              dense: true,
+                            ),
+                          ],
                         ),
                         if (summary.sampledAt != null)
                           Text(
@@ -484,10 +496,6 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
                             ),
                           ),
                         const SizedBox(height: UtenSpacing.s16),
-                        const Text(
-                          '按资源分类查看。逻辑大小、磁盘占用和预计可释放空间分别计量；受保护资源不会提供删除选项。',
-                        ),
-                        const SizedBox(height: UtenSpacing.s12),
                         LayoutBuilder(
                           builder: (context, constraints) => Wrap(
                             spacing: 12,

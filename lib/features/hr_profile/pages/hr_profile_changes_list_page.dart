@@ -23,18 +23,14 @@
 
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/retained_async_page.dart';
-import '../../../shared/providers/master_name_provider.dart'
-    show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_batch_reject_dialog.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
-import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -72,9 +68,10 @@ class _HrProfileChangesListPageState
   final _retainedPage =
       RetainedAsyncPage<ProfileChangePage<HrProfileChangeListItem>>();
   Object get _paginationScope =>
-      (_status, _departmentId, ref.watch(masterDataSessionKeyProvider));
+      (_status, _departmentId, retainedReaderEpoch(ref));
   String? _status; // null = 默认待审
   int _page = 1; // 当前页（服务端真分页）
+  final _tableRows = MasterDataTableRowsController<HrProfileChangeListItem>();
 
   /// 表头「部门」筛选：部门 id，下推后端 departmentId（非页内裁剪）。
   String? _departmentId;
@@ -240,6 +237,7 @@ class _HrProfileChangesListPageState
     if (failures.isNotEmpty) {
       context.appError('批量$verb未全部完成：${failures.first}');
     }
+    setState(() => _page = _tableRows.visiblePage ?? _page);
     // 刷新队列、筛选桶与导航徽章（员工详情页的「待审修改」区块共用旧 key，一并失效）。
     ref.invalidate(hrProfileChangeQueueProvider);
     ref.invalidate(hrProfileChangesProvider);
@@ -278,14 +276,16 @@ class _HrProfileChangesListPageState
   @override
   Widget build(BuildContext context) {
     ref.onPageResume(RouteName.hrProfileChanges, () {
+      setState(() => _page = _tableRows.visiblePage ?? _page);
       ref.invalidate(hrProfileChangeQueueProvider);
       ref.invalidate(hrProfileChangeFacetsProvider(_effectiveStatus));
       refreshBadges(ref);
     });
     final l10n = AppLocalizations.of(context);
-    final async = _retainedPage.resolve(
+    final async = _retainedPage.resolveFor(
+      ref,
       _paginationScope,
-      ref.watch(hrProfileChangeQueueProvider(_query)),
+      hrProfileChangeQueueProvider(_query),
     );
     // 待审段红徽章：读徽章汇总入口 hrProfileReview 的待办事实数（与导航徽章、
     // /pending-count 端点同源同一口径），不自己再发请求。
@@ -298,6 +298,15 @@ class _HrProfileChangesListPageState
     // 折叠容器，全域有效。
     Widget body = RefreshIndicator(
       onRefresh: () async {
+        setState(() => _page = _tableRows.visiblePage ?? _page);
+        ref
+            .read(
+              hrProfileChangeQueueReadProvider((
+                status: _status,
+                departmentId: _departmentId,
+              )),
+            )
+            .invalidate();
         ref.invalidate(hrProfileChangeQueueProvider);
         ref.invalidate(hrProfileChangeFacetsProvider(_effectiveStatus));
         refreshBadges(ref);
@@ -352,61 +361,77 @@ class _HrProfileChangesListPageState
     AppLocalizations l10n,
     AsyncValue<ProfileChangePage<HrProfileChangeListItem>> async,
   ) {
+    final readLease =
+        ref.watch(
+          hrProfileChangeQueueReadProvider((
+            status: _status,
+            departmentId: _departmentId,
+          )),
+        )..bindView(
+          context,
+          currentQuery: () => (status: _status, departmentId: _departmentId),
+        );
     final facets = ref.watch(hrProfileChangeFacetsProvider(_effectiveStatus));
-    return async.when(
-      skipLoadingOnReload: true,
-      skipError: true,
-      data: (page) => MasterDataTableView<HrProfileChangeListItem>(
-        tableKey:
-            'features.hr_profile.pages.hr_profile_changes_list_page.HrProfileChangesListPageState._buildBody.1',
-        key: const Key('hr-profile-changes-table'),
-        // 折叠容器联动：拾取注入的 PrimaryScrollController，参与「收分段条 → 表格内滚」。
-        primary: true,
-        paginationScope: _paginationScope,
-        loadingMore: async.isLoading,
-        error: async.hasError ? '${async.error}' : null,
-        onRetry: () => ref.invalidate(hrProfileChangeQueueProvider(_query)),
-        columns: _columns(l10n),
-        items: page.items,
-        // 部门桶来自后端全量聚合；状态桶即三个队列分段。
-        facets: {
-          'departmentName':
-              facets.value?['departmentName'] ?? const <MasterFacetBucket>[],
-          'status': _statusFacets(l10n),
-        },
-        nullCounts: const {},
-        filters: {
-          'departmentName': _departmentId,
-          'status': _status == 'history' ? null : _effectiveStatus,
-        },
-        onFilterChanged: _onFilterChanged,
-        // 待审段开多选 + 悬浮批量通过/驳回；已生效/已驳回段只读浏览。
-        selectable: _isPendingSegment,
-        idOf: (item) => item.batchId,
-        selectedIds: _selectedIds,
-        onSelectedIdsChanged: (next) => setState(() => _selectedIds = next),
-        batchActionsBuilder: _isPendingSegment ? _batchActions : null,
-        // 双击行进入批次详情审阅（goFrom 写 returnTo，详情返回键回本队列）。
-        onRowTap: (item) =>
-            goFrom(context, RoutePath.hrProfileChangeDetail(item.batchId)),
-        emptyMessage: l10n.profileChangeHrQueueEmpty,
-        currentPage: page.page,
-        totalPages: page.totalPages,
-        onPageChange: (p) async {
-          setState(() => _page = p);
-          await _retainedPage.waitFor(
-            ref,
-            hrProfileChangeQueueProvider(_query),
-            () => ref.read(hrProfileChangeQueueProvider(_query).future),
-          );
-        },
-      ),
-      loading: () => const UtenSkeletonList(itemCount: 6),
-      error: (e, _) => UtenEmpty.error(
-        message: e is ApiException ? e.message : l10n.commonError,
-        actionLabel: l10n.commonRetry,
-        onAction: () => ref.invalidate(hrProfileChangeQueueProvider),
-      ),
+    final page =
+        async.value ??
+        const ProfileChangePage<HrProfileChangeListItem>(
+          items: [],
+          page: 1,
+          size: 20,
+          total: 0,
+          totalPages: 0,
+        );
+    return MasterDataTableView<HrProfileChangeListItem>(
+      rowsController: _tableRows,
+      expensiveRowMounts: false,
+      tableKey:
+          'features.hr_profile.pages.hr_profile_changes_list_page.HrProfileChangesListPageState._buildBody.1',
+      key: const Key('hr-profile-changes-table'),
+      // 折叠容器联动：拾取注入的 PrimaryScrollController，参与「收分段条 → 表格内滚」。
+      primary: true,
+      paginationScope: _paginationScope,
+      isLoading: async.isLoading && !async.hasValue,
+      loadingMore: async.isLoading && async.hasValue,
+      error: async.hasError ? '${async.error}' : null,
+      onRetry: () {
+        readLease.invalidate();
+        ref.invalidate(hrProfileChangeQueueProvider(_query));
+      },
+      columns: _columns(l10n),
+      items: page.items,
+      // 部门桶来自后端全量聚合；状态桶即三个队列分段。
+      facets: {
+        'departmentName':
+            facets.value?['departmentName'] ?? const <MasterFacetBucket>[],
+        'status': _statusFacets(l10n),
+      },
+      nullCounts: const {},
+      filters: {
+        'departmentName': _departmentId,
+        'status': _status == 'history' ? null : _effectiveStatus,
+      },
+      onFilterChanged: _onFilterChanged,
+      // 待审段开多选 + 悬浮批量通过/驳回；已生效/已驳回段只读浏览。
+      selectable: _isPendingSegment,
+      idOf: (item) => item.batchId,
+      selectedIds: _selectedIds,
+      onSelectedIdsChanged: (next) => setState(() => _selectedIds = next),
+      batchActionsBuilder: _isPendingSegment ? _batchActions : null,
+      // 双击行进入批次详情审阅（goFrom 写 returnTo，详情返回键回本队列）。
+      onRowTap: (item) =>
+          goFrom(context, RoutePath.hrProfileChangeDetail(item.batchId)),
+      emptyMessage: l10n.profileChangeHrQueueEmpty,
+      currentPage: page.page,
+      totalPages: page.totalPages,
+      onPageChange: (p) => readLease.paginate(p, () async {
+        setState(() => _page = p);
+        ref.invalidate(hrProfileChangeQueueProvider(_query));
+        await _retainedPage.waitFor(
+          ref,
+          hrProfileChangeQueueProvider(_query),
+          () => ref.read(hrProfileChangeQueueProvider(_query).future),
+        );
+      }),
     );
   }
 

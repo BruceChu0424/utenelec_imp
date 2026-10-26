@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'client_release.dart';
+import 'client_package_integrity.dart';
 
 Future<String> saveClientPackage(
   Stream<Uint8List> stream,
@@ -10,13 +11,10 @@ Future<String> saveClientPackage(
   void Function(double) onProgress,
   bool Function() isCurrent,
 ) async {
-  if (context.stagingDirectory.isEmpty ||
-      release.sizeBytes <= 0 ||
-      release.sizeBytes > 536870912 ||
-      !RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(release.sha256) ||
-      !RegExp(r'^[a-fA-F0-9-]{36}$').hasMatch(release.id)) {
+  if (context.stagingDirectory.isEmpty) {
     throw const FormatException('Invalid package metadata');
   }
+  requireClientPackageMetadata(release);
   final directory = Directory(context.stagingDirectory);
   await directory.create(recursive: true);
   // A retired login's cancelled stream must never truncate or remove a new
@@ -33,22 +31,19 @@ Future<String> saveClientPackage(
     await for (final chunk in stream) {
       if (!isCurrent()) throw StateError('Client update session changed');
       received += chunk.length;
-      if (received > release.sizeBytes) {
-        throw const FormatException('Package size mismatch');
-      }
+      requireClientPackageLength(release, received);
       sink.add(chunk);
       onProgress(received / release.sizeBytes);
       // Bound the buffered write queue even on a fast local network.
       await sink.flush();
     }
     await sink.close();
-    if (!isCurrent() || received != release.sizeBytes) {
+    if (!isCurrent()) {
       throw const FormatException('Incomplete client package');
     }
+    requireClientPackageLength(release, received, complete: true);
     final digest = await sha256.bind(partial.openRead()).first;
-    if (digest.toString() != release.sha256.toLowerCase()) {
-      throw const FormatException('Client package checksum mismatch');
-    }
+    requireClientPackageDigest(release, digest.toString());
     if (!isCurrent()) throw StateError('Client update session changed');
     await partial.rename(target.path);
     return target.path;

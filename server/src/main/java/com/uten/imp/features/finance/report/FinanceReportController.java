@@ -60,6 +60,7 @@ public class FinanceReportController {
     // ======================== ① 应收应付 Z / A·C / B·D ========================
 
     /** Z 应收应付总览（前端左分类树+右表）。displayMode: ALL/ANY/AR_ONLY/AP_ONLY。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/ar-ap/overview")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse overview(
@@ -80,6 +81,7 @@ public class FinanceReportController {
      * <p>控制器要求钱流报表查看权；服务层继续要求 {@code finance:view:all}，与总览报表
      * 完全同口径，不能借用受 {@code client:view:all} 归属范围裁剪的客户主档搜索。
      */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/ar-ap/party-locations")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public PageResponse<ArApPartyLocation> arApPartyLocations(
@@ -90,6 +92,7 @@ public class FinanceReportController {
     }
 
     /** A/C 应收/应付明细。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/ar-ap/detail")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse arApDetail(
@@ -110,6 +113,7 @@ public class FinanceReportController {
     }
 
     /** 已审核销售订单待收计划（经营视图，不形成会计应收）。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/ar-ap/order-plan")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse salesOrderReceivablePlan(
@@ -127,6 +131,7 @@ public class FinanceReportController {
     }
 
     /** B/D 应收/应付汇总（按往来单位）。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/ar-ap/summary")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse arApSummary(
@@ -140,6 +145,7 @@ public class FinanceReportController {
     }
 
     /** Customer advance arrival/application/reversal dated subledger; also the statement alias. */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping({"/customer-prepayment/events", "/statement/customer-prepayments"})
     @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('customer_prepayment:view') "
             + "and hasAuthority('finance:view:all')")
@@ -155,6 +161,7 @@ public class FinanceReportController {
     // ======================== ② 收付款 E·F / G·H ========================
 
     /** E 销售收款明细。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/receipt/detail")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse receiptDetail(
@@ -175,6 +182,7 @@ public class FinanceReportController {
     }
 
     /** F 销售收款汇总。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/receipt/summary")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse receiptSummary(
@@ -191,6 +199,7 @@ public class FinanceReportController {
     }
 
     /** G 采购付款明细。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/payment/detail")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse paymentDetail(
@@ -211,6 +220,7 @@ public class FinanceReportController {
     }
 
     /** H 采购付款汇总。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/payment/summary")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse paymentSummary(
@@ -232,6 +242,7 @@ public class FinanceReportController {
     // ======================== ③ 费用/收入 M·N / O·P + V ========================
 
     /** M 一般费用明细。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/expense/detail")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse expenseDetail(
@@ -252,6 +263,7 @@ public class FinanceReportController {
     }
 
     /** N 一般费用汇总。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/expense/summary")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse expenseSummary(
@@ -271,6 +283,7 @@ public class FinanceReportController {
     }
 
     /** O 其它收入明细。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/income/detail")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse incomeDetail(
@@ -291,6 +304,7 @@ public class FinanceReportController {
     }
 
     /** P 其它收入汇总。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/income/summary")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse incomeSummary(
@@ -310,6 +324,7 @@ public class FinanceReportController {
     }
 
     /** V 费用冲销明细（收款侧 + AR 核销 + 其它费用）。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/fee-offset/detail")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse feeOffsetDetail(
@@ -332,6 +347,7 @@ public class FinanceReportController {
     // ======================== ④ 往来对帐 I·J·K·L / X ========================
 
     /** I/K 单客户/供应商流水对帐（滚动余额）。side=AR 走客户 / AP 走供应商。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/statement/flow")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse statementFlow(
@@ -345,6 +361,7 @@ public class FinanceReportController {
     }
 
     /** J/L 单客户/供应商明细对帐。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/statement/detail")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse statementDetail(
@@ -358,6 +375,7 @@ public class FinanceReportController {
     }
 
     /** X 客户/供应商年度对帐单（按月）。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/statement/annual")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse statementAnnual(
@@ -372,6 +390,7 @@ public class FinanceReportController {
     // ======================== ⑤ 账户流水 S / 银行存取 Q·R ========================
 
     /** S 帐户进出流水帐（滚动余额，必填 accountId）。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/account/statement")
     @PreAuthorize("hasAuthority('account:view') and hasAuthority('account:balance:view') "
             + "and hasAuthority('account:flow:view')")
@@ -390,7 +409,8 @@ public class FinanceReportController {
 
     /** 账户流水单号 facets（2026-09-25 单号列统一）：{billNo:[各单号]}——
      *  同列表过滤口径（不含 billNo 自身值筛选）。 */
-    @GetMapping("/account/statement/facets")
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @org.springframework.web.bind.annotation.RequestMapping(value="/account/statement/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('account:view') and hasAuthority('account:balance:view') "
             + "and hasAuthority('account:flow:view')")
     public Map<String, List<Map<String, Object>>> accountStatementFacets(
@@ -402,6 +422,7 @@ public class FinanceReportController {
     }
 
     /** Q 银行存取明细 / R 汇总（M_Bank 0 行，空结构）。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/bank/{view}")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse bank(@PathVariable String view) {

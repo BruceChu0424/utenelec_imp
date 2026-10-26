@@ -35,6 +35,7 @@ import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../models/production_execution_workbench.dart';
 import '../repositories/production_material_discovery_request_repository.dart';
 import '../repositories/production_execution_workbench_repository.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 /// Optional workshop suggestions stay attached to one exact work order.
 class DiscoveryRequestMaterialRow {
@@ -768,7 +769,7 @@ class _RequestState
             children: [
               UtenContentContainer(
                 child: UtenCollapsingHeaderScrollView(
-                  collapsingHeader: Padding(
+                  collapsingHeader: UtenPageEdgePadding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,

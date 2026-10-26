@@ -1,5 +1,6 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -152,7 +153,17 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
     return UtenAlertDialog(
       scrollable: false,
       key: const Key('material-borrow-dialog'),
-      title: const Text('分析内调给产品'),
+      title: const Row(
+        children: [
+          Flexible(child: Text('分析内调给产品')),
+          UtenFieldHintIcon(
+            dense: true,
+            info:
+                '这里仅调整当前物料分析内的产品分配。若接受方在其它分析，'
+                '请使用“跨计划让料”；原计划会标记优先待补，接受计划无需返还。',
+          ),
+        ],
+      ),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560),
         child: SingleChildScrollView(
@@ -165,14 +176,6 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
                 '${widget.from.goodsName ?? widget.from.goodsCode ?? '该物料'} '
                 '现货调给更急的产品。',
                 style: theme.textTheme.bodyLarge,
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                '这里仅调整当前物料分析内的产品分配。若接受方在其它分析，'
-                '请使用“跨计划让料”；原计划会标记优先待补，接受计划无需返还。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
               ),
               const SizedBox(height: UtenSpacing.s12),
               Text(

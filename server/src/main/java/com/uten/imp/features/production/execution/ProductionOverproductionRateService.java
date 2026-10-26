@@ -334,7 +334,7 @@ public class ProductionOverproductionRateService {
         String predicate="ALL".equals(filter)?"TRUE":"request.status=:status";
         Map<String,List<Map<String,Object>>> result=new java.util.LinkedHashMap<>();
         for (String column : List.of("planNo","segmentCode")) {
-            var query=em.createNativeQuery("""
+            var query=NativeFacets.query(em, "planNo".equals(column)?"plan":"segment", """
                     SELECT COALESCE(request.before_snapshot->>'%1$s',''), COUNT(*)
                     FROM production_overproduction_rate_requests request
                     WHERE %2$s
@@ -343,7 +343,7 @@ public class ProductionOverproductionRateService {
                     """.formatted(column,predicate)).setMaxResults(500);
             if(!"ALL".equals(filter))query.setParameter("status",filter);
             result.put("planNo".equals(column)?"plan":"segment",
-                    NativeFacets.rows(NativeQueryResults.objectArrayRows(query)));
+                    NativeFacets.rowsOf(query));
         }
         return result;
     }

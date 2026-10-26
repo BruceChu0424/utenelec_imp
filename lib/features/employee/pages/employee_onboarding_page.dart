@@ -23,6 +23,7 @@ import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -676,7 +677,16 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
 
   List<Step> _steps(AppLocalizations l10n, bool canEditCompensation) => [
     Step(
-      title: Text('1. ${l10n.employeeOnboardStepBasic}'),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: Text('1. ${l10n.employeeOnboardStepBasic}')),
+          UtenFieldHintIcon(
+            info: l10n.employeeOnboardCodeAutoNote,
+            dense: true,
+          ),
+        ],
+      ),
       isActive: _step >= 0,
       state: _step > 0 ? StepState.complete : StepState.indexed,
       content: _basicStep(l10n),
@@ -688,13 +698,25 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
       content: _workStep(l10n),
     ),
     Step(
-      title: Text('3. ${l10n.employeeOnboardStepEducation}'),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: Text('3. ${l10n.employeeOnboardStepEducation}')),
+          UtenFieldHintIcon(info: l10n.employeeOnboardEduHint, dense: true),
+        ],
+      ),
       isActive: _step >= 2,
       state: _step > 2 ? StepState.complete : StepState.indexed,
       content: _educationStep(l10n),
     ),
     Step(
-      title: Text('4. ${l10n.employeeOnboardStepEmergency}'),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: Text('4. ${l10n.employeeOnboardStepEmergency}')),
+          UtenFieldHintIcon(info: l10n.employeeOnboardContactHint, dense: true),
+        ],
+      ),
       isActive: _step >= 3,
       state: _step > 3 ? StepState.complete : StepState.indexed,
       content: _emergencyStep(l10n),
@@ -715,8 +737,6 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _noteBanner(l10n.employeeOnboardCodeAutoNote),
-        const SizedBox(height: UtenSpacing.s12),
         UtenFormGrid(
           children: [
             _text(
@@ -1007,8 +1027,6 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(l10n.employeeOnboardEduHint),
-        const SizedBox(height: UtenSpacing.s12),
         for (var i = 0; i < _educations.length; i++)
           _educationEntryCard(l10n, i),
         Align(
@@ -1140,8 +1158,6 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(l10n.employeeOnboardContactHint),
-        const SizedBox(height: UtenSpacing.s12),
         for (var i = 0; i < _contacts.length; i++) _contactEntryCard(l10n, i),
         Align(
           alignment: Alignment.centerLeft,

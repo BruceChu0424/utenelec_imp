@@ -1,6 +1,8 @@
 package com.uten.imp.features.finance.asset;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.report.ReportReadPlan;
+import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.security.TxSessionVars;
@@ -217,7 +219,10 @@ public class FixedAssetService {
 
     /** 固定资产折旧清单。 */
     @Transactional(readOnly = true)
-    public ReportTableResponse depreciationSchedule() {
+    public ReportTableResponse depreciationSchedule() { return depreciationSchedule(1, 50); }
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse depreciationSchedule(int page, int size) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("code", "资产编号", 100),
                 ReportColumn.text("name", "资产名称", 180),
@@ -235,13 +240,20 @@ public class FixedAssetService {
                 SELECT a.code, a.name, COALESCE(d.name,'') AS dept, a.original_value, a.salvage_rate,
                        a.useful_months, a.start_period,
                        ROUND(a.original_value * (1 - a.salvage_rate) / a.useful_months, 2) AS monthly_dep,
-                       (SELECT COUNT(*) FROM fa_depreciation_log l WHERE l.asset_id=a.id AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false) AS posted_months,
-                       (SELECT COALESCE(SUM(l.amount),0) FROM fa_depreciation_log l WHERE l.asset_id=a.id AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false) AS accum_dep,
-                       ROUND(a.original_value - (SELECT COALESCE(SUM(l.amount),0) FROM fa_depreciation_log l WHERE l.asset_id=a.id AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false), 2) AS net_value,
+                       book.posted_months,
+                       book.accum_dep,
+                       ROUND(a.original_value - book.accum_dep, 2) AS net_value,
                        a.status
-                FROM fixed_assets a LEFT JOIN departments d ON d.id = a.department_id
-                WHERE a.is_deleted = false ORDER BY a.code
-                """, "code", "name", "dept", "original_value", "salvage_rate", "useful_months",
+                FROM (SELECT * FROM fixed_assets WHERE is_deleted=false
+                      ORDER BY code,id LIMIT :__limit OFFSET :__offset) a
+                LEFT JOIN departments d ON d.id = a.department_id
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*) AS posted_months, COALESCE(SUM(l.amount),0) AS accum_dep
+                    FROM fa_depreciation_log l WHERE l.asset_id=a.id
+                      AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false
+                ) book ON TRUE
+                ORDER BY a.code,a.id
+                """, page, size, "code", "name", "dept", "original_value", "salvage_rate", "useful_months",
                 "start_period", "monthly_dep", "posted_months", "accum_dep", "net_value", "status").stream().map(m -> {
             Map<String, Object> r = new LinkedHashMap<>();
             r.put("code", m.get("code"));
@@ -258,12 +270,15 @@ public class FixedAssetService {
             r.put("status", m.get("status"));
             return r;
         }).toList();
-        return new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, Math.max(rows.size(), 1), rows.size(), 1);
+        return scheduleResponse(cols, rows, page, size, "fixed_assets");
     }
 
     /** 长期待摊摊销清单。 */
     @Transactional(readOnly = true)
-    public ReportTableResponse amortizationSchedule() {
+    public ReportTableResponse amortizationSchedule() { return amortizationSchedule(1, 50); }
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse amortizationSchedule(int page, int size) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("code", "编号", 100),
                 ReportColumn.text("name", "项目名称", 180),
@@ -278,13 +293,19 @@ public class FixedAssetService {
         List<Map<String, Object>> rows = queryMaps("""
                 SELECT a.code, a.name, a.total_amount, a.useful_months, a.start_period,
                        ROUND(a.total_amount / a.useful_months, 2) AS monthly_amt,
-                       (SELECT COUNT(*) FROM da_amortization_log l WHERE l.deferred_id=a.id AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false) AS posted_months,
-                       (SELECT COALESCE(SUM(l.amount),0) FROM da_amortization_log l WHERE l.deferred_id=a.id AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false) AS accum_amt,
-                       ROUND(a.total_amount - (SELECT COALESCE(SUM(l.amount),0) FROM da_amortization_log l WHERE l.deferred_id=a.id AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false), 2) AS remain,
+                       book.posted_months,
+                       book.accum_amt,
+                       ROUND(a.total_amount - book.accum_amt, 2) AS remain,
                        a.status
-                FROM deferred_expenses a
-                WHERE a.is_deleted = false ORDER BY a.code
-                """, "code", "name", "total_amount", "useful_months", "start_period", "monthly_amt",
+                FROM (SELECT * FROM deferred_expenses WHERE is_deleted=false
+                      ORDER BY code,id LIMIT :__limit OFFSET :__offset) a
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*) AS posted_months, COALESCE(SUM(l.amount),0) AS accum_amt
+                    FROM da_amortization_log l WHERE l.deferred_id=a.id
+                      AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false
+                ) book ON TRUE
+                ORDER BY a.code,a.id
+                """, page, size, "code", "name", "total_amount", "useful_months", "start_period", "monthly_amt",
                 "posted_months", "accum_amt", "remain", "status").stream().map(m -> {
             Map<String, Object> r = new LinkedHashMap<>();
             r.put("code", m.get("code"));
@@ -299,13 +320,28 @@ public class FixedAssetService {
             r.put("status", m.get("status"));
             return r;
         }).toList();
-        return new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, Math.max(rows.size(), 1), rows.size(), 1);
+        return scheduleResponse(cols, rows, page, size, "deferred_expenses");
     }
 
     // ======================== 工具 ========================
 
-    private List<Map<String, Object>> queryMaps(String sql, String... colNames) {
-        var q = em.createNativeQuery(sql);
+    private ReportTableResponse scheduleResponse(List<ReportColumn> columns, List<Map<String,Object>> rows,
+                                                  int page, int size, String table) {
+        int safePage = Math.max(1, page), safeSize = Math.min(500, Math.max(1, size));
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            total = ((Number) em.createNativeQuery("SELECT COUNT(*) FROM " + table + " WHERE is_deleted=false")
+                    .getSingleResult()).longValue();
+        }
+        rows.forEach(ReportQueryKit::includeDecimalTexts);
+        return new ReportTableResponse(columns, rows, Map.of(), safePage, safeSize, total,
+                ReportReadPlan.totalPages(total, safeSize));
+    }
+
+    private List<Map<String, Object>> queryMaps(String sql, int page, int size, String... colNames) {
+        int safePage = Math.max(1, page), safeSize = Math.min(500, Math.max(1, size));
+        var q = em.createNativeQuery(sql).setParameter("__limit", safeSize)
+                .setParameter("__offset", (long) (safePage - 1) * safeSize);
         @SuppressWarnings("unchecked")
         List<Object[]> rs = q.getResultList();
         List<Map<String, Object>> out = new ArrayList<>(rs.size());

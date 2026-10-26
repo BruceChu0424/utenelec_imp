@@ -19,19 +19,24 @@
 //   批量按钮（2026-10-18 用户口径：表格可右键操作，常驻批量按钮冗余）；
 // - 各页只给 [MasterEntityPaneConfig]：列、仓储闭包、文案、权限，以及特有动作
 //   (客户负责人/可见人、货品复制粘贴与组件信息、模具详情弹层)。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'basic_data_l10n.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:convert';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
+import '../../../components/layout/uten_page_layout.dart';
 import '../../../components/print/uten_print_preview.dart';
+import '../../../components/print/complete_print_snapshot.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/page_search_lifecycle.dart';
@@ -42,6 +47,7 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../core/network/read_scope_revision.dart';
 import '../../../shared/auth/sensitive_write.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../models/master_batch.dart';
@@ -353,9 +359,11 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     extends ConsumerState<MasterEntityDetailPane<TItem, TDetail>>
     implements MasterEntityPaneController<TItem, TDetail> {
   final _tableRows = MasterDataTableRowsController<TItem>();
+  final _pageReads = ScopedPagedRead<TItem>();
   final _inlineEdit = MasterInlineEditController<TItem>();
   bool _inlineModeActive = false;
   ProviderSubscription<SensitiveReadBoundary>? _inlineIdentitySubscription;
+  ProviderSubscription<int>? _inlineReadScopeSubscription;
   final _categoryRequests = LatestRequestGuard();
   final _listRequests = LatestRequestGuard();
   final _groupRequests = LatestRequestGuard();
@@ -402,7 +410,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   MasterEntityPaneConfig<TItem, TDetail> get _c => widget.config;
 
   bool get _queryPending =>
-      widget.externalSearchPending || _displayedQueryStale;
+      _loading || widget.externalSearchPending || _displayedQueryStale;
 
   @override
   void initState() {
@@ -412,7 +420,6 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       sensitiveReadBoundaryProvider,
       (previous, next) {
         if (!mounted || previous == next) return;
-        _invalidateWrites();
         final retainShell =
             !_loading &&
             _error == null &&
@@ -422,37 +429,64 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
               next,
               writeOnlyPermission: _c.readStableWritePermission,
             );
-        _inlineEdit.cancel();
-        _categoryRequests.begin();
-        _listRequests.begin();
-        _groupRequests.begin();
-        _facetRequests.begin();
-        setState(() {
-          // Clear every old DTO/window even when only presentation survives.
-          _queryVersion++;
-          _tableQueryVersion++;
-          _category = null;
-          _page = null;
-          _groups = const [];
-          _facets = null;
-          _selectedIds = {};
-          _error = null;
-          _listError = null;
-          _listLoading = true;
-          _retainingReadShell = retainShell;
-          _loading = !retainShell;
-        });
-        // Let the host rebuild repository closures for the new API/identity
-        // before starting replacement reads. The old requests are fenced above.
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && ref.read(sensitiveReadBoundaryProvider) == next) {
-            _load(retainReadShell: retainShell);
-          }
-        });
+        _retireReader(
+          retainShell: retainShell,
+          preserveInput: false,
+          current: () => ref.read(sensitiveReadBoundaryProvider) == next,
+        );
       },
     );
+    _inlineReadScopeSubscription = ref.listenManual(readScopeRevisionProvider, (
+      previous,
+      next,
+    ) {
+      if (!mounted || previous == null || previous == next) return;
+      _retireReader(
+        retainShell: false,
+        preserveInput: true,
+        current: () => ref.read(readScopeRevisionProvider) == next,
+      );
+    });
     _sortKey = _c.defaultSortKey;
     _load();
+  }
+
+  void _retireReader({
+    required bool retainShell,
+    required bool preserveInput,
+    required bool Function() current,
+  }) {
+    _pageReads.invalidate();
+    _invalidateWrites();
+    if (preserveInput) {
+      _inlineEdit.retireReadScope();
+    } else {
+      _inlineEdit.cancel();
+    }
+    _categoryRequests.begin();
+    _listRequests.begin();
+    _groupRequests.begin();
+    _facetRequests.begin();
+    setState(() {
+      _queryVersion++;
+      _tableQueryVersion++;
+      _category = null;
+      _page = null;
+      _groups = const [];
+      _facets = null;
+      _selectedIds = {};
+      _error = null;
+      _listError = null;
+      _listLoading = true;
+      _retainingReadShell = retainShell;
+      _loading = !retainShell;
+    });
+    // Rebuild repository closures before starting the replacement reader.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && current()) {
+        _load(retainReadShell: retainShell, preserveQuery: preserveInput);
+      }
+    });
   }
 
   @override
@@ -463,9 +497,11 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   @override
   void dispose() {
+    _pageReads.dispose();
     _writeLifecycle.dispose();
     _invalidateWrites();
     _inlineIdentitySubscription?.close();
+    _inlineReadScopeSubscription?.close();
     _inlineEdit.removeListener(_inlineChanged);
     _inlineEdit.dispose();
     _outerScroll.dispose();
@@ -479,6 +515,12 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   }
 
   Future<void> _saveInlineRow(String id, Map<String, dynamic> patch) async {
+    final readRevision = ref.read(readScopeRevisionProvider),
+        writeEpoch = _writeEpoch;
+    bool current() =>
+        mounted &&
+        readRevision == ref.read(readScopeRevisionProvider) &&
+        writeEpoch == _writeEpoch;
     if (_listError != null) {
       throw StateError('已完成的行已保存；列表刷新失败，请先重新加载后再保存其余修改');
     }
@@ -489,12 +531,12 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     }
     await runSensitiveWrite(
       ref,
-      isCurrent: () => mounted && _c.canEdit && _listError == null,
+      isCurrent: () => current() && _c.canEdit && _listError == null,
       write: () => save(id, patch, baseline),
     );
     // This callback is awaited before the controller advances to another row.
     // Refresh each completed row's server version, including partial success.
-    if (mounted) {
+    if (current()) {
       await reload();
       if (mounted && _listError != null) {
         setState(() {
@@ -521,6 +563,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
               columnFields: config.columnFields,
               canCreate: _c.canCreate && config.canCreate,
               onCreate: (key, values) async {
+                final readRevision = ref.read(readScopeRevisionProvider),
+                    writeEpoch = _writeEpoch;
                 if (!_c.canCreate ||
                     _listError != null ||
                     categoryId == null ||
@@ -531,6 +575,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                   ref,
                   isCurrent: () =>
                       mounted &&
+                      readRevision == ref.read(readScopeRevisionProvider) &&
+                      writeEpoch == _writeEpoch &&
                       _c.canCreate &&
                       widget.categoryId == categoryId &&
                       _listError == null,
@@ -555,6 +601,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   void didUpdateWidget(MasterEntityDetailPane<TItem, TDetail> old) {
     super.didUpdateWidget(old);
     if (widget.externalSearchPending) {
+      _pageReads.invalidate();
       _invalidateWrites();
       _queryVersion++;
       _categoryRequests.begin();
@@ -616,7 +663,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   Set<String> get selectedIds => _selectedIds;
 
   @override
-  bool get busy => _busy || _queryPending || _inlineEdit.active;
+  bool get busy =>
+      _busy || _queryPending || _error != null || _inlineEdit.active;
 
   @override
   void scrollToEnd() {
@@ -690,8 +738,11 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   @override
   Future<void> reload({int? page}) async {
     if (!mounted || widget.externalSearchPending) return;
+    // A leading buffer can be the latest response while the reader is still
+    // looking at the explicit destination. Refresh that visible business page.
+    final target = page ?? _tableRows.visiblePage ?? _pageNum;
     await Future.wait([
-      _loadList(page ?? _pageNum),
+      _loadList(target),
       _loadGroups(),
       if (_c.loadQueryFacets != null) _loadFacets(),
     ]);
@@ -914,6 +965,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         _queryPending ||
         _inlineEdit.active ||
         _loading ||
+        _error != null ||
         _listLoading ||
         _listError != null ||
         !canWrite()) {
@@ -931,6 +983,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         path == _c.batchEntityPath &&
         !_queryPending &&
         !_loading &&
+        _error == null &&
         !_listLoading &&
         _listError == null &&
         canWrite();
@@ -996,7 +1049,11 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   // ---- 加载 -------------------------------------------------------------
 
-  Future<void> _load({bool retainReadShell = false}) async {
+  Future<void> _load({
+    bool retainReadShell = false,
+    bool preserveQuery = false,
+  }) async {
+    _pageReads.invalidate();
     _invalidateWrites();
     _queryVersion++;
     _tableQueryVersion++;
@@ -1015,14 +1072,17 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       // 切换分类：分页、筛选、facet、排序、特殊分组、勾选全部重置；
       // 树搜索的关键词随分类切换一并带入(搜索定位时右侧只显示搜索结果)。
       _page = null;
+      _category = null;
       _pageNum = 1;
       _listError = null;
       _groups = const [];
-      _filters = {};
-      _keyword = widget.externalKeyword ?? '';
+      if (!preserveQuery) {
+        _filters = {};
+        _keyword = widget.externalKeyword ?? '';
+        _sortKey = _c.defaultSortKey;
+        _sortAsc = true;
+      }
       _facets = null;
-      _sortKey = _c.defaultSortKey;
-      _sortAsc = true;
       _selectedIds = {};
     });
     // 详情/列表/筛选桶/前导分组四路并行（2026-10-19 用户口径「数据加载后端
@@ -1053,10 +1113,26 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     }
 
     try {
-      await Future.wait([loadDetail(), _loadList(1), _loadFacets()]);
+      await Future.wait([
+        loadDetail(),
+        _loadList(1),
+        _loadFacets(),
+      ], eagerError: true);
     } on ApiException catch (e) {
       if (!mounted || !_categoryRequests.isCurrent(generation)) return;
+      if (_pageAccessDenied(e)) {
+        _pageReads.invalidate();
+        _listRequests.begin();
+        _groupRequests.begin();
+        _facetRequests.begin();
+      }
       setState(() {
+        if (_pageAccessDenied(e)) {
+          _page = null;
+          _listLoading = false;
+          _groups = const [];
+          _facets = null;
+        }
         _error = e.message;
         _loading = false;
         _retainingReadShell = false;
@@ -1077,15 +1153,48 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         page: page,
         size: size,
         keyword: _keyword.trim().isEmpty ? null : _keyword,
-        filters: _filters,
+        filters: Map<String, String?>.unmodifiable(_filters),
         sort: _sortKey,
         order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
         forPrint: forPrint,
       );
 
-  Future<void> _loadList(int page) async {
+  Future<void> _loadList(int page, {bool useCache = false}) async {
     if (widget.externalSearchPending) return;
     _invalidateWrites();
+    final query = _query(page: page);
+    final owner = ref.read(sensitiveReadBoundaryProvider);
+    final readRevision = ref.read(readScopeRevisionProvider);
+    final queryVersion = _queryVersion;
+    final loadPage = _c.loadPage;
+    final scope = [
+      _c.batchEntityPath,
+      query.categoryId,
+      query.keyword,
+      query.size,
+      query.filters,
+      query.sort,
+      query.order,
+      owner,
+      readRevision,
+      queryVersion,
+    ];
+    bool readerCurrent() =>
+        mounted &&
+        queryVersion == _queryVersion &&
+        owner == ref.read(sensitiveReadBoundaryProvider) &&
+        readRevision == ref.read(readScopeRevisionProvider);
+    Future<PagedResult<TItem>> fetchPage(int target) => loadPage(
+      MasterPaneQuery(
+        categoryId: query.categoryId,
+        page: target,
+        size: query.size,
+        keyword: query.keyword,
+        filters: query.filters,
+        sort: query.sort,
+        order: query.order,
+      ),
+    );
     final generation = _listRequests.begin();
     setState(() {
       _listLoading = true;
@@ -1093,21 +1202,48 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       _pageNum = page;
     });
     try {
-      final result = await _c.loadPage(_query(page: page));
-      if (!mounted || !_listRequests.isCurrent(generation)) return;
+      final result = await _pageReads.read(
+        page,
+        scope: scope,
+        fetchPage: fetchPage,
+        isCurrent: readerCurrent,
+        useCache: useCache,
+        canPrefetch: () =>
+            !widget.externalSearchPending &&
+            TickerMode.valuesOf(context).enabled &&
+            (ModalRoute.of(context)?.isCurrent ?? true),
+        onPrefetchError: (error) {
+          if (!readerCurrent() ||
+              error is! ApiException ||
+              !_pageAccessDenied(error)) {
+            return;
+          }
+          _pageReads.invalidate();
+          _listRequests.begin();
+          setState(() {
+            _page = null;
+            _tableQueryVersion++;
+            _listLoading = false;
+            _listError = error.message;
+          });
+        },
+      );
+      if (!readerCurrent() || !_listRequests.isCurrent(generation)) return;
       setState(() {
         _page = result;
+        _pageNum = result.page;
         _displayedQueryStale = false;
       });
     } on ApiException catch (e) {
-      if (!mounted || !_listRequests.isCurrent(generation)) return;
+      if (!readerCurrent() || !_listRequests.isCurrent(generation)) return;
+      if (_pageAccessDenied(e)) _pageReads.invalidate();
       setState(() {
-        if (_displayedQueryStale) _page = null;
+        if (_displayedQueryStale || _pageAccessDenied(e)) _page = null;
         _displayedQueryStale = false;
         _listError = e.message;
       });
     } catch (_) {
-      if (!mounted || !_listRequests.isCurrent(generation)) return;
+      if (!readerCurrent() || !_listRequests.isCurrent(generation)) return;
       setState(() {
         if (_displayedQueryStale) _page = null;
         _displayedQueryStale = false;
@@ -1119,6 +1255,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       }
     }
   }
+
+  static bool _pageAccessDenied(ApiException error) =>
+      pagedReadAccessDenied(error);
 
   /// 表头筛选下拉选项。失败不阻塞列表，静默降级为空下拉。
   Future<void> _loadFacets() async {
@@ -1238,23 +1377,54 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     return sensitive.isEmpty ? const {} : {'sensitiveFilter': sensitive};
   }
 
-  /// 打印预览：按当前分类/筛选口径拉全量(上限 2000 行)，列/格式化与表格一致。
+  /// 完整分页取当前分类/筛选结果；保留各主档的 forPrint 资格差异。
   Future<UtenPrintTable> _printLoader() async {
     if (_queryPending) throw StateError('查询条件已变化，请重新预览');
     final version = _queryVersion;
-    final result = await _c.loadPage(_query(size: 2000, forPrint: true));
-    if (!mounted || version != _queryVersion || _queryPending) {
-      throw StateError('查询条件已变化，请重新预览');
+    final captured = _query(forPrint: true);
+    final filters = Map<String, String?>.unmodifiable(captured.filters);
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final epoch = ref.read(exportContextEpochProvider);
+    final columns = List.of(_c.columns);
+    final loadPage = _c.loadPage;
+    final idOf = _c.idOf;
+    var retired = false;
+    bool current() {
+      if (retired || !mounted) return false;
+      retired =
+          version != _queryVersion ||
+          _queryPending ||
+          boundary != ref.read(sensitiveReadBoundaryProvider) ||
+          epoch != ref.read(exportContextEpochProvider);
+      return !retired;
     }
-    return UtenPrintTable(
-      columnKeys: [for (final c in _c.columns) c.key],
-      rowIds: [for (final row in result.items) _c.idOf(row)],
-      headers: [for (final c in _c.columns) c.label],
-      rows: [
-        for (final row in result.items)
-          [for (final c in _c.columns) c.value(row) ?? ''],
-      ],
+
+    final scope = await boundary.api.captureRequestScope(isCurrent: current);
+    final table = await scope.run(
+      () => loadCompletePrintSnapshot(
+        loadPage: (page, size) => loadPage(
+          MasterPaneQuery(
+            categoryId: captured.categoryId,
+            page: page,
+            size: size,
+            keyword: captured.keyword,
+            filters: filters,
+            sort: captured.sort,
+            order: captured.order,
+            forPrint: true,
+          ),
+        ),
+        idOf: idOf,
+        headers: [for (final column in columns) column.label],
+        columnKeys: [for (final column in columns) column.key],
+        cellsOf: (row) => [
+          for (final column in columns) column.value(row) ?? '',
+        ],
+        isCurrent: () => current() && scope.isCurrent,
+      ),
     );
+    await scope.verify();
+    return table;
   }
 
   /// 预览打印/导出（表格工具条左簇款）：primary/large 纯文字、无 icon——与
@@ -1265,9 +1435,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     if (export == null) return const [];
     return [
       UtenPrintPreviewButton(
-        enabled: !_queryPending && !_loading && !_listLoading,
+        enabled: !_queryPending && _error == null && !_loading && !_listLoading,
         title: export.title,
-        subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
+        subtitle: '当前分类与筛选的完整结果', // TODO(l10n): 补 arb
         loader: _printLoader,
         exportEndpoint: export.endpoint,
         exportPermission: export.permission,
@@ -1279,7 +1449,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         size: UtenButtonSize.large,
       ),
       UtenExportButton(
-        enabled: !_queryPending && !_loading && !_listLoading,
+        enabled: !_queryPending && _error == null && !_loading && !_listLoading,
         prepareExport: () async {
           final version = _queryVersion;
           return UtenExportSelection(
@@ -1463,18 +1633,13 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   Widget build(BuildContext context) {
     _configureInlineCreation();
     final theme = Theme.of(context);
-    if (_loading || (widget.externalSearchPending && _page == null)) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null) {
-      return UtenEmpty.error(
-        message: _error,
-        actionLabel: '重试', // TODO(l10n): 补 arb
-        onAction: _load,
-      );
-    }
     final d = _category;
-    if (d == null && widget.categoryId != null && !_retainingReadShell) {
+    if (d == null &&
+        widget.categoryId != null &&
+        !_retainingReadShell &&
+        !_loading &&
+        _error == null &&
+        !widget.externalSearchPending) {
       return Center(
         child: Text(
           '未选择分类', // TODO(l10n): 补 arb
@@ -1489,7 +1654,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     );
     // compact：容器 gutter 已提供水平留白；medium+：明细区自带水平内边距。
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
-    final content = Padding(
+    final content = UtenPageEdgePadding(
+      preserveStart: true,
       padding: EdgeInsets.symmetric(horizontal: hPad),
       child: UtenCollapsingHeaderScrollView(
         controller: _outerScroll,
@@ -1536,8 +1702,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                   columns: _c.columns,
                   fields: _c.canEdit ? _c.inlineFields : const {},
                 ),
-                columnEditingEnabled: _c.canEdit,
+                columnEditingEnabled: _c.canEdit && _error == null,
                 rowsController: _tableRows,
+                expensiveRowMounts: _inlineEdit.active,
                 paginationRevision: _page,
                 paginationScope: (
                   widget.categoryId,
@@ -1555,7 +1722,11 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                   columns: _c.columns,
                   idOf: _c.idOf,
                   fields: _c.canEdit ? _c.inlineFields : const {},
-                  enabled: !_listLoading && _listError == null,
+                  enabled:
+                      !_queryPending &&
+                      _error == null &&
+                      !_listLoading &&
+                      _listError == null,
                   writableOf: _c.writableOf,
                 ),
                 items: _page?.items ?? <TItem>[],
@@ -1564,17 +1735,21 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 idOf: _c.idOf,
                 selectedIds: _selectedIds,
                 onSelectedIdsChanged: (s) {
-                  if (!_queryPending) setState(() => _selectedIds = s);
+                  if (!_queryPending && _error == null) {
+                    setState(() => _selectedIds = s);
+                  }
                 },
                 batchActionsBuilder: _batchActions,
-                rowMenuBuilder: (row) => _queryPending || _inlineEdit.active
+                rowMenuBuilder: (row) =>
+                    _queryPending || _error != null || _inlineEdit.active
                     ? const []
                     : _currentQueryMenu(_menuItems(row)),
                 backgroundMenuBuilder:
                     widget.categoryId == null ||
                         _c.backgroundMenuBuilder == null
                     ? null
-                    : () => _queryPending || _inlineEdit.active
+                    : () =>
+                          _queryPending || _error != null || _inlineEdit.active
                           ? const []
                           : _currentQueryMenu(_c.backgroundMenuBuilder!(this)),
                 // 页面特有按钮（导入货品）+ 预览打印/导出进左簇（2026-10-19
@@ -1582,7 +1757,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 // 工具条右侧留给分页）。
                 toolbarLeadingActions: () {
                   final leading = [
-                    if (!_inlineEdit.active)
+                    if (!_inlineEdit.active && _error == null)
                       ...?_c.toolbarLeadingActions?.call(this),
                     ..._exportButtons(),
                   ];
@@ -1599,7 +1774,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                   _queryPending,
                   jsonEncode(_filters),
                 ),
-                loadFacetPage: _queryPending || _c.loadFacetPage == null
+                loadFacetPage:
+                    _queryPending || _error != null || _c.loadFacetPage == null
                     ? null
                     : (column, search, page) => _c.loadFacetPage!(
                         _query(),
@@ -1624,15 +1800,19 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 onRowTap: _c.onOpen == null || _inlineEdit.active
                     ? null
                     : (row) {
-                        if (!_queryPending) _c.onOpen!(this, row);
+                        if (!_queryPending && _error == null) {
+                          _c.onOpen!(this, row);
+                        }
                       },
                 sortColumn: _sortKey,
                 sortAscending: _sortAsc,
                 onSortChange: _onSortChange,
-                isLoading: _listLoading && _page == null,
+                isLoading:
+                    (_listLoading || widget.externalSearchPending) &&
+                    _page == null,
                 loadingMore: _listLoading && _page != null,
-                error: _listError,
-                onRetry: () => reload(),
+                error: _error ?? _listError,
+                onRetry: () => _error != null ? _load() : reload(),
                 emptyMessage: widget.categoryId == null
                     ? '未找到匹配${_c.noun}'
                     : '该分类暂无${_c.noun}', // TODO(l10n): 补 arb
@@ -1642,7 +1822,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                   if (!await _inlineEdit.confirmLeave(context) || !mounted) {
                     return;
                   }
-                  await reload(page: p);
+                  // Paging only changes the row page. Category groups/facets
+                  // belong to the query and do not need another request here.
+                  await _loadList(p, useCache: true);
                 },
               ),
             ),

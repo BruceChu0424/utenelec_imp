@@ -10,6 +10,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
+import '../../core/network/api_exception.dart';
+import '../../core/performance/responsive_data_codec.dart';
 import 'attachment.dart';
 
 class AttachmentService {
@@ -185,9 +187,10 @@ class AttachmentService {
       await _externalDio.post<dynamic>(
         uploadUrl,
         data: form,
-        options: Options(headers: upload.headers),
+        options: Options(headers: upload.headers, followRedirects: false),
       );
     } else {
+      _requireInternalRawPath(uploadUrl);
       // 本地后端相对 raw 端点：经鉴权 Dio，并携带仅绑定本次上传的一次性语义授权。
       await _api.putBytes(
         uploadUrl,
@@ -207,15 +210,42 @@ class AttachmentService {
     if (downloadUrl == null || downloadUrl.isEmpty) {
       throw StateError('该附件暂无下载地址');
     }
+    final Uint8List bytes;
     if (downloadUrl.startsWith('http://') ||
         downloadUrl.startsWith('https://')) {
       final r = await _externalDio.get<List<int>>(
         downloadUrl,
-        options: Options(responseType: ResponseType.bytes),
+        options: Options(
+          responseType: ResponseType.bytes,
+          followRedirects: false,
+        ),
       );
-      return Uint8List.fromList(r.data ?? const []);
+      bytes = Uint8List.fromList(r.data ?? const []);
+    } else {
+      _requireInternalRawPath(downloadUrl);
+      bytes = await _api.getBytes(downloadUrl);
     }
-    return _api.getBytes(downloadUrl);
+    // Storage compression is transparent: only the original bytes are accepted
+    // by preview, Copy and Save. Legacy rows without a hash retain size checks.
+    if (bytes.length != attachment.sizeBytes ||
+        attachment.sha256 != null &&
+            await sha256HexResponsive(bytes) != attachment.sha256) {
+      throw ApiException(
+        'ATTACHMENT_INTEGRITY_MISMATCH',
+        '下载内容与原件校验不一致，请重试；如仍失败请联系管理员核查存储。',
+      );
+    }
+    return bytes;
+  }
+
+  static void _requireInternalRawPath(String url) {
+    // Never pass scheme-relative URLs, traversal or another API route to the
+    // authenticated client carrying the staff session and upload grant.
+    if (!RegExp(
+      r'^/attachments/raw/[A-Za-z0-9_-][A-Za-z0-9._-]*$',
+    ).hasMatch(url)) {
+      throw const FormatException('附件授权地址无效，请刷新后重试');
+    }
   }
 
   /// Office 文档服务端转 PDF 后的字节（`GET /attachments/{id}/preview`）。

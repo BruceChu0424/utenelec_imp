@@ -34,13 +34,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      api.dictionaryPaths,
-      unorderedEquals([
-        ApiEndpoints.suppliersDict,
-        ApiEndpoints.warehousesDict,
-      ]),
-    );
+    expect(api.dictionaryPaths, [ApiEndpoints.warehousesDict]);
 
     final table = tester
         .widget<MasterDataTableView<ProcurementArrivalException>>(
@@ -50,7 +44,12 @@ void main() {
       table.facets.keys,
       containsAll(<String>['supplierName', 'warehouseName', 'status']),
     );
-    expect(table.facets['supplierName']?.single.value, 'supplier-1');
+    expect(table.facets['supplierName'], isEmpty);
+    final supplierCandidates = await table.facetPageLoaders['supplierName']!(
+      '',
+      1,
+    );
+    expect(supplierCandidates.items.single.value, 'supplier-1');
     expect(table.facets['warehouseName']?.single.value, 'warehouse-1');
     expect(
       table.facets['status']?.map((bucket) => bucket.value),
@@ -98,6 +97,17 @@ class _ArrivalExceptionApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/master/suppliers') {
+      return const {
+        'items': [
+          {'id': 'supplier-1', 'code': 'S1', 'name': '供应商甲', 'status': '使用'},
+        ],
+        'page': 1,
+        'size': 100,
+        'total': 1,
+        'totalPages': 1,
+      };
+    }
     // 2026-09-25 单号列统一：单号 facets 请求也打 arrival-exceptions 前缀，
     // 只记录列表请求的 query（facets 无 page 且不带单号自身筛选）。
     if (path.contains('arrival-exceptions') && !path.contains('facets')) {

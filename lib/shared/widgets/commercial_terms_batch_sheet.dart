@@ -1,9 +1,11 @@
+import '../providers/master_party_options.dart';
 // 订货单明细「统一设置商业条款」批量面板（采购/委外共用，2026-09 行级条款改造）。
 //
 // 勾选多行后一次写全套条款：供应商 + 结账(结算)方式 + 币种 + 税率；
 // 留空的项保持各行原值不变。供应商行内嵌供应商滑入面板（分类树+搜索+可内联新建）。
 // 汇率输入已撤（2026-10-10 口径：采购/委外不填汇率，财务审批时填，前端恒 1）。
 import 'package:flutter/material.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../components/inputs/uten_input_decoration.dart';
 import '../presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -54,15 +56,18 @@ Future<CommercialTermsBatchResult?> showCommercialTermsBatchSheet(
   String partyNoun = '供应商',
   String settlementLabel = '结账方式',
 }) {
-  return showModalBottomSheet<CommercialTermsBatchResult>(
-    context: context,
-    isScrollControlled: true,
-    builder: (sheetContext) => _CommercialTermsBatchSheet(
-      selectedCount: selectedCount,
-      currencyEntries: currencyEntries,
-      settlementEntries: settlementEntries,
-      partyNoun: partyNoun,
-      settlementLabel: settlementLabel,
+  return guardPartyPanelResult(
+    context,
+    () => showModalBottomSheet<CommercialTermsBatchResult>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _CommercialTermsBatchSheet(
+        selectedCount: selectedCount,
+        currencyEntries: currencyEntries,
+        settlementEntries: settlementEntries,
+        partyNoun: partyNoun,
+        settlementLabel: settlementLabel,
+      ),
     ),
   );
 }
@@ -101,10 +106,17 @@ class _CommercialTermsBatchSheetState
   }
 
   Future<void> _pickSupplier() async {
-    final picked = await showUtenSupplierPicker(
-      context,
+    final picked = await resolvePickedParty(
       ref,
-      title: '统一设置${widget.partyNoun}',
+      () => showUtenSupplierPicker(
+        context,
+        ref,
+        title: '统一设置${widget.partyNoun}',
+      ),
+      idOf: (party) => party.id,
+      loadNames: ref.read(masterNameServiceProvider).loadSupplierNames,
+      isResolved: (id) =>
+          ref.read(masterNameServiceProvider).supplierReferenceSelectable(id),
     );
     if (picked == null || !mounted) return;
     setState(() => _supplierId = picked.id);
@@ -205,14 +217,11 @@ class _CommercialTermsBatchSheetState
                   ),
                 ),
               ),
+              UtenFieldHintIcon(
+                info: '留空的项保持各行原值；保存时按「${widget.partyNoun}+条款组合」自动拆单。',
+                dense: true,
+              ),
             ],
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            '留空的项保持各行原值；保存时按「${widget.partyNoun}+条款组合」自动拆单。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
           ),
           const SizedBox(height: UtenSpacing.s12),
           for (final item in items) ...[

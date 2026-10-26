@@ -406,6 +406,8 @@ abstract class _MaterialAnalysisMaterialTableState
   Object? _materialPresentedScope;
   String? _materialPresentedKey;
   List<_MaterialTableRow> _materialPresentedRows = const [];
+  List<_MaterialTableRow>? _materialPeerGroupsRows;
+  final _materialPeerGroups = <Object, List<_MaterialTableRow>>{};
   Widget? _materialPresentedTableWidget;
   bool? _materialPresentedTablePrimary;
   Map<String, List<MasterFacetBucket>> _materialPresentedFacets = const {};
@@ -598,6 +600,8 @@ abstract class _MaterialAnalysisMaterialTableState
           _materialPresentationFailure = null;
           _materialPresentedKey = key;
           _materialPresentedRows = rows;
+          _materialPeerGroupsRows = null;
+          _materialPeerGroups.clear();
           _materialPresentedFacets = facets;
           _materialPreparedViews.removeWhere(
             (_, value) =>
@@ -1441,6 +1445,7 @@ abstract class _MaterialAnalysisMaterialTableState
     final table = KeyedSubtree(
       key: const Key('material-analysis-material-table-region'),
       child: MasterDataTableView<_MaterialTableRow>(
+        expensiveRowMounts: _canRoute || _canNotify || _canGenerate,
         // 表头列序按 tableKey 记在每用户偏好里；2026-10-08「进度列放最前」
         // 只改了默认序，老账号保存过的旧列序（物料办理在前）会一直压住它
         // （2026-10-09 用户实机仍见物料办理居首）。尾号 .1→.2 一次性重置
@@ -1603,9 +1608,10 @@ abstract class _MaterialAnalysisMaterialTableState
   // Controls retain their shared 32px desktop / 48px touch role; only the
   // surrounding cell whitespace is compacted. Intrinsic rows can still grow
   // for large text, validation messages and real multiline aggregate content.
-  static const _materialTableCellVerticalPadding = UtenSpacing.s4;
+  static const _materialTableCellVerticalPadding =
+      UtenTreeTableCell.compactCellVerticalPadding;
   static const _materialTableDesktopToggleExtent =
-      UtenControlMetrics.cellHeight;
+      UtenTreeTableCell.compactDesktopToggleExtent;
 
   // ===== 表头筛选（2026-09-10 F2a：稳定桶键 + 投影级过滤）=====
   //
@@ -2118,14 +2124,10 @@ abstract class _MaterialAnalysisMaterialTableState
           _materialTableDesktopToggleExtent,
       minimumWidthOf: (context) => math.max(
         72,
-        UtenTreeTableCell.prefixWidthOf(
-              context,
-              depth: identityMaxDepth,
-              indent: 24,
-              desktopToggleExtent: _materialTableDesktopToggleExtent,
-            ) +
-            UtenSpacing.s24 +
-            UtenSpacing.s24,
+        UtenTreeTableCell.compactMinimumWidthOf(
+          context,
+          depth: identityMaxDepth,
+        ),
       ),
       value: _materialTableIdentityText,
       measureValueOf: (row) =>
@@ -2374,6 +2376,7 @@ abstract class _MaterialAnalysisMaterialTableState
             materialLineId: group.representative.materialLineId,
           ),
           enabled: _canGenerate && !_busy && !_tableSubmitting,
+          readOnlyPresentation: !_canGenerate,
         );
       },
     ),
@@ -2532,33 +2535,18 @@ abstract class _MaterialAnalysisMaterialTableState
     _MaterialTableRow row,
     TextScaler scaler,
   ) {
-    final style = Theme.of(
-      context,
-    ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700);
-    final direction = Directionality.of(context);
-    final painter = TextPainter(textDirection: direction, textScaler: scaler);
     assert(() {
       debugMaterialIdentityTextMeasures++;
       return true;
     }());
-    painter.text = TextSpan(
-      text: _materialTableIdentityText(row),
-      style: style,
-    );
-    painter.layout();
-    final width =
-        painter.width +
-        UtenTreeTableCell.prefixWidthOf(
-          context,
-          depth: row.depth,
-          indent: 24,
-          desktopToggleExtent: _materialTableDesktopToggleExtent,
-        ) +
-        UtenSpacing.s8;
-    painter.dispose();
     // The shared fitter adds the ordinary cell insets and applies the same
     // 480px cap. Long names retain the complete tree-cell tooltip/semantics.
-    return width;
+    return UtenTreeTableCell.compactMeasureWidthOf(
+      context,
+      title: _materialTableIdentityText(row) ?? '',
+      depth: row.depth,
+      textScaler: scaler,
+    );
   }
 
   // 取值优先级沿用 2026-09-14 身份格副行的口径：编号/颜色以产品行自身为准
@@ -2627,6 +2615,47 @@ abstract class _MaterialAnalysisMaterialTableState
         : UtenColors.bomProductGuideOdd;
   }
 
+  Object _materialTreePeerScope(_MaterialTableRow row) => (
+    row.depth,
+    row.depth == 0 ? null : row.rootAnalysisLineId,
+    row.depth == 0 ? null : row.parentMaterialLineId,
+  );
+
+  void _expandMaterialTreePeers(_MaterialTableRow row) {
+    if (!identical(_materialPresentedAnalysis, _analysis) ||
+        _materialPresentedScope != _sessionScopeKey()) {
+      return;
+    }
+    final rows = _materialPresentedRows;
+    if (!identical(rows, _materialPeerGroupsRows)) {
+      _materialPeerGroupsRows = rows;
+      _materialPeerGroups.clear();
+      for (final candidate in rows) {
+        if (candidate.hasChildren) {
+          _materialPeerGroups
+              .putIfAbsent(_materialTreePeerScope(candidate), () => [])
+              .add(candidate);
+        }
+      }
+    }
+    final peers = _materialPeerGroups[_materialTreePeerScope(row)];
+    if (peers == null || !peers.contains(row)) return;
+    var changed = false;
+    for (final peer in peers) {
+      if (peer.product case final product?) {
+        changed =
+            _collapsedBomProducts.remove(product.analysisLineId) || changed;
+      } else if (peer.aggregate case final aggregate?) {
+        changed = _expandedMaterialAggregates.add(aggregate.key) || changed;
+      } else if (peer.material case final material?) {
+        changed =
+            _collapsedBomBranches.remove(material.materialLineId) || changed;
+      }
+    }
+    // A repeated Ctrl click on an already-open sibling set needs no projection.
+    if (changed) setState(() {});
+  }
+
   /// 第一列身份格（2026-09-04 收敛）：不再显示 BOM 路径与「组件 N 级」文案，
   /// 统一「P几 + 名字」一行、编号第二行；层级仍由缩进/连接线/级联序号表达。
   Widget _materialTableIdentityCell(ThemeData theme, _MaterialTableRow row) {
@@ -2687,16 +2716,13 @@ abstract class _MaterialAnalysisMaterialTableState
     final breakdown = aggregate == null
         ? null
         : _aggregateTable.issuedBreakdown(aggregate);
-    final cell = UtenTreeTableCell(
+    final cell = UtenTreeTableCell.compact(
       key: ValueKey('material-table-tree-${row.key}'),
       toggleKey: ValueKey('material-table-toggle-${row.key}'),
       depth: row.depth,
       // 2026-09-14 用户口径：名称前不再挂级联号，最底层不再画圆点；
       // 编号 / 颜色已各自成列（就排在本列右边）；单位 2026-10-10 起内联进
       // 数量列（T9），不再单列。
-      sequence: '',
-      sequenceInline: true,
-      showLeafMarker: false,
       // 2026-10-10 用户口径「只用层级连接线」：最左的子树块边界竖线退役，
       // 层级连线本身按产品序号奇偶两色轮换（青绿/紫，见 _bomProductGuideColor）
       // ——同一产品整棵子树同色、相邻产品换色。
@@ -2705,17 +2731,10 @@ abstract class _MaterialAnalysisMaterialTableState
       // 同一对色、按产品序号奇偶轮换（无下级的灰色占位图标不受影响）；
       // 实底明暗两主题同用深档、箭头自动反白（ADR-169 实底同路数）。
       toggleColor: _bomProductToggleColor(row),
-      // 同口径「下面的箭头跟线挨在一起」：每级缩进 16→24，祖先竖线与箭头
-      // 圆底的间隙从 2px 放到 10px。两个视图一致传 24，切视图名称列不跳位。
-      indent: 24,
-      desktopToggleExtent: _materialTableDesktopToggleExtent,
       // 2026-10-09 用户口径「没有子层级的行也在前面加个展开 icon，灰色不可
       // 点，统一好看」：无下级行（含汇总视图顶层产品行——2026-10-08「展开位
       // 让出来顶到左缘」随之退役）与有下级行同一位置画灰底粗箭头占位，两个
       // 视图一致；点击无反应、不进语义。
-      mutedToggleWhenChildless: true,
-      // Tree guides cross the same whitespace that this table gives each cell.
-      guideBleed: _materialTableCellVerticalPadding,
       title: title,
       titleBadge: _bomAggregateByMaterial && product != null
           ? const MaterialTopLevelBadge()
@@ -2730,6 +2749,9 @@ abstract class _MaterialAnalysisMaterialTableState
       childCount: aggregate == null ? row.childCount : null,
       expanded: expanded,
       onToggle: toggle,
+      onExpandPeers: row.hasChildren
+          ? () => _expandMaterialTreePeers(row)
+          : null,
       ancestorContinuations: row.ancestorContinuations,
       isLastChild: row.isLastChild,
     );
@@ -6024,84 +6046,97 @@ abstract class _MaterialAnalysisMaterialTableState
     String? suffixText,
     ValueChanged<String>? onTyped,
     ValueChanged<BuildContext>? onFinished,
-  }) => Builder(
-    builder: (fieldContext) => Focus(
-      skipTraversal: true,
-      onFocusChange: (focused) {
-        if (!focused && fieldContext.mounted) onFinished?.call(fieldContext);
-      },
-      child: RequiredCellFrame(
-        listenable: Listenable.merge([controller, _tableEstimateTick]),
-        isEmpty: invalid,
-        // The table's selectable rows query intrinsic height. Supply the shared
-        // adaptive input height before LayoutBuilder so it need not speculate.
-        child: SizedBox(
-          height: _materialQuantityFieldHeight(fieldContext),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final unit = suffixText?.trim();
-              final geometry = _materialQuantityGeometry(context);
-              final unitWidth = math.max(
-                0.0,
-                constraints.maxWidth -
-                    UtenEditableGridCellSpec.contentPaddingOf(
-                      context,
-                    ).horizontal -
-                    4 -
-                    geometry.digits,
-              );
-              return TextField(
-                key: ValueKey(key),
-                controller: controller,
-                enabled: enabled,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                style: theme.textTheme.bodySmall,
-                decoration: UtenInputDecoration(
-                  InputDecoration(
-                    isDense: true,
-                    hintText: hintText,
-                    hintMaxLines: 1,
-                    contentPadding: UtenEditableGridCellSpec.contentPaddingOf(
-                      context,
-                    ),
-                    suffix: unit == null || unit.isEmpty
-                        ? null
-                        : Padding(
-                            padding: const EdgeInsets.only(left: 4),
-                            child: Tooltip(
-                              message: unit,
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxWidth: unitWidth,
-                                ),
-                                child: Text(
-                                  unit,
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodySmall,
-                                ),
-                              ),
-                            ),
-                          ),
-                  ),
-                ),
-                // 敲键不 setState：整张表几百行，每敲一下重建一次树会卡。数量本身由
-                // controller 驱动重绘，依赖数量的列(办理可办性、筛选桶)在失焦/提交时重算。
-                onChanged: onTyped,
-                onSubmitted: (_) {
-                  setState(() {});
-                  onFinished?.call(fieldContext);
-                },
-              );
-            },
+  }) => !_canNotify && !_canGenerate
+      ? ValueListenableBuilder<TextEditingValue>(
+          valueListenable: controller,
+          builder: (_, value, _) => Text(
+            _qtyTextWithUnit(
+              value.text.isEmpty ? null : value.text,
+              suffixText,
+            ),
+            style: theme.textTheme.bodySmall,
           ),
-        ),
-      ),
-    ),
-  );
+        )
+      : Builder(
+          builder: (fieldContext) => Focus(
+            skipTraversal: true,
+            onFocusChange: (focused) {
+              if (!focused && fieldContext.mounted)
+                onFinished?.call(fieldContext);
+            },
+            child: RequiredCellFrame(
+              listenable: Listenable.merge([controller, _tableEstimateTick]),
+              isEmpty: invalid,
+              // The table's selectable rows query intrinsic height. Supply the shared
+              // adaptive input height before LayoutBuilder so it need not speculate.
+              child: SizedBox(
+                height: _materialQuantityFieldHeight(fieldContext),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final unit = suffixText?.trim();
+                    final geometry = _materialQuantityGeometry(context);
+                    final unitWidth = math.max(
+                      0.0,
+                      constraints.maxWidth -
+                          UtenEditableGridCellSpec.contentPaddingOf(
+                            context,
+                          ).horizontal -
+                          4 -
+                          geometry.digits,
+                    );
+                    return TextField(
+                      key: ValueKey(key),
+                      controller: controller,
+                      enabled: enabled,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      style: theme.textTheme.bodySmall,
+                      decoration: UtenInputDecoration(
+                        InputDecoration(
+                          isDense: true,
+                          hintText: hintText,
+                          hintMaxLines: 1,
+                          contentPadding:
+                              UtenEditableGridCellSpec.contentPaddingOf(
+                                context,
+                              ),
+                          suffix: unit == null || unit.isEmpty
+                              ? null
+                              : Padding(
+                                  padding: const EdgeInsets.only(left: 4),
+                                  child: Tooltip(
+                                    message: unit,
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        maxWidth: unitWidth,
+                                      ),
+                                      child: Text(
+                                        unit,
+                                        maxLines: 1,
+                                        softWrap: false,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodySmall,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                        ),
+                      ),
+                      // 敲键不 setState：整张表几百行，每敲一下重建一次树会卡。数量本身由
+                      // controller 驱动重绘，依赖数量的列(办理可办性、筛选桶)在失焦/提交时重算。
+                      onChanged: onTyped,
+                      onSubmitted: (_) {
+                        setState(() {});
+                        onFinished?.call(fieldContext);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
 
   // ------------------------- 生产车间 / 负责人 -------------------------
 
@@ -6168,6 +6203,7 @@ abstract class _MaterialAnalysisMaterialTableState
       repository: ref.read(productionPlanRepositoryProvider),
       fallbackText: fallback,
       enabled: _canGenerate && !_busy && !_tableSubmitting,
+      readOnlyPresentation: !_canGenerate,
       canCommit: () =>
           mounted &&
           _sessionScopeKey() == scope &&
@@ -6472,21 +6508,44 @@ abstract class _MaterialAnalysisMaterialTableState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('所选物料有可用余量。本次是先使用这些余量，还是保留余量、继续下单备货？'),
+              Row(
+                children: [
+                  Expanded(child: Text('所选物料有可用余量。本次是先使用这些余量，还是保留余量、继续下单备货？')),
+                  UtenFieldHintIcon(
+                    dense: true,
+                    info:
+                        '应用于本次所选行，可在表格上方切换。需求已满足的追加量按公共备货办理，不重复占用需求。正式可用量以下单结果为准，未入库的备货不能直接领用。',
+                  ),
+                ],
+              ),
               SizedBox(height: 12),
-              RadioListTile<bool>(
-                value: true,
-                title: Text('优先使用可用余量'),
-                subtitle: Text('按本次需求使用可采用的余量，不足部分再下单；页面继续按选中数量预扣可用量。'),
+              Row(
+                children: [
+                  Expanded(
+                    child: RadioListTile<bool>(
+                      value: true,
+                      title: Text('优先使用可用余量'),
+                    ),
+                  ),
+                  UtenFieldHintIcon(
+                    dense: true,
+                    info: '按本次需求使用可采用的余量，不足部分再下单；页面继续按选中数量预扣可用量。',
+                  ),
+                ],
               ),
-              RadioListTile<bool>(
-                value: false,
-                title: Text('保留余量，额外下单'),
-                subtitle: Text('不预扣现有余量，按填写数量新增下单；超出需求的部分成为公共备货，增加计划可用量。'),
-              ),
-              SizedBox(height: 4),
-              Text(
-                '应用于本次所选行，可在表格上方切换。需求已满足的追加量按公共备货办理，不重复占用需求。正式可用量以下单结果为准，未入库的备货不能直接领用。',
+              Row(
+                children: [
+                  Expanded(
+                    child: RadioListTile<bool>(
+                      value: false,
+                      title: Text('保留余量，额外下单'),
+                    ),
+                  ),
+                  UtenFieldHintIcon(
+                    dense: true,
+                    info: '不预扣现有余量，按填写数量新增下单；超出需求的部分成为公共备货，增加计划可用量。',
+                  ),
+                ],
               ),
             ],
           ),
@@ -8747,6 +8806,7 @@ class _MaterialAnalysisIssuedRateField extends StatefulWidget {
     required this.repository,
     required this.fallbackText,
     required this.enabled,
+    required this.readOnlyPresentation,
     required this.canCommit,
     required this.onApplied,
     required this.onSynced,
@@ -8756,6 +8816,7 @@ class _MaterialAnalysisIssuedRateField extends StatefulWidget {
   final int revision;
   final ProductionPlanRepository repository;
   final bool enabled;
+  final bool readOnlyPresentation;
   final bool Function() canCommit;
   final ValueChanged<double> onApplied;
   final ValueChanged<double> onSynced;
@@ -8926,7 +8987,7 @@ class _MaterialAnalysisIssuedRateFieldState
     final reason =
         _error ??
         _rates.map((row) => row.blockingReason).whereType<String>().firstOrNull;
-    if (!_loading && !_saving && !_editable) {
+    if (widget.readOnlyPresentation || (!_loading && !_saving && !_editable)) {
       final text = _controller.text.isEmpty ? '多个比例' : '${_controller.text}%';
       return Tooltip(message: reason ?? '当前任务不能修改允许超产比例', child: Text(text));
     }

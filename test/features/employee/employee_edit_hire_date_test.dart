@@ -37,7 +37,7 @@ class _Repository extends Fake implements EmployeeRepository {
 
 void main() {
   testWidgets('入职日期更正要求原因，只提交变更日期与旧值，不开放状态/部门写入', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    await tester.binding.setSurfaceSize(const Size(1200, 1800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();

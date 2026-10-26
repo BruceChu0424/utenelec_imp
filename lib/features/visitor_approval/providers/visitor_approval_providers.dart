@@ -6,6 +6,8 @@ import '../../visitor/models/visitor_application.dart';
 import '../../visitor/repositories/visitor_repository.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read_provider.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 
 /// 2026-09-10 key 增 hostDepartmentId：表头「接待人部门」筛选下推后端，
 /// 换筛选即换 key（回第 1 页由页面负责）。
@@ -14,16 +16,46 @@ typedef VisitorApprovalQuery = ({
   String? hostDepartmentId,
   int page,
 });
+final visitorApprovalReadProvider = Provider.autoDispose
+    .family<
+      ScopedPagedReadProviderLease<VisitorApplication>,
+      ({String? status, String? hostDepartmentId})
+    >(
+      (ref, query) {
+        ref.watch(visitorStaffRepositoryProvider);
+        return ScopedPagedReadProviderLease(ref, query: query);
+      },
+      dependencies: [
+        exportContextEpochProvider,
+        visitorStaffRepositoryProvider,
+      ],
+    );
 final visitorApprovalListProvider = FutureProvider.autoDispose
-    .family<PagedResult<VisitorApplication>, VisitorApprovalQuery>((ref, q) {
-      return ref
-          .watch(visitorStaffRepositoryProvider)
-          .approvalList(
-            status: q.status,
-            hostDepartmentId: q.hostDepartmentId,
-            page: q.page,
-          );
-    });
+    .family<PagedResult<VisitorApplication>, VisitorApprovalQuery>(
+      (ref, q) {
+        final repository = ref.watch(visitorStaffRepositoryProvider);
+        return ref
+            .watch(
+              visitorApprovalReadProvider((
+                status: q.status,
+                hostDepartmentId: q.hostDepartmentId,
+              )),
+            )
+            .read(
+              q.page,
+              fetchPage: (page) => repository.approvalList(
+                status: q.status,
+                hostDepartmentId: q.hostDepartmentId,
+                page: page,
+              ),
+            );
+      },
+      retry: pagedReadProviderRetry,
+      dependencies: [
+        visitorStaffRepositoryProvider,
+        visitorApprovalReadProvider,
+      ],
+    );
 
 /// HR 审批列表表头筛选桶（状态/接待人部门），按当前分段状态取后端全量聚合。
 final visitorApprovalFacetsProvider = FutureProvider.autoDispose
@@ -39,9 +71,29 @@ final visitorApprovalDetailProvider = FutureProvider.autoDispose
     });
 
 typedef VisitorHostQuery = ({String? status, int page});
+final visitorHostReadProvider = Provider.autoDispose
+    .family<ScopedPagedReadProviderLease<VisitorApplication>, String?>(
+      (ref, status) {
+        ref.watch(visitorStaffRepositoryProvider);
+        return ScopedPagedReadProviderLease(ref, query: (status,));
+      },
+      dependencies: [
+        exportContextEpochProvider,
+        visitorStaffRepositoryProvider,
+      ],
+    );
 final myAsHostProvider = FutureProvider.autoDispose
-    .family<PagedResult<VisitorApplication>, VisitorHostQuery>((ref, q) {
-      return ref
-          .watch(visitorStaffRepositoryProvider)
-          .myAsHost(status: q.status, page: q.page);
-    });
+    .family<PagedResult<VisitorApplication>, VisitorHostQuery>(
+      (ref, q) {
+        final repository = ref.watch(visitorStaffRepositoryProvider);
+        return ref
+            .watch(visitorHostReadProvider(q.status))
+            .read(
+              q.page,
+              fetchPage: (page) =>
+                  repository.myAsHost(status: q.status, page: page),
+            );
+      },
+      retry: pagedReadProviderRetry,
+      dependencies: [visitorStaffRepositoryProvider, visitorHostReadProvider],
+    );

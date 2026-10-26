@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_access_policy.dart';
@@ -94,6 +95,7 @@ class GoodsSubcontractSupplierTable extends StatelessWidget {
           : null,
     );
     return MasterDataTableView<Map<String, dynamic>>(
+      expensiveRowMounts: false,
       key: const Key('subcontract-supplier-table'),
       toolbarLeadingActions: [
         ConstrainedBox(
@@ -372,6 +374,7 @@ class _SupplierDetailState extends ConsumerState<GoodsSubcontractSupplierDetail>
                 : group == null
                 ? const SizedBox.shrink()
                 : MasterDataTableView<Map<String, dynamic>>(
+                    expensiveRowMounts: false,
                     tableKey: 'goods.subcontract-supplier-detail',
                     primary: true,
                     virtualized: true,
@@ -437,16 +440,19 @@ class _SupplierDetailState extends ConsumerState<GoodsSubcontractSupplierDetail>
                         width: 105,
                         value: (_) => '',
                         cellBuilder: (_, row) => _canOpen(row)
-                            ? TextButton(
-                                onPressed: () {
-                                  if (_canOpen(row)) {
-                                    Navigator.pop(
-                                      context,
-                                      _text(row, 'orderId'),
-                                    );
-                                  }
-                                },
-                                child: Text(priceText(context, 'openSource')),
+                            ? Align(
+                                alignment: Alignment.centerLeft,
+                                child: UtenTableCellAction(
+                                  label: priceText(context, 'openSource'),
+                                  onPressed: () {
+                                    if (_canOpen(row)) {
+                                      Navigator.pop(
+                                        context,
+                                        _text(row, 'orderId'),
+                                      );
+                                    }
+                                  },
+                                ),
                               )
                             : const Text('—'),
                       ),

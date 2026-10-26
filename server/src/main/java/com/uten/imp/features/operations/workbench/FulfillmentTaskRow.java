@@ -90,7 +90,12 @@ public record FulfillmentTaskRow(
          * subcontract_applications→suppliers 下发, 委外任务中心「待处理」列表显示;
          * 未定商为 null, 那是业务事实)。其它段恒 null。
          */
-        String supplierName) {
+        String supplierName,
+        BigDecimal differenceQty) {
+
+    public String getDifferenceQtyExact() {
+        return com.uten.imp.common.util.DecimalText.of(differenceQty);
+    }
 
     public FulfillmentTaskRow withSources(List<SubcontractTaskSource> value) {
         return new FulfillmentTaskRow(
@@ -105,7 +110,7 @@ public record FulfillmentTaskRow(
                 workshopName, workerName, drawBatchNo,
                 lines == null ? List.of() : List.copyOf(lines),
                 rdTaskNo, bomMissingItemIds == null ? List.of() : List.copyOf(bomMissingItemIds),
-                orderableQty, supplierName);
+                orderableQty, supplierName, differenceQty);
     }
 
     /** 按单据归组的行（采购/委外）：一行代表一张申请或订货单的整批明细。 */

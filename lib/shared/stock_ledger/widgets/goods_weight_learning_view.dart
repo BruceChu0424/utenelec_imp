@@ -1,3 +1,4 @@
+import '../../paging/scoped_paged_read_view_mixin.dart';
 // 库存面板「单重学习」分段 (ADR-135 §6.3 / review/product.md §1.4)。
 //
 // - 顶部卡片: 当前单重 · 可靠度 · 依据 (称重学习 N 次(有效 M)) · 最近一次称重;
@@ -7,7 +8,9 @@
 //   学习设置 (默认皮重 · 核对容差% · 单件离散% · 参与学习 · 批次切换 自动/手动, 需单重管理)。
 // - 学到的单重只在仓库口径使用, 从不回写货品资料的「单重」。
 // - 按重量计的货品 (基本单位就是重量单位) 不需要学习, 只显示说明。
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -78,7 +81,32 @@ class GoodsWeightLearningView extends ConsumerStatefulWidget {
 
 class _GoodsWeightLearningViewState
     extends ConsumerState<GoodsWeightLearningView>
-    with UtenRefreshParticipant<GoodsWeightLearningView> {
+    with
+        UtenRefreshParticipant<GoodsWeightLearningView>,
+        ScopedPagedReadViewMixin<GoodsWeightLearningView> {
+  final _readViewportRows = MasterDataTableRowsController<WeightObservation>();
+  int get _visibleReadPage => _records == null ? (_records?.page ?? 1) : (_readViewportRows.visiblePage ?? (_records?.page ?? 1));
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _version++;
+    _recordsVersion++;
+    if (mounted) {
+      setState(() {
+        _detail = null;
+        _records = null;
+        _recordsLoading = false;
+        _loading = false;
+      });
+    }
+    if (mounted) {
+      setState(() {
+        _error = scopedPagedReadRejection?.message;
+        _recordsError = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   GoodsWeightDetail? _detail;
   bool _loading = false;
   String? _error;
@@ -109,7 +137,7 @@ class _GoodsWeightLearningViewState
     if (oldWidget.reloadTick != widget.reloadTick ||
         oldWidget.goodsId != widget.goodsId) {
       trackRefresh(_loadDetail());
-      trackRefresh(_loadRecords(_records?.page ?? 1));
+      trackRefresh(_loadRecords(_visibleReadPage));
     }
   }
 
@@ -148,21 +176,34 @@ class _GoodsWeightLearningViewState
     }
   }
 
-  Future<void> _loadRecords(int page) async {
+  Future<void> _loadRecords(int page, {bool useCache = false}) async {
     final version = ++_recordsVersion;
     setState(() {
       _recordsLoading = true;
       _recordsError = null;
     });
+    final repository = ref.read(weightRepositoryProvider);
+    final goodsId = widget.goodsId, kind = _kindFilter, stage = _stageFilter;
+    Object pagingQuery() => [
+      ref.read(weightRepositoryProvider),
+      widget.goodsId,
+      widget.reloadTick,
+      _kindFilter,
+      _stageFilter,
+    ];
     try {
-      final result = await ref
-          .read(weightRepositoryProvider)
-          .observations(
-            widget.goodsId,
-            page: page,
-            kind: _kindFilter,
-            stage: _stageFilter,
-          );
+      final result = await readScopedPage<WeightObservation>(
+        page,
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        fetchPage: (target) => repository.observations(
+          goodsId,
+          page: target,
+          kind: kind,
+          stage: stage,
+        ),
+      );
       if (!mounted || version != _recordsVersion) return;
       setState(() {
         _records = result;
@@ -510,6 +551,8 @@ class _GoodsWeightLearningViewState
     final display = ref.watch(warehouseWeightUnitsPrefsProvider).display;
     final rows = _records?.items ?? const <WeightObservation>[];
     return MasterDataTableView<WeightObservation>(
+                rowsController: _readViewportRows,
+      expensiveRowMounts: false,
       tableKey:
           'shared.stock_ledger.widgets.goods_weight_learning_view.GoodsWeightLearningViewState._recordsTable.1',
       key: const Key('goods-weight-records-table'),
@@ -564,12 +607,12 @@ class _GoodsWeightLearningViewState
       isLoading: _recordsLoading && _records == null,
       loadingMore: _recordsLoading && _records != null,
       error: rows.isEmpty ? _recordsError : null,
-      onRetry: () => _loadRecords(1),
+      onRetry: () => _loadRecords(_visibleReadPage),
       emptyMessage: '还没有称重记录',
       currentPage: _records?.page ?? 1,
       totalPages: _records?.totalPages ?? 1,
       paginationScope: (widget.goodsId, _kindFilter, _stageFilter),
-      onPageChange: _loadRecords,
+      onPageChange: (page) => _loadRecords(page, useCache: true),
     );
   }
 
@@ -701,6 +744,7 @@ class _GoodsWeightLearningViewState
   Widget _suppliersTable() {
     final rows = _detail?.supplierRows ?? const <GoodsWeightEstimateRow>[];
     return MasterDataTableView<GoodsWeightEstimateRow>(
+      expensiveRowMounts: false,
       tableKey:
           'shared.stock_ledger.widgets.goods_weight_learning_view.GoodsWeightLearningViewState._suppliersTable.1',
       key: const Key('goods-weight-suppliers-table'),
@@ -886,12 +930,13 @@ class _ManualUnitWeightDialogState extends State<_ManualUnitWeightDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              '人工设定的单重优先于称重学习, 只在仓库称重核对与估算里使用, 不改货品资料。'
-              '${widget.learnedKg == null ? '' : ' 称重学习当前为 ${formatUnitWeight(widget.learnedKg, unitName: widget.unitName)}。'}',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: UtenSpacing.s12),
+            if (widget.learnedKg != null) ...[
+              Text(
+                '称重学习当前为 ${formatUnitWeight(widget.learnedKg, unitName: widget.unitName)}。',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+            ],
             Row(
               children: [
                 Expanded(
@@ -904,19 +949,23 @@ class _ManualUnitWeightDialogState extends State<_ManualUnitWeightDialog> {
                     ),
                     decoration: UtenInputDecoration(
                       InputDecoration(labelText: '每$unitName重'),
+                      info: '人工设定的单重优先于称重学习, 只在仓库称重核对与估算里使用, 不改货品资料。',
                     ),
                     onChanged: (_) => setState(() => _error = null),
                   ),
                 ),
                 const SizedBox(width: UtenSpacing.s8),
-                DropdownButton<WeightUnit>(
-                  key: const ValueKey('manual-unit-weight-unit'),
-                  value: _unit,
-                  items: const [
-                    DropdownMenuItem(value: WeightUnit.g, child: Text('克')),
-                    DropdownMenuItem(value: WeightUnit.kg, child: Text('千克')),
-                  ],
-                  onChanged: (u) => setState(() => _unit = u ?? _unit),
+                UtenDropdownScrollScope(
+                  nativeDropdown: true,
+                  child: DropdownButton<WeightUnit>(
+                    key: const ValueKey('manual-unit-weight-unit'),
+                    value: _unit,
+                    items: const [
+                      DropdownMenuItem(value: WeightUnit.g, child: Text('克')),
+                      DropdownMenuItem(value: WeightUnit.kg, child: Text('千克')),
+                    ],
+                    onChanged: (u) => setState(() => _unit = u ?? _unit),
+                  ),
                 ),
               ],
             ),
@@ -1172,13 +1221,29 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
             SwitchListTile(
               key: const ValueKey('weight-settings-learning'),
               contentPadding: EdgeInsets.zero,
-              title: const Text('参与学习'),
-              subtitle: const Text('关闭后称重记录只保留, 不再计算单重'),
+              title: const Row(
+                children: [
+                  Flexible(child: Text('参与学习')),
+                  UtenFieldHintIcon(info: '关闭后称重记录只保留, 不再计算单重', dense: true),
+                ],
+              ),
               value: _learningEnabled,
               onChanged: (v) => setState(() => _learningEnabled = v),
             ),
             const SizedBox(height: UtenSpacing.s8),
-            Text('批次切换', style: theme.textTheme.labelLarge),
+            Row(
+              children: [
+                Flexible(
+                  child: Text('批次切换', style: theme.textTheme.labelLarge),
+                ),
+                UtenFieldHintIcon(
+                  info: _regimeMode == 'AUTO'
+                      ? '自动: 发现单重明显变了就从变化处重新学习, 并在称重异常里提醒。'
+                      : '手动: 只在称样勾选「从本次起作为新批次」或点「从今天起重新学习」时切换, 自动发现只提醒。',
+                  dense: true,
+                ),
+              ],
+            ),
             const SizedBox(height: UtenSpacing.s4),
             UtenSegmentRow<String>(
               key: const ValueKey('weight-settings-regime'),
@@ -1188,15 +1253,6 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
               ],
               selected: {_regimeMode},
               onSelectionChanged: (s) => setState(() => _regimeMode = s.first),
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              _regimeMode == 'AUTO'
-                  ? '自动: 发现单重明显变了就从变化处重新学习, 并在称重异常里提醒。'
-                  : '手动: 只在称样勾选「从本次起作为新批次」或点「从今天起重新学习」时切换, 自动发现只提醒。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
             ),
             if (_error != null) ...[
               const SizedBox(height: UtenSpacing.s8),

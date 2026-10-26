@@ -37,6 +37,7 @@ import '../config/purchase_doc_config.dart';
 import '../config/purchase_report_config.dart';
 import '../models/purchase_doc.dart';
 import '../../../shared/badges/badge_registry.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class PurchaseHubPage extends ConsumerWidget {
   const PurchaseHubPage({super.key});
@@ -179,7 +180,7 @@ class PurchaseHubPage extends ConsumerWidget {
     String title,
     List<_Entry> entries,
   ) {
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

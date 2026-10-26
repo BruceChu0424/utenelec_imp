@@ -29,6 +29,8 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/auth/native_read_view_scope_mixin.dart'
+    show nativeReadAccessDenied;
 import '../../../shared/models/procurement_inbound.dart';
 import '../repositories/procurement_inbound_repository.dart';
 import '../../../shared/badges/badge_registry.dart';
@@ -56,6 +58,7 @@ enum _ReturnSeg { pending, history }
 class _ProcurementReturnTasksPageState
     extends ConsumerState<ProcurementReturnTasksPage> {
   PagedResult<ProcurementArrivalException>? _result;
+  Object? _acceptedQuery;
   bool _loading = false;
   String? _error;
   int _requestVersion = 0;
@@ -87,7 +90,9 @@ class _ProcurementReturnTasksPageState
     if (!_shouldLoad) return;
     final requestVersion = ++_requestVersion;
     final range = _seg == _ReturnSeg.history ? _historyTime.range : null;
+    final query = (_seg, _historyTime, _keyword, widget.orderType);
     setState(() {
+      if (_acceptedQuery != query) _result = null;
       _loading = true;
       _error = null;
     });
@@ -107,11 +112,17 @@ class _ProcurementReturnTasksPageState
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _result = result;
+        _acceptedQuery = query;
         _loading = false;
       });
     } on ApiException catch (error) {
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
+        if (nativeReadAccessDenied(error)) {
+          _result = null;
+          _acceptedQuery = null;
+          _selected.clear();
+        }
         _error = error.message;
         _loading = false;
       });
@@ -266,25 +277,7 @@ class _ProcurementReturnTasksPageState
           ),
         ],
       ),
-      body: SafeArea(
-        // 2026-09-24 任务中心统一范式：分段未选 / 历史段时间未选 → 引导占位不发请求。
-        child: _seg == null
-            ? const UtenFilterPlaceholder(
-                message: '在上方选择分类后开始办理',
-                description: '待退回 = 等您确认实物已退；历史记录 = 已退回的任务',
-              )
-            : _seg == _ReturnSeg.history && _historyTime.isNone
-            ? const UtenHistoryTimePlaceholder()
-            : _loading && result == null
-            ? const UtenSkeletonList()
-            : _error != null && result == null
-            ? UtenEmpty.error(
-                message: _error,
-                actionLabel: '重新加载',
-                onAction: () => _load(1),
-              )
-            : _buildList(result),
-      ),
+      body: SafeArea(child: _buildList(result)),
       // 多选批量操作：2026-09-14 UI 统一口径——吸底操作条改右下悬浮组，
       // 「已选 N」标准胶囊 + 全选/批量按钮统一 large。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -389,7 +382,7 @@ class _ProcurementReturnTasksPageState
                   label: '历史记录',
                 ),
               ],
-              selected: {_seg!},
+              selected: _seg == null ? const {} : {_seg!},
               onSelectionChanged: (value) {
                 if (value == _seg) return;
                 setState(() {
@@ -433,7 +426,30 @@ class _ProcurementReturnTasksPageState
               ),
             ],
             const SizedBox(height: UtenSpacing.s16),
-            if (result.items.isEmpty)
+            if (_seg == null)
+              const SizedBox(
+                height: 180,
+                child: UtenFilterPlaceholder(
+                  message: '在上方选择分类后开始办理',
+                  description: '待退回 = 等您确认实物已退；历史记录 = 已退回的任务',
+                ),
+              )
+            else if (_seg == _ReturnSeg.history && _historyTime.isNone)
+              const SizedBox(height: 180, child: UtenHistoryTimePlaceholder())
+            else if (_loading && value == null)
+              const SizedBox(
+                height: 80,
+                child: Center(
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+              )
+            else if (_error != null && value == null)
+              UtenEmpty.error(
+                message: _error,
+                actionLabel: '重新加载',
+                onAction: () => _load(1),
+              )
+            else if (result.items.isEmpty)
               SizedBox(
                 height: 380,
                 child: UtenEmpty(

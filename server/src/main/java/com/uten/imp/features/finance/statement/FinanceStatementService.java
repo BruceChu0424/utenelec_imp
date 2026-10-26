@@ -6,6 +6,7 @@ import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.features.finance.report.ReportColumn;
 import com.uten.imp.features.finance.report.ReportTableResponse;
 import jakarta.persistence.EntityManager;
+import com.uten.imp.common.report.ReportReadPlan;
 import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -125,14 +126,15 @@ public class FinanceStatementService {
                        ROUND(m.rcv_qty * COALESCE(m.process_price,0), 2) AS "processAmount",
                        m.material_price AS "materialPrice",
                        ROUND((m.prev_stock + m.iss_qty - m.loss_allowed - m.rcv_qty) * COALESCE(m.material_price,0), 2) AS "materialAmount",
-                       s.name AS party_name, s.code AS party_code
+                       s.name AS party_name, s.code AS party_code,
+                       m.supplier_id AS "__supplierId", m.goods_id AS "__goodsId", m.color_id AS "__colorId"
                 FROM merged m
                 JOIN suppliers s ON s.id = m.supplier_id
                 JOIN goods g ON g.id = m.goods_id
                 LEFT JOIN colors c ON c.id = m.color_id
                 WHERE (m.prev_stock <> 0 OR m.iss_qty <> 0 OR m.rcv_qty <> 0)
                 """;
-        return runPaged(cols, core, "t.\"supplierName\", t.\"goodsCode\"", keyword, from, to, page, size,
+        return runPaged(cols, core, "t.\"supplierName\", t.\"goodsCode\", t.\"__supplierId\", t.\"__goodsId\", t.\"__colorId\" NULLS FIRST", keyword, from, to, page, size,
                 Map.of("lossRate", lossRate == null ? new BigDecimal("0.03") : lossRate),false,
                 "t.\"goodsName\"", "t.\"goodsCode\"", "t.\"color\"", "t.\"issueBillNo\"", "t.\"receiptBillNo\"");
     }
@@ -155,7 +157,8 @@ public class FinanceStatementService {
                     SELECT i.bill_date AS bill_date, g.code AS goods_code, g.name AS goods_name,
                            COALESCE(u.name,'') AS unit_name, i.qty AS qty, i.price AS price,
                            i.amount_original AS amount, d.bill_no AS remark,
-                           s.name AS party_name, s.code AS party_code, d.supplier_id AS party_id
+                           s.name AS party_name, s.code AS party_code, d.supplier_id AS party_id,
+                           'PURCHASE_RECEIPT'::text AS source_type, i.id AS source_id
                     FROM purchase_receipt_items i
                     JOIN purchase_receipts d ON d.id = i.receipt_id
                     LEFT JOIN goods g ON g.id = i.goods_id
@@ -167,7 +170,7 @@ public class FinanceStatementService {
                     SELECT i.bill_date, g.code, g.name,
                            COALESCE(u.name,''), -i.qty, i.price,
                            -i.amount_original, d.bill_no || '(退货)',
-                           s.name, s.code, d.supplier_id
+                           s.name, s.code, d.supplier_id, 'PURCHASE_RETURN'::text, i.id
                     FROM purchase_return_items i
                     JOIN purchase_returns d ON d.id = i.return_id
                     LEFT JOIN goods g ON g.id = i.goods_id
@@ -177,7 +180,7 @@ public class FinanceStatementService {
                       AND i.bill_date BETWEEN :from AND :to
                 ) t
                 """;
-        return runPaged(cols, core, "t.bill_date, t.goods_code", keyword, from, to, page, size, Map.of(),false,
+        return runPaged(cols, core, "t.bill_date, t.goods_code, t.source_type, t.source_id", keyword, from, to, page, size, Map.of(),false,
                 "t.goods_name", "t.goods_code", "t.unit_name", "t.remark");
     }
 
@@ -204,7 +207,7 @@ public class FinanceStatementService {
                     SELECT i.goods_id, i.color_id, i.bill_date, i.bill_no,
                            COALESCE(i.weight, 0) AS in_weight, 0::numeric AS out_weight,
                            0::numeric AS out_qty, NULL::numeric AS price,
-                           d.supplier_id
+                           d.supplier_id, 'SUBCONTRACT_RECEIPT'::text AS source_type, i.id AS source_id
                     FROM subcontract_receipt_items i
                     JOIN subcontract_receipts d ON d.id = i.receipt_id
                     WHERE d.status = 1 AND d.is_deleted = false AND i.is_deleted = false
@@ -212,7 +215,7 @@ public class FinanceStatementService {
                     SELECT i.goods_id, i.color_id, i.bill_date, i.bill_no,
                            0::numeric, COALESCE(i.weight, 0),
                            i.qty, NULLIF(i.price, 0),
-                           d.supplier_id
+                           d.supplier_id, 'SUBCONTRACT_ISSUE'::text, i.id
                     FROM subcontract_material_issue_items i
                     JOIN subcontract_material_issues d ON d.id = i.issue_id
                     WHERE d.status = 1 AND d.is_deleted = false AND i.is_deleted = false
@@ -238,14 +241,14 @@ public class FinanceStatementService {
                        p.out_qty AS "outQty", p.price AS "price",
                        ROUND(p.out_qty * COALESCE(p.price,0), 2) AS "processAmount",
                        p.bill_no AS "billNo",
-                       s.name AS party_name, s.code AS party_code
+                       s.name AS party_name, s.code AS party_code, p.source_type, p.source_id
                 FROM period p
                 LEFT JOIN prev pv ON pv.goods_id = p.goods_id AND pv.color_id IS NOT DISTINCT FROM p.color_id
                                  AND pv.supplier_id = p.supplier_id
                 JOIN goods g ON g.id = p.goods_id
                 LEFT JOIN suppliers s ON s.id = p.supplier_id
                 """;
-        return runPaged(cols, core, "t.\"billDate\", t.\"billNo\"", keyword, from, to, page, size, Map.of(),true,
+        return runPaged(cols, core, "t.\"billDate\", t.\"billNo\", t.source_type, t.source_id", keyword, from, to, page, size, Map.of(),true,
                 "t.\"goodsName\"", "t.\"spec\"", "t.\"billNo\"");
     }
 
@@ -267,7 +270,8 @@ public class FinanceStatementService {
                     SELECT i.bill_date AS bill_date, g.name AS goods_name,
                            COALESCE(c.name,'') AS color_name, COALESCE(u.name,'') AS unit_name,
                            i.qty AS qty, i.price AS price, i.amount_original AS amount,
-                           d.bill_no AS remark, cl.name AS party_name, cl.code AS party_code
+                           d.bill_no AS remark, cl.name AS party_name, cl.code AS party_code,
+                           'SALES_SHIPMENT'::text AS source_type, i.id AS source_id
                     FROM sales_shipment_items i
                     JOIN sales_shipments d ON d.id = i.shipment_id
                     LEFT JOIN goods g ON g.id = i.goods_id
@@ -280,7 +284,7 @@ public class FinanceStatementService {
                     SELECT i.bill_date, g.name,
                            COALESCE(c.name,''), COALESCE(u.name,''),
                            -i.qty, i.price, -i.amount_original,
-                           d.bill_no || '(退货)', cl.name, cl.code
+                           d.bill_no || '(退货)', cl.name, cl.code, 'SALES_RETURN'::text, i.id
                     FROM sales_return_items i
                     JOIN sales_returns d ON d.id = i.return_id
                     LEFT JOIN goods g ON g.id = i.goods_id
@@ -291,7 +295,7 @@ public class FinanceStatementService {
                       AND i.bill_date BETWEEN :from AND :to
                 ) t
                 """;
-        return runPaged(cols, core, "t.bill_date, t.goods_name", keyword, from, to, page, size, Map.of(),false,
+        return runPaged(cols, core, "t.bill_date, t.goods_name, t.source_type, t.source_id", keyword, from, to, page, size, Map.of(),false,
                 "t.goods_name", "t.color_name", "t.unit_name", "t.remark");
     }
 
@@ -314,22 +318,26 @@ public class FinanceStatementService {
         String rank = searching && !chronological ? TaskKeywordSearch.rankNamesFirstParameter("kw",
                 new String[]{textFields[0]},new String[]{},fields.toArray(String[]::new)) + ", " : "";
         String wrapped = "SELECT * FROM (" + coreSql + ") t " + where;
-        var dq = em.createNativeQuery(wrapped + " ORDER BY " + rank + orderBy + " LIMIT :__l OFFSET :__o");
+        var dq = com.uten.imp.common.report.ReportExportCursor.query(em, wrapped + " ORDER BY " + rank + orderBy + " LIMIT :__l OFFSET :__o");
         bindRaw(dq, keyword, from, to, extraParams);
         dq.setParameter("__l", safeSize);
         dq.setParameter("__o", offset);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = dq.getResultList();
+        List<Object[]> rows = com.uten.imp.common.report.ReportExportCursor.rows(em, dq);
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
             for (int i = 0; i < cols.size(); i++) m.put(cols.get(i).key(), norm(r[i]));
+            com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(m);
             items.add(m);
         }
-        var cq = em.createNativeQuery("SELECT COUNT(*) FROM (" + coreSql + ") t " + where);
-        bindRaw(cq, keyword, from, to, extraParams);
-        long total = ((Number) cq.getSingleResult()).longValue();
-        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var cq = em.createNativeQuery("SELECT COUNT(*) FROM (" + coreSql + ") t " + where);
+            bindRaw(cq, keyword, from, to, extraParams);
+            total = ((Number) cq.getSingleResult()).longValue();
+        }
+        int totalPages = ReportReadPlan.totalPages(total, safeSize);
         return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages);
     }
 

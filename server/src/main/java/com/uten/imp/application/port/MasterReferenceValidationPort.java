@@ -17,6 +17,11 @@ public interface MasterReferenceValidationPort {
     /** Requires only existence and owner-scope visibility; inactive rows remain cleanable. */
     void requireVisibleGoods(UUID goodsId);
 
+    /** Same historical read qualification, in a bounded batch; no active-only widening/narrowing. */
+    default void requireVisibleGoodsBatch(java.util.Collection<UUID> goodsIds) {
+        for (UUID id : goodsIds) requireVisibleGoods(id);
+    }
+
     /** Visibility probe for redacting an existing relationship without exposing its target. */
     boolean canViewGoods(UUID goodsId);
 

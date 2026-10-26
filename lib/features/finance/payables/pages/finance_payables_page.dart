@@ -1,3 +1,9 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/providers/native_facet_options.dart';
+import '../../../../shared/auth/read_owner_fence.dart';
+import '../../../../shared/providers/master_party_options.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -62,7 +68,8 @@ class FinancePayablesPage extends ConsumerStatefulWidget {
       _FinancePayablesPageState();
 }
 
-class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
+class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
+    with ScopedPagedReadViewMixin<FinancePayablesPage> {
   final _requests = LatestRequestGuard();
   FinancePayablesResult? _result;
   bool _loading = false;
@@ -131,6 +138,30 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
   @override
   void initState() {
     super.initState();
+    listenReadOwner(
+      ref,
+      () => setState(() {
+        _requests.begin();
+        _result = null;
+        _loading = false;
+        _error = null;
+        _page = 1;
+        _selectedIds = {};
+        _selectedItemsById.clear();
+        _keyword = '';
+        _businessType = null;
+        _supplierId = null;
+        _status = null;
+        _settlementMethodId = null;
+        _currencyId = null;
+        _dateFrom = null;
+        _dateTo = null;
+        _dueFrom = null;
+        _dueTo = null;
+        _columnFilters.reset();
+        ++_panelRefreshTick;
+      }),
+    );
     if (!_canViewPayables) {
       if (_canViewLossClaims) {
         _workspace = _PayablesWorkspaceView.lossClaims;
@@ -157,7 +188,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
   Future<void> _refreshWorkspace() async {
     setState(() => _panelRefreshTick++);
     if (_workspace == _PayablesWorkspaceView.payables) {
-      await _load(_page);
+      await _load(_tableRows.visiblePage ?? _page);
     }
   }
 
@@ -177,29 +208,100 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
         sourceDocNo: withSourceDocNo ? _columnFilters['sourceDocNo'] : null,
       );
 
-  Future<void> _load([int? requestedPage]) async {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _requests.begin();
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _selectedIds.clear();
+      _selectedItemsById.clear();
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+    });
+  }
+
+  Map<String, dynamic> get _cacheQuery => {
+    'repository': ref.read(financePayablesRepositoryProvider),
+    'keyword': _keyword,
+    'businessType': _businessType,
+    'supplierId': _supplierId,
+    'status': _status,
+    'settlementMethodId': _settlementMethodId,
+    'currencyId': _currencyId,
+    'dateFrom': _dateFrom,
+    'dateTo': _dateTo,
+    'dueFrom': _dueFrom,
+    'dueTo': _dueTo,
+    'columns': Map.of(_columnFilters.values),
+    'sort': _columnFilters.sortColumn,
+    'ascending': _columnFilters.sortAscending,
+  };
+
+  Future<void> _navigatePage(int page) => _load(page, true);
+
+  Future<void> _load([int? requestedPage, bool useCache = false]) async {
+    final cacheQuery = _cacheQuery;
+    final repo = ref.read(financePayablesRepositoryProvider);
+    final filter = _payablesFilter();
+    final sort = _columnFilters.sortColumn;
+    final order = sort == null
+        ? null
+        : (_columnFilters.sortAscending ? 'asc' : 'desc');
+
     if (!_canViewPayables) return;
     final generation = _requests.begin();
-    final page = requestedPage ?? _page;
+    final page = requestedPage ?? _tableRows.visiblePage ?? _page;
     setState(() {
       _page = page;
       _loading = true;
       _error = null;
     });
     // 来源单号桶随列表口径重取（2026-09-25 单号列统一）。
-    unawaited(_loadSourceDocNoFacets());
+
     try {
-      final result = await ref
-          .read(financePayablesRepositoryProvider)
-          .list(
-            page: page,
-            filter: _payablesFilter(),
-            sort: _columnFilters.sortColumn,
-            order: _columnFilters.sortColumn == null
-                ? null
-                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+      final cachedPage = await readScopedPage<FinancePayableItem>(
+        page,
+        query: cacheQuery,
+        currentQuery: () => _cacheQuery,
+        useCache: useCache,
+        fetchPage: (target) async {
+          final response = await repo.list(
+            page: target,
+            filter: filter,
+            sort: sort,
+            order: order,
           );
+          return PagedReadSnapshot<FinancePayableItem, FinancePayablesResult>(
+            page: PagedResult(
+              items: response.items,
+              page: response.page,
+              size: response.size,
+              total: response.total,
+              totalPages: response.totalPages,
+            ),
+            snapshot: response,
+          );
+        },
+      );
+      final result =
+          (cachedPage
+                  as PagedReadSnapshot<
+                    FinancePayableItem,
+                    FinancePayablesResult
+                  >)
+              .snapshot;
       if (!mounted || !_requests.isCurrent(generation)) return;
+      unawaited(
+        ref
+            .read(financeNameServiceProvider)
+            .loadSupplierNames(
+              partyReferenceIds([
+                ...result.items.map((item) => item.supplierId),
+                _supplierId,
+              ]),
+            ),
+      );
       setState(() {
         _result = result;
         _loading = false;
@@ -217,19 +319,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
   }
 
   /// 来源单号值筛选桶随过滤上下文重取（失败静默保持旧桶，不阻断列表）。
-  Future<void> _loadSourceDocNoFacets() {
-    if (!_canViewPayables) return Future.value();
-    return _columnFilters.loadFacets(
-      () async => {
-        'sourceDocNo': await ref
-            .read(financePayablesRepositoryProvider)
-            .sourceDocNoFacets(filter: _payablesFilter(withSourceDocNo: false)),
-      },
-      onLoaded: () {
-        if (mounted) setState(() {});
-      },
-    );
-  }
 
   void _setLoadError(int generation, String message) {
     if (!mounted || !_requests.isCurrent(generation)) return;
@@ -928,6 +1017,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
         ),
         Expanded(
           child: MasterDataTableView<FinancePayableItem>(
+            expensiveRowMounts: false,
             rowsController: _tableRows,
             paginationRevision: _result,
             paginationScope: (
@@ -951,7 +1041,10 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
               // 来源单号桶与列表同一过滤口径（2026-09-25 单号列统一）。
               'sourceDocNo': _columnFilters.bucketOf('sourceDocNo'),
               'businessType': financePayablesBusinessTypeFacets,
-              'supplierName': financeDictionaryFacets(names),
+              'supplierName': selectedPartyFacet(
+                _supplierId,
+                (id) => names[id],
+              ),
               'settlementMethod': financeDictionaryFacets({
                 for (final method in settlementMethods)
                   method.id: '${method.name}(${method.code})',
@@ -960,6 +1053,39 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
               'currencyCode': financeDictionaryFacets(currencyNames),
               'status': financePayablesStatusFacets,
             },
+            facetPageLoaders: {
+              'supplierName': supplierPartyFacetLoader(ref),
+              ...nativeFacetLoaders(
+                ref,
+                path: '/finance/payables/facets',
+                fields: const ['sourceDocNo'],
+                filters: {
+                  'businessType': _businessType,
+                  'supplierId': _supplierId,
+                  'status': _status,
+                  'settlementMethodId': _settlementMethodId,
+                  'currencyId': _currencyId,
+                  'keyword': _keyword,
+                  'dateFrom': _payablesFilter(withSourceDocNo: false).dateFrom,
+                  'dateTo': _payablesFilter(withSourceDocNo: false).dateTo,
+                  'dueFrom': _payablesFilter(withSourceDocNo: false).dueFrom,
+                  'dueTo': _payablesFilter(withSourceDocNo: false).dueTo,
+                },
+              ),
+            },
+            facetSearchScope:
+                nativeFacetSearchScope(ref, '/finance/payables/facets', {
+                  'businessType': _businessType,
+                  'supplierId': _supplierId,
+                  'status': _status,
+                  'settlementMethodId': _settlementMethodId,
+                  'currencyId': _currencyId,
+                  'keyword': _keyword,
+                  'dateFrom': _payablesFilter(withSourceDocNo: false).dateFrom,
+                  'dateTo': _payablesFilter(withSourceDocNo: false).dateTo,
+                  'dueFrom': _payablesFilter(withSourceDocNo: false).dueFrom,
+                  'dueTo': _payablesFilter(withSourceDocNo: false).dueTo,
+                }),
             nullCounts: const {},
             filters: {
               'sourceDocNo': _columnFilters['sourceDocNo'],
@@ -987,7 +1113,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
             emptyMessage: '暂无符合条件的应付记录',
             currentPage: _result?.page ?? 1,
             totalPages: _result?.totalPages ?? 1,
-            onPageChange: (page) => _load(page),
+            onPageChange: _navigatePage,
           ),
         ),
       ],

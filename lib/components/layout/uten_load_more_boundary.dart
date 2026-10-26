@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../core/responsive/display_zoom.dart';
+import 'uten_scroll_prefetch_policy.dart';
 
-/// Adds bottom-edge loading to a list that already owns its accumulated rows
+/// Adds direction-aware look-ahead loading to an accumulated list's viewport
 /// (including editable grids). Selection and input controllers stay with it.
 class UtenLoadMoreBoundary extends StatefulWidget {
   const UtenLoadMoreBoundary({
@@ -25,6 +27,7 @@ class UtenLoadMoreBoundary extends StatefulWidget {
 
 class _UtenLoadMoreBoundaryState extends State<UtenLoadMoreBoundary> {
   ScrollMetrics? _metrics;
+  ScrollableState? _source;
   bool _pending = false;
   int _generation = 0;
 
@@ -34,6 +37,33 @@ class _UtenLoadMoreBoundaryState extends State<UtenLoadMoreBoundary> {
     if (oldWidget.scope != widget.scope) {
       _generation++;
       _pending = false;
+      _metrics = null;
+      final generation = _generation;
+      // A same-sized replacement query need not emit another dimensions
+      // notification. Refresh from the real, retained viewport after its new
+      // scope has laid out; never request from the old scope's cached metrics.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final source = _source;
+        if (!mounted ||
+            generation != _generation ||
+            source == null ||
+            !source.mounted) {
+          return;
+        }
+        var owned = false;
+        source.context.visitAncestorElements((element) {
+          if (identical(element, context)) {
+            owned = true;
+            return false;
+          }
+          return true;
+        });
+        if (owned &&
+            source.position.hasContentDimensions &&
+            source.position.hasViewportDimension) {
+          _metrics = source.position.copyWith();
+        }
+      });
     }
   }
 
@@ -42,7 +72,12 @@ class _UtenLoadMoreBoundaryState extends State<UtenLoadMoreBoundary> {
         _pending ||
         metrics == null ||
         metrics.axis != Axis.vertical ||
-        metrics.extentAfter > 0.5) {
+        !UtenScrollPrefetchPolicy.isNearEdge(
+          metrics,
+          fontZoom: UtenDisplayScale.fontZoomOf(context),
+        ) ||
+        !TickerMode.valuesOf(context).enabled ||
+        !(ModalRoute.of(context)?.isCurrent ?? true)) {
       return;
     }
     _pending = true;
@@ -50,7 +85,11 @@ class _UtenLoadMoreBoundaryState extends State<UtenLoadMoreBoundary> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted || generation != _generation) return;
       try {
-        if (widget.enabled) await widget.onLoadMore();
+        if (widget.enabled &&
+            TickerMode.valuesOf(context).enabled &&
+            (ModalRoute.of(context)?.isCurrent ?? true)) {
+          await widget.onLoadMore();
+        }
       } finally {
         if (mounted && generation == _generation) _pending = false;
       }
@@ -80,6 +119,7 @@ class _UtenLoadMoreBoundaryState extends State<UtenLoadMoreBoundary> {
         if (notification.depth == 0 &&
             notification.metrics.axis == Axis.vertical) {
           _metrics = notification.metrics;
+          _source = Scrollable.maybeOf(notification.context);
         }
         return false;
       },
@@ -90,13 +130,12 @@ class _UtenLoadMoreBoundaryState extends State<UtenLoadMoreBoundary> {
             return false;
           }
           _metrics = notification.metrics;
-          final forward =
-              notification is ScrollUpdateNotification &&
-                  notification.dragDetails != null &&
-                  (notification.scrollDelta ?? 0) > 0 ||
-              notification is OverscrollNotification &&
-                  notification.overscroll > 0;
-          if (forward) _request(notification.metrics);
+          if (notification.context case final sourceContext?) {
+            _source = Scrollable.maybeOf(sourceContext);
+          }
+          if (UtenScrollPrefetchPolicy.directionOf(notification) > 0) {
+            _request(notification.metrics);
+          }
           return false;
         },
         child: widget.child,

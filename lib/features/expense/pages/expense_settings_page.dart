@@ -7,6 +7,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -101,6 +102,23 @@ class _ExpenseSettingsPageState extends ConsumerState<ExpenseSettingsPage> {
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.expenseFlowSettingsTitle,
+        titleWidget: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                l10n.expenseFlowSettingsTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).appBarTheme.titleTextStyle,
+              ),
+            ),
+            UtenFieldHintIcon(
+              info: l10n.expenseFlowSettingsDescription,
+              dense: true,
+            ),
+          ],
+        ),
         showBackButton: true,
         actions: [
           UtenRefreshButton(
@@ -154,11 +172,6 @@ class _ExpenseSettingsPageState extends ConsumerState<ExpenseSettingsPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text(
-                              l10n.expenseFlowSettingsDescription,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                            const SizedBox(height: UtenSpacing.s16),
                             TextFormField(
                               errorBuilder: utenTextFieldErrorBuilder,
                               controller: _name,
@@ -215,10 +228,13 @@ class _ExpenseSettingsPageState extends ConsumerState<ExpenseSettingsPage> {
                             ),
                             if (canEdit) ...[
                               const SizedBox(height: UtenSpacing.s16),
-                              UtenButton(
-                                onPressed: _save,
-                                isLoading: _saving,
-                                child: Text(l10n.expenseFlowSettingsSave),
+                              Align(
+                                alignment: AlignmentDirectional.centerStart,
+                                child: UtenButton(
+                                  onPressed: _save,
+                                  isLoading: _saving,
+                                  child: Text(l10n.expenseFlowSettingsSave),
+                                ),
                               ),
                             ],
                           ],

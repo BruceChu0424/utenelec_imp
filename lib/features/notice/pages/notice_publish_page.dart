@@ -554,6 +554,14 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
         UtenSectionHeader(
           title: l10n.noticePublishContentSection,
           icon: Icons.edit_note_rounded,
+          info: [
+            _kind == NoticeKind.todo
+                ? '发布后会进入接收人的工作台待办。'
+                : '普通通知只进入消息中心，不会产生待办任务。',
+            if (_kind == NoticeKind.normal && !_type.isCelebratory)
+              '公告/制度/系统/紧急/福利 类型要求接收人登录打卡确认'
+                  '（未打卡每次登录都会弹窗提醒）；任务/审批/流程类只提醒。',
+          ].join('\n\n'),
         ),
         const SizedBox(height: UtenSpacing.s8),
         UtenCard(
@@ -586,15 +594,15 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
                   });
                 },
               ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                _kind == NoticeKind.todo
-                    ? '发布后会进入接收人的工作台待办；接收人仍需具备目标页面权限。'
-                    : '普通通知只进入消息中心，不会产生待办任务。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              if (_kind == NoticeKind.todo) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                Text(
+                  '接收人仍需具备目标页面权限。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
+              ],
               const SizedBox(height: UtenSpacing.s16),
               if (_kind == NoticeKind.normal) ...[
                 NoticeTypePicker(
@@ -602,31 +610,6 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
                   available: _publishableTypes,
                   onChanged: _onTypeChanged,
                 ),
-                if (!_type.isCelebratory) ...[
-                  const SizedBox(height: UtenSpacing.s8),
-                  // 2026-09-10（ADR-063 §8）：告知 HR 哪些类型要求接收人打卡——
-                  // 打卡类型接收人登录即弹窗，不打卡每次登录都弹。
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.how_to_reg_outlined,
-                        size: 16,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: UtenSpacing.s4),
-                      Expanded(
-                        child: Text(
-                          '公告/制度/系统/紧急/福利 类型要求接收人登录打卡确认'
-                          '（未打卡每次登录都会弹窗提醒）；任务/审批/流程类只提醒。',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
                 if (_type.isCelebratory) ...[
                   const SizedBox(height: UtenSpacing.s12),
                   UtenEmployeePicker(

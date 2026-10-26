@@ -3,13 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/uten_scroll_behavior.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/basic_data/models/client_node.dart';
+import 'package:uten_imp/features/basic_data/models/master_search_context.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/client_category_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/client_repository.dart';
@@ -17,14 +20,88 @@ import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dar
 import 'package:uten_imp/features/basic_data/widgets/uten_client_picker.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 
 import '../../../support/audit_screenshot_support.dart';
 
 final _captureBoundary = GlobalKey(debugLabel: 'client-picker-table-capture');
 const _longOverseasCategory = '海外客户及东南亚长期合作重点客户分类';
+final _livePermissions = StateProvider<Set<String>>((ref) => {});
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final pending in [false, true]) {
+    testWidgets(
+      'master picker ${pending ? 'pending search' : 'accepted selection'} cannot revive after reader ABA',
+      (tester) async {
+        final repository = _FakeClientRepository();
+        if (pending) repository.delayedQuery = 'held';
+        await _pumpPicker(
+          tester,
+          size: const Size(1200, 900),
+          clientRepository: repository,
+        );
+        await _openPicker(tester);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(_PickerHarness)),
+        );
+        if (pending) {
+          await tester.enterText(_searchEditable(), 'held');
+          await tester.pump(const Duration(milliseconds: 301));
+        } else {
+          await tester.tap(find.text('本地客户'));
+          await tester.pumpAndSettle();
+        }
+        container.read(_livePermissions.notifier).state = {'changed'};
+        await tester.pump();
+        container.read(_livePermissions.notifier).state = {};
+        await tester.pump();
+        if (pending) {
+          repository.delayedSearch.complete(
+            _page(
+              const [_FakeClientRepository.overseasClient],
+              page: 1,
+              size: 100,
+            ),
+          );
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('账号、权限或服务器已变化，请关闭后重新选择'), findsOneWidget);
+        expect(find.byType(MasterDataTableView<ClientListItem>), findsNothing);
+        expect(find.textContaining('已选择：'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final config in [
+    (size: const Size(1280, 720), zoom: 1.0),
+    (size: const Size(1920, 1080), zoom: 1.0),
+    (size: const Size(1920, 1080), zoom: 1.5),
+  ]) {
+    testWidgets('客户选择标题到内容的留白在${config.size}和${config.zoom}倍界面下保持紧凑', (
+      tester,
+    ) async {
+      await _pumpPicker(
+        tester,
+        size: config.size,
+        displayZoom: config.zoom,
+        theme: buildLightTheme().copyWith(platform: TargetPlatform.windows),
+        clientRepository: _FakeClientRepository(),
+      );
+      await _openPicker(tester);
+
+      final closeBottom = tester.getBottomLeft(find.byTooltip('关闭')).dy;
+      final searchTop = tester
+          .getTopLeft(find.byKey(const Key('uten-client-picker-search')))
+          .dy;
+      final titleBottom = tester.getBottomLeft(find.text('选择客户')).dy;
+      expect(searchTop - closeBottom, inInclusiveRange(8, 24));
+      expect(searchTop - titleBottom, lessThanOrEqualTo(40));
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('客户分类区可拖到160且搜索清除展开选择确认和宽度记忆均可用', (tester) async {
     await loadAuditScreenshotFonts(tester);
@@ -45,8 +122,8 @@ void main() {
     await tester.drag(_splitGutter(), const Offset(-1400, 0));
     await tester.pumpAndSettle();
     expect(tester.getSize(_categoryPane()).width, 160);
-    // 2026-10-18 左缘贴 0 口径：左栏搜索框水平内边距为 0，贴满面板宽。
-    expect(tester.getSize(_searchTextField()).width, 160);
+    // 搜索和树行保持同一左缘，右侧共同让出独立滚动轨道。
+    expect(tester.getSize(_searchTextField()).width, 144);
     expect(
       tester
           .renderObject<RenderParagraph>(find.text(_longOverseasCategory))
@@ -386,7 +463,7 @@ void main() {
     expect(clientRepository.excludeLegacyFlags.last, isTrue);
   });
 
-  testWidgets('客户搜索会汇总全部分页的分类用于完整展开', (tester) async {
+  testWidgets('客户搜索只读当前业务页并用分类元数据完整展开', (tester) async {
     final clientRepository = _FakeClientRepository();
     await _pumpPicker(
       tester,
@@ -400,11 +477,170 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(clientRepository.searchPages, [1, 2]);
+    expect(clientRepository.contextPages, [1]);
     final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
       find.byType(UtenCategoryTreeView<ProductCategoryNode>),
     );
     expect(tree.visibleFilterIds, {'domestic', 'overseas', 'southeast-asia'});
   });
+
+  testWidgets(
+    'ten thousand matches read one business page and all bounded category metadata pages',
+    (tester) async {
+      final repository = _FakeClientRepository();
+      await _pumpPicker(
+        tester,
+        size: const Size(1200, 900),
+        clientRepository: repository,
+        categoryTree: [
+          for (var i = 0; i < 101; i++)
+            ProductCategoryNode(
+              id: 'context-$i',
+              code: '$i',
+              name: '分类$i',
+              level: 0,
+              children: const [],
+            ),
+        ],
+      );
+      await _openPicker(tester);
+      await tester.enterText(_searchEditable(), '大范围');
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pumpAndSettle();
+      expect(repository.searchPages, [1, 2]);
+      expect(repository.contextPages, [1, 2]);
+      final table = tester.widget<MasterDataTableView<ClientListItem>>(
+        find.byType(MasterDataTableView<ClientListItem>),
+      );
+      expect(table.items, hasLength(100));
+      expect(table.totalPages, 100);
+      final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
+        find.byType(UtenCategoryTreeView<ProductCategoryNode>),
+      );
+      expect(tree.visibleFilterIds, contains('context-100'));
+    },
+  );
+
+  for (final versioned in [true, false]) {
+    testWidgets(
+      'master picker refetches ${versioned ? 'versioned' : 'unversioned'} category content on each business page',
+      (tester) async {
+        final repository = _FakeClientRepository(
+          scopeVersion: versioned ? 'fixture-v1' : null,
+        );
+        await _pumpPicker(
+          tester,
+          size: const Size(1200, 900),
+          clientRepository: repository,
+          categoryTree: [
+            for (var i = 0; i < 101; i++)
+              ProductCategoryNode(
+                id: 'context-$i',
+                code: '$i',
+                name: '分类$i',
+                level: 0,
+                children: const [],
+              ),
+          ],
+        );
+        await _openPicker(tester);
+        await tester.enterText(_searchEditable(), '大范围');
+        await tester.pump(const Duration(milliseconds: 301));
+        await tester.pumpAndSettle();
+        final table = find.byType(MasterDataTableView<ClientListItem>);
+        await Future<void>.sync(
+          () => tester
+              .widget<MasterDataTableView<ClientListItem>>(table)
+              .onPageChange!(2),
+        );
+        await tester.pumpAndSettle();
+        expect(repository.searchPages, [1, 2, 3]);
+        expect(repository.contextPages, [1, 2, 1, 2]);
+        if (versioned) {
+          repository.scopeVersion = 'fixture-v2';
+          await Future<void>.sync(
+            () => tester
+                .widget<MasterDataTableView<ClientListItem>>(table)
+                .onPageChange!(3),
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('账号、权限或服务器已变化，请关闭后重新选择'), findsOneWidget);
+          expect(table, findsNothing);
+        }
+      },
+    );
+  }
+
+  testWidgets(
+    'same-role same-query page refreshes changed category content and includes actual row locations',
+    (tester) async {
+      final repository = _FakeClientRepository()
+        ..contextCategoryIdsOverride = ['domestic'];
+      await _pumpPicker(
+        tester,
+        size: const Size(1200, 900),
+        clientRepository: repository,
+        categoryTree: [
+          for (final id in ['domestic', 'overseas', 'southeast-asia'])
+            ProductCategoryNode(
+              id: id,
+              code: id,
+              name: id,
+              level: 0,
+              children: const [],
+            ),
+        ],
+      );
+      await _openPicker(tester);
+      await tester.enterText(_searchEditable(), '集团');
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pumpAndSettle();
+      repository.contextCategoryIdsOverride = ['overseas'];
+      final table = find.byType(MasterDataTableView<ClientListItem>);
+      await Future<void>.sync(
+        () => tester
+            .widget<MasterDataTableView<ClientListItem>>(table)
+            .onPageChange!(2),
+      );
+      await tester.pumpAndSettle();
+      expect(repository.searchPages, [1, 2]);
+      expect(repository.contextPages, [1, 1]);
+      final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
+        find.byType(UtenCategoryTreeView<ProductCategoryNode>),
+      );
+      expect(tree.visibleFilterIds, {'overseas', 'southeast-asia'});
+      expect(find.text('远洋电器'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(_searchTextField()).controller?.text,
+        '集团',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final changedVersion in [null, 'fixture-v2']) {
+    testWidgets(
+      'category metadata pages retire mixed scope proof ${changedVersion ?? 'missing'}',
+      (tester) async {
+        final repository = _FakeClientRepository()
+          ..contextScopeVersions[2] = changedVersion;
+        await _pumpPicker(
+          tester,
+          size: const Size(1200, 900),
+          clientRepository: repository,
+        );
+        await _openPicker(tester);
+        await tester.enterText(_searchEditable(), '大范围');
+        await tester.pump(const Duration(milliseconds: 301));
+        await tester.pumpAndSettle();
+        expect(repository.searchPages, [1]);
+        expect(repository.contextPages, [1, 2]);
+        expect(find.text('账号、权限或服务器已变化，请关闭后重新选择'), findsOneWidget);
+        expect(find.byType(MasterDataTableView<ClientListItem>), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('服务端可选客户口径决定结果数量和页数', (tester) async {
     final clientRepository = _FakeClientRepository();
@@ -518,6 +754,9 @@ Future<void> _pumpPicker(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_livePermissions),
+        ),
         clientCategoryRepositoryProvider.overrideWithValue(
           _FakeClientCategoryRepository(categoryTree),
         ),
@@ -527,6 +766,7 @@ Future<void> _pumpPicker(
         key: _captureBoundary,
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
+          scrollBehavior: const UtenScrollBehavior(),
           theme: theme,
           builder: (context, child) => MediaQuery(
             data: MediaQuery.of(
@@ -669,15 +909,19 @@ class _FakeClientCategoryRepository implements ClientCategoryRepository {
 }
 
 class _FakeClientRepository implements ClientRepository {
-  _FakeClientRepository({this.categoryItems});
+  _FakeClientRepository({this.categoryItems, this.scopeVersion = 'fixture-v1'});
+  String? scopeVersion;
 
   final List<ClientListItem>? categoryItems;
+  List<String?>? contextCategoryIdsOverride;
+  final contextScopeVersions = <int, String?>{};
   String? delayedQuery;
   final delayedSearch = Completer<PagedResult<ClientListItem>>();
   final listCategoryIds = <String>[];
   final listKeywords = <String?>[];
   final searchQueries = <String>[];
   final searchPages = <int>[];
+  final contextPages = <int>[];
   final excludeLegacyFlags = <bool>[];
   final selectableOnlyFlags = <bool>[];
 
@@ -732,7 +976,7 @@ class _FakeClientRepository implements ClientRepository {
           'overseas' || 'southeast-asia' => const [overseasClient],
           _ => const <ClientListItem>[],
         };
-    return _page(items, page: page, size: size);
+    return _page(items, page: page, size: size, readScopeVersion: scopeVersion);
   }
 
   @override
@@ -748,8 +992,27 @@ class _FakeClientRepository implements ClientRepository {
     searchQueries.add(keyword);
     searchPages.add(page);
     if (keyword == delayedQuery) return delayedSearch.future;
+    if (keyword == '大范围') {
+      return PagedResult(
+        readScopeVersion: scopeVersion,
+        items: [
+          for (var i = 0; i < 100; i++)
+            ClientListItem(
+              id: 'global-${(page - 1) * 100 + i}',
+              name: '匹配客户$i',
+              categoryId: 'context-${((page - 1) * 100 + i) % 101}',
+              status: '使用',
+            ),
+        ],
+        page: page,
+        size: size,
+        total: 10000,
+        totalPages: 100,
+      );
+    }
     if (keyword == '集团') {
       return PagedResult(
+        readScopeVersion: scopeVersion,
         items: page == 1 ? const [localClient] : const [overseasClient],
         page: page,
         size: size,
@@ -760,6 +1023,7 @@ class _FakeClientRepository implements ClientRepository {
     if (keyword == '含占位') {
       if (selectableOnly && excludeLegacyFinanceStub) {
         return PagedResult(
+          readScopeVersion: scopeVersion,
           items: const [overseasClient],
           page: 1,
           size: size,
@@ -768,6 +1032,7 @@ class _FakeClientRepository implements ClientRepository {
         );
       }
       return PagedResult(
+        readScopeVersion: scopeVersion,
         items: page == 1 ? const [legacyFinanceStub] : const [overseasClient],
         page: page,
         size: size,
@@ -778,7 +1043,49 @@ class _FakeClientRepository implements ClientRepository {
     final items = keyword == '远洋' || keyword == '海外客户'
         ? const [overseasClient]
         : const <ClientListItem>[];
-    return _page(items, page: page, size: size);
+    return _page(items, page: page, size: size, readScopeVersion: scopeVersion);
+  }
+
+  @override
+  Future<MasterSearchContext> searchContext(
+    String keyword, {
+    int page = 1,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
+  }) async {
+    contextPages.add(page);
+    excludeLegacyFlags.add(excludeLegacyFinanceStub);
+    selectableOnlyFlags.add(selectableOnly);
+    if (keyword == '大范围') {
+      return MasterSearchContext(
+        readScopeVersion: contextScopeVersions.containsKey(page)
+            ? contextScopeVersions[page]
+            : scopeVersion,
+        categoryIds: [
+          for (var i = (page - 1) * 100; i < page * 100 && i < 101; i++)
+            'context-$i',
+        ],
+        totalMatches: 10000,
+        page: page,
+        totalPages: 2,
+        totalCategories: 101,
+      );
+    }
+    final ids =
+        contextCategoryIdsOverride ??
+        (keyword == '集团'
+            ? ['domestic', 'southeast-asia']
+            : {'远洋', '海外客户', '含占位'}.contains(keyword)
+            ? ['southeast-asia']
+            : <String>[]);
+    return MasterSearchContext(
+      readScopeVersion: scopeVersion,
+      categoryIds: ids,
+      totalMatches: ids.length,
+      page: page,
+      totalPages: ids.isEmpty ? 0 : 1,
+      totalCategories: ids.length,
+    );
   }
 
   @override
@@ -807,7 +1114,9 @@ PagedResult<ClientListItem> _page(
   List<ClientListItem> items, {
   required int page,
   required int size,
+  String? readScopeVersion = 'fixture-v1',
 }) => PagedResult(
+  readScopeVersion: readScopeVersion,
   items: items,
   page: page,
   size: size,

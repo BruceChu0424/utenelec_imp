@@ -1,3 +1,4 @@
+import 'package:uten_imp/features/basic_data/models/master_search_context.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -125,6 +126,13 @@ Future<void> _open(BuildContext context) => showUtenMasterPicker<_Client>(
     ],
     loadCategoryPage: (_, _, _) async => _page(),
     search: (_, _) async => _page(),
+    searchContext: (_, page) async => MasterSearchContext(
+      categoryIds: const ['category-0'],
+      totalMatches: 6,
+      page: page,
+      totalPages: 1,
+      totalCategories: 1,
+    ),
     idOf: (row) => row.id,
     categoryIdOf: (_) => 'category-0',
     labelOf: (row) => row.name,

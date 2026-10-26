@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 
 import '../../components/inputs/uten_search_bar.dart';
 import '../../components/layout/uten_adaptive_panel.dart';
+import '../../components/layout/uten_panel_header.dart';
 import '../../components/layout/uten_picker_confirm_bar.dart';
 import '../providers/master_name_provider.dart';
 import '../../core/theme/uten_tokens.dart';
@@ -292,48 +293,24 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: Row(
-                children: [
-                  if (_drilldown.isNotEmpty) ...[
-                    IconButton(
+            UtenPanelHeader(
+              title: widget.title,
+              info: query
+                  ? '选主仓 = 自身 + 全部子仓聚合'
+                  : _drilldown.isEmpty
+                  ? '先选主仓，再选子仓'
+                  : null,
+              subtitle: !query && _drilldown.isNotEmpty
+                  ? '选择 ${_parentName(_drilldown.last)} 的子仓'
+                  : null,
+              onClose: () => Navigator.of(context).pop(),
+              leading: _drilldown.isEmpty
+                  ? null
+                  : IconButton(
                       tooltip: '返回上级',
                       onPressed: () => setState(() => _drilldown.removeLast()),
                       icon: const Icon(Icons.arrow_back_rounded),
                     ),
-                    const SizedBox(width: UtenSpacing.s8),
-                  ],
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.title,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Text(
-                          query
-                              ? '选主仓 = 自身 + 全部子仓聚合'
-                              : _drilldown.isEmpty
-                              ? '先选主仓，再选子仓'
-                              : '选择 ${_parentName(_drilldown.last)} 的子仓',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '关闭',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
             ),
             if (query)
               Padding(
@@ -388,6 +365,7 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
                       ),
                     )
                   : MasterDataTableView<WarehouseDictEntry>(
+                      expensiveRowMounts: false,
                       columns: [
                         MasterColumnDef(
                           key: 'name',

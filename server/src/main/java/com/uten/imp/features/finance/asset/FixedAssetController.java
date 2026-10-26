@@ -383,11 +383,15 @@ public class FixedAssetController {
 
     @GetMapping("/reports/fa/depreciation-schedule")
     @PreAuthorize("hasAuthority('finance_asset:view')")
-    public ReportTableResponse depreciationSchedule() { return legacyReports.depreciationSchedule(); }
+    public ReportTableResponse depreciationSchedule(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) { return legacyReports.depreciationSchedule(page, size); }
 
     @GetMapping("/reports/fa/amortization-schedule")
     @PreAuthorize("hasAuthority('finance_asset:view')")
-    public ReportTableResponse amortizationSchedule() { return legacyReports.amortizationSchedule(); }
+    public ReportTableResponse amortizationSchedule(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) { return legacyReports.amortizationSchedule(page, size); }
 
     public record Items<T>(List<T> items) {}
 }

@@ -109,8 +109,7 @@ class ProcurementOrderClosureLifecycleMatrixEndToEndTest {
     @ParameterizedTest @ValueSource(strings={"CLOSE","CLOSE_AND_REORDER"})
     void approvedUnreceivedOrdersReleaseExactlyTheirUndeliveredCommitment(String mode) {
         F f=approved("unreceived-"+mode); assertWarehouseVisible(f);
-        var closing=requestClosure(f,mode); assertWarehouseVisible(f);
-        assertThat(number("SELECT ordered_qty FROM purchase_request_items WHERE id=?",f.source())).isEqualByComparingTo("10");
+        var closing=requestClosure(f,mode);
         approve(f,closing); assertClosed(f);
         assertThat(number("SELECT ordered_qty FROM purchase_request_items WHERE id=?",f.source())).isZero();
         assertThat(number("SELECT SUM(released_qty) FROM procurement_order_termination_sources WHERE case_id=?",closing.caseId())).isEqualByComparingTo("10");
@@ -200,13 +199,14 @@ class ProcurementOrderClosureLifecycleMatrixEndToEndTest {
         assertThat(number("SELECT SUM(amount_original_local) FROM ar_ap_ledger WHERE supplier_id=? AND direction='AP' AND status=1",f.world().supplierId())).isEqualByComparingTo("40");
     }
 
-    @Test void reversingAnIqcPhysicalReturnDuringFinanceReviewRequiresARecheckedClosureAndCannotRepeatAfterApproval() {
+    @Test void reversingAnIqcPhysicalReturnAfterAPreviewRequiresRecheckingAndCannotRepeatAfterDirectCompletion() {
         F f=approved("iqc-return-reversal");UUID receipt=received(f,"4");dispose(f,receipt,"FAIL","2");dispose(f,receipt,"PASS",null);
-        UUID rejection=awaitRejection(f,receipt);recordReturn(f,rejection);long firstReturnVersion=caseVersion(rejection);var closing=requestClosure(f,"CLOSE");
+        UUID rejection=awaitRejection(f,receipt);recordReturn(f,rejection);long firstReturnVersion=caseVersion(rejection);var preview=closure.preview("PURCHASE",f.order());
         owner(f);rejections.reverseReturn(rejection,new ProcurementIqcRejectionContracts.ReverseRequest(caseVersion(rejection),UUID.randomUUID(),"实物退回凭证需重新核对，先撤销登记"));
-        harness.loginAs(f.reviewer());var oldDecision=decision(closing);String changed=facts(f);
-        assertThatThrownBy(()->finance.approveBatch(List.of(oldDecision),null)).isInstanceOf(ApiException.class).hasMessageContaining("变化");
-        assertThat(facts(f)).isEqualTo(changed);finance.rejectBatch(List.of(oldDecision),"不合格实退事实已撤销，重新核对");
+        String changed=facts(f);
+        assertThatThrownBy(()->closure.submit("PURCHASE",f.order(),new ClosureRequest("CLOSE","旧实退凭证",preview.fingerprint())))
+                .isInstanceOf(ApiException.class);
+        assertThat(facts(f)).isEqualTo(changed);
         owner(f);assertBlocked(f,"实物退回");var returnAgain=recordReturn(f,rejection);
         assertThat(caseVersion(rejection)).isEqualTo(firstReturnVersion+2);
         assertThat(number("SELECT COUNT(*) FROM business_outbox WHERE aggregate_id=? AND event_type='PROCUREMENT_IQC_REJECTION_RETURNED'",rejection)).isEqualByComparingTo("2");
@@ -247,10 +247,10 @@ class ProcurementOrderClosureLifecycleMatrixEndToEndTest {
     }
 
     @ParameterizedTest @ValueSource(strings={"RECEIPT_APPROVAL","STOCK_IN","RECEIPT_REVERSE","PRODUCT_RETURN"})
-    void departmentProgressDuringFinanceReviewInvalidatesTheFingerprintWithoutLosingTheNewFacts(String action) {
+    void departmentProgressAfterPreviewInvalidatesTheFingerprintWithoutLosingTheNewFacts(String action) {
         F f=approved("pending-change-"+action);UUID receipt=received(f,"4");dispose(f,receipt,"PASS",null);
         if(action.equals("PRODUCT_RETURN"))stock(f,receipt,"4");
-        var closing=requestClosure(f,"CLOSE");
+        var preview=closure.preview("PURCHASE",f.order());
         switch(action) {
             case "RECEIPT_APPROVAL"->{UUID additional=received(f,"1");dispose(f,additional,"PASS",null);}
             case "STOCK_IN"->stock(f,receipt,"4");
@@ -258,44 +258,48 @@ class ProcurementOrderClosureLifecycleMatrixEndToEndTest {
             case "PRODUCT_RETURN"->{owner(f);returns.approve(returns.create(returnRequest(f,receipt,"1")).getId());}
             default->throw new IllegalArgumentException(action);
         }
-        harness.loginAs(f.reviewer());var decision=decision(closing);String before=facts(f);
-        assertThatThrownBy(()->finance.approveBatch(List.of(decision),null)).isInstanceOf(ApiException.class).hasMessageContaining("变化");
+        owner(f);String before=facts(f);
+        assertThatThrownBy(()->closure.submit("PURCHASE",f.order(),new ClosureRequest("CLOSE","各部门已继续处理",preview.fingerprint())))
+                .isInstanceOf(ApiException.class).hasMessageContaining("变化");
         assertThat(facts(f)).isEqualTo(before);assertThat(orderClosed(f)).isFalse();
-        finance.rejectBatch(List.of(decision),"各部门已继续处理，重新核对当前事实");
         owner(f);assertThat(closure.preview("PURCHASE",f.order()).canSubmit()).isTrue();
         var resubmitted=requestClosure(f,"CLOSE");approve(f,resubmitted);assertClosed(f);
     }
 
     @ParameterizedTest @ValueSource(booleans={false,true})
-    void originalOrderReversalCancelsAnUnclaimedReviewOrWaitsForTheClaimedFinanceReview(boolean claimed) {
+    void directlyClosedOriginalOrderCannotBeReversedRegardlessOfTheOldClientClaimFlag(boolean claimed) {
         F f=approved("reverse-claim-"+claimed);var closing=requestClosure(f,"CLOSE");
-        BatchDecisionItem decision=null;
-        if(claimed){harness.loginAs(f.reviewer());decision=decision(closing);owner(f);String before=facts(f);
-            assertThatThrownBy(()->orders.reverse(f.order())).isInstanceOf(ApiException.class);assertThat(facts(f)).isEqualTo(before);
-            harness.loginAs(f.reviewer());finance.rejectBatch(List.of(decision),"同意先撤原未执行订单");owner(f);}
-        orders.reverse(f.order());
-        assertThat(orders.detail(f.order()).getStatus()).isEqualTo((short)-1);
-        assertThat(db.queryForObject("SELECT status FROM procurement_order_approval_cases WHERE id=?",String.class,closing.caseId())).isEqualTo(claimed?"REJECTED":"CANCELED");
+        owner(f);String before=facts(f);
+        assertThatThrownBy(()->orders.reverse(f.order())).isInstanceOf(ApiException.class);
+        assertThat(facts(f)).isEqualTo(before);
+        assertThat(orders.detail(f.order()).getStatus()).isEqualTo((short)1);
+        assertThat(db.queryForObject("SELECT status FROM procurement_order_approval_cases WHERE id=?",String.class,closing.caseId())).isEqualTo("APPROVED");
         assertThat(number("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_id=? AND status='PENDING'",f.order())).isZero();
         assertThat(number("SELECT ordered_qty FROM purchase_request_items WHERE id=?",f.source())).isZero();
         assertThat(number("SELECT COUNT(*) FROM inbound_expectations WHERE order_id=? AND status='OPEN'",f.order())).isZero();
     }
 
-    @Test void rejectingTheClosureKeepsTheWarehouseTaskAndAllowsRealContinuation() {
-        F f=approved("finance-reject-followup");var closing=requestClosure(f,"CLOSE_AND_REORDER");reject(f,closing,"供应商仍在送货，先继续履约");
+    @Test void oldPendingClosureMustBeRecheckedByBuyerAndCannotBeDecidedByFinance() {
+        F f=approved("legacy-closure-followup");
+        var closing=LegacyProcurementClosureFixture.pending(db,closure.preview("PURCHASE",f.order()),f.world(),"CLOSE_AND_REORDER");
         assertWarehouseVisible(f);assertThat(orderClosed(f)).isFalse();
+        harness.loginAs(f.reviewer());
+        assertThatThrownBy(()->finance.approveBatch(List.of(new BatchDecisionItem(closing.caseId(),closing.version())),null)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->finance.rejectBatch(List.of(new BatchDecisionItem(closing.caseId(),closing.version())),"旧页退回")).isInstanceOf(ApiException.class);
+        owner(f);
         assertThat(db.queryForObject("SELECT fn_procurement_order_latest_approval_status('PURCHASE',?)",String.class,f.order())).isEqualTo("APPROVED");
         UUID receipt=received(f,"2");dispose(f,receipt,"PASS",null);stock(f,receipt,"2");
         assertThat(number("SELECT received_qty FROM purchase_order_items WHERE id=?",f.item())).isEqualByComparingTo("2");
         var second=requestClosure(f,"CLOSE_AND_REORDER");approve(f,second);assertClosed(f);
+        assertThat(db.queryForObject("SELECT status FROM procurement_order_approval_cases WHERE id=?",String.class,closing.caseId())).isEqualTo("CANCELED");
         assertThat(orders.detail(replacement(second)).getItems()).singleElement().satisfies(line->assertThat(line.getQty()).isEqualByComparingTo("8"));
     }
 
-    @Test void repeatedFinanceDecisionAndOldWarehousePageCannotCreateAnotherDraftOrReceiveAgain() {
+    @Test void repeatedFinanceDecisionAndOldWarehousePageCannotChangeADirectlyCompletedClosure() {
         F f=approved("repeat-old-page");UUID expectation=db.queryForObject("SELECT id FROM inbound_expectations WHERE order_id=? AND status='OPEN'",UUID.class,f.order());
         assertThat(arrivals.expectationsByIds(List.of(expectation))).hasSize(1);
-        var closing=requestClosure(f,"CLOSE_AND_REORDER");harness.loginAs(f.reviewer());var decision=decision(closing);
-        finance.approveBatch(List.of(decision),null);owner(f);assertClosed(f);UUID replacement=replacement(closing);String before=facts(f);
+        var closing=requestClosure(f,"CLOSE_AND_REORDER");harness.loginAs(f.reviewer());var decision=new BatchDecisionItem(closing.caseId(),closing.version());
+        owner(f);assertClosed(f);UUID replacement=replacement(closing);String before=facts(f);
         harness.loginAs(f.reviewer());assertThatThrownBy(()->finance.approveBatch(List.of(decision),null)).isInstanceOf(ApiException.class);owner(f);
         assertThatThrownBy(()->receipts.create(receiptRequest(f,"1"))).isInstanceOf(ApiException.class).hasMessageContaining("结束");
         assertThatThrownBy(()->arrivals.expectationsByIds(List.of(expectation))).isInstanceOf(ApiException.class);
@@ -331,7 +335,7 @@ class ProcurementOrderClosureLifecycleMatrixEndToEndTest {
     private void owner(F f){owner(f.world());}private void owner(FullChainEndToEndTest.World w){harness.loginAs(w.superAdminUserId());}
     private FinanceApproval requestClosure(F f,String mode){owner(f);var preview=closure.preview("PURCHASE",f.order());assertThat(preview.canSubmit()).withFailMessage("%s",preview.blockReason()).isTrue();return closure.submit("PURCHASE",f.order(),new ClosureRequest(mode,"按当前真实执行事实申请结束",preview.fingerprint()));}
     private BatchDecisionItem decision(FinanceApproval item){var claim=claims.claim("PROCUREMENT_FINANCE_APPROVE",item.caseId().toString());return new BatchDecisionItem(item.caseId(),item.version(),claim.claimId());}
-    private void approve(F f,FinanceApproval item){harness.loginAs(f.reviewer());finance.approveBatch(List.of(decision(item)),null,BigDecimal.ONE);owner(f);}
+    private void approve(F f,FinanceApproval item){if("APPROVED".equals(item.status()))return;harness.loginAs(f.reviewer());finance.approveBatch(List.of(decision(item)),null,BigDecimal.ONE);owner(f);}
     private void reject(F f,FinanceApproval item,String reason){harness.loginAs(f.reviewer());finance.rejectBatch(List.of(decision(item)),reason);owner(f);}
     private UUID replacement(FinanceApproval closing){return db.queryForObject("SELECT replacement_order_id FROM procurement_order_approval_cases WHERE id=?",UUID.class,closing.caseId());}
     private boolean orderClosed(F f){return Boolean.TRUE.equals(db.queryForObject("SELECT is_closed FROM purchase_orders WHERE id=?",Boolean.class,f.order()));}

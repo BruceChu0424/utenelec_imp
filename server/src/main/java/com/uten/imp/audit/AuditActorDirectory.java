@@ -295,7 +295,7 @@ public class AuditActorDirectory {
             dataQuery.setParameter("keyword", pattern);
             countQuery.setParameter("keyword", pattern);
         }
-        dataQuery.setFirstResult((int) pageable.getOffset());
+        dataQuery.setFirstResult(com.uten.imp.common.web.Pageables.checkedOffset(pageable.getPageNumber() + 1L, pageable.getPageSize()));
         dataQuery.setMaxResults(pageable.getPageSize());
 
         List<AuditActorOption> items = new ArrayList<>();

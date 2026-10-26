@@ -1,3 +1,4 @@
+import '../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -7,19 +8,37 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../components/buttons/uten_button.dart';
+import '../../components/cards/uten_card.dart';
 import '../../components/feedback/uten_dialog.dart';
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/network/api_client.dart';
+import '../../core/responsive/dialog_size.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/uten_notify.dart';
-import '../../shared/auth/permissions.dart';
-import '../../shared/providers/session_provider.dart';
+import '../../shared/providers/authenticated_scope_provider.dart';
 import 'client_release.dart';
+import 'client_release_access.dart';
 
 class ClientReleasePublishDialog extends ConsumerStatefulWidget {
-  const ClientReleasePublishDialog({super.key});
+  const ClientReleasePublishDialog({super.key, this.packageKind = 'update'});
+
+  /// Retained for existing callers. Windows always shows both package areas.
+  final String packageKind;
   @override
   ConsumerState<ClientReleasePublishDialog> createState() => _PublishState();
+}
+
+class _PackageIntent {
+  Uint8List? bytes;
+  String? fileName, requestId, result;
+  bool published = false, failed = false;
+
+  void reset({bool clearFile = false}) {
+    requestId = result = null;
+    published = failed = false;
+    if (clearFile) bytes = null;
+    if (bytes == null) fileName = null;
+  }
 }
 
 class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
@@ -28,41 +47,78 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
   final _notes = TextEditingController();
   final _store = TextEditingController();
   String _platform = 'windows', _architecture = 'x64';
-  Uint8List? _bytes;
-  String? _fileName;
-  String? _requestId;
+  final _packages = {'installer': _PackageIntent(), 'update': _PackageIntent()};
+  Object? _metadata;
+  String? _activeKind;
+  bool _choosing = false;
   bool _busy = false;
+  bool _withdrawing = false;
   double _progress = 0;
-  String? _result;
   List<ClientRelease> _releases = [];
   late final ApiClient _api;
-  late final String? _owner;
+  late final AuthenticatedScope? _owner;
+  bool _invalidated = false;
   bool get _isStore => {'ios', 'macos'}.contains(_platform);
   bool get _current =>
       mounted &&
+      !_invalidated &&
+      _owner != null &&
       identical(_api, ref.read(apiClientProvider)) &&
-      ref.read(sessionProvider).isLoggedIn &&
-      ref.read(sessionProvider).user?.id == _owner &&
-      !ref.read(sessionProvider).isImpersonating &&
-      ref.read(isSuperAdminProvider) &&
-      ref.read(currentPermissionsProvider).contains(Perm.authorizationManage);
+      ref.read(clientReleasePublisherProvider) == _owner;
 
   @override
   void initState() {
     super.initState();
+    _metadata = _metadataKey();
     _api = ref.read(apiClientProvider);
-    _owner = ref.read(sessionProvider).user?.id;
+    _owner = ref.read(clientReleasePublisherProvider);
     for (final controller in [_version, _build, _notes, _store]) {
       controller.addListener(_newIntent);
     }
     _load();
   }
 
-  void _newIntent() {
-    if (!_busy) {
-      _requestId = null;
-      _result = null;
+  void _invalidatePublisher() {
+    if (_invalidated) return;
+    _invalidated = true;
+    for (final intent in _packages.values) {
+      intent.reset(clearFile: true);
     }
+    final route = ModalRoute.of(context);
+    // Remove only this publishing dialog, including while a request is pending.
+    // Regranting permission must not resume the invalidated draft operation.
+    if (route is DialogRoute) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (route.isActive) route.navigator?.removeRoute(route);
+      });
+    }
+  }
+
+  Object _metadataKey() => (
+    _platform,
+    _architecture,
+    _version.text.trim(),
+    int.tryParse(_build.text.trim()) ?? _build.text.trim(),
+    _notes.text.trim(),
+    _store.text.trim(),
+  );
+
+  void _newIntent() {
+    final next = _metadataKey();
+    if (_busy || next == _metadata) return;
+    setState(() {
+      _metadata = next;
+      for (final intent in _packages.values) {
+        intent.reset();
+      }
+    });
+  }
+
+  void _resetFiles() {
+    for (final intent in _packages.values) {
+      intent.reset(clearFile: true);
+    }
+    _metadata = _metadataKey();
   }
 
   Future<void> _load() async {
@@ -79,13 +135,25 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
     }
   }
 
-  Future<void> _choose() async {
+  Future<void> _choose([String kind = 'update']) async {
     if (_busy || !_current) return;
-    setState(() => _busy = true);
+    final intent = _packages[kind]!;
+    setState(() {
+      _busy = true;
+      _choosing = true;
+      _activeKind = kind;
+      _progress = 0;
+    });
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: [_platform == 'windows' ? 'zip' : 'apk'],
+        allowedExtensions: [
+          _platform == 'windows'
+              ? kind == 'installer'
+                    ? 'exe'
+                    : 'zip'
+              : 'apk',
+        ],
         withData: true,
       );
       if (!mounted || !_current || result == null) return;
@@ -98,20 +166,26 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
         return;
       }
       setState(() {
-        _bytes = file.bytes;
-        _fileName = file.name;
-        _requestId = null;
-        _result = null;
+        intent.bytes = file.bytes;
+        intent.fileName = file.name;
+        intent.reset();
       });
     } catch (e) {
       if (mounted && _current) UtenNotify.apiError(context, e);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = _choosing = false;
+          _activeKind = null;
+        });
+      }
     }
   }
 
-  Future<void> _publish() async {
+  Future<void> _publish([String kind = 'update']) async {
     if (_busy || !_current) return;
+    final intent = _packages[kind]!;
+    if (intent.published) return;
     final l10n = AppLocalizations.of(context);
     final build = int.tryParse(_build.text.trim());
     final version = _version.text.trim();
@@ -129,34 +203,39 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
         build == null ||
         build <= 0 ||
         build > 2147483647 ||
-        (_isStore ? storeRelease.trustedStoreUri == null : _bytes == null)) {
+        (_isStore
+            ? storeRelease.trustedStoreUri == null
+            : intent.bytes == null)) {
       UtenNotify.error(context, l10n.clientUpdatePublishInvalid);
       return;
     }
     setState(() {
       _busy = true;
+      _activeKind = kind;
       _progress = 0;
-      _result = null;
+      intent.result = null;
+      intent.failed = false;
     });
     try {
       final scope = await _api.captureRequestScope(isCurrent: () => _current);
-      final bytes = _bytes;
+      final bytes = intent.bytes;
       final expectedSha = _isStore ? null : sha256.convert(bytes!).toString();
       // The same intent survives a lost create/upload/publish response. The
       // server's idempotent create recovers its durable state on retry.
-      _requestId ??= const Uuid().v4();
+      intent.requestId ??= const Uuid().v4();
       final draft = await scope.run(
         () => _api.post(
           '/admin/client-releases',
           body: {
-            'requestId': _requestId,
+            'requestId': intent.requestId,
             'platform': _platform,
             'architecture': _architecture,
             'version': version,
             'buildNumber': build,
             'releaseNotes': _notes.text.trim(),
             'mandatory': false,
-            if (!_isStore) 'fileName': _fileName,
+            if (_platform == 'windows') 'packageKind': kind,
+            if (!_isStore) 'fileName': intent.fileName,
             if (!_isStore) 'expectedSha256': expectedSha,
             if (_isStore) 'storeUrl': _store.text.trim(),
           },
@@ -182,33 +261,47 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
       }
       if (!_current) return;
       setState(() {
-        _result = l10n.clientUpdatePublished;
-        _bytes = null;
-        _fileName = null;
+        intent.result = l10n.clientUpdatePublished;
+        intent.published = true;
+        intent.bytes = null;
       });
       await _load();
     } catch (e) {
-      if (mounted && _current) UtenNotify.apiError(context, e);
+      if (mounted && _current) {
+        setState(() {
+          intent.result = '此文件尚未确认发布，可重试；其他文件的发布结果保留。';
+          intent.failed = true;
+        });
+        UtenNotify.apiError(context, e);
+      }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _activeKind = null;
+        });
+      }
     }
   }
 
   Future<void> _withdraw(ClientRelease release) async {
     if (_busy || !_current) return;
     final l10n = AppLocalizations.of(context);
-    final scope = await _api.captureRequestScope(isCurrent: () => _current);
-    if (!mounted || !_current) return;
-    final confirmed = await UtenNotify.alert(
-      context,
-      title: l10n.clientUpdateWithdraw,
-      message: l10n.clientUpdateWithdrawConfirm,
-      confirmLabel: l10n.clientUpdateWithdraw,
-      cancelLabel: l10n.clientUpdateClose,
-    );
-    if (!_current || confirmed != true) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _withdrawing = true;
+    });
     try {
+      final scope = await _api.captureRequestScope(isCurrent: () => _current);
+      if (!mounted || !_current) return;
+      final confirmed = await UtenNotify.alert(
+        context,
+        title: l10n.clientUpdateWithdraw,
+        message: l10n.clientUpdateWithdrawConfirm,
+        confirmLabel: l10n.clientUpdateWithdraw,
+        cancelLabel: l10n.clientUpdateClose,
+      );
+      if (!_current || confirmed != true) return;
       await scope.run(
         () => _api.post('/admin/client-releases/${release.id}/withdraw'),
       );
@@ -216,7 +309,12 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
     } catch (e) {
       if (mounted && _current) UtenNotify.apiError(context, e);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _withdrawing = false;
+        });
+      }
     }
   }
 
@@ -228,59 +326,181 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
     super.dispose();
   }
 
+  Widget _packageResult(String kind) {
+    final intent = _packages[kind]!;
+    if (intent.result == null) return const SizedBox.shrink();
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      key: ValueKey('client-release-result-$kind'),
+      padding: const EdgeInsets.only(top: UtenSpacing.s12),
+      child: Semantics(
+        liveRegion: true,
+        child: Text(
+          intent.result!,
+          style: TextStyle(
+            color: intent.failed ? colors.error : colors.primary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _packageArea(String kind) {
+    final installer = kind == 'installer';
+    final intent = _packages[kind]!;
+    final active = _busy && _activeKind == kind;
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    return UtenCard(
+      key: ValueKey('client-release-area-$kind'),
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              installer ? 'Windows 安装程序（Setup.exe）' : 'Windows 更新包（ZIP）',
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            Text(
+              installer ? '放在“软件下载”页面，供员工首次下载安装。' : '已安装的客户端自动获取，沿用原安装位置更新。',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            UtenButton(
+              key: ValueKey('client-release-choose-$kind'),
+              type: UtenButtonType.secondary,
+              onPressed: _busy ? null : () => _choose(kind),
+              child: Text(
+                intent.fileName ??
+                    (installer ? '选择完整客户端' : l10n.clientUpdateChooseFile),
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            UtenButton(
+              key: ValueKey('client-release-publish-$kind'),
+              isLoading: active && !_choosing,
+              onPressed: _busy || intent.published || intent.bytes == null
+                  ? null
+                  : () => _publish(kind),
+              icon: Icons.publish_rounded,
+              child: Text(l10n.clientUpdatePublish),
+            ),
+            if (active) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              Text(_choosing ? '正在读取所选文件' : l10n.clientUpdatePublishing),
+              LinearProgressIndicator(value: _progress == 0 ? null : _progress),
+            ],
+            _packageResult(kind),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _windowsPackages() {
+    final sideBySide =
+        utenDialogWidth(context, 820) >= 720 &&
+        MediaQuery.textScalerOf(context).scale(14) <= 21;
+    if (sideBySide) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: _packageArea('installer')),
+          const SizedBox(width: UtenSpacing.s16),
+          Expanded(child: _packageArea('update')),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _packageArea('installer'),
+        const SizedBox(height: UtenSpacing.s16),
+        _packageArea('update'),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.watch(clientReleasePublisherProvider);
+    ref.watch(apiClientProvider);
+    ref.listen(clientReleasePublisherProvider, (_, next) {
+      if (next != _owner) _invalidatePublisher();
+    });
+    ref.listen(apiClientProvider, (_, next) {
+      if (!identical(next, _api)) _invalidatePublisher();
+    });
+    if (!_current) return const SizedBox.shrink();
     final l10n = AppLocalizations.of(context);
     return PopScope(
       canPop: !_busy,
       child: UtenAlertDialog(
-        maxWidth: 680,
+        maxWidth: 820,
         title: Text(l10n.clientUpdatePublishTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(l10n.clientUpdatePublishHint),
+            Text(
+              _platform == 'windows'
+                  ? '版本、架构和更新说明填写一次，再分别上传两种文件。每个区域独立发布和记录结果。'
+                  : l10n.clientUpdatePublishHint,
+            ),
             const SizedBox(height: UtenSpacing.s16),
-            DropdownButtonFormField<String>(
-              initialValue: _platform,
-              isExpanded: true,
-              decoration: InputDecoration(labelText: l10n.clientUpdatePlatform),
-              items: [
-                for (final name in ['windows', 'android', 'ios', 'macos'])
-                  DropdownMenuItem(value: name, child: Text(name)),
-              ],
-              onChanged: _busy
-                  ? null
-                  : (value) => setState(() {
-                      _platform = value!;
-                      _architecture = value == 'windows' ? 'x64' : 'universal';
-                      _bytes = null;
-                      _fileName = null;
-                      _requestId = null;
-                      _result = null;
-                    }),
+            UtenDropdownScrollScope(
+              nativeDropdown: true,
+              child: DropdownButtonFormField<String>(
+                initialValue: _platform,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: l10n.clientUpdatePlatform,
+                ),
+                items: [
+                  for (final name in ['windows', 'android', 'ios', 'macos'])
+                    DropdownMenuItem(value: name, child: Text(name)),
+                ],
+                onChanged: _busy
+                    ? null
+                    : (value) => setState(() {
+                        _platform = value!;
+                        _architecture = value == 'windows'
+                            ? 'x64'
+                            : 'universal';
+                        _resetFiles();
+                      }),
+              ),
             ),
             const SizedBox(height: UtenSpacing.s12),
-            DropdownButtonFormField<String>(
-              key: ValueKey(_platform),
-              initialValue: _architecture,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: l10n.clientUpdateArchitecture,
+            UtenDropdownScrollScope(
+              nativeDropdown: true,
+              child: DropdownButtonFormField<String>(
+                key: ValueKey(
+                  'client-release-architecture-$_platform-$_architecture',
+                ),
+                initialValue: _architecture,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: l10n.clientUpdateArchitecture,
+                ),
+                items: [
+                  for (final name
+                      in _platform == 'windows'
+                          ? ['x64', 'arm64', 'x86']
+                          : _platform == 'android'
+                          ? ['universal', 'arm64', 'armeabi-v7a', 'x64']
+                          : ['universal'])
+                    DropdownMenuItem(value: name, child: Text(name)),
+                ],
+                onChanged: _busy
+                    ? null
+                    : (value) => setState(() {
+                        _architecture = value!;
+                        _resetFiles();
+                      }),
               ),
-              items: [
-                for (final name
-                    in _platform == 'windows'
-                        ? ['x64', 'arm64', 'x86']
-                        : _platform == 'android'
-                        ? ['universal', 'arm64', 'armeabi-v7a', 'x64']
-                        : ['universal'])
-                  DropdownMenuItem(value: name, child: Text(name)),
-              ],
-              onChanged: _busy
-                  ? null
-                  : (value) => setState(() => _architecture = value!),
             ),
             const SizedBox(height: UtenSpacing.s12),
             TextField(
@@ -305,7 +525,9 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
               decoration: InputDecoration(labelText: l10n.clientUpdateNotes),
             ),
             const SizedBox(height: UtenSpacing.s12),
-            if (_isStore)
+            if (_platform == 'windows')
+              _windowsPackages()
+            else if (_isStore)
               TextField(
                 controller: _store,
                 enabled: !_busy,
@@ -321,25 +543,22 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
               const SizedBox(height: UtenSpacing.s8),
               UtenButton(
                 type: UtenButtonType.secondary,
-                onPressed: _busy ? null : _choose,
-                child: Text(_fileName ?? l10n.clientUpdateChooseFile),
-              ),
-            ],
-            if (_busy) ...[
-              const SizedBox(height: UtenSpacing.s16),
-              Text(l10n.clientUpdatePublishing),
-              LinearProgressIndicator(value: _progress == 0 ? null : _progress),
-            ],
-            if (_result != null)
-              Padding(
-                padding: const EdgeInsets.only(top: UtenSpacing.s16),
+                onPressed: _busy ? null : () => _choose(),
                 child: Text(
-                  _result!,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
+                  _packages['update']!.fileName ?? l10n.clientUpdateChooseFile,
                 ),
               ),
+            ],
+            if (_busy && (_platform != 'windows' || _withdrawing)) ...[
+              const SizedBox(height: UtenSpacing.s16),
+              Text(
+                _withdrawing
+                    ? l10n.clientUpdateWithdraw
+                    : l10n.clientUpdatePublishing,
+              ),
+              LinearProgressIndicator(value: _progress == 0 ? null : _progress),
+            ],
+            if (_platform != 'windows') _packageResult('update'),
             if (_releases.where((r) => r.state == 'PUBLISHED').isNotEmpty) ...[
               const SizedBox(height: UtenSpacing.s24),
               Text(
@@ -357,7 +576,11 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
                     spacing: UtenSpacing.s12,
                     children: [
                       Text(
-                        '${release.platform} ${release.architecture}  ${release.version}+${release.buildNumber}',
+                        '${release.platform} ${release.architecture}  ${release.version}+${release.buildNumber}${release.platform == 'windows'
+                            ? release.packageKind == 'installer'
+                                  ? ' · Setup.exe'
+                                  : ' · ZIP 更新包'
+                            : ''}',
                       ),
                       UtenButton(
                         type: UtenButtonType.ghost,
@@ -376,12 +599,13 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
             onPressed: _busy ? null : () => Navigator.of(context).pop(),
             child: Text(l10n.clientUpdateClose),
           ),
-          UtenButton(
-            isLoading: _busy,
-            onPressed: _publish,
-            icon: Icons.publish_rounded,
-            child: Text(l10n.clientUpdatePublish),
-          ),
+          if (_platform != 'windows')
+            UtenButton(
+              isLoading: _busy,
+              onPressed: _busy ? null : () => _publish(),
+              icon: Icons.publish_rounded,
+              child: Text(l10n.clientUpdatePublish),
+            ),
         ],
       ),
     );

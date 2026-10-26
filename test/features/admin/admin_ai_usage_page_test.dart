@@ -16,6 +16,7 @@ import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/admin/models/ai_usage_dashboard_models.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/admin/pages/admin_ai_usage_page.dart';
 import 'package:uten_imp/features/admin/pages/admin_ai_usage_person_page.dart';
 import 'package:uten_imp/features/admin/repositories/ai_usage_dashboard_repository.dart';
@@ -172,6 +173,7 @@ class _Repo implements AiUsageDashboardRepository {
 
   /// 非空时 saveLimits 抛它(模拟 409 冲突等)。
   Object? saveError;
+  Object? dashboardError;
   Completer<AiUserLimits>? pendingSave;
 
   final List<String> dashboardCalls = [];
@@ -181,6 +183,7 @@ class _Repo implements AiUsageDashboardRepository {
   @override
   Future<AiUsageDashboard> dashboard(AiUsageWindow window) async {
     dashboardCalls.add(window.wire);
+    if (dashboardError != null) throw dashboardError!;
     return _dashboard;
   }
 
@@ -376,6 +379,33 @@ void main() {
     expect(find.text('50,000'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  for (final status in [401, 403]) {
+    testWidgets(
+      'accepted dashboard is cleared on confirmed $status refresh rejection',
+      (tester) async {
+        final repo = _Repo();
+        await _pump(tester, const AdminAiUsagePage(), repo: repo);
+        expect(find.text('123,456'), findsOneWidget);
+        expect(find.byType(MasterDataTableView<AiUsagePerson>), findsOneWidget);
+        repo.dashboardError = ApiException(
+          'FORBIDDEN',
+          'dashboard read revoked',
+          httpStatus: status,
+        );
+        await tester.tap(find.byKey(const ValueKey('ai-usage-refresh')));
+        await tester.pumpAndSettle();
+        expect(find.text('123,456'), findsNothing);
+        expect(find.byType(MasterDataTableView<AiUsagePerson>), findsNothing);
+        expect(find.byKey(const ValueKey('ai-usage-error')), findsOneWidget);
+        expect(find.text(_zh.aiSettingsNoAccess), findsOneWidget);
+        expect(find.text(_zh.aiSettingsRetry), findsNothing);
+        await tester.pump(const Duration(seconds: 1));
+        expect(repo.dashboardCalls, ['day', 'day']);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('switching the window re-queries the dashboard', (tester) async {
     final repo = _Repo();

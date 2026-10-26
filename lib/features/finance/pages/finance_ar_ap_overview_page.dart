@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
+    show pagedReadAccessDenied;
 // 应收应付总览页 (Z)（finance_report:view）—— 还原老系统树形分组功能，用已有组件。
 //
 // 布局镜像「货品资料」：左分类树（UtenCategoryTreeView，客户类别 + 供应商类别两棵子树，
@@ -11,8 +13,10 @@
 // 筛选口径（类别导航/显示方式/日期范围/排序）按账号服务端持久化
 // （report.finance.arApOverview，ReportFilterPrefs：docType=categoryType、extra={categoryId,displayMode}）；
 // 关键字不持久化。
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'dart:async';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
@@ -27,6 +31,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -43,6 +48,8 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_column.dart';
 import '../../report/shared/report_data.dart';
+import '../../report/shared/report_metadata_reuse.dart';
+import '../../report/shared/report_paged_read.dart';
 import '../../report/shared/report_date_range.dart';
 import '../widgets/finance_date_range_filter.dart';
 import '../../report/shared/report_filter_prefs.dart';
@@ -97,6 +104,10 @@ class _FinanceArApOverviewPageState
   bool _sortAsc = true;
 
   ReportData? _data;
+  final _reportMetadata = ReportMetadataReuse();
+  final _tableRows = MasterDataTableRowsController<Map<String, dynamic>>();
+  Object? _acceptedReadQuery;
+  late final _reportRead = ReportPagedRead(_reportMetadata);
 
   /// 上一次成功加载的列集：搜索 0 命中/重查/报错时 `_data` 为空，但表格骨架
   ///（工具条打印导出按钮 + 表头列）沿用这列集继续渲染，行区显示提示——
@@ -122,6 +133,7 @@ class _FinanceArApOverviewPageState
         ++_reportRequestGeneration;
         ++_searchRequestGeneration;
         ++_treeGeneration;
+        _reportRead.invalidate();
         _data = null;
         _lastColumns = const [];
         _clientTree = const [];
@@ -152,6 +164,7 @@ class _FinanceArApOverviewPageState
 
   @override
   void dispose() {
+    _reportRead.dispose();
     _searchDebounce?.cancel();
     _searchController.removeListener(_onPrimarySearchInputChanged);
     _treeSearchController.removeListener(_onTreeSearchInputChanged);
@@ -234,6 +247,12 @@ class _FinanceArApOverviewPageState
       }
     } catch (e) {
       if (!mounted || !current()) return;
+      if (pagedReadAccessDenied(e)) {
+        _reportRead.invalidate();
+        setState(() {
+          _data = null;
+        });
+      }
       setState(() {
         _treeLoading = false;
         _treeError = '分类加载失败，请重试：$e';
@@ -440,45 +459,79 @@ class _FinanceArApOverviewPageState
   String? get _effectiveCategoryType => _keyword.isEmpty ? _categoryType : null;
   String? get _effectiveCategoryId => _keyword.isEmpty ? _categoryId : null;
 
-  Future<void> _load() async {
+  Map<String, dynamic> get _readQuery => <String, dynamic>{
+    'dateFrom': _fmt(_from),
+    'dateTo': _fmt(_to),
+    'displayMode': _displayMode,
+    if (_keyword.isNotEmpty) 'keyword': _keyword,
+    if (_effectiveCategoryType != null) 'categoryType': _effectiveCategoryType,
+    if (_effectiveCategoryId != null) 'categoryId': _effectiveCategoryId,
+    'size': _size,
+    ...sortQueryParams(_sortKey, _sortAsc),
+  };
+
+  Future<void> _load({int? page, bool reuseMetadata = false}) async {
     final requestGeneration = ++_reportRequestGeneration;
     final readEpoch = ref.read(exportContextEpochProvider);
     bool current() =>
         mounted &&
         requestGeneration == _reportRequestGeneration &&
         readEpoch == ref.read(exportContextEpochProvider);
-    final requestedPage = _page;
     setState(() {
       _loading = true;
       _reportError = null;
     });
     final api = ref.read(apiClientProvider);
     try {
-      final query = <String, dynamic>{
-        'dateFrom': _fmt(_from),
-        'dateTo': _fmt(_to),
-        'displayMode': _displayMode,
-        if (_keyword.isNotEmpty) 'keyword': _keyword,
-        if (_effectiveCategoryType != null)
-          'categoryType': _effectiveCategoryType,
-        if (_effectiveCategoryId != null) 'categoryId': _effectiveCategoryId,
-        'page': requestedPage,
-        'size': _size,
-        ...sortQueryParams(_sortKey, _sortAsc),
-      };
-      final json = await api.get(
-        '/finance/reports/ar-ap/overview',
+      final query = _readQuery;
+      const endpoint = '/finance/reports/ar-ap/overview';
+      bool queryCurrent() =>
+          mounted &&
+          readEpoch == ref.read(exportContextEpochProvider) &&
+          identical(api, ref.read(apiClientProvider)) &&
+          endpoint == '/finance/reports/ar-ap/overview' &&
+          const DeepCollectionEquality().equals(query, _readQuery);
+      final readIdentity = [readEpoch, api, endpoint, query];
+      final requestedPage =
+          page ??
+          (const DeepCollectionEquality().equals(
+                _acceptedReadQuery,
+                readIdentity,
+              )
+              ? (_tableRows.visiblePage ?? _page)
+              : _page);
+      final read = _reportRead.begin(
+        endpoint: endpoint,
         query: query,
+        readerEpoch: readEpoch,
+        reusePages: reuseMetadata,
+        fetch: (parameters) => api.get(endpoint, query: parameters),
+        isCurrent: queryCurrent,
+        canPrefetch: () =>
+            mounted &&
+            TickerMode.valuesOf(context).enabled &&
+            (ModalRoute.of(context)?.isCurrent ?? true),
+        onPrefetchError: (error) {
+          if (!queryCurrent() ||
+              error is! ApiException ||
+              !pagedReadAccessDenied(error)) {
+            return;
+          }
+          _reportRead.invalidate();
+          ++_reportRequestGeneration;
+          context.appError(error.message);
+          setState(() {
+            _data = null;
+            _loading = false;
+          });
+        },
       );
-      if (!mounted || !current()) return;
-      final decodedReport = await parseReportResponseResponsive(
-        json,
-        requestedPage,
-        isCurrent: current,
-      );
-      if (!mounted || !current()) return;
+      final snapshot = await read.read(requestedPage) as ReportPageSnapshot;
+      if (!mounted || !current() || !_reportRead.accept(snapshot)) return;
       setState(() {
-        _data = decodedReport;
+        _data = snapshot.snapshot;
+        _page = snapshot.page;
+        _acceptedReadQuery = readIdentity;
         _lastColumns = _data!.columns;
         _noUnifiedSearchMatches = _keyword.isNotEmpty && _data!.total == 0;
         _loading = false;
@@ -527,7 +580,12 @@ class _FinanceArApOverviewPageState
     final api = ref.read(apiClientProvider);
     final json = await api.get(
       '/finance/reports/ar-ap/overview',
-      query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
+      query: <String, dynamic>{
+        ..._exportQuery,
+        'page': 1,
+        'size': 2000,
+        ...reportRowsOnlyQuery,
+      },
     );
     final data = await parseReportResponseResponsive(json, 1);
     return UtenPrintTable(
@@ -700,21 +758,24 @@ class _FinanceArApOverviewPageState
         _persistAndReload();
       },
     ),
-    DropdownButton<String>(
-      key: const ValueKey('finance-ar-ap-display-mode'),
-      value: _displayMode,
-      isDense: true,
-      items: const [
-        DropdownMenuItem(value: 'ALL', child: Text('全部显示')),
-        DropdownMenuItem(value: 'ANY', child: Text('应收≠0或应付≠0')),
-        DropdownMenuItem(value: 'AR_ONLY', child: Text('只应收≠0')),
-        DropdownMenuItem(value: 'AP_ONLY', child: Text('只应付≠0')),
-      ],
-      onChanged: (value) {
-        if (value == null) return;
-        setState(() => _displayMode = value);
-        _persistAndReload();
-      },
+    UtenDropdownScrollScope(
+      nativeDropdown: true,
+      child: DropdownButton<String>(
+        key: const ValueKey('finance-ar-ap-display-mode'),
+        value: _displayMode,
+        isDense: true,
+        items: const [
+          DropdownMenuItem(value: 'ALL', child: Text('全部显示')),
+          DropdownMenuItem(value: 'ANY', child: Text('应收≠0或应付≠0')),
+          DropdownMenuItem(value: 'AR_ONLY', child: Text('只应收≠0')),
+          DropdownMenuItem(value: 'AP_ONLY', child: Text('只应付≠0')),
+        ],
+        onChanged: (value) {
+          if (value == null) return;
+          setState(() => _displayMode = value);
+          _persistAndReload();
+        },
+      ),
     ),
     if (_data != null)
       Text(
@@ -739,9 +800,8 @@ class _FinanceArApOverviewPageState
   );
 
   Widget _buildTable() {
-    final data = _data;
-    // 首次加载前还没有列集，骨架无从谈起：仅这一阶段允许整块占位；此后
-    //（搜索 0 命中/重查/报错）沿用上一次列集渲染同一张表，行区显示提示。
+    final data = _data ?? (_loading ? _reportMetadata.loadingData : null);
+    // 元数据未知时也先显示公共表壳；真实列确认后复用其布局。
     if (data == null && _lastColumns.isEmpty) {
       if (_noUnifiedSearchMatches) {
         return _initialTableState(
@@ -809,6 +869,8 @@ class _FinanceArApOverviewPageState
         )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
+      rowsController: _tableRows,
+      expensiveRowMounts: false,
       tableKey:
           'features.finance.pages.finance_ar_ap_overview_page.FinanceArApOverviewPageState._buildTable.1',
       columns: columns,
@@ -844,8 +906,8 @@ class _FinanceArApOverviewPageState
       sortColumn: _sortKey,
       sortAscending: _sortAsc,
       onSortChange: _onSortChange,
-      isLoading: _loading && data == null,
-      error: data == null ? _reportError : null,
+      isLoading: _loading && _data == null,
+      error: _data == null ? _reportError : null,
       onRetry: _load,
       emptyMessage: _noUnifiedSearchMatches
           ? '未找到匹配「$_searchQuery」的分类或往来单位'
@@ -853,6 +915,7 @@ class _FinanceArApOverviewPageState
       currentPage: data?.page ?? 1,
       totalPages: data?.totalPages ?? 1,
       paginationScope: (
+        _reportRead.snapshotRevision,
         _effectiveCategoryType,
         _effectiveCategoryId,
         _from,
@@ -862,7 +925,7 @@ class _FinanceArApOverviewPageState
       ),
       onPageChange: (p) {
         _page = p;
-        _load();
+        return _load(page: p, reuseMetadata: true);
       },
     );
   }

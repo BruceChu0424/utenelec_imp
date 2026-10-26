@@ -45,6 +45,10 @@ class MasterFacetPage {
 typedef MasterFacetPageLoader =
     Future<MasterFacetPage> Function(String column, String keyword, int page);
 
+/// A full candidate source owned by one column; unrelated local facets keep their existing behavior.
+typedef MasterFacetColumnLoader =
+    Future<MasterFacetPage> Function(String keyword, int page);
+
 /// 空值筛选哨兵：filters 中某字段值等于它表示"筛该字段为空的记录"。
 /// repository 据此把字段名收集进 nullFields 请求参数。
 const String kMasterFilterNullValue = '__null__';

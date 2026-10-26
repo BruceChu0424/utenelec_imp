@@ -1,3 +1,4 @@
+import '../../../core/router/page_navigation_session.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../../../shared/documents/document_unapproval.dart';
 // 生产日报详情页（全页路由 · production_daily_report:view）：主表头卡 + 只读明细子表 +
@@ -60,6 +61,7 @@ import '../repositories/daily_report_approval_intent_store.dart';
 import '../widgets/production_status_badge.dart';
 import '../widgets/daily_report_material_review_section.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class ProductionDailyReportDetailPage extends ConsumerStatefulWidget {
   const ProductionDailyReportDetailPage({
@@ -87,6 +89,20 @@ class ProductionDailyReportDetailPage extends ConsumerStatefulWidget {
 
 class _ProductionDailyReportDetailPageState
     extends ConsumerState<ProductionDailyReportDetailPage> {
+  final _navigation = PageNavigationSession();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
+  void dispose() {
+    _navigation.dispose();
+    super.dispose();
+  }
+
   ProductionDailyReportDetail? _detail;
   bool _loading = false;
   bool _backgroundRefresh = false;
@@ -1160,7 +1176,7 @@ class _ProductionDailyReportDetailPageState
     }
   }
 
-  /// 车间链路的编辑往返中。不进 [_busy]：忙碌遮罩只盖纯网络段（UtenBusyOverlay
+  /// 编辑往返中。不进 [_busy]：忙碌遮罩只盖纯网络段（UtenBusyOverlay
   /// 契约，挂着跳页会把目标页盖住、widget 测试也 settle 不了），跳页期间不需要
   /// 任何遮罩。本标记只挡编辑重入，并让「返回即刷新」让位——回来后由 [_edit]
   /// 自己按保存结果重拉一次，避免一次返回拉两遍详情。
@@ -1168,20 +1184,20 @@ class _ProductionDailyReportDetailPageState
 
   /// 审核链路（returnToWorkshopTasks）的编辑入口：带上 from=workshop-tasks，
   /// 编辑页保存后 pop 回日报 ID，这里重拉详情保住「审核后回车间任务」的落点；
-  /// 普通入口照旧 push，返回刷新交给「返回即刷新」。
+  /// 两种入口都由本次导航收尾刷新；页面返回监听让位，避免重复读取。
   Future<void> _edit() async {
     if (_busy || _editing) return;
     final path = '/production/daily-reports/${widget.id}/edit';
-    if (!widget.returnToWorkshopTasks) {
-      await context.push(path);
-      return;
-    }
     _editing = true;
     try {
-      final savedId = await context.push<String>('$path?from=workshop-tasks');
-      if (!mounted || savedId == null || savedId.isEmpty) return;
-      await _load();
-      if (mounted) _signalExecutionChanged();
+      final savedId = await _navigation.push<String>(
+        widget.returnToWorkshopTasks ? '$path?from=workshop-tasks' : path,
+      );
+      if (!mounted) return;
+      await _load(background: !widget.returnToWorkshopTasks);
+      if (mounted && savedId != null && savedId.isNotEmpty) {
+        _signalExecutionChanged();
+      }
     } finally {
       _editing = false;
     }
@@ -1233,6 +1249,8 @@ class _ProductionDailyReportDetailPageState
     // （保存/审核都在子页办完）就重拉本页详情。
     _myLocation ??= currentLocationOr(context, RouteName.production);
     ref.onPageResume(_myLocation!, () async {
+      if (_busy) return;
+      if (_navigation.consumeReturnedVisit()) return;
       if (!_busy && !_editing) await _load(background: true);
       final error = _error ?? _refreshError;
       if (error != null) throw StateError(error);
@@ -1264,7 +1282,7 @@ class _ProductionDailyReportDetailPageState
                   // 2026-09-11 折叠头+表内滚：头部（提示条/表头卡/附件）随上滚收起，
                   // 明细标题吸顶后表格内部继续滚。
                   : UtenCollapsingHeaderScrollView(
-                      collapsingHeader: Padding(
+                      collapsingHeader: UtenPageEdgePadding(
                         padding: const EdgeInsets.fromLTRB(
                           UtenSpacing.s12,
                           UtenSpacing.s12,
@@ -1316,7 +1334,7 @@ class _ProductionDailyReportDetailPageState
                         ),
                       ),
                       // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
-                      body: Padding(
+                      body: UtenPageEdgePadding(
                         // 底部让位右下悬浮操作组：末行可滚出按钮区。
                         padding: const EdgeInsets.fromLTRB(
                           UtenSpacing.s12,
@@ -1407,6 +1425,7 @@ class _ProductionDailyReportDetailPageState
       children: [
         Expanded(
           child: MasterDataTableView<ProductionDailyReportItem>(
+      expensiveRowMounts: false,
             tableKey: 'production.daily.items',
             primary: true,
             columns: [

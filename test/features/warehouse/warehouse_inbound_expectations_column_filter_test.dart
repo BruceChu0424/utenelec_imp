@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uten_imp/components/feedback/uten_skeleton.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -38,7 +37,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(api.dictionaryPaths, [ApiEndpoints.suppliersDict]);
+    expect(
+      api.dictionaryPaths,
+      isEmpty,
+      reason:
+          'row snapshots must not wait for the complete supplier dictionary',
+    );
 
     final table = tester.widget<MasterDataTableView<InboundExpectation>>(
       find.byKey(const Key('inbound-expectation-task-table')),
@@ -47,7 +51,8 @@ void main() {
       table.facets.keys,
       containsAll(<String>['orderType', 'supplierName']),
     );
-    expect(table.facets['supplierName']?.single.value, 'supplier-1');
+    expect(table.facetPageLoaders, contains('supplierName'));
+    expect(find.text('供应商甲'), findsWidgets);
     expect(
       find.byKey(const Key('inbound-expectation-type-segments')),
       findsNothing,
@@ -78,7 +83,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('loading skeleton keeps the host category bar pinned', (
+  testWidgets('loading table keeps the host category bar and header mounted', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1500, 1000));
@@ -112,7 +117,14 @@ void main() {
     // （2026-10-01 用户口径：点击子分类的瞬间整条分类栏不得消失）。
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('宿主分类栏占位'), findsOneWidget);
-    expect(find.byType(UtenSkeletonList), findsOneWidget);
+    final table = tester.widget<MasterDataTableView<InboundExpectation>>(
+      find.byKey(const Key('inbound-expectation-task-table')),
+    );
+    expect(table.isLoading, isTrue);
+    expect(table.columns, isNotEmpty);
+    final tableElement = tester.element(
+      find.byKey(const Key('inbound-expectation-task-table')),
+    );
 
     gate.complete(const {
       'items': <Map<String, dynamic>>[],
@@ -124,6 +136,10 @@ void main() {
     await tester.pumpAndSettle();
     // 数据到位：分类栏挂进折叠头照常在场。
     expect(find.text('宿主分类栏占位'), findsOneWidget);
+    expect(
+      tester.element(find.byKey(const Key('inbound-expectation-task-table'))),
+      same(tableElement),
+    );
     expect(tester.takeException(), isNull);
   });
 }

@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
+    show pagedReadAccessDenied;
 // 钱流明细/汇总报表页（finance_report:view）—— 镜像 sales_report_page。
 //
 // 一张卡（[cardId] = detail|summary）内用 UtenFilterToolbar 分段切多个报表变体（应收/应付/收款/付款/费用/收入…），
@@ -10,6 +12,7 @@
 //
 // 筛选口径（报表变体/日期范围/facet/排序）按账号服务端持久化
 // （report.finance.detail|summary，ReportFilterPrefs；变体存下标字符串于 docType）；关键字不持久化。
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
@@ -43,6 +46,8 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
+import '../../report/shared/report_metadata_reuse.dart';
+import '../../report/shared/report_paged_read.dart';
 import '../../report/shared/report_date_range.dart';
 import '../widgets/finance_date_range_filter.dart';
 import '../../report/shared/report_filter_prefs.dart';
@@ -63,7 +68,7 @@ class FinanceReportTablePage extends ConsumerStatefulWidget {
 
 class _FinanceReportTablePageState
     extends ConsumerState<FinanceReportTablePage> {
-  late final FinanceReportCard _card = financeReportCardById(widget.cardId);
+  FinanceReportCard get _card => financeReportCardById(widget.cardId);
   int _variantIndex = 0;
   DateTime _from = defaultReportFrom();
   DateTime _to = ChinaDateTime.today();
@@ -79,6 +84,8 @@ class _FinanceReportTablePageState
   bool _sortAsc = true;
 
   final _reportPages = PagedListController<Map<String, dynamic>>();
+  final _reportMetadata = ReportMetadataReuse();
+  late final _reportRead = ReportPagedRead(_reportMetadata);
 
   ReportData? _data;
   bool _loading = false;
@@ -99,6 +106,7 @@ class _FinanceReportTablePageState
 
   @override
   void dispose() {
+    _reportRead.dispose();
     _reportPages.dispose();
     super.dispose();
   }
@@ -111,6 +119,7 @@ class _FinanceReportTablePageState
       if (!mounted || previous == next) return;
       setState(() {
         _reportPages.invalidateReadOwner(notify: false);
+        _reportRead.invalidate();
         ++_loadGeneration;
         _data = null;
         _loading = false;
@@ -127,6 +136,42 @@ class _FinanceReportTablePageState
         _applyPrefs(ref.read(_prefsProvider));
       }
       _load();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant FinanceReportTablePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.cardId == widget.cardId) return;
+    // A route can reuse this State for a different report. Retire the whole
+    // former schema/query before either its foreground or prepared read returns.
+    ++_loadGeneration;
+    _reportPages.invalidateReadOwner(notify: false);
+    _reportRead.invalidate();
+    _data = null;
+    _loading = true;
+    _page = 1;
+    _keyword = '';
+    _filters.clear();
+    _sortKey = null;
+    _sortAsc = true;
+    _from = defaultReportFrom();
+    _to = ChinaDateTime.today();
+    _dirty = false;
+    _myLocation = null;
+    _variantIndex = 0;
+    _clientId = null;
+    _clientName = null;
+    _error = null;
+    if (!_isCustomerPrepaymentEvents) _applyPrefs(ref.read(_prefsProvider));
+    final identity = widget.cardId;
+    final generation = _loadGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          identity == widget.cardId &&
+          generation == _loadGeneration) {
+        _load();
+      }
     });
   }
 
@@ -215,7 +260,12 @@ class _FinanceReportTablePageState
     final api = ref.read(apiClientProvider);
     final json = await api.get(
       _variant.endpoint,
-      query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
+      query: <String, dynamic>{
+        ..._exportQuery,
+        'page': 1,
+        'size': 2000,
+        ...reportRowsOnlyQuery,
+      },
     );
     final data = await parseReportResponseResponsive(json, 1);
     return UtenPrintTable(
@@ -233,7 +283,23 @@ class _FinanceReportTablePageState
     );
   }
 
-  Future<void> _load({bool background = false}) async {
+  String get _readEndpoint => _variant.endpoint;
+
+  Map<String, dynamic> get _readQuery => <String, dynamic>{
+    ..._variant.fixedParams,
+    'dateFrom': _fmt(_from),
+    'dateTo': _fmt(_to),
+    if (_clientId != null) 'clientId': _clientId,
+    if (_keyword.isNotEmpty) 'keyword': _keyword,
+    'size': _size,
+    for (final e in _filters.entries) 'f.${e.key}': e.value,
+    ...sortQueryParams(_sortKey, _sortAsc),
+  };
+
+  Future<void> _load({
+    bool background = false,
+    bool reuseMetadata = false,
+  }) async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
     final readEpoch = ref.read(exportContextEpochProvider);
@@ -242,51 +308,46 @@ class _FinanceReportTablePageState
         generation == _loadGeneration &&
         readEpoch == ref.read(exportContextEpochProvider);
     final requestedPage = _page;
-    final reports = <int, ReportData>{};
     final api = ref.read(apiClientProvider);
-    Future<PagedResult<Map<String, dynamic>>> fetchPage(int targetPage) async {
-      try {
-        final query = <String, dynamic>{
-          ..._variant.fixedParams,
-          'dateFrom': _fmt(_from),
-          'dateTo': _fmt(_to),
-          if (_clientId != null) 'clientId': _clientId,
-          if (_keyword.isNotEmpty) 'keyword': _keyword,
-          'page': targetPage,
-          'size': _size,
-          for (final e in _filters.entries) 'f.${e.key}': e.value,
-          ...sortQueryParams(_sortKey, _sortAsc),
-        };
-        final json = await api.get(_variant.endpoint, query: query);
-        if (!current()) throw StateError('Report query changed');
-        final report = await parseReportResponseResponsive(
-          json,
-          targetPage,
-          isCurrent: current,
-        );
-        if (!current()) throw StateError('Report query changed');
-        reports[report.page] = report;
-        return PagedResult(
-          items: report.rows,
-          page: report.page,
-          size: _size,
-          total: report.total,
-          totalPages: report.totalPages,
-          totals: report.totals,
-          facets: report.facets,
-        );
-      } on ApiException {
-        // Preserve authoritative rejection reasons and access-denial handling.
-        rethrow;
-      } catch (_) {
-        if (!mounted || !current()) rethrow;
-        // Keep report-specific recovery guidance through the shared page window.
-        throw ApiException(
-          'REPORT_LOAD_FAILED',
-          AppLocalizations.of(context).financeReportLoadFailed,
-        );
-      }
-    }
+    final endpoint = _readEndpoint;
+    final query = _readQuery;
+    bool queryCurrent() =>
+        mounted &&
+        readEpoch == ref.read(exportContextEpochProvider) &&
+        identical(api, ref.read(apiClientProvider)) &&
+        endpoint == _readEndpoint &&
+        const DeepCollectionEquality().equals(query, _readQuery);
+    final read = _reportRead.begin(
+      endpoint: endpoint,
+      query: query,
+      readerEpoch: readEpoch,
+      reusePages: reuseMetadata && !background,
+      revalidatingWindow: background,
+      fetch: (parameters) => api.get(endpoint, query: parameters),
+      isCurrent: queryCurrent,
+      canPrefetch: () =>
+          mounted &&
+          TickerMode.valuesOf(context).enabled &&
+          (ModalRoute.of(context)?.isCurrent ?? true),
+      onPrefetchError: (error) {
+        if (!queryCurrent() ||
+            error is! ApiException ||
+            !pagedReadAccessDenied(error)) {
+          return;
+        }
+        _reportPages.invalidateReadOwner(notify: false);
+        _reportPages.error = error.message;
+        _reportRead.invalidate();
+        ++_loadGeneration;
+        setState(() {
+          _data = null;
+          _loading = false;
+        });
+      },
+      failureMessage: AppLocalizations.of(context).financeReportLoadFailed,
+    );
+    Future<PagedResult<Map<String, dynamic>>> fetchPage(int targetPage) =>
+        read.read(targetPage);
 
     final pending = _reportPages.load(
       requestedPage,
@@ -307,19 +368,8 @@ class _FinanceReportTablePageState
       _error = failure;
       if (_reportPages.page == null) {
         _data = null;
-      } else if (failure == null && reports.isNotEmpty) {
-        final report = reports[_reportPages.currentPage] ?? reports.values.last;
-        final page = _reportPages.page!;
-        _data = ReportData(
-          columns: report.columns,
-          rows: page.items,
-          facets: report.facets,
-          page: page.page,
-          totalPages: page.totalPages,
-          total: page.total,
-          meta: report.meta,
-          totals: report.totals,
-        );
+      } else if (failure == null && _reportRead.accept(_reportPages.page)) {
+        _data = (_reportPages.page! as ReportPageSnapshot).snapshot;
         _page = _reportPages.pageNum;
       }
     });
@@ -521,9 +571,7 @@ class _FinanceReportTablePageState
   }
 
   Widget _buildTable() {
-    if (_loading && _data == null) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
-    }
+    final data = _data ?? (_loading ? _reportMetadata.loadingData : null);
     if (_error != null && _data == null) {
       return Center(
         child: Column(
@@ -544,7 +592,6 @@ class _FinanceReportTablePageState
         ),
       );
     }
-    final data = _data;
     if (data == null) {
       return const Center(child: Text('点击「查询」加载'));
     }
@@ -573,6 +620,7 @@ class _FinanceReportTablePageState
         )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
+      expensiveRowMounts: false,
       primary: true,
       tableKey:
           'features.finance.pages.finance_report_table_page.FinanceReportTablePageState._buildTable.1',
@@ -628,10 +676,14 @@ class _FinanceReportTablePageState
       emptyMessage: _isCustomerPrepaymentEvents ? '所选日期和客户暂无客户预收流水' : '暂无报表数据',
       // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
       // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
-      summaryBar: reportTotalsBar(data.totals),
+      summaryBar: reportTotalsBar(
+        data.totals,
+        statisticsGeneratedAt: data.statisticsGeneratedAt,
+      ),
       currentPage: data.page,
       totalPages: data.totalPages,
       paginationScope: (
+        _reportRead.snapshotRevision,
         widget.cardId,
         _variantIndex,
         _from,
@@ -641,7 +693,7 @@ class _FinanceReportTablePageState
       ),
       onPageChange: (p) {
         _page = p;
-        _load();
+        _load(reuseMetadata: true);
       },
     );
   }

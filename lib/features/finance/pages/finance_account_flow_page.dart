@@ -1,3 +1,6 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
+    show pagedReadAccessDenied;
+import 'package:uten_imp/shared/providers/native_facet_options.dart';
 // 账户流水页 (S/Q/R)（finance_report:view）。
 //
 // 单独卡：报表类型分段（UtenFilterToolbar）：
@@ -8,6 +11,8 @@
 //
 // 筛选口径（报表类型/账户/日期范围/排序）按账号服务端持久化
 // （report.finance.accountFlow，ReportFilterPrefs：docType=view、extra={accountId}）；关键字不持久化。
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +27,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -33,6 +39,8 @@ import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
+import '../../report/shared/report_metadata_reuse.dart';
+import '../../report/shared/report_paged_read.dart';
 import '../../report/shared/report_date_range.dart';
 import '../widgets/finance_date_range_filter.dart';
 import '../../report/shared/report_filter_prefs.dart';
@@ -57,6 +65,7 @@ class _FinanceAccountFlowPageState
   DateTime _from = defaultReportFrom();
   DateTime _to = ChinaDateTime.today();
   String _keyword = '';
+  String? _billNoFilter;
   int _page = 1;
   final int _size = 50;
 
@@ -65,6 +74,10 @@ class _FinanceAccountFlowPageState
   bool _sortAsc = true;
 
   ReportData? _data;
+  final _reportMetadata = ReportMetadataReuse();
+  final _tableRows = MasterDataTableRowsController<Map<String, dynamic>>();
+  Object? _acceptedReadQuery;
+  late final _reportRead = ReportPagedRead(_reportMetadata);
   bool _loading = false;
   int _loadGeneration = 0;
 
@@ -79,6 +92,7 @@ class _FinanceAccountFlowPageState
       if (!mounted || previous == next) return;
       setState(() {
         ++_loadGeneration;
+        _reportRead.invalidate();
         _data = null;
         _loading = false;
         _page = 1;
@@ -90,21 +104,42 @@ class _FinanceAccountFlowPageState
       if (!mounted) return;
       final readEpoch = ref.read(exportContextEpochProvider);
       _applyPrefs(ref.read(financeAccountFlowReportPrefsProvider));
-      ref.read(financeNameServiceProvider).ensureLoaded().then((_) {
-        if (!mounted || readEpoch != ref.read(exportContextEpochProvider)) {
-          return;
-        }
-        final entries = ref.read(financeNameServiceProvider).accountEntries;
-        // 偏好恢复的账户优先；无恢复值才默认第一个
-        if (entries.isNotEmpty) {
-          setState(() {
-            if (_accountId == null || !entries.containsKey(_accountId)) {
-              _accountId = entries.keys.first;
-            }
-          });
-        }
-        _load();
-      });
+      // 已恢复的账户已有精确身份；名称预热不应阻塞它的流水读取。
+      final canLoad = _view != _FlowView.statement || _accountId != null;
+      if (canLoad) _load();
+      ref
+          .read(financeNameServiceProvider)
+          .ensureLoaded()
+          .then<void>(
+            (_) {
+              if (!mounted ||
+                  readEpoch != ref.read(exportContextEpochProvider)) {
+                return;
+              }
+              final entries = ref
+                  .read(financeNameServiceProvider)
+                  .accountEntries;
+              final previousAccount = _accountId;
+              // 偏好恢复的账户优先；无恢复值才默认第一个
+              if (entries.isNotEmpty) {
+                setState(() {
+                  if (_accountId == null || !entries.containsKey(_accountId)) {
+                    _accountId = entries.keys.first;
+                  }
+                });
+              }
+              if (!canLoad || previousAccount != _accountId) _load();
+            },
+            onError: (Object error, StackTrace stack) {
+              if (!mounted ||
+                  readEpoch != ref.read(exportContextEpochProvider)) {
+                return;
+              }
+              if (!canLoad) {
+                context.appError(humanErrorMessage(error) ?? '账户没有加载出来，请刷新重试');
+              }
+            },
+          );
     });
   }
 
@@ -159,7 +194,19 @@ class _FinanceAccountFlowPageState
     _FlowView.bankSummary => '/finance/reports/bank/summary',
   };
 
-  Future<void> _load() async {
+  Map<String, dynamic> get _readQuery => <String, dynamic>{
+    if (_view == _FlowView.statement) ...{
+      if (_accountId != null) 'accountId': _accountId,
+      'dateFrom': _fmt(_from),
+      'dateTo': _fmt(_to),
+      if (_keyword.isNotEmpty) 'keyword': _keyword,
+      if (_billNoFilter != null) 'billNo': _billNoFilter,
+    },
+    'size': _size,
+    ...sortQueryParams(_sortKey, _sortAsc),
+  };
+
+  Future<void> _load({int? page, bool reuseMetadata = false}) async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
     final readEpoch = ref.read(exportContextEpochProvider);
@@ -167,35 +214,68 @@ class _FinanceAccountFlowPageState
         mounted &&
         generation == _loadGeneration &&
         readEpoch == ref.read(exportContextEpochProvider);
-    final requestedPage = _page;
     setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
     try {
-      final query = <String, dynamic>{
-        if (_view == _FlowView.statement) ...{
-          if (_accountId != null) 'accountId': _accountId,
-          'dateFrom': _fmt(_from),
-          'dateTo': _fmt(_to),
-          if (_keyword.isNotEmpty) 'keyword': _keyword,
+      final query = _readQuery;
+      final endpoint = _endpoint;
+      bool queryCurrent() =>
+          mounted &&
+          readEpoch == ref.read(exportContextEpochProvider) &&
+          identical(api, ref.read(apiClientProvider)) &&
+          endpoint == _endpoint &&
+          const DeepCollectionEquality().equals(query, _readQuery);
+      final readIdentity = [readEpoch, api, endpoint, query];
+      final requestedPage =
+          page ??
+          (const DeepCollectionEquality().equals(
+                _acceptedReadQuery,
+                readIdentity,
+              )
+              ? (_tableRows.visiblePage ?? _page)
+              : _page);
+      final read = _reportRead.begin(
+        endpoint: endpoint,
+        query: query,
+        readerEpoch: readEpoch,
+        reusePages: reuseMetadata,
+        fetch: (parameters) => api.get(endpoint, query: parameters),
+        isCurrent: queryCurrent,
+        canPrefetch: () =>
+            mounted &&
+            TickerMode.valuesOf(context).enabled &&
+            (ModalRoute.of(context)?.isCurrent ?? true),
+        onPrefetchError: (error) {
+          if (!queryCurrent() ||
+              error is! ApiException ||
+              !pagedReadAccessDenied(error)) {
+            return;
+          }
+          _reportRead.invalidate();
+          ++_loadGeneration;
+          context.appError(error.message);
+          setState(() {
+            _data = null;
+            _loading = false;
+          });
         },
-        'page': requestedPage,
-        'size': _size,
-        ...sortQueryParams(_sortKey, _sortAsc),
-      };
-      final json = await api.get(_endpoint, query: query);
-      if (!mounted || !current()) return;
-      final decodedReport = await parseReportResponseResponsive(
-        json,
-        requestedPage,
-        isCurrent: current,
       );
-      if (!mounted || !current()) return;
+      final snapshot = await read.read(requestedPage) as ReportPageSnapshot;
+      if (!mounted || !current() || !_reportRead.accept(snapshot)) return;
       setState(() {
-        _data = decodedReport;
+        _data = snapshot.snapshot;
+        _page = snapshot.page;
+        _acceptedReadQuery = readIdentity;
         _loading = false;
       });
     } catch (e) {
       if (!mounted || !current()) return;
+      if (pagedReadAccessDenied(e)) {
+        _reportRead.invalidate();
+        setState(() {
+          _data = null;
+        });
+      }
       context.appError(humanErrorMessage(e) ?? '流水没有加载出来，请稍后重试');
       setState(() => _loading = false);
     }
@@ -224,6 +304,7 @@ class _FinanceAccountFlowPageState
     'dateFrom': _fmt(_from),
     'dateTo': _fmt(_to),
     if (_keyword.isNotEmpty) 'keyword': _keyword,
+    if (_billNoFilter != null) 'billNo': _billNoFilter,
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
@@ -233,7 +314,12 @@ class _FinanceAccountFlowPageState
     final api = ref.read(apiClientProvider);
     final json = await api.get(
       '/finance/reports/account/statement',
-      query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
+      query: <String, dynamic>{
+        ..._exportQuery,
+        'page': 1,
+        'size': 2000,
+        ...reportRowsOnlyQuery,
+      },
     );
     final data = await parseReportResponseResponsive(json, 1);
     return UtenPrintTable(
@@ -327,27 +413,33 @@ class _FinanceAccountFlowPageState
               children: [
                 SizedBox(
                   width: 240,
-                  child: DropdownButtonFormField<String?>(
-                    initialValue: _accountId,
-                    isExpanded: true,
-                    decoration: const UtenInputDecoration(
-                      InputDecoration(isDense: true, labelText: '账户'),
-                    ),
-                    items: [
-                      for (final entry in names.accountEntries.entries)
-                        DropdownMenuItem<String?>(
-                          value: entry.key,
-                          child: Text(
-                            entry.value,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                  child: UtenDropdownScrollScope(
+                    nativeDropdown: true,
+                    child: DropdownButtonFormField<String?>(
+                      initialValue: _accountId,
+                      isExpanded: true,
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(isDense: true, labelText: '账户'),
+                      ),
+                      items: [
+                        for (final entry in names.accountEntries.entries)
+                          DropdownMenuItem<String?>(
+                            value: entry.key,
+                            child: Text(
+                              entry.value,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                    ],
-                    onChanged: (value) {
-                      setState(() => _accountId = value);
-                      _persistAndReload();
-                    },
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _accountId = value;
+                          _billNoFilter = null;
+                        });
+                        _persistAndReload();
+                      },
+                    ),
                   ),
                 ),
                 FinanceDateRangeFilter(
@@ -390,10 +482,7 @@ class _FinanceAccountFlowPageState
     if (_view == _FlowView.statement && _accountId == null) {
       return const Center(child: Text('请先选择账户'));
     }
-    if (_loading && _data == null) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
-    }
-    final data = _data;
+    final data = _data ?? (_loading ? _reportMetadata.loadingData : null);
     if (data == null) {
       return const Center(child: Text('点击「查询」加载'));
     }
@@ -410,6 +499,8 @@ class _FinanceAccountFlowPageState
         )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
+      rowsController: _tableRows,
+      expensiveRowMounts: false,
       primary: true,
       tableKey:
           'features.finance.pages.finance_account_flow_page.FinanceAccountFlowPageState._buildTable.1',
@@ -442,23 +533,64 @@ class _FinanceAccountFlowPageState
         ],
       ],
       facets: const {},
+      facetPageLoaders: _view == _FlowView.statement
+          ? nativeFacetLoaders(
+              ref,
+              path: '/finance/reports/account/statement/facets',
+              fields: const ['billNo'],
+              filters: {
+                'accountId': _accountId,
+                'dateFrom': _fmt(_from),
+                'dateTo': _fmt(_to),
+                'keyword': _keyword,
+              },
+            )
+          : const {},
+      facetSearchScope: nativeFacetSearchScope(
+        ref,
+        '/finance/reports/account/statement/facets',
+        {
+          'accountId': _accountId,
+          'dateFrom': _fmt(_from),
+          'dateTo': _fmt(_to),
+          'keyword': _keyword,
+        },
+      ),
       nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      filters: {'billNo': _billNoFilter},
+      onFilterChanged: (key, value) {
+        if (key != 'billNo') return;
+        setState(() {
+          _billNoFilter = value;
+          _page = 1;
+        });
+        _load();
+      },
       sortColumn: _sortKey,
       sortAscending: _sortAsc,
       onSortChange: _onSortChange,
       isLoading: _loading,
+      onRetry: _load,
       emptyMessage: _view == _FlowView.statement ? '暂无流水数据' : '银行存取款未启用(空表)',
       // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
       // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
-      summaryBar: reportTotalsBar(data.totals),
+      summaryBar: reportTotalsBar(
+        data.totals,
+        statisticsGeneratedAt: data.statisticsGeneratedAt,
+      ),
       currentPage: data.page,
       totalPages: data.totalPages,
-      paginationScope: (_view, _accountId, _from, _to, _keyword),
+      paginationScope: (
+        _reportRead.snapshotRevision,
+        _view,
+        _accountId,
+        _from,
+        _to,
+        _keyword,
+      ),
       onPageChange: (p) {
         _page = p;
-        _load();
+        return _load(page: p, reuseMetadata: true);
       },
     );
   }

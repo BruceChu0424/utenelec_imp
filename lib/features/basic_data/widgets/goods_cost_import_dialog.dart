@@ -147,6 +147,7 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
             Expanded(
               child: MasterDataTableView<_CostImportRow>(
                 key: ValueKey(_blockKey),
+                expensiveRowMounts: true,
                 tableKey: 'master.goods.cost.import',
                 columns: [
                   MasterColumnDef(

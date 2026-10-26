@@ -329,7 +329,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
     public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(
             UUID supplierId, String status, String keyword) {
         LossFilters filters = lossFilters(supplierId, status, keyword, null);
-        Query facetQuery = em.createNativeQuery(
+        Query facetQuery = NativeFacets.query(em, "wasteBillNo",
                         "SELECT COALESCE(loss.waste_bill_no, ''), COUNT(*)"
                                 + " FROM subcontract_loss_cases loss"
                                 + " JOIN suppliers supplier ON supplier.id=loss.supplier_id"

@@ -1,3 +1,4 @@
+import 'uten_dropdown_scroll_scope.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -10,6 +11,7 @@ import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
 import 'uten_input_decoration.dart';
 import 'uten_picker_icon_button.dart';
+import 'uten_table_cell_spec.dart';
 
 /// A reference lookup keeps typed discovery separate from committing a record.
 /// The caller owns both the controller and the actual record identity. Only a
@@ -353,65 +355,71 @@ class _UtenReferencePickerFieldState<T>
                 width: width,
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxHeight: height),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(
-                        child: _loading || _options.isEmpty
-                            ? SingleChildScrollView(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(
-                                    UtenSpacing.s12,
-                                  ),
-                                  child: Text(
-                                    _loading
-                                        ? '正在查找…'
-                                        : _failed
-                                        ? '近似候选加载失败，可点击选择继续查找'
-                                        : '没有近似候选，可点击选择继续查找',
-                                  ),
-                                ),
-                              )
-                            : ListView.builder(
-                                shrinkWrap: true,
-                                padding: EdgeInsets.zero,
-                                itemCount: _options.length,
-                                itemBuilder: (context, index) {
-                                  final option = _options[index];
-                                  return Semantics(
-                                    selected: index == _highlighted,
-                                    button: true,
-                                    child: InkWell(
-                                      onTap: () => _choose(option, version),
-                                      child: ColoredBox(
-                                        color: index == _highlighted
-                                            ? theme.colorScheme.primaryContainer
-                                            : Colors.transparent,
-                                        child:
-                                            widget.optionBuilder?.call(
-                                              context,
-                                              _options[index],
-                                            ) ??
-                                            Padding(
-                                              padding: const EdgeInsets.all(
-                                                UtenSpacing.s12,
-                                              ),
-                                              child: Text(
-                                                widget.labelOf(_options[index]),
-                                              ),
-                                            ),
-                                      ),
+                  child: UtenDropdownScrollScope(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: _loading || _options.isEmpty
+                              ? SingleChildScrollView(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(
+                                      UtenSpacing.s12,
                                     ),
-                                  );
-                                },
-                              ),
-                      ),
-                      const Divider(height: 1),
-                      TextButton(
-                        onPressed: () => unawaited(_openPicker()),
-                        child: const Text('展开分类和筛选'),
-                      ),
-                    ],
+                                    child: Text(
+                                      _loading
+                                          ? '正在查找…'
+                                          : _failed
+                                          ? '近似候选加载失败，可点击选择继续查找'
+                                          : '没有近似候选，可点击选择继续查找',
+                                    ),
+                                  ),
+                                )
+                              : ListView.builder(
+                                  shrinkWrap: true,
+                                  padding: EdgeInsets.zero,
+                                  itemCount: _options.length,
+                                  itemBuilder: (context, index) {
+                                    final option = _options[index];
+                                    return Semantics(
+                                      selected: index == _highlighted,
+                                      button: true,
+                                      child: InkWell(
+                                        onTap: () => _choose(option, version),
+                                        child: ColoredBox(
+                                          color: index == _highlighted
+                                              ? theme
+                                                    .colorScheme
+                                                    .primaryContainer
+                                              : Colors.transparent,
+                                          child:
+                                              widget.optionBuilder?.call(
+                                                context,
+                                                _options[index],
+                                              ) ??
+                                              Padding(
+                                                padding: const EdgeInsets.all(
+                                                  UtenSpacing.s12,
+                                                ),
+                                                child: Text(
+                                                  widget.labelOf(
+                                                    _options[index],
+                                                  ),
+                                                ),
+                                              ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                        const Divider(height: 1),
+                        TextButton(
+                          onPressed: () => unawaited(_openPicker()),
+                          child: const Text('展开分类和筛选'),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -423,71 +431,82 @@ class _UtenReferencePickerFieldState<T>
   }
 
   @override
-  Widget build(BuildContext context) => TapRegion(
-    groupId: _tapGroup,
-    onTapOutside: (_) => _focus.unfocus(),
-    child: CompositedTransformTarget(
-      key: _fieldKey,
-      link: _link,
-      child: Focus(
-        onKeyEvent: _key,
-        child: TextField(
-          controller: widget.controller,
-          focusNode: _focus,
-          enabled: _allowed && !_pickerOpen,
-          textInputAction: TextInputAction.search,
-          onSubmitted: (_) => _submit(),
-          onTapOutside: (_) {},
-          decoration: UtenInputDecoration(
-            InputDecoration(
-              labelText: widget.label,
-              hintText: widget.hint,
-              suffixIcon: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.controller.text.isNotEmpty)
-                    IconButton(
-                      tooltip: '清除${widget.label}',
-                      onPressed: _allowed && !_pickerOpen
-                          ? () {
-                              if (!mounted || !_allowed) return;
-                              _selecting = true;
-                              _cancel();
-                              widget.controller.clear();
-                              if (widget.onClear != null) {
-                                widget.onClear!();
-                              } else {
-                                widget.onInputChanged('');
-                              }
-                              _edited = false;
-                              _selecting = false;
-                              setState(() {});
-                            }
-                          : null,
-                      icon: const Icon(Icons.close_rounded, size: 18),
-                    ),
-                  UtenPickerIconButton(
-                    key: widget.pickerKey,
-                    icon: widget.pickerIcon,
-                    tooltip:
-                        widget.pickerLabel ??
-                        (Localizations.of<AppLocalizations>(
-                                  context,
-                                  AppLocalizations,
-                                ) ??
-                                AppLocalizationsZh())
-                            .pickerChooseRecord(widget.label),
-                    isLoading: _pickerOpen,
-                    onPressed: _allowed && !_pickerOpen ? _openPicker : null,
+  Widget build(BuildContext context) {
+    final inTable = UtenTableCellInputTheme.contains(context);
+    return TapRegion(
+      groupId: _tapGroup,
+      onTapOutside: (_) => _focus.unfocus(),
+      child: CompositedTransformTarget(
+        key: _fieldKey,
+        link: _link,
+        child: Focus(
+          onKeyEvent: _key,
+          child: Semantics(
+            label: inTable ? widget.label : null,
+            child: TextField(
+              controller: widget.controller,
+              focusNode: _focus,
+              enabled: _allowed && !_pickerOpen,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _submit(),
+              onTapOutside: (_) {},
+              decoration: UtenInputDecoration(
+                InputDecoration(
+                  // InputDecorator reserves floating-label height during intrinsic
+                  // table measurement even when floating labels are disabled.
+                  // Keep the field name in semantics and its empty hint instead.
+                  labelText: inTable ? null : widget.label,
+                  hintText: inTable ? widget.label : widget.hint,
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.controller.text.isNotEmpty)
+                        IconButton(
+                          tooltip: '清除${widget.label}',
+                          onPressed: _allowed && !_pickerOpen
+                              ? () {
+                                  if (!mounted || !_allowed) return;
+                                  _selecting = true;
+                                  _cancel();
+                                  widget.controller.clear();
+                                  if (widget.onClear != null) {
+                                    widget.onClear!();
+                                  } else {
+                                    widget.onInputChanged('');
+                                  }
+                                  _edited = false;
+                                  _selecting = false;
+                                  setState(() {});
+                                }
+                              : null,
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                        ),
+                      UtenPickerIconButton(
+                        key: widget.pickerKey,
+                        icon: widget.pickerIcon,
+                        tooltip:
+                            widget.pickerLabel ??
+                            (Localizations.of<AppLocalizations>(
+                                      context,
+                                      AppLocalizations,
+                                    ) ??
+                                    AppLocalizationsZh())
+                                .pickerChooseRecord(widget.label),
+                        isLoading: _pickerOpen,
+                        onPressed: _allowed && !_pickerOpen
+                            ? _openPicker
+                            : null,
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   @override
   void dispose() {

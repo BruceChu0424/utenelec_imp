@@ -1,3 +1,4 @@
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,7 +26,25 @@ class GoodsQuoteHistoryTab extends ConsumerStatefulWidget {
 }
 
 class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
-    with NativeReadViewScopeMixin<GoodsQuoteHistoryTab> {
+    with
+        NativeReadViewScopeMixin<GoodsQuoteHistoryTab>,
+        ScopedPagedReadViewMixin<GoodsQuoteHistoryTab> {
+  final _readViewportRows =
+      MasterDataTableRowsController<GoodsQuoteHistoryRow>();
+  int get _visibleReadPage => _result == null
+      ? (_result?.page ?? 1)
+      : (_readViewportRows.visiblePage ?? (_result?.page ?? 1));
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _clearHistory();
+    if (mounted) {
+      setState(() {
+        _error = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   PagedResult<GoodsQuoteHistoryRow>? _result;
   GoodsQuoteHistoryRow? _selected;
   String? _error;
@@ -74,7 +93,7 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
     });
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     if (!mounted || !_canRead) return;
     final acceptsRead = captureNativeRead(widget.goodsId, () => widget.goodsId);
     if (!acceptsRead()) return;
@@ -83,10 +102,20 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
       _error = null;
       _selected = null;
     });
+    final repository = ref.read(goodsQuoteHistoryRepositoryProvider);
+    final goodsId = widget.goodsId;
+    Object pagingQuery() => [
+      ref.read(goodsQuoteHistoryRepositoryProvider),
+      widget.goodsId,
+    ];
     try {
-      final result = await ref
-          .read(goodsQuoteHistoryRepositoryProvider)
-          .list(widget.goodsId, page: page);
+      final result = await readScopedPage<GoodsQuoteHistoryRow>(
+        page,
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        fetchPage: (target) => repository.list(goodsId, page: target),
+      );
       if (!acceptsRead() || !_canRead) return;
       acceptNativeRead();
       setState(() {
@@ -107,7 +136,7 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
     if (!nativeReadAccessConfirmed) return;
     final ownsRead = captureNativeOwnership();
     final goodsId = widget.goodsId;
-    final page = _result?.page ?? 1;
+    final page = _visibleReadPage;
     final permissions = ref.read(currentPermissionsProvider);
     final admin = ref.read(isSuperAdminProvider);
     if (!_canRead) return;
@@ -235,6 +264,8 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
           ],
           Expanded(
             child: MasterDataTableView<GoodsQuoteHistoryRow>(
+              rowsController: _readViewportRows,
+              expensiveRowMounts: false,
               tableKey: 'goods.quote-history',
               columns: [
                 MasterColumnDef(
@@ -314,14 +345,14 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
               currentPage: result?.page ?? 1,
               totalPages: result?.totalPages ?? 0,
               paginationScope: widget.goodsId,
-              onPageChange: _load,
+              onPageChange: (page) => _load(page, useCache: true),
               toolbarActions: [
                 UtenButton(
                   onPressed: _selected == null ? null : () => _open(_selected!),
                   child: const Text('查看单据'),
                 ),
                 UtenButton(
-                  onPressed: _loading ? null : () => _load(result?.page ?? 1),
+                  onPressed: _loading ? null : () => _load(_visibleReadPage),
                   child: const Text('刷新'),
                 ),
               ],

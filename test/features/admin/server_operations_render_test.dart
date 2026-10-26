@@ -407,6 +407,11 @@ void main() {
         tester.view.viewInsets = const FakeViewPadding(bottom: 150);
         addTearDown(tester.view.resetViewInsets);
         await tester.pumpAndSettle();
+        await _capture(
+          tester,
+          key,
+          'source-${size.width.toInt()}-initial-keyboard-surface',
+        );
         final surfaces = find.descendant(
           of: find.byType(Dialog),
           matching: find.byWidgetPredicate(
@@ -431,6 +436,15 @@ void main() {
             .intersect(canvas);
         expect(visible.center.dx, closeTo(canvas.center.dx, 1));
         expect(visible.center.dy, closeTo(canvas.center.dy, 1));
+        final endpoint = find.byKey(const ValueKey('server-source-endpoint'));
+        await tester.ensureVisible(endpoint);
+        await tester.pumpAndSettle();
+        expect(endpoint.hitTestable(), findsOneWidget);
+        await _capture(
+          tester,
+          key,
+          'source-${size.width.toInt()}-keyboard-input',
+        );
         final save = find.byKey(const ValueKey('server-source-save'));
         await tester.ensureVisible(save);
         await tester.pumpAndSettle();

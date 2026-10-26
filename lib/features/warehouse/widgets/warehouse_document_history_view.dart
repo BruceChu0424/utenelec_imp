@@ -1,3 +1,6 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
+import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 仓库实物单据历史（可嵌入只读视图）：列是显式的实物事实允许清单，服务端 DTO
 // 不含商业值或业务单据动作；不复用采购/委外单据组件。
@@ -62,7 +65,25 @@ class WarehouseDocumentHistoryView extends ConsumerStatefulWidget {
 
 class _WarehouseDocumentHistoryViewState
     extends ConsumerState<WarehouseDocumentHistoryView>
-    with UtenRefreshParticipant<WarehouseDocumentHistoryView> {
+    with
+        UtenRefreshParticipant<WarehouseDocumentHistoryView>,
+        ScopedPagedReadViewMixin<WarehouseDocumentHistoryView> {
+  int get _refreshPage => _readingRows.visiblePage ?? (_result?.page ?? 1);
+
+  final _readingRows =
+      MasterDataTableRowsController<WarehouseDocumentHistorySummary>();
+  @override
+  void scopedPagedReadOwnerChanged() {
+    if (!mounted) return;
+    ++_requestVersion;
+    setState(() {
+      _result = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+      _readingRows.update(const []);
+    });
+  }
+
   PagedResult<WarehouseDocumentHistorySummary>? _result;
   bool _loading = false;
   String? _error;
@@ -89,7 +110,7 @@ class _WarehouseDocumentHistoryViewState
         if (!mounted) return;
         setState(() {
           _result = null;
-          _error = null;
+          _error = scopedPagedReadRejection?.message;
           _loading = false;
           _status = null;
           _statusSelected = false;
@@ -158,7 +179,7 @@ class _WarehouseDocumentHistoryViewState
     _load(1);
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     final version = ++_requestVersion;
     final type = widget.type;
     setState(() {
@@ -166,24 +187,63 @@ class _WarehouseDocumentHistoryViewState
       _error = null;
     });
     try {
-      final result = await ref
-          .read(warehouseDocumentHistoryRepositoryProvider(type))
-          .list(
-            page: page,
-            keyword: _keyword,
-            status: _status,
-            dateFrom: widget.dateFrom,
-            dateTo: widget.dateTo,
-            sort: _kSortFields[_columnFilters.sortColumn],
-            order: _columnFilters.sortColumn == null
-                ? null
-                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
-            billNo: _columnFilters['billNo'],
-            sourceDocNo: _columnFilters['sourceDocNo'],
-          );
+      final pageRepository = ref.read(
+        warehouseDocumentHistoryRepositoryProvider(type),
+      );
+      final pageArg0 = _keyword;
+      final pageArg1 = _status;
+      final pageArg2 = widget.dateFrom;
+      final pageArg3 = widget.dateTo;
+      final pageArg4 = _kSortFields[_columnFilters.sortColumn];
+      final pageArg5 = _columnFilters.sortColumn == null
+          ? null
+          : (_columnFilters.sortAscending ? 'asc' : 'desc');
+      final pageArg6 = _columnFilters['billNo'];
+      final pageArg7 = _columnFilters['sourceDocNo'];
+
+      final result = await readScopedPage(
+        page,
+        slot: '_load',
+        query: [
+          pageRepository,
+          pageArg0,
+          pageArg1,
+          pageArg2,
+          pageArg3,
+          pageArg4,
+          pageArg5,
+          pageArg6,
+          pageArg7,
+        ],
+        currentQuery: () => [
+          ref.read(warehouseDocumentHistoryRepositoryProvider(widget.type)),
+          _keyword,
+          _status,
+          widget.dateFrom,
+          widget.dateTo,
+          _kSortFields[_columnFilters.sortColumn],
+          _columnFilters.sortColumn == null
+              ? null
+              : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+          _columnFilters['billNo'],
+          _columnFilters['sourceDocNo'],
+        ],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.list(
+          page: target,
+          keyword: pageArg0,
+          status: pageArg1,
+          dateFrom: pageArg2,
+          dateTo: pageArg3,
+          sort: pageArg4,
+          order: pageArg5,
+          billNo: pageArg6,
+          sourceDocNo: pageArg7,
+        ),
+      );
       if (!mounted || version != _requestVersion || widget.type != type) return;
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
-      unawaited(_loadBillNoFacets());
+
       setState(() {
         _result = result;
         _loading = false;
@@ -230,19 +290,6 @@ class _WarehouseDocumentHistoryViewState
 
   /// 单据号/来源单据 facets（2026-09-25 单号列统一）：与列表同过滤口径
   /// （不含单号列自身值筛选）。
-  Future<void> _loadBillNoFacets() => _columnFilters.loadFacets(
-    () => ref
-        .read(warehouseDocumentHistoryRepositoryProvider(widget.type))
-        .billNoFacets(
-          keyword: _keyword,
-          status: _status,
-          dateFrom: widget.dateFrom,
-          dateTo: widget.dateTo,
-        ),
-    onLoaded: () {
-      if (mounted) setState(() {});
-    },
-  );
 
   void _openDetail(WarehouseDocumentHistorySummary item) {
     context.push(widget.type.detailPath(item.id));
@@ -284,6 +331,8 @@ class _WarehouseDocumentHistoryViewState
         ],
       ),
       body: MasterDataTableView<WarehouseDocumentHistorySummary>(
+        rowsController: _readingRows,
+        expensiveRowMounts: false,
         requiredLeadingColumnKeys: const ['status', 'billNo'],
         tableKey:
             'features.warehouse.widgets.warehouse_document_history_view.WarehouseDocumentHistoryViewState.build.1',
@@ -309,6 +358,30 @@ class _WarehouseDocumentHistoryViewState
           'sourceDocNo': _columnFilters.bucketOf('sourceDocNo'),
         },
         nullCounts: const {},
+        facetPageLoaders: nativeFacetLoaders(
+          ref,
+          path: '/warehouse/document-history/${widget.type.segment}/facets',
+          fields: const ['billNo', 'sourceDocNo'],
+          filters: {
+            'keyword': _keyword,
+            'status': _status,
+            'dateFrom': widget.dateFrom,
+            'dateTo': widget.dateTo,
+            ...ref.watch(warehouseTaskScopeProvider).queryParameters,
+          },
+        ),
+        facetSearchScope: nativeFacetSearchScope(
+          ref,
+          '/warehouse/document-history/${widget.type.segment}/facets',
+          {
+            'keyword': _keyword,
+            'status': _status,
+            'dateFrom': widget.dateFrom,
+            'dateTo': widget.dateTo,
+            ...ref.watch(warehouseTaskScopeProvider).queryParameters,
+          },
+        ),
+
         filters: {
           if (widget.embedded) 'status': _status,
           'billNo': _columnFilters['billNo'],
@@ -338,7 +411,7 @@ class _WarehouseDocumentHistoryViewState
         isLoading: _loading && _result == null,
         loadingMore: _loading && _result != null,
         error: result.items.isEmpty ? _error : null,
-        onRetry: () => _load(result.page),
+        onRetry: () => _load(_refreshPage),
         emptyMessage: _emptyMessage,
         currentPage: result.page,
         totalPages: result.totalPages,
@@ -349,7 +422,7 @@ class _WarehouseDocumentHistoryViewState
           widget.dateFrom,
           widget.dateTo,
         ),
-        onPageChange: _load,
+        onPageChange: (page) => _load(page, useCache: true),
       ),
     );
   }

@@ -17,6 +17,7 @@ import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../../core/network/data_write_revision.dart';
 import 'master_name_provider.dart' show masterDataSessionKeyProvider;
+import 'master_party_lookup.dart';
 
 /// 账户字典端点(钱流账户; 定义在 basic_data 仓储里, 这里只需路径)。
 const masterAccountsDictKey = '/master/accounts/dict';
@@ -25,6 +26,7 @@ class MasterDictionaryRepository {
   MasterDictionaryRepository(this._api);
 
   final ApiClient _api;
+  late final partyReferences = MasterPartyLookup(_api);
   final Map<String, List<Map<String, dynamic>>> _cache = {};
   final Map<String, Future<List<Map<String, dynamic>>>> _loads = {};
   final StreamController<String> _invalidations =
@@ -64,12 +66,21 @@ class MasterDictionaryRepository {
 
   /// 写后失效: 丢弃缓存与在途请求, 通知订阅方。
   void invalidate(String dictKey) {
+    if (dictKey == ApiEndpoints.clientsDict) {
+      partyReferences.invalidate(MasterPartyKind.client);
+    }
+    if (dictKey == ApiEndpoints.suppliersDict) {
+      partyReferences.invalidate(MasterPartyKind.supplier);
+    }
     _cache.remove(dictKey);
     _loads.remove(dictKey);
     _invalidations.add(dictKey);
   }
 
-  void dispose() => _invalidations.close();
+  void dispose() {
+    partyReferences.dispose();
+    _invalidations.close();
+  }
 }
 
 final masterDictionaryRepositoryProvider = Provider<MasterDictionaryRepository>(

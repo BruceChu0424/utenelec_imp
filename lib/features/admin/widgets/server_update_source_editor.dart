@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -295,7 +296,15 @@ class _ServerUpdateSourceEditorState
         key: const ValueKey('server-source-dialog'),
         alignment: Alignment.center,
         maxWidth: 800,
-        title: Text(l.serverUpdateSource),
+        title: Row(
+          children: [
+            Expanded(child: Text(l.serverUpdateSource)),
+            const UtenFieldHintIcon(
+              info: '保存仅更新此公司的配置，不检查或下载版本。更新作业运行时不能更换发布源。',
+              dense: true,
+            ),
+          ],
+        ),
         content: SizedBox(
           width: 720,
           child: Column(
@@ -415,8 +424,6 @@ class _ServerUpdateSourceEditorState
                           '公钥指纹：${safeServerOperationText(_source!.signingKeyFingerprint)}',
                           style: theme.textTheme.bodySmall,
                         ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      const Text('保存仅更新此公司的配置，不检查或下载版本。更新作业运行时不能更换发布源。'),
                     ],
                   ),
                 ),

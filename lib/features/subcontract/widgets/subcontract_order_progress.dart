@@ -545,6 +545,7 @@ class _SubcontractOrderProgressSectionState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           MasterDataTableView<SubcontractSupplierLedgerLine>(
+            expensiveRowMounts: false,
             tableKey: 'subcontract.order.supplierLedger',
             embedded: true,
             platformBinding: PlatformTableBinding(

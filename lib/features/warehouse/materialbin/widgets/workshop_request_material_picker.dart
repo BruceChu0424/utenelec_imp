@@ -12,6 +12,7 @@ import '../../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../shared/models/paged_result.dart';
+import '../../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/workshop_material_models.dart';
 import '../repositories/workshop_material_repository.dart';
@@ -44,7 +45,9 @@ class _WorkshopRequestPickerSource extends UtenGoodsPickerDataSource {
   _WorkshopRequestPickerSource(this.repository, this.workshopId);
   final WorkshopMaterialRepository repository;
   final String workshopId;
-  final snapshots = <GoodsListItem, WmMaterialOption>{};
+  // Metadata follows the DTO retained by the page cache or current selection;
+  // browsing new pages must not leave a second unbounded strong-key history.
+  final snapshots = Expando<WmMaterialOption>();
 
   @override
   bool get supportsRelatedSearch => true;
@@ -187,8 +190,8 @@ class _RequestMaterialPicker extends ConsumerStatefulWidget {
       _RequestMaterialPickerState();
 }
 
-class _RequestMaterialPickerState
-    extends ConsumerState<_RequestMaterialPicker> {
+class _RequestMaterialPickerState extends ConsumerState<_RequestMaterialPicker>
+    with ScopedPagedReadViewMixin<_RequestMaterialPicker> {
   final _rows = MasterDataTableRowsController<WmMaterialOption>();
   PagedResult<WmMaterialOption>? _page;
   WmMaterialOption? _selected;
@@ -225,7 +228,16 @@ class _RequestMaterialPickerState
     _rowsReady = false;
   }
 
-  Future<void> _load(int page) async {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    if (!mounted) return;
+    setState(() {
+      _invalidate();
+      _error = scopedPagedReadRejection?.message;
+    });
+  }
+
+  Future<void> _load(int page, {bool useCache = false}) async {
     if (!mounted) return;
     final generation = ++_generation;
     final keyword = _keyword;
@@ -236,9 +248,24 @@ class _RequestMaterialPickerState
       _rowsReady = false;
     });
     try {
-      final result = await ref
-          .read(workshopMaterialRepositoryProvider)
-          .requestMaterials(widget.workshopId, keyword: keyword, page: page);
+      final repository = ref.read(workshopMaterialRepositoryProvider);
+      final workshop = widget.workshopId;
+      final result = await readScopedPage<WmMaterialOption>(
+        page,
+        query: [repository, workshop, keyword, boundary],
+        currentQuery: () => [
+          ref.read(workshopMaterialRepositoryProvider),
+          widget.workshopId,
+          _keyword,
+          ref.read(sensitiveReadBoundaryProvider),
+        ],
+        useCache: useCache,
+        fetchPage: (target) => repository.requestMaterials(
+          workshop,
+          keyword: keyword,
+          page: target,
+        ),
+      );
       if (mounted &&
           generation == _generation &&
           boundary == ref.read(sensitiveReadBoundaryProvider)) {
@@ -392,7 +419,7 @@ class _RequestMaterialPickerState
               loadingMore: _loading && _page != null,
               error: _error,
               onRetry: () => _load(_page?.page ?? 1),
-              onPageChange: _load,
+              onPageChange: (page) => _load(page, useCache: true),
               emptyMessage: '没有找到可申请的物料，请换个关键词',
               showFullscreenToggle: false,
               showColumnChooser: false,

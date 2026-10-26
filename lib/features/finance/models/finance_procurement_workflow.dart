@@ -54,6 +54,7 @@ class FinanceProcurementApprovalTask {
     this.allowedActions = const <String>{},
     this.changeCount = 0,
     this.requestType = 'ORDER',
+    this.executionMode,
   });
 
   final String caseId;
@@ -95,8 +96,10 @@ class FinanceProcurementApprovalTask {
   /// 后被改过数量，正在等待财务按修改清单复核。
   final int changeCount;
   final String requestType;
+  final String? executionMode;
   bool get isClosureRequest =>
       requestType == 'CLOSE' || requestType == 'CLOSE_AND_REORDER';
+  bool get isDirectClosure => isClosureRequest && executionMode == 'DIRECT';
 
   /// 允许超收/损耗% 摘要文案：单一值「5%」，多值区间「3%~5%」；未设置为 null。
   String? get toleranceText {
@@ -128,7 +131,12 @@ class FinanceProcurementApprovalTask {
 
   FinanceProcurementDecisionItem? get decisionItem {
     final currentVersion = version;
-    if (!canOpen || currentVersion == null || currentVersion < 1) return null;
+    if (isClosureRequest ||
+        !canOpen ||
+        currentVersion == null ||
+        currentVersion < 1) {
+      return null;
+    }
     return FinanceProcurementDecisionItem(
       caseId: caseId,
       expectedVersion: currentVersion,
@@ -221,6 +229,7 @@ class FinanceProcurementApprovalTask {
       allowedActions: _stringSet(json['allowedActions']),
       changeCount: _firstInt([json['changeCount']]) ?? 0,
       requestType: _string(json['requestType']) ?? 'ORDER',
+      executionMode: _string(json['executionMode']),
     );
   }
 }
@@ -350,6 +359,10 @@ class FinanceProcurementApprovalReview {
   Map<String, dynamic>? get closureRequest =>
       _map(headerSnapshot['closureRequest']);
   bool get isClosureRequest => closureRequest != null;
+  Map<String, dynamic>? get orderClosure =>
+      _map(headerSnapshot['orderClosure']);
+  bool get isDirectClosure => closureRequest?['executionMode'] == 'DIRECT';
+  bool get isOrderClosed => orderClosure?['status'] == 'APPROVED';
   bool get reordersRemaining => closureRequest?['mode'] == 'CLOSE_AND_REORDER';
   String? get closureReason => _string(closureRequest?['reason']);
 
@@ -618,6 +631,7 @@ class FinanceProcurementReviewHistoryEntry {
     'FINANCE_EDIT' => '财务修改',
     'SUBMITTED' => '提交财务审核',
     'APPROVED' => '财务通过',
+    'CLOSED' => '取消剩余并结束',
     'REJECTED' => '财务驳回',
     'CANCELED' => '提交人撤回',
     'REASSIGNED' => '改派',

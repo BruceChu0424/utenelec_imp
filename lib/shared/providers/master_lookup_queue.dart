@@ -15,7 +15,7 @@ class MasterLookupQueue {
   final int batchSize;
   final int maxConcurrent;
   final _pending = <String, Future<void>>{};
-  final _queue = Queue<(List<String>, Completer<void>)>();
+  final _queue = Queue<(List<String>, Completer<void>, Zone)>();
   final _running = <Completer<void>>{};
   int _active = 0;
   bool _disposed = false;
@@ -42,7 +42,7 @@ class MasterLookupQueue {
         _pending[id] = completion.future;
       }
       waits.add(completion.future);
-      _queue.add((batch, completion));
+      _queue.add((batch, completion, Zone.current));
     }
     final result = Future.wait(waits);
     _drain();
@@ -51,16 +51,20 @@ class MasterLookupQueue {
 
   void _drain() {
     while (!_disposed && _active < maxConcurrent && _queue.isNotEmpty) {
-      final (batch, completion) = _queue.removeFirst();
+      final (batch, completion, zone) = _queue.removeFirst();
       _active++;
       _running.add(completion);
-      unawaited(_run(batch, completion));
+      unawaited(_run(batch, completion, zone));
     }
   }
 
-  Future<void> _run(List<String> batch, Completer<void> completion) async {
+  Future<void> _run(
+    List<String> batch,
+    Completer<void> completion,
+    Zone zone,
+  ) async {
     try {
-      await fetch(batch);
+      await zone.run(() => fetch(batch));
       if (!completion.isCompleted) completion.complete();
     } catch (error, stack) {
       if (!completion.isCompleted) completion.completeError(error, stack);

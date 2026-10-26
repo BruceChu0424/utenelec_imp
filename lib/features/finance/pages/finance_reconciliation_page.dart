@@ -1,7 +1,9 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 // 账户流水页（只读查询，要求 account:view + account:balance:view + account:flow:view）。
 //
 // 账户下拉过滤 + 关键词 + 来源单据类型。列表展示：单据号/账户/对手方/收入/支出/日期/摘要。
 // 名称解析：账户用 FinanceNameService；账户下拉选项来自 FinanceNameService.accountEntries。
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -63,9 +65,11 @@ class FinanceReconciliationPage extends ConsumerStatefulWidget {
 }
 
 class _FinanceReconciliationPageState
-    extends ConsumerState<FinanceReconciliationPage> {
+    extends ConsumerState<FinanceReconciliationPage>
+    with ScopedPagedReadViewMixin<FinanceReconciliationPage> {
   PagedResult<ReconciliationItem>? _page;
   int _pageNum = 1;
+  final _tableRows = MasterDataTableRowsController<ReconciliationItem>();
   bool _loading = false;
   String? _error;
   final _loadRequests = LatestRequestGuard();
@@ -108,7 +112,39 @@ class _FinanceReconciliationPageState
         billNo: withBillNo ? _columnFilters['billNo'] : null,
       );
 
-  Future<void> _load(int page) async {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _loadRequests.begin();
+    if (!mounted) return;
+    setState(() {
+      _page = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+    });
+  }
+
+  Map<String, dynamic> get _cacheQuery => {
+    'repository': ref.read(reconciliationRepositoryProvider),
+    'keyword': _keyword,
+    'accountId': _accountId,
+    'sourceDocType': _sourceDocType,
+    'entryKind': _entryKind,
+    'columns': Map.of(_columnFilters.values),
+    'sort': _columnFilters.sortColumn,
+    'ascending': _columnFilters.sortAscending,
+  };
+
+  Future<void> _navigatePage(int page) => _load(page, useCache: true);
+
+  Future<void> _load(int page, {bool useCache = false}) async {
+    final cacheQuery = _cacheQuery;
+    final repo = ref.read(reconciliationRepositoryProvider);
+    final filter = _reconFilter();
+    final sort = _columnFilters.sortColumn;
+    final order = sort == null
+        ? null
+        : (_columnFilters.sortAscending ? 'asc' : 'desc');
+
     final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
@@ -118,16 +154,14 @@ class _FinanceReconciliationPageState
     // 单号桶随列表口径重取（2026-09-25 单号列统一）。
     unawaited(_loadBillNoFacets());
     try {
-      final r = await ref
-          .read(reconciliationRepositoryProvider)
-          .list(
-            page: page,
-            filter: _reconFilter(),
-            sort: _columnFilters.sortColumn,
-            order: _columnFilters.sortColumn == null
-                ? null
-                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
-          );
+      final r = await readScopedPage<ReconciliationItem>(
+        page,
+        query: cacheQuery,
+        currentQuery: () => _cacheQuery,
+        useCache: useCache,
+        fetchPage: (target) =>
+            repo.list(page: target, filter: filter, sort: sort, order: order),
+      );
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
@@ -272,7 +306,7 @@ class _FinanceReconciliationPageState
             onRefresh: () async {
               await Future.wait([
                 ref.read(financeNameServiceProvider).ensureLoaded(),
-                _load(1),
+                _load(_tableRows.visiblePage ?? _pageNum),
               ]);
             },
           ),
@@ -299,34 +333,39 @@ class _FinanceReconciliationPageState
                   },
                   trailing: SizedBox(
                     width: 220,
-                    child: DropdownButtonFormField<String?>(
-                      initialValue: _accountId,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        labelText: '账户',
-                      ),
-                      items: [
-                        const DropdownMenuItem<String?>(child: Text('全部账户')),
-                        for (final entry in names.accountEntries.entries)
-                          DropdownMenuItem<String?>(
-                            value: entry.key,
-                            child: Text(
-                              entry.value,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                    child: UtenDropdownScrollScope(
+                      nativeDropdown: true,
+                      child: DropdownButtonFormField<String?>(
+                        initialValue: _accountId,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          labelText: '账户',
+                        ),
+                        items: [
+                          const DropdownMenuItem<String?>(child: Text('全部账户')),
+                          for (final entry in names.accountEntries.entries)
+                            DropdownMenuItem<String?>(
+                              value: entry.key,
+                              child: Text(
+                                entry.value,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _accountId = value);
-                        _load(1);
-                      },
+                        ],
+                        onChanged: (value) {
+                          setState(() => _accountId = value);
+                          _load(1);
+                        },
+                      ),
                     ),
                   ),
                 ),
               ),
               body: MasterDataTableView<ReconciliationItem>(
+                rowsController: _tableRows,
+                expensiveRowMounts: false,
                 primary: true,
                 tableKey:
                     'features.finance.pages.finance_reconciliation_page.FinanceReconciliationPageState.build.1',
@@ -353,12 +392,12 @@ class _FinanceReconciliationPageState
                 isLoading: _loading && _page == null,
                 loadingMore: _loading && _page != null,
                 error: _error,
-                onRetry: () => _load(_pageNum),
+                onRetry: () => _load(_tableRows.visiblePage ?? _pageNum),
                 emptyMessage: '暂无流水',
                 currentPage: _page?.page ?? 1,
                 totalPages: _page?.totalPages ?? 1,
                 paginationScope: _keyword,
-                onPageChange: (p) => _load(p),
+                onPageChange: _navigatePage,
               ),
             ),
           ),

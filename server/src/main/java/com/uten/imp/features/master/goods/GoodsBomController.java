@@ -113,6 +113,7 @@ public class GoodsBomController {
 
     /** 产品配件清单加密 Excel 导出（密码走 body，与主档导出同一套）。 */
     @PostMapping("/export")
+    @com.uten.imp.common.export.LegacyExportRows(GoodsBomFileLimits.MAX_ROWS)
     @PreAuthorize("hasAuthority('goods:export')")
     public ResponseEntity<byte[]> export(@PathVariable UUID id,
                                          @Valid @RequestBody ExportPasswordRequest body) {

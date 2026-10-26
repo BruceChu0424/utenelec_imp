@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/providers/native_facet_options.dart';
+import '../../../core/router/page_navigation_session.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import '../widgets/production_sales_requirements.dart';
 // 我的车间任务（车间视角的执行工单办理台）。
@@ -38,7 +40,6 @@ import '../../../shared/drafts/task_form_drafts.dart';
 import '../../../shared/drafts/form_drafts_page.dart';
 import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -66,6 +67,9 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import '../../../shared/paging/paged_query_identity.dart';
+import '../../../shared/paging/paged_read_window_binding.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../providers/production_execution_refresh.dart';
@@ -111,8 +115,18 @@ class ProductionWorkshopTasksPage extends ConsumerStatefulWidget {
 }
 
 class _ProductionWorkshopTasksPageState
-    extends ConsumerState<ProductionWorkshopTasksPage> {
+    extends ConsumerState<ProductionWorkshopTasksPage>
+    with ScopedPagedReadViewMixin<ProductionWorkshopTasksPage> {
+  final _navigation = PageNavigationSession();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
   List<ProductionExecutionWorkbenchSegment> _items = const [];
+  Object? _acceptedTaskReadQuery;
   final _tableRows =
       MasterDataTableRowsController<ProductionExecutionWorkbenchSegment>();
   final _taskDetailRevision = ValueNotifier<int>(0);
@@ -228,7 +242,7 @@ class _ProductionWorkshopTasksPageState
     if (!mounted) return;
     setState(() => _navigating = true);
     try {
-      await context.push(
+      await _navigation.push(
         RoutePath.productionMaterialIncrementForSegment(task.segmentId),
       );
       if (mounted) await _reloadAfterChange();
@@ -251,7 +265,7 @@ class _ProductionWorkshopTasksPageState
     if (id == null || _navigating) return;
     setState(() => _navigating = true);
     try {
-      await context.push(RoutePath.productionActualOutputSupplement(id));
+      await _navigation.push(RoutePath.productionActualOutputSupplement(id));
       if (mounted) await _reloadAfterChange();
     } finally {
       if (mounted) setState(() => _navigating = false);
@@ -267,7 +281,7 @@ class _ProductionWorkshopTasksPageState
     if (id == null || _navigating) return;
     setState(() => _navigating = true);
     try {
-      await context.push(RoutePath.productionActualOutputSupplement(id));
+      await _navigation.push(RoutePath.productionActualOutputSupplement(id));
       if (mounted) await _reloadAfterChange();
     } finally {
       if (mounted) setState(() => _navigating = false);
@@ -292,7 +306,7 @@ class _ProductionWorkshopTasksPageState
           .context(task.segmentId);
       if (!mounted) return;
       if (source.pendingRequestId != null) {
-        await context.push(
+        await _navigation.push(
           RoutePath.productionOverproductionRateRequest(
             source.pendingRequestId!,
           ),
@@ -303,6 +317,7 @@ class _ProductionWorkshopTasksPageState
         final submitted = await showProductionRateRequestDialog(
           context,
           source,
+          navigation: _navigation,
         );
         if (!mounted) return;
         if (submitted != null) {
@@ -324,8 +339,7 @@ class _ProductionWorkshopTasksPageState
     }
   }
 
-  /// 批量报工去了日报新建页：回来时清空勾选(原设计在 push 返回后清；保存后
-  /// 新建页 replace 成详情，push 的 Future 不再返回，改由「返回即刷新」兑现)。
+  /// 批量报工返回时清空已办理的选择；导航锁由公共 session 的返回等待收尾。
   bool _clearSelectionOnResume = false;
   String _keyword = '';
   String? _status;
@@ -340,7 +354,7 @@ class _ProductionWorkshopTasksPageState
   String? _segmentCodeFilter;
   String? _sortColumn;
   bool _sortAscending = true;
-  Map<String, List<MasterFacetBucket>> _docNoFacets = const {};
+  final Map<String, List<MasterFacetBucket>> _docNoFacets = const {};
 
   /// 未审核报工草稿（SR status=0）按执行段承接的数量（2026-09-26 用户口径：
   /// 草稿承接的数量要从「生产中」的待报里扣除——车间任务读侧只认已审核报工，
@@ -357,6 +371,35 @@ class _ProductionWorkshopTasksPageState
   bool _loading = false;
   String? _error;
   int _loadGeneration = 0;
+
+  @override
+  void scopedPagedReadOwnerChanged() => setState(() {
+    _loadGeneration++;
+    _tableRows.update(const []);
+    _acceptedTaskReadQuery = null;
+    _items = const [];
+    _selected.clear();
+    _draftReportQty = const {};
+    _resetServerDraftState();
+    _totalPages = 0;
+    _loading = false;
+    _error = scopedPagedReadRejection?.message;
+  });
+
+  Object get _taskReadQuery => [
+    ref.read(productionExecutionWorkbenchRepositoryProvider),
+    _keyword,
+    _status,
+    _isPreparing ? _preparationFilter : null,
+    _isPreparing ? _routeFilter : null,
+    _workshopDepartmentId,
+    _analysisNoFilter,
+    _segmentCodeFilter,
+    _sortColumn,
+    _sortAscending,
+    _isHistory ? _historyTime.range?.start : null,
+    _isHistory ? _historyTime.range?.end : null,
+  ];
 
   /// 历史任务段的时间门控值（ADR-066 §1.3）：默认近三个月（2026-10-24 用户
   /// 口径，进段即按最近三个月加载），none 仅为值形态护栏。
@@ -1138,6 +1181,7 @@ class _ProductionWorkshopTasksPageState
 
   @override
   void dispose() {
+    _navigation.dispose();
     _taskDetailRevision.dispose();
     super.dispose();
   }
@@ -1167,7 +1211,7 @@ class _ProductionWorkshopTasksPageState
     }
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool useCache = false}) async {
     final generation = ++_loadGeneration;
     // 分类默认不选（ADR-066 同范式）：未选分类不请求列表、不显示数据，
     // 只刷新顶部分类徽章计数；点了分类才加载对应内容。历史任务段同理：
@@ -1188,7 +1232,11 @@ class _ProductionWorkshopTasksPageState
       unawaited(_loadDraftReportState(generation));
       return;
     }
-    final requestedPage = _page;
+    final query = _taskReadQuery;
+    final requestedPage =
+        !useCache && samePagedReadQuery(_acceptedTaskReadQuery, query)
+        ? _tableRows.visiblePage ?? _page
+        : _page;
     final requestedKeyword = _keyword;
     final requestedStatus = _status;
     final requestedPreparationFilter = _isPreparing ? _preparationFilter : null;
@@ -1202,46 +1250,39 @@ class _ProductionWorkshopTasksPageState
         ? null
         : (_sortAscending ? 'asc' : 'desc');
     final range = _isHistory ? _historyTime.range : null;
+    final from = range == null ? null : ChinaDateTime.formatDate(range.start);
+    final to = range == null ? null : ChinaDateTime.formatDate(range.end);
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final repo = ref.read(productionExecutionWorkbenchRepositoryProvider);
-      final result = await repo.workshopTasks(
-        page: requestedPage,
-        keyword: requestedKeyword,
-        status: requestedStatus,
-        preparationFilter: requestedPreparationFilter,
-        routeFilter: requestedRouteFilter,
-        workshopDepartmentId: requestedWorkshop,
-        dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
-        dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
-        analysisNo: requestedAnalysisNo,
-        segmentCode: requestedSegmentCode,
-        sort: requestedSort,
-        order: requestedOrder,
-      );
-      // 单号 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
-      Map<String, List<MasterFacetBucket>> facets = const {};
-      try {
-        facets = await repo.workshopTaskFacets(
+      final result = await readScopedPage<ProductionExecutionWorkbenchSegment>(
+        requestedPage,
+        query: query,
+        currentQuery: () => _taskReadQuery,
+        useCache: useCache,
+        fetchPage: (page) => repo.workshopTasks(
+          page: page,
           keyword: requestedKeyword,
           status: requestedStatus,
           preparationFilter: requestedPreparationFilter,
           routeFilter: requestedRouteFilter,
           workshopDepartmentId: requestedWorkshop,
-          dateFrom: range == null
-              ? null
-              : ChinaDateTime.formatDate(range.start),
-          dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
-        );
-      } catch (_) {
-        facets = const {};
-      }
+          dateFrom: from,
+          dateTo: to,
+          analysisNo: requestedAnalysisNo,
+          segmentCode: requestedSegmentCode,
+          sort: requestedSort,
+          order: requestedOrder,
+        ),
+      );
+      // 单号 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
+
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _docNoFacets = facets;
+        _acceptedTaskReadQuery = freezePagedReadQuery(query);
         _items = result.items;
         _page = result.page;
         _totalPages = result.totalPages;
@@ -1294,12 +1335,15 @@ class _ProductionWorkshopTasksPageState
       final repo = ref.read(productionDailyReportRepositoryProvider);
       var page = 1;
       while (true) {
+        if (!mounted || generation != _loadGeneration) return;
         final result = await repo.list(
           page: page,
           size: 100,
           filter: const ProductionDailyReportFilter(status: 0),
         );
+        if (!mounted || generation != _loadGeneration) return;
         for (final draft in result.items) {
+          if (!mounted || generation != _loadGeneration) return;
           final detail = await repo.detail(draft.id);
           if (detail.status != 0) continue;
           final linkedSegments = <String>{};
@@ -1405,7 +1449,7 @@ class _ProductionWorkshopTasksPageState
     if (drafts.isEmpty) return false;
     setState(() => _navigating = true);
     try {
-      await resumeTaskFormDraft(context, ref, drafts);
+      await resumeTaskFormDraft(context, ref, drafts, navigation: _navigation);
       if (mounted) await _reloadAfterChange();
     } finally {
       if (mounted) setState(() => _navigating = false);
@@ -1491,7 +1535,7 @@ class _ProductionWorkshopTasksPageState
         )) {
           return;
         }
-        await context.push<void>(
+        await _navigation.push<void>(
           '/production/daily-reports/${Uri.encodeComponent(reportId)}'
           '?from=workshop-tasks',
         );
@@ -1504,6 +1548,7 @@ class _ProductionWorkshopTasksPageState
               : local
                     .where((draft) => 'local:${draft.id}' == selected)
                     .toList(),
+          navigation: _navigation,
         );
       }
       if (mounted) await _reloadAfterChange();
@@ -1519,6 +1564,23 @@ class _ProductionWorkshopTasksPageState
   List<ProductionExecutionWorkbenchSegment> get _displayItems {
     final items = _items;
     if (!_isPreparing || _sortColumn != null) return items;
+    final sorted = _readinessSortedItems(items);
+    projectReadWindowBinding(
+      items,
+      sorted,
+      project: _readinessSortedItems,
+      projectionKey: (
+        'workshop-preparing-readiness',
+        _isPreparing,
+        _sortColumn,
+      ),
+    );
+    return sorted;
+  }
+
+  List<ProductionExecutionWorkbenchSegment> _readinessSortedItems(
+    List<ProductionExecutionWorkbenchSegment> items,
+  ) {
     final sorted = List<ProductionExecutionWorkbenchSegment>.of(items);
     sorted.sort((a, b) {
       final byRank = workshopPreparingReadinessRank(
@@ -1614,7 +1676,7 @@ class _ProductionWorkshopTasksPageState
     if (discovery.isNotEmpty) {
       setState(() => _navigating = true);
       try {
-        final submitted = await context.push<bool>(
+        final submitted = await _navigation.push<bool>(
           ProductionMaterialDiscoveryRequestPage.location(discovery),
         );
         if (!mounted) return;
@@ -1640,7 +1702,7 @@ class _ProductionWorkshopTasksPageState
     ).toString();
     setState(() => _navigating = true);
     try {
-      final submitted = await context.push<bool>(path);
+      final submitted = await _navigation.push<bool>(path);
       if (!mounted) return;
       if (submitted == true) {
         setState(
@@ -1682,7 +1744,7 @@ class _ProductionWorkshopTasksPageState
     }
     setState(() => _navigating = true);
     try {
-      final result = await context.push<bool>(
+      final result = await _navigation.push<bool>(
         Uri(
           path: RouteName.productionBatchDraw,
           queryParameters: {
@@ -1881,7 +1943,7 @@ class _ProductionWorkshopTasksPageState
     if (_navigating) return;
     setState(() => _navigating = true);
     try {
-      await context.push(
+      await _navigation.push(
         RoutePath.workshopMaterialBin(
           workshopId: workshopId ?? _workshopDepartmentId,
         ),
@@ -2034,10 +2096,10 @@ class _ProductionWorkshopTasksPageState
       _clearSelectionOnResume = true;
     });
     try {
-      final reportId = await context.push<String>(path);
+      final reportId = await _navigation.push<String>(path);
       if (!mounted) return;
       if (reportId != null && reportId.isNotEmpty) {
-        await context.push<void>(
+        await _navigation.push<void>(
           '/production/daily-reports/${Uri.encodeComponent(reportId)}'
           '?from=workshop-tasks',
         );
@@ -2069,7 +2131,7 @@ class _ProductionWorkshopTasksPageState
     }
     setState(() => _navigating = true);
     try {
-      await context.push(RoutePath.productionPlanDetail(task.planId));
+      await _navigation.push(RoutePath.productionPlanDetail(task.planId));
       if (mounted) await _reloadAfterChange();
     } finally {
       if (mounted) setState(() => _navigating = false);
@@ -2333,7 +2395,7 @@ class _ProductionWorkshopTasksPageState
       case 'over-limit':
         final dispositionId = task.overLimitDispositionId;
         if (dispositionId != null) {
-          await context.push(
+          await _navigation.push(
             RoutePath.productionOverLimitDisposition(dispositionId),
           );
           if (mounted) await _reloadAfterChange();
@@ -2794,23 +2856,18 @@ class _ProductionWorkshopTasksPageState
     // 返回时连同顶部分类徽章一起重拉(报工审核、领料提交等都在子页面里办完)。
     ref.onPageResume(
       RouteName.productionWorkshopTasks,
-      () {
-        if (!_navigating && _busy == null) _reloadAfterChange();
+      () async {
+        if (_busy != null) return;
+        if (_navigation.consumeReturnedVisit()) return;
+        if (!_navigating) await _reloadAfterChange();
       },
       refreshKeys: const [productionExecutionRefreshKey],
-      // 每次返回都兜底清 _navigating——历史上有流程异常退出没走到 finally 时它会
-      // 卡在 true，右下角「批量报工」就一直点不动。各流程自己的 finally 清 False
-      // 是幂等的，重复清无副作用。
+      // 选择清理属于报工语义。导航等待和在途写请求各自释放自己的锁，
+      // 返回事件不能提前解除开工、改路线或撤回申请的写保护。
       onReturn: () {
-        if (mounted &&
-            (_navigating || _busy != null || _clearSelectionOnResume)) {
+        if (mounted && _clearSelectionOnResume) {
           setState(() {
-            _navigating = false;
-            // 遮罩也必须在这里兜底清掉：漏清一次就是一块盖死整屏、连刷新按钮都
-            // 点不到的蒙版(它带 ModalBarrier(dismissible: false))，比卡住一个
-            // 灰按钮严重得多。
-            _busy = null;
-            if (_clearSelectionOnResume) _selected.clear();
+            _selected.clear();
             _clearSelectionOnResume = false;
           });
         }
@@ -2851,14 +2908,9 @@ class _ProductionWorkshopTasksPageState
             ),
           UtenRefreshButton(
             busy: _loading,
+            enabled: !_navigating && _busy == null,
             onRefresh: () async {
-              // Refresh also releases stale navigation/overlay state after a
-              // child workflow finishes by replacing its route.
-              setState(() {
-                _page = 1;
-                _navigating = false;
-                _busy = null;
-              });
+              setState(() => _page = 1);
               await Future.wait([refreshBadges(ref), _load()]);
             },
           ),
@@ -2965,6 +3017,7 @@ class _ProductionWorkshopTasksPageState
                           ProductionExecutionWorkbenchSegment
                         >(
                           rowsController: _tableRows,
+                          expensiveRowMounts: _isPreparing && _canStart,
                           paginationRevision: _items,
                           tableKey:
                               'features.production.pages.production_workshop_tasks_page.ProductionWorkshopTasksPageState.build.1',
@@ -3038,6 +3091,56 @@ class _ProductionWorkshopTasksPageState
                             'segment': _docNoFacets['segment'] ?? const [],
                           },
                           nullCounts: const {},
+                          facetPageLoaders: nativeFacetLoaders(
+                            ref,
+                            path: '/production/workshop-tasks/facets',
+                            fields: const ['sourcePlan', 'segment'],
+                            filters: {
+                              'keyword': _keyword,
+                              'status': _status,
+                              'preparationFilter': _isPreparing
+                                  ? _preparationFilter
+                                  : null,
+                              'routeFilter': _isPreparing ? _routeFilter : null,
+                              'workshopDepartmentId': _workshopDepartmentId,
+                              'dateFrom':
+                                  _isHistory && _historyTime.range != null
+                                  ? ChinaDateTime.formatDate(
+                                      _historyTime.range!.start,
+                                    )
+                                  : null,
+                              'dateTo': _isHistory && _historyTime.range != null
+                                  ? ChinaDateTime.formatDate(
+                                      _historyTime.range!.end,
+                                    )
+                                  : null,
+                            },
+                          ),
+                          facetSearchScope: nativeFacetSearchScope(
+                            ref,
+                            '/production/workshop-tasks/facets',
+                            {
+                              'keyword': _keyword,
+                              'status': _status,
+                              'preparationFilter': _isPreparing
+                                  ? _preparationFilter
+                                  : null,
+                              'routeFilter': _isPreparing ? _routeFilter : null,
+                              'workshopDepartmentId': _workshopDepartmentId,
+                              'dateFrom':
+                                  _isHistory && _historyTime.range != null
+                                  ? ChinaDateTime.formatDate(
+                                      _historyTime.range!.start,
+                                    )
+                                  : null,
+                              'dateTo': _isHistory && _historyTime.range != null
+                                  ? ChinaDateTime.formatDate(
+                                      _historyTime.range!.end,
+                                    )
+                                  : null,
+                            },
+                          ),
+
                           filters: {
                             'workshop': ?_workshopDepartmentId,
                             if (_isPreparing) 'status': ?_preparationFilter,
@@ -3206,7 +3309,7 @@ class _ProductionWorkshopTasksPageState
                           ),
                           onPageChange: (page) {
                             _page = page;
-                            _load();
+                            return _load(useCache: true);
                           },
                           isLoading: _loading,
                           error: _error,

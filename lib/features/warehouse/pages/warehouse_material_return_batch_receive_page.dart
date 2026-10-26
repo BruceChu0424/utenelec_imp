@@ -36,6 +36,7 @@ import '../../../shared/widgets/warehouse_selection.dart';
 import '../models/stock_doc.dart';
 import '../models/warehouse_task_item_selection.dart';
 import '../repositories/stock_doc_repository.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class WarehouseMaterialReturnBatchReceivePage extends ConsumerStatefulWidget {
   const WarehouseMaterialReturnBatchReceivePage({
@@ -638,118 +639,125 @@ class _WarehouseMaterialReturnBatchReceivePageState
                             ],
                           ),
                         )
-                      : ListView.builder(
+                      : UtenPageEdgePadding.scroll(
                           padding: const EdgeInsets.all(UtenSpacing.s12),
-                          itemCount: _rows.length,
-                          itemBuilder: (context, index) {
-                            final row = _rows[index];
-                            final detail = row.detail;
-                            if (_blockedSources.contains(detail.id)) {
+                          builder: (context, resolvedPagePadding) => ListView.builder(
+                            padding: resolvedPagePadding,
+                            itemCount: _rows.length,
+                            itemBuilder: (context, index) {
+                              final row = _rows[index];
+                              final detail = row.detail;
+                              if (_blockedSources.contains(detail.id)) {
+                                return Card(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(
+                                      UtenSpacing.s12,
+                                    ),
+                                    child: Text(
+                                      '来源 ${detail.id} 当前不可读取或原范围已变化；${detail.id == _pendingDocumentId ? '原结果继续待核对，不能重放' : '本次未派发，原范围保留'}',
+                                    ),
+                                  ),
+                                );
+                              }
+                              final allowed = _allowedWarehouseIds(detail);
+                              final scoped = names.warehouseHierarchy
+                                  .where((entry) => allowed.contains(entry.id))
+                                  .toList();
+                              final billDate = detail.billDate ?? '';
                               return Card(
+                                margin: const EdgeInsets.only(
+                                  bottom: UtenSpacing.s8,
+                                ),
                                 child: Padding(
                                   padding: const EdgeInsets.all(
                                     UtenSpacing.s12,
                                   ),
-                                  child: Text(
-                                    '来源 ${detail.id} 当前不可读取或原范围已变化；${detail.id == _pendingDocumentId ? '原结果继续待核对，不能重放' : '本次未派发，原范围保留'}',
-                                  ),
-                                ),
-                              );
-                            }
-                            final allowed = _allowedWarehouseIds(detail);
-                            final scoped = names.warehouseHierarchy
-                                .where((entry) => allowed.contains(entry.id))
-                                .toList();
-                            final billDate = detail.billDate ?? '';
-                            return Card(
-                              margin: const EdgeInsets.only(
-                                bottom: UtenSpacing.s8,
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(UtenSpacing.s12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (_incompleteDocuments.contains(
-                                      detail.id,
-                                    ))
-                                      Text(
-                                        '该退料单需整单确认，请返回任务中心选齐同单明细',
-                                        style: TextStyle(
-                                          color: theme.colorScheme.error,
-                                        ),
-                                      ),
-                                    Row(
-                                      children: [
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      if (_incompleteDocuments.contains(
+                                        detail.id,
+                                      ))
                                         Text(
-                                          detail.billNo ?? detail.id,
-                                          style: theme.textTheme.titleMedium
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                        ),
-                                        const SizedBox(width: UtenSpacing.s8),
-                                        Expanded(
-                                          child: Text(
-                                            '${billDate.length >= 10 ? billDate.substring(0, 10) : billDate} · '
-                                            '${names.department(detail.departmentId)} · '
-                                            '${detail.items.length} 行物料',
-                                            style: theme.textTheme.bodySmall
-                                                ?.copyWith(
-                                                  color: theme
-                                                      .colorScheme
-                                                      .onSurfaceVariant,
-                                                ),
+                                          '该退料单需整单确认，请返回任务中心选齐同单明细',
+                                          style: TextStyle(
+                                            color: theme.colorScheme.error,
                                           ),
                                         ),
-                                        if (row.done)
+                                      Row(
+                                        children: [
                                           Text(
-                                            '已收料',
-                                            style: theme.textTheme.labelLarge
+                                            detail.billNo ?? detail.id,
+                                            style: theme.textTheme.titleMedium
                                                 ?.copyWith(
-                                                  color:
-                                                      theme.colorScheme.primary,
                                                   fontWeight: FontWeight.w700,
                                                 ),
                                           ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: UtenSpacing.s8),
-                                    UtenDropdownField(
-                                      key: ValueKey(
-                                        'material-return-batch-warehouse-${detail.id}',
+                                          const SizedBox(width: UtenSpacing.s8),
+                                          Expanded(
+                                            child: Text(
+                                              '${billDate.length >= 10 ? billDate.substring(0, 10) : billDate} · '
+                                              '${names.department(detail.departmentId)} · '
+                                              '${detail.items.length} 行物料',
+                                              style: theme.textTheme.bodySmall
+                                                  ?.copyWith(
+                                                    color: theme
+                                                        .colorScheme
+                                                        .onSurfaceVariant,
+                                                  ),
+                                            ),
+                                          ),
+                                          if (row.done)
+                                            Text(
+                                              '已收料',
+                                              style: theme.textTheme.labelLarge
+                                                  ?.copyWith(
+                                                    color: theme
+                                                        .colorScheme
+                                                        .primary,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                            ),
+                                        ],
                                       ),
-                                      label: '实际收料仓库',
-                                      required: true,
-                                      allowClear: false,
-                                      value: row.warehouseId,
-                                      items: warehouseHierarchyItems(
-                                        scoped,
-                                        use: WarehouseUse.goodIn,
+                                      const SizedBox(height: UtenSpacing.s8),
+                                      UtenDropdownField(
+                                        key: ValueKey(
+                                          'material-return-batch-warehouse-${detail.id}',
+                                        ),
+                                        label: '实际收料仓库',
+                                        required: true,
+                                        allowClear: false,
+                                        value: row.warehouseId,
+                                        items: warehouseHierarchyItems(
+                                          scoped,
+                                          use: WarehouseUse.goodIn,
+                                        ),
+                                        info: '余料进入这里选择的正常仓库；来源记录用于追溯。',
+                                        errorMessage:
+                                            detail.materialReturnMainWarehouseId ==
+                                                null
+                                            ? '来源主仓还没读到，请刷新'
+                                            : allowed.isEmpty
+                                            ? '此主仓下暂无有效正常收料仓库'
+                                            : null,
+                                        enabled: !row.done && !_uncertain,
+                                        onChanged: (value) => setState(() {
+                                          if (row.done || _uncertain) return;
+                                          row.warehouseEditRevision++;
+                                          row.warehouseId =
+                                              allowed.contains(value)
+                                              ? value
+                                              : null;
+                                        }),
                                       ),
-                                      info: '余料进入这里选择的正常仓库；来源记录用于追溯。',
-                                      errorMessage:
-                                          detail.materialReturnMainWarehouseId ==
-                                              null
-                                          ? '来源主仓还没读到，请刷新'
-                                          : allowed.isEmpty
-                                          ? '此主仓下暂无有效正常收料仓库'
-                                          : null,
-                                      enabled: !row.done && !_uncertain,
-                                      onChanged: (value) => setState(() {
-                                        if (row.done || _uncertain) return;
-                                        row.warehouseEditRevision++;
-                                        row.warehouseId =
-                                            allowed.contains(value)
-                                            ? value
-                                            : null;
-                                      }),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
                 ),
               ),

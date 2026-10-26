@@ -14,10 +14,20 @@
 //   保存后：context.replace(详情)；删除/「返回列表」：backTo(context, defaultPath: 列表路径)，
 //   不要 context.go 硬编码列表（会抹掉栈下的来源页）。
 
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
 import 'route_names.dart';
+
+/// Opens a link without returning the child page's lifetime to button feedback.
+///
+/// Use for navigation-only callbacks. Awaited visits that release a navigation
+/// lock, refresh on return or consume a typed result use PageNavigationSession.
+void pushPage(BuildContext context, String location, {Object? extra}) {
+  unawaited(context.push<void>(location, extra: extra));
+}
 
 /// 带来源打开页面，并保留来源页的数据、分类、滚动位置和动画状态。
 ///

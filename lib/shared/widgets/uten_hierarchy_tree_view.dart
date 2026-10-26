@@ -22,6 +22,8 @@ import '../../components/inputs/uten_search_bar.dart';
 import '../../components/layout/uten_adaptive_hierarchy_pane.dart';
 import '../../components/layout/uten_hierarchy_content_width.dart';
 import '../../components/layout/uten_panel_opening_scope.dart';
+import '../../components/layout/uten_scroll_gutter.dart';
+import '../../components/layout/uten_vertical_scroll_area.dart';
 import '../../core/responsive/breakpoint.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_anim.dart';
@@ -853,6 +855,10 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                                 : isSelected
                                 ? theme.colorScheme.primary
                                 : null)
+                          : flatSelected
+                          ? selectedForeground?.withValues(alpha: 0.85)
+                          : onDarkRow
+                          ? Colors.white.withValues(alpha: 0.85)
                           : theme.colorScheme.onSurfaceVariant,
                     ),
                 child: Text(
@@ -1147,33 +1153,39 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
         // all controls, status/error text and nodes scroll together. A fixed
         // header must never consume a short directory's entire viewport.
         if (constraints.maxHeight < UtenBreakpoints.mediumStart) {
-          return CustomScrollView(
+          return UtenVerticalScrollArea(
             controller: _scrollController,
-            primary: false,
-            slivers: [
-              SliverToBoxAdapter(child: header),
-              SliverPadding(
-                padding: const EdgeInsets.only(bottom: 8),
-                sliver: SliverList.builder(
-                  itemCount: rowCount,
-                  itemBuilder: rowBuilder,
-                  findChildIndexCallback: (key) => rowIndexes[key],
+            child: CustomScrollView(
+              controller: _scrollController,
+              primary: false,
+              slivers: [
+                SliverToBoxAdapter(child: header),
+                SliverPadding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  sliver: SliverList.builder(
+                    itemCount: rowCount,
+                    itemBuilder: rowBuilder,
+                    findChildIndexCallback: (key) => rowIndexes[key],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           );
         }
         return Column(
           children: [
-            header,
+            UtenScrollGutter.trailing(child: header),
             Expanded(
-              child: ListView.builder(
+              child: UtenVerticalScrollArea(
                 controller: _scrollController,
-                primary: false,
-                padding: const EdgeInsets.only(bottom: 8),
-                itemCount: rowCount,
-                itemBuilder: rowBuilder,
-                findChildIndexCallback: (key) => rowIndexes[key],
+                child: ListView.builder(
+                  controller: _scrollController,
+                  primary: false,
+                  padding: const EdgeInsets.only(bottom: 8),
+                  itemCount: rowCount,
+                  itemBuilder: rowBuilder,
+                  findChildIndexCallback: (key) => rowIndexes[key],
+                ),
               ),
             ),
           ],

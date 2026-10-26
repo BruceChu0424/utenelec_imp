@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_toast.dart';
+import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../shared/auth/permissions.dart';
@@ -331,31 +332,17 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
     final positions = _positions;
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${widget.node.name} · 岗位',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (canCreate)
-                IconButton(
-                  icon: const Icon(Icons.add_rounded),
-                  tooltip: '添加岗位',
-                  onPressed: () => _showEditDialog(),
-                ),
+        UtenPanelHeader(
+          title: '${widget.node.name} · 岗位',
+          onClose: () => Navigator.of(context).pop(),
+          actions: [
+            if (canCreate)
               IconButton(
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.add_rounded),
+                tooltip: '添加岗位',
+                onPressed: () => _showEditDialog(),
               ),
-            ],
-          ),
+          ],
         ),
         Expanded(
           child: positions == null && _error == null

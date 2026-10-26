@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../../core/router/page_navigation_session.dart';
 
 /// Page-header actions keep their labels visible and use a single button role.
 /// This also reaches action widgets that build their UtenButton internally.
@@ -27,6 +28,7 @@ class UtenAppBarActionScope extends InheritedWidget {
     required this.actionContext,
     required this.claimAction,
     required this.dismiss,
+    this.navigation,
     this.closeBeforeAction = false,
     required super.child,
   });
@@ -34,6 +36,7 @@ class UtenAppBarActionScope extends InheritedWidget {
   final BuildContext actionContext;
   final bool Function() claimAction;
   final VoidCallback dismiss;
+  final PageNavigationSession? navigation;
   final bool closeBeforeAction;
 
   static BuildContext actionContextOf(BuildContext context) =>
@@ -41,6 +44,11 @@ class UtenAppBarActionScope extends InheritedWidget {
           .dependOnInheritedWidgetOfExactType<UtenAppBarActionScope>()
           ?.actionContext ??
       context;
+
+  /// Navigation waits belong to the source header, not its temporary panel.
+  static PageNavigationSession? navigationOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<UtenAppBarActionScope>()
+      ?.navigation;
 
   static Widget withCloseBeforeAction(
     BuildContext context, {
@@ -53,6 +61,7 @@ class UtenAppBarActionScope extends InheritedWidget {
       actionContext: scope.actionContext,
       claimAction: scope.claimAction,
       dismiss: scope.dismiss,
+      navigation: scope.navigation,
       closeBeforeAction: true,
       child: child,
     );
@@ -99,6 +108,7 @@ class UtenAppBarActionScope extends InheritedWidget {
   @override
   bool updateShouldNotify(UtenAppBarActionScope oldWidget) =>
       actionContext != oldWidget.actionContext ||
+      navigation != oldWidget.navigation ||
       closeBeforeAction != oldWidget.closeBeforeAction ||
       claimAction != oldWidget.claimAction ||
       dismiss != oldWidget.dismiss;

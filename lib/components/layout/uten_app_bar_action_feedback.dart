@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 /// Keeps a header action busy for the lifetime of the Future it actually
 /// returns. Synchronous navigation and dialog opening keep their normal flow.
 /// The action's owner retains error handling, permissions and result feedback.
+/// Navigation-only callbacks must not return GoRouter's child-page Future:
+/// pushPage opens such links; PageNavigationSession owns awaited child flows.
 class UtenAppBarActionFeedback extends StatefulWidget {
   const UtenAppBarActionFeedback({
     super.key,

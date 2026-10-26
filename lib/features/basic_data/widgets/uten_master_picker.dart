@@ -1,3 +1,4 @@
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // UtenMasterPicker - 「左分类树 + 右分页列表」主档选择面板的泛型实现(ADR-111 前端去重)。
 //
 // 客户选择器与供应商选择器原先各写一份 600+ 行、84% 相同的面板(统一搜索定位分类、
@@ -7,9 +8,9 @@
 //
 // 形态：compact 底部抽屉 / medium+ 右侧滑入面板，使用公共 browse 宽度档位（2026-09-24
 // 与货品选择滑窗同步改版：左树无缩进层级色 + 单根提升 + UtenSplitView 可拖分割线，
-// 默认左栏宽 = 最长一行实测宽）。列表始终请求服务端
-// selectableOnly(只含「使用」状态)，total/totalPages 与 items 是同一数据库谓词下的
-// 权威结果，前端不再二次过滤。
+// 默认左栏宽 = 最长一行实测宽）。列表按业务参数请求服务端 selectableOnly，
+// 新选择仅含可选记录，历史筛选可含停用记录；total/totalPages 与 items 使用同一
+// 数据库谓词，前端不再二次过滤。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,11 +24,14 @@ import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_panel_opening_scope.dart';
+import '../../../components/layout/uten_panel_header.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/product_category_node.dart';
+import '../models/master_search_context.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import 'category_tree_search.dart';
 import 'master_data_table_view.dart';
 import 'uten_category_tree_view.dart';
@@ -41,6 +45,7 @@ class UtenMasterPickerSpec<TItem> {
     required this.loadTree,
     required this.loadCategoryPage,
     required this.search,
+    required this.searchContext,
     required this.idOf,
     required this.categoryIdOf,
     required this.labelOf,
@@ -64,8 +69,10 @@ class UtenMasterPickerSpec<TItem> {
   )
   loadCategoryPage;
 
-  /// 全局搜索的一页(每页 100 条，面板按页拉全再按分类定位)。
+  /// 全局搜索的一页；分类位置由独立元数据查询提供，不拉全业务行。
   final Future<PagedResult<TItem>> Function(String query, int page) search;
+  final Future<MasterSearchContext> Function(String query, int page)
+  searchContext;
   final String Function(TItem item) idOf;
   final String? Function(TItem item) categoryIdOf;
   final String Function(TItem item) labelOf;
@@ -85,6 +92,8 @@ Future<TItem?> showUtenMasterPicker<TItem>(
   BuildContext context,
   UtenMasterPickerSpec<TItem> spec,
 ) async {
+  final owner = ProviderScope.containerOf(context, listen: false);
+  final epoch = owner.read(exportContextEpochProvider);
   List<ProductCategoryNode> tree;
   try {
     tree = await spec.loadTree();
@@ -94,7 +103,9 @@ Future<TItem?> showUtenMasterPicker<TItem>(
     }
     return null;
   }
-  if (!context.mounted) return null;
+  if (!context.mounted || epoch != owner.read(exportContextEpochProvider)) {
+    return null;
+  }
   // 单根提升：与货品选择滑窗同口径（2026-09-24），单包装根不占一层。
   tree = hoistSingleRootTree(tree);
   // 滑窗宽度口径 2026-10-17：比例优先（browse 档 75% 屏宽），720 只作小屏下限。
@@ -117,7 +128,18 @@ class _MasterPickerSheet<TItem> extends ConsumerStatefulWidget {
 }
 
 class _MasterPickerSheetState<TItem>
-    extends ConsumerState<_MasterPickerSheet<TItem>> {
+    extends ConsumerState<_MasterPickerSheet<TItem>>
+    with ScopedPagedReadViewMixin<_MasterPickerSheet<TItem>> {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _retireReader();
+    if (mounted) {
+      setState(() {
+        _error = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   String? _selectedCategoryId;
   final _keywordCtl = TextEditingController();
   String _globalQuery = '';
@@ -133,8 +155,13 @@ class _MasterPickerSheetState<TItem>
   int _queryRevision = 0;
   List<TItem>? _items;
   int _totalPages = 1;
-  String? _globalItemsQuery;
-  List<TItem> _globalItems = const [];
+  String? _publishedScopeVersion;
+  late final int _readerEpoch;
+  bool _readerRetired = false;
+  bool get _currentReader =>
+      mounted &&
+      !_readerRetired &&
+      _readerEpoch == ref.read(exportContextEpochProvider);
   bool _loading = false;
   String? _error;
 
@@ -150,10 +177,37 @@ class _MasterPickerSheetState<TItem>
   @override
   void initState() {
     super.initState();
+    _readerEpoch = ref.read(exportContextEpochProvider);
+    ref.listenManual(exportContextEpochProvider, (previous, next) {
+      if (!mounted || previous == next) return;
+      _retireReader();
+    });
     if (widget.tree.isNotEmpty) {
       _selectedCategoryId = widget.tree.first.id;
       _reloadCategory();
     }
+  }
+
+  void _retireReader() {
+    if (!mounted || _readerRetired) return;
+    setState(() {
+      _readerRetired = true;
+      ++_requestVersion;
+      _items = null;
+      _picked = null;
+      _keywordCtl.clear();
+      _loading = false;
+    });
+  }
+
+  bool _acceptScope(String? version) {
+    if (version == null || version.isEmpty) return true;
+    if (_publishedScopeVersion != null && _publishedScopeVersion != version) {
+      _retireReader();
+      return false;
+    }
+    _publishedScopeVersion = version;
+    return true;
   }
 
   @override
@@ -163,7 +217,7 @@ class _MasterPickerSheetState<TItem>
   }
 
   void _onCategoryTap(ProductCategoryNode node) {
-    if (_globalQuery.isNotEmpty) return;
+    if (!_currentReader || _globalQuery.isNotEmpty) return;
     _requestVersion++;
     _acceptPendingSearch = false;
     setState(() {
@@ -180,6 +234,7 @@ class _MasterPickerSheetState<TItem>
   /// 用户继续输入时立即让正在飞行的旧请求失效(UtenSearchBar 的 300ms 防抖期间
   /// 旧结果不回写)；防抖到期后由 [_onKeywordChanged] 发起替换请求。
   void _onKeywordInputChanged(String v) {
+    if (!_currentReader) return;
     setState(() {
       _requestVersion++;
       _acceptPendingSearch = true;
@@ -187,8 +242,6 @@ class _MasterPickerSheetState<TItem>
       _visibleFilterIds = _globalQuery.isEmpty
           ? null
           : categoryHits(widget.tree, _globalQuery);
-      _globalItemsQuery = null;
-      _globalItems = const [];
       _resetPageWindow();
       _loading = true;
       _error = null;
@@ -205,19 +258,17 @@ class _MasterPickerSheetState<TItem>
   }
 
   void _onKeywordChanged(String v) {
-    if (!mounted || !_acceptPendingSearch) return;
+    if (!_currentReader || !_acceptPendingSearch) return;
     _acceptPendingSearch = false;
     _applyGlobalSearch(v.trim());
   }
 
   Future<void> _applyGlobalSearch(String query) async {
-    if (!mounted) return;
+    if (!_currentReader) return;
     if (query.isEmpty) {
       setState(() {
         _globalQuery = '';
         _visibleFilterIds = null;
-        _globalItemsQuery = null;
-        _globalItems = const [];
         _searchLocationLoading = false;
         _searchLocationError = null;
         _showingGlobalResults = false;
@@ -233,8 +284,6 @@ class _MasterPickerSheetState<TItem>
     setState(() {
       _globalQuery = query;
       _visibleFilterIds = categoryHits(widget.tree, query);
-      _globalItemsQuery = null;
-      _globalItems = const [];
       _searchLocationLoading = true;
       _searchLocationError = null;
       _showingGlobalResults = true;
@@ -244,7 +293,8 @@ class _MasterPickerSheetState<TItem>
     await _reloadGlobalSearch();
   }
 
-  Future<void> _reloadCategory() async {
+  Future<void> _reloadCategory({bool useCache = false}) async {
+    if (!_currentReader) return;
     final categoryId = _selectedCategoryId;
     final requestVersion = ++_requestVersion;
     if (categoryId == null) {
@@ -262,12 +312,18 @@ class _MasterPickerSheetState<TItem>
       _error = null;
     });
     try {
-      final r = await _spec.loadCategoryPage(
-        categoryId,
+      final spec = _spec, keyword = _categoryContentKeyword;
+      final r = await readScopedPage<TItem>(
         _page,
-        _categoryContentKeyword,
+        query: _pagingQuery(),
+        currentQuery: _pagingQuery,
+        useCache: useCache,
+        isCurrent: () => _currentReader,
+        fetchPage: (target) =>
+            spec.loadCategoryPage(categoryId, target, keyword),
       );
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!_currentReader || requestVersion != _requestVersion) return;
+      if (!_acceptScope(r.readScopeVersion)) return;
       setState(() {
         _items = r.items;
         _page = r.page;
@@ -276,7 +332,7 @@ class _MasterPickerSheetState<TItem>
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!_currentReader || requestVersion != _requestVersion) return;
       setState(() {
         _error = '加载${_spec.noun}失败，请稍后重试';
         _loading = false;
@@ -284,13 +340,62 @@ class _MasterPickerSheetState<TItem>
     }
   }
 
+  Object _pagingQuery() => [
+    _spec,
+    _selectedCategoryId,
+    _categoryContentKeyword,
+    _globalQuery,
+    _showingGlobalResults,
+    _queryRevision,
+  ];
+
   bool _stale(int requestVersion, String query, int requestedPage) =>
-      !mounted ||
+      !_currentReader ||
       requestVersion != _requestVersion ||
       query != _globalQuery ||
       requestedPage != _page;
 
-  Future<void> _reloadGlobalSearch() async {
+  Future<Set<String?>> _readSearchContext(
+    String query,
+    int version,
+    int requestedPage,
+    String? expectedScope,
+  ) async {
+    final ids = <String?>{};
+    var page = 1, totalPages = 1;
+    int? totalCategories, totalMatches;
+    String? contextScope;
+    while (page <= totalPages) {
+      final context = await _spec.searchContext(query, page);
+      if (_stale(version, query, requestedPage)) {
+        throw StateError('选择器读取已过期');
+      }
+      final rawScope = context.readScopeVersion;
+      final scope = rawScope?.isNotEmpty == true ? rawScope : null;
+      if ((expectedScope?.isNotEmpty == true && expectedScope != scope) ||
+          (page > 1 && contextScope != scope)) {
+        _retireReader();
+        throw StateError('选择范围已变化');
+      }
+      if (!_acceptScope(scope)) throw StateError('选择范围已变化');
+      contextScope = scope;
+      totalCategories ??= context.totalCategories;
+      totalMatches ??= context.totalMatches;
+      if (context.page != page ||
+          context.totalCategories != totalCategories ||
+          context.totalMatches != totalMatches) {
+        throw StateError('分类定位范围已变化，请重试搜索');
+      }
+      ids.addAll(context.categoryIds);
+      totalPages = context.totalPages;
+      page++;
+    }
+    if (ids.length != totalCategories) throw StateError('分类定位不完整，请重试搜索');
+    return ids;
+  }
+
+  Future<void> _reloadGlobalSearch({bool useCache = false}) async {
+    if (!_currentReader) return;
     final query = _globalQuery;
     final requestedPage = _page;
     final requestVersion = ++_requestVersion;
@@ -299,84 +404,75 @@ class _MasterPickerSheetState<TItem>
       _error = null;
     });
     try {
-      List<TItem> allItems;
-      if (_globalItemsQuery == query) {
-        allItems = _globalItems;
-      } else {
-        final byId = <String, TItem>{};
-        var backendPage = 1;
-        var backendTotalPages = 1;
-        while (backendPage <= backendTotalPages) {
-          final result = await _spec.search(query, backendPage);
-          if (_stale(requestVersion, query, requestedPage)) return;
-          for (final item in result.items) {
-            byId.putIfAbsent(_spec.idOf(item), () => item);
-          }
-          if (result.totalPages > backendTotalPages) {
-            backendTotalPages = result.totalPages;
-          }
-          backendPage++;
-        }
-        allItems = byId.values.toList(growable: false);
-      }
+      final spec = _spec;
+      final result = await readScopedPage<TItem>(
+        requestedPage,
+        query: _pagingQuery(),
+        currentQuery: _pagingQuery,
+        useCache: useCache,
+        isCurrent: () => _currentReader,
+        fetchPage: (target) => spec.search(query, target),
+      );
+      if (_stale(requestVersion, query, requestedPage)) return;
+      if (!_acceptScope(result.readScopeVersion)) return;
+      // Authorization proof cannot version category content. Cached business
+      // rows still revalidate complete category metadata before publication.
+      final context = await _readSearchContext(
+        query,
+        requestVersion,
+        requestedPage,
+        result.readScopeVersion,
+      );
+      if (_stale(requestVersion, query, requestedPage)) return;
+      // Rows and metadata are separate reads. A concurrent category move must
+      // not hide a category belonging to an actual row already on this page.
+      final categories = {...context, ...result.items.map(_spec.categoryIdOf)};
       final resolution = resolveHierarchySearch(
         roots: widget.tree,
         query: query,
-        contentCategoryIds: allItems.map(_spec.categoryIdOf),
+        contentCategoryIds: categories,
       );
-
-      const displaySize = 100;
-      final totalPages = allItems.isEmpty
-          ? 1
-          : (allItems.length + displaySize - 1) ~/ displaySize;
-      final safePage = requestedPage.clamp(1, totalPages);
-      final start = (safePage - 1) * displaySize;
-      final end = (start + displaySize).clamp(0, allItems.length);
       setState(() {
         _visibleFilterIds = resolution.visibleIds;
-        _globalItemsQuery = query;
-        _globalItems = allItems;
         _searchLocationLoading = false;
         _searchLocationError = null;
         _showingGlobalResults = true;
-        _page = safePage;
-        _confirmedPage = safePage;
-        _items = allItems.sublist(start, end);
-        _totalPages = totalPages;
+        _page = result.page;
+        _confirmedPage = result.page;
+        _items = result.items;
+        _totalPages = result.totalPages < 1 ? 1 : result.totalPages;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!_currentReader || requestVersion != _requestVersion) return;
       setState(() {
-        if (_items == null || _loading) {
-          _error = '搜索${_spec.noun}失败，请稍后重试';
-        } else {
-          _searchLocationError = '完整分类定位失败，请稍后重试';
-        }
+        _error = '搜索${_spec.noun}失败，请稍后重试';
         _loading = false;
         _searchLocationLoading = false;
       });
     }
   }
 
-  Future<void> _reloadCurrentPage() async {
+  Future<void> _reloadCurrentPage({bool useCache = false, bool reloadVisible = false}) async {
+    if (reloadVisible && _error == null) _page = _pickerRows.visiblePage ?? _page;
     if (_globalQuery.isNotEmpty && _showingGlobalResults) {
-      await _reloadGlobalSearch();
+      await _reloadGlobalSearch(useCache: useCache);
     } else {
-      await _reloadCategory();
+      await _reloadCategory(useCache: useCache);
     }
   }
 
   Future<void> _changePage(int page) async {
     _page = page;
-    await _reloadCurrentPage();
+    await _reloadCurrentPage(useCache: true);
   }
 
   Future<void> _quickCreate() async {
     final create = _spec.quickCreate;
     if (create == null) return;
     final created = await create(context);
-    if (created == null || !mounted) return;
+    if (created == null || !_currentReader) return;
+    invalidateScopedPageReads();
     setState(() => _picked = created);
   }
 
@@ -390,6 +486,18 @@ class _MasterPickerSheetState<TItem>
 
   @override
   Widget build(BuildContext context) {
+    if (_readerRetired) {
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Text('账号、权限或服务器已变化，请关闭后重新选择'),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      );
+    }
     final theme = Theme.of(context);
     final picked = _picked;
     final treePane = UtenCategoryTreeView<ProductCategoryNode>(
@@ -425,38 +533,27 @@ class _MasterPickerSheetState<TItem>
     );
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _spec.title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+        UtenPanelHeader(
+          title: _spec.title,
+          onClose: () => Navigator.of(context).pop(),
+          actions: [
+            if (_spec.quickCreate != null)
+              Padding(
+                padding: EdgeInsets.only(
+                  right: UtenPanelSpacing.inset(context, UtenSpacing.s4),
+                ),
+                child: OutlinedButton.icon(
+                  onPressed: _quickCreate,
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: Text(_spec.quickCreateLabel ?? '添加${_spec.noun}'),
                 ),
               ),
-              if (_spec.quickCreate != null)
-                Padding(
-                  padding: const EdgeInsets.only(right: 4),
-                  child: OutlinedButton.icon(
-                    onPressed: _quickCreate,
-                    icon: const Icon(Icons.add_rounded, size: 18),
-                    label: Text(_spec.quickCreateLabel ?? '添加${_spec.noun}'),
-                  ),
-                ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
-          ),
+          ],
         ),
         const Divider(height: 1),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s12),
+            padding: UtenPanelSpacing.browseBody(context),
             child: UtenPanelDeferredView(builder: (_) => body),
           ),
         ),
@@ -475,6 +572,7 @@ class _MasterPickerSheetState<TItem>
     final requestVersion = _requestVersion;
     final picked = _picked;
     return MasterDataTableView<TItem>(
+      expensiveRowMounts: false,
       columns: columns,
       items: _items ?? <TItem>[],
       rowKeyOf: _spec.idOf,
@@ -483,7 +581,9 @@ class _MasterPickerSheetState<TItem>
       isSelected: (item) =>
           picked != null && _spec.idOf(picked) == _spec.idOf(item),
       onRowTap: (item) {
-        if (_loading || requestVersion != _requestVersion) return;
+        if (!_currentReader || _loading || requestVersion != _requestVersion) {
+          return;
+        }
         setState(() => _picked = item);
       },
       facets: const {},
@@ -494,11 +594,11 @@ class _MasterPickerSheetState<TItem>
       totalPages: _totalPages,
       onPageChange: _changePage,
       paginationScope: _paginationScope,
-      paginationRevision: _items,
+      paginationRevision: _queryRevision,
       isLoading: _loading && (_items?.isEmpty ?? true),
       loadingMore: _loading && (_items?.isNotEmpty ?? false),
       error: _error,
-      onRetry: _reloadCurrentPage,
+      onRetry: () => _reloadCurrentPage(reloadVisible: true),
       emptyMessage: '未找到匹配${_spec.noun}',
       showPaginationControls: false,
       showFullscreenToggle: false,
@@ -519,7 +619,7 @@ class _MasterPickerSheetState<TItem>
   Widget _buildUnifiedSearch() {
     return Padding(
       // 与分类树共缘；选择器正文统一负责距滑窗边缘的留白。
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: UtenPanelSpacing.search(context),
       child: UtenSearchBar(
         key: _spec.searchKey,
         controller: _keywordCtl,
@@ -549,6 +649,7 @@ class UtenMasterPickerField<TItem> extends StatefulWidget {
     this.hint,
     this.required = false,
     this.enabled = true,
+    this.allowClear = true,
     this.errorMessage,
   });
 
@@ -567,6 +668,7 @@ class UtenMasterPickerField<TItem> extends StatefulWidget {
   final String? hint;
   final bool required;
   final bool enabled;
+  final bool allowClear;
   final String? errorMessage;
 
   @override
@@ -666,7 +768,7 @@ class _UtenMasterPickerFieldState<TItem>
                   ? null
                   : UtenFieldMessage.error(widget.errorMessage!),
               prefixIcon: Icon(widget.icon),
-              suffixIcon: _id != null
+              suffixIcon: _id != null && widget.allowClear
                   ? IconButton(
                       tooltip: '清除选择',
                       icon: const Icon(Icons.clear_rounded),
@@ -684,7 +786,7 @@ class _UtenMasterPickerFieldState<TItem>
         onTap: widget.enabled
             ? () async {
                 final item = await widget.onPick();
-                if (item != null) _set(item);
+                if (mounted && item != null) _set(item);
               }
             : null,
       ),

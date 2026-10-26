@@ -11,6 +11,8 @@
 // barrierDismissible=false + PopScope 挡返回，只能重启应用）；生产计划审核后下达结果框点不动。
 //
 // 本契约只锁「撤遮罩」这一步还在，不锁具体写法。新增同类调用点请一并登记。
+// 2026-10-25：共享遮罩已按所属路由自动让位，避免漏登记入口仍卡死；这里继续保护
+// 已完成业务在展示结果前清忙标志的语义，自动让位不代表业务已经完成或允许重复提交。
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';

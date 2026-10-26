@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/inputs/uten_filter_picker_field.dart';
 import '../../../components/inputs/uten_input.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -228,20 +229,18 @@ class _DefectiveMoveSheetState extends ConsumerState<DefectiveMoveSheet> {
                     ),
                   ),
                 ),
+                UtenFieldHintIcon(
+                  dense: true,
+                  info: _toDefective
+                      ? l10n.defectiveMoveToDefectiveExplain
+                      : l10n.defectiveMoveReleaseExplain,
+                ),
                 IconButton(
                   tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
                   onPressed: () => Navigator.of(context).pop(false),
                   icon: const Icon(Icons.close_rounded),
                 ),
               ],
-            ),
-            Text(
-              _toDefective
-                  ? l10n.defectiveMoveToDefectiveExplain
-                  : l10n.defectiveMoveReleaseExplain,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
             ),
             const SizedBox(height: UtenSpacing.s16),
             Text(

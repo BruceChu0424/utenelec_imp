@@ -1,7 +1,7 @@
+import '../../../core/router/page_navigation_session.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -17,6 +17,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../models/production_fqc_replenishment_task.dart';
 import '../models/production_material_analysis.dart';
 import '../repositories/production_fqc_replenishment_repository.dart';
@@ -30,7 +32,22 @@ class ProductionFqcReplenishmentBanner extends ConsumerStatefulWidget {
 }
 
 class _ProductionFqcReplenishmentBannerState
-    extends ConsumerState<ProductionFqcReplenishmentBanner> {
+    extends ConsumerState<ProductionFqcReplenishmentBanner>
+    with ScopedPagedReadViewMixin<ProductionFqcReplenishmentBanner> {
+  final _navigation = PageNavigationSession();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
+  void dispose() {
+    _navigation.dispose();
+    super.dispose();
+  }
+
   static const _pageSize = 40;
 
   PagedResult<ProductionFqcReplenishmentMaterialTask>? _result;
@@ -39,6 +56,20 @@ class _ProductionFqcReplenishmentBannerState
   int _page = 1;
   int _retryPage = 1;
   int _pendingCount = 0;
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _requests.begin();
+    _taskRows.update(const []);
+    setState(() {
+      _result = null;
+      _pendingCount = 0;
+      _error = scopedPagedReadRejection?.message;
+      _loading = false;
+    });
+    _invalidateTaskSheet?.call();
+  }
+
   final _requests = LatestRequestGuard();
   final _taskRows =
       MasterDataTableRowsController<ProductionFqcReplenishmentMaterialTask>();
@@ -60,6 +91,7 @@ class _ProductionFqcReplenishmentBannerState
   }
 
   VoidCallback? _invalidateTaskSheet;
+  BuildContext? _taskSheetContext;
 
   Set<String> get _permissions => ref.read(currentPermissionsProvider);
   bool get _canView =>
@@ -91,7 +123,7 @@ class _ProductionFqcReplenishmentBannerState
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  Future<void> _load({int? page}) async {
+  Future<void> _load({int? page, bool useCache = false}) async {
     final generation = _requests.begin();
     if (!_canView) {
       if (mounted) {
@@ -108,7 +140,7 @@ class _ProductionFqcReplenishmentBannerState
       }
       return;
     }
-    final targetPage = page ?? _page;
+    final targetPage = page ?? _taskRows.visiblePage ?? _page;
     _retryPage = targetPage;
     setState(() {
       _loading = true;
@@ -116,15 +148,37 @@ class _ProductionFqcReplenishmentBannerState
     });
     try {
       final repository = ref.read(productionFqcReplenishmentRepositoryProvider);
-      final result = await repository.materialTasks(page: targetPage);
-      if (!mounted || !_requests.isCurrent(generation)) return;
-      var pendingCount = result.items.where((item) => !item.isTerminal).length;
-      try {
-        pendingCount = await repository.materialTaskCount();
-      } catch (_) {
-        // Count is a badge enhancement. Keep the operable paged queue when it
-        // is temporarily unavailable instead of replacing it with an error.
-      }
+      final result = await readScopedPage<ProductionFqcReplenishmentMaterialTask>(
+        targetPage,
+        query: (repository,),
+        currentQuery: () =>
+            (ref.read(productionFqcReplenishmentRepositoryProvider),),
+        useCache: useCache,
+        canPrefetch: () {
+          final sheet = _taskSheetContext;
+          final visible = sheet != null && sheet.mounted ? sheet : context;
+          return visible.mounted &&
+              TickerMode.valuesOf(visible).enabled &&
+              (ModalRoute.of(visible)?.isCurrent ?? true);
+        },
+        fetchPage: (page) async {
+          final rows = await repository.materialTasks(page: page);
+          var count = rows.items.where((item) => !item.isTerminal).length;
+          try {
+            count = await repository.materialTaskCount();
+          } catch (_) {
+            // The original row-derived badge fallback survives count outages.
+          }
+          return PagedReadSnapshot(page: rows, snapshot: count);
+        },
+      );
+      final pendingCount =
+          (result
+                  as PagedReadSnapshot<
+                    ProductionFqcReplenishmentMaterialTask,
+                    int
+                  >)
+              .snapshot;
       if (!mounted || !_requests.isCurrent(generation)) return;
       setState(() {
         _result = result;
@@ -180,7 +234,7 @@ class _ProductionFqcReplenishmentBannerState
     BuildContext? sheetContext,
   }) async {
     if (sheetContext?.mounted == true) Navigator.of(sheetContext!).pop();
-    await context.push(
+    await _navigation.push(
       RouteName.productionMaterialAnalysis,
       extra: ProductionMaterialAnalysisSeed(analysisId: analysisId),
     );
@@ -331,7 +385,7 @@ class _ProductionFqcReplenishmentBannerState
     final drawId = task.drawId;
     if (drawId == null || drawId.isEmpty) return;
     Navigator.of(sheetContext).pop();
-    await context.push(RoutePath.stockDocDetail('DRAW', drawId));
+    await _navigation.push(RoutePath.stockDocDetail('DRAW', drawId));
     if (mounted) await _load();
   }
 
@@ -341,7 +395,7 @@ class _ProductionFqcReplenishmentBannerState
   ) async {
     if (task.planId.isEmpty) return;
     Navigator.of(sheetContext).pop();
-    await context.push(RoutePath.productionPlanDetail(task.planId));
+    await _navigation.push(RoutePath.productionPlanDetail(task.planId));
     if (mounted) await _load();
   }
 
@@ -354,6 +408,7 @@ class _ProductionFqcReplenishmentBannerState
       showDragHandle: true,
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, refreshSheet) {
+          _taskSheetContext = sheetContext;
           _invalidateTaskSheet = () {
             if (sheetContext.mounted) refreshSheet(() {});
           };
@@ -363,9 +418,9 @@ class _ProductionFqcReplenishmentBannerState
               child: Text('读取身份已变化，请关闭后重新打开任务'),
             );
           }
-          Future<void> loadPage(int page) async {
+          Future<void> loadPage(int page, {bool useCache = true}) async {
             if (!sheetOwner()) return;
-            final request = _load(page: page);
+            final request = _load(page: page, useCache: useCache);
             refreshSheet(() {});
             await request;
             if (sheetContext.mounted) refreshSheet(() {});
@@ -416,7 +471,7 @@ class _ProductionFqcReplenishmentBannerState
                         totalPages: result?.totalPages ?? 1,
                         loading: _loading,
                         error: _error,
-                        onRetry: () => loadPage(_retryPage),
+                        onRetry: () => loadPage(_retryPage, useCache: false),
                         onPageChange: loadPage,
                         emptyMessage: '当前没有 FQC 补产物料任务',
                         padding: const EdgeInsets.all(UtenSpacing.s16),
@@ -471,12 +526,18 @@ class _ProductionFqcReplenishmentBannerState
           );
         },
       ),
-    ).whenComplete(() => _invalidateTaskSheet = null);
+    ).whenComplete(() {
+      _invalidateTaskSheet = null;
+      _taskSheetContext = null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.onPageResume(RouteName.productionSchedule, _load);
+    ref.onPageResume(RouteName.productionSchedule, () async {
+      if (_navigation.consumeReturnedVisit()) return;
+      await _load();
+    });
     final result = _result;
     if (!_canView) return const SizedBox.shrink();
     if (result == null && _loading) return const SizedBox.shrink();

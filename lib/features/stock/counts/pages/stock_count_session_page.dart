@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 // 盘点模式独立页（/stock/count-session，2026-10-08）。
 //
 // 从即时库存「盘点模式」直达（带当前已选的具体仓库，不再弹选仓窗），本页自成会话：
@@ -70,7 +72,24 @@ class StockCountSessionPage extends ConsumerStatefulWidget {
 }
 
 class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
-    with FormDraftMixin<StockCountSessionPage> {
+    with
+        FormDraftMixin<StockCountSessionPage>,
+        ScopedPagedReadViewMixin<StockCountSessionPage> {
+  int get _refreshPage => _readingRows.visiblePage ?? (_page?.page ?? _pageNum);
+
+  final _readingRows = MasterDataTableRowsController<CountStockRow>();
+  @override
+  void scopedPagedReadOwnerChanged() {
+    if (!mounted) return;
+    ++_loadGeneration;
+    setState(() {
+      _page = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+      _readingRows.update(const []);
+    });
+  }
+
   late final StockCountInlineController _count;
   final _search = TextEditingController();
 
@@ -351,7 +370,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
     await _load(1);
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     final generation = ++_loadGeneration;
     final warehouse = _warehouse;
     if (warehouse == null) return;
@@ -365,14 +384,45 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       _pageNum = page;
     });
     try {
-      final result = await _repo.candidates(
-        warehouseId: warehouse.id,
-        keyword: _keyword.isEmpty ? null : _keyword,
-        includeRelated: _includeRelated,
-        categoryId: _categoryId,
-        stockedOnly: _stockedOnly,
-        sheet: true,
-        page: page,
+      final pageRepository = _repo;
+      final pageWarehouseId = warehouse.id;
+      final pageKeyword = _keyword.isEmpty ? null : _keyword;
+      final pageIncludeRelated = _includeRelated;
+      final pageCategoryId = _categoryId;
+      final pageStockedOnly = _stockedOnly;
+      const pageSheet = true;
+
+      final result = await readScopedPage(
+        page,
+        slot: '_load',
+        query: [
+          pageRepository,
+          pageWarehouseId,
+          pageKeyword,
+          pageIncludeRelated,
+          pageCategoryId,
+          pageStockedOnly,
+          pageSheet,
+        ],
+        currentQuery: () => [
+          _repo,
+          _warehouse?.id,
+          _keyword.isEmpty ? null : _keyword,
+          _includeRelated,
+          _categoryId,
+          _stockedOnly,
+          true,
+        ],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.candidates(
+          warehouseId: pageWarehouseId,
+          keyword: pageKeyword,
+          includeRelated: pageIncludeRelated,
+          categoryId: pageCategoryId,
+          stockedOnly: pageStockedOnly,
+          sheet: pageSheet,
+          page: target,
+        ),
       );
       if (!isCurrent()) return;
       // 行集与页集同键；编辑缓冲 putIfAbsent 保留已填值。
@@ -602,7 +652,20 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
   // ---- 表格 ----
 
   List<CountStockRow> get _items {
-    final rows = [...?_page?.items];
+    final source = _page?.items;
+    if (source == null) return _projectCountRows(const []);
+    final rows = _projectCountRows(source);
+    projectReadWindowBinding(
+      source,
+      rows,
+      project: _projectCountRows,
+      projectionKey: 'stock-count-extra-rows-v1',
+    );
+    return rows;
+  }
+
+  List<CountStockRow> _projectCountRows(List<CountStockRow> source) {
+    final rows = List<CountStockRow>.of(source);
     final pageKeys = rows.map((row) => row.key).toSet();
     rows.addAll(_extraRows.values.where((row) => !pageKeys.contains(row.key)));
     return rows;
@@ -760,7 +823,10 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
               backTo(context, defaultPath: RouteName.stockInstantInventory),
         ),
         actions: [
-          UtenRefreshButton(onRefresh: () => _load(_pageNum), busy: _starting),
+          UtenRefreshButton(
+            onRefresh: () => _load(_refreshPage),
+            busy: _starting,
+          ),
         ],
       ),
       body: withFormDraft(
@@ -923,13 +989,9 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
 
   Widget _buildTable() {
     final warehouse = _warehouse;
-    if (_scope == null || warehouse == null) {
-      if (_error != null) {
-        return _messagePane(_error!, retry: _start);
-      }
-      return const Center(child: CircularProgressIndicator());
-    }
     return MasterDataTableView<CountStockRow>(
+      rowsController: _readingRows,
+      expensiveRowMounts: true,
       tableKey:
           'features.stock.counts.pages.stock_count_session_page.StockCountSessionPageState',
       columns: _columns(),
@@ -944,7 +1006,8 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       isLoading: _loading && _page == null,
       loadingMore: _loading && _page != null,
       error: _error,
-      onRetry: () => _load(_pageNum),
+      onRetry: () =>
+          _scope == null || warehouse == null ? _start() : _load(_refreshPage),
       emptyMessage: _stockedOnly
           ? '本仓暂无有库存的物料；可切回「全部物料」或用「添加物料」录入盘盈'
           : _keyword.isEmpty && _categoryId == null
@@ -953,25 +1016,14 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       currentPage: _page?.page ?? 1,
       totalPages: _page?.totalPages ?? 1,
       paginationScope: (
-        warehouse.id,
+        warehouse?.id,
         _stockedOnly,
         _categoryId,
         _keyword,
         _includeRelated,
       ),
-      onPageChange: (page) => _load(page),
+      onPageChange: (page) => _load(page, useCache: true),
       bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
     );
   }
-
-  Widget _messagePane(String message, {required VoidCallback retry}) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(message, textAlign: TextAlign.center),
-        const SizedBox(height: UtenSpacing.s8),
-        TextButton(onPressed: retry, child: const Text('重试')),
-      ],
-    ),
-  );
 }

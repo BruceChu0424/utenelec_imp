@@ -20,6 +20,7 @@ import 'package:flutter/foundation.dart' show listEquals, setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
+import '../../../core/router/page_navigation_session.dart';
 
 import '../../../components/buttons/uten_edit_floating_actions.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
@@ -83,6 +84,7 @@ import '../repositories/production_overproduction_rate_repository.dart';
 import '../widgets/reportable_plan_line_picker.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
   const ProductionDailyReportEditPage({
@@ -110,6 +112,14 @@ class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
 class _ProductionDailyReportEditPageState
     extends ConsumerState<ProductionDailyReportEditPage>
     with FormDraftMixin<ProductionDailyReportEditPage> {
+  final _navigation = PageNavigationSession();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
   String? _savedWarehouseId;
   String? _savedSupplierId;
   String? _savedSourceDocNo;
@@ -286,7 +296,7 @@ class _ProductionDailyReportEditPageState
     final localId = formDraftRecoveryId;
     final original = _frozenCreate;
     if (localId == null || !formDraftIdentityIsCurrent) return;
-    final result = await context.push<DailyReportCreateRecoveryResult>(
+    final result = await _navigation.push<DailyReportCreateRecoveryResult>(
       RoutePath.productionDailyReportCreateRecovery(
         localId,
         returnToEditor: true,
@@ -758,6 +768,7 @@ class _ProductionDailyReportEditPageState
 
   @override
   void dispose() {
+    _navigation.dispose();
     _gridPinned.dispose();
     _billNo.dispose();
     _remark.dispose();
@@ -1485,7 +1496,7 @@ class _ProductionDailyReportEditPageState
     final planId = row.planId;
     final segmentId = row.executionSegmentId;
     if (planId == null || segmentId == null) return;
-    await context.push(
+    await _navigation.push(
       Uri(
         path: RoutePath.productionPlanDetail(planId),
         queryParameters: {'executionSegmentId': segmentId},
@@ -3741,7 +3752,7 @@ class _ProductionDailyReportEditPageState
     if (!mounted) return false;
     if (action.startsWith('view:')) {
       final index = int.parse(action.substring(5));
-      await context.push(
+      await _navigation.push(
         RoutePath.productionActualOutputSupplement(
           rows[index].supplementRequestId!,
         ),
@@ -4034,275 +4045,300 @@ class _ProductionDailyReportEditPageState
                       // 滚动条贴屏幕右缘(2026-09-15)：包装在内容容器之外，右缘窄条
                       // 恒在屏幕最右，不随限宽容器/列宽漂移。
                       child: UtenContentContainer(
-                        child: ListView(
-                          controller: _scrollCtl,
-                          // 底部多留一段：右下角悬浮的「取消/保存」不压住最后一行明细。
+                        child: UtenPageEdgePadding.scroll(
                           padding: const EdgeInsets.fromLTRB(
                             UtenSpacing.s12,
                             UtenSpacing.s12,
                             UtenSpacing.s12,
                             UtenFloatingActionGroup.scrollClearance,
                           ),
-                          children: [
-                            Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(UtenSpacing.s12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _savedFields(
-                                      UtenFormGrid(
-                                        children: [
-                                          // 单据号：系统自动生成，只读显示。
-                                          TextFormField(
-                                            errorBuilder:
-                                                utenTextFieldErrorBuilder,
-                                            readOnly: true,
-                                            controller: _billNo,
-                                            decoration: UtenInputDecoration(
-                                              InputDecoration(
-                                                labelText: '单据号',
-                                                hintText: _billNo.text.isEmpty
-                                                    ? '保存后自动生成'
-                                                    : null,
-                                                filled: _billNo.text.isEmpty,
-                                                suffixIcon: _billNo.text.isEmpty
-                                                    ? const Icon(
-                                                        Icons
-                                                            .autorenew_outlined,
-                                                        size: 18,
-                                                      )
-                                                    : const Icon(
-                                                        Icons.lock_outline,
-                                                        size: 16,
-                                                      ),
-                                              ),
-                                            ),
-                                          ),
-                                          // 制单员/制单时间：服务端权威，只读展示（责任制）。
-                                          ...utenMakerAuditCells(
-                                            ref,
-                                            makerName: _makerName,
-                                            createdAt: _createdAt,
-                                          ),
-                                          UtenDateField(
-                                            label: '单据日期',
-                                            required: true,
-                                            value: _billDate,
-                                            onChanged: (d) =>
-                                                setState(() => _billDate = d),
-                                          ),
-                                          // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
-                                          UtenDepartmentPicker(
-                                            mode:
-                                                UtenDepartmentPickerMode.single,
-                                            label: '车间',
-                                            hint: '选择生产车间(部门)',
-                                            selectablePredicate: (node) =>
-                                                workforceTree
-                                                        ?.productionDepartmentId !=
-                                                    null &&
-                                                node.parentId ==
-                                                    workforceTree!
-                                                        .productionDepartmentId,
-                                            treeOverride:
-                                                workforceTree?.tree ?? const [],
-                                            expandOnRowTap: true,
-                                            initiallyExpandedIds:
-                                                workforceTree
-                                                    ?.initiallyExpandedIds ??
-                                                const {},
-                                            initialSelection:
-                                                _departmentId == null
-                                                ? const []
-                                                : [
-                                                    DeptSelection(
-                                                      id: _departmentId!,
-                                                      name: _workshopName ?? '',
-                                                      fullPath: '',
-                                                      level: '',
-                                                    ),
-                                                  ],
-                                            onChanged: (sel) {
-                                              final s = sel.isEmpty
-                                                  ? null
-                                                  : sel.first;
-                                              setState(() {
-                                                _departmentId = s?.id;
-                                                _workshopName =
-                                                    s?.name; // 部门名冗余
-                                              });
-                                            },
-                                          ),
-                                          _workerPicker(),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(height: UtenSpacing.s12),
-                                    TextField(
-                                      controller: _remark,
-                                      decoration: const UtenInputDecoration(
-                                        InputDecoration(labelText: '备注'),
-                                      ),
-                                      maxLines: 2,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: UtenSpacing.s12),
-                            // 2026-09-24 简洁口径：常驻教学横幅撤掉；仅恢复草稿/申请
-                            // 时显示一条紧凑状态提示（条件渲染，非教学）。
-                            if (_resumeNotice != null) ...[
-                              Container(
-                                padding: const EdgeInsets.all(UtenSpacing.s12),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.tertiaryContainer,
-                                  borderRadius: BorderRadius.circular(
-                                    UtenRadius.control,
-                                  ),
-                                ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Icon(
-                                      Icons.info_outline_rounded,
-                                      color:
-                                          theme.colorScheme.onTertiaryContainer,
-                                    ),
-                                    const SizedBox(width: UtenSpacing.s8),
-                                    Expanded(
-                                      child: Text(
-                                        _resumeNotice!,
-                                        style: theme.textTheme.bodyMedium
-                                            ?.copyWith(
-                                              color: theme
-                                                  .colorScheme
-                                                  .onTertiaryContainer,
-                                            ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: UtenSpacing.s12),
-                            ],
-                            // 日报附件（报工照片/检验记录）：已有单直接挂 PRODUCTION_DAILY_REPORT；
-                            // 新建单先本地暂存，保存拿到 UUID 后逐个确认上传（ADR-074）。
-                            const SizedBox(height: UtenSpacing.s12),
-                            if (widget.id != null)
-                              BusinessAttachmentSection(
-                                ownerType: 'PRODUCTION_DAILY_REPORT',
-                                ownerId: widget.id!,
-                                canView: ref
-                                    .watch(currentPermissionsProvider)
-                                    .contains(Perm.attachmentView),
-                                // 进入编辑页即已确认可写；草稿状态与归属由服务端附件策略再校验。
-                                canManage: !_saving,
-                                title: '附件（报工照片/检验记录）',
-                                categories: const ['报工照片', '检验记录', '签认单', '其他'],
-                              )
-                            else ...[
-                              if (_createdReportId != null) ...[
-                                if (_pendingFiles.needsReceiptFor(
-                                  _createdReportId!,
-                                )) ...[
-                                  const Text('原附件上传结果仍待核对，文件已保留；不会重新上传。'),
-                                  TextButton(
-                                    onPressed: _openCreateRecovery,
-                                    child: const Text('只读核对原附件上传'),
-                                  ),
-                                ] else
-                                  PendingAttachmentRetryNotice(
-                                    documentLabel: '生产日报',
-                                    controller: _pendingFiles,
-                                  ),
-                              ],
-                              BusinessAttachmentSection.draft(
-                                key: const ValueKey(
-                                  'daily-report-draft-attachments',
-                                ),
-                                controller: _pendingFiles,
-                                canManage: ref
-                                    .watch(currentPermissionsProvider)
-                                    .contains(Perm.productionDailyReportCreate),
-                                title: '附件（报工照片/检验记录）',
-                                categories: const ['报工照片', '检验记录', '签认单', '其他'],
-                              ),
-                            ],
-                            // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）。
-                            const SizedBox(height: UtenSpacing.s12),
-                            if (!_isCreate &&
-                                _productRows.any((row) => row.isFinal))
+                          builder: (context, resolvedPagePadding) => ListView(
+                            controller: _scrollCtl,
+                            // 底部多留一段：右下角悬浮的「取消/保存」不压住最后一行明细。
+                            padding: resolvedPagePadding,
+                            children: [
                               Card(
                                 child: Padding(
                                   padding: const EdgeInsets.all(
                                     UtenSpacing.s12,
                                   ),
-                                  child: Wrap(
+                                  child: Column(
                                     crossAxisAlignment:
-                                        WrapCrossAlignment.center,
-                                    spacing: 12,
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      const Text(
-                                        '此草稿含旧版提前完结标记；普通报工会保留原任务的未完成数量。',
+                                      _savedFields(
+                                        UtenFormGrid(
+                                          children: [
+                                            // 单据号：系统自动生成，只读显示。
+                                            TextFormField(
+                                              errorBuilder:
+                                                  utenTextFieldErrorBuilder,
+                                              readOnly: true,
+                                              controller: _billNo,
+                                              decoration: UtenInputDecoration(
+                                                InputDecoration(
+                                                  labelText: '单据号',
+                                                  hintText: _billNo.text.isEmpty
+                                                      ? '保存后自动生成'
+                                                      : null,
+                                                  filled: _billNo.text.isEmpty,
+                                                  suffixIcon:
+                                                      _billNo.text.isEmpty
+                                                      ? const Icon(
+                                                          Icons
+                                                              .autorenew_outlined,
+                                                          size: 18,
+                                                        )
+                                                      : const Icon(
+                                                          Icons.lock_outline,
+                                                          size: 16,
+                                                        ),
+                                                ),
+                                              ),
+                                            ),
+                                            // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                                            ...utenMakerAuditCells(
+                                              ref,
+                                              makerName: _makerName,
+                                              createdAt: _createdAt,
+                                            ),
+                                            UtenDateField(
+                                              label: '单据日期',
+                                              required: true,
+                                              value: _billDate,
+                                              onChanged: (d) =>
+                                                  setState(() => _billDate = d),
+                                            ),
+                                            // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
+                                            UtenDepartmentPicker(
+                                              mode: UtenDepartmentPickerMode
+                                                  .single,
+                                              label: '车间',
+                                              hint: '选择生产车间(部门)',
+                                              selectablePredicate: (node) =>
+                                                  workforceTree
+                                                          ?.productionDepartmentId !=
+                                                      null &&
+                                                  node.parentId ==
+                                                      workforceTree!
+                                                          .productionDepartmentId,
+                                              treeOverride:
+                                                  workforceTree?.tree ??
+                                                  const [],
+                                              expandOnRowTap: true,
+                                              initiallyExpandedIds:
+                                                  workforceTree
+                                                      ?.initiallyExpandedIds ??
+                                                  const {},
+                                              initialSelection:
+                                                  _departmentId == null
+                                                  ? const []
+                                                  : [
+                                                      DeptSelection(
+                                                        id: _departmentId!,
+                                                        name:
+                                                            _workshopName ?? '',
+                                                        fullPath: '',
+                                                        level: '',
+                                                      ),
+                                                    ],
+                                              onChanged: (sel) {
+                                                final s = sel.isEmpty
+                                                    ? null
+                                                    : sel.first;
+                                                setState(() {
+                                                  _departmentId = s?.id;
+                                                  _workshopName =
+                                                      s?.name; // 部门名冗余
+                                                });
+                                              },
+                                            ),
+                                            _workerPicker(),
+                                          ],
+                                        ),
                                       ),
-                                      TextButton(
-                                        onPressed: () => setState(() {
-                                          for (final row in _productRows) {
-                                            row.isFinal = false;
-                                          }
-                                          _surplusReturnRequested = false;
-                                        }),
-                                        child: const Text('改为普通报工'),
+                                      const SizedBox(height: UtenSpacing.s12),
+                                      TextField(
+                                        controller: _remark,
+                                        decoration: const UtenInputDecoration(
+                                          InputDecoration(labelText: '备注'),
+                                        ),
+                                        maxLines: 2,
                                       ),
                                     ],
                                   ),
                                 ),
                               ),
-                            if (_materialLoading || _materialNotice != null)
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  bottom: UtenSpacing.s8,
-                                ),
-                                child: Row(
-                                  children: [
-                                    if (_materialLoading)
-                                      const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
+                              const SizedBox(height: UtenSpacing.s12),
+                              // 2026-09-24 简洁口径：常驻教学横幅撤掉；仅恢复草稿/申请
+                              // 时显示一条紧凑状态提示（条件渲染，非教学）。
+                              if (_resumeNotice != null) ...[
+                                Container(
+                                  padding: const EdgeInsets.all(
+                                    UtenSpacing.s12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.tertiaryContainer,
+                                    borderRadius: BorderRadius.circular(
+                                      UtenRadius.control,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Icon(
+                                        Icons.info_outline_rounded,
+                                        color: theme
+                                            .colorScheme
+                                            .onTertiaryContainer,
+                                      ),
+                                      const SizedBox(width: UtenSpacing.s8),
+                                      Expanded(
+                                        child: Text(
+                                          _resumeNotice!,
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                                color: theme
+                                                    .colorScheme
+                                                    .onTertiaryContainer,
+                                              ),
                                         ),
                                       ),
-                                    if (_materialLoading)
-                                      const SizedBox(width: UtenSpacing.s8),
-                                    Expanded(
-                                      child: Text(
-                                        _materialLoading
-                                            ? '正在读取这些工单已领用的物料…'
-                                            : _materialNotice!,
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: _materialLoading
-                                                  ? theme
-                                                        .colorScheme
-                                                        .onSurfaceVariant
-                                                  : theme.colorScheme.error,
-                                            ),
-                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: UtenSpacing.s12),
+                              ],
+                              // 日报附件（报工照片/检验记录）：已有单直接挂 PRODUCTION_DAILY_REPORT；
+                              // 新建单先本地暂存，保存拿到 UUID 后逐个确认上传（ADR-074）。
+                              const SizedBox(height: UtenSpacing.s12),
+                              if (widget.id != null)
+                                BusinessAttachmentSection(
+                                  ownerType: 'PRODUCTION_DAILY_REPORT',
+                                  ownerId: widget.id!,
+                                  canView: ref
+                                      .watch(currentPermissionsProvider)
+                                      .contains(Perm.attachmentView),
+                                  // 进入编辑页即已确认可写；草稿状态与归属由服务端附件策略再校验。
+                                  canManage: !_saving,
+                                  title: '附件（报工照片/检验记录）',
+                                  categories: const [
+                                    '报工照片',
+                                    '检验记录',
+                                    '签认单',
+                                    '其他',
+                                  ],
+                                )
+                              else ...[
+                                if (_createdReportId != null) ...[
+                                  if (_pendingFiles.needsReceiptFor(
+                                    _createdReportId!,
+                                  )) ...[
+                                    const Text('原附件上传结果仍待核对，文件已保留；不会重新上传。'),
+                                    TextButton(
+                                      onPressed: _openCreateRecovery,
+                                      child: const Text('只读核对原附件上传'),
                                     ),
+                                  ] else
+                                    PendingAttachmentRetryNotice(
+                                      documentLabel: '生产日报',
+                                      controller: _pendingFiles,
+                                    ),
+                                ],
+                                BusinessAttachmentSection.draft(
+                                  key: const ValueKey(
+                                    'daily-report-draft-attachments',
+                                  ),
+                                  controller: _pendingFiles,
+                                  canManage: ref
+                                      .watch(currentPermissionsProvider)
+                                      .contains(
+                                        Perm.productionDailyReportCreate,
+                                      ),
+                                  title: '附件（报工照片/检验记录）',
+                                  categories: const [
+                                    '报工照片',
+                                    '检验记录',
+                                    '签认单',
+                                    '其他',
                                   ],
                                 ),
+                              ],
+                              // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）。
+                              const SizedBox(height: UtenSpacing.s12),
+                              if (!_isCreate &&
+                                  _productRows.any((row) => row.isFinal))
+                                Card(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(
+                                      UtenSpacing.s12,
+                                    ),
+                                    child: Wrap(
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      spacing: 12,
+                                      children: [
+                                        const Text(
+                                          '此草稿含旧版提前完结标记；普通报工会保留原任务的未完成数量。',
+                                        ),
+                                        TextButton(
+                                          onPressed: () => setState(() {
+                                            for (final row in _productRows) {
+                                              row.isFinal = false;
+                                            }
+                                            _surplusReturnRequested = false;
+                                          }),
+                                          child: const Text('改为普通报工'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              if (_materialLoading || _materialNotice != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    bottom: UtenSpacing.s8,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      if (_materialLoading)
+                                        const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        ),
+                                      if (_materialLoading)
+                                        const SizedBox(width: UtenSpacing.s8),
+                                      Expanded(
+                                        child: Text(
+                                          _materialLoading
+                                              ? '正在读取这些工单已领用的物料…'
+                                              : _materialNotice!,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: _materialLoading
+                                                    ? theme
+                                                          .colorScheme
+                                                          .onSurfaceVariant
+                                                    : theme.colorScheme.error,
+                                              ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              _savedFields(
+                                _productGrid(
+                                  context,
+                                  colorEntries: names.colorEntries,
+                                  unitEntries: names.unitEntries,
+                                ),
                               ),
-                            _savedFields(
-                              _productGrid(
-                                context,
-                                colorEntries: names.colorEntries,
-                                unitEntries: names.unitEntries,
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),

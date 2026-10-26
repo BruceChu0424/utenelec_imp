@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -48,6 +50,10 @@ void main() {
       );
       await tester.tap(find.text('打开贷项'));
       await tester.pumpAndSettle();
+      expect(api.pages, [
+        1,
+        2,
+      ], reason: 'next DTO is prepared before any scroll');
       expect(find.textContaining('当前页暂无符合条件'), findsOneWidget);
       await _scrollOffsetTargetsToNextPage(tester);
       await tester.pumpAndSettle();
@@ -73,6 +79,71 @@ void main() {
       await tester.pumpAndSettle();
       expect(draft!.targets.single.payableId, 'payable-1');
       expect(draft!.targets.single.amountOriginal, exact);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'credit picker speculative rejection clears accepted targets and retains raw draft',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final gate = Completer<void>();
+      final api = _PagedOffsetApi()
+        ..nextGate = gate
+        ..denyNext = true
+        ..firstEligible = true;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            financePayablesRepositoryProvider.overrideWithValue(
+              FinancePayablesRepository(api),
+            ),
+          ],
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: FilledButton(
+                  onPressed: () => showSupplierCreditApplyPanel(
+                    context: context,
+                    source: FinancePayableItem.fromJson(_creditItem),
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(api.pages, [1, 2]);
+      await tester.tap(
+        find.byKey(const ValueKey('supplier-offset-target-payable-1')),
+      );
+      await tester.pump();
+      final reason = find.byWidgetPredicate(
+        (widget) => widget is TextField && widget.maxLines == 2,
+      );
+      await tester.enterText(reason, '  原始原因  ');
+      final reasonController = tester.widget<TextField>(reason).controller!;
+      final amount = find.byKey(
+        const ValueKey('supplier-offset-amount-payable-1'),
+      );
+      await tester.enterText(amount, '1.00000000000000000001');
+      final amountController = tester.widget<TextField>(amount).controller!;
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('supplier-offset-target-payable-1')),
+        findsNothing,
+      );
+      expect(find.textContaining('确认应用'), findsNothing);
+      expect(find.text('offset read revoked'), findsOneWidget);
+      expect(reasonController.text, '  原始原因  ');
+      expect(amountController.text, '1.00000000000000000001');
+      await tester.pump(const Duration(seconds: 1));
+      expect(api.pages, [1, 2]);
       expect(tester.takeException(), isNull);
     },
   );
@@ -351,6 +422,9 @@ class _PagedOffsetApi extends ApiClient {
   _PagedOffsetApi() : super(Dio());
   final pages = <int>[];
   final currencies = <String>[];
+  Completer<void>? nextGate;
+  bool denyNext = false;
+  bool firstEligible = false;
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -359,6 +433,9 @@ class _PagedOffsetApi extends ApiClient {
     final page = query!['page'] as int;
     pages.add(page);
     currencies.add(query['currencyId'] as String);
+    if (page == 2 && nextGate != null) await nextGate!.future;
+    if (page == 2 && denyNext)
+      throw ApiException('FORBIDDEN', 'offset read revoked', httpStatus: 403);
     return {
       'summary': <String, dynamic>{},
       'page': page,
@@ -367,7 +444,11 @@ class _PagedOffsetApi extends ApiClient {
       'totalPages': 3,
       'items': [
         if (page == 1)
-          {..._payableItem, 'status': 'SETTLED', 'outstandingOriginal': '0'},
+          {
+            ..._payableItem,
+            'status': firstEligible ? 'OPEN' : 'SETTLED',
+            'outstandingOriginal': firstEligible ? '200' : '0',
+          },
         if (page == 2)
           {
             ..._payableItem,

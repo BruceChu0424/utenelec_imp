@@ -1,5 +1,8 @@
 [Unit]
-Description=Uten IMP signed release staging timer (every 5 minutes)
+Description=Retired Uten IMP automatic signed release staging timer
+# Keep the legacy unit inert even if it is accidentally enabled. The root
+# directory always exists. Authorized manual checks use the operations service.
+ConditionPathExists=!/
 
 [Timer]
 OnBootSec=3min

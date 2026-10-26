@@ -3,6 +3,7 @@
 // medium/expanded：左侧部门树（DepartmentTree）+ 右侧详情与员工卡片（UtenPersonCard），
 //   宽度收敛由 MainShell 统一处理
 // 文档：docs/03-页面/部门管理页.md
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
@@ -659,7 +660,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
           ),
         ],
       ),
-      body: SafeArea(child: body),
+      body: SafeArea(child: UtenPageEdgePadding(child: body)),
     );
   }
 }

@@ -31,7 +31,8 @@ import static org.mockito.Mockito.*;
 /** Actual V753 DDL and command/query SQL, isolated from business databases and other build outputs. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class GoodsCostSheetsPostgresTest {
-    static final PostgreSQLContainer POSTGRES=new PostgreSQLContainer("postgres:16-alpine");
+    static final PostgreSQLContainer POSTGRES=new PostgreSQLContainer("postgres:16-alpine")
+            .withCreateContainerCmdModifier(command->command.getHostConfig().withMemory(512L*1024*1024).withNanoCPUs(1_000_000_000L));
     static DriverManagerDataSource dataSource;
     static JdbcTemplate sql;
     NamedParameterJdbcTemplate db;
@@ -76,6 +77,9 @@ class GoodsCostSheetsPostgresTest {
         sql.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty) VALUES(?,?,?,?)",edge,root,material,new java.math.BigDecimal("2"));
         db=new NamedParameterJdbcTemplate(dataSource);transaction=new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         references=mock(MasterReferenceValidationPort.class);current=mock(SecurityContextCurrentUser.class);masker=mock(GoodsCostMasker.class);
+        // This fake port retains the interface's compatibility authority: its
+        // batch entry delegates to the same per-ID denial configured below.
+        doCallRealMethod().when(references).requireVisibleGoodsBatch(anyCollection());
         when(current.requireId()).thenReturn(actor);when(masker.canView()).thenReturn(true);permissions(Set.of("goods:view","goods:cost:view","goods:cost:edit","goods:cost:confirm","goods:cost:export"));
         owners=mock(com.uten.imp.security.OwnerVisibility.class);
         when(owners.evaluate(anyString(),anyString())).thenReturn(new com.uten.imp.security.OwnerVisibility.OwnerScope(true,Set.of()));

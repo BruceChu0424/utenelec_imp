@@ -10,6 +10,9 @@ import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../basic_data/models/reference_method_option.dart';
+import '../../../basic_data/widgets/uten_supplier_picker.dart';
+import '../../../../shared/providers/master_party_options.dart';
+import '../../../../shared/auth/read_owner_fence.dart';
 import '../../../basic_data/repositories/reference_method_repository.dart';
 import '../../providers/finance_name_provider.dart';
 
@@ -36,13 +39,16 @@ class SupplierSettlementConfirmDraft {
 
 Future<SupplierSettlementCreateDraft?> showSupplierSettlementCreatePanel({
   required BuildContext context,
-}) => showUtenAdaptivePanel<SupplierSettlementCreateDraft>(
-  context: context,
-  drawerWidth: 560,
-  widthFraction: UtenPanelWidth.form,
-  compactHeightFactor: 0.92,
-  panelElevation: 16,
-  builder: (_) => const _SupplierSettlementCreatePanel(),
+}) => guardPartyPanelResult(
+  context,
+  () => showUtenAdaptivePanel<SupplierSettlementCreateDraft>(
+    context: context,
+    drawerWidth: 560,
+    widthFraction: UtenPanelWidth.form,
+    compactHeightFactor: 0.92,
+    panelElevation: 16,
+    builder: (_) => const _SupplierSettlementCreatePanel(),
+  ),
 );
 
 Future<SupplierSettlementConfirmDraft?> showSupplierSettlementConfirmDialog({
@@ -160,10 +166,15 @@ class _SupplierSettlementCreatePanelState
   String? _currencyId;
   String? _settlementMethodId;
   late DateTime _periodStart;
+  late final bool Function() _readCurrent;
 
   @override
   void initState() {
     super.initState();
+    _readCurrent = captureReadOwner(ref);
+    listenReadOwner(ref, () {
+      if (mounted) setState(() {});
+    });
     final today = DateTime.now();
     _periodStart = DateTime(today.year, today.month - 1);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -190,12 +201,13 @@ class _SupplierSettlementCreatePanelState
       lastDate: today,
       helpText: '选择已结束月份(提交固定为该月第一天)',
     );
-    if (picked != null && mounted) {
+    if (picked != null && mounted && _readCurrent()) {
       setState(() => _periodStart = DateTime(picked.year, picked.month));
     }
   }
 
   void _submit() {
+    if (!_readCurrent()) return;
     if (_supplierId == null ||
         _currencyId == null ||
         _settlementMethodId == null) {
@@ -240,18 +252,33 @@ class _SupplierSettlementCreatePanelState
             UtenFloatingActionGroup.scrollClearance,
           ),
           children: [
-            UtenDropdownField(
-              label: '供应商(必选)',
-              value: _supplierId,
+            if (!_readCurrent()) const Text('登录身份或读取范围已变化，请关闭后重新打开'),
+            SupplierPickerField(
+              enabled: _readCurrent(),
+              required: true,
               allowClear: false,
-              items: [
-                for (final entry in names.supplierEntries.entries)
-                  UtenDropdownItem(value: entry.key, label: entry.value),
-              ],
-              onChanged: (value) => setState(() => _supplierId = value),
+              initialId: _supplierId,
+              initialName: names.supplier(_supplierId),
+              onPick: () => resolvePickedParty(
+                ref,
+                () => showUtenSupplierPicker(
+                  context,
+                  ref,
+                  selectableOnly: false,
+                  allowQuickCreate: false,
+                ),
+                idOf: (party) => party.id,
+                loadNames: names.loadSupplierNames,
+                isResolved: (id) => names.supplierReferenceKnown(id),
+                isCurrent: _readCurrent,
+              ),
+              onChanged: (value) {
+                if (value != null) setState(() => _supplierId = value);
+              },
             ),
             const SizedBox(height: UtenSpacing.s8),
             UtenDropdownField(
+              enabled: _readCurrent(),
               label: '币种(必选)',
               value: _currencyId,
               allowClear: false,
@@ -264,6 +291,7 @@ class _SupplierSettlementCreatePanelState
             ),
             const SizedBox(height: UtenSpacing.s8),
             UtenDropdownField(
+              enabled: _readCurrent(),
               label: '结算方式(必选)',
               value: _settlementMethodId,
               allowClear: false,
@@ -278,7 +306,7 @@ class _SupplierSettlementCreatePanelState
             ),
             const SizedBox(height: UtenSpacing.s12),
             TextButton.icon(
-              onPressed: _pickPeriod,
+              onPressed: _readCurrent() ? _pickPeriod : null,
               icon: const Icon(Icons.calendar_month_outlined),
               label: Text('月结月份 ${_fmt(_periodStart).substring(0, 7)}'),
             ),
@@ -304,7 +332,7 @@ class _SupplierSettlementCreatePanelState
             type: UtenButtonType.danger,
             size: UtenButtonSize.large,
             icon: Icons.ac_unit_outlined,
-            onPressed: _submit,
+            onPressed: _readCurrent() ? _submit : null,
             child: const Text('冻结月结快照'),
           ),
         ],

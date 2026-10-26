@@ -79,7 +79,7 @@ Nginx：web 静态 + /api 反代 127.0.0.1:8080（deploy/nginx/uten-imp-http-lan
 ```bash
 # 1. 系统包与账号
 apt update && apt install -y openjdk-21-jre-headless nginx curl python3 python3-venv
-# 1b. 附件办公文档在线预览（可选）：LibreOffice 无头转换 + 中日韩字体，缺失时预览接口回落为下载原件
+# 1b. 附件办公文档在线预览（可选）：先完成下述独立 worker 隔离验收，再安装转换组件；缺失时下载原件
 #     writer=doc/docx/rtf/odt，calc=xls/xlsx/ods，impress=ppt/pptx/odp，draw=svg（2026-09-11 起需要）
 apt install -y --no-install-recommends libreoffice-core libreoffice-writer libreoffice-calc \
   libreoffice-impress libreoffice-draw fonts-noto-cjk
@@ -146,7 +146,9 @@ bash deploy/simple/install-server-operations.sh deploy/simple
 
 验证：浏览器开内网域名登录；`uten-imp-updater status` 全绿。
 
-附件办公文档预览(装了 1b 才需要，覆盖 doc/docx/rtf/odt、xls/xlsx/ods、ppt/pptx/odp、svg 共 11 种；图片/PDF/文本/CSV/zip 由客户端自己渲染，不经服务器)：`server.env` 加 `UTEN_ATTACHMENT_PREVIEW_ENABLED=true`(可选 `UTEN_ATTACHMENT_PREVIEW_SOFFICE_PATH=/usr/bin/soffice`、`UTEN_ATTACHMENT_PREVIEW_TIMEOUT_SECONDS=60`、`UTEN_ATTACHMENT_PREVIEW_MAX_CONCURRENT=2`、`UTEN_ATTACHMENT_PREVIEW_CACHE_MAX_BYTES=1073741824`)。转换缓存与 LibreOffice 用户配置目录都落在附件卷 `/var/lib/uten-imp-media/attachments/{preview,scratch}` 下 (2026-10-06 起；旧 `/data/uten-imp/attachments` 不再可写)，`uten-imp.service` 的 `ReadWritePaths=/var/lib/uten-imp-media/attachments /var/log/uten-imp` 已覆盖，无需再放开其它目录 (`PrivateTmp=true` 保持)。应用 `UMask=0077`，缓存与日志都只归 uten-imp 自己读写。验收：上传一个 docx 和一个 pptx，点「预览」都应弹出 PDF；`journalctl -u uten-imp | grep -i preview` 无 "soffice is not executable" 告警。没装 `libreoffice-draw` 时 svg 预览会失败并回落为下载，其余类型不受影响。
+附件办公文档预览(装了 1b 才需要，覆盖 doc/docx/rtf/odt、xls/xlsx/ods、ppt/pptx/odp、svg 共 11 种；图片/PDF/文本/CSV/zip 由客户端自己渲染，不经服务器)：`server.env` 加 `UTEN_ATTACHMENT_PREVIEW_ENABLED=true`(可选 `UTEN_ATTACHMENT_PREVIEW_SOFFICE_PATH=/usr/local/libexec/uten-preview-soffice-isolated`、`UTEN_ATTACHMENT_PREVIEW_TIMEOUT_SECONDS=60`、`UTEN_ATTACHMENT_PREVIEW_MAX_CONCURRENT=2`、`UTEN_ATTACHMENT_PREVIEW_CACHE_MAX_BYTES=1073741824`)。转换缓存与 LibreOffice 用户配置目录都落在附件卷 `/var/lib/uten-imp-media/attachments/{preview,scratch}` 下 (2026-10-06 起；旧 `/data/uten-imp/attachments` 不再可写)，`uten-imp.service` 的 `ReadWritePaths=/var/lib/uten-imp-media/attachments /var/log/uten-imp` 已覆盖，无需再放开其它目录 (`PrivateTmp=true` 保持)。应用 `UMask=0077`，缓存与日志都只归 uten-imp 自己读写。验收：上传一个 docx 和一个 pptx，点「预览」都应弹出 PDF；`journalctl -u uten-imp | grep -i preview` 无 "soffice is not executable" 告警。没装 `libreoffice-draw` 时 svg 预览会失败并回落为下载，其余类型不受影响。
+
+**转换启用前置条件**：上一段的开关及安装命令只能在独立转换 worker 的文件、进程、网络和资源隔离验收后执行。不能在持有业务数据库/原件读取能力的 ERP 主进程身份下直接开启系统 `soffice`。2026-10-26 候选中的 `uten-preview-soffice.py` 已改为独立 worker 客户端，固定走 `/run/uten-imp-preview.sock`，不回退本地转换；已安装的旧版环境清理包装器不具备此能力。按[worker 安装与验收](../company-files/PREVIEW_WORKER.zh-CN.md)部署匹配的 client、worker、安全 profile 和 socket/service，设置 `UTEN_ATTACHMENT_PREVIEW_SOFFICE_PATH=/usr/local/libexec/uten-preview-soffice-isolated`。新转换限额默认 PDF 64 MiB、Office ZIP 累计展开 256 MiB、10,000 项，可分别配置 `UTEN_ATTACHMENT_PREVIEW_MAX_OUTPUT_BYTES`、`UTEN_ATTACHMENT_PREVIEW_MAX_EXPANDED_BYTES`、`UTEN_ATTACHMENT_PREVIEW_MAX_ARCHIVE_ENTRIES`；worker 另外有固定输入 25 MiB、PDF 64 MiB、转换 60 秒的协议上限。隔离未验收时保持 `UTEN_ATTACHMENT_PREVIEW_ENABLED=false`，客户端提示下载原件；图片、PDF、文本等本地预览不受该开关影响。当前现场与剩余验收见[公司资料库检查记录](../../docs/99-项目治理/2026-10-26-公司资料库安全稳定性检查.md)。
 
 当前独立 migrator 固定连接同机 `127.0.0.1:5432/uten_imp`、使用 `uten_migrator`，从 `UTEN_MIGRATOR_DB_PASSWORD` 读取专用密码（20–512 位字母数字）。激活前只检查变量存在、格式和该角色真实连接/DDL权限，不打印密码。应用角色与迁移角色分离，数据库名、主机或端口不符合这一部署协议时先修正部署方案，不能等到停服后才发现凭据缺失。
 

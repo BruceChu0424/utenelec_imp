@@ -701,21 +701,19 @@ abstract class _MaterialAnalysisProductTasksState
         Row(
           children: [
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
+              child: Row(
                 children: [
-                  Text(
-                    '生产准备任务',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
+                  Flexible(
+                    child: Text(
+                      '生产准备任务',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                  Text(
-                    _l10n.materialTaskSectionHint,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                  UtenFieldHintIcon(
+                    info: _l10n.materialTaskSectionHint,
+                    dense: true,
                   ),
                 ],
               ),

@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 // 即时库存页（仓库管理 hub 入口，stock:view）。
 //
 // 左侧分类树 + 右侧库存表，沿用货品资料的可调分栏与窄屏目录。
@@ -38,6 +39,8 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/print/uten_print_preview.dart';
+import '../../../components/print/complete_print_snapshot.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
@@ -92,7 +95,21 @@ class InstantInventoryPage extends ConsumerStatefulWidget {
 }
 
 class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
-    with MasterInlinePageMixin<InstantInventoryPage, InstantInventoryRow> {
+    with
+        MasterInlinePageMixin<InstantInventoryPage, InstantInventoryRow>,
+        ScopedPagedReadViewMixin<InstantInventoryPage> {
+  int get _refreshPage => _readingRows.visiblePage ?? (_page?.page ?? _pageNum);
+
+  final _readingRows = MasterDataTableRowsController<InstantInventoryRow>();
+  @override
+  void scopedPagedReadOwnerChanged() {
+    if (!mounted) return;
+    inlineClearView();
+    if (scopedPagedReadRejection case final error?) {
+      setState(() => _error = error.message);
+    }
+  }
+
   static const _minTwoPaneWidth = 840.0;
   bool get _compactActions =>
       MediaQuery.sizeOf(context).width < _minTwoPaneWidth;
@@ -173,7 +190,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
   Map<String, MasterInlineField<InstantInventoryRow>> get inlineFields =>
       instantInventoryLocationFields(context, ref);
   @override
-  Future<void> inlineReload() => _load(_pageNum);
+  Future<void> inlineReload() => _load(_refreshPage);
   @override
   Future<void> inlineReloadAfterBoundary() => _refresh();
   @override
@@ -263,13 +280,21 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
     final generation = _searchRequests.begin();
     _searchDebounce?.cancel();
     _acceptPendingSearch = false;
-    // 字典与分类树互不依赖，并行拉取（此前串行，点刷新要等两段往返）。
-    await Future.wait([
-      ref.read(masterNameServiceProvider).ensureCommonLoaded(),
-      _loadTree(),
-    ]);
+    // Category paths and warehouse labels decorate the server-authored rows;
+    // neither is a prerequisite for reading even an empty inventory result.
+    unawaited(_loadTree());
+    unawaited(_warmWarehouseNames(ownerCurrent));
     if (!ownerCurrent() || !_searchRequests.isCurrent(generation)) return;
     await _applySearch(_searchQuery);
+  }
+
+  Future<void> _warmWarehouseNames(bool Function() ownerCurrent) async {
+    try {
+      await ref.read(masterNameServiceProvider).ensureWarehousesLoaded();
+      if (mounted && ownerCurrent()) setState(() {});
+    } catch (_) {
+      // Row DTOs already carry names; the warehouse picker can retry on open.
+    }
   }
 
   @override
@@ -281,7 +306,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
   Future<void> _loadTree() async {
     if (!_canViewCategories) return;
     final ownerCurrent = captureReadOwner(ref);
-    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final boundary = captureInlineRead();
     try {
       final tree = await ref
           .read(productCategoryRepositoryProvider)
@@ -300,7 +325,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
     }
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     _queryContextVersion++;
     final generation = _loadRequests.begin();
     setState(() {
@@ -309,24 +334,74 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
       _pageNum = page;
     });
     try {
-      final r = await ref
-          .read(stockQueryRepositoryProvider)
-          .instantInventory(
-            page: page,
-            categoryId: _effectiveCategoryId,
-            warehouseId: _warehouseId,
-            includeDefective: _includeDefective,
-            includeLineSide: _includeLineSide,
-            keyword: _keyword.isEmpty ? null : _keyword,
-            includeRelated: _includeRelated,
-            owningWarehouse: _owningFilterUuid,
-            owningWarehouseNull: _owningFilterIsNull,
-            colorId: _columnFilter('color'),
-            series: _columnFilter('series'),
-            unitId: _columnFilter('unit'),
-            sort: _sortKey,
-            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
-          );
+      final pageRepository = ref.read(stockQueryRepositoryProvider);
+      final pageCategoryId = _effectiveCategoryId;
+      final pageWarehouseId = _warehouseId;
+      final pageIncludeDefective = _includeDefective;
+      final pageIncludeLineSide = _includeLineSide;
+      final pageKeyword = _keyword.isEmpty ? null : _keyword;
+      final pageIncludeRelated = _includeRelated;
+      final pageOwningWarehouse = _owningFilterUuid;
+      final pageOwningWarehouseNull = _owningFilterIsNull;
+      final pageColorId = _columnFilter('color');
+      final pageSeries = _columnFilter('series');
+      final pageUnitId = _columnFilter('unit');
+      final pageSort = _sortKey;
+      final pageOrder = _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc');
+
+      final r = await readScopedPage(
+        page,
+        slot: '_load',
+        query: [
+          pageRepository,
+          pageCategoryId,
+          pageWarehouseId,
+          pageIncludeDefective,
+          pageIncludeLineSide,
+          pageKeyword,
+          pageIncludeRelated,
+          pageOwningWarehouse,
+          pageOwningWarehouseNull,
+          pageColorId,
+          pageSeries,
+          pageUnitId,
+          pageSort,
+          pageOrder,
+        ],
+        currentQuery: () => [
+          ref.read(stockQueryRepositoryProvider),
+          _effectiveCategoryId,
+          _warehouseId,
+          _includeDefective,
+          _includeLineSide,
+          _keyword.isEmpty ? null : _keyword,
+          _includeRelated,
+          _owningFilterUuid,
+          _owningFilterIsNull,
+          _columnFilter('color'),
+          _columnFilter('series'),
+          _columnFilter('unit'),
+          _sortKey,
+          _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+        ],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.instantInventory(
+          page: target,
+          categoryId: pageCategoryId,
+          warehouseId: pageWarehouseId,
+          includeDefective: pageIncludeDefective,
+          includeLineSide: pageIncludeLineSide,
+          keyword: pageKeyword,
+          includeRelated: pageIncludeRelated,
+          owningWarehouse: pageOwningWarehouse,
+          owningWarehouseNull: pageOwningWarehouseNull,
+          colorId: pageColorId,
+          series: pageSeries,
+          unitId: pageUnitId,
+          sort: pageSort,
+          order: pageOrder,
+        ),
+      );
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       // 「所属仓库」列的名字来自货品字典，先补齐再落表，免得整页先空一拍再跳字。
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
@@ -494,51 +569,71 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
     if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
   };
 
-  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  /// 打印预览数据：按当前筛选口径完整分页读取，列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
     final contextVersion = _queryContextVersion;
-    final r = await ref
-        .read(stockQueryRepositoryProvider)
-        .instantInventory(
-          size: 2000,
-          categoryId: _effectiveCategoryId,
-          warehouseId: _warehouseId,
-          includeDefective: _includeDefective,
-          includeLineSide: _includeLineSide,
-          keyword: _keyword.isEmpty ? null : _keyword,
-          includeRelated: _includeRelated,
-          owningWarehouse: _owningFilterUuid,
-          owningWarehouseNull: _owningFilterIsNull,
-          colorId: _columnFilter('color'),
-          series: _columnFilter('series'),
-          unitId: _columnFilter('unit'),
-          sort: _sortKey,
-          order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
-        );
-    if (!mounted || contextVersion != _queryContextVersion || !_resultsReady) {
-      throw StateError('查询条件已变化，请重新预览');
-    }
-    // 打印件与页面同列，「所属仓库」同样要先补齐货品字典才有名字可印。
-    final cols = _columns();
-    return UtenPrintTable(
-      columnKeys: [for (final c in cols) c.key],
-      factValues: [
-        for (final row in r.items)
-          {
-            'qty': row.qty?.toString(),
-            'costAmount': row.costAmount?.toString(),
-            'moreQty': row.moreQty?.toString(),
-            'pendingQty': row.pendingQty?.toString(),
-            'pendingStockInQty': row.pendingStockInQty?.toString(),
-            'weight': row.weight?.toString(),
-            'unitWeightKg': row.unitWeightKg?.toString(),
-          },
-      ],
-      headers: [for (final c in cols) c.label],
-      rows: [
-        for (final row in r.items) [for (final c in cols) c.value(row) ?? ''],
-      ],
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final epoch = ref.read(exportContextEpochProvider);
+    final repository = ref.read(stockQueryRepositoryProvider);
+    final categoryId = _effectiveCategoryId, warehouseId = _warehouseId;
+    final includeDefective = _includeDefective,
+        includeLineSide = _includeLineSide;
+    final keyword = _keyword.isEmpty ? null : _keyword;
+    final related = _includeRelated;
+    final owningWarehouse = _owningFilterUuid, owningNull = _owningFilterIsNull;
+    final colorId = _columnFilter('color'),
+        series = _columnFilter('series'),
+        unitId = _columnFilter('unit');
+    final sort = _sortKey;
+    final order = sort == null ? null : (_sortAsc ? 'asc' : 'desc');
+    final columns = _columns();
+    bool current() =>
+        mounted &&
+        contextVersion == _queryContextVersion &&
+        _resultsReady &&
+        boundary == ref.read(sensitiveReadBoundaryProvider) &&
+        epoch == ref.read(exportContextEpochProvider);
+    final scope = await boundary.api.captureRequestScope(isCurrent: current);
+    final table = await scope.run(
+      () => loadCompletePrintSnapshot<InstantInventoryRow>(
+        loadPage: (page, size) => repository.instantInventory(
+          page: page,
+          size: size,
+          categoryId: categoryId,
+          warehouseId: warehouseId,
+          includeDefective: includeDefective,
+          includeLineSide: includeLineSide,
+          keyword: keyword,
+          includeRelated: related,
+          owningWarehouse: owningWarehouse,
+          owningWarehouseNull: owningNull,
+          colorId: colorId,
+          series: series,
+          unitId: unitId,
+          sort: sort,
+          order: order,
+        ),
+        idOf: (row) => '${row.goodsId}|${row.colorId}',
+        includeRowIds: false,
+        headers: [for (final column in columns) column.label],
+        columnKeys: [for (final column in columns) column.key],
+        cellsOf: (row) => [
+          for (final column in columns) column.value(row) ?? '',
+        ],
+        factsOf: (row) => {
+          'qty': row.qty?.toString(),
+          'costAmount': row.costAmount?.toString(),
+          'moreQty': row.moreQty?.toString(),
+          'pendingQty': row.pendingQty?.toString(),
+          'pendingStockInQty': row.pendingStockInQty?.toString(),
+          'weight': row.weight?.toString(),
+          'unitWeightKg': row.unitWeightKg?.toString(),
+        },
+        isCurrent: () => current() && scope.isCurrent,
+      ),
     );
+    await scope.verify();
+    return table;
   }
 
   List<MasterColumnDef<InstantInventoryRow>> _columns() =>
@@ -840,6 +935,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
         ),
       ),
       body: MasterDataTableView<InstantInventoryRow>(
+        rowsController: _readingRows,
+        expensiveRowMounts: inlineEdit.active,
         tableKey:
             'features.stock.pages.instant_inventory_page.InstantInventoryPageState._buildTablePane.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
@@ -855,7 +952,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
                 _locationSnapshots[row.goodsId],
               ),
         ),
-        items: [...?_page?.items],
+        items: _page?.items ?? const [],
         rowKeyOf: (r) => stockCountRowKey(r.goodsId ?? '', r.colorId),
         toolbarActions: [
           if (inlineEdit.active)
@@ -937,7 +1034,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
         isLoading: _loading && _page == null,
         loadingMore: _loading && _page != null,
         error: _error,
-        onRetry: () => inlineNavigate(() => _load(_pageNum)),
+        onRetry: () => inlineNavigate(() => _load(_refreshPage)),
         emptyMessage: '暂无库存', // TODO(l10n): 补 arb
         // 页脚收敛为重量 + 详情；分析只消费同一响应的全筛选范围服务端合计。
         // 加载/失败/防抖挂起时禁止打开旧范围的快照，缺失 totals 不伪造本页合计。
@@ -977,7 +1074,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
           _includeRelated,
           _includeDefective,
         ),
-        onPageChange: (p) => inlineNavigate(() => _load(p)),
+        onPageChange: (p) => inlineNavigate(() => _load(p, useCache: true)),
       ),
     );
   }
@@ -989,7 +1086,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
       type: UtenButtonType.secondary,
       icon: Icons.fact_check_outlined,
       onPressed: () => inlineNavigate(
-        () => context.push(
+        () => pushPage(
+          context,
           Uri(
             path: RouteName.stockCountSession,
             queryParameters: {
@@ -1050,7 +1148,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
     // （此前详情只刷自己，本列表无任何监听，返回看到旧库存）。
     _myLocation ??= currentLocationOr(context, RouteName.warehouse);
     ref.onPageResume(_myLocation!, () {
-      if (!inlineEdit.active) _load(_page?.page ?? 1);
+      if (!inlineEdit.active) _load(_refreshPage);
     });
     return inlineGuard(
       Scaffold(
@@ -1067,7 +1165,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
                 key: const Key('stock-count-history'),
                 label: '盘点历史',
                 onPressed: () => inlineNavigate(
-                  () => context.push(RouteName.stockCountRequests),
+                  () => pushPage(context, RouteName.stockCountRequests),
                 ),
               ),
             UtenRefreshButton(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +16,9 @@ import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.d
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/master_status_repository.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
+import 'package:uten_imp/features/basic_data/widgets/goods_detail_body.dart';
+import 'package:uten_imp/features/basic_data/repositories/master_inline_edit_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -42,6 +47,17 @@ class _GoodsRepository extends Fake implements GoodsRepository {
     status: '使用',
     sourceType: '自制',
   );
+}
+
+class _PendingGoodsRepository extends Fake implements GoodsRepository {
+  final result = Completer<GoodsDetail>();
+  final calls = <String>[];
+
+  @override
+  Future<GoodsDetail> detail(String id) {
+    calls.add(id);
+    return result.future;
+  }
 }
 
 class _BomRepository extends Fake implements GoodsBomRepository {
@@ -78,7 +94,167 @@ class _StatusGoodsRepository extends Fake implements GoodsRepository {
   );
 }
 
+class _GroupGoodsRepository extends Fake implements GoodsRepository {
+  _GroupGoodsRepository(this.group);
+  final String group;
+  @override
+  Future<GoodsDetail> detail(String id) async => GoodsDetail(
+    id: id,
+    code: 'GROUP001',
+    name: ' 原始名称 ',
+    spec: ' 旧规格 ',
+    status: '禁用',
+    sourceType: group == Perm.goodsSalesEdit ? null : '采购',
+    cNumber: '旧客户型号',
+    writable: true,
+    version: 1,
+  );
+}
+
+class _InlineRepository extends Fake implements MasterInlineEditRepository {
+  final calls = <Map<String, dynamic>>[];
+  @override
+  Future<void> saveParty(
+    String entityType,
+    String id,
+    Map<String, dynamic> changes, {
+    required int? expectedVersion,
+    bool Function()? isCurrent,
+  }) async {
+    expect(entityType, 'goods');
+    expect(expectedVersion, 1);
+    calls.add(Map.of(changes));
+  }
+}
+
 void main() {
+  testWidgets('existing goods never mount a new-goods form before the read', (
+    tester,
+  ) async {
+    final repository = _PendingGoodsRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionProvider.overrideWith(_Session.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'goods-opening'),
+          ),
+          apiClientProvider.overrideWithValue(ApiClient(Dio())),
+          currentPermissionsProvider.overrideWithValue({Perm.goodsView}),
+          isSuperAdminProvider.overrideWithValue(false),
+          goodsRepositoryProvider.overrideWithValue(repository),
+          colorDictProvider.overrideWith((ref) async => const []),
+          unitDictProvider.overrideWith((ref) async => const []),
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(null, web: true),
+          ),
+        ],
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: GoodsDetailPage(goodsId: 'goods-opening'),
+        ),
+      ),
+    );
+    // pumpWidget has painted the opening frame but has not painted the
+    // post-frame read's setState yet. No create-mode body may exist here.
+    expect(find.byType(GoodsDetailBody), findsNothing);
+    expect(find.byType(MasterEditForm), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    await tester.pump();
+    expect(repository.calls, ['goods-opening']);
+    expect(find.byType(GoodsDetailBody), findsNothing);
+
+    repository.result.complete(
+      const GoodsDetail(
+        id: 'goods-opening',
+        code: 'P-OPEN',
+        name: 'Opening goods',
+        status: '使用',
+        sourceType: '自制',
+      ),
+    );
+    await tester.pumpAndSettle();
+    final body = tester.widget<GoodsDetailBody>(find.byType(GoodsDetailBody));
+    expect(body.initialDetail?.id, 'goods-opening');
+    expect(find.byType(MasterEditForm), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final group in [Perm.goodsPurchaseEdit, Perm.goodsSalesEdit]) {
+    testWidgets(
+      '$group independently opens the editor and locks other field groups',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1400, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final inline = _InlineRepository();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              sessionProvider.overrideWith(_Session.new),
+              authenticatedScopeProvider.overrideWithValue(
+                const AuthenticatedScope(userId: 'goods-groups'),
+              ),
+              apiClientProvider.overrideWithValue(ApiClient(Dio())),
+              currentPermissionsProvider.overrideWithValue({
+                Perm.goodsView,
+                group,
+              }),
+              isSuperAdminProvider.overrideWithValue(false),
+              goodsRepositoryProvider.overrideWithValue(
+                _GroupGoodsRepository(group),
+              ),
+              masterInlineEditRepositoryProvider.overrideWithValue(inline),
+              colorDictProvider.overrideWith((ref) async => const []),
+              unitDictProvider.overrideWith((ref) async => const []),
+              localServerReachableProvider.overrideWith(
+                (ref) => LocalServerReachabilityNotifier(null, web: true),
+              ),
+            ],
+            child: const MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: Locale('zh'),
+              home: GoodsDetailPage(goodsId: 'group-test'),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(UtenButton, '编辑'));
+        await tester.pumpAndSettle();
+        final form = tester.widget<MasterEditForm>(find.byType(MasterEditForm));
+        expect(form.readOnlyKeys, contains('name'));
+        expect(
+          form.readOnlyKeys!.contains('minOrderQty'),
+          group != Perm.goodsPurchaseEdit,
+        );
+        expect(
+          form.readOnlyKeys!.contains('clientGoodsName'),
+          group != Perm.goodsSalesEdit,
+        );
+        expect(form.readOnlyKeys, contains('status'));
+        final state = tester.state<MasterEditFormState>(
+          find.byType(MasterEditForm),
+        );
+        if (group == Perm.goodsSalesEdit) {
+          state.controller.controllers['cNumber']!.text = '新客户型号';
+        } else {
+          state.controller.controllers['minOrderQty']!.text = '25';
+        }
+        await tester.ensureVisible(find.widgetWithText(UtenButton, '保存'));
+        await tester.tap(find.widgetWithText(UtenButton, '保存'));
+        await tester.pumpAndSettle();
+        expect(
+          inline.calls.single,
+          group == Perm.goodsSalesEdit
+              ? {'cNumber': '新客户型号'}
+              : {'minOrderQty': '25'},
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets('停用先确认，取消零请求，停用后切换启用样式', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1400, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));

@@ -1,6 +1,7 @@
 // 报价核价队列(ADR-134)：三个分段(待核价红 / 已核价 / 已退回黄)、按分段向服务端取数、
 // 状态说明文案、空态、双击进入核价详情后刷新；路由守卫与 hub 目录登记。
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,11 +22,16 @@ import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 
 class _FakeRepo implements SalesQuoteFinanceReviewRepository {
   final List<(SalesQuoteFinanceState, int, String?)> calls = [];
+  Completer<PagedResult<SalesQuoteFinanceListItem>>? blockedCount;
+  Object? rowError;
 
   /// 与服务端 QuoteFinanceListItem record 字段逐字一致。
   static SalesQuoteFinanceListItem _item(
@@ -69,6 +75,8 @@ class _FakeRepo implements SalesQuoteFinanceReviewRepository {
     String? keyword,
   }) async {
     calls.add((state, size, keyword));
+    if (size == 1 && blockedCount != null) return blockedCount!.future;
+    if (size > 1 && rowError != null) throw rowError!;
     final items = switch (state) {
       SalesQuoteFinanceState.pending => [
         _item('p1', needsPrice: 2, claimedBy: '王会计'),
@@ -130,12 +138,14 @@ class _FakeRepo implements SalesQuoteFinanceReviewRepository {
 Future<_FakeRepo> _pump(
   WidgetTester tester, {
   Size size = const Size(1600, 1000),
+  _FakeRepo? repository,
+  bool controlledEpoch = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  final repo = _FakeRepo();
+  final repo = repository ?? _FakeRepo();
   final router = GoRouter(
     initialLocation: '/finance/quote-review',
     routes: [
@@ -158,6 +168,8 @@ Future<_FakeRepo> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        if (controlledEpoch)
+          exportContextEpochProvider.overrideWith(_TestReadEpoch.new),
         localServerReachableProvider.overrideWith(
           (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
         ),
@@ -192,11 +204,93 @@ UtenSegmentBadgeLabel _segment(WidgetTester tester, String label) =>
 
 late SharedPreferences _preferences;
 
+class _TestReadEpoch extends ExportContextEpoch {
+  @override
+  int build() => 0;
+  void advance() => state++;
+}
+
 void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+  testWidgets(
+    'returned count ignores prior request and prior owner completions',
+    (tester) async {
+      final firstCount = Completer<PagedResult<SalesQuoteFinanceListItem>>();
+      final repository = _FakeRepo()..blockedCount = firstCount;
+      await _pump(tester, repository: repository, controlledEpoch: true);
+      repository.blockedCount = null;
+      await tester.tap(find.byKey(const Key('quote-finance-refresh')));
+      await tester.pumpAndSettle();
+      expect(_segment(tester, '已退回').count, 1);
+      firstCount.complete(
+        const PagedResult(
+          items: [],
+          page: 1,
+          size: 1,
+          total: 99,
+          totalPages: 99,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(_segment(tester, '已退回').count, 1);
+
+      final oldOwnerCount = Completer<PagedResult<SalesQuoteFinanceListItem>>();
+      repository.blockedCount = oldOwnerCount;
+      await tester.tap(find.byKey(const Key('quote-finance-refresh')));
+      await tester.pumpAndSettle();
+      repository.blockedCount = null;
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(FinanceQuoteReviewListPage)),
+      );
+      (container.read(exportContextEpochProvider.notifier) as _TestReadEpoch)
+          .advance();
+      await tester.pumpAndSettle();
+      expect(_segment(tester, '已退回').count, 1);
+      oldOwnerCount.complete(
+        const PagedResult(
+          items: [],
+          page: 1,
+          size: 1,
+          total: 88,
+          totalPages: 88,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(_segment(tester, '已退回').count, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('quote 403 retires rows and a late returned count', (
+    tester,
+  ) async {
+    final count = Completer<PagedResult<SalesQuoteFinanceListItem>>();
+    final repository = _FakeRepo()..blockedCount = count;
+    await _pump(tester, repository: repository);
+    repository.rowError = ApiException(
+      'FORBIDDEN',
+      '核价读取权限已撤销',
+      httpStatus: 403,
+    );
+    MasterDataTableView<SalesQuoteFinanceListItem> table() =>
+        tester.widget(find.byKey(const Key('quote-finance-desktop-table')));
+    table().onRetry!();
+    await tester.pumpAndSettle();
+    expect(table().items, isEmpty);
+    expect(table().error, '核价读取权限已撤销');
+    expect(_segment(tester, '已退回').count, isNull);
+    count.complete(
+      const PagedResult(items: [], page: 1, size: 1, total: 77, totalPages: 77),
+    );
+    await tester.pumpAndSettle();
+    expect(_segment(tester, '已退回').count, isNull);
+    expect(table().items, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   test('route guard and hub catalog register the quote review pages', () {
     expect(requiredAnyPermFor(RouteName.financeQuoteReview), const [
       Perm.salesQuoteFinanceView,

@@ -22,6 +22,7 @@ import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/uten_table_cell_action.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -217,6 +218,7 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
+                UtenFieldHintIcon(info: l10n.bomLearningHelp, dense: true),
                 IconButton(
                   key: const Key('bom-learning-refresh'),
                   tooltip: l10n.commonRefresh,
@@ -229,7 +231,6 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
                 ),
               ],
             ),
-            Text(l10n.bomLearningHelp),
             const SizedBox(height: UtenSpacing.s16),
             Expanded(
               child: latest != null
@@ -332,6 +333,7 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
           const SizedBox(height: UtenSpacing.s12),
           Expanded(
             child: MasterDataTableView<GoodsBomLearningComponent>(
+      expensiveRowMounts: false,
               tableKey:
                   'features.basic_data.widgets.goods_bom_learning_panel.GoodsBomLearningPanelState._content.1',
               items: rows,

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/rd_task/pages/rd_task_page.dart';
@@ -152,7 +153,12 @@ void main() {
             actionRect.bottom,
             lessThanOrEqualTo(tester.getRect(header).bottom),
           );
-          expect(actionRect.right, greaterThan(width - 16));
+          expect(
+            actionRect.right,
+            greaterThanOrEqualTo(
+              width - UtenPageChromeMetrics.endOf(tester.element(header)),
+            ),
+          );
           if (refresh.evaluate().isEmpty) {
             await tester.tap(compactActions);
             await tester.pumpAndSettle();

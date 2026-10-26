@@ -62,6 +62,8 @@ class _MasterInlineCreation<T> {
   final rows = ValueNotifier<List<MasterTableAppendRow>>(const []);
   final _drafts = <String, _MasterCreateDraft>{};
   VoidCallback? _closeDetails;
+  VoidCallback? _retainDetailsInput;
+  _MasterCreateDraft? _submittingDraft;
   AppLocalizations? _strings;
   String _locale = 'zh';
   void observeLocale(BuildContext context) {
@@ -112,6 +114,17 @@ class _MasterInlineCreation<T> {
         }
       });
     }
+  }
+
+  void retireReadScope() {
+    _retainDetailsInput?.call();
+    _closeDetails?.call();
+    final submitting = _submittingDraft;
+    if (submitting != null) {
+      submitting.uncertain = true;
+      submitting.changed();
+    }
+    refresh();
   }
 
   void dispose() {
@@ -338,7 +351,12 @@ class _MasterInlineCreation<T> {
         final payload = body(draft);
         if (payload == null) return false;
         try {
-          await config!.onCreate(draft.key, payload);
+          _submittingDraft = draft;
+          try {
+            await config!.onCreate(draft.key, payload);
+          } finally {
+            if (identical(_submittingDraft, draft)) _submittingDraft = null;
+          }
         } catch (failure) {
           if (epoch != owner._epoch) return false;
           if (!_knownRejection(failure)) {
@@ -455,7 +473,25 @@ class _MasterInlineCreation<T> {
       }
     }
 
+    void retainInput() {
+      for (final field in c.fields.where((field) => !field.readOnly)) {
+        final Object? value = field.type == MasterFieldType.custom
+            ? form.customValues[field.key]
+            : field.type == MasterFieldType.select
+            ? form.selectValues[field.key]
+            : form.controllers[field.key]?.text;
+        if (_sameCreationValue(value, draft.defaults[field.key])) {
+          draft.changes.remove(field.key);
+        } else {
+          draft.changes[field.key] = value;
+        }
+      }
+      draft.externalRevision++;
+      draft.changed();
+    }
+
     _closeDetails = close;
+    _retainDetailsInput = retainInput;
     owner.addListener(checkOwner);
     try {
       await UtenDialog.showAndWaitForExit<void>(
@@ -526,6 +562,9 @@ class _MasterInlineCreation<T> {
     } finally {
       owner.removeListener(checkOwner);
       if (identical(_closeDetails, close)) _closeDetails = null;
+      if (identical(_retainDetailsInput, retainInput)) {
+        _retainDetailsInput = null;
+      }
       form.dispose();
     }
   }

@@ -23,4 +23,22 @@ public class GoodsCostJson {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(write(value).getBytes(StandardCharsets.UTF_8))); }
         catch(Exception ex) { throw new IllegalStateException("成本摘要无法生成",ex); }
     }
+    /** Same Writer-based canonical bytes as write(value).getBytes(UTF_8), without
+     * retaining the complete document string. Nested stream arrays stay bounded. */
+    public String hashStreaming(Object value) {
+        try {
+            var digest=MessageDigest.getInstance("SHA-256");
+            try(var output=new java.security.DigestOutputStream(java.io.OutputStream.nullOutputStream(),digest);
+                var writer=new java.io.OutputStreamWriter(output,StandardCharsets.UTF_8)) {
+                json.writeValue(writer,value);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch(Exception ex) {
+            for(Throwable cause=ex;cause!=null;cause=cause.getCause()) {
+                if(cause instanceof com.uten.imp.common.web.ApiException api)throw api;
+                if(cause instanceof java.util.concurrent.CancellationException cancelled)throw cancelled;
+            }
+            throw new IllegalStateException("成本摘要无法生成",ex);
+        }
+    }
 }

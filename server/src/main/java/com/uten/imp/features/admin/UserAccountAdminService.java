@@ -79,8 +79,10 @@ public class UserAccountAdminService {
         Specification<UserAccount> spec = (root, q, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.isFalse(root.get("deleted")));
+            var employee = root.join("employee", JoinType.LEFT);
+            // Deleted historical employee shells are retained for audit, not account administration.
+            predicates.add(cb.or(cb.isNull(employee.get("id")), cb.isFalse(employee.get("deleted"))));
             if (search != null && !search.isBlank()) {
-                var employee = root.join("employee", JoinType.LEFT);
                 predicates.add(KeywordSearch.allTerms(cb, search,
                         employee.get("fullName"), employee.get("code"), root.get("loginAccount")));
                 if (!Long.class.equals(q.getResultType()) && !long.class.equals(q.getResultType())) {

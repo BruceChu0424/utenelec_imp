@@ -7,6 +7,7 @@
 //   提示「差异较大: 换了供应商/批次?」并给勾选「从本次起作为新批次(旧数据降权)」。
 // - 权限: warehouse_inbound:stock_in 或 stock_doc:edit 或 stock:weight:manage。
 // - 入口: 采集表格行菜单 (主要是到货行)、流水面板「单重学习」、库存分析「单重学习」批量表。
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -427,27 +428,29 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
                     error: utenFieldError(
                       _invalid(_weight) ? weightInputErrorText : null,
                     ),
-                    suffixIcon: PopupMenuButton<WeightUnit>(
-                      key: const ValueKey('weight-sample-unit'),
-                      tooltip: '抽样重量单位',
-                      initialValue: sampleUnit,
-                      onSelected: ref
-                          .read(warehouseWeightUnitsPrefsProvider.notifier)
-                          .setSample,
-                      itemBuilder: (_) => [
-                        for (final u in WeightUnit.values)
-                          PopupMenuItem(value: u, child: Text(u.label)),
-                      ],
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: UtenSpacing.s8,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(sampleUnit.label),
-                            const Icon(Icons.arrow_drop_down),
-                          ],
+                    suffixIcon: UtenDropdownScrollScope(
+                      child: PopupMenuButton<WeightUnit>(
+                        key: const ValueKey('weight-sample-unit'),
+                        tooltip: '抽样重量单位',
+                        initialValue: sampleUnit,
+                        onSelected: ref
+                            .read(warehouseWeightUnitsPrefsProvider.notifier)
+                            .setSample,
+                        itemBuilder: (_) => [
+                          for (final u in WeightUnit.values)
+                            PopupMenuItem(value: u, child: Text(u.label)),
+                        ],
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: UtenSpacing.s8,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(sampleUnit.label),
+                              const Icon(Icons.arrow_drop_down),
+                            ],
+                          ),
                         ),
                       ),
                     ),

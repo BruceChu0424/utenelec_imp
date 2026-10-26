@@ -6,6 +6,8 @@ $paths = @{
     SimpleAppUnit = 'simple/units/uten-imp.service'
     SimpleRunbook = 'simple/RUNBOOK.zh-CN.md'
     InternalStorageEnv = 'setup/server.env.internal-storage.example'
+    InternalStorageDropIn = 'systemd/uten-imp-internal-storage.conf.example'
+    ClientReleaseStoragePreparer = 'client/prepare_client_release_storage.py'
     ClamAvSocket = 'systemd/clamav-uten-imp-unix.socket.conf.example'
     BaseProfile = '../server/src/main/resources/application.yml'
     ProdProfile = '../server/src/main/resources/application-prod.yml'
@@ -40,6 +42,7 @@ $paths = @{
     RetentionInstaller = 'setup/install-release-retention.sh'
     UpdaterService = 'updater/uten-imp-updater.service'
     UpdaterTimer = 'updater/uten-imp-updater.timer'
+    SimpleUpdaterTimer = 'simple/units/uten-imp-updater.timer'
     UpdaterWrapper = 'updater/uten-imp-updater.sh'
     ActivateWrapper = 'updater/uten-imp-activate.sh'
     RecoverWrapper = 'updater/uten-imp-recover.sh'
@@ -1039,8 +1042,22 @@ if ($retentionPolicy.stagingProjectId -eq $retentionPolicy.installedProjectId) {
     throw 'Retention example must use distinct staging and installed project IDs'
 }
 
-# Phase4 must remain install-only until storage retention/quota/alerts exist.
+# Automatic OSS checks are retired; explicit manual checks retain the signed boundary.
+# Both update and installer packages stay under the existing private media write
+# boundary and paired backup namespace, independently of current/releases/web.
+foreach ($catalogUnit in @('SimpleAppUnit', 'AppUnit', 'InternalStorageDropIn')) {
+    Assert-Contains $text[$catalogUnit] 'Environment=UTEN_CLIENT_RELEASES_DIR=/var/lib/uten-imp-media/attachments/client-releases' 'persistent private client catalog'
+    Assert-Contains $text[$catalogUnit] 'Environment=UTEN_CLIENT_UPDATE_MIN_FREE_BYTES=10737418240' 'client catalog preserves private media free-space floor'
+}
+Assert-Contains $text.InternalTestUnit 'Environment=UTEN_CLIENT_RELEASES_DIR=/data/uten-imp/attachments/client-releases' 'internal-test persistent client catalog'
+Assert-Contains $text.InternalTestUnit 'Environment=UTEN_CLIENT_UPDATE_MIN_FREE_BYTES=10737418240' 'internal-test client catalog free-space floor'
+Assert-Contains $text.InternalStorageEnv 'UTEN_CLIENT_RELEASES_DIR=/var/lib/uten-imp-media/attachments/client-releases' 'explicit first-install client catalog'
+Assert-Contains $text.ClientReleaseStoragePreparer 'os.O_NOFOLLOW' 'catalog preparation does not follow links'
 $phase4 = $text.Phase4
+Assert-Contains $text.UpdaterTimer 'ConditionPathExists=!/' 'retired signed updater timer cannot start'
+Assert-Contains $text.SimpleUpdaterTimer 'ConditionPathExists=!/' 'retired simple updater timer cannot start'
+Assert-NotContains $phase4 'systemctl enable --now uten-imp-updater.timer' 'automatic signed staging enable path'
+Assert-NotContains $phase4 'systemctl start uten-imp-updater.service' 'installer must not perform an OSS check'
 Assert-Contains $phase4 '--expected-signing-fingerprint' 'out-of-band signing fingerprint'
 Assert-Contains $phase4 '--no-index --no-deps --no-compile' 'offline dependency-only wheel install'
 Assert-Contains $phase4 '--only-binary=:all: --require-hashes' 'offline hash-locked wheel install'
@@ -1059,7 +1076,7 @@ Assert-Contains $phase4 'runtime boot verifier {name} dependency digest is stale
 Assert-Contains $phase4 '"$UPDATER_SOURCE/retention_manager.py" "$new_updater/retention_manager.py"' 'Phase 4 preserves installed retention manager'
 Assert-Contains $phase4 'ordinary reinstall may not collapse trust' 'signing-key rotation overlap guard'
 Assert-Contains $phase4 'ssl_reject_handshake on;' 'expanded TLS catch-all audit'
-Assert-Contains $phase4 '--enable-staging is intentionally NO-GO' 'staging fail-closed until retention'
+Assert-Contains $phase4 '--enable-staging is intentionally NO-GO' 'automatic staging remains rejected'
 Assert-Contains $phase4 'STAGING_NOT_ENABLED' 'default install-only outcome'
 Assert-NotContains $phase4 'pip install --quiet --no-cache-dir oss2' 'legacy root online pip install'
 Assert-NotContains $phase4 'uten-imp-http-lan.conf' 'legacy plaintext LAN site installation'

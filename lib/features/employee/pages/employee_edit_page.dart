@@ -32,10 +32,11 @@ import '../../../shared/auth/permissions.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
+import '../widgets/employee_identity_correction_dialog.dart';
 
 const _employeePiiFields = {'phone', 'bankAccount', 'bankBranch'};
 
-/// 证件类型与号码只走详情页「修改证件信息」(POST change-identity)，编辑页从不提交
+/// 证件类型与号码只走「修改证件信息」(POST change-identity)，普通编辑从不提交
 /// (服务端 PUT 也已不再接收证件号码)。
 const _employeeIdentityFields = {'idType', 'idNumber'};
 const _employeeLifecycleFields = {
@@ -123,6 +124,9 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
   String _status = 'active';
 
   EmployeeProfile? _profile;
+  EmployeeProfile? _identityProfile;
+  bool _identityBusy = false;
+  String? _identityRefreshError;
 
   // 兼职部门（V459）：主部门之外兼任的部门；保存走独立端点，不进档案 update body。
   List<DeptSelection> _secondaryDepartments = const [];
@@ -187,7 +191,16 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
       if (!mounted || epoch != _loadEpoch || widget.employeeId != employeeId) {
         return;
       }
+      if (p.id != employeeId) {
+        if (p.resolvedFromEmployeeId != employeeId) {
+          throw const FormatException('Employee identity mismatch');
+        }
+        context.replace('/employee/${Uri.encodeComponent(p.id)}/edit');
+        return;
+      }
       _profile = p;
+      _identityProfile = p;
+      _identityRefreshError = null;
       _prefill(p);
       setState(() => _loading = false);
       unawaited(_loadSecondaryDepartments(employeeId, epoch));
@@ -289,6 +302,61 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
     if (d != null) _birthDate.text = DateFormat('yyyy-MM-dd').format(d);
   }
 
+  Future<void> _correctIdentity() async {
+    if (_saving || _identityBusy || _identityProfile == null) return;
+    if (!ref.read(currentPermissionsProvider).contains(Perm.employeePiiEdit)) {
+      return;
+    }
+    setState(() => _identityBusy = true);
+    try {
+      final saved = await showEmployeeIdentityCorrectionDialog(
+        context,
+        ref: ref,
+        employeeId: widget.employeeId,
+        employeeName: _identityProfile!.fullName ?? '',
+        profile: _identityProfile,
+      );
+      if (saved && mounted) await _refreshIdentity();
+    } finally {
+      if (mounted) setState(() => _identityBusy = false);
+    }
+  }
+
+  /// 只回读证件及其派生字段，保留本页尚未保存的其他输入。
+  /// 回读失败可以重试读取，不重放已经成功的证件修改。
+  Future<void> _refreshIdentity() async {
+    final epoch = _loadEpoch;
+    final employeeId = widget.employeeId;
+    setState(() => _identityBusy = true);
+    try {
+      final profile = await ref
+          .read(employeeRepositoryProvider)
+          .getById(employeeId);
+      if (!mounted || epoch != _loadEpoch || employeeId != widget.employeeId) {
+        return;
+      }
+      setState(() {
+        _identityProfile = profile;
+        _gender = _genderCodes.contains(profile.gender)
+            ? profile.gender!
+            : _gender;
+        _birthDate.text = profile.birthDate ?? '';
+        _identityRefreshError = null;
+      });
+    } catch (_) {
+      if (!mounted || epoch != _loadEpoch) return;
+      setState(() {
+        _identityRefreshError = AppLocalizations.of(
+          context,
+        ).employeeIdentitySavedReadbackFailed;
+      });
+    } finally {
+      if (mounted && epoch == _loadEpoch) {
+        setState(() => _identityBusy = false);
+      }
+    }
+  }
+
   /// 仅当当前值 ≠ 加载值才放入 payload（部分更新语义）。
   Map<String, dynamic> _buildPayload() {
     final p = _profile!;
@@ -303,8 +371,8 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
     }
 
     text('fullName', _name, p.fullName);
-    code('gender', _gender, p.gender);
-    text('birthDate', _birthDate, p.birthDate);
+    code('gender', _gender, _identityProfile?.gender);
+    text('birthDate', _birthDate, _identityProfile?.birthDate);
     text('ethnicity', _ethnicity, p.ethnicity);
     text('politicalStatus', _politicalStatus, p.politicalStatus);
     text('maritalStatus', _maritalStatus, p.maritalStatus);
@@ -339,7 +407,13 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
   }
 
   Future<void> _save() async {
-    if (_saving || _profile == null || _loading) return;
+    if (_saving ||
+        _identityBusy ||
+        _identityRefreshError != null ||
+        _profile == null ||
+        _loading) {
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
     final l10n = AppLocalizations.of(context);
     final body = _buildPayload();
@@ -440,6 +514,41 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                         bottom: UtenFloatingActionGroup.scrollClearance,
                       ),
                       children: [
+                        _section(l10n.employeeIdentitySectionTitle, [
+                          Text(
+                            '${_identityProfile?.idType ?? '—'}：${_identityProfile?.idNumber ?? '—'}',
+                          ),
+                          if (_identityRefreshError != null) ...[
+                            Text(
+                              _identityRefreshError!,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                            UtenButton(
+                              key: const ValueKey(
+                                'employee-edit-identity-retry',
+                              ),
+                              type: UtenButtonType.secondary,
+                              onPressed: _identityBusy
+                                  ? null
+                                  : _refreshIdentity,
+                              child: Text(l10n.commonRetry),
+                            ),
+                          ] else if (canEditPii)
+                            UtenButton(
+                              key: const ValueKey(
+                                'employee-edit-correct-identity',
+                              ),
+                              type: UtenButtonType.secondary,
+                              icon: Icons.badge_outlined,
+                              onPressed: _saving || _identityBusy
+                                  ? null
+                                  : _correctIdentity,
+                              child: Text(l10n.employeeIdentityCorrectTitle),
+                            ),
+                          Text(l10n.employeeIdentitySeparateSaveHint),
+                        ]),
                         _section(l10n.employeeEditBasic, [
                           _text(
                             _name,
@@ -716,7 +825,9 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
             size: UtenButtonSize.large,
             icon: Icons.save_outlined,
             isLoading: _saving,
-            onPressed: _saving ? null : _save,
+            onPressed: _saving || _identityBusy || _identityRefreshError != null
+                ? null
+                : _save,
             child: Text(l10n.commonSave),
           ),
         ],

@@ -79,6 +79,7 @@ import '../models/sales_quote_finance_review.dart';
 import '../repositories/sales_quote_finance_review_repository.dart';
 import '../widgets/quote_finance_dialogs.dart';
 import 'finance_quote_review_list_page.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class FinanceQuoteReviewPage extends ConsumerStatefulWidget {
   const FinanceQuoteReviewPage({super.key, required this.id});
@@ -952,11 +953,11 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
               else
                 UtenContentContainer(
                   child: UtenCollapsingHeaderScrollView(
-                    collapsingHeader: Padding(
+                    collapsingHeader: UtenPageEdgePadding(
                       padding: const EdgeInsets.all(UtenSpacing.s12),
                       child: _header(context, l10n, review),
                     ),
-                    body: Padding(
+                    body: UtenPageEdgePadding(
                       padding: const EdgeInsets.fromLTRB(
                         UtenSpacing.s12,
                         0,
@@ -1325,6 +1326,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
         );
 
     return MasterDataTableView<SalesQuoteFinanceLine>(
+      expensiveRowMounts: editable,
       tableKey: 'sales.quote.items',
       platformBinding: tableBinding,
       key: const Key('quote-finance-lines'),

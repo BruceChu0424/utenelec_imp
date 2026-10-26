@@ -136,7 +136,7 @@ public class MouldService {
         };
         // 默认按编号升序（问题 #8：表头编号列默认应从小到大，不是内部 id 顺序）。
         Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
-        Page<Mould> p = repo.findAll(spec, pageable);
+        Page<Mould> p = com.uten.imp.common.export.MasterExportSource.page(repo, em, Mould.class, spec, pageable, f);
         return new PageResponse<>(
                 p.map(this::toList).getContent(), p);
     }
@@ -164,7 +164,7 @@ public class MouldService {
      * 列集与前端模具表格一致——模数/套数（老库 QTY/TQTY）随行导出；
      * 模具类型无数据源（表格恒"—"）不带；实际字段及真实系列分类名称同源导出。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ExportPayload export(MouldQueryFilter f, int maxRows) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "模具编号", ExportColumn.TEXT),
@@ -178,7 +178,7 @@ public class MouldService {
                 new ExportColumn("remark", "备注", ExportColumn.TEXT),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
                 maxRows, (p, size) -> list(f, p, size), m -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("_platformRecordId", m.getId());
@@ -194,7 +194,6 @@ public class MouldService {
                     row.put("status", m.getStatus());
                     return row;
                 });
-        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets（子树范围内各字段 distinct + 空值计数） =====

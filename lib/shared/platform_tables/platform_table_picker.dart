@@ -728,6 +728,13 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
                 UtenDropdownField(
                   key: const Key('platform-column-type'),
                   label: '内容类型',
+                  info: _activeType == 'TEXT'
+                      ? '每行都能写说明或编号；编号开头的 0 不会丢。'
+                      : _activeType == 'NUMBER'
+                      ? '每行填一个数字，只作记录，不改单子的金额和数量。'
+                      : _activeType == 'RELATED'
+                      ? '通过已绑定的资料自动显示。只加入你的表头；资料未关联时显示空，关联变更后同步。'
+                      : '按你设的算法自动算出结果，仅供参考；单子的金额、数量仍按原来的规则算。',
                   value: _activeType,
                   allowClear: false,
                   enabled: !_saving && (_values || _relations.isNotEmpty),
@@ -749,17 +756,6 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
                     _submitted = false;
                     _saveError = null;
                   }),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                ColumnEditorNotice(
-                  icon: _columnIcon(_activeType),
-                  text: _activeType == 'TEXT'
-                      ? '每行都能写说明或编号；编号开头的 0 不会丢。'
-                      : _activeType == 'NUMBER'
-                      ? '每行填一个数字，只作记录，不改单子的金额和数量。'
-                      : _activeType == 'RELATED'
-                      ? '通过已绑定的资料自动显示。只加入你的表头；资料未关联时显示空，关联变更后同步。'
-                      : '按你设的算法自动算出结果，仅供参考；单子的金额、数量仍按原来的规则算。',
                 ),
                 if (!_values && _activeType != 'RELATED') ...[
                   const SizedBox(height: UtenSpacing.s8),

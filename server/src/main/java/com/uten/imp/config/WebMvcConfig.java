@@ -1,7 +1,11 @@
 package com.uten.imp.config;
 
 import com.uten.imp.audit.UserOperationAuditInterceptor;
+import com.uten.imp.common.report.ReportReadPlanInterceptor;
+import com.uten.imp.common.report.MasterReadScopeInterceptor;
 import com.uten.imp.security.ExportRateLimitInterceptor;
+import com.uten.imp.security.ReadScopeVersionAuthority;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.LocaleResolver;
@@ -22,12 +26,21 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     private final ExportRateLimitInterceptor exportRateLimitInterceptor;
     private final UserOperationAuditInterceptor userOperationAuditInterceptor;
+    private final ReadScopeVersionAuthority readScopes;
+    private final SecurityContextCurrentUser currentUser;
 
     public WebMvcConfig(
             ExportRateLimitInterceptor exportRateLimitInterceptor,
             UserOperationAuditInterceptor userOperationAuditInterceptor) {
+        this(exportRateLimitInterceptor,userOperationAuditInterceptor,null,null);
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    public WebMvcConfig(ExportRateLimitInterceptor exportRateLimitInterceptor,
+            UserOperationAuditInterceptor userOperationAuditInterceptor,ReadScopeVersionAuthority readScopes,
+            SecurityContextCurrentUser currentUser) {
         this.exportRateLimitInterceptor = exportRateLimitInterceptor;
         this.userOperationAuditInterceptor = userOperationAuditInterceptor;
+        this.readScopes=readScopes;this.currentUser=currentUser;
     }
 
     /**
@@ -46,11 +59,24 @@ public class WebMvcConfig implements WebMvcConfigurer {
         // 已进入的审计拦截器仍会在 afterCompletion 记录 429 结果。
         registry.addInterceptor(userOperationAuditInterceptor)
                 .addPathPatterns("/api/**");
+        registry.addInterceptor(new ReportReadPlanInterceptor(readScopes,currentUser))
+                .addPathPatterns("/api/sales/reports/**", "/api/purchase/reports/**",
+                        "/api/subcontract/reports/**", "/api/production/reports/**",
+                        "/api/stock/reports/**", "/api/finance/reports/**");
+        registry.addInterceptor(new com.uten.imp.common.report.NativeFacetCandidateInterceptor(readScopes,currentUser))
+                .addPathPatterns(com.uten.imp.common.report.NativeFacetRoutes.paths().toArray(String[]::new));
+        registry.addInterceptor(new MasterReadScopeInterceptor(readScopes,currentUser))
+                .addPathPatterns("/api/master/**");
+        registry.addInterceptor(new com.uten.imp.common.report.PurchasePrintReadScopeInterceptor(readScopes,currentUser))
+                .addPathPatterns("/api/purchase/orders/*/print-data");
+        registry.addInterceptor(new com.uten.imp.common.report.LegacyExportReadScopeInterceptor(readScopes,currentUser))
+                .addPathPatterns("/api/**/export");
         // 拦截所有模块的导出端点及工资条 PDF 下载；这些端点均为 POST，
         // 非 POST 在拦截器内放行。
         registry.addInterceptor(exportRateLimitInterceptor)
                 .addPathPatterns(
                         "/api/**/export",
+                        "/api/report-export-jobs/*/download",
                         "/api/payroll/slips/*/download");
     }
 }

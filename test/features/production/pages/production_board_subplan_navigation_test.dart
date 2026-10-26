@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_board_page.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
@@ -65,6 +66,12 @@ void main() {
         child: MaterialApp.router(routerConfig: router),
       ),
     );
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ProductionBoardPage)),
+    );
+    addTearDown(
+      attachPageResume(router, container.read(pageResumeProvider.notifier)),
+    );
     await tester.pumpAndSettle();
 
     // 历史记录段：默认近三个月加载；再点「全部」全量看已结案/历史计划卡。
@@ -84,7 +91,7 @@ void main() {
     final readsBeforeReturn = progressReads;
     await tester.tap(find.text('返回进度看板'));
     await tester.pumpAndSettle();
-    expect(progressReads, greaterThan(readsBeforeReturn));
+    expect(progressReads, readsBeforeReturn + 1);
   });
 
   testWidgets('compact board child-plan stays usable at 1.3 text scale', (

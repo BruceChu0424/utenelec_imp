@@ -10,6 +10,11 @@ class ProcurementOrderClosureLine {
     required this.receivedQty,
     required this.remainingQty,
     required this.remainingGiftQty,
+    this.returnedQty = '0',
+    this.settledLossQty = '0',
+    this.giftQty = '0',
+    this.giftReceivedQty = '0',
+    this.giftReturnedQty = '0',
   });
 
   final String orderItemId;
@@ -21,6 +26,11 @@ class ProcurementOrderClosureLine {
   final String receivedQty;
   final String? remainingQty;
   final String? remainingGiftQty;
+  final String returnedQty;
+  final String settledLossQty;
+  final String giftQty;
+  final String giftReceivedQty;
+  final String giftReturnedQty;
 
   factory ProcurementOrderClosureLine.fromJson(Map<String, dynamic> json) =>
       ProcurementOrderClosureLine(
@@ -33,6 +43,11 @@ class ProcurementOrderClosureLine {
         receivedQty: json['receivedQty']?.toString() ?? '0',
         remainingQty: json['remainingQty']?.toString(),
         remainingGiftQty: json['remainingGiftQty']?.toString(),
+        returnedQty: json['returnedQty']?.toString() ?? '0',
+        settledLossQty: json['settledLossQty']?.toString() ?? '0',
+        giftQty: json['giftQty']?.toString() ?? '0',
+        giftReceivedQty: json['giftReceivedQty']?.toString() ?? '0',
+        giftReturnedQty: json['giftReturnedQty']?.toString() ?? '0',
       );
 }
 
@@ -140,6 +155,11 @@ class ProcurementOrderClosureRequest {
     this.rejectionReason,
     this.replacementOrderId,
     this.replacementBillNo,
+    this.executionMode,
+    this.closedByName,
+    this.closedAt,
+    this.unverifiedQuantity = false,
+    this.items = const [],
   });
 
   final String caseId;
@@ -149,9 +169,16 @@ class ProcurementOrderClosureRequest {
   final String? rejectionReason;
   final String? replacementOrderId;
   final String? replacementBillNo;
+  final String? executionMode;
+  final String? closedByName;
+  final String? closedAt;
+  final bool unverifiedQuantity;
+  final List<ProcurementOrderClosureLine> items;
+  bool get isDirect => executionMode == 'DIRECT';
   bool get isPending => status == 'PENDING';
   bool get isApproved => status == 'APPROVED';
   bool get isRejected => status == 'REJECTED';
+  bool get isCanceled => status == 'CANCELED';
 
   factory ProcurementOrderClosureRequest.fromJson(Map<String, dynamic> json) =>
       ProcurementOrderClosureRequest(
@@ -162,5 +189,16 @@ class ProcurementOrderClosureRequest {
         rejectionReason: json['rejectionReason']?.toString(),
         replacementOrderId: json['replacementOrderId']?.toString(),
         replacementBillNo: json['replacementBillNo']?.toString(),
+        executionMode: json['executionMode']?.toString(),
+        closedByName: json['closedByName']?.toString(),
+        closedAt: json['closedAt']?.toString(),
+        unverifiedQuantity: json['unverifiedQuantity'] == true,
+        items: [
+          for (final item in json['items'] as List? ?? const [])
+            if (item is Map)
+              ProcurementOrderClosureLine.fromJson(
+                item.cast<String, dynamic>(),
+              ),
+        ],
       );
 }

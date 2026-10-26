@@ -21,10 +21,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../feedback/uten_overlay_lifecycle.dart';
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/network/server_config.dart';
 import '../../shared/providers/authenticated_scope_provider.dart';
 import 'uten_dropdown_geometry.dart';
+import 'uten_dropdown_scroll_scope.dart';
 import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
 import 'uten_field_placeholder.dart';
@@ -168,6 +170,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
   final GlobalKey _anchorKey = GlobalKey();
   final Set<ScrollPosition> _scrollPositions = {};
   OverlayEntry? _overlay;
+  UtenOverlayLifecycle? _overlayLifecycle;
   OverlayEntry? _pendingOverlayRebuild;
   OverlayState? _overlayHost;
   Rect? _lastAnchor;
@@ -204,8 +207,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
       _scrollObserver?.addListener(_onScrollNotification);
     }
     _aiAttach();
-    final route = ModalRoute.of(context);
-    if (_overlay != null && route != null && !route.isCurrent) _close();
+    if (_overlay != null && _overlayLifecycle?.isAvailable == false) _close();
     if (_overlay != null &&
         (!(_overlayHost?.mounted ?? false) ||
             !identical(
@@ -355,6 +357,9 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     );
     _overlay = entry;
     host.insert(entry);
+    _overlayLifecycle = UtenOverlayLifecycle(onUnavailable: _close);
+    _overlayLifecycle!.attach(context);
+    if (!identical(_overlay, entry)) return;
     _watchScrollPositions();
     WidgetsBinding.instance.addObserver(this);
     _watchAnchor(entry);
@@ -414,6 +419,8 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
   }
 
   void _close() {
+    _overlayLifecycle?.dispose();
+    _overlayLifecycle = null;
     final entry = _overlay;
     final search = _searchCtl;
     final focus = _searchFocus;
@@ -1262,9 +1269,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                       ];
                       final wholeScroll =
                           maxHeight < 160 * textFactor + handleHeight;
-                      final list = Scrollbar(
-                        controller: scroll,
-                        thumbVisibility: true,
+                      final list = UtenDropdownScrollScope(
                         child: ListView(
                           controller: scroll,
                           shrinkWrap: true,
@@ -1361,15 +1366,6 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     final style = inherited.merge(theme.textTheme.bodyMedium);
     final scaler = MediaQuery.textScalerOf(context);
     final direction = Directionality.of(context);
-    var scrollbar = 8.0;
-    final thickness = ScrollbarTheme.of(context).thickness;
-    for (final states in [
-      <WidgetState>{},
-      {WidgetState.hovered},
-      {WidgetState.dragged},
-    ]) {
-      scrollbar = math.max(scrollbar, thickness?.resolve(states) ?? 0);
-    }
     final addLabel = widget.onAddNew == null
         ? null
         : widget.addNewLabel ?? '添加';
@@ -1378,7 +1374,6 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
       style,
       scaler,
       direction,
-      scrollbar,
       searchable,
       _menuSearchHint,
       widget.allowClear,
@@ -1405,10 +1400,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
       return width;
     }
 
-    // Every row reserves the check column, padding and scrollbar even when not
-    // selected. Disabled section rows use the same semibold font as their text.
-    final itemChrome =
-        UtenSpacing.s12 * 2 + 18 + UtenSpacing.s4 + scrollbar + UtenSpacing.s8;
+    // Every row reserves the same check column and padding. Dropdowns have no
+    // scrollbar gutter; disabled section rows still use semibold label width.
+    const itemChrome =
+        UtenSpacing.s12 * 2 + 18 + UtenSpacing.s4 + UtenSpacing.s8;
     var width = widget.allowClear ? textWidth('不选', style) + itemChrome : 0.0;
     for (final item in visible) {
       final itemStyle = !item.enabled && !item.error

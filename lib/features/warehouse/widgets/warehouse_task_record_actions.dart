@@ -10,6 +10,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/security/secure_storage.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_navigation_session.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
@@ -126,6 +127,7 @@ String warehouseTaskRecordBatchLabel(
 Future<void> _openFinishedArrivalRegistration(
   BuildContext context,
   List<String> reportIds, {
+  required PageNavigationSession navigation,
   List<String>? lotIds,
   bool? preStock,
 }) async {
@@ -139,7 +141,7 @@ Future<void> _openFinishedArrivalRegistration(
   // host router configuration without subscribing across that route boundary.
   // This captures navigation only; the destination keeps its permission gate.
   final source = goRouterPageStateOrNull(context)?.uri ?? router.state.uri;
-  await router.push<void>(
+  await navigation.push<void>(
     RoutePath.warehouseProductionFinishedArrivalRegistration(
       reportIds,
       lotIds: lotIds,
@@ -152,8 +154,9 @@ Future<void> _openFinishedArrivalRegistration(
 Future<void> openWarehouseTaskRecord(
   BuildContext context,
   WidgetRef ref,
-  WarehouseTaskCenterRecord row,
-) async {
+  WarehouseTaskCenterRecord row, {
+  required PageNavigationSession navigation,
+}) async {
   if (!warehouseTaskRecordCanOpen(row)) return;
   if (row.line != null &&
       row.canHandle &&
@@ -166,7 +169,9 @@ Future<void> openWarehouseTaskRecord(
             'WORKSHOP_REQUISITION',
           }.contains(row.action) ||
           warehouseTaskRecordBatchFamily(row)?.startsWith('STOCK:') == true)) {
-    await openWarehouseTaskRecordBatch(context, ref, [row]);
+    await openWarehouseTaskRecordBatch(context, ref, [
+      row,
+    ], navigation: navigation);
     return;
   }
   final id = row.targetId ?? row.id;
@@ -183,7 +188,7 @@ Future<void> openWarehouseTaskRecord(
         );
         return;
       }
-      await context.push<void>(
+      await navigation.push<void>(
         RoutePath.warehouseArrivalRegistration([
           id,
         ], expectationItemIds: itemId == null ? null : [itemId]),
@@ -248,9 +253,12 @@ Future<void> openWarehouseTaskRecord(
         );
         return;
       }
-      await _openFinishedArrivalRegistration(context, [
-        row.dataId('reportId') ?? id,
-      ], lotIds: row.dataId('lotId') == null ? null : [row.dataId('lotId')!]);
+      await _openFinishedArrivalRegistration(
+        context,
+        [row.dataId('reportId') ?? id],
+        navigation: navigation,
+        lotIds: row.dataId('lotId') == null ? null : [row.dataId('lotId')!],
+      );
     case 'FINISHED_COUNT' ||
         'RETURN_RECEIVE' ||
         'PRODUCTION_DRAW' ||
@@ -264,34 +272,36 @@ Future<void> openWarehouseTaskRecord(
             _ => null,
           };
       if (type == null) return;
-      await context.push<void>(
+      await navigation.push<void>(
         RoutePath.stockDocDetail(type, row.dataId('documentId') ?? id),
       );
     case 'STOCK_EDIT' || 'STOCK_REVIEW':
       final type = row.dataId('docType');
       if (type == null || !row.canHandle) return;
       // Detail owns reviewed save, warehouse selection and the original capability gates.
-      await context.push<void>(
+      await navigation.push<void>(
         RoutePath.stockDocDetail(type, row.dataId('documentId') ?? id),
       );
     case 'SALES_OUTBOUND':
-      await context.push<void>(
+      await navigation.push<void>(
         '/warehouse/sales-outbound/${Uri.encodeComponent(id)}',
       );
     case 'SUBCONTRACT_OUTBOUND':
-      await context.push<void>(
+      await navigation.push<void>(
         RouteName.warehouseSubcontractOutboundDetail(id),
       );
     case 'MATERIAL_DISCOVERY':
       if (row.actionData['materialsDefined'] == true && row.canHandle) {
-        await context.push<void>(_drawPath([row]));
+        await navigation.push<void>(_drawPath([row]));
       } else {
-        await context.push<void>(
+        await navigation.push<void>(
           '/warehouse/material-discovery/${Uri.encodeComponent(row.dataId('requestId') ?? id)}',
         );
       }
     case 'WORKSHOP_REQUISITION':
-      await openWarehouseTaskRecordBatch(context, ref, [row]);
+      await openWarehouseTaskRecordBatch(context, ref, [
+        row,
+      ], navigation: navigation);
     case 'QUALITY_RESULT':
       final type = row.dataId('receiptType') ?? row.sourceType;
       final rawItems = row.actionData['inspectionItemIds'];
@@ -314,7 +324,7 @@ Future<void> openWarehouseTaskRecord(
       final items = hasItemScope
           ? (rawItems as List).cast<String>().map((id) => id.trim()).toSet()
           : null;
-      await context.push<void>(
+      await navigation.push<void>(
         Uri(
           path: RouteName.warehouseQualityResultDetail(
             type,
@@ -351,7 +361,7 @@ Future<void> openWarehouseTaskRecord(
           .where((type) => type.segment == segment)
           .firstOrNull;
       if (type == null) return;
-      await context.push<void>(type.detailPath(id));
+      await navigation.push<void>(type.detailPath(id));
     case 'ARRIVAL_EXCEPTION':
       await _openRetained(context, ref, row);
   }
@@ -425,6 +435,7 @@ Future<void> openWarehouseTaskRecordBatch(
   BuildContext context,
   WidgetRef ref,
   List<WarehouseTaskCenterRecord> rows, {
+  required PageNavigationSession navigation,
   bool? preStock,
 }) async {
   if (rows.isEmpty) return;
@@ -480,7 +491,7 @@ Future<void> openWarehouseTaskRecordBatch(
       if (inspectionItems.isEmpty || inspectionItems.length > 100) {
         throw const FormatException('所选品质放行明细无效或超过100项，请刷新后分批办理');
       }
-      await context.push<void>(
+      await navigation.push<void>(
         Uri(
           path: RouteName.warehouseQualityBatchStockIn,
           queryParameters: {
@@ -504,7 +515,7 @@ Future<void> openWarehouseTaskRecordBatch(
         );
         return;
       }
-      await context.push<void>(
+      await navigation.push<void>(
         RoutePath.warehouseArrivalRegistration(
           ids,
           expectationItemIds: items.every((id) => id != null)
@@ -536,6 +547,7 @@ Future<void> openWarehouseTaskRecordBatch(
       await _openFinishedArrivalRegistration(
         context,
         reports,
+        navigation: navigation,
         lotIds: lots.every((id) => id != null) ? lots.cast<String>() : null,
         preStock: preStock,
       );
@@ -593,7 +605,7 @@ Future<void> openWarehouseTaskRecordBatch(
         ),
       );
     case 'SALES_OUTBOUND':
-      await context.push<void>(
+      await navigation.push<void>(
         Uri(
           path: '/warehouse/sales-outbound/batch',
           queryParameters: {
@@ -603,7 +615,7 @@ Future<void> openWarehouseTaskRecordBatch(
         ).toString(),
       );
     case 'SUBCONTRACT_OUTBOUND':
-      await context.push<void>(
+      await navigation.push<void>(
         Uri(
           path: '/warehouse/subcontract-outbound/batch',
           queryParameters: {
@@ -613,7 +625,7 @@ Future<void> openWarehouseTaskRecordBatch(
         ).toString(),
       );
     case 'RETURN_RECEIVE':
-      await context.push<void>(
+      await navigation.push<void>(
         Uri(
           path: '/warehouse/material-returns/batch-receive',
           queryParameters: {
@@ -623,7 +635,7 @@ Future<void> openWarehouseTaskRecordBatch(
         ).toString(),
       );
     case 'DRAW':
-      await context.push<void>(_drawPath(rows));
+      await navigation.push<void>(_drawPath(rows));
     case 'WORKSHOP_REQUISITION':
       final selections = <String, List<String>>{};
       for (final row in rows) {
@@ -633,7 +645,7 @@ Future<void> openWarehouseTaskRecordBatch(
         if (line == null) throw const FormatException('所选领料明细已变化，请刷新后重新选择');
         selections.putIfAbsent(requisition, () => []).add(line);
       }
-      await context.push<void>(
+      await navigation.push<void>(
         Uri(
           path: '/workshop-material/issue/batch',
           queryParameters: {'selections': jsonEncode(selections)},

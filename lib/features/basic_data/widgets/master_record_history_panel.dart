@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_app_bar_action_button.dart';
+import '../../../components/layout/uten_app_bar_action_scope.dart';
+import '../../../core/router/page_navigation_session.dart';
 import '../../../shared/auth/permissions.dart';
 import 'master_inline_edit.dart';
 
@@ -11,14 +12,16 @@ export 'master_record_revision_body.dart';
 /// Opens the full history page and tracks restoration even on browser back.
 Future<void> showMasterRecordHistory(
   BuildContext context, {
+  required PageNavigationSession navigation,
   required String entityType,
   String? recordId,
   String? categoryId,
   required VoidCallback onChanged,
 }) async {
+  final ownerRoute = ModalRoute.of(context);
   final signal = ValueNotifier(false);
   try {
-    await context.push<bool>(
+    await navigation.push<bool>(
       Uri(
         path: '/basicinfo/history',
         queryParameters: {
@@ -32,7 +35,12 @@ Future<void> showMasterRecordHistory(
   } finally {
     final changed = signal.value;
     signal.dispose();
-    if (changed && context.mounted) onChanged();
+    if (changed &&
+        context.mounted &&
+        (ownerRoute?.isActive ?? true) &&
+        (ownerRoute?.isCurrent ?? true)) {
+      onChanged();
+    }
   }
 }
 
@@ -53,7 +61,7 @@ bool canReadMasterRecordHistory(String entityType, Set<String> permissions) {
   return permission != null && permissions.contains('$permission:view');
 }
 
-class MasterRecordHistoryAction extends ConsumerWidget {
+class MasterRecordHistoryAction extends ConsumerStatefulWidget {
   const MasterRecordHistoryAction({
     super.key,
     required this.entityType,
@@ -69,31 +77,63 @@ class MasterRecordHistoryAction extends ConsumerWidget {
   final bool enabled;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MasterRecordHistoryAction> createState() =>
+      _MasterRecordHistoryActionState();
+}
+
+class _MasterRecordHistoryActionState
+    extends ConsumerState<MasterRecordHistoryAction> {
+  final _navigation = PageNavigationSession();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
+  void dispose() {
+    _navigation.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     if (!ref.watch(isSuperAdminProvider) &&
         !canReadMasterRecordHistory(
-          entityType,
+          widget.entityType,
           ref.watch(currentPermissionsProvider),
         )) {
       return const SizedBox.shrink();
     }
-    return UtenAppBarActionButton(
-      label: masterEditText(context, '修改历史', 'Change history', '변경 기록'),
-      onPressed: !enabled
-          ? null
-          : () async {
-              if (!await confirmMasterInlineLeave(context) ||
-                  !context.mounted) {
-                return;
-              }
-              await showMasterRecordHistory(
-                context,
-                entityType: entityType,
-                recordId: recordId,
-                categoryId: categoryId,
-                onChanged: onChanged,
-              );
-            },
+    final actionContext = UtenAppBarActionScope.actionContextOf(context);
+    final navigation =
+        UtenAppBarActionScope.navigationOf(context) ?? _navigation;
+    final entityType = widget.entityType;
+    final recordId = widget.recordId;
+    final categoryId = widget.categoryId;
+    final onChanged = widget.onChanged;
+    return UtenAppBarActionScope.withCloseBeforeAction(
+      context,
+      child: UtenAppBarActionButton(
+        label: masterEditText(context, '修改历史', 'Change history', '변경 기록'),
+        onPressed: !widget.enabled
+            ? null
+            : () async {
+                if (!await confirmMasterInlineLeave(actionContext) ||
+                    !actionContext.mounted) {
+                  return;
+                }
+                await showMasterRecordHistory(
+                  actionContext,
+                  navigation: navigation,
+                  entityType: entityType,
+                  recordId: recordId,
+                  categoryId: categoryId,
+                  onChanged: onChanged,
+                );
+              },
+      ),
     );
   }
 }

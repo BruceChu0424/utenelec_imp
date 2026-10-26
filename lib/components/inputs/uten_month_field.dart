@@ -1,3 +1,4 @@
+import 'uten_dropdown_scroll_scope.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
@@ -158,16 +159,19 @@ class _UtenMonthFieldState extends State<UtenMonthField> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                DropdownButton<int>(
-                  value: year,
-                  isExpanded: true,
-                  items: [
-                    for (var y = widget.lastYear; y >= widget.firstYear; y--)
-                      DropdownMenuItem(value: y, child: Text('$y年')),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) setDialogState(() => year = value);
-                  },
+                UtenDropdownScrollScope(
+                  nativeDropdown: true,
+                  child: DropdownButton<int>(
+                    value: year,
+                    isExpanded: true,
+                    items: [
+                      for (var y = widget.lastYear; y >= widget.firstYear; y--)
+                        DropdownMenuItem(value: y, child: Text('$y年')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setDialogState(() => year = value);
+                    },
+                  ),
                 ),
                 const SizedBox(height: 12),
                 for (var row = 0; row < 4; row++)

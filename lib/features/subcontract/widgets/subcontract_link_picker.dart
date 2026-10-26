@@ -21,6 +21,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/layout/uten_doc_link_picker_sheet.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/uten_supplier_picker.dart';
+import '../../../shared/providers/master_party_options.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../providers/subcontract_providers.dart';
@@ -172,7 +174,33 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
         docIdOf: (d) => d.id,
         partyIdOf: (d) => d.supplierId,
         watchNames: (ref) => ref.watch(mn.masterNameServiceProvider),
-        partyEntries: (names) => names.supplierEntries,
+        pickParty: (context, ref) async {
+          final selected = await resolvePickedParty(
+            ref,
+            () => showUtenSupplierPicker(
+              context,
+              ref,
+              title: '选择委外商',
+              selectableOnly: false,
+              allowQuickCreate: false,
+            ),
+            idOf: (party) => party.id,
+            loadNames: ref.read(mn.masterNameServiceProvider).loadSupplierNames,
+            isResolved: (id) => ref
+                .read(mn.masterNameServiceProvider)
+                .supplierReferenceKnown(id),
+          );
+          return selected == null
+              ? null
+              : (
+                  id: selected.id,
+                  name: ref
+                      .read(mn.masterNameServiceProvider)
+                      .supplier(selected.id),
+                );
+        },
+        loadPartyNames: (ref, ids) =>
+            ref.read(mn.masterNameServiceProvider).loadSupplierNames(ids),
         partyName: (names, supplierId) => names.supplier(supplierId),
         initNames: (ref) async {
           ref.read(mn.masterNameServiceProvider).ensureLoaded();

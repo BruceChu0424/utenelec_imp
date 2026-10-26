@@ -48,7 +48,7 @@ public class ProductionWorkshopTaskController {
     }
 
     /** 我的车间任务单号列 facets（2026-09-25 单号列统一）：{sourcePlan:[…], segment:[…]}。 */
-    @GetMapping("/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('production_execution:view')")
     public Map<String, List<Map<String, Object>>> facets(
             @RequestParam(required = false) String keyword,

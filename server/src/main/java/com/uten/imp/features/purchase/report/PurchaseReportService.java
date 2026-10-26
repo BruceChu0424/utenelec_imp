@@ -4,6 +4,8 @@ import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.report.ReportQueryKit;
+import com.uten.imp.common.report.ReportReadPlan;
+import com.uten.imp.common.report.ReportExportCursor;
 import com.uten.imp.common.report.ReportQueryKit.FacetSpec;
 import com.uten.imp.common.report.ReportQueryKit.WhereBuilder;
 import com.uten.imp.common.report.ReportSort;
@@ -114,14 +116,14 @@ public class PurchaseReportService {
         String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
 
         // data
-        var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
+        var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
         mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = dataQ.getResultList();
+        List<Object[]> rows = ReportExportCursor.rows(em, dataQ);
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -136,14 +138,17 @@ public class PurchaseReportService {
         }
 
         // count
-        var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
-        full.params().forEach(countQ::setParameter);
-        long total = ((Number) countQ.getSingleResult()).longValue();
-        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
+            full.params().forEach(countQ::setParameter);
+            total = ((Number) countQ.getSingleResult()).longValue();
+        }
+        int totalPages = ReportReadPlan.totalPages(total, safeSize);
 
         // facets（用主过滤 baseB，不含列自身筛选）
         Map<String, List<ReportFacet>> facets = new LinkedHashMap<>();
-        for (FacetSpec spec : specs) {
+        for (FacetSpec spec : ReportReadPlan.current().includeFacets() ? specs : List.<FacetSpec>of()) {
             if (priceMasked && isCommercialKey(spec.key())) continue;
             var fq = em.createNativeQuery("SELECT " + spec.selectExpr() + ", COUNT(*) AS cnt " + fromJoin + " "
                     + baseB.sql() + " GROUP BY " + spec.groupExpr() + " ORDER BY " + spec.orderExpr() + " LIMIT 50");
@@ -169,9 +174,9 @@ public class PurchaseReportService {
         // 表格下方合计：与列表用同一份 full（日期/facet/关键字 + 对象级授权谓词）在**整个结果集**
         // 上聚合，与翻到第几页无关；派生表不带 LIMIT/OFFSET，所以绝不会出现「只合计当前页」。
         List<com.uten.imp.common.report.ReportTotal> totals =
-                com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(
                         em, dataSelect, fromJoin, full.sql(), full.params(),
-                        reportTotalSpecs(safeColumns, columns));
+                        reportTotalSpecs(safeColumns, columns)) : List.<com.uten.imp.common.report.ReportTotal>of();
         totals=com.uten.imp.common.report.ReportTotal.withColumnUnits(totals,columns);
 
         List<ReportColumn> visible = safeColumns.stream().filter(c -> !c.key().startsWith("__")).toList();
@@ -270,7 +275,7 @@ public class PurchaseReportService {
         return switch (spec.filterType()) {
             case "uuid"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS uuid)", p, UUID.fromString(value));
             case "int", "style" -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS int)", p, ReportQueryKit.parseRequiredInt(value));
-            case "bool"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, Boolean.valueOf(value));
+            case "bool"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, ReportQueryKit.parseRequiredBoolean(value));
             case "date"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS date)", p, LocalDate.parse(value));
             default      -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS text)", p, value);
         };
@@ -298,6 +303,8 @@ public class PurchaseReportService {
                 ReportColumn.text("spec", "规格", 150),
                 ReportColumn.number("qty", "数量").withUnitKey("__unitName"),
                 ReportColumn.number("receivedQty", "收货数量").withUnitKey("__unitName"),
+                ReportColumn.number("returnedQty", "退货数量").withUnitKey("__unitName"),
+                ReportColumn.number("differenceQty", "差异数").withUnitKey("__unitName"),
                 ReportColumn.number("unreceivedQty", "未收数量").withUnitKey("__unitName"),
                 ReportColumn.number("stockQty", "库存数量").withUnitKey("__baseUnitName"),
                 ReportColumn.number("safeStock", "安全库存").withUnitKey("__baseUnitName"),
@@ -308,10 +315,12 @@ public class PurchaseReportService {
                        i.goods_name_snapshot AS "goodsName", i.goods_code_snapshot AS "goodsCode",
                        col.name AS "colorName", g.spec AS "spec",
                        i.qty AS "qty", i.received_qty AS "receivedQty",
+                       i.returned_qty AS "returnedQty",
+                       %s AS "differenceQty",
                        (i.qty - COALESCE(i.received_qty,0) + COALESCE(i.returned_qty,0)) AS "unreceivedQty",
                        COALESCE(sb.stock_qty,0) AS "stockQty", g.min_qty AS "safeStock",
                        o.id AS "__srcId"
-                """;
+                """.formatted(com.uten.imp.common.finance.ProcurementDeliveryDifference.sql("i.qty", "i.received_qty", "i.returned_qty"));
         String fromJoin = """
                 FROM purchase_order_items i
                 JOIN purchase_orders o ON o.id = i.order_id
@@ -321,7 +330,10 @@ public class PurchaseReportService {
                 LEFT JOIN (SELECT goods_id, SUM(qty) AS stock_qty FROM stock_balances GROUP BY goods_id) sb ON sb.goods_id = i.goods_id
                 """;
         // 未交口径与服务端权威一致：qty − received + returned（退货回补后供应商仍欠交；已退完的行不再催交）。
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false AND (i.qty - COALESCE(i.received_qty,0) + COALESCE(i.returned_qty,0)) > 0");
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false"
+                + " AND o.status=1 AND NOT COALESCE(o.is_closed,false) AND NOT COALESCE(o.is_stopped,false)"
+                + " AND o.termination_case_id IS NULL"
+                + " AND (i.qty - COALESCE(i.received_qty,0) + COALESCE(i.returned_qty,0)) > 0");
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, null, null, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 // 2026-09-25 单号列统一：单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）；
@@ -331,7 +343,7 @@ public class PurchaseReportService {
                 // 开单日期表头 autofilter：按日期降序（近期在上，与表格默认排序一致），空值排末尾。
                 new FacetSpec("billDate", "o.bill_date AS v, TO_CHAR(o.bill_date, 'YYYY-MM-DD') AS lbl",
                         "o.bill_date", "o.bill_date", "date", "v DESC NULLS LAST"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ② 采购申请明细 ========================
@@ -400,7 +412,7 @@ public class PurchaseReportService {
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"),
                 new FacetSpec("closed", "o.is_closed AS v, CASE WHEN o.is_closed THEN '已完成' ELSE '未完成' END AS lbl", "o.is_closed", "o.is_closed", "bool"),
                 new FacetSpec("stopped", "o.is_stopped AS v, CASE WHEN o.is_stopped THEN '已中止' ELSE '未中止' END AS lbl", "o.is_stopped", "o.is_stopped", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ③ 采购申请汇总 ========================
@@ -435,7 +447,7 @@ public class PurchaseReportService {
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
         ReportQueryKit.addSummaryKw(w, kw, "o.bill_no");
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", List.of(), facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, o.id", List.of(), facets, page, size, sort, order);
     }
 
     // ======================== ④ 采购订货明细 ========================
@@ -460,6 +472,7 @@ public class PurchaseReportService {
                 ReportColumn.number("qty", "订货数量").withUnitKey("__unitName"), ReportColumn.money("price", "单价").withUnitKey("__currencyName"),
                 ReportColumn.money("amount", "金额").withUnitKey("__currencyName"), ReportColumn.number("receivedQty", "收货数量").withUnitKey("__unitName"),
                 ReportColumn.number("returnedQty", "退货数量").withUnitKey("__unitName"),
+                ReportColumn.number("differenceQty", "差异数").withUnitKey("__unitName"),
                 ReportColumn.text("__srcId", ""));
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName",
@@ -470,8 +483,9 @@ public class PurchaseReportService {
                        g.model AS "model", g.c_number AS "customerModel", g.spec AS "spec", g.material AS "material", i.weight AS "weight",
                        i.qty AS "qty", i.price AS "price", i.amount_original AS "amount",
                        i.received_qty AS "receivedQty", i.returned_qty AS "returnedQty",
+                       %s AS "differenceQty",
                        o.id AS "__srcId"
-                """;
+                """.formatted(com.uten.imp.common.finance.ProcurementDeliveryDifference.sql("i.qty", "i.received_qty", "i.returned_qty"));
         String fromJoin = """
                 FROM purchase_order_items i
                 JOIN purchase_orders o ON o.id = i.order_id
@@ -492,7 +506,7 @@ public class PurchaseReportService {
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"),
                 new FacetSpec("closed", "o.is_closed AS v, CASE WHEN o.is_closed THEN '已完成' ELSE '未完成' END AS lbl", "o.is_closed", "o.is_closed", "bool"),
                 new FacetSpec("stopped", "o.is_stopped AS v, CASE WHEN o.is_stopped THEN '已中止' ELSE '未中止' END AS lbl", "o.is_stopped", "o.is_stopped", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ⑤ 采购订货汇总 ========================
@@ -531,7 +545,7 @@ public class PurchaseReportService {
         List<FacetSpec> specs = List.of(
                 facetSupplier(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, o.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ⑥ 采购收货明细 ========================
@@ -595,7 +609,7 @@ public class PurchaseReportService {
                 facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ⑦ 采购收货汇总 ========================
@@ -636,7 +650,7 @@ public class PurchaseReportService {
         List<FacetSpec> specs = List.of(
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, o.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ⑧ 采购退货明细（单号合并开单日期、无围数） ========================
@@ -691,7 +705,7 @@ public class PurchaseReportService {
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, o.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ⑨ 采购退货汇总 ========================
@@ -731,7 +745,7 @@ public class PurchaseReportService {
         List<FacetSpec> specs = List.of(
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, o.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== facet 复用 ========================

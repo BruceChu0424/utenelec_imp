@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -315,25 +316,30 @@ class _InventoryCostPostingDialogState
                     '${l10n.inventoryCostSource}: ${_value(row, 'postingId')}\n${l10n.inventoryCostAmount}: ${_value(row, 'amountLocal')}\n${l10n.inventoryCostSourcePeriod}: ${_value(row, 'sourcePeriod')}',
                   ),
                   const SizedBox(height: UtenSpacing.s12),
-                  DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    initialValue: selected,
-                    decoration: UtenInputDecoration(
-                      InputDecoration(
-                        labelText: l10n.inventoryCostTargetPeriod,
+                  UtenDropdownScrollScope(
+                    nativeDropdown: true,
+                    child: DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      initialValue: selected,
+                      decoration: UtenInputDecoration(
+                        InputDecoration(
+                          labelText: l10n.inventoryCostTargetPeriod,
+                        ),
                       ),
+                      items: open
+                          .map(
+                            (period) => DropdownMenuItem(
+                              value: period['period'].toString(),
+                              child: Text(period['period'].toString()),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          localSetState(() => selected = value);
+                        }
+                      },
                     ),
-                    items: open
-                        .map(
-                          (period) => DropdownMenuItem(
-                            value: period['period'].toString(),
-                            child: Text(period['period'].toString()),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value != null) localSetState(() => selected = value);
-                    },
                   ),
                   const SizedBox(height: UtenSpacing.s12),
                   TextFormField(
@@ -640,29 +646,32 @@ class _InventoryCostPostingDialogState
                     children: [
                       SizedBox(
                         width: 220,
-                        child: DropdownButtonFormField<String>(
-                          isExpanded: true,
-                          key: ValueKey(_period),
-                          initialValue: _period,
-                          decoration: UtenInputDecoration(
-                            InputDecoration(
-                              labelText: l10n.inventoryCostTargetPeriod,
+                        child: UtenDropdownScrollScope(
+                          nativeDropdown: true,
+                          child: DropdownButtonFormField<String>(
+                            isExpanded: true,
+                            key: ValueKey(_period),
+                            initialValue: _period,
+                            decoration: UtenInputDecoration(
+                              InputDecoration(
+                                labelText: l10n.inventoryCostTargetPeriod,
+                              ),
                             ),
-                          ),
-                          items: _periods
-                              .map(
-                                (row) => DropdownMenuItem(
-                                  value: row['period'].toString(),
-                                  child: Text(
-                                    '${row['period']} · ${row['status'] == 'CLOSED' ? l10n.inventoryCostClosed : l10n.inventoryCostOpen}',
-                                    maxLines: 1,
+                            items: _periods
+                                .map(
+                                  (row) => DropdownMenuItem(
+                                    value: row['period'].toString(),
+                                    child: Text(
+                                      '${row['period']} · ${row['status'] == 'CLOSED' ? l10n.inventoryCostClosed : l10n.inventoryCostOpen}',
+                                      maxLines: 1,
+                                    ),
                                   ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: _busy
-                              ? null
-                              : (value) => setState(() => _period = value),
+                                )
+                                .toList(),
+                            onChanged: _busy
+                                ? null
+                                : (value) => setState(() => _period = value),
+                          ),
                         ),
                       ),
                       Text(
@@ -701,6 +710,7 @@ class _InventoryCostPostingDialogState
               const SizedBox(height: UtenSpacing.s8),
               Expanded(
                 child: MasterDataTableView<Map<String, dynamic>>(
+      expensiveRowMounts: false,
                   tableKey: 'finance.inventory_cost_posting',
                   columns: columns,
                   items: _rows,

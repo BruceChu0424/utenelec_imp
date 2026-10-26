@@ -3,6 +3,7 @@
 // 基础包取代了原来的「全员角色」(ADR-109)：只有超级管理员能改，保存时服务端按差量落库，
 // 能否放进基础包只看服务端下发的授权策略(需要逐项授予 / 只能逐人授予 / 超管专属的码不行)。
 // 基础包只能逐项勾选，不提供「全部授权」，避免一次把大量权限发给全公司。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +23,7 @@ import '../repositories/admin_repository.dart';
 import 'permission_action_badge.dart';
 import 'permission_catalog_browser.dart';
 import 'admin_permission_workspace.dart';
+import 'admin_permission_export_button.dart';
 
 class AdminBaselinePermView extends ConsumerStatefulWidget {
   const AdminBaselinePermView({
@@ -176,51 +178,68 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
             description: '正在写入基础包变更，请勿重复提交或离开本页。',
           ),
         Expanded(
-          child: ListView(
+          child: UtenPageEdgePadding.scroll(
             padding: const EdgeInsets.fromLTRB(
               UtenSpacing.s16,
               UtenSpacing.s4,
               UtenSpacing.s16,
               UtenSpacing.s32,
             ),
-            children: [
-              if (showNotice)
-                UtenCard(
-                  margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s16,
-                    vertical: UtenSpacing.s12,
+            preserveStart: !showNotice,
+            builder: (context, pagePadding) => ListView(
+              padding: pagePadding,
+              children: [
+                if (showNotice)
+                  UtenCard(
+                    margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s16,
+                      vertical: UtenSpacing.s12,
+                    ),
+                    child: _scopeNotice(),
                   ),
-                  child: _scopeNotice(),
-                ),
-              UtenCard(
-                key: const ValueKey('admin-baseline-permission-card'),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '权限明细',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+                UtenCard(
+                  key: const ValueKey('admin-baseline-permission-card'),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: UtenSpacing.s16,
+                        runSpacing: UtenSpacing.s8,
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            '权限明细',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          AdminPermissionExportButton(
+                            scope: PermissionExportScope.baseline,
+                            enabled:
+                                !_isDirty && !_saving && baselineAsync.hasValue,
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _isDirty
-                          ? '全员基础包 · 已包含 ${checked.length} 项 · $_dirtyCount 项未保存'
-                          : '全员基础包 · 已包含 ${checked.length} 项',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: _isDirty
-                            ? UtenColors.warning
-                            : theme.colorScheme.onSurfaceVariant,
+                      const SizedBox(height: 2),
+                      Text(
+                        _isDirty
+                            ? '全员基础包 · 已包含 ${checked.length} 项 · $_dirtyCount 项未保存'
+                            : '全员基础包 · 已包含 ${checked.length} 项',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: _isDirty
+                              ? UtenColors.warning
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    _body(baselineAsync, catalogAsync, checked),
-                  ],
+                      const SizedBox(height: UtenSpacing.s12),
+                      _body(baselineAsync, catalogAsync, checked),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         if (_isDirty)

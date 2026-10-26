@@ -15,6 +15,7 @@ import 'package:uten_imp/shared/models/procurement_order_closure.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/widgets/procurement_order_closure_blocker_action.dart';
 import 'package:uten_imp/shared/widgets/procurement_order_closure_dialog.dart';
+import 'package:uten_imp/shared/widgets/procurement_order_closure_batch_dialog.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 
@@ -71,8 +72,23 @@ class _Api extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
+    if (path.endsWith('/batch-preview')) {
+      previewReads++;
+      return {
+        'items': [
+          {'orderType': orderType, 'orderId': 'order-1', ...response},
+        ],
+      };
+    }
     submitted = (body as Map).cast<String, dynamic>();
-    return {};
+    return path.endsWith('/batch-requests')
+        ? {
+            'submittedCount': 1,
+            'approvals': [
+              {'status': 'APPROVED'},
+            ],
+          }
+        : {'status': 'APPROVED'};
   }
 }
 
@@ -81,6 +97,7 @@ Future<({ProviderContainer container, GoRouter router})> _mount(
   _Api api, {
   Set<String> permissions = const {Perm.procurementInspectionView},
   bool settle = true,
+  bool batch = false,
 }) async {
   tester.view.physicalSize = const Size(1400, 1000);
   tester.view.devicePixelRatio = 1;
@@ -92,15 +109,30 @@ Future<({ProviderContainer container, GoRouter router})> _mount(
         path: '/',
         builder: (context, _) => Scaffold(
           body: TextButton(
-            onPressed: () => showProcurementOrderClosureDialog(
-              context,
-              orderType: api.orderType,
-              orderId: 'order-1',
-              stillCurrent: () => true,
-            ),
+            onPressed: () => batch
+                ? showProcurementOrderClosureBatchDialog(
+                    context,
+                    orders: [
+                      ProcurementOrderClosureTarget(
+                        orderType: api.orderType,
+                        orderId: 'order-1',
+                      ),
+                    ],
+                    stillCurrent: () => true,
+                  )
+                : showProcurementOrderClosureDialog(
+                    context,
+                    orderType: api.orderType,
+                    orderId: 'order-1',
+                    stillCurrent: () => true,
+                  ),
             child: const Text('申请结束'),
           ),
         ),
+      ),
+      GoRoute(
+        path: '/replacement',
+        builder: (_, _) => const Scaffold(body: Text('替换后的阻断单据')),
       ),
       GoRoute(
         path: '/warehouse/inspections/:type/:receiptId',
@@ -159,6 +191,52 @@ Future<({ProviderContainer container, GoRouter router})> _mount(
 }
 
 void main() {
+  for (final batch in [false, true]) {
+    for (final navigation in ['go', 'platform', 'replace']) {
+      testWidgets('$navigation return releases closure blocker batch=$batch', (
+        tester,
+      ) async {
+        final api = _Api('PURCHASE');
+        final fixture = await _mount(tester, api, batch: batch);
+        final blocker = find.byKey(
+          const Key('procurement-order-closure-blocker-open'),
+        );
+        expect(api.previewReads, 1);
+        for (var visit = 0; visit < 2; visit++) {
+          expect(tester.widget<UtenButton>(blocker).onPressed, isNotNull);
+          await tester.tap(blocker);
+          await tester.pumpAndSettle();
+          expect(find.text('真实质检办理 PURCHASE/receipt-1'), findsOneWidget);
+          if (navigation == 'replace') {
+            fixture.router.replace<void>('/replacement');
+            await tester.pumpAndSettle();
+            expect(find.text('替换后的阻断单据'), findsOneWidget);
+            expect(api.previewReads, visit + 1);
+            fixture.router.pop();
+          } else if (navigation == 'go') {
+            fixture.router.go('/');
+          } else {
+            await fixture.router.routeInformationProvider
+                .didPushRouteInformation(RouteInformation(uri: Uri.parse('/')));
+          }
+          await tester.pumpAndSettle(
+            const Duration(milliseconds: 100),
+            EnginePhase.sendSemanticsUpdate,
+            const Duration(seconds: 3),
+          );
+          expect(tester.widget<UtenButton>(blocker).onPressed, isNotNull);
+          expect(api.previewReads, visit + 2);
+        }
+        expect(
+          api.submitted,
+          isNull,
+          reason: 'Navigation never submits closure.',
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   for (final type in ['PURCHASE', 'SUBCONTRACT']) {
     testWidgets(
       '$type quality blocker preserves physical inspection and refreshes on real return',

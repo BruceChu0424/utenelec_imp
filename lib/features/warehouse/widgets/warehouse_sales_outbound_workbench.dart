@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 销售出库工作台（可嵌入）：仓库侧对财务已放行的销售出货一步确认出库。
 //
@@ -111,7 +112,24 @@ class WarehouseSalesOutboundWorkbench extends ConsumerStatefulWidget {
 
 class _WarehouseSalesOutboundWorkbenchState
     extends ConsumerState<WarehouseSalesOutboundWorkbench>
-    with UtenRefreshParticipant<WarehouseSalesOutboundWorkbench> {
+    with
+        UtenRefreshParticipant<WarehouseSalesOutboundWorkbench>,
+        ScopedPagedReadViewMixin<WarehouseSalesOutboundWorkbench> {
+  int get _refreshPage => _tableRows.visiblePage ?? (_result?.page ?? 1);
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    ++_requestVersion;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+      _selectedIds.clear();
+      _tableRows.update(const []);
+    });
+  }
+
   PagedResult<WarehouseSalesOutboundSummary>? _result;
   bool _loading = false;
   String? _error;
@@ -164,7 +182,7 @@ class _WarehouseSalesOutboundWorkbenchState
     }
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     if (!mounted || !_shouldLoad) return;
     final version = ++_requestVersion;
     final seg = _seg!;
@@ -176,25 +194,63 @@ class _WarehouseSalesOutboundWorkbenchState
       _error = null;
     });
     try {
-      final result = await ref
-          .read(warehouseSalesOutboundRepositoryProvider)
-          .list(
-            page: page,
-            keyword: _keyword,
-            warehouseWorkStatus:
-                _workStatusColumnFilter ?? (seg.history ? null : seg.status),
-            dateFrom: range == null
-                ? null
-                : ChinaDateTime.formatDate(range.start),
-            dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
-            scope: WarehouseListScope.of(context),
-            // 2026-09-25 单号列统一：出货单号排序白名单 + 表头值筛选（服务端精确匹配）。
-            sort: _columnFilters.sortColumn,
-            order: _columnFilters.sortColumn == null
-                ? null
-                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
-            billNo: _columnFilters['billNo'],
-          );
+      final pageRepository = ref.read(warehouseSalesOutboundRepositoryProvider);
+      final pageKeyword = _keyword;
+      final pageWarehouseWorkStatus =
+          _workStatusColumnFilter ?? (seg.history ? null : seg.status);
+      final pageDateFrom = range == null
+          ? null
+          : ChinaDateTime.formatDate(range.start);
+      final pageDateTo = range == null
+          ? null
+          : ChinaDateTime.formatDate(range.end);
+      final pageScope = WarehouseListScope.of(context);
+      final pageSort = _columnFilters.sortColumn;
+      final pageOrder = _columnFilters.sortColumn == null
+          ? null
+          : (_columnFilters.sortAscending ? 'asc' : 'desc');
+      final pageBillNo = _columnFilters['billNo'];
+
+      final result = await readScopedPage(
+        page,
+        slot: '_load',
+        query: [
+          pageRepository,
+          pageKeyword,
+          pageWarehouseWorkStatus,
+          pageDateFrom,
+          pageDateTo,
+          pageScope,
+          pageSort,
+          pageOrder,
+          pageBillNo,
+        ],
+        currentQuery: () => [
+          ref.read(warehouseSalesOutboundRepositoryProvider),
+          _keyword,
+          _workStatusColumnFilter ?? (seg.history ? null : seg.status),
+          range == null ? null : ChinaDateTime.formatDate(range.start),
+          range == null ? null : ChinaDateTime.formatDate(range.end),
+          WarehouseListScope.of(context),
+          _columnFilters.sortColumn,
+          _columnFilters.sortColumn == null
+              ? null
+              : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+          _columnFilters['billNo'],
+        ],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.list(
+          page: target,
+          keyword: pageKeyword,
+          warehouseWorkStatus: pageWarehouseWorkStatus,
+          dateFrom: pageDateFrom,
+          dateTo: pageDateTo,
+          scope: pageScope,
+          sort: pageSort,
+          order: pageOrder,
+          billNo: pageBillNo,
+        ),
+      );
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _result = result;
@@ -352,7 +408,7 @@ class _WarehouseSalesOutboundWorkbenchState
       ),
     );
     if (!mounted) return;
-    await _load(_result?.page ?? 1);
+    await _load(_refreshPage);
   }
 
   Future<void> _openDetail(WarehouseSalesOutboundSummary item) async {
@@ -362,14 +418,14 @@ class _WarehouseSalesOutboundWorkbenchState
     );
     if (drafts.isNotEmpty) {
       await resumeTaskFormDraft(context, ref, drafts);
-      if (mounted) await _load(_result?.page ?? 1);
+      if (mounted) await _load(_refreshPage);
       return;
     }
     if (_loading || _searchPending || _error != null) return;
     await context.push(
       '/warehouse/sales-outbound/${Uri.encodeComponent(item.id)}',
     );
-    if (mounted) await _load(_result?.page ?? 1);
+    if (mounted) await _load(_refreshPage);
   }
 
   List<Widget> _batchActions(BuildContext context, Set<String> ids) {
@@ -458,6 +514,7 @@ class _WarehouseSalesOutboundWorkbenchState
           : _seg!.history && _historyTime.isNone
           ? const UtenHistoryTimePlaceholder()
           : MasterDataTableView<WarehouseSalesOutboundSummary>(
+              expensiveRowMounts: false,
               rowsController: _tableRows,
               paginationRevision: _result,
               paginationScope: (
@@ -510,11 +567,11 @@ class _WarehouseSalesOutboundWorkbenchState
               isLoading: _loading && _result == null,
               loadingMore: _loading && _result != null,
               error: result.items.isEmpty ? _error : null,
-              onRetry: () => _load(result.page),
+              onRetry: () => _load(_refreshPage),
               emptyMessage: _emptyMessage,
               currentPage: result.page,
               totalPages: result.totalPages,
-              onPageChange: _load,
+              onPageChange: (page) => _load(page, useCache: true),
             ),
     );
   }

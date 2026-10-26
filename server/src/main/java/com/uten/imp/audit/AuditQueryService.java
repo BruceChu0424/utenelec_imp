@@ -76,7 +76,10 @@ public class AuditQueryService {
             "material_categories", List.of(
                     "material_categories", "api/master/material-categories"),
             "clients", List.of("clients", "api/master/clients"),
-            "suppliers", List.of("suppliers", "api/master/suppliers"));
+            "suppliers", List.of("suppliers", "api/master/suppliers"),
+            "employee", List.of("employee", "employees", "api/employees"),
+            "employees", List.of("employee", "employees", "api/employees"),
+            "api/employees", List.of("employee", "employees", "api/employees"));
     private static final DateTimeFormatter EXPORT_TIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final List<ExportColumn> EXPORT_COLUMNS = List.of(
@@ -129,6 +132,17 @@ public class AuditQueryService {
     private final AuditEventInterpreter interpreter;
     private final AuditActorDirectory actorDirectory;
     private final AuditSummaryAggregation summaryAggregation;
+    private AuditExportProjectionReader exportReader;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setExportReader(AuditExportProjectionReader reader) { this.exportReader=java.util.Objects.requireNonNull(reader); }
+
+    private final com.uten.imp.application.port.EmployeeIdentityLookupPort employeeIdentities;
+
+    /** Compatibility for focused tests; production injects the organization-owned read port. */
+    public AuditQueryService(AuditLogRepository repo, AuditEventInterpreter interpreter,
+            AuditActorDirectory actorDirectory, AuditSummaryAggregation summaryAggregation) {
+        this(repo,interpreter,actorDirectory,summaryAggregation,null);
+    }
 
     /** Package-local compatibility constructor for focused specification tests. */
     AuditQueryService(
@@ -196,7 +210,7 @@ public class AuditQueryService {
      * bulk export because they are large and more sensitive. The audit ID and
      * request ID remain available for a focused detail investigation.
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('audit_log:view')"
             + " and hasAuthority('audit_log:export')")
     public ExportPayload export(AuditSearchCriteria criteria, int maxRows) {
@@ -206,28 +220,17 @@ public class AuditQueryService {
                     ErrorCode.VALIDATION_FAILED,
                     "导出行数上限配置异常，请先在系统设置中调整为 1 至 100000");
         }
-        int safeMaxRows = Math.min(maxRows, 10_000);
-        Specification<AuditLog> spec = specification(withResolvedSnapshot(criteria));
+        int safeMaxRows = Math.min(com.uten.imp.common.export.LegacyExportBudget.maximumRows(maxRows), 10_000);
+        // An explicit old online snapshot remains a filter. RR provides the new
+        // export view; no inferred maximum ID is used as a completeness watermark.
+        Specification<AuditLog> spec = specification(criteria);
         long total = repo.count(spec);
         if (total > safeMaxRows) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "当前筛选结果共 " + total + " 条，超过单次导出上限 "
-                            + safeMaxRows + " 条，请缩小日期或筛选范围");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "当前筛选结果共 " + total + " 条，超过单次导出上限 " + safeMaxRows + " 条，请缩小日期或筛选范围");
         }
-        Page<AuditLog> page = repo.findAll(
-                spec,
-                PageRequest.of(
-                        0,
-                        safeMaxRows,
-                        Sort.by(Sort.Direction.DESC, "createdAt")
-                                .and(Sort.by(Sort.Direction.DESC, "id"))));
-        AuditActorDirectory.Resolution actors = actorDirectory.resolve(
-                AuditActorDirectory.actorIdsOf(page.getContent()),
-                AuditActorDirectory.actorAccountsOf(page.getContent()));
-        List<Map<String, Object>> rows = page.getContent().stream()
-                .map(value -> toExportRow(value, actors))
-                .toList();
+        var sink=com.uten.imp.common.export.ExportPageSink.current();
+        List<Map<String,Object>> rows=sink==null?new ArrayList<>():null;
         List<ExportColumn> currentColumns = new ArrayList<>(EXPORT_COLUMNS);
         currentColumns.addAll(List.of(
             new ExportColumn("summary", "操作内容", ExportColumn.TEXT),
@@ -237,7 +240,15 @@ public class AuditQueryService {
             new ExportColumn("department", "部门", ExportColumn.TEXT),
             new ExportColumn("device", "设备", ExportColumn.TEXT),
             new ExportColumn("change", "变化摘要", ExportColumn.TEXT)));
-        return new ExportPayload(currentColumns, rows, rows.size());
+        if(total>0) {
+            java.util.Objects.requireNonNull(exportReader,"Audit export projection reader is required").read(spec,total,batch->{
+                com.uten.imp.common.export.ExportOperationCheckpoint.check();
+                AuditActorDirectory.Resolution actors=actorDirectory.resolve(AuditActorDirectory.actorIdsOf(batch),AuditActorDirectory.actorAccountsOf(batch));
+                List<Map<String,Object>> projected=batch.stream().map(value->toExportRow(value,actors)).toList();
+                if(sink==null)rows.addAll(projected);else sink.accept(new ExportPayload(currentColumns,projected,Math.toIntExact(total)));
+            });
+        } else if(sink!=null)sink.accept(new ExportPayload(currentColumns,List.of(),0));
+        return new ExportPayload(currentColumns, sink==null?rows:List.of(), Math.toIntExact(total));
     }
 
     private Map<String, Object> toExportRow(AuditLog value, AuditActorDirectory.Resolution actors) {
@@ -385,9 +396,12 @@ public class AuditQueryService {
         String outcome = normalizedFilter(criteria.outcome());
         String eventSource = normalizedFilter(criteria.eventSource());
         UUID parsedRequestId = parseRequestId(criteria.requestId());
+        List<String> employeeTargetIds = employeeIdentityTargets(criteria);
         if (criteria.snapshotId() != null) {
             validateSnapshotId(criteria.snapshotId());
         }
+        java.util.Set<UUID> nameMatchedActorIds = hasText(criteria.keyword())
+                ? actorDirectory.findUserIdsByNameKeyword(criteria.keyword()) : java.util.Set.of();
         Specification<AuditLog> base = (root, q, cb) -> {
             List<Predicate> ps = new ArrayList<>();
             if (hasText(criteria.action())) {
@@ -419,8 +433,9 @@ public class AuditQueryService {
                         : storedTarget.in(aliases));
             }
             if (hasText(criteria.targetId())) {
-                ps.add(cb.equal(cb.lower(root.get("targetId")),
-                        criteria.targetId().trim().toLowerCase(Locale.ROOT)));
+                Expression<String> targetId = cb.lower(root.get("targetId"));
+                ps.add(employeeTargetIds.size()>1 ? targetId.in(employeeTargetIds)
+                        : cb.equal(targetId,criteria.targetId().trim().toLowerCase(Locale.ROOT)));
             }
             if (eventSource != null) {
                 ps.add(cb.equal(cb.lower(root.get("eventSource")),
@@ -475,8 +490,6 @@ public class AuditQueryService {
                         root.get("after"),
                         cb.literal("target_legacy_code"));
                 // 操作人支持按"姓名"检索：先解析命中的用户 ID，再并入 OR 组。
-                java.util.Set<UUID> nameMatchedActorIds =
-                        actorDirectory.findUserIdsByNameKeyword(criteria.keyword());
                 List<Predicate> keywordOr = new ArrayList<>(List.of(
                         cb.like(cb.lower(root.get("action")), pattern, '!'),
                         cb.like(cb.lower(root.get("actorAccount")), pattern, '!'),
@@ -516,7 +529,18 @@ public class AuditQueryService {
         return base;
     }
 
-    static void validateFilterValues(AuditSearchCriteria criteria) {
+    private List<String> employeeIdentityTargets(AuditSearchCriteria criteria) {
+        if(employeeIdentities==null || !hasText(criteria.targetId()) || !hasText(criteria.targetType())
+                || !Set.of("employee","employees","api/employees","employee_sensitive","employee_compensation")
+                    .contains(criteria.targetType().trim().toLowerCase(Locale.ROOT)))
+            return List.of();
+        try {
+            UUID raw=UUID.fromString(criteria.targetId().trim());
+            return employeeIdentities.employeeIdentityMembers(raw).stream().map(UUID::toString).toList();
+        } catch(IllegalArgumentException invalidUuid) { return List.of(); }
+    }
+
+    public static void validateFilterValues(AuditSearchCriteria criteria) {
         validateAllowed(
                 criteria.riskLevel(), ALLOWED_RISK_LEVELS,
                 "风险等级仅支持严重、高、中、低、有风险");

@@ -1,3 +1,4 @@
+import '../../support/native_facet_fake_transport.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -278,12 +279,16 @@ void main() {
       size: const Size(1280, 900),
     );
 
-    expect(api.facetPaths.last, '/procurement/inspection/records/facets');
+    expect(api.facetPaths, isEmpty);
     final table = tester.widget<MasterDataTableView<QualityInspectionRecord>>(
       find.byKey(const Key('quality-inspection-record-table')),
     );
     expect(table.facets.keys, containsAll(<String>['sourceNo', 'referenceNo']));
-    expect(table.facets['sourceNo']?.single.value, 'PR20260831001');
+    final sourcePage = await tester.runAsync(
+      () => table.facetPageLoaders['sourceNo']!('', 1),
+    );
+    expect(sourcePage!.items.single.value, 'PR20260831001');
+    expect(api.facetPaths.last, '/procurement/inspection/records/facets');
     // IQC 无检查单号，桶为空表。
     expect(table.facets['sheetNo'], isEmpty);
 
@@ -354,7 +359,7 @@ void main() {
   });
 }
 
-class _RecordApi extends ApiClient {
+class _RecordApi extends ApiClient with NativeFacetFakeTransport {
   _RecordApi({this.empty = false}) : super(Dio());
 
   final bool empty;

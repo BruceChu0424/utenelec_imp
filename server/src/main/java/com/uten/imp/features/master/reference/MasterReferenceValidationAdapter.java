@@ -46,6 +46,22 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
     }
 
     @Override
+    public void requireVisibleGoodsBatch(java.util.Collection<UUID> goodsIds) {
+        if(goodsIds==null||goodsIds.stream().anyMatch(Objects::isNull))throw notFound("货品不存在");
+        List<UUID> ids=goodsIds.stream().distinct().toList();
+        if(ids.isEmpty())return;
+        var scope=goodsOwnerScopeEnabled?ownerVisibility.evaluate("goods","goods:view:all"):null;
+        for(int start=0;start<ids.size();start+=200) {
+            var batch=ids.subList(start,Math.min(start+200,ids.size()));
+            List<Object[]> rows=NativeQueryResults.objectArrayRows(em.createNativeQuery(
+                    "SELECT g.id,g.owner_employee_id FROM goods g WHERE g.id IN (:ids)").setParameter("ids",batch));
+            // Deleted/inactive historical references remain readable exactly as requireVisibleGoods.
+            if(rows.size()!=batch.size())throw notFound("货品不存在");
+            for(Object[] row:rows)if(goodsOwnerScopeEnabled&&!isVisibleOwner((UUID)row[1],scope))throw notFound("货品不存在");
+        }
+    }
+
+    @Override
     public boolean canViewGoods(UUID goodsId) {
         if (goodsId == null) return false;
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""

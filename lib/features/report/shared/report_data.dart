@@ -20,6 +20,8 @@ class ReportData {
     required this.total,
     required this.meta,
     this.totals = const [],
+    this.readScopeVersion,
+    this.statisticsGeneratedAt,
   });
 
   final List<ReportColumn> columns;
@@ -33,6 +35,8 @@ class ReportData {
   /// 表格下方合计（服务端在**整个结果集**上算出，与当前页无关）。
   /// 该报表未声明合计列时为空 —— 合计条整体不渲染，绝不退化成「当前页求和」。
   final List<ReportTotal> totals;
+  final String? readScopeVersion;
+  final String? statisticsGeneratedAt;
 }
 
 /// Decodes display metadata in bounded slices before a page publishes it.
@@ -79,6 +83,8 @@ Future<ReportData> parseReportResponseResponsive(
         ? Map<String, dynamic>.from(json['meta'] as Map)
         : const <String, dynamic>{},
     totals: totals,
+    readScopeVersion: json['readScopeVersion'] as String?,
+    statisticsGeneratedAt: json['statisticsGeneratedAt'] as String?,
   );
 }
 
@@ -113,5 +119,7 @@ ReportData parseReportResponse(Map<String, dynamic> json, int fallbackPage) {
     totals: (json['totals'] as List? ?? const [])
         .map((t) => ReportTotal.fromJson(t as Map<String, dynamic>))
         .toList(),
+    readScopeVersion: json['readScopeVersion'] as String?,
+    statisticsGeneratedAt: json['statisticsGeneratedAt'] as String?,
   );
 }

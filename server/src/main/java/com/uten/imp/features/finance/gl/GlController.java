@@ -131,8 +131,10 @@ public class GlController {
     public ReportTableResponse operatingPl(
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) Integer month,
-            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
-        return reports.operatingPl(yearOf(year, dateTo), monthOf(month, dateTo));
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return reports.operatingPlPage(yearOf(year, dateTo), monthOf(month, dateTo), page, size);
     }
 
     // ======================== 报表设置: 报表行 → 科目/部门 ========================

@@ -36,6 +36,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/subcontract_draw.dart';
 import '../repositories/subcontract_draw_repository.dart';
 import '../widgets/subcontract_draw_status.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class SubcontractDrawRequestPage extends ConsumerStatefulWidget {
   const SubcontractDrawRequestPage({
@@ -367,7 +368,7 @@ class _SubcontractDrawRequestPageState
                     absorbing: _saving,
                     child: UtenCollapsingHeaderScrollView(
                       collapsingHeader: _header(),
-                      body: Padding(
+                      body: UtenPageEdgePadding(
                         padding: const EdgeInsets.all(UtenSpacing.s12),
                         child: _linesTable(),
                       ),
@@ -423,7 +424,7 @@ class _SubcontractDrawRequestPageState
   Widget _header() {
     final theme = Theme.of(context);
     final preview = _preview;
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 产成品入库任务(可嵌入)：FQC 放行上限进入队列；登记入库仓库与库位后走两条路线之一
 // ——「先入库后质检」(登记即按库位上架，合格自动入库)或「先质检后入库」(品质放行后按
@@ -82,7 +84,24 @@ class ProductionFinishedInboundTasksView extends ConsumerStatefulWidget {
 
 class _ProductionFinishedInboundTasksViewState
     extends ConsumerState<ProductionFinishedInboundTasksView>
-    with UtenRefreshParticipant<ProductionFinishedInboundTasksView> {
+    with
+        UtenRefreshParticipant<ProductionFinishedInboundTasksView>,
+        ScopedPagedReadViewMixin<ProductionFinishedInboundTasksView> {
+  int get _refreshPage => _tableRows.visiblePage ?? (_result?.page ?? 1);
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    ++_requestVersion;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+      _selectedIds.clear();
+      _tableRows.update(const []);
+    });
+  }
+
   PagedResult<ProductionFinishedInboundTask>? _result;
   bool _loading = false;
   String? _error;
@@ -141,7 +160,11 @@ class _ProductionFinishedInboundTasksViewState
     await _load(1, replaceActive: true);
   }
 
-  Future<void> _load(int page, {bool replaceActive = false}) async {
+  Future<void> _load(
+    int page, {
+    bool replaceActive = false,
+    bool useCache = false,
+  }) async {
     if (_loading && !replaceActive) return;
     final requestVersion = ++_requestVersion;
     final keyword = _keyword;
@@ -151,24 +174,63 @@ class _ProductionFinishedInboundTasksViewState
     });
     widget.onLoadingChanged?.call(true);
     try {
-      final result = await ref
-          .read(productionFinishedInboundTaskRepositoryProvider)
-          .tasks(
-            page: page,
-            keyword: keyword,
-            taskStage: _taskStageFilter,
-            warehouseId: _warehouseIdFilter,
-            scope: WarehouseListScope.of(context),
-            sort: _kSortFields[_columnFilters.sortColumn],
-            order: _columnFilters.sortColumn == null
-                ? null
-                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
-            taskNo: _columnFilters['taskNo'],
-            planNo: _columnFilters['planNo'],
-          );
+      final pageRepository = ref.read(
+        productionFinishedInboundTaskRepositoryProvider,
+      );
+      final pageKeyword = keyword;
+      final pageTaskStage = _taskStageFilter;
+      final pageWarehouseId = _warehouseIdFilter;
+      final pageScope = WarehouseListScope.of(context);
+      final pageSort = _kSortFields[_columnFilters.sortColumn];
+      final pageOrder = _columnFilters.sortColumn == null
+          ? null
+          : (_columnFilters.sortAscending ? 'asc' : 'desc');
+      final pageTaskNo = _columnFilters['taskNo'];
+      final pagePlanNo = _columnFilters['planNo'];
+
+      final result = await readScopedPage(
+        page,
+        slot: '_load',
+        query: [
+          pageRepository,
+          pageKeyword,
+          pageTaskStage,
+          pageWarehouseId,
+          pageScope,
+          pageSort,
+          pageOrder,
+          pageTaskNo,
+          pagePlanNo,
+        ],
+        currentQuery: () => [
+          ref.read(productionFinishedInboundTaskRepositoryProvider),
+          _keyword,
+          _taskStageFilter,
+          _warehouseIdFilter,
+          WarehouseListScope.of(context),
+          _kSortFields[_columnFilters.sortColumn],
+          _columnFilters.sortColumn == null
+              ? null
+              : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+          _columnFilters['taskNo'],
+          _columnFilters['planNo'],
+        ],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.tasks(
+          page: target,
+          keyword: pageKeyword,
+          taskStage: pageTaskStage,
+          warehouseId: pageWarehouseId,
+          scope: pageScope,
+          sort: pageSort,
+          order: pageOrder,
+          taskNo: pageTaskNo,
+          planNo: pagePlanNo,
+        ),
+      );
       if (!mounted || requestVersion != _requestVersion) return;
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
-      unawaited(_loadBillNoFacets());
+
       setState(() {
         _result = result;
         _loading = false;
@@ -234,19 +296,6 @@ class _ProductionFinishedInboundTasksViewState
 
   /// 任务单号/生产计划 facets（2026-09-25 单号列统一）：与列表同过滤口径
   /// （不含单号列自身值筛选）。
-  Future<void> _loadBillNoFacets() => _columnFilters.loadFacets(
-    () => ref
-        .read(productionFinishedInboundTaskRepositoryProvider)
-        .taskBillNoFacets(
-          keyword: _keyword,
-          taskStage: _taskStageFilter,
-          warehouseId: _warehouseIdFilter,
-          scope: WarehouseListScope.of(context),
-        ),
-    onLoaded: () {
-      if (mounted) setState(() {});
-    },
-  );
 
   Future<void> _openTask(ProductionFinishedInboundTask task) async {
     final drafts = finishedInboundTaskDrafts(
@@ -256,7 +305,7 @@ class _ProductionFinishedInboundTasksViewState
     );
     if (drafts.isNotEmpty) {
       await resumeTaskFormDraft(context, ref, drafts);
-      if (mounted) await _load(_result?.page ?? 1);
+      if (mounted) await _load(_refreshPage);
       return;
     }
     if (task.isArrivalRegistration) {
@@ -274,7 +323,7 @@ class _ProductionFinishedInboundTasksViewState
       if (!mounted || changed != true) return;
       // 登记页只失效了待点收计数；返回后统一失效，保证分段徽章/hub/工作台即时联动。
       invalidateWarehouseTaskCounts(ref);
-      await _load(_result?.page ?? 1);
+      await _load(_refreshPage);
       return;
     }
 
@@ -330,7 +379,7 @@ class _ProductionFinishedInboundTasksViewState
     if (!mounted || changed != true) return;
     setState(() => _selectedIds.clear());
     invalidateWarehouseTaskCounts(ref);
-    await _load(_result?.page ?? 1, replaceActive: true);
+    await _load(_refreshPage, replaceActive: true);
   }
 
   /// 「先入库后质检」批量入口(与登记页同款独立权限点，服务端兜底)。
@@ -388,7 +437,7 @@ class _ProductionFinishedInboundTasksViewState
     if (!mounted || changed != true) return;
     invalidateWarehouseTaskCounts(ref);
     _selectedIds.clear();
-    await _load(_result?.page ?? 1, replaceActive: true);
+    await _load(_refreshPage, replaceActive: true);
   }
 
   List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
@@ -490,6 +539,7 @@ class _ProductionFinishedInboundTasksViewState
         ],
       ),
       body: MasterDataTableView<ProductionFinishedInboundTask>(
+        expensiveRowMounts: false,
         rowsController: _tableRows,
         paginationRevision: _result,
         paginationScope: (
@@ -528,6 +578,28 @@ class _ProductionFinishedInboundTasksViewState
           'planNo': _columnFilters.bucketOf('planNo'),
         },
         nullCounts: const {},
+        facetPageLoaders: nativeFacetLoaders(
+          ref,
+          path: '/warehouse/production-finished-in/tasks/facets',
+          fields: const ['taskNo', 'planNo'],
+          filters: {
+            'keyword': _keyword,
+            'taskStage': _taskStageFilter,
+            'warehouseId': _warehouseIdFilter,
+            ...WarehouseListScope.of(context).queryParameters,
+          },
+        ),
+        facetSearchScope: nativeFacetSearchScope(
+          ref,
+          '/warehouse/production-finished-in/tasks/facets',
+          {
+            'keyword': _keyword,
+            'taskStage': _taskStageFilter,
+            'warehouseId': _warehouseIdFilter,
+            ...WarehouseListScope.of(context).queryParameters,
+          },
+        ),
+
         filters: {
           'taskStage': _taskStageFilter,
           'warehouseName': _warehouseIdFilter,
@@ -587,11 +659,11 @@ class _ProductionFinishedInboundTasksViewState
         isLoading: _loading || value == null,
         loadingMore: _loading && value != null,
         error: result.items.isEmpty ? _error : null,
-        onRetry: () => _load(result.page),
+        onRetry: () => _load(_refreshPage),
         emptyMessage: _keyword.isEmpty ? '目前没有待处理的产成品入库任务' : '没有匹配的产成品入库任务',
         currentPage: result.page,
         totalPages: result.totalPages,
-        onPageChange: _load,
+        onPageChange: (page) => _load(page, useCache: true),
       ),
     );
   }

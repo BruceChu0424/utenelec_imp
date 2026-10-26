@@ -58,20 +58,16 @@ class UtenSelectionSummaryPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(UtenRadius.md),
         border: Border.all(color: barBorder),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Flexible(
-            child: Text(
-              '已选 $count 项', // TODO(l10n): 补 arb
-              style: theme.textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: accent,
-              ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final label = Text(
+            '已选 $count 项', // TODO(l10n): 补 arb
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: accent,
             ),
-          ),
-          const SizedBox(width: UtenSpacing.s4),
-          InkWell(
+          );
+          final clear = InkWell(
             key: clearKey,
             onTap: onClear,
             child: SizedBox.square(
@@ -80,8 +76,25 @@ class UtenSelectionSummaryPill extends StatelessWidget {
                 child: Icon(Icons.close_rounded, size: 18, color: accent),
               ),
             ),
-          ),
-        ],
+          );
+          if (constraints.maxWidth <
+              UtenControlMetrics.minimumHitExtent(context) +
+                  UtenSpacing.s4 +
+                  40) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [label, clear],
+            );
+          }
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(child: label),
+              const SizedBox(width: UtenSpacing.s4),
+              clear,
+            ],
+          );
+        },
       ),
     );
   }

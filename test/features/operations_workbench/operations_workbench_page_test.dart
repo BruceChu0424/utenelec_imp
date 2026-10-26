@@ -141,8 +141,11 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(gateway.statuses, hasLength(1));
-      expect(api.calls, 1);
-      // A warehouse dictionary request is still pending, but the table settled.
+      expect(
+        api.calls,
+        0,
+        reason: 'empty task rows need no warehouse dictionary',
+      );
       expect(
         find.byType(MasterDataTableView<OperationsWorkbenchTask>),
         findsOneWidget,
@@ -708,7 +711,8 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(gateway._pending, isNotNull);
-    expect(find.byType(Checkbox), findsNothing);
+    expect(_table(tester).items, isEmpty);
+    expect(_table(tester).isLoading, isTrue);
     gateway.completeRefresh();
     await tester.pumpAndSettle();
 

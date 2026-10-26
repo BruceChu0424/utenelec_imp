@@ -1,3 +1,4 @@
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // 模具选择字段（货品编辑表单「生产」组）：分类树 + 分页明细的自适应侧窗，按编号/名称/位置/
 // 备注模糊搜模具主档，点行暂选、确定后回填；表单值提交模具 UUID（mouldId），展示为「编号 名称」。
 //
@@ -11,11 +12,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_reference_picker_field.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_split_view.dart';
-import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/auth/permissions.dart';
+import 'mould_manufacturer_field.dart';
 import '../models/product_category_node.dart';
 import '../repositories/mould_category_repository.dart';
 import 'master_data_table_view.dart';
@@ -326,9 +328,30 @@ class _MouldSearchSheet extends ConsumerStatefulWidget {
   ConsumerState<_MouldSearchSheet> createState() => _MouldSearchSheetState();
 }
 
-class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
+class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet>
+    with ScopedPagedReadViewMixin<_MouldSearchSheet> {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _boundaryChanged = true;
+    _requestVersion++;
+    if (mounted) {
+      setState(() {
+        _results = const [];
+        _picked = null;
+        _loading = false;
+      });
+    }
+    _closeStaleRoute();
+    if (mounted) {
+      setState(() {
+        _error = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   late final _searchCtl = TextEditingController(text: widget.initialKeyword);
   List<MouldListItem> _results = const [];
+  final _rows = MasterDataTableRowsController<MouldListItem>();
   MouldListItem? _picked;
   bool _loading = false;
   String? _error;
@@ -420,7 +443,11 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
     });
   }
 
-  Future<void> _search(String text, {int page = 1}) async {
+  Future<void> _search(
+    String text, {
+    int page = 1,
+    bool useCache = false,
+  }) async {
     final query = text.trim();
     if (!_canRead || query != _searchCtl.text.trim()) return;
     final requestVersion = ++_requestVersion;
@@ -433,20 +460,35 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
     });
     try {
       final repo = ref.read(mouldRepositoryProvider);
-      final result = await (_categoryId == null
-          ? repo.listGlobal(
-              keyword: query,
-              page: page,
-              size: 50,
-              filters: Map.of(_filters),
-            )
-          : repo.list(
-              _categoryId!,
-              keyword: query,
-              page: page,
-              size: 50,
-              filters: Map.of(_filters),
-            ));
+      final category = _categoryId;
+      final filters = Map<String, String?>.unmodifiable(_filters);
+      Object pagingQuery() => [
+        ref.read(mouldRepositoryProvider),
+        _categoryId,
+        _query,
+        _filters,
+      ];
+      final result = await readScopedPage<MouldListItem>(
+        page,
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        isCurrent: () => _canRead,
+        fetchPage: (target) => category == null
+            ? repo.listGlobal(
+                keyword: query,
+                page: target,
+                size: 50,
+                filters: filters,
+              )
+            : repo.list(
+                category,
+                keyword: query,
+                page: target,
+                size: 50,
+                filters: filters,
+              ),
+      );
       if (!_canRead || requestVersion != _requestVersion) return;
       setState(() {
         _results = result.items;
@@ -515,7 +557,9 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
 
   void _confirm() {
     if (!_canRead || _loading || _error != null || _picked == null) return;
-    final current = _results.where((row) => row.id == _picked!.id).firstOrNull;
+    final current = _rows.items
+        .where((row) => row.id == _picked!.id)
+        .firstOrNull;
     if (current != null) Navigator.pop(context, current);
   }
 
@@ -560,24 +604,7 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '选择模具',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                IconButton(
-                  tooltip: '关闭',
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close_rounded),
-                ),
-              ],
-            ),
-          ),
+          UtenPanelHeader(title: '选择模具', onClose: () => Navigator.pop(context)),
           const Divider(height: 1),
           Expanded(
             child: UtenSplitView(
@@ -588,11 +615,11 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
               selectedLeadingKey: _categoryId,
               openLeadingButtonKey: const Key('mould-picker-open-categories'),
               leading: Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
+                padding: UtenPanelSpacing.body(context),
                 child: _categoryTree(),
               ),
               trailing: Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
+                padding: UtenPanelSpacing.body(context),
                 child: Column(
                   children: [
                     UtenSearchBar(
@@ -605,7 +632,9 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
                     const SizedBox(height: 8),
                     Expanded(
                       child: MasterDataTableView<MouldListItem>(
+                        expensiveRowMounts: false,
                         key: const Key('mould-picker-results'),
+                        rowsController: _rows,
                         columns: [
                           MasterColumnDef(
                             key: 'code',
@@ -636,6 +665,8 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
                             label: '制造商',
                             width: 110,
                             value: (m) => m.manufacturer,
+                            cellBuilder: (_, m) =>
+                                MouldManufacturerValue(value: m.manufacturer),
                           ),
                           MasterColumnDef(
                             key: 'remark',
@@ -667,7 +698,7 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
                         showFullscreenToggle: false,
                         onRowTap: (m) {
                           if (!_canRead || _loading) return;
-                          final current = _results
+                          final current = _rows.items
                               .where((row) => row.id == m.id)
                               .firstOrNull;
                           if (current != null) {
@@ -684,7 +715,8 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
                         isLoading: _loading,
                         error: _error,
                         onRetry: () => _search(_query, page: _requestedPage),
-                        onPageChange: (page) => _search(_query, page: page),
+                        onPageChange: (page) =>
+                            _search(_query, page: page, useCache: true),
                         emptyMessage: '没有匹配的模具',
                       ),
                     ),

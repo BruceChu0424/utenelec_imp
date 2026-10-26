@@ -19,7 +19,24 @@ public record ReportTableResponse(
         int size,
         long total,
         int totalPages,
-        List<ReportTotal> totals) {
+        List<ReportTotal> totals,
+        String readScopeVersion,
+        String statisticsGeneratedAt) {
+    public ReportTableResponse(List<ReportColumn> columns, List<Map<String,Object>> rows,
+            Map<String,List<ReportFacet>> facets,int page,int size,long total,int totalPages,
+            List<ReportTotal> totals,String readScopeVersion) {
+        this(columns,rows,facets,page,size,total,totalPages,totals,readScopeVersion,
+                com.uten.imp.common.report.ReportReadPlan.statisticsGeneratedAt(total,facets,totals));
+    }
+
+
+    public ReportTableResponse(List<ReportColumn> columns, List<Map<String, Object>> rows,
+                               Map<String, List<ReportFacet>> facets, int page, int size,
+                               long total, int totalPages, List<ReportTotal> totals) {
+        this(columns,rows,facets,page,size,total,totalPages,totals,
+                com.uten.imp.common.report.ReportReadPlan.current().readScopeVersion());
+    }
+
 
     /**
      * 兼容构造：不带合计的报表沿用原 7 参签名（{@code totals} 置空，前端整条合计条不渲染）。

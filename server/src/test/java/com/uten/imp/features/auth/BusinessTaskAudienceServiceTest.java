@@ -88,6 +88,19 @@ class BusinessTaskAudienceServiceTest {
                 .containsExactly("subcontract_order:view");
     }
 
+    @Test void publicationTaskIdentityProbeDoesNotBorrowTheOuterReadWindow() {
+        AuthUser actor=actor(true,Set.of("production_plan:view","production_plan:view:all"));
+        when(permissions.grantedPermsOf(actor.getId())).thenReturn(Set.of("production_plan:view","production_plan:view:all"),Set.of("production_plan:view"));
+        tasks.read(()->{
+            assertThat(current.get().orElseThrow().getPermissions()).contains("production_plan:view:all");
+            AuthUser fresh=tasks.freshTaskSubject(actor);
+            assertThat(fresh.isSuperAdmin()).isFalse();
+            assertThat(fresh.getPermissions()).containsExactly("production_plan:view");
+            return null;
+        });
+        verify(permissions,times(2)).grantedPermsOf(actor.getId());
+    }
+
     @Test void taskOwnersRetainHandoverButManualReadDelegationDoesNotBecomeWriteResponsibility() {
         AuthUser actor = actor(true, Set.of("subcontract:view:all", "subcontract_order:view", "subcontract_order:edit"));
         UUID handedOver = UUID.randomUUID(), readOnly = UUID.randomUUID();

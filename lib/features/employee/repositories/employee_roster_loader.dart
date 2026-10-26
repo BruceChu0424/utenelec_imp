@@ -1,4 +1,6 @@
 import '../../../core/network/api_exception.dart';
+import '../../../core/performance/ui_work_budget.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../models/employee_api_models.dart';
 import 'employee_repository.dart';
 
@@ -15,38 +17,31 @@ Future<void> loadEmployeeRoster({
   bool includeSubtree = false,
   String? sort,
   String? order,
+  bool requireStableTotal = false,
 }) async {
-  final rows = <String, EmployeeSummary>{};
-  var page = 1;
-  while (isCurrent()) {
-    final result = await repository.list(
-      page: page,
-      size: 100,
-      search: search,
-      statuses: statuses,
-      departmentId: departmentId,
-      includeSubtree: includeSubtree,
-      sort: sort,
-      order: order,
+  try {
+    await loadCompletePagedSnapshot<EmployeeSummary>(
+      isCurrent: isCurrent,
+      idOf: (row) => row.id,
+      onBatch: onBatch,
+      requireStableTotal: requireStableTotal,
+      loadPage: (page, size) => repository.list(
+        page: page,
+        size: size,
+        search: search,
+        statuses: statuses,
+        departmentId: departmentId,
+        includeSubtree: includeSubtree,
+        sort: sort,
+        order: order,
+      ),
     );
-    if (!isCurrent()) return;
-    final hasMore = result.page < result.totalPages;
-    if (result.page != page || (hasMore && result.items.isEmpty)) {
-      throw ApiException('INVALID_PAGINATION', '员工列表分页信息异常，请刷新后重试');
-    }
-    for (final row in result.items) {
-      rows[row.id] = row;
-    }
-    final incomplete = !hasMore && rows.length != result.total;
-    onBatch(
-      List<EmployeeSummary>.unmodifiable(rows.values),
-      result.total,
-      hasMore || incomplete,
-    );
-    if (incomplete) {
+  } on UiWorkCancelled {
+    return;
+  } on ApiException catch (error) {
+    if (error.code == 'SNAPSHOT_CHANGED') {
       throw ApiException('ROSTER_CHANGED', '员工资料在加载期间已变化，请重新加载完整名册');
     }
-    if (!hasMore) return;
-    page++;
+    rethrow;
   }
 }

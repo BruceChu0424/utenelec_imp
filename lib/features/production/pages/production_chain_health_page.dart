@@ -1,27 +1,25 @@
-import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
-// 生产链路健康初筛（当前只覆盖四类已结构化关系）。
-//
-// 扫描 销售订货 → 物料分析 → 生产计划 → 领料单/采购申请 四类断链：
-//  ① 有销售缺口无分析  ② 有分析未排完计划  ③ 有计划未生成领料单  ④ 有领料单无计划来源
-// 每类显示全量命中数 + 截断明细，点明细跳到权威单据修复。
-// 数据全部来自服务端只读扫描（GET /production/chain-health），页面不自行推断。
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
+import '../../../core/ui/human_error_message.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_material_analysis.dart';
 
+/// Server-owned issue counts and bounded scan details, shown in the shared
+/// table. A category count is not the number of records returned for that type.
 class ProductionChainHealthPage extends ConsumerStatefulWidget {
   const ProductionChainHealthPage({super.key});
 
@@ -32,11 +30,15 @@ class ProductionChainHealthPage extends ConsumerStatefulWidget {
 
 class _ProductionChainHealthPageState
     extends ConsumerState<ProductionChainHealthPage> {
+  static const _detailLimit = 50;
+  static const _allCategory = '__all__';
   List<ChainHealthCategoryView>? _categories;
+  List<_ChainHealthRow> _rows = const [];
+  String? _selectedCategory;
   bool _loading = false;
   String? _error;
 
-  /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
+  /// Existing return-to-page registration and request deduplication stay local.
   String? _myLocation;
 
   @override
@@ -46,7 +48,7 @@ class _ProductionChainHealthPageState
   }
 
   Future<void> _load() async {
-    if (_loading) return;
+    if (!mounted || _loading) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -54,18 +56,41 @@ class _ProductionChainHealthPageState
     try {
       final list = await ref
           .read(apiClientProvider)
-          .getList('/production/chain-health', query: {'limit': 50});
+          .getList('/production/chain-health', query: {'limit': _detailLimit});
       if (!mounted) return;
+      final categories = [
+        for (final entry in list) ChainHealthCategoryView.fromJson(entry),
+      ];
+      final rows = <_ChainHealthRow>[];
+      final occurrences = <String, int>{};
+      for (final category in categories.where(
+        (category) => category.count > 0,
+      )) {
+        for (final issue in category.issues) {
+          final identity = '${category.category}:${issue.route}:${issue.refId}';
+          final occurrence = occurrences.update(
+            identity,
+            (value) => value + 1,
+            ifAbsent: () => 0,
+          );
+          rows.add(_ChainHealthRow(category, issue, '$identity:$occurrence'));
+        }
+      }
       setState(() {
-        _categories = [
-          for (final entry in list) ChainHealthCategoryView.fromJson(entry),
-        ];
+        _categories = categories;
+        _rows = rows;
+        if (!categories.any(
+          (category) =>
+              category.count > 0 && category.category == _selectedCategory,
+        )) {
+          _selectedCategory = null;
+        }
         _loading = false;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error.toString();
+        _error = humanErrorMessage(error) ?? '链路健康数据没有加载出来，请重新扫描或重试。';
         _loading = false;
       });
     }
@@ -73,9 +98,8 @@ class _ProductionChainHealthPageState
 
   @override
   Widget build(BuildContext context) {
-    // 返回即刷新：行点击 push 的计划详情/库存流水里做过操作后返回，重拉健康度。
     _myLocation ??= currentLocationOr(context, RouteName.production);
-    ref.onPageResume(_myLocation!, () => _load());
+    ref.onPageResume(_myLocation!, _load);
     return Scaffold(
       appBar: UtenAppBar(
         title: '链路健康初筛',
@@ -85,223 +109,191 @@ class _ProductionChainHealthPageState
         actions: [
           UtenRefreshButton(
             tooltip: '重新扫描',
-            enabled: !(_loading),
+            enabled: !_loading,
             busy: _loading,
             onRefresh: _load,
           ),
         ],
       ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: _loading && _categories == null
-              ? const Center(child: CircularProgressIndicator())
-              : _error != null && _categories == null
-              ? _errorState()
-              : _body(),
-        ),
-      ),
+      body: SafeArea(child: UtenContentContainer.wide(child: _body())),
     );
   }
-
-  Widget _errorState() => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Text('链路健康数据没有加载出来，请点击「重试」重新加载', textAlign: TextAlign.center),
-        const SizedBox(height: UtenSpacing.s12),
-        FilledButton.icon(
-          onPressed: _load,
-          icon: const Icon(Icons.refresh_rounded),
-          label: const Text('重试'),
-        ),
-      ],
-    ),
-  );
 
   Widget _body() {
-    final categories = _categories ?? const [];
-    final total = categories.fold<int>(0, (sum, c) => sum + c.count);
-    return ListView(
-      // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
-      padding: EdgeInsets.fromLTRB(
-        0,
-        UtenSpacing.s12,
-        0,
-        math.max(UtenSpacing.s12, UtenCapsuleNavScope.occlusionOf(context)),
-      ),
+    final categories = (_categories ?? const <ChainHealthCategoryView>[])
+        .where((category) => category.count > 0)
+        .toList(growable: false);
+    final selected = categories
+        .where(
+          (category) =>
+              _selectedCategory == null ||
+              category.category == _selectedCategory,
+        )
+        .toList(growable: false);
+    final rows = _selectedCategory == null
+        ? _rows
+        : _rows
+              .where((row) => row.category.category == _selectedCategory)
+              .toList(growable: false);
+    final total = selected.fold<int>(
+      0,
+      (sum, category) => sum + category.count,
+    );
+    final truncated = selected.any(
+      (category) => category.count > category.issues.length,
+    );
+    final summary = _categories == null
+        ? (_loading ? '正在扫描…' : '尚未获得扫描结果')
+        : '${_loading ? '上次扫描：' : ''}待处理 $total 条 · 已展示 ${rows.length} 条'
+              '${truncated ? '（明细已截断，每类最多 $_detailLimit 条）' : ''}';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _coverageNotice(),
-        const SizedBox(height: UtenSpacing.s12),
-        _summaryBanner(total),
-        const SizedBox(height: UtenSpacing.s12),
-        for (final category in categories) ...[
-          _categoryCard(category),
-          const SizedBox(height: UtenSpacing.s12),
-        ],
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+          child: UtenFilterToolbar<String>(
+            segmentsKey: const Key('chain-health-category-filter'),
+            autoSelectBadge: false,
+            segments: [
+              const UtenFilterSegment(value: _allCategory, label: '全部'),
+              for (final category in categories)
+                UtenFilterSegment(
+                  value: category.category,
+                  label: category.label,
+                  count: category.count,
+                ),
+            ],
+            selected: {_selectedCategory ?? _allCategory},
+            onSelectionChanged: (value) => setState(
+              () => _selectedCategory = value == _allCategory ? null : value,
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Semantics(
+                    key: truncated
+                        ? const Key('chain-health-truncation')
+                        : null,
+                    liveRegion: truncated,
+                    child: Text(summary, key: const Key('chain-health-counts')),
+                  ),
+                ),
+                _coverageNotice(),
+              ],
+            ),
+          ),
+        ),
+        Expanded(
+          child: MasterDataTableView<_ChainHealthRow>(
+      expensiveRowMounts: false,
+            key: const Key('chain-health-table'),
+            tableKey:
+                'features.production.pages.production_chain_health_page.ProductionChainHealthPage.issues',
+            virtualized: true,
+            rowKeyOf: (row) => row.key,
+            items: rows,
+            columns: [
+              MasterColumnDef(
+                key: 'category',
+                label: '问题类型',
+                width: 220,
+                value: (row) => row.category.label,
+                cellBuilder: (_, row) => Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        row.category.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    UtenFieldHintIcon(
+                      info:
+                          '${row.category.label}\n\n${row.category.description}',
+                      dense: true,
+                    ),
+                  ],
+                ),
+              ),
+              MasterColumnDef(
+                key: 'billNo',
+                label: '单据编号',
+                width: 160,
+                value: (row) => row.issue.billNo ?? '—',
+              ),
+              MasterColumnDef(
+                key: 'label',
+                label: '事项',
+                width: 260,
+                value: (row) => row.issue.label,
+                cellBuilder: (_, row) => Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        row.repeatsBillNo || row.issue.label.isEmpty
+                            ? '—'
+                            : row.issue.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    UtenFieldHintIcon(
+                      info: row.issue.label.isEmpty
+                          ? null
+                          : '原始事项：${row.issue.label}',
+                      dense: true,
+                    ),
+                  ],
+                ),
+              ),
+              MasterColumnDef(
+                key: 'detail',
+                label: '详情',
+                width: 440,
+                value: (row) => row.issue.detail ?? '—',
+              ),
+              MasterColumnDef(
+                key: 'refId',
+                label: '来源标识',
+                width: 220,
+                defaultVisible: false,
+                value: (row) => row.issue.refId,
+              ),
+            ],
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            onRowTap: (row) => _open(row.issue),
+            isLoading: _loading && _categories == null,
+            loadingMore: _loading && _categories != null,
+            error: _error,
+            onRetry: _load,
+            emptyMessage: _categories == null
+                ? '尚未获得扫描结果'
+                : total > 0
+                ? '本次扫描未返回本范围明细，请重新扫描或核对原单据'
+                : '本次覆盖范围内暂无待处理问题',
+            bottomContentPadding:
+                UtenSpacing.s16 + UtenCapsuleNavScope.occlusionOf(context),
+          ),
+        ),
       ],
     );
   }
 
-  Widget _coverageNotice() {
-    final theme = Theme.of(context);
-    return Container(
-      key: const Key('chain-health-coverage-notice'),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.45),
-        borderRadius: UtenRadius.mdAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: const Text(
+  Widget _coverageNotice() => const UtenFieldHintIcon(
+    key: Key('chain-health-coverage-notice'),
+    dense: true,
+    info:
         '当前扫描覆盖：销售缺口、物料分析、生产计划与 DRAW、活动关系重复、'
         'fqty/iqty 事实对账、数量越界、执行段完成条件，以及 FQC 决定/入库授权守恒。'
         '采购/委外订单与 IQC 明细、精确供给分配和发运仍需在各权威单据中核对；'
-        '“0 项”只表示本次覆盖范围内未发现问题。',
-      ),
-    );
-  }
-
-  Widget _summaryBanner(int total) {
-    final theme = Theme.of(context);
-    final healthy = total == 0;
-    final color = healthy ? theme.colorScheme.primary : theme.colorScheme.error;
-    return Container(
-      key: const Key('chain-health-summary'),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: UtenRadius.mdAll,
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            healthy ? Icons.verified_outlined : Icons.link_off_rounded,
-            color: color,
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Text(
-              healthy ? '本次覆盖范围内未发现断链' : '发现 $total 处断链/待处理环节，逐条点击可跳到权威单据修复',
-              style: TextStyle(color: color, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _categoryCard(ChainHealthCategoryView category) {
-    final theme = Theme.of(context);
-    final hasIssues = category.count > 0;
-    final color = hasIssues
-        ? theme.colorScheme.error
-        : theme.colorScheme.primary;
-    return Card(
-      key: Key('chain-health-${category.category}'),
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: UtenRadius.mdAll,
-        side: BorderSide(
-          color: hasIssues
-              ? color.withValues(alpha: 0.35)
-              : theme.colorScheme.outlineVariant,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  hasIssues
-                      ? Icons.warning_amber_rounded
-                      : Icons.check_circle_outline_rounded,
-                  size: 20,
-                  color: color,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    category.label,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: UtenRadius.smAll,
-                  ),
-                  child: Text(
-                    '${category.count}',
-                    style: TextStyle(color: color, fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              category.description,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.5,
-              ),
-            ),
-            if (category.issues.isNotEmpty) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              for (final issue in category.issues) _issueRow(theme, issue),
-              if (category.count > category.issues.length)
-                Padding(
-                  padding: const EdgeInsets.only(top: UtenSpacing.s4),
-                  child: Text(
-                    '仅显示前 ${category.issues.length} 条，共 ${category.count} 条',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _issueRow(ThemeData theme, ChainHealthIssueView issue) {
-    return ListTile(
-      key: ValueKey('chain-health-issue-${issue.route}-${issue.refId}'),
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(_routeIcon(issue.route), size: 20),
-      title: Text(
-        {if (issue.billNo != null) issue.billNo!, issue.label}.join(' · '),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: issue.detail == null
-          ? null
-          : Text(issue.detail!, maxLines: 2, overflow: TextOverflow.ellipsis),
-      trailing: const Icon(Icons.chevron_right_rounded),
-      onTap: () => _open(issue),
-    );
-  }
-
-  IconData _routeIcon(String route) => switch (route) {
-    'SALES_ORDER' => Icons.receipt_long_outlined,
-    'MATERIAL_ANALYSIS' => Icons.insights_outlined,
-    'PRODUCTION_PLAN' => Icons.assignment_outlined,
-    'STOCK_DRAW' => Icons.outbound_outlined,
-    _ => Icons.link_rounded,
-  };
+        '“0 项”只表示本次覆盖范围内未发现问题。\n\n'
+        '单击定位，双击进入原始单据。扫描明细按每类最多50条请求，'
+        '计数为服务端全量命中数，不等于当前已展示条数。',
+  );
 
   /// 跳到权威单据/工作台修复：订单行→订单详情；分析→恢复该分析；
   /// 计划→计划详情；领料单→仓库单据详情。
@@ -322,6 +314,17 @@ class _ProductionChainHealthPageState
         context.push(RoutePath.stockDocDetail('DRAW', issue.refId));
     }
   }
+}
+
+class _ChainHealthRow {
+  const _ChainHealthRow(this.category, this.issue, this.key);
+  final ChainHealthCategoryView category;
+  final ChainHealthIssueView issue;
+  final String key;
+
+  bool get repeatsBillNo =>
+      issue.billNo?.trim().isNotEmpty == true &&
+      issue.billNo!.trim() == issue.label.trim();
 }
 
 class ChainHealthCategoryView {

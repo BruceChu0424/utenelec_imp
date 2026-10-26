@@ -1,8 +1,9 @@
-# 每分钟只读本机数据库设置，未到期不访问 OSS；默认每周日当地 05:00 拉取
-# 不补跑错过的日期；需要立即更新时手动运行 check
+# 兼容旧安装的退役单元；安装器仍须 disable --now，不能恢复自动检查 OSS。
 # 安装为 /etc/systemd/system/uten-imp-updater.timer
 [Unit]
-Description=Evaluate the local Uten IMP update schedule every minute
+Description=Retired Uten IMP automatic update schedule
+# Linux 根目录始终存在，取反条件阻止误启用后启动。手动检查走运维服务。
+ConditionPathExists=!/
 
 [Timer]
 OnCalendar=*-*-* *:*:00

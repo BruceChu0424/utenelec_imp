@@ -773,6 +773,13 @@ abstract class _MaterialAnalysisBomTreeState
             _collapsedBomProducts.add(product.analysisLineId);
           }
         }
+        // Reopening one level (including Ctrl + click) must not revive an
+        // implicitly open grandchild after the user collapsed the whole tree.
+        _collapsedBomBranches.addAll(
+          _bomPresentation(
+            analysis,
+          ).parentIdsByMaterial.values.whereType<String>(),
+        );
       }
     });
   }
@@ -804,29 +811,23 @@ abstract class _MaterialAnalysisBomTreeState
       if (aggregates.isEmpty) return null;
       final expandedAll =
           _expandedMaterialAggregates.length >= aggregates.length;
-      return _bomTreeExpansionToggleButton(
-        expandedAll ? '全部收起' : '全部展开',
-        expandedAll ? _collapseAllBomNodes : _expandAllBomNodes,
-      );
+      return _bomTreeExpansionToggleButton(expandedAll);
     }
     final anyCollapsed =
         _collapsedBomProducts.isNotEmpty || _collapsedBomBranches.isNotEmpty;
-    return _bomTreeExpansionToggleButton(
-      anyCollapsed ? '全部展开' : '全部收起',
-      anyCollapsed ? _expandAllBomNodes : _collapseAllBomNodes,
-    );
+    return _bomTreeExpansionToggleButton(!anyCollapsed);
   }
 
   List<_MaterialAggregate> _displayedMaterialAggregates(
     ProductionMaterialAnalysisView analysis,
   );
 
-  Widget _bomTreeExpansionToggleButton(String label, VoidCallback onTap) =>
-      UtenButton(
+  Widget _bomTreeExpansionToggleButton(bool expanded) =>
+      UtenTreeExpansionButton(
         key: const Key('material-analysis-bom-expansion-toggle'),
-        type: UtenButtonType.ghost,
-        onPressed: onTap,
-        child: Text(label),
+        expanded: expanded,
+        onExpand: _expandAllBomNodes,
+        onCollapse: _collapseAllBomNodes,
       );
 
   // ===== 表头筛选协作契约：实现在 material_analysis_material_table.dart =====

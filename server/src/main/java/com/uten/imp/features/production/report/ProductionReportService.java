@@ -4,6 +4,8 @@ import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.report.ReportQueryKit;
+import com.uten.imp.common.report.ReportReadPlan;
+import com.uten.imp.common.report.ReportExportCursor;
 import com.uten.imp.common.report.ReportQueryKit.FacetSpec;
 import com.uten.imp.common.report.ReportQueryKit.WhereBuilder;
 import com.uten.imp.common.report.ReportSort;
@@ -96,14 +98,14 @@ public class ProductionReportService {
         for (ReportColumn c : columns) sortKeys.add(c.key());
         String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
 
-        var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
+        var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
         mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = dataQ.getResultList();
+        List<Object[]> rows = ReportExportCursor.rows(em, dataQ);
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -113,14 +115,17 @@ public class ProductionReportService {
         }
 
         // count
-        var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
-        full.params().forEach(countQ::setParameter);
-        long total = ((Number) countQ.getSingleResult()).longValue();
-        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
+            full.params().forEach(countQ::setParameter);
+            total = ((Number) countQ.getSingleResult()).longValue();
+        }
+        int totalPages = ReportReadPlan.totalPages(total, safeSize);
 
         // facets（用主过滤 baseB，不含列自身筛选）
         Map<String, List<ReportFacet>> facets = new LinkedHashMap<>();
-        for (FacetSpec spec : specs) {
+        for (FacetSpec spec : ReportReadPlan.current().includeFacets() ? specs : List.<FacetSpec>of()) {
             var fq = em.createNativeQuery("SELECT " + spec.selectExpr() + ", COUNT(*) AS cnt " + fromJoin + " "
                     + baseB.sql() + " GROUP BY " + spec.groupExpr() + " ORDER BY cnt DESC LIMIT 50");
             baseB.params().forEach(fq::setParameter);
@@ -142,9 +147,9 @@ public class ProductionReportService {
         // 表格下方合计：与列表用同一份 full（日期/facet/关键字 + 对象级授权谓词）在**整个结果集**
         // 上聚合，与翻到第几页无关；派生表不带 LIMIT/OFFSET，所以绝不会出现「只合计当前页」。
         List<com.uten.imp.common.report.ReportTotal> totals =
-                com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(
                         em, dataSelect, fromJoin, full.sql(), full.params(),
-                        reportTotalSpecs(columns, columns));
+                        reportTotalSpecs(columns, columns)) : List.<com.uten.imp.common.report.ReportTotal>of();
 
         totals = com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns);
         List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
@@ -195,7 +200,7 @@ public class ProductionReportService {
         return switch (spec.filterType()) {
             case "uuid"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS uuid)", p, UUID.fromString(value));
             case "int"   -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS int)", p, ReportQueryKit.parseRequiredInt(value));
-            case "bool"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, Boolean.valueOf(value));
+            case "bool"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, ReportQueryKit.parseRequiredBoolean(value));
             default      -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS text)", p, value);
         };
     }
@@ -298,7 +303,7 @@ public class ProductionReportService {
                 new FacetSpec("closed", "p.is_closed AS v, CASE WHEN p.is_closed THEN '已完成' ELSE '未完成' END AS lbl", "p.is_closed", "p.is_closed", "bool"),
                 new FacetSpec("workshop", "p.workshop_name AS v, p.workshop_name AS lbl", "p.workshop_name", "p.workshop_name", "text"),
                 new FacetSpec("categoryName", "CAST(g.category_id AS text) AS v, mc.name AS lbl", "g.category_id, mc.name", "g.category_id", "uuid"));
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ② 生产计划汇总（单据级，一行一单，不走 MV） ========================
@@ -339,7 +344,7 @@ public class ProductionReportService {
         ReportQueryKit.addSummaryKw(w, kw, "p.bill_no");
         List<FacetSpec> specs = List.of(
                 new FacetSpec("approved", "(p.status = 1) AS v, CASE WHEN (p.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(p.status = 1)", "p.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "p.bill_date DESC, p.bill_no", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "p.bill_date DESC, p.bill_no, p.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== 旧版 PPC-only 反查快照（仅保留迁移核对） ========================
@@ -438,7 +443,7 @@ public class ProductionReportService {
                   AND (CAST(:goodsId AS uuid) IS NULL OR i.goods_id = :goodsId)
                   AND (CAST(:status AS smallint) IS NULL OR h.status   = :status)
                   AND (CAST(:billNo AS text) IS NULL OR i.bill_no  = :billNo)
-                ORDER BY i.bill_date DESC, i.line_no ASC
+                ORDER BY i.bill_date DESC, i.line_no ASC, i.id
                 LIMIT :limit OFFSET :offset
                 """);
         q.setParameter("from", dateFrom);

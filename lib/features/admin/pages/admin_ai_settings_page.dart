@@ -13,6 +13,7 @@
 //   * 增删改/设默认/启停/用已存密钥测试 → 服务端要求再认证, 网络层弹统一密码框,
 //     本页的遮罩只挂在纯网络段且会给密码框让位;
 //   * 服务器没开放境外服务商时不能选; 开放了也要逐个勾选数据出境确认。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
@@ -426,100 +427,103 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
     for (final provider in providers) {
       if (provider.isDefault) defaultProvider = provider;
     }
-    return ListView(
-      key: const ValueKey('ai-settings-list'),
+    return UtenPageEdgePadding.scroll(
       padding: const EdgeInsets.all(UtenSpacing.s16),
-      children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final hero = _StatusHero(
-              provider: defaultProvider,
-              preset: _catalog.byCode(defaultProvider?.preset),
-            );
-            final today = _TodayUsageCard(
-              dashboard: _today,
-              unavailable: _todayFailed,
-              onOpen: () => context.push(RouteName.adminAiUsage),
-            );
-            // 窄屏上下堆叠; 宽屏同一行: 正在使用占大头, 今日用量在其右。
-            if (constraints.maxWidth < 780) {
-              return Column(
-                children: [
-                  hero,
-                  const SizedBox(height: UtenSpacing.s12),
-                  today,
-                ],
+      builder: (context, pagePadding) => ListView(
+        key: const ValueKey('ai-settings-list'),
+        padding: pagePadding,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final hero = _StatusHero(
+                provider: defaultProvider,
+                preset: _catalog.byCode(defaultProvider?.preset),
               );
-            }
-            // IntrinsicHeight 给 Row 一个有界高: 两卡同高对齐, 又不顶爆 ListView。
-            return IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(flex: 3, child: hero),
-                  const SizedBox(width: UtenSpacing.s12),
-                  Expanded(flex: 2, child: today),
-                ],
-              ),
-            );
-          },
-        ),
-        if (!_catalog.outboundEnabled) ...[
-          const SizedBox(height: UtenSpacing.s12),
-          UtenInlineNotice(
-            key: const ValueKey('ai-settings-outbound-off'),
-            level: UtenInlineNoticeLevel.warning,
-            message: l10n.aiSettingsOutboundOff,
-          ),
-        ],
-        const SizedBox(height: UtenSpacing.s20),
-        UtenSectionHeader(
-          title: l10n.aiSettingsProvidersSection,
-          icon: Icons.hub_outlined,
-          trailing: Text(
-            '${providers.length}',
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        if (providers.isEmpty)
-          _EmptyProviders(onAdd: _busy == null ? () => _openEditor() : null)
-        else
-          // 瀑布流网格: 每张卡片自身可折叠(默认收起只留头部), 高矮卡不会互相撑出空白。
-          UtenResponsiveGrid(
-            itemCount: providers.length,
-            spacing: UtenSpacing.s12,
-            columns: const UtenResponsiveColumns(medium: 1, expanded: 2),
-            maxColumns: 2,
-            itemBuilder: (context, index, _) {
-              final provider = providers[index];
-              return AiProviderCard(
-                provider: provider,
-                preset: _catalog.byCode(provider.preset),
-                presetLabel: aiPresetLabel(
-                  _catalog,
-                  provider.preset,
-                  fallback: provider.presetLabel,
+              final today = _TodayUsageCard(
+                dashboard: _today,
+                unavailable: _todayFailed,
+                onOpen: () => context.push(RouteName.adminAiUsage),
+              );
+              // 窄屏上下堆叠; 宽屏同一行: 正在使用占大头, 今日用量在其右。
+              if (constraints.maxWidth < 780) {
+                return Column(
+                  children: [
+                    hero,
+                    const SizedBox(height: UtenSpacing.s12),
+                    today,
+                  ],
+                );
+              }
+              // IntrinsicHeight 给 Row 一个有界高: 两卡同高对齐, 又不顶爆 ListView。
+              return IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(flex: 3, child: hero),
+                    const SizedBox(width: UtenSpacing.s12),
+                    Expanded(flex: 2, child: today),
+                  ],
                 ),
-                busy: _busy != null,
-                testing: _testing.contains(provider.id),
-                testResult: _testResults[provider.id],
-                canDelete: _canDelete(provider),
-                onTest: () => _testStored(provider),
-                onEdit: () => _openEditor(existing: provider),
-                onSetDefault: () => _setDefault(provider),
-                onDelete: () => _delete(provider),
-                onEnabledChanged: (enabled) => _setEnabled(provider, enabled),
               );
             },
           ),
-        const SizedBox(height: UtenSpacing.s16),
-        _SecurityNote(text: l10n.aiSettingsSecurityNote),
-        const SizedBox(height: UtenFloatingActionGroup.scrollClearance),
-      ],
+          if (!_catalog.outboundEnabled) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            UtenInlineNotice(
+              key: const ValueKey('ai-settings-outbound-off'),
+              level: UtenInlineNoticeLevel.warning,
+              message: l10n.aiSettingsOutboundOff,
+            ),
+          ],
+          const SizedBox(height: UtenSpacing.s20),
+          UtenSectionHeader(
+            title: l10n.aiSettingsProvidersSection,
+            icon: Icons.hub_outlined,
+            trailing: Text(
+              '${providers.length}',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          if (providers.isEmpty)
+            _EmptyProviders(onAdd: _busy == null ? () => _openEditor() : null)
+          else
+            // 瀑布流网格: 每张卡片自身可折叠(默认收起只留头部), 高矮卡不会互相撑出空白。
+            UtenResponsiveGrid(
+              itemCount: providers.length,
+              spacing: UtenSpacing.s12,
+              columns: const UtenResponsiveColumns(medium: 1, expanded: 2),
+              maxColumns: 2,
+              itemBuilder: (context, index, _) {
+                final provider = providers[index];
+                return AiProviderCard(
+                  provider: provider,
+                  preset: _catalog.byCode(provider.preset),
+                  presetLabel: aiPresetLabel(
+                    _catalog,
+                    provider.preset,
+                    fallback: provider.presetLabel,
+                  ),
+                  busy: _busy != null,
+                  testing: _testing.contains(provider.id),
+                  testResult: _testResults[provider.id],
+                  canDelete: _canDelete(provider),
+                  onTest: () => _testStored(provider),
+                  onEdit: () => _openEditor(existing: provider),
+                  onSetDefault: () => _setDefault(provider),
+                  onDelete: () => _delete(provider),
+                  onEnabledChanged: (enabled) => _setEnabled(provider, enabled),
+                );
+              },
+            ),
+          const SizedBox(height: UtenSpacing.s16),
+          _SecurityNote(text: l10n.aiSettingsSecurityNote),
+          const SizedBox(height: UtenFloatingActionGroup.scrollClearance),
+        ],
+      ),
     );
   }
 }
@@ -844,47 +848,50 @@ class _LoadingSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      key: const ValueKey('ai-settings-skeleton'),
+    return UtenPageEdgePadding.scroll(
       padding: const EdgeInsets.all(UtenSpacing.s16),
-      physics: const NeverScrollableScrollPhysics(),
-      children: [
-        const UtenSkeleton(height: 104, borderRadius: UtenRadius.xl),
-        const SizedBox(height: UtenSpacing.s24),
-        const UtenSkeleton(width: 120, height: 18),
-        const SizedBox(height: UtenSpacing.s12),
-        for (var i = 0; i < 2; i++) ...[
-          const UtenCard(
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    UtenSkeleton(width: 44, height: 44, borderRadius: 13),
-                    SizedBox(width: UtenSpacing.s12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          UtenSkeleton(width: 160),
-                          SizedBox(height: UtenSpacing.s8),
-                          UtenSkeleton(width: 100, height: 12),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: UtenSpacing.s16),
-                UtenSkeleton(height: 12),
-                SizedBox(height: UtenSpacing.s8),
-                UtenSkeleton(height: 12),
-                SizedBox(height: UtenSpacing.s8),
-                UtenSkeleton(width: 200, height: 12),
-              ],
-            ),
-          ),
+      builder: (context, pagePadding) => ListView(
+        key: const ValueKey('ai-settings-skeleton'),
+        padding: pagePadding,
+        physics: const NeverScrollableScrollPhysics(),
+        children: [
+          const UtenSkeleton(height: 104, borderRadius: UtenRadius.xl),
+          const SizedBox(height: UtenSpacing.s24),
+          const UtenSkeleton(width: 120, height: 18),
           const SizedBox(height: UtenSpacing.s12),
+          for (var i = 0; i < 2; i++) ...[
+            const UtenCard(
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      UtenSkeleton(width: 44, height: 44, borderRadius: 13),
+                      SizedBox(width: UtenSpacing.s12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            UtenSkeleton(width: 160),
+                            SizedBox(height: UtenSpacing.s8),
+                            UtenSkeleton(width: 100, height: 12),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: UtenSpacing.s16),
+                  UtenSkeleton(height: 12),
+                  SizedBox(height: UtenSpacing.s8),
+                  UtenSkeleton(height: 12),
+                  SizedBox(height: UtenSpacing.s8),
+                  UtenSkeleton(width: 200, height: 12),
+                ],
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+          ],
         ],
-      ],
+      ),
     );
   }
 }

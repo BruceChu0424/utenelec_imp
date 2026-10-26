@@ -34,6 +34,9 @@ abstract final class Perm {
   static const serverUpdate = 'server:update';
   static const serverCleanup = 'server:cleanup';
 
+  /// 上传、发布和撤回客户端版本；仅由超管逐人授权。
+  static const clientReleasePublish = 'client_release:publish';
+
   /// 接收服务器状态告警（V552）：磁盘/内存/数据库/备份越线时收站内通知。
   /// 与 [serverStatusView] 分开授——「能看」和「该被吵醒」不是一回事。
   static const serverStatusAlertReceive = 'server_status:alert:receive';
@@ -131,6 +134,8 @@ abstract final class Perm {
   /// 货品主档（基础资料；已将 goods:view 授予全部部门）
   static const goodsView = 'goods:view';
   static const goodsEdit = 'goods:edit';
+  static const goodsPurchaseEdit = 'goods:purchase:edit';
+  static const goodsSalesEdit = 'goods:sales:edit';
   static const goodsNameEnEdit = 'goods:name_en:edit';
   static const goodsExport = 'goods:export';
 

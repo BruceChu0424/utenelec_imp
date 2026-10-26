@@ -12,6 +12,7 @@ import 'package:uten_imp/features/basic_data/pages/settlement_method_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
 
 class _Repository extends ReferenceMethodRepository {
   _Repository() : super(ApiClient(Dio()));
@@ -19,12 +20,22 @@ class _Repository extends ReferenceMethodRepository {
       <(Map<String, String?>, Completer<List<SettlementMethodAdminItem>>)>[];
 
   @override
-  Future<List<SettlementMethodAdminItem>> settlementAdminList({
+  Future<PagedResult<SettlementMethodAdminItem>> settlementAdminPage({
+    int page = 1,
+    int size = 100,
+    String? keyword,
     Map<String, String?> filters = const {},
-  }) {
+  }) async {
     final completion = Completer<List<SettlementMethodAdminItem>>();
     requests.add((Map.of(filters), completion));
-    return completion.future;
+    final items = await completion.future;
+    return PagedResult(
+      items: items,
+      page: page,
+      size: size,
+      total: items.length,
+      totalPages: 1,
+    );
   }
 
   @override

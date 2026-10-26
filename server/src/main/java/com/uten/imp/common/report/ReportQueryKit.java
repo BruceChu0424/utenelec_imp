@@ -209,6 +209,13 @@ public final class ReportQueryKit {
         }
     }
 
+    /** A malformed boolean must never silently become a different status filter. */
+    public static boolean parseRequiredBoolean(String value) {
+        if ("true".equalsIgnoreCase(value)) return true;
+        if ("false".equalsIgnoreCase(value)) return false;
+        throw new ApiException(ErrorCode.VALIDATION_FAILED, "报表布尔筛选必须为 true 或 false");
+    }
+
     /** 2026-09-16 从六个报表服务收敛：导出参数解析（空/空白 → null）。 */
     public static LocalDate parseDate(String s) { return (s == null || s.isBlank()) ? null : LocalDate.parse(s); }
 
@@ -226,27 +233,40 @@ public final class ReportQueryKit {
                                                 ToLongFunction<T> total,
                                                 Function<T, List<ExportColumn>> exportColumns,
                                                 Function<T, List<Map<String, Object>>> rows) {
-        final int size = 500;
-        List<Map<String, Object>> all = new ArrayList<>();
+        requireExportRowCount(maxRows, 0);
+        final int size = Math.min(500, Math.max(1, com.uten.imp.common.export.LegacyExportBudget.maximumRows(maxRows)));
+        var sink = com.uten.imp.common.export.ExportPageSink.current();
+        List<Map<String, Object>> all = sink == null ? new ArrayList<>() : null;
         List<ExportColumn> cols = null;
-        int page = 1;
-        while (page <= 2000) {
-            T r = loader.apply(page, size);
-            if (page == 1 && total.applyAsLong(r) > maxRows) {
-                // 导出行数上限 (系统设置 export_max_rows)：超限要求收窄筛选/分批，防 OOM。
-                throw tooManyRows(maxRows);
+        int seen = 0;
+        try (var ignored = ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)) {
+            for (int page = 1; page <= 2000; page++) {
+                com.uten.imp.common.export.LegacyExportBudget.checkpoint();
+                T r;
+                try (var firstCount = ReportReadPlan.open(com.uten.imp.common.export.LegacyExportBudget.active() && page == 1
+                        ? new ReportReadPlan(true, false, false) : ReportReadPlan.ROWS_ONLY)) {
+                    r = loader.apply(page, size);
+                }
+                long reported = total.applyAsLong(r);
+                requireExportRowCount(maxRows, reported);
+                if (cols == null) {
+                    List<ExportColumn> first = exportColumns.apply(r);
+                    if (first != null) cols = first;
+                }
+                List<Map<String, Object>> pageRows = rows.apply(r);
+                requireExportRowCount(maxRows, (long) seen + pageRows.size());
+                seen += pageRows.size();
+                // Check every batch, including unknown counts and rows committed during legacy reads.
+                if (sink == null) all.addAll(pageRows);
+                else sink.accept(new ExportPayload(cols == null ? List.of() : cols, pageRows, seen));
+                if (pageRows.size() < size || (reported >= 0 && seen >= reported)) {
+                    return new ExportPayload(cols == null ? List.of() : cols,
+                            sink == null ? all : List.of(), seen);
+                }
             }
-            if (cols == null) {
-                List<ExportColumn> first = exportColumns.apply(r);
-                if (first != null) cols = first;
-            }
-            List<Map<String, Object>> pageRows = rows.apply(r);
-            all.addAll(pageRows);
-            if (pageRows.size() < size) break;
-            if ((long) all.size() >= total.applyAsLong(r)) break;
-            page++;
         }
-        return new ExportPayload(cols == null ? List.of() : cols, all, all.size());
+        // Never publish a silently truncated workbook when a loader violates its paging contract.
+        throw tooManyRows(maxRows);
     }
     /**
      * 主档导出的分页收集 (每页 100 行, 与列表接口的页大小上限一致): 首页 total 超过
@@ -257,23 +277,27 @@ public final class ReportQueryKit {
             int maxRows,
             BiFunction<Integer, Integer, PageResponse<T>> loader,
             Function<T, Map<String, Object>> mapper) {
+        requireExportRowCount(maxRows, 0);
         final int size = 100;
         List<Map<String, Object>> rows = new ArrayList<>();
         for (int page = 1; ; page++) {
+            com.uten.imp.common.export.LegacyExportBudget.checkpoint();
             PageResponse<T> r = loader.apply(page, size);
-            if (page == 1 && r.getTotal() > maxRows) {
-                throw tooManyRows(maxRows);
-            }
+            if (page == 1) requireExportRowCount(maxRows, r.getTotal());
             for (T item : r.getItems()) {
                 rows.add(mapper.apply(item));
             }
-            if (rows.size() > maxRows) {
-                throw tooManyRows(maxRows);
-            }
+            requireExportRowCount(maxRows, rows.size());
             if (r.getItems().size() < size || rows.size() >= r.getTotal()) {
                 return rows;
             }
         }
+    }
+
+    /** Shared by paged readers and calculated-row emitters; -1 is an unknown count. */
+    public static void requireExportRowCount(int maxRows, long rows) {
+        if (maxRows < 1 || rows > maxRows) throw tooManyRows(maxRows);
+        com.uten.imp.common.export.LegacyExportBudget.requireRows(rows);
     }
 
     private static ApiException tooManyRows(int maxRows) {

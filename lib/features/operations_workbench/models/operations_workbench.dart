@@ -1,5 +1,7 @@
 import '../../basic_data/models/master_facet.dart';
 import '../../../shared/models/subcontract_task_source.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
 
 enum OperationsWorkbenchDepartment {
   warehouse('warehouse', '仓库任务工作台'),
@@ -303,6 +305,7 @@ class OperationsWorkbenchTask {
     this.orderableQty,
     this.warehouseId,
     this.supplierName,
+    this.differenceQtyText,
   });
 
   final String taskId;
@@ -371,6 +374,9 @@ class OperationsWorkbenchTask {
   /// subcontract_applications→suppliers 下发，委外任务中心「待处理」列表直接显示；
   /// 未定商为 null——那是业务事实，不是缺数据）。其他段恒 null。
   final String? supplierName;
+
+  /// Signed quantity from the server; no client-side reconstruction from openQty.
+  final String? differenceQtyText;
 
   /// 状态列用的阶段码：优先服务端展示阶段，老响应回落 taskStatus。
   String get progressStatus => displayStage ?? taskStatus;
@@ -486,6 +492,8 @@ class OperationsWorkbenchTask {
       orderableQty: _optionalNumber(json, 'orderableQty'),
       warehouseId: _optionalString(json, 'warehouseId'),
       supplierName: _optionalString(json, 'supplierName'),
+      differenceQtyText: (json['differenceQtyExact'] ?? json['differenceQty'])
+          ?.toString(),
       actionDocument: OperationsActionDocument.fromTaskJson(json, department),
       actionDocItemId: _optionalString(json, 'actionDocItemId'),
       actionDocumentRestricted: json['actionDocRestricted'] == true,
@@ -533,6 +541,39 @@ class OperationsWorkbenchCapabilities {
 }
 
 class OperationsWorkbenchData {
+  /// Keep summary, capabilities and facets together with the actual row page.
+  PagedReadSnapshot<OperationsWorkbenchTask, OperationsWorkbenchData>
+  toPagedReadSnapshot() => PagedReadSnapshot(
+    page: PagedResult(
+      items: items,
+      page: page,
+      size: size,
+      total: total,
+      totalPages: totalPages,
+    ),
+    snapshot: this,
+  );
+
+  /// Render the table controls before a query has returned. This is a UI-only
+  /// placeholder: it must never be accepted as server data or category counts.
+  const OperationsWorkbenchData.loading({
+    required this.department,
+    this.page = 1,
+    this.size = 50,
+  }) : summary = const OperationsWorkbenchSummary(
+         totalTasks: 0,
+         overdueTasks: 0,
+         openTasks: 0,
+         openQty: 0,
+         statusCounts: {},
+       ),
+       items = const [],
+       total = 0,
+       totalPages = 0,
+       capabilities = const OperationsWorkbenchCapabilities(),
+       facets = const {},
+       nullCounts = const {};
+
   const OperationsWorkbenchData({
     required this.department,
     required this.summary,
@@ -658,7 +699,7 @@ String operationsWorkbenchStatusLabel(String code) =>
       'FINANCE_REJECTED' => '财务驳回',
       'FINANCE_REVIEW_PENDING' => '改量待财务复核',
       'FINANCE_REVIEW_REJECTED' => '改量财务退回',
-      'ORDER_CLOSE_PENDING' => '结束待财务审批',
+      'ORDER_CLOSE_PENDING' => '历史结束申请待业务确认',
       'ORDER_CLOSE_REJECTED' => '结束申请已退回',
       'ORDER_CLOSED' => '已提前结束',
       'ORDER_PENDING_APPROVAL' => '订单等待财务审核',

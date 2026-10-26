@@ -8,13 +8,12 @@
 // reject-batch，全成全败，不再前端逐单循环）。
 // 历史：2026-09-09 表格化；2026-09-10 表头筛选 + 责任提示；2026-09-16 类别桶。
 
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/retained_async_page.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../shared/providers/master_name_provider.dart'
-    show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,7 +22,6 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_batch_reject_dialog.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -116,11 +114,12 @@ class _ExpenseApprovalListPageState
     if (!_queueReady) {
       return const Scaffold(
         appBar: UtenAppBar(title: '报销审批'),
-        body: UtenSkeletonList(),
+        body: UtenPageEdgePadding(child: UtenSkeletonList()),
       );
     }
+    ref.read(expenseApprovalListProvider.notifier).bindReadView(context,
+      visiblePage: () => _tableRows.visiblePage);
     final queue = ref.watch(approvalQueueProvider);
-    final rawList = ref.watch(expenseApprovalListProvider);
     final facets = ref.watch(expenseApprovalFacetsProvider(queue));
     final filters = ref.watch(expenseApprovalFiltersProvider);
     // 2026-09-25 单号列统一：报销单号表头排序（服务端白名单 claimNo）。
@@ -131,9 +130,22 @@ class _ExpenseApprovalListPageState
       filters,
       sortColumn,
       sortAscending,
-      ref.watch(masterDataSessionKeyProvider),
+      retainedReaderEpoch(ref),
     );
-    final listAsync = _retainedPage.resolve(paginationScope, rawList);
+    final listAsync = _retainedPage.resolveFor(
+      ref,
+      paginationScope,
+      expenseApprovalListProvider,
+    );
+    final page =
+        listAsync.value ??
+        const PagedResult<ExpenseClaim>(
+          items: [],
+          page: 1,
+          size: 20,
+          total: 0,
+          totalPages: 0,
+        );
     final summaryAsync = ref.watch(expenseQueueSummaryProvider);
     final permissions = ref.watch(currentPermissionsProvider);
     final canApprove = permissions.contains(Perm.expenseApprove);
@@ -187,7 +199,7 @@ class _ExpenseApprovalListPageState
             ),
             // 队列汇总统计条（/summary：两队列 + 本月口径，财务汇总；随页滚走）。
             if (summary != null)
-              Padding(
+              UtenPageEdgePadding(
                 padding: const EdgeInsets.only(
                   top: UtenSpacing.s8,
                   bottom: UtenSpacing.s8,
@@ -224,79 +236,76 @@ class _ExpenseApprovalListPageState
               ),
           ],
         ),
-        body: listAsync.when(
-          skipLoadingOnReload: true,
-          skipError: true,
-          loading: () => const UtenSkeletonList(itemCount: 4),
-          error: (e, _) => UtenEmpty.error(
-            message: '加载失败，请重试',
-            actionLabel: l10n.commonRetry,
-            onAction: () => ref.invalidate(expenseApprovalListProvider),
-          ),
-          data: (page) => MasterDataTableView<ExpenseClaim>(
-            rowsController: _tableRows,
-            tableKey:
-                'features.expense.pages.expense_approval_list_page.ExpenseApprovalListPageState.build.1',
-            key: const Key('expense-approval-table'),
-            paginationScope: paginationScope,
-            loadingMore: listAsync.isLoading,
-            error: listAsync.hasError
-                ? (humanErrorMessage(listAsync.error!) ?? '加载更多没有成功，请重试')
-                : null,
-            onRetry: () => ref.invalidate(expenseApprovalListProvider),
-            primary: true,
-            columns: _columns,
-            items: page.items,
-            // 部门 / 年月筛选桶来自后端聚合；未加载完成前列头暂无筛选项。
-            // 2026-09-25 单号列统一：facets 响应含报销单号桶（claimNo）。
-            facets: facets.value ?? const {},
-            nullCounts: const {},
-            filters: filters.asTableFilters,
-            onFilterChanged: _onFilterChanged,
-            // 2026-09-25 单号列统一：表头排序走服务端白名单（claimNo）。
-            sortColumn: sortColumn,
-            sortAscending: sortAscending,
-            onSortChange: (column, ascending) {
-              ref.read(expenseApprovalSortColumnProvider.notifier).state =
-                  column;
-              ref.read(expenseApprovalSortAscendingProvider.notifier).state =
-                  ascending;
-            },
-            // 待审批段开多选 + 悬浮批量通过/驳回；待付款段只读浏览
-            //（打款参数逐单不同，打款在详情页完成）。
-            selectable: isPendingQueue,
-            idOf: (claim) => claim.id,
-            selectedIds: _selectedIds,
-            onSelectedIdsChanged: (next) => setState(() {
-              _selectedVersions.removeWhere((id, _) => !next.contains(id));
-              for (final claim in _tableRows.items) {
-                if (next.contains(claim.id) &&
-                    !_selectedIds.contains(claim.id)) {
-                  _selectedVersions[claim.id] = claim.version;
-                }
+        body: MasterDataTableView<ExpenseClaim>(
+          expensiveRowMounts: false,
+          rowsController: _tableRows,
+          tableKey:
+              'features.expense.pages.expense_approval_list_page.ExpenseApprovalListPageState.build.1',
+          key: const Key('expense-approval-table'),
+          paginationScope: paginationScope,
+          isLoading: listAsync.isLoading && !listAsync.hasValue,
+          loadingMore: listAsync.isLoading && listAsync.hasValue,
+          error: listAsync.hasError
+              ? (humanErrorMessage(listAsync.error!) ?? '加载更多没有成功，请重试')
+              : null,
+          onRetry: () {
+            ref
+                .read(expenseApprovalListProvider.notifier)
+                .invalidateCachedPages();
+            ref.invalidate(expenseApprovalListProvider);
+          },
+          primary: true,
+          columns: _columns,
+          items: page.items,
+          // 部门 / 年月筛选桶来自后端聚合；未加载完成前列头暂无筛选项。
+          // 2026-09-25 单号列统一：facets 响应含报销单号桶（claimNo）。
+          facets: facets.value ?? const {},
+          nullCounts: const {},
+          filters: filters.asTableFilters,
+          onFilterChanged: _onFilterChanged,
+          // 2026-09-25 单号列统一：表头排序走服务端白名单（claimNo）。
+          sortColumn: sortColumn,
+          sortAscending: sortAscending,
+          onSortChange: (column, ascending) {
+            ref.read(expenseApprovalSortColumnProvider.notifier).state = column;
+            ref.read(expenseApprovalSortAscendingProvider.notifier).state =
+                ascending;
+          },
+          // 待审批段开多选 + 悬浮批量通过/驳回；待付款段只读浏览
+          //（打款参数逐单不同，打款在详情页完成）。
+          selectable: isPendingQueue,
+          idOf: (claim) => claim.id,
+          selectedIds: _selectedIds,
+          onSelectedIdsChanged: (next) => setState(() {
+            _selectedVersions.removeWhere((id, _) => !next.contains(id));
+            for (final claim in _tableRows.items) {
+              if (next.contains(claim.id) && !_selectedIds.contains(claim.id)) {
+                _selectedVersions[claim.id] = claim.version;
               }
-              _selectedIds = next;
-            }),
-            batchActionsBuilder: isPendingQueue ? _batchActions : null,
-            // 双击行进入审批详情：push（2026-09-24 起），审批后详情 pop 回本页，
-            // 列表实例与筛选/页码保留，数据由 provider 失效自动换新；
-            // 原来 go 直达会把列表实例抹掉，详情返回只能落 default。
-            onRowTap: (claim) => context.push('/expense/approval/${claim.id}'),
-            emptyMessage: switch (queue) {
-              ApprovalQueue.pending => '暂无待审批报销',
-              ApprovalQueue.payable => '暂无待付款报销',
-              ApprovalQueue.history => '暂无已处理报销',
-            },
-            currentPage: page.page,
-            totalPages: page.totalPages,
-            onPageChange: (p) =>
-                ref.read(expenseApprovalListProvider.notifier).goToPage(p),
-          ),
+            }
+            _selectedIds = next;
+          }),
+          batchActionsBuilder: isPendingQueue ? _batchActions : null,
+          // 双击行进入审批详情：push（2026-09-24 起），审批后详情 pop 回本页，
+          // 列表实例与筛选/页码保留，数据由 provider 失效自动换新；
+          // 原来 go 直达会把列表实例抹掉，详情返回只能落 default。
+          onRowTap: (claim) => context.push('/expense/approval/${claim.id}'),
+          emptyMessage: switch (queue) {
+            ApprovalQueue.pending => '暂无待审批报销',
+            ApprovalQueue.payable => '暂无待付款报销',
+            ApprovalQueue.history => '暂无已处理报销',
+          },
+          currentPage: page.page,
+          totalPages: page.totalPages,
+          onPageChange: (p) =>
+              ref.read(expenseApprovalListProvider.notifier).goToPage(p),
         ),
       ),
     );
     if (context.breakpoint.isCompact) {
       body = UtenContentContainer(child: body);
+    } else {
+      body = UtenPageEdgePadding(child: body);
     }
 
     return Scaffold(
@@ -547,6 +556,7 @@ class _ExpenseApprovalListPageState
 
   /// 批量动作后列表、筛选桶与汇总一起刷新（计数随队列变化）。
   Future<void> _refreshQueue() async {
+    ref.read(expenseApprovalListProvider.notifier).invalidateCachedPages();
     final facets = expenseApprovalFacetsProvider(
       ref.read(approvalQueueProvider),
     );

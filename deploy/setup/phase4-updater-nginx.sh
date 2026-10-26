@@ -43,7 +43,8 @@ Security contract:
   * The wheelhouse is offline, hash-locked, inventoried, and has an SBOM.
   * The OSS credential source is a root:root 0600 file created with sudoedit;
     it is never sourced, printed, or accepted as a command-line secret.
-  * Default mode installs but does not enable the staging timer.
+  * Automatic OSS checks are retired. The legacy staging timer stays disabled
+    and its unit condition prevents accidental starts.
   * --enable-staging and its confirmation flags are reserved and always
     rejected in this version; there is no supported automatic-enable path.
   * This script never enables or starts the backend, Nginx, or watchdogs and
@@ -125,7 +126,7 @@ if [[ "$enable_staging" == true ]]; then
     || die '--enable-staging requires a canonical --expected-candidate-version'
   [[ "$oss_read_only_confirmation" == "$OSS_READ_ONLY_CONFIRMATION" ]] \
     || die "--enable-staging requires --confirm-oss-read-only '$OSS_READ_ONLY_CONFIRMATION'"
-  die '--enable-staging is intentionally NO-GO until tested candidate/release retention, disk quota, and alerting controls are installed'
+  die '--enable-staging is intentionally NO-GO: automatic OSS checks are retired; use an explicitly authorized manual version check'
 elif [[ -n "$expected_candidate_version" || -n "$oss_read_only_confirmation" ]]; then
   die 'staging confirmations are valid only with --enable-staging'
 fi
@@ -1408,38 +1409,9 @@ if [[ -f "$UPDATER_ENV" ]]; then
     /usr/bin/python3 -I "$UPDATER_DIR/validate_oss_pull_env.py" "$UPDATER_ENV"
 fi
 
-if [[ "$enable_staging" == true ]]; then
-  [[ -f "$UPDATER_ENV" ]] || die 'staging cannot be enabled before a validated oss-pull.env exists'
-  systemctl start uten-imp-updater.service
-  runuser -u uten-imp-updater -- \
-    "$UPDATER_DIR/venv/bin/python" -I "$UPDATER_DIR/release_updater.py" \
-    --state-dir /var/lib/uten-imp-updater \
-    --allowed-signers "$ALLOWED_SIGNERS" \
-    --lock-file "$OPERATION_LOCK" \
-    inspect "$expected_candidate_version" >/dev/null
-  timer_enable_committed=false
-  rollback_timer_enablement() {
-    local status="$?"
-    if [[ "$timer_enable_committed" != true ]]; then
-      systemctl disable --now uten-imp-updater.timer >/dev/null 2>&1 || true
-    fi
-    return "$status"
-  }
-  trap rollback_timer_enablement EXIT
-  if ! systemctl enable --now uten-imp-updater.timer; then
-    systemctl disable --now uten-imp-updater.timer >/dev/null 2>&1 || true
-    die 'failed to enable the staging timer; disabled state was restored'
-  fi
-  systemctl is-active --quiet uten-imp-updater.timer \
-    || die 'staging timer did not remain active'
-  timer_enable_committed=true
-  trap - EXIT
-  printf 'SIGNED_STAGING_ENABLED: %s\n' "$expected_candidate_version"
-else
-  printf '%s\n' \
-    'PHASE4_INSTALL_ONLY_COMPLETE' \
-    'STAGING_NOT_ENABLED: validate the GET-only OSS identity and stage an expected signed candidate first.'
-fi
+printf '%s\n' \
+  'PHASE4_INSTALL_ONLY_COMPLETE' \
+  'STAGING_NOT_ENABLED: automatic OSS checks are retired; use an explicitly authorized manual version check.'
 
 printf '%s\n' \
   "RELEASE_SIGNING_FINGERPRINT=$actual_fingerprint" \

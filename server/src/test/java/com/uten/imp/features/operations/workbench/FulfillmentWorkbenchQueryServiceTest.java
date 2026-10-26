@@ -27,6 +27,53 @@ import static org.mockito.Mockito.when;
 
 class FulfillmentWorkbenchQueryServiceTest {
 
+    @Test void purchaseExportStreamsEveryAuthorizedSourceRowWithoutTableMetadataQueries() {
+        EntityManager em=mock(EntityManager.class);Query rows=mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(rows);
+        var raw=new java.util.ArrayList<Object[]>();
+        for(int index=0;index<1001;index++) {
+            var value=taskRow("PURCHASE","PURCHASE_ORDER",UUID.randomUUID(),UUID.randomUUID());
+            value[4]="PP-"+index;raw.add(value);
+        }
+        when(rows.getResultList()).thenReturn(raw.subList(0,500),raw.subList(500,1000),raw.subList(1000,1001));
+        var pages=new java.util.ArrayList<com.uten.imp.common.export.ExportPayload>();
+        com.uten.imp.common.export.ExportPayload result;
+        var access=fullTaskAccess();
+        when(access.documentAccess("PURCHASE","PURCHASE_ORDER")).thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true,false));
+        try(var sink=com.uten.imp.common.export.ExportPageSink.open(pages::add)) {
+            result=new FulfillmentWorkbenchQueryService(em,access).exportPurchase("","","",null,null,null,1001);
+        }
+        assertEquals(1001,result.total());assertTrue(result.rows().isEmpty());
+        assertEquals(List.of(500,500,1),pages.stream().map(p->p.rows().size()).toList());
+        var values=pages.stream().flatMap(p->p.rows().stream()).toList();
+        assertEquals(1001,values.stream().map(v->v.get("planNo")).distinct().count());
+        assertEquals("PP-1000",values.getLast().get("planNo"));
+        assertTrue(values.stream().allMatch(v->BigDecimal.TEN.equals(v.get("requiredQty"))));
+        verify(rows,org.mockito.Mockito.never()).getSingleResult();
+        ArgumentCaptor<String> sql=ArgumentCaptor.forClass(String.class);verify(em,times(3)).createNativeQuery(sql.capture());
+        assertTrue(sql.getAllValues().stream().noneMatch(q->q.contains("CROSS JOIN LATERAL (VALUES")||q.contains("SELECT COUNT(*)")));
+        assertTrue(sql.getValue().contains("department, action_doc_type, action_doc_id, action_item_id"));
+    }
+    @Test void legacyPurchaseExportRejects501RowsRatherThanPublishingTheFirst500() {
+        EntityManager em=mock(EntityManager.class);Query rows=mock(Query.class);when(em.createNativeQuery(anyString())).thenReturn(rows);
+        Object[] value=taskRow("PURCHASE","PURCHASE_ORDER",UUID.randomUUID(),UUID.randomUUID());
+        var access=fullTaskAccess();
+        when(access.documentAccess("PURCHASE","PURCHASE_ORDER")).thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true,false));
+        when(rows.getResultList()).thenReturn(java.util.Collections.nCopies(500,value),java.util.Collections.singletonList(value));
+        try(var scope=new com.uten.imp.common.export.LegacyExportBudget(1).open()) {
+            var error=org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,()->
+                    new FulfillmentWorkbenchQueryService(em,access).exportPurchase("","","",null,null,null,100_000));
+            assertEquals(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,error.getCode());
+        }
+    }
+    @Test void anEmptyPurchaseExportDoesNotRunBadgesFacetsOrSummary() {
+        EntityManager em=mock(EntityManager.class);Query rows=mock(Query.class);when(em.createNativeQuery(anyString())).thenReturn(rows);
+        when(rows.getResultList()).thenReturn(List.of());
+        var payload=new FulfillmentWorkbenchQueryService(em,fullTaskAccess()).exportPurchase("","","",null,null,null,500);
+        assertEquals(0,payload.total());assertFalse(payload.columns().isEmpty());
+        verify(em).createNativeQuery(anyString());verify(rows,org.mockito.Mockito.never()).getSingleResult();
+    }
+
     @Test
     void purchaseEntryUsesOneAggregateWithoutRowsTableFacetsOrDerivedJoins() {
         EntityManager em = mock(EntityManager.class);
@@ -82,21 +129,16 @@ class FulfillmentWorkbenchQueryServiceTest {
     void exceptionFilterAndOptionsAreEvaluatedByTheDatabaseNotTheCurrentPage() {
         EntityManager em = mock(EntityManager.class);
         Query rows = mock(Query.class);
-        Query summary = mock(Query.class);
-        Query statuses = mock(Query.class);
-        Query exceptions = mock(Query.class);
-        Query pending = mock(Query.class);
         when(em.createNativeQuery(anyString()))
-                .thenReturn(rows, summary, statuses, exceptions, pending);
-        when(rows.getResultList()).thenReturn(List.of());
-        when(summary.getSingleResult()).thenReturn(new Object[]{
-                5L, 2L, 4L, new BigDecimal("12")
-        });
-        when(statuses.getResultList()).thenReturn(
-                Collections.singletonList(new Object[]{"UNPEGGED", 3L}));
-        when(exceptions.getResultList()).thenReturn(
-                Collections.singletonList(new Object[]{"OVERDUE_SHORTAGE", 2L}));
-        when(pending.getSingleResult()).thenReturn(4L);
+                .thenReturn(rows);
+
+        when(rows.getResultList()).thenReturn(pageResult(
+                List.of(),
+                new Object[]{5L, 2L, 4L, new BigDecimal("12")},
+                Collections.singletonList(new Object[]{"UNPEGGED", 3L}),
+                Collections.singletonList(new Object[]{"OVERDUE_SHORTAGE", 2L}),
+                4L,
+                List.of()));
 
         FulfillmentWorkbenchAccessPolicy accessPolicy =
                 mock(FulfillmentWorkbenchAccessPolicy.class);
@@ -104,66 +146,56 @@ class FulfillmentWorkbenchQueryServiceTest {
                 .query("PURCHASE", "UNPEGGED", "轴套", "OVERDUE_ANY", null, null, 2, 20);
 
         verify(rows).setParameter("exception", "OVERDUE_ANY");
-        verify(summary).setParameter("exception", "OVERDUE_ANY");
-        verify(statuses).setParameter("exception", "OVERDUE_ANY");
-        verify(exceptions).setParameter("exception", "");
         assertEquals(2L, result.summary().exceptionCounts().get("OVERDUE_SHORTAGE"));
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, times(5)).createNativeQuery(sql.capture());
+        verify(em).createNativeQuery(sql.capture());
         assertTrue(sql.getAllValues().getFirst().contains("OVERDUE_ANY"));
-        assertTrue(sql.getAllValues().get(3).contains("exception_code IS NOT NULL"));
+        assertTrue(sql.getAllValues().getFirst().contains("exception_code IS NOT NULL"));
     }
 
     @Test
     void pendingCardCountIgnoresTheActiveStatusCardFilter() {
         EntityManager em = mock(EntityManager.class);
         Query rows = mock(Query.class);
-        Query summary = mock(Query.class);
-        Query statuses = mock(Query.class);
-        Query exceptions = mock(Query.class);
-        Query pending = mock(Query.class);
         when(em.createNativeQuery(anyString()))
-                .thenReturn(rows, summary, statuses, exceptions, pending);
-        when(rows.getResultList()).thenReturn(List.of());
-        when(summary.getSingleResult()).thenReturn(new Object[]{
-                3L, 0L, 0L, BigDecimal.ZERO
-        });
-        when(statuses.getResultList()).thenReturn(List.of());
-        when(exceptions.getResultList()).thenReturn(List.of());
-        when(pending.getSingleResult()).thenReturn(9L);
+                .thenReturn(rows);
+
+        when(rows.getResultList()).thenReturn(pageResult(
+                List.of(),
+                new Object[]{3L, 0L, 0L, BigDecimal.ZERO},
+                List.of(),
+                List.of(),
+                9L,
+                List.of()));
 
         FulfillmentWorkbenchPage result = new FulfillmentWorkbenchQueryService(
                         em, mock(FulfillmentWorkbenchAccessPolicy.class))
                 .query("PURCHASE", "COMPLETED", "", "", null, null, 1, 20);
 
-        // 「待完成」卡走部门×关键字全量口径：状态绑定 ""，不被已选「已完成」卡清零。
-        verify(pending).setParameter("status", "");
+        // 「待完成」聚合忽略所选状态和日期，不被「已完成」卡清零。
         assertEquals(9L, result.summary().pendingTasks());
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, times(5)).createNativeQuery(sql.capture());
+        verify(em).createNativeQuery(sql.capture());
         assertTrue(sql.getAllValues().getFirst().contains("OPEN_ANY"));
-        assertTrue(sql.getAllValues().getLast().contains("open_qty > 0"));
+        assertTrue(sql.getAllValues().getLast().contains("open_line_count>0"));
     }
 
     @Test
     void openAnyStatusSentinelFiltersByOpenQuantity() {
         EntityManager em = mock(EntityManager.class);
         Query rows = mock(Query.class);
-        Query summary = mock(Query.class);
-        Query statuses = mock(Query.class);
-        Query exceptions = mock(Query.class);
-        Query pending = mock(Query.class);
         when(em.createNativeQuery(anyString()))
-                .thenReturn(rows, summary, statuses, exceptions, pending);
-        when(rows.getResultList()).thenReturn(List.of());
-        when(summary.getSingleResult()).thenReturn(new Object[]{
-                6L, 1L, 6L, new BigDecimal("30")
-        });
-        when(statuses.getResultList()).thenReturn(List.of());
-        when(exceptions.getResultList()).thenReturn(List.of());
-        when(pending.getSingleResult()).thenReturn(6L);
+                .thenReturn(rows);
+
+        when(rows.getResultList()).thenReturn(pageResult(
+                List.of(),
+                new Object[]{6L, 1L, 6L, new BigDecimal("30")},
+                List.of(),
+                List.of(),
+                6L,
+                List.of()));
 
         FulfillmentWorkbenchPage result = new FulfillmentWorkbenchQueryService(
                         em, mock(FulfillmentWorkbenchAccessPolicy.class))
@@ -260,19 +292,18 @@ class FulfillmentWorkbenchQueryServiceTest {
     void subcontractOrderStagesFollowTheDrawModelAndStatusCountsStayOnTaskStatus() {
         EntityManager em = mock(EntityManager.class);
         Query rows = mock(Query.class);
-        Query summary = mock(Query.class);
-        Query statuses = mock(Query.class);
-        Query exceptions = mock(Query.class);
-        Query pending = mock(Query.class);
         when(em.createNativeQuery(anyString()))
-                .thenReturn(rows, summary, statuses, exceptions, pending);
-        when(rows.getResultList()).thenReturn(List.of());
-        when(summary.getSingleResult()).thenReturn(new Object[]{3L, 0L, 3L, new BigDecimal("30")});
-        when(statuses.getResultList()).thenReturn(List.of(
+                .thenReturn(rows);
+
+        when(rows.getResultList()).thenReturn(pageResult(
+                List.of(),
+                new Object[]{3L, 0L, 3L, new BigDecimal("30")},
+                List.of(
                 new Object[]{"FINANCE_APPROVED", 1L},
-                new Object[]{"WAITING_ORDER", 4L}));
-        when(exceptions.getResultList()).thenReturn(List.of());
-        when(pending.getSingleResult()).thenReturn(3L);
+                new Object[]{"WAITING_ORDER", 4L}),
+                List.of(),
+                3L,
+                List.of()));
         FulfillmentWorkbenchAccessPolicy accessPolicy = mock(FulfillmentWorkbenchAccessPolicy.class);
         when(accessPolicy.canCreateSubcontractOrder()).thenReturn(true);
 
@@ -284,7 +315,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertFalse(page.summary().statusCounts().containsKey("WAITING_COMPONENT_STOCK"));
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, times(5)).createNativeQuery(sql.capture());
+        verify(em).createNativeQuery(sql.capture());
         String rowsSql = sql.getAllValues().getFirst();
         assertTrue(rowsSql.contains("v.task_id, v.package_id, v.plan_id, v.plan_no"));
         assertTrue(rowsSql.contains("ARRAY[v.action_item_id::text] AS action_item_ids"));
@@ -325,10 +356,10 @@ class FulfillmentWorkbenchQueryServiceTest {
                 "preplan_subcontract_make", "SUBCONTRACT_MAKE_TASK", "SUPPLIER_SELF_SUPPLIED", "self_supplied")) {
             assertFalse(rowsSql.contains(removed), removed);
         }
-        String statusSql = sql.getAllValues().get(2);
+        String statusSql = sql.getAllValues().getFirst();
         // ADR-143 §二.3: 缺 BOM 的申请行留在「待处理」段, 但单独按 BOM_MISSING 分桶, 不计入该段红数。
         assertTrue(statusSql.contains(
-                "SELECT CASE WHEN display_stage = 'BOM_MISSING' THEN 'BOM_MISSING' ELSE task_status END AS status_key"));
+                "SELECT CASE WHEN display_stage='BOM_MISSING' THEN 'BOM_MISSING' ELSE task_status END AS status_key"));
         assertTrue(statusSql.contains("GROUP BY 1"));
         assertFalse(statusSql.contains("WAITING_COMPONENT_STOCK"));
     }
@@ -338,23 +369,22 @@ class FulfillmentWorkbenchQueryServiceTest {
     void purchaseRowsUseTaskStatusAsDisplayStage() {
         EntityManager em = mock(EntityManager.class);
         Query rows = mock(Query.class);
-        Query summary = mock(Query.class);
-        Query statuses = mock(Query.class);
-        Query exceptions = mock(Query.class);
-        Query pending = mock(Query.class);
         when(em.createNativeQuery(anyString()))
-                .thenReturn(rows, summary, statuses, exceptions, pending);
-        when(rows.getResultList()).thenReturn(List.of());
-        when(summary.getSingleResult()).thenReturn(new Object[]{0L, 0L, 0L, BigDecimal.ZERO});
-        when(statuses.getResultList()).thenReturn(List.of());
-        when(exceptions.getResultList()).thenReturn(List.of());
-        when(pending.getSingleResult()).thenReturn(0L);
+                .thenReturn(rows);
+
+        when(rows.getResultList()).thenReturn(pageResult(
+                List.of(),
+                new Object[]{0L, 0L, 0L, BigDecimal.ZERO},
+                List.of(),
+                List.of(),
+                0L,
+                List.of()));
 
         new FulfillmentWorkbenchQueryService(em, mock(FulfillmentWorkbenchAccessPolicy.class))
                 .query("PURCHASE", "", "", "", null, null, 1, 20);
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, times(5)).createNativeQuery(sql.capture());
+        verify(em).createNativeQuery(sql.capture());
         String rowsSql = sql.getAllValues().getFirst();
         assertTrue(rowsSql.contains("THEN 'FINANCE_REVIEW_PENDING'"));
         assertTrue(rowsSql.contains("THEN 'FINANCE_REVIEW_REJECTED'"));
@@ -369,24 +399,24 @@ class FulfillmentWorkbenchQueryServiceTest {
     void displayStageAndOrderCapabilityAreReadFromTheRowAndSurviveActionCopy() {
         EntityManager em = mock(EntityManager.class);
         Query rows = mock(Query.class);
-        Query summary = mock(Query.class);
-        Query statuses = mock(Query.class);
-        Query exceptions = mock(Query.class);
-        Query pending = mock(Query.class);
         Query sources = mock(Query.class);
         when(em.createNativeQuery(anyString()))
-                .thenReturn(rows, sources, summary, statuses, exceptions, pending);
-        when(pending.getSingleResult()).thenReturn(0L);
+                .thenReturn(rows, sources);
+
         UUID documentId = UUID.randomUUID();
         Object[] wide = java.util.Arrays.copyOf(
                 taskRow("SUBCONTRACT", "SUBCONTRACT_APPLICATION", documentId, UUID.randomUUID()), 37);
         wide[35] = Boolean.TRUE;
         wide[36] = "WAITING_ORDER";
-        when(rows.getResultList()).thenReturn(List.of(
-                wide, taskRow("SUBCONTRACT", "SUBCONTRACT_APPLICATION", UUID.randomUUID(), UUID.randomUUID())));
-        when(summary.getSingleResult()).thenReturn(new Object[]{2L, 0L, 2L, BigDecimal.TEN});
-        when(statuses.getResultList()).thenReturn(List.of());
-        when(exceptions.getResultList()).thenReturn(List.of());
+
+        when(rows.getResultList()).thenReturn(pageResult(
+                List.of(
+                wide, taskRow("SUBCONTRACT", "SUBCONTRACT_APPLICATION", UUID.randomUUID(), UUID.randomUUID())),
+                new Object[]{2L, 0L, 2L, BigDecimal.TEN},
+                List.of(),
+                List.of(),
+                0L,
+                List.of()));
         FulfillmentWorkbenchAccessPolicy accessPolicy = mock(FulfillmentWorkbenchAccessPolicy.class);
         when(accessPolicy.documentAccess("SUBCONTRACT", "SUBCONTRACT_APPLICATION"))
                 .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true, true));
@@ -475,20 +505,16 @@ class FulfillmentWorkbenchQueryServiceTest {
     void warehouseRowsSortByPlanNumberAndCarryDocNoFacets() {
         EntityManager em = mock(EntityManager.class);
         Query rows = mock(Query.class);
-        Query summary = mock(Query.class);
-        Query statuses = mock(Query.class);
-        Query exceptions = mock(Query.class);
-        Query pending = mock(Query.class);
-        Query docNoFacets = mock(Query.class);
         when(em.createNativeQuery(anyString()))
-                .thenReturn(rows, summary, statuses, exceptions, pending, docNoFacets);
-        when(rows.getResultList()).thenReturn(List.of());
-        when(summary.getSingleResult()).thenReturn(new Object[]{0L, 0L, 0L, BigDecimal.ZERO});
-        when(statuses.getResultList()).thenReturn(List.of());
-        when(exceptions.getResultList()).thenReturn(List.of());
-        when(pending.getSingleResult()).thenReturn(0L);
-        when(docNoFacets.getResultList())
-                .thenReturn(List.of(new Object[]{"LL2609001", 2L}, new Object[]{null, 1L}));
+                .thenReturn(rows);
+
+        when(rows.getResultList()).thenReturn(pageResult(
+                List.of(),
+                new Object[]{0L, 0L, 0L, BigDecimal.ZERO},
+                List.of(),
+                List.of(),
+                0L,
+                List.of(new Object[]{"LL2609001", 2L}, new Object[]{null, 1L})));
         FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
         when(access.canAccessWarehouseTasks()).thenReturn(true);
 
@@ -497,7 +523,7 @@ class FulfillmentWorkbenchQueryServiceTest {
                 new FulfillmentWorkbenchTableQuery("planNo", "desc", java.util.Map.of(), null, null, null, null));
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, times(6)).createNativeQuery(sql.capture());
+        verify(em).createNativeQuery(sql.capture());
         assertTrue(sql.getAllValues().getFirst().contains("NULLIF(plan_no,'') DESC NULLS LAST, task_id"));
         // docNo 分面：与列表同一份 WHERE（filters），按 visible_doc_no 分组计数。
         assertTrue(sql.getAllValues().getLast().contains("GROUP BY visible_doc_no"));
@@ -515,6 +541,9 @@ class FulfillmentWorkbenchQueryServiceTest {
                         null, null, null, null).orderSql());
         assertEquals("open_qty DESC NULLS LAST, task_id",
                 new FulfillmentWorkbenchTableQuery("openQty", "desc", java.util.Map.of(),
+                        null, null, null, null).orderSql());
+        assertEquals("difference_qty ASC NULLS LAST, task_id",
+                new FulfillmentWorkbenchTableQuery("differenceQty", "asc", java.util.Map.of(),
                         null, null, null, null).orderSql());
         org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
                 () -> new FulfillmentWorkbenchTableQuery("warehouseName", "asc",
@@ -584,20 +613,20 @@ class FulfillmentWorkbenchQueryServiceTest {
     void actionMetadataIsMaskedWhenTheExactDocumentPermissionIsMissing() {
         EntityManager em = mock(EntityManager.class);
         Query rows = mock(Query.class);
-        Query summary = mock(Query.class);
-        Query statuses = mock(Query.class);
-        Query exceptions = mock(Query.class);
-        Query pending = mock(Query.class);
         when(em.createNativeQuery(anyString()))
-                .thenReturn(rows, summary, statuses, exceptions, pending);
-        when(pending.getSingleResult()).thenReturn(0L);
+                .thenReturn(rows);
+
         UUID documentId = UUID.randomUUID();
         UUID documentItemId = UUID.randomUUID();
-        when(rows.getResultList()).thenReturn(Collections.singletonList(taskRow(
-                "PURCHASE", "PURCHASE_ORDER", documentId, documentItemId)));
-        when(summary.getSingleResult()).thenReturn(new Object[]{1L, 0L, 1L, BigDecimal.ONE});
-        when(statuses.getResultList()).thenReturn(List.of());
-        when(exceptions.getResultList()).thenReturn(List.of());
+
+        when(rows.getResultList()).thenReturn(pageResult(
+                Collections.singletonList(taskRow(
+                "PURCHASE", "PURCHASE_ORDER", documentId, documentItemId)),
+                new Object[]{1L, 0L, 1L, BigDecimal.ONE},
+                List.of(),
+                List.of(),
+                0L,
+                List.of()));
         FulfillmentWorkbenchAccessPolicy accessPolicy =
                 mock(FulfillmentWorkbenchAccessPolicy.class);
         when(accessPolicy.documentAccess("PURCHASE", "PURCHASE_ORDER"))
@@ -622,20 +651,20 @@ class FulfillmentWorkbenchQueryServiceTest {
     void actionAndBatchCapabilitiesUseSeparateViewAndEditPermissions() {
         EntityManager em = mock(EntityManager.class);
         Query rows = mock(Query.class);
-        Query summary = mock(Query.class);
-        Query statuses = mock(Query.class);
-        Query exceptions = mock(Query.class);
-        Query pending = mock(Query.class);
         when(em.createNativeQuery(anyString()))
-                .thenReturn(rows, summary, statuses, exceptions, pending);
-        when(pending.getSingleResult()).thenReturn(0L);
+                .thenReturn(rows);
+
         UUID documentId = UUID.randomUUID();
         UUID documentItemId = UUID.randomUUID();
-        when(rows.getResultList()).thenReturn(Collections.singletonList(taskRow(
-                "PURCHASE", "PURCHASE_REQUEST", documentId, documentItemId)));
-        when(summary.getSingleResult()).thenReturn(new Object[]{1L, 0L, 1L, BigDecimal.ONE});
-        when(statuses.getResultList()).thenReturn(List.of());
-        when(exceptions.getResultList()).thenReturn(List.of());
+
+        when(rows.getResultList()).thenReturn(pageResult(
+                Collections.singletonList(taskRow(
+                "PURCHASE", "PURCHASE_REQUEST", documentId, documentItemId)),
+                new Object[]{1L, 0L, 1L, BigDecimal.ONE},
+                List.of(),
+                List.of(),
+                0L,
+                List.of()));
         FulfillmentWorkbenchAccessPolicy accessPolicy =
                 mock(FulfillmentWorkbenchAccessPolicy.class);
         when(accessPolicy.documentAccess("PURCHASE", "PURCHASE_REQUEST"))
@@ -690,6 +719,36 @@ class FulfillmentWorkbenchQueryServiceTest {
         Method method = java.util.Arrays.stream(FulfillmentWorkbenchController.class.getDeclaredMethods())
                 .filter(candidate -> candidate.getName().equals(methodName)).findFirst().orElseThrow();
         assertEquals(expected, method.getAnnotation(PreAuthorize.class).value());
+    }
+
+    /** Native page rows and metadata arrive together, including the empty-page aggregate row. */
+    private static List<Object[]> pageResult(List<Object[]> items, Object[] summary,
+                                            List<Object[]> statuses, List<Object[]> exceptions,
+                                            long pending, List<Object[]> docNoFacets) {
+        try {
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            var statusCounts = new java.util.LinkedHashMap<String, Long>();
+            for (Object[] row : statuses) statusCounts.put((String) row[0], ((Number) row[1]).longValue());
+            var exceptionCounts = new java.util.LinkedHashMap<String, Long>();
+            for (Object[] row : exceptions) exceptionCounts.put((String) row[0], ((Number) row[1]).longValue());
+            var facets = new java.util.ArrayList<Object[]>();
+            for (Object[] row : docNoFacets) facets.add(new Object[]{"docNo", row[0], row[0], row[1]});
+            List<Object[]> nativeRows = items.isEmpty() ? Collections.singletonList(new Object[50]) : items;
+            var result = new java.util.ArrayList<Object[]>();
+            for (Object[] row : nativeRows) {
+                Object[] combined = java.util.Arrays.copyOf(row, 58);
+                if (row.length <= 37) combined[37] = true;
+                System.arraycopy(summary, 0, combined, 50, 4);
+                combined[54] = mapper.writeValueAsString(statusCounts);
+                combined[55] = mapper.writeValueAsString(exceptionCounts);
+                combined[56] = pending;
+                combined[57] = mapper.writeValueAsString(facets);
+                result.add(combined);
+            }
+            return result;
+        } catch (com.fasterxml.jackson.core.JsonProcessingException failure) {
+            throw new IllegalStateException(failure);
+        }
     }
 
     private static Object[] taskRow(

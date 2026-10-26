@@ -10,125 +10,161 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/repositories/sales_repository.dart';
 import 'package:uten_imp/features/sales/widgets/sales_plan_progress_panel.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
-  testWidgets(
-    'unified mode hides legacy toolbar, shows available only, and ships available quantities',
-    (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1500, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      final repository = _ShippableRepository();
-      final scope = SalesShipmentActionScope();
-      addTearDown(scope.dispose);
-      var openedCount = 0;
-      Uri? opened;
-      final router = GoRouter(
-        initialLocation: '/',
-        routes: [
-          GoRoute(
-            path: '/',
-            builder: (_, _) => Scaffold(
-              body: SingleChildScrollView(
-                child: SalesPlanProgressPanel(
-                  orderId: 'order-1',
-                  canShip: true,
-                  shipmentActions: scope,
+  for (final returnMode in ['pop', 'browser', 'replace']) {
+    testWidgets(
+      '$returnMode unified mode ships available quantities and refreshes once on return',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1500, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final repository = _ShippableRepository();
+        final scope = SalesShipmentActionScope();
+        addTearDown(scope.dispose);
+        var openedCount = 0;
+        Uri? opened;
+        final router = GoRouter(
+          initialLocation: '/',
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (_, _) => Scaffold(
+                body: SingleChildScrollView(
+                  child: SalesPlanProgressPanel(
+                    orderId: 'order-1',
+                    canShip: true,
+                    shipmentActions: scope,
+                  ),
                 ),
               ),
             ),
-          ),
-          GoRoute(
-            path: '/sales/shipments/new',
-            builder: (context, state) {
-              openedCount++;
-              opened = state.uri;
-              return Scaffold(
+            GoRoute(
+              path: '/sales/shipments/new',
+              builder: (context, state) {
+                openedCount++;
+                opened = state.uri;
+                return Scaffold(
+                  body: TextButton(
+                    onPressed: () {
+                      if (returnMode == 'browser') {
+                        GoRouter.of(context).go('/');
+                      } else {
+                        context.pop();
+                      }
+                    },
+                    child: const Text('返回产品进度'),
+                  ),
+                );
+              },
+            ),
+            GoRoute(
+              path: '/sales/shipments/detail',
+              builder: (context, _) => Scaffold(
                 body: TextButton(
                   onPressed: context.pop,
                   child: const Text('返回产品进度'),
                 ),
-              );
-            },
-          ),
-        ],
-      );
-      addTearDown(router.dispose);
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            salesRepositoryProvider(
-              SalesDocType.order,
-            ).overrideWithValue(repository),
-            currentPermissionsProvider.overrideWithValue(const {
-              Perm.salesShipmentView,
-              Perm.salesShipmentCreate,
-            }),
-            isSuperAdminProvider.overrideWithValue(false),
+              ),
+            ),
           ],
-          child: MaterialApp.router(routerConfig: router),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              salesRepositoryProvider(
+                SalesDocType.order,
+              ).overrideWithValue(repository),
+              currentPermissionsProvider.overrideWithValue(const {
+                Perm.salesShipmentView,
+                Perm.salesShipmentCreate,
+              }),
+              isSuperAdminProvider.overrideWithValue(false),
+            ],
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(SalesPlanProgressPanel)),
+        );
+        addTearDown(
+          attachPageResume(router, container.read(pageResumeProvider.notifier)),
+        );
 
-      // 统一模式：面板内工具条与说明文字全部下线（去发货在宿主悬浮组）。
-      expect(find.textContaining('全选可发产品'), findsNothing);
-      expect(find.text('刷新产品进度'), findsNothing);
-      expect(find.textContaining('已产按合格入库计算'), findsNothing);
+        // 统一模式：面板内工具条与说明文字全部下线（去发货在宿主悬浮组）。
+        expect(find.textContaining('全选可发产品'), findsNothing);
+        expect(find.text('刷新产品进度'), findsNothing);
+        expect(find.textContaining('已产按合格入库计算'), findsNothing);
 
-      // 2026-09-13：不再提供「本次发货数量」输入列，只展示「本次可发」。
-      expect(find.text('本次可发'), findsOneWidget);
-      expect(find.text('本次发货数量'), findsNothing);
-      expect(find.byType(TextField), findsNothing);
+        // 2026-09-13：不再提供「本次发货数量」输入列，只展示「本次可发」。
+        expect(find.text('本次可发'), findsOneWidget);
+        expect(find.text('本次发货数量'), findsNothing);
+        expect(find.byType(TextField), findsNothing);
 
-      // 悬浮桥就绪：可发货、尚未勾选。
-      expect(scope.shippingEnabled, isTrue);
-      expect(scope.selectedCount, 0);
+        // 悬浮桥就绪：可发货、尚未勾选。
+        expect(scope.shippingEnabled, isTrue);
+        expect(scope.selectedCount, 0);
 
-      // 行单击只切换勾选，不弹进度弹窗。
-      await tester.tap(find.text('产品甲'));
-      await tester.pumpAndSettle();
-      expect(scope.selectedCount, 1);
-      expect(find.text('产品甲 · 进度来源'), findsNothing);
+        // 行单击只切换勾选，不弹进度弹窗。
+        await tester.tap(find.text('产品甲'));
+        await tester.pumpAndSettle();
+        expect(scope.selectedCount, 1);
+        expect(find.text('产品甲 · 进度来源'), findsNothing);
 
-      // 「查看进度」列按钮才弹窗。
-      // 2026-09-14 名称/编号/颜色/规格拆列后表体更宽：先滚到该按钮再点。
-      await tester.ensureVisible(find.text('查看进度').first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('查看进度').first);
-      await tester.pumpAndSettle();
-      expect(find.text('产品甲 · 进度来源'), findsOneWidget);
-      await tester.tap(find.text('关闭'));
-      await tester.pumpAndSettle();
+        // 「查看进度」列按钮才弹窗。
+        // 2026-09-14 名称/编号/颜色/规格拆列后表体更宽：先滚到该按钮再点。
+        await tester.ensureVisible(find.text('查看进度').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('查看进度').first);
+        await tester.pumpAndSettle();
+        expect(find.text('产品甲 · 进度来源'), findsOneWidget);
+        await tester.tap(find.text('关闭'));
+        await tester.pumpAndSettle();
 
-      // 上面 ensureVisible 把表体横滚过去了：首列是冻结列（钉在视口左缘），
-      // 不先归零横滚，点名称就点在冻结列底下（既有表格用例同款处理）。
-      await _resetTableHScroll(tester);
+        // 上面 ensureVisible 把表体横滚过去了：首列是冻结列（钉在视口左缘），
+        // 不先归零横滚，点名称就点在冻结列底下（既有表格用例同款处理）。
+        await _resetTableHScroll(tester);
 
-      // 勾选第二行批量发货：数量=各自本次可发（出货单里再调整）。
-      await tester.tap(find.text('产品丙'));
-      await tester.pumpAndSettle();
-      expect(scope.selectedCount, 2);
+        // 勾选第二行批量发货：数量=各自本次可发（出货单里再调整）。
+        await tester.tap(find.text('产品丙'));
+        await tester.pumpAndSettle();
+        expect(scope.selectedCount, 2);
 
-      final shipping = scope.createShipment();
-      await tester.pumpAndSettle();
-      expect(openedCount, 1);
-      expect(opened?.queryParameters, {
-        'sourceOrderId': 'order-1',
-        'orderItems': 'order-item-1:1.25,order-item-3:5',
-      });
-      await tester.tap(find.text('返回产品进度'));
-      await shipping;
-      await tester.pumpAndSettle();
-      // 返回后进度重读、旧勾选清空。
-      expect(repository.reads, 2);
-      expect(scope.selectedCount, 0);
-      expect(tester.takeException(), isNull);
-    },
-  );
+        final shipping = scope.createShipment();
+        await tester.pumpAndSettle();
+        expect(openedCount, 1);
+        expect(opened?.queryParameters, {
+          'sourceOrderId': 'order-1',
+          'orderItems': 'order-item-1:1.25,order-item-3:5',
+        });
+        if (returnMode == 'replace') {
+          router.replace<void>('/sales/shipments/detail');
+          await tester.pumpAndSettle();
+          expect(scope.busy, isTrue);
+          expect(
+            repository.reads,
+            1,
+            reason: 'Covered source must not refresh.',
+          );
+        }
+        await tester.tap(find.text('返回产品进度'));
+        await tester.pumpAndSettle();
+        await shipping;
+        await tester.pumpAndSettle();
+        // 返回后进度重读、旧勾选清空。
+        expect(repository.reads, 2);
+        expect(scope.selectedCount, 0);
+        expect(scope.busy, isFalse);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets(
     'zero-available rows cannot be selected and shipping them is blocked',

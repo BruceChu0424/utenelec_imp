@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import '../../../shared/providers/master_party_options.dart';
 // 应收应付台账页（只读查询，ar_ap_ledger:view）。
 //
 // direction(AR/AP) + settled(全部/未清/已清) 双向过滤 + 关键词 + 日期范围。
@@ -56,9 +58,11 @@ class FinanceArApPage extends ConsumerStatefulWidget {
   ConsumerState<FinanceArApPage> createState() => _FinanceArApPageState();
 }
 
-class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
+class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
+    with ScopedPagedReadViewMixin<FinanceArApPage> {
   PagedResult<ArApLedgerItem>? _page;
   int _pageNum = 1;
+  final _tableRows = MasterDataTableRowsController<ArApLedgerItem>();
   bool _loading = false;
   String? _error;
   final _loadRequests = LatestRequestGuard();
@@ -109,7 +113,41 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
     salesOrderNos: withDocNoFilters ? _columnFilters['salesOrderNos'] : null,
   );
 
-  Future<void> _load(int page) async {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _loadRequests.begin();
+    if (!mounted) return;
+    setState(() {
+      _page = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+    });
+  }
+
+  Map<String, dynamic> get _cacheQuery => {
+    'repository': ref.read(arApLedgerRepositoryProvider),
+    'keyword': _keyword,
+    'direction': _direction,
+    'sourceDocType': _sourceDocType,
+    'partyId': _partyId,
+    'currencyId': _currencyId,
+    'settled': _settled,
+    'columns': Map.of(_columnFilters.values),
+    'sort': _columnFilters.sortColumn,
+    'ascending': _columnFilters.sortAscending,
+  };
+
+  Future<void> _navigatePage(int page) => _load(page, useCache: true);
+
+  Future<void> _load(int page, {bool useCache = false}) async {
+    final cacheQuery = _cacheQuery;
+    final repo = ref.read(arApLedgerRepositoryProvider);
+    final filter = _arApFilter();
+    final sort = _columnFilters.sortColumn;
+    final order = sort == null
+        ? null
+        : (_columnFilters.sortAscending ? 'asc' : 'desc');
+
     final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
@@ -119,17 +157,29 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
     // 单号桶随列表口径重取（2026-09-25 单号列统一）。
     unawaited(_loadDocNoFacets());
     try {
-      final r = await ref
-          .read(arApLedgerRepositoryProvider)
-          .list(
-            page: page,
-            filter: _arApFilter(),
-            sort: _columnFilters.sortColumn,
-            order: _columnFilters.sortColumn == null
-                ? null
-                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
-          );
+      final r = await readScopedPage<ArApLedgerItem>(
+        page,
+        query: cacheQuery,
+        currentQuery: () => _cacheQuery,
+        useCache: useCache,
+        fetchPage: (target) =>
+            repo.list(page: target, filter: filter, sort: sort, order: order),
+      );
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      unawaited(
+        ref
+            .read(financeNameServiceProvider)
+            .loadPartyNames(
+              clientIds: partyReferenceIds([
+                ...r.items.map((item) => item.clientId),
+                if (_direction != 'AP') _partyId,
+              ]),
+              supplierIds: partyReferenceIds([
+                ...r.items.map((item) => item.supplierId),
+                if (_direction != 'AR') _partyId,
+              ]),
+            ),
+      );
       setState(() {
         _page = r;
         _loading = false;
@@ -431,11 +481,11 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
         actions: [
           UtenRefreshButton(
             busy: _loading,
-            // 整页刷新：字典重拉 + 回第 1 页（与 initState 同口径）。
+            // 刷新当前可见页，同时更新字典。
             onRefresh: () async {
               await Future.wait([
                 ref.read(financeNameServiceProvider).ensureLoaded(),
-                _load(1),
+                _load(_tableRows.visiblePage ?? _pageNum),
               ]);
             },
           ),
@@ -478,6 +528,8 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                 ),
               ),
               body: MasterDataTableView<ArApLedgerItem>(
+                rowsController: _tableRows,
+                expensiveRowMounts: false,
                 primary: true,
                 tableKey:
                     'features.finance.pages.finance_ar_ap_page.FinanceArApPageState.build.1',
@@ -489,16 +541,28 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                   'sourceDocNo': _columnFilters.bucketOf('sourceDocNo'),
                   'direction': financeArApDirectionFacets,
                   'sourceDocType': financeArApSourceTypeFacets,
-                  'party': financeDictionaryFacets(
-                    _direction == 'AP'
-                        ? names.supplierEntries
+                  'party': selectedPartyFacet(
+                    _partyId,
+                    (id) => _direction == 'AP'
+                        ? names.supplier(id)
                         : _direction == 'AR'
-                        ? names.clientEntries
-                        : {...names.clientEntries, ...names.supplierEntries},
+                        ? names.client(id)
+                        : names.clientEntries[id] ?? names.supplierEntries[id],
                   ),
                   'settled': financeArApSettledFacets,
                   'currency': masterDictionaryFacets(names.currencyEntries),
                 },
+                facetPageLoaders: {
+                  'party': _direction == 'AP'
+                      ? supplierPartyFacetLoader(ref)
+                      : _direction == 'AR'
+                      ? clientPartyFacetLoader(ref)
+                      : combinedPartyFacetLoader(ref),
+                },
+                facetSearchScope: partyFacetSearchScope(ref, (
+                  'finance-ar-ap-party',
+                  _direction,
+                )),
                 nullCounts: const {},
                 filters: {
                   'billNo': _columnFilters['billNo'],
@@ -517,12 +581,12 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                 isLoading: _loading && _page == null,
                 loadingMore: _loading && _page != null,
                 error: _error,
-                onRetry: () => _load(_pageNum),
+                onRetry: () => _load(_tableRows.visiblePage ?? _pageNum),
                 emptyMessage: '暂无台账记录',
                 currentPage: _page?.page ?? 1,
                 totalPages: _page?.totalPages ?? 1,
                 paginationScope: _keyword,
-                onPageChange: (p) => _load(p),
+                onPageChange: _navigatePage,
               ),
             ),
           ),

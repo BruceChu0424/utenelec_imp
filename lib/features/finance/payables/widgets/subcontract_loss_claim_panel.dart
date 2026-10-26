@@ -1,3 +1,7 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -39,9 +43,12 @@ class SubcontractLossClaimPanel extends ConsumerStatefulWidget {
 }
 
 class _SubcontractLossClaimPanelState
-    extends ConsumerState<SubcontractLossClaimPanel> {
+    extends ConsumerState<SubcontractLossClaimPanel>
+    with ScopedPagedReadViewMixin<SubcontractLossClaimPanel> {
   final _requests = LatestRequestGuard();
   SubcontractLossClaimPageResult? _result;
+  final _tableRows =
+      MasterDataTableRowsController<SubcontractLossClaimSummary>();
   bool _loading = false;
   String? _error;
   String _keyword = '';
@@ -63,34 +70,90 @@ class _SubcontractLossClaimPanelState
   void didUpdateWidget(SubcontractLossClaimPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.refreshTick != oldWidget.refreshTick) {
-      _load(_page);
+      _load(_tableRows.visiblePage ?? _page);
     }
   }
 
-  Future<void> _load([int? requestedPage]) async {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _requests.begin();
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+    });
+  }
+
+  Map<String, dynamic> get _cacheQuery => {
+    'repository': ref.read(subcontractLossClaimRepositoryProvider),
+    'keyword': _keyword,
+    'status': _status,
+    'columns': Map.of(_columnFilters.values),
+    'sort': _columnFilters.sortColumn,
+    'ascending': _columnFilters.sortAscending,
+  };
+
+  Future<void> _navigatePage(int page) => _load(page, true);
+
+  Future<void> _load([int? requestedPage, bool useCache = false]) async {
+    final cacheQuery = _cacheQuery;
+    final repo = ref.read(subcontractLossClaimRepositoryProvider);
+    final status = _status;
+    final keyword = _keyword;
+    final sort = _kSortFields[_columnFilters.sortColumn];
+    final order = _columnFilters.sortColumn == null
+        ? null
+        : (_columnFilters.sortAscending ? 'asc' : 'desc');
+    final wasteBillNo = _columnFilters['wasteBillNo'];
+
     final generation = _requests.begin();
-    final page = requestedPage ?? _page;
+    final page = requestedPage ?? _tableRows.visiblePage ?? _page;
     setState(() {
       _page = page;
       _loading = true;
       _error = null;
     });
     try {
-      final result = await ref
-          .read(subcontractLossClaimRepositoryProvider)
-          .list(
-            status: _status,
-            keyword: _keyword,
-            page: page,
-            sort: _kSortFields[_columnFilters.sortColumn],
-            order: _columnFilters.sortColumn == null
-                ? null
-                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
-            wasteBillNo: _columnFilters['wasteBillNo'],
+      final cachedPage = await readScopedPage<SubcontractLossClaimSummary>(
+        page,
+        query: cacheQuery,
+        currentQuery: () => _cacheQuery,
+        useCache: useCache,
+        fetchPage: (target) async {
+          final response = await repo.list(
+            status: status,
+            keyword: keyword,
+            page: target,
+            sort: sort,
+            order: order,
+            wasteBillNo: wasteBillNo,
           );
+          return PagedReadSnapshot<
+            SubcontractLossClaimSummary,
+            SubcontractLossClaimPageResult
+          >(
+            page: PagedResult(
+              items: response.items,
+              page: response.page,
+              size: response.size,
+              total: response.total,
+              totalPages: response.totalPages,
+            ),
+            snapshot: response,
+          );
+        },
+      );
+      final result =
+          (cachedPage
+                  as PagedReadSnapshot<
+                    SubcontractLossClaimSummary,
+                    SubcontractLossClaimPageResult
+                  >)
+              .snapshot;
       if (!mounted || !_requests.isCurrent(generation)) return;
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
-      unawaited(_loadWasteBillNoFacets());
+
       setState(() {
         _result = result;
         _loading = false;
@@ -126,16 +189,6 @@ class _SubcontractLossClaimPanelState
 
   /// 损耗单号 facets（2026-09-25 单号列统一）：与列表同过滤口径
   /// （不含单号列自身值筛选）。
-  Future<void> _loadWasteBillNoFacets() => _columnFilters.loadFacets(
-    () async => {
-      'wasteBillNo': await ref
-          .read(subcontractLossClaimRepositoryProvider)
-          .wasteBillNoFacets(status: _status, keyword: _keyword),
-    },
-    onLoaded: () {
-      if (mounted) setState(() {});
-    },
-  );
 
   void _fail(int generation, String message) {
     if (!mounted || !_requests.isCurrent(generation)) return;
@@ -294,6 +347,8 @@ class _SubcontractLossClaimPanelState
         ),
         Expanded(
           child: MasterDataTableView<SubcontractLossClaimSummary>(
+            rowsController: _tableRows,
+            expensiveRowMounts: false,
             tableKey:
                 'features.finance.payables.widgets.subcontract_loss_claim_panel.SubcontractLossClaimPanelState.build.1',
             primary: true,
@@ -301,6 +356,18 @@ class _SubcontractLossClaimPanelState
             items: _result?.items ?? const [],
             // 损耗单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
             facets: {'wasteBillNo': _columnFilters.bucketOf('wasteBillNo')},
+            facetPageLoaders: nativeFacetLoaders(
+              ref,
+              path: '/finance/subcontract-loss-claims/facets',
+              fields: const ['wasteBillNo'],
+              filters: {'status': _status, 'keyword': _keyword},
+            ),
+            facetSearchScope: nativeFacetSearchScope(
+              ref,
+              '/finance/subcontract-loss-claims/facets',
+              {'status': _status, 'keyword': _keyword},
+            ),
+
             nullCounts: const {},
             filters: {'wasteBillNo': _columnFilters['wasteBillNo']},
             // 表头排序走服务端（2026-09-25 单号列统一）。
@@ -328,7 +395,7 @@ class _SubcontractLossClaimPanelState
             currentPage: _result?.page ?? 1,
             totalPages: _result?.totalPages ?? 1,
             paginationScope: (_keyword, _status),
-            onPageChange: (page) => _load(page),
+            onPageChange: _navigatePage,
           ),
         ),
       ],

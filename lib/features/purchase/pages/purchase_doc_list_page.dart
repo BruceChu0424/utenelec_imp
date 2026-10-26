@@ -1,3 +1,4 @@
+import '../../../shared/providers/master_party_options.dart';
 import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 // 采购单据列表页（按 docType 参数化）。
@@ -16,6 +17,7 @@ import '../../../shared/auth/read_owner_fence.dart';
 // 其余（折叠头+表格吸顶内滚、列表刷新 tick、返回即刷新、PagedListController
 // 竞态状态机）保持原实现。
 import 'dart:async';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_master_names.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -303,10 +305,13 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
       _cfg.draftKind == null ? null : DocumentStatusScope(_cfg.draftKind!);
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
-  Future<PagedResult<PurchaseDocListItem>> _fetch([int? requestedPage]) {
+  Future<PagedResult<PurchaseDocListItem>> _fetch([int? requestedPage]) async {
     final seg = _seg!;
     final range = seg.history ? _historyTime.range : null;
-    return ref
+    final names = ref.read(masterNameServiceProvider);
+    final current = captureReadOwner(ref);
+    final selectedParty = _supplierIdFilter;
+    final result = await ref
         .read(purchaseRepositoryProvider(widget.docType))
         .list(
           page: requestedPage ?? _list.pageNum,
@@ -333,6 +338,16 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
           sort: _list.sortKey,
           order: _list.sortOrder,
         );
+    if (!current()) throw StateError('读取作用域已变化');
+    unawaited(
+      names.loadSupplierNames(
+        partyReferenceIds([
+          ...result.items.map((item) => item.supplierId),
+          selectedParty,
+        ]),
+      ),
+    );
+    return result;
   }
 
   /// 单据号值筛选桶随过滤上下文重取（失败静默保持旧桶，不阻断列表）。
@@ -388,12 +403,42 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     ]);
   }
 
-  Future<void> _reload([int? page, bool silent = false]) {
+  List<Object?> get _pageQueryScope => [
+    _list.normalizedKeyword,
+    _list.sortKey,
+    _list.sortAsc,
+    _readerGeneration,
+    widget.docType,
+    _seg,
+    _historyTime,
+    _historyTime.range?.start,
+    _historyTime.range?.end,
+    _supplierIdFilter,
+    _warehouseIdFilter,
+    Map.of(_columnFilters.values),
+  ];
+
+  Future<void> _navigatePage(int page) => _reload(page, false, true);
+
+  Future<void> _reload([
+    int? page,
+    bool silent = false,
+    bool useCachedPage = false,
+  ]) {
     trackRefresh(Future<void>.value(), replaceKey: 'refresh');
-    return trackRefresh(_reloadRows(page, silent), replaceKey: 'rows');
+    return trackRefresh(
+      _reloadRows(page, silent, useCachedPage),
+      replaceKey: 'rows',
+    );
   }
 
-  Future<void> _reloadRows([int? page, bool silent = false]) async {
+  Future<void> _reloadRows([
+    int? page,
+    bool silent = false,
+    bool useCachedPage = false,
+  ]) async {
+    final cacheQuery = _pageQueryScope;
+    final ownerCurrent = captureReadOwner(ref);
     final generation = ++_reloadGeneration;
     if (!_shouldLoad) {
       final keyword = _list.keyword;
@@ -410,7 +455,16 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
       silent: silent,
       fetch: _fetch,
       fetchPage: _fetch,
-      isCurrent: captureReadOwner(ref),
+      useCachedPage: useCachedPage,
+      canPrefetch: () =>
+          mounted &&
+          TickerMode.valuesOf(context).enabled &&
+          (ModalRoute.of(context)?.isCurrent ?? true),
+      queryScope: cacheQuery,
+      isCurrent: () =>
+          mounted &&
+          ownerCurrent() &&
+          const DeepCollectionEquality().equals(cacheQuery, _pageQueryScope),
     );
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
       return;
@@ -451,6 +505,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     return FormDraftCategoryTable<PurchaseDocListItem>(
       scope: formDraftScopeForDocumentStatus(scope),
       table: table,
+      localReadRevision: _reloadGeneration,
       localValue: (draft, key) => formDraftMasterColumnValue(
         draft,
         key,
@@ -821,14 +876,22 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                             facets: {
                               'billNo': _columnFilters.bucketOf('billNo'),
                               if (_cfg.hasSupplier)
-                                'supplier': masterDictionaryFacets(
-                                  names.supplierEntries,
+                                'supplier': selectedPartyFacet(
+                                  _supplierIdFilter,
+                                  names.supplier,
                                 ),
                               if (_cfg.hasWarehouse)
                                 'warehouse': masterDictionaryFacets(
                                   names.warehouseEntries,
                                 ),
                             },
+                            facetPageLoaders: {
+                              'supplier': supplierPartyFacetLoader(ref),
+                            },
+                            facetSearchScope: partyFacetSearchScope(ref, (
+                              'purchase-list-party',
+                              widget.docType,
+                            )),
                             nullCounts: const {},
                             filters: {
                               ..._columnFilters.values,
@@ -874,7 +937,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                               _seg,
                               _historyTime,
                             ),
-                            onPageChange: (p) => _reload(p),
+                            onPageChange: _navigatePage,
                           ),
                         ),
                 );

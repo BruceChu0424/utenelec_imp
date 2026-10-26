@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
@@ -67,7 +68,28 @@ class StockCountReviewPage extends ConsumerStatefulWidget {
       _StockCountReviewPageState();
 }
 
-class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
+class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
+    with ScopedPagedReadViewMixin<StockCountReviewPage> {
+  int get _refreshPage => _readingRows.visiblePage ?? (_page?.page ?? 1);
+
+  final _readingRows = MasterDataTableRowsController<StockCountRequest>();
+  @override
+  void scopedPagedReadOwnerChanged() {
+    if (!mounted) return;
+    ++_sequence;
+    setState(() {
+      _page = null;
+      _detail = null;
+      _openingDetail = false;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+      _selectedRequestIds.clear();
+      _selectedLineIds.clear();
+      _setupPreviews.clear();
+      _readingRows.update(const []);
+    });
+  }
+
   PagedResult<StockCountRequest>? _page;
   StockCountRequest? _detail;
   String _status = 'PENDING';
@@ -183,7 +205,8 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
     entry?.remove();
   }
 
-  Future<void> _load([int page = 1]) async {
+  Future<void> _load([int? page, bool useCache = false]) async {
+    final requestedPage = page ?? _refreshPage;
     if (!_authorized) {
       if (mounted) setState(() => _loading = false);
       return;
@@ -194,15 +217,38 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
       _error = null;
     });
     try {
-      final result = await ref
-          .read(stockCountRequestRepositoryProvider)
-          .list(
-            reviewRoute: widget.reviewRoute,
-            status: _status.isEmpty ? null : _status,
-            scopeWarehouseId: widget.warehouseScope.warehouseId,
-            keyword: widget.keyword,
-            page: page,
-          );
+      final pageRepository = ref.read(stockCountRequestRepositoryProvider);
+      final pageReviewRoute = widget.reviewRoute;
+      final pageStatus = _status.isEmpty ? null : _status;
+      final pageScopeWarehouseId = widget.warehouseScope.warehouseId;
+      final pageKeyword = widget.keyword;
+
+      final result = await readScopedPage(
+        requestedPage,
+        slot: '_load',
+        query: [
+          pageRepository,
+          pageReviewRoute,
+          pageStatus,
+          pageScopeWarehouseId,
+          pageKeyword,
+        ],
+        currentQuery: () => [
+          ref.read(stockCountRequestRepositoryProvider),
+          widget.reviewRoute,
+          _status.isEmpty ? null : _status,
+          widget.warehouseScope.warehouseId,
+          widget.keyword,
+        ],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.list(
+          reviewRoute: pageReviewRoute,
+          status: pageStatus,
+          scopeWarehouseId: pageScopeWarehouseId,
+          keyword: pageKeyword,
+          page: target,
+        ),
+      );
       if (mounted && sequence == _sequence) {
         setState(() {
           _page = result;
@@ -524,7 +570,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
       refreshBadges(ref);
       widget.onChanged?.call();
       context.appSuccess('已批量通过 ${requests.length} 笔盘点，库存已更新');
-      await _load(_page?.page ?? 1);
+      await _load(_refreshPage);
     } catch (error) {
       if (mounted && sequence == _sequence) {
         setState(() => _error = _message(error));
@@ -690,6 +736,8 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
           ),
         Expanded(
           child: MasterDataTableView<StockCountRequest>(
+            rowsController: _readingRows,
+            expensiveRowMounts: false,
             tableKey: 'stock.count-requests',
             requiredLeadingColumnKeys: const ['status'],
             columns: [
@@ -808,7 +856,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
             onSelectedIdsChanged: (next) {
               if (_working || _confirming || _loading) return;
               final eligible = {
-                for (final row in _page?.items ?? const <StockCountRequest>[])
+                for (final row in _readingRows.items)
                   if (widget.reviewRoute == null || _batchSelectable(row))
                     row.id,
               };
@@ -823,7 +871,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
             emptyMessage: '暂无盘点申请',
             currentPage: _page?.page ?? 1,
             totalPages: _page?.totalPages ?? 1,
-            onPageChange: _load,
+            onPageChange: (page) => _load(page, true),
             paginationScope: (
               widget.reviewRoute,
               _status,
@@ -883,6 +931,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
         SizedBox(
           height: (150.0 + detail.lines.length * 48).clamp(245.0, 560.0),
           child: MasterDataTableView<StockCountRequestLine>(
+            expensiveRowMounts: false,
             tableKey: 'stock.count-request-lines',
             // 行勾选（2026-10-10 审核页防看岔行口径）：盘点行多、逐行核对原/盘
             // 数量，勾选防看岔；单选互斥（点其他行自动换选、再点取消），无行级

@@ -10,19 +10,20 @@
 // 前端仅负责展示，不以隐藏组件替代数据授权。
 //
 // 响应式：
-// - compact：页面自带 UtenContentContainer（水平 gutter 16），
-//   底部留白 96，滚到底内容可越过悬浮胶囊导航
-// - medium+：外壳（MainShellPage）已提供 UtenContentContainer
-//   （随可用宽度伸缩 + gutter 24/32），页面不再叠加，避免双重 gutter；
-//   无胶囊遮挡，底部留白 32
+// - 所有断点：滚动视口占满页面可用宽度，UtenContentContainer 在滚动内容内
+//   提供 16 / 24 的边距，页面竖条保持贴外侧。MainShell 在工作台路由不先扣边距。
+// - compact 底部避让悬浮胶囊；medium+ 无胶囊，底部留白 32。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/click_guard.dart';
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_user_avatar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
@@ -63,6 +64,7 @@ class DashboardPage extends ConsumerWidget {
       // 底部留白：compact 96（悬浮胶囊 overlay 不占布局，滚到底可越过胶囊）；
       // medium+ 无胶囊，32 即可
       body: SingleChildScrollView(
+        key: const Key('dashboard-page-scroll'),
         // 底部留白：compact 按胶囊遮挡高度避让（含系统手势条 + 呼吸量）；
         // medium+ 无胶囊，32 即可
         padding: EdgeInsets.only(
@@ -71,13 +73,13 @@ class DashboardPage extends ConsumerWidget {
               ? UtenSpacing.s16 + UtenCapsuleNavScope.occlusionOf(context)
               : UtenSpacing.s32,
         ),
-        // compact 由页面自行收敛宽度；medium+ 外壳已套 UtenContentContainer，
-        // 再套一层会叠加 gutter，故按断点取舍
         // selectable:false：工作台模块徽章轮询（结构性闪现）与拖选并发有 CME
         // 风险（准则 §3.4，用户口径：轮询页不包；当年全局事故的触发源即徽章轮询）。
-        child: isCompact
-            ? UtenContentContainer(selectable: false, child: content)
-            : content,
+        child: UtenContentContainer(
+          key: const Key('dashboard-page-content'),
+          selectable: false,
+          child: content,
+        ),
       ),
     );
   }
@@ -91,7 +93,7 @@ class DashboardPage extends ConsumerWidget {
     String name,
   ) {
     final isSuperAdmin = ref.watch(isSuperAdminProvider);
-    return Row(
+    final identity = Row(
       children: [
         UtenUserAvatar(name: name),
         const SizedBox(width: UtenSpacing.s12),
@@ -118,6 +120,21 @@ class DashboardPage extends ConsumerWidget {
             ],
           ),
         ),
+      ],
+    );
+    final actions = Wrap(
+      spacing: UtenSpacing.s8,
+      runSpacing: UtenSpacing.s8,
+      alignment: WrapAlignment.end,
+      children: [
+        UtenButton(
+          key: const ValueKey('dashboard-software-downloads'),
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.small,
+          icon: Icons.download_rounded,
+          onPressed: () => pushPage(context, RouteName.softwareDownloads),
+          child: const Text('软件下载'),
+        ),
         if (isSuperAdmin)
           UtenActionButton(
             type: UtenActionButtonType.secondary,
@@ -127,6 +144,28 @@ class DashboardPage extends ConsumerWidget {
             onAction: () => openSwitchPerson(context, ref),
           ),
       ],
+    );
+    return LayoutBuilder(
+      builder: (context, bounds) {
+        if (bounds.maxWidth < 640 ||
+            MediaQuery.textScalerOf(context).scale(16) > 24) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              identity,
+              const SizedBox(height: UtenSpacing.s12),
+              actions,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: identity),
+            const SizedBox(width: UtenSpacing.s16),
+            actions,
+          ],
+        );
+      },
     );
   }
 

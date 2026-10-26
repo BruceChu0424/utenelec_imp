@@ -24,6 +24,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/router/page_resume_provider.dart';
+import '../../../core/router/page_navigation_session.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
@@ -149,6 +150,7 @@ class _SalesPlanProgressPanelState
   final _selected = <String>{};
   List<OrderPlanProgressLine>? _lines;
   bool _navigating = false;
+  final _navigation = PageNavigationSession();
 
   /// 宿主页面(订货单详情)的稳定路由，首次 build 捕获，供「返回即刷新」复位用。
   String? _myLocation;
@@ -184,7 +186,14 @@ class _SalesPlanProgressPanelState
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
   void dispose() {
+    _navigation.dispose();
     widget.shipmentActions._unbind();
     super.dispose();
   }
@@ -261,7 +270,7 @@ class _SalesPlanProgressPanelState
     setState(() => _navigating = true);
     _syncScope();
     try {
-      await context.push(
+      await _navigation.push<void>(
         Uri(
           path: '/sales/shipments/new',
           queryParameters: {
@@ -283,13 +292,11 @@ class _SalesPlanProgressPanelState
     }
   }
 
-  /// 出货单新建页保存后 replace 成详情，go_router 不会完成本面板原 push 的 Future——
-  /// `_createShipment` 里 await 之后的收尾走不到，_navigating 卡在 true：「去发货」
-  /// 一直灰着，只有整页重建才好(2026-09-20 用户反馈同款)。回到宿主页面时由
-  /// 「返回即刷新」复位并重拉，与 push 正常返回的收尾一致。
+  /// Own visits refresh in _createShipment. Other child links still revalidate
+  /// through the host's normal return signal, without a second navigation lock.
   Future<void> _resumeAfterChildFlow() async {
     if (!mounted) return;
-    if (_navigating) setState(() => _navigating = false);
+    if (_navigation.consumeReturnedVisit()) return;
     await _refresh();
     if (!mounted) return;
     refreshBadges(ref);
@@ -404,6 +411,7 @@ class _ProgressList extends ConsumerWidget {
     ThemeData theme,
     bool canViewPlan,
   ) => MasterDataTableView<OrderPlanProgressLine>(
+    expensiveRowMounts: false,
     tableKey:
         'features.sales.widgets.sales_plan_progress_panel.ProgressList._table.1',
     key: const Key('sales-product-progress-table'),

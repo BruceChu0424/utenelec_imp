@@ -145,7 +145,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 301));
       await tester.pumpAndSettle();
       await next;
-      expect(requests, [(1, null), (2, null), (1, 'new')]);
+      expect(requests, [(1, null), (2, null), (1, 'new'), (2, 'new')]);
       expect(find.textContaining('SJ-new-first'), findsOneWidget);
       expect(find.textContaining('SJ-old-late'), findsNothing);
       expect(_reportableTable(tester).currentPage, 1);

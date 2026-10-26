@@ -11,7 +11,10 @@
 // PASS/FAIL 或全部合格）；V547 前无检查单的历史待检任务按「无检查单」逐条显示。
 // 权限分别门控：IQC 读 procurement_inspection:view、写 :handle；
 // FQC 读 production_quality_inspection:view、决定 :approve + 服务端品质组织校验。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/data_display/uten_table_surface.dart';
 import 'package:flutter/foundation.dart' show setEquals;
 import '../../../core/network/authenticated_request_scope.dart';
@@ -260,7 +263,12 @@ class _QualityPendingDisposalPageState
           }
         }
 
-        final canDecide = capability();
+        unawaited(
+          capability().then((allowed) {
+            canDecideFqc = allowed;
+            if (isCurrent()) setState(() => _canDecideFqc = allowed);
+          }),
+        );
         // status 默认 'ACTIVE'（仍有待检行），与待检口径一致：
         // 一行一张检查单 + 无检查单的历史任务逐条（与 /count 角标同口径）。
         final requestScope = await repo.api.captureRequestScope(
@@ -277,7 +285,6 @@ class _QualityPendingDisposalPageState
           );
           return (sheets: sheetResult, loose: looseResult);
         });
-        canDecideFqc = await canDecide;
         sheets = queues.sheets.items;
         inspections = queues.loose.items;
         fqcTotal = queues.sheets.total + queues.loose.total;
@@ -681,17 +688,7 @@ class _QualityPendingDisposalPageState
           ),
         ],
       ),
-      body: SafeArea(
-        child: _loading && _receipts == null && _fqcSheets == null
-            ? const UtenSkeletonList()
-            : _error != null && _receipts == null && _fqcSheets == null
-            ? UtenEmpty.error(
-                message: _error,
-                actionLabel: '重新加载',
-                onAction: _load,
-              )
-            : _buildList(),
-      ),
+      body: SafeArea(child: _buildList()),
     );
   }
 
@@ -736,6 +733,7 @@ class _QualityPendingDisposalPageState
               const SizedBox(height: UtenSpacing.s12),
               Expanded(
                 child: MasterDataTableView<_DisposalRow>(
+                  expensiveRowMounts: false,
                   tableKey:
                       'features.quality.pages.quality_pending_disposal_page.QualityPendingDisposalPageState._buildList.1',
                   key: const Key('iqc-receipt-table'),
@@ -1748,6 +1746,13 @@ class _ProcurementInspectionDetailPageState
                     ),
                   ),
                 ),
+                if (_canHandle)
+                  const UtenFieldHintIcon(
+                    dense: true,
+                    info:
+                        '行内直接修改合格数量/不合格数量（默认全合格），勾选后点'
+                        '「提交报告」一次办结；含不合格数量时结论原因必填。',
+                  ),
               ],
             ),
             const SizedBox(height: UtenSpacing.s12),
@@ -1803,30 +1808,29 @@ class _ProcurementInspectionDetailPageState
               filters: const {},
               onFilterChanged: (_, _) {},
             ),
-            const Divider(height: UtenSpacing.s24),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  size: 18,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    _canHandle
-                        ? '行内直接修改合格数量/不合格数量（默认全合格），勾选后点'
-                              '「提交报告」一次办结；含不合格数量时结论原因必填。'
-                        : '当前为只读查看；办理品质处置需要品质处理权限，请联系管理员开通。',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w600,
+            if (!_canHandle) ...[
+              const Divider(height: UtenSpacing.s24),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: Text(
+                      '当前为只读查看；办理品质处置需要品质处理权限，请联系管理员开通。',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

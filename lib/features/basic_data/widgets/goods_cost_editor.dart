@@ -838,38 +838,14 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       );
 
   Widget _materialTable() {
-    final all = _calculation?.lines ?? <Map<String, dynamic>>[];
-    final projection = utenTreeProjectionByRow(
-      all,
-      depthOf: (r) => (r['depth'] as num?)?.toInt() ?? 0,
-    );
     // Fullscreen can briefly retain a row widget while a new calculation replaces
     // its Map object. The BOM occurrence path is the identity across snapshots.
-    final treeByPath = {for (final row in all) row['path']: projection[row]!};
-    // Number the full BOM before filtering/collapsing, so the same occurrence has
-    // the same component identity in both the assembly and costing tables.
-    final sequenceByPath = <Object?, String>{};
-    final sequence = <int>[];
-    for (final row in all) {
-      final depth = projection[row]!.depth;
-      while (sequence.length <= depth) {
-        sequence.add(0);
-      }
-      sequence.length = depth + 1;
-      sequence[depth]++;
-      sequenceByPath[row['path']] = sequence.join('.');
-    }
-    final visible = <Map<String, dynamic>>[];
-    for (var i = 0; i < all.length; i++) {
-      final row = all[i];
-      if (!_onlyPending ||
-          _pendingIssues.any((issue) => issue['path'] == row['path'])) {
-        visible.add(row);
-      }
-      if (!_onlyPending && _collapsed.contains(row['path'])) {
-        i = projection[row]!.subtreeEnd - 1;
-      }
-    }
+    // Accepted snapshots own the structural projection. Selection and editors
+    // only rebuild their presentation; collapse/filter owns a separate cache.
+    final treeByPath = _materialTreeByPath;
+    final collapsiblePaths = _collapsibleMaterialPaths;
+    final visible = _visibleCostMaterials;
+    final identityMaxDepth = _visibleMaterialMaxDepth;
     MasterColumnDef<Map<String, dynamic>> number(
       String key,
       String label, {
@@ -938,8 +914,38 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       MasterColumnDef(
         key: 'goodsName',
         label: _l.costGoodsName,
-        width: 340 + UtenTreeTableCell.toggleExtentOf(context) - 48,
+        minimumWidthOf: (context) => UtenTreeTableCell.compactMinimumWidthOf(
+          context,
+          depth: identityMaxDepth,
+        ),
+        width:
+            340 +
+            UtenTreeTableCell.toggleExtentOf(
+              context,
+              desktop: UtenTreeTableCell.compactDesktopToggleExtent,
+            ) -
+            48,
         value: (r) => costText(r['goodsName']),
+        measureValueOf: (row) =>
+            '${_onlyPending ? 0 : treeByPath[row['path']]?.depth ?? 0}|'
+            '${costText(row['goodsName']) ?? '—'}',
+        measureWidthOf: (context, row, scaler) =>
+            UtenTreeTableCell.compactMeasureWidthOf(
+              context,
+              title: costText(row['goodsName']) ?? '—',
+              depth: _onlyPending ? 0 : treeByPath[row['path']]?.depth ?? 0,
+              textScaler: scaler,
+            ),
+        // Visibility changes do not alter a row's measured geometry. Its depth
+        // is already part of measureValueOf, so collapsing can reuse widths.
+        measureWidthScope: (
+          Directionality.of(context),
+          UtenTreeTableCell.toggleExtentOf(
+            context,
+            desktop: UtenTreeTableCell.compactDesktopToggleExtent,
+          ),
+          _onlyPending,
+        ),
         fillsCellHeight: true,
         cellBuilderHandlesSemantics: true,
         cellBuilder: (context, row) {
@@ -948,27 +954,33 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           // A product without BOM is calculated as one synthetic ROOT row;
           // everything else is a component, starting at depth zero like assembly.
           final isGoodsItself = row['path'] == 'ROOT';
-          return UtenTreeTableCell(
+          return UtenTreeTableCell.compact(
             key: ValueKey('goods-cost-tree-cell-${row['path']}'),
             toggleKey: ValueKey('goods-cost-tree-toggle-${row['path']}'),
-            depth: tree.depth,
-            indent: 24,
-            sequence: isGoodsItself ? '' : sequenceByPath[row['path']] ?? '',
+            depth: _onlyPending ? 0 : tree.depth,
             levelLabel: isGoodsItself
                 ? _l.costGoodsName
+                : _onlyPending
+                ? null
                 : '组件 ${tree.depth + 1} 级',
             title: costText(row['goodsName']) ?? '—',
-            hasChildren: tree.hasChildren,
-            expanded: !_collapsed.contains(row['path']),
-            childCount: tree.childCount,
-            ancestorContinuations: tree.ancestorContinuations,
-            isLastChild: tree.isLastChild,
-            guideBleed: MasterDataTableView.cellVerticalPadding,
-            onToggle: () => setState(() {
-              if (!_collapsed.add(row['path'].toString())) {
-                _collapsed.remove(row['path']);
-              }
-            }),
+            hasChildren: !_onlyPending && tree.hasChildren,
+            expanded: !_onlyPending && !_collapsed.contains(row['path']),
+            childCount: _onlyPending ? null : tree.childCount,
+            ancestorContinuations: _onlyPending
+                ? const []
+                : tree.ancestorContinuations,
+            isLastChild: _onlyPending || tree.isLastChild,
+            onExpandPeers: _onlyPending
+                ? null
+                : () => _expandCostPeers(row['path'].toString()),
+            onToggle: _onlyPending
+                ? null
+                : () => _changeMaterialVisibility(() {
+                    if (!_collapsed.add(row['path'].toString())) {
+                      _collapsed.remove(row['path']);
+                    }
+                  }),
           );
         },
       ),
@@ -1130,7 +1142,9 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     ];
     return MasterDataTableView<Map<String, dynamic>>(
       key: ValueKey('cost-material-${widget.detail.id}'),
+      expensiveRowMounts: _editable,
       tableKey: _GoodsCostTabState._tableKey,
+      dataCellVerticalPadding: UtenTreeTableCell.compactCellVerticalPadding,
       primary: true,
       onFullscreenChanged: (value) {
         _materialFullscreen = value;
@@ -1189,7 +1203,24 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           ..addAll(paths);
       }),
       emptyMessage: _l.costEmpty,
-      toolbarLeadingActions: _tableActions(),
+      toolbarLeadingActions: _tableActions(
+        // Pending-only rows deliberately ignore branch collapse; do not offer
+        // an expansion action in that flat, issue-focused view or fee tables.
+        treeExpansion: !_onlyPending && collapsiblePaths.isNotEmpty
+            ? UtenTreeExpansionButton(
+                key: const Key('cost-tree-expansion'),
+                expanded: !collapsiblePaths.any(_collapsed.contains),
+                height: UtenTableToolbar.controlHeight,
+                onExpand: () async =>
+                    _changeMaterialVisibility(_collapsed.clear),
+                onCollapse: () => _changeMaterialVisibility(() {
+                  _collapsed
+                    ..clear()
+                    ..addAll(collapsiblePaths);
+                }),
+              )
+            : null,
+      ),
       summaryBar: _costSummary(),
     );
   }
@@ -1201,9 +1232,8 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     String label,
   ) {
     final path = row['path'].toString();
-    final override = costMaps(
-      _input['lineOverrides'],
-    ).where((r) => r['path'] == path).firstOrNull;
+    _ensureInputLookups();
+    final override = _overridesByPath[path];
     final automaticPrice =
         field == 'unitPrice' &&
         row['unitPrice'] != null &&
@@ -1259,9 +1289,11 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     );
   }
 
-  Map<String, dynamic>? _priceCell(String path, String key) => costMaps(
-    _input['priceCells'],
-  ).where((c) => c['path'] == path && c['columnKey'] == key).firstOrNull;
+  Map<String, dynamic>? _priceCell(String path, String key) {
+    _ensureInputLookups();
+    return _priceCellsByKey[(path, key)];
+  }
+
   Widget _priceEditor(Map<String, dynamic> row, Map<String, dynamic> column) {
     final path = row['path'].toString(), key = column['key'].toString();
     final cell = _priceCell(path, key);
@@ -1862,6 +1894,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           height: 480,
           child: MasterDataTableView<Map<String, dynamic>>(
             tableKey: 'master.goods.cost.evidence',
+            expensiveRowMounts: false,
             columns: [
               _readColumn('name', _l.costSource, 220),
               _readColumn('value', _l.costValue, 460),
@@ -2034,6 +2067,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           height: 420,
           child: MasterDataTableView<Map<String, dynamic>>(
             tableKey: 'master.goods.cost.snapshots',
+            expensiveRowMounts: false,
             columns: [
               _readColumn('kind', _l.costStatus, 72),
               _readColumn('sheetVersion', _l.costVersion, 100),

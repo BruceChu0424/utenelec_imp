@@ -69,6 +69,8 @@ public class ProcurementFinanceApprovalService {
 
     @org.springframework.beans.factory.annotation.Autowired
     private ProcurementOrderClosureService closures;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.ProcurementOrderClosureReadPort closureRead;
 
     public ProcurementFinanceApprovalService(
             List<ProcurementOrderApprovalPort> availablePorts,
@@ -457,6 +459,7 @@ public class ProcurementFinanceApprovalService {
         List<ApprovalTask> items = jdbc.query("""
                 SELECT c.id AS case_id,
                        c.order_type, c.status,c.request_type,
+                       c.submission_snapshot #>> '{closureRequest,executionMode}' AS closure_execution_mode,
                        c.order_id,
                        c.bill_no_snapshot,
                        COALESCE(c.finance_total_local, c.amount_snapshot) AS amount_snapshot,
@@ -546,8 +549,8 @@ public class ProcurementFinanceApprovalService {
                         purchase
                             ? rs.getBigDecimal("tolerance_max_purchase")
                             : rs.getBigDecimal("tolerance_max_subcontract"),
-                        "PENDING".equals(rs.getString("status")) ? allowedActions : List.of(),
-                        rs.getString("status"),rs.getString("request_type"));
+                        "PENDING".equals(rs.getString("status")) && "ORDER".equals(rs.getString("request_type")) ? allowedActions : List.of(),
+                        rs.getString("status"),rs.getString("request_type"),rs.getString("closure_execution_mode"));
                 },
                 params.toArray());
         int totalPages = total == 0
@@ -603,6 +606,7 @@ public class ProcurementFinanceApprovalService {
 
     private static String queueStatusFilter(String status) {
         String normalized = normalizeQueueStatus(status);
+        if ("PENDING".equals(normalized)) return " c.status='PENDING' AND c.request_type='ORDER'\n";
         if ("CLOSURE_PENDING".equals(normalized)) return " c.status='PENDING' AND c.request_type<>'ORDER'\n";
         return "ALL".equals(normalized) ? " TRUE\n" : " c.status = '" + normalized + "'\n";
     }
@@ -854,6 +858,7 @@ public class ProcurementFinanceApprovalService {
         boolean importedHistory=Boolean.TRUE.equals(jdbc.queryForObject(
                 "SELECT fn_imported_business_document('procurement_order_approval_cases',?)",Boolean.class,caseId));
         List<String> allowedActions = !importedHistory && "PENDING".equals(status)
+                && (closures==null || !closures.isClosureCase(caseId))
                 ? currentReviewerActions()
                 : List.of();
         List<ProcurementApprovalContracts.QtyChange> qtyChanges =
@@ -912,7 +917,7 @@ public class ProcurementFinanceApprovalService {
                 qtyChanges,
                 items,
                 previousItems,
-                loadReviewHeader(caseId, false),
+                currentReviewHeader(orderType,orderId,caseId),
                 loadReviewHeader(caseId, true),
                 history, (BigDecimal) h[26], (BigDecimal) h[27], (BigDecimal) h[28]);
     }
@@ -1075,6 +1080,21 @@ public class ProcurementFinanceApprovalService {
         } catch (com.fasterxml.jackson.core.JsonProcessingException invalid) {
             throw new IllegalStateException("Invalid approval business-column snapshot", invalid);
         }
+    }
+
+    /** Attach current closure facts without changing the immutable commercial approval snapshot. */
+    private Map<String,Object> currentReviewHeader(String type,UUID order,UUID caseId) {
+        Map<String,Object> header=new LinkedHashMap<>(loadReviewHeader(caseId,false));
+        if(closureRead!=null) {
+            var closure=closureRead.latest(type,order);
+            if(closure!=null) {
+                Map<String,Object> summary=objectMapper.convertValue(closure,
+                        new com.fasterxml.jackson.core.type.TypeReference<LinkedHashMap<String,Object>>(){});
+                header.put("orderClosure",summary);
+                if(caseId.equals(closure.caseId())) header.put("closureRequest",summary);
+            }
+        }
+        return header;
     }
 
     /** Missing keys in a legacy snapshot remain unknown, distinct from recorded JSON null. */

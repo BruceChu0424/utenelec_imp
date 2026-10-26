@@ -1,8 +1,9 @@
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
@@ -16,11 +17,15 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/print/uten_print_preview.dart';
+import 'package:collection/collection.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../components/print/complete_print_snapshot.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_navigation_session.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -60,18 +65,35 @@ class AccountPage extends ConsumerStatefulWidget {
 }
 
 class _AccountPageState extends ConsumerState<AccountPage>
-    with MasterInlinePageMixin<AccountPage, AccountListItem> {
+    with
+        MasterInlinePageMixin<AccountPage, AccountListItem>,
+        ScopedPagedReadViewMixin<AccountPage> {
+  final _readViewportRows = MasterDataTableRowsController<AccountListItem>();
+  int get _visibleReadPage => _page == null
+      ? (_pageNum)
+      : (_readViewportRows.visiblePage ?? (_pageNum));
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    if (mounted) {
+      setState(() {
+        inlineClearView();
+        _error = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   @override
   String get inlineEntityType => 'accounts';
   @override
   bool get inlineCanEdit => _canEdit && !_batchBusy;
   @override
-  bool get inlineReadReady => !_loading && _error == null;
+  bool get inlineReadReady => _page != null && !_loading && _error == null;
   @override
   String inlineIdOf(AccountListItem row) => row.id;
   @override
   Future<void> inlineReload() =>
-      _loadAccounts(_pageNum, refreshDisabled: _disabledRequested);
+      _loadAccounts(_visibleReadPage, refreshDisabled: _disabledRequested);
   @override
   Future<void> inlineReloadAfterBoundary() => _refresh();
   @override
@@ -154,6 +176,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
   bool _disabledLoading = false;
   bool _disabledRequested = false;
   bool _detailBusy = false;
+  final _navigation = PageNavigationSession();
   AccountListItem? _selectedAccount;
   Set<String> _selectedAccountIds = {};
   final Map<String, AccountListItem> _selectedAccounts = {};
@@ -190,6 +213,18 @@ class _AccountPageState extends ConsumerState<AccountPage>
       (_isAdmin || _permissions.contains(Perm.accountBalanceAdjust));
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
+  void dispose() {
+    _navigation.dispose();
+    super.dispose();
+  }
+
+  @override
   void initState() {
     super.initState();
     if (widget.initialAccountTypeFilter != null) {
@@ -212,7 +247,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
   };
 
   Future<void> _loadDisabledAccounts({bool force = false}) async {
-    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
+    final inlineReadBoundary = captureInlineRead();
     if (!_foldDisabledAccounts) return;
     if (!force && (_disabledLoading || _disabledAccounts != null)) return;
     final generation = _disabledListRequests.begin();
@@ -262,8 +297,12 @@ class _AccountPageState extends ConsumerState<AccountPage>
     }
   }
 
-  Future<void> _loadAccounts(int page, {bool refreshDisabled = false}) async {
-    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
+  Future<void> _loadAccounts(
+    int page, {
+    bool refreshDisabled = false,
+    bool useCache = false,
+  }) async {
+    final inlineReadBoundary = captureInlineRead();
     final generation = _listRequests.begin();
     final disabledLoad =
         refreshDisabled && _disabledRequested && _foldDisabledAccounts
@@ -274,16 +313,32 @@ class _AccountPageState extends ConsumerState<AccountPage>
       _error = null;
       _pageNum = page;
     });
+    final repository = ref.read(accountRepositoryProvider);
+    final keyword = _keyword.trim().isEmpty ? null : _keyword;
+    final filters = Map<String, String?>.unmodifiable(_mainListFilters);
+    final sort = _sortKey;
+    final order = sort == null ? null : (_sortAsc ? 'asc' : 'desc');
+    Object pagingQuery() => [
+      ref.read(accountRepositoryProvider),
+      _keyword,
+      _mainListFilters,
+      _sortKey,
+      _sortAsc,
+    ];
     try {
-      final result = await ref
-          .read(accountRepositoryProvider)
-          .list(
-            page: page,
-            keyword: _keyword.trim().isEmpty ? null : _keyword,
-            filters: _mainListFilters,
-            sort: _sortKey,
-            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
-          );
+      final result = await readScopedPage<AccountListItem>(
+        page,
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        fetchPage: (target) => repository.list(
+          page: target,
+          keyword: keyword,
+          filters: filters,
+          sort: sort,
+          order: order,
+        ),
+      );
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_listRequests.isCurrent(generation)) {
@@ -327,7 +382,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
   }
 
   Future<void> _loadFacets() async {
-    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
+    final inlineReadBoundary = captureInlineRead();
     try {
       final result = await ref.read(accountRepositoryProvider).facets();
       if (inlineAcceptsRead(inlineReadBoundary)) {
@@ -339,7 +394,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
   }
 
   Future<void> _loadSummary() async {
-    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
+    final inlineReadBoundary = captureInlineRead();
     if (!_canViewBalance) return;
     final generation = _summaryRequests.begin();
     setState(() {
@@ -389,7 +444,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
     }
     final pending = _referenceOptionsFuture;
     if (pending != null) return pending;
-    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final boundary = captureInlineRead();
     // Inline choice cells can request these references while their parent is
     // building. Start the loading-state update after that build, retaining the
     // caller's read owner across the deferred start.
@@ -402,7 +457,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
   }
 
   Future<bool> _loadReferenceOptions(
-    SensitiveReadBoundary inlineReadBoundary,
+    MasterInlineReadToken inlineReadBoundary,
   ) async {
     setState(() {
       _stylesLoading = true;
@@ -605,7 +660,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
   ];
 
   Future<void> _showCreate() async {
-    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
+    final inlineReadBoundary = captureInlineRead();
     final referencesReady = await _ensureReferenceOptions();
     if (!mounted || !inlineAcceptsRead(inlineReadBoundary)) return;
     if (!referencesReady) {
@@ -668,7 +723,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
     if (_detailBusy) return;
     _detailBusy = true;
     try {
-      await context.push(RoutePath.basicinfoAccountDetail(id, edit: edit));
+      await _navigation.push(RoutePath.basicinfoAccountDetail(id, edit: edit));
     } finally {
       _detailBusy = false;
     }
@@ -1247,28 +1302,52 @@ class _AccountPageState extends ConsumerState<AccountPage>
   };
 
   Future<UtenPrintTable> _printLoader() async {
-    final result = await ref
-        .read(accountRepositoryProvider)
-        .list(
-          size: 2000,
-          keyword: _keyword.trim().isEmpty ? null : _keyword,
-          filters: _mainListFilters,
-          sort: _sortKey,
-          order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
-        );
-    final columns = _columns;
-    return UtenPrintTable(
-      columnKeys: [for (final column in columns) column.key],
-      rowIds: [for (final account in result.items) account.id],
-      headers: [for (final column in columns) column.label],
-      rows: [
-        for (final account in result.items)
-          [for (final column in columns) column.value(account) ?? ''],
-      ],
+    final repository = ref.read(accountRepositoryProvider);
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final epoch = ref.read(exportContextEpochProvider);
+    final version = _commandEpoch;
+    final query = Map<String, dynamic>.of(_exportQuery);
+    final filters = Map<String, String?>.unmodifiable(_mainListFilters);
+    final keyword = _keyword.trim().isEmpty ? null : _keyword;
+    final sort = _sortKey;
+    final order = sort == null ? null : (_sortAsc ? 'asc' : 'desc');
+    final columns = List.of(_columns);
+    var retired = false;
+    bool current() {
+      if (retired || !mounted) return false;
+      retired =
+          version != _commandEpoch ||
+          epoch != ref.read(exportContextEpochProvider) ||
+          boundary != ref.read(sensitiveReadBoundaryProvider) ||
+          !const DeepCollectionEquality().equals(query, _exportQuery);
+      return !retired;
+    }
+
+    final scope = await boundary.api.captureRequestScope(isCurrent: current);
+    final table = await scope.run(
+      () => loadCompletePrintSnapshot(
+        loadPage: (page, size) => repository.list(
+          page: page,
+          size: size,
+          keyword: keyword,
+          filters: filters,
+          sort: sort,
+          order: order,
+        ),
+        idOf: (row) => row.id,
+        headers: [for (final column in columns) column.label],
+        columnKeys: [for (final column in columns) column.key],
+        cellsOf: (row) => [
+          for (final column in columns) column.value(row) ?? '',
+        ],
+        isCurrent: () => current() && scope.isCurrent,
+      ),
     );
+    await scope.verify();
+    return table;
   }
 
-  Future<void> _refresh({bool preserveSelection = false}) async {
+  Future<void> _refresh({bool preserveSelection = false, int? page}) async {
     if (!preserveSelection) {
       setState(() {
         _clearSelection();
@@ -1276,7 +1355,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
       });
     }
     await Future.wait([
-      _loadAccounts(1, refreshDisabled: _disabledRequested),
+      _loadAccounts(page ?? 1, refreshDisabled: _disabledRequested),
       _loadFacets(),
       if (_canViewBalance) _loadSummary(),
     ]);
@@ -1316,7 +1395,8 @@ class _AccountPageState extends ConsumerState<AccountPage>
                 ),
                 UtenRefreshButton(
                   busy: _loading,
-                  onRefresh: () => inlineNavigate(_refresh),
+                  onRefresh: () =>
+                      inlineNavigate(() => _refresh(page: _visibleReadPage)),
                 ),
               ],
             ),
@@ -1327,7 +1407,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
                   child: UtenCollapsingHeaderScrollView(
                     collapsingHeader: Column(
                       children: [
-                        Padding(
+                        UtenPageEdgePadding(
                           padding: const EdgeInsets.fromLTRB(
                             UtenSpacing.s4,
                             UtenSpacing.s8,
@@ -1358,6 +1438,8 @@ class _AccountPageState extends ConsumerState<AccountPage>
                         _actionRow(),
                         Expanded(
                           child: MasterDataTableView<AccountListItem>(
+                            rowsController: _readViewportRows,
+                            expensiveRowMounts: inlineEdit.active,
                             appendRowsSource: inlineAppendRowsSource,
                             bottomContentPadding:
                                 (_canCreate ||
@@ -1390,7 +1472,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
                                 : [
                                     UtenPrintPreviewButton(
                                       title: '账户资料',
-                                      subtitle: '最多前 2000 行',
+                                      subtitle: '当前筛选的完整结果',
                                       loader: _printLoader,
                                       exportEndpoint: '/master/accounts/export',
                                       exportPermission: Perm.accountExport,
@@ -1440,8 +1522,10 @@ class _AccountPageState extends ConsumerState<AccountPage>
                             isLoading: _loading && _page == null,
                             loadingMore: _loading && _page != null,
                             error: _error,
-                            onRetry: () =>
-                                _loadAccounts(_pageNum, refreshDisabled: true),
+                            onRetry: () => _loadAccounts(
+                              _visibleReadPage,
+                              refreshDisabled: true,
+                            ),
                             emptyMessage: '暂无账户',
                             currentPage: _page?.page ?? 1,
                             totalPages: _page?.totalPages ?? 1,
@@ -1451,8 +1535,9 @@ class _AccountPageState extends ConsumerState<AccountPage>
                               _sortKey,
                               _sortAsc,
                             ),
-                            onPageChange: (page) =>
-                                inlineNavigate(() => _loadAccounts(page)),
+                            onPageChange: (page) => inlineNavigate(
+                              () => _loadAccounts(page, useCache: true),
+                            ),
                           ),
                         ),
                       ],
@@ -1474,7 +1559,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
   }
 
   Widget _actionRow() {
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s4,
         0,

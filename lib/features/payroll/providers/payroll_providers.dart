@@ -1,9 +1,12 @@
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read_provider.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 import '../models/payroll_batch.dart';
@@ -44,57 +47,100 @@ final payrollListProvider =
     AsyncNotifierProvider.autoDispose<
       PayrollListNotifier,
       PagedResult<PayrollSlip>
-    >(PayrollListNotifier.new);
+    >(
+      PayrollListNotifier.new,
+      retry: pagedReadProviderRetry,
+      dependencies: [
+        _payrollReads,
+        payrollRepositoryProvider,
+        payrollFilterProvider,
+        masterDataSessionKeyProvider,
+      ],
+    );
+
+final _payrollReads = Provider.autoDispose
+    .family<ScopedPagedReadProviderLease<PayrollSlip>, Object>((ref, query) {
+      ref.watch(payrollRepositoryProvider);
+      return ScopedPagedReadProviderLease(ref, query: query);
+    }, dependencies: [exportContextEpochProvider, payrollRepositoryProvider]);
 
 class PayrollListNotifier extends AsyncNotifier<PagedResult<PayrollSlip>> {
   int _page = 1;
+  int? _requestedPage;
+  int? Function()? _visiblePage;
   PayrollFilter? _lastFilter;
+
+  Object get _readQuery => (ref.read(payrollFilterProvider),);
+  ScopedPagedReadProviderLease<PayrollSlip> get _reader =>
+      ref.read(_payrollReads(_readQuery));
+  void bindReadView(BuildContext context, {int? Function()? visiblePage}) {
+    _visiblePage = visiblePage;
+    _reader.bindView(context, currentQuery: () => _readQuery);
+  }
 
   @override
   Future<PagedResult<PayrollSlip>> build() async {
     ref.listen(masterDataSessionKeyProvider, (previous, next) {
       if (previous == next) return;
       _page = 1;
+      _requestedPage = 1;
       state = const AsyncLoading();
       ref.invalidateSelf();
     });
     final filter = ref.watch(payrollFilterProvider);
-    if (_lastFilter != filter) _page = 1;
+    final requestedPage = _requestedPage;
+    _requestedPage = null;
+    _page = _lastFilter != filter ? 1 : (requestedPage ?? _visiblePage?.call() ?? _page);
     _lastFilter = filter;
-    return ref
-        .watch(payrollRepositoryProvider)
-        .listSlips(status: filter.apiStatus, page: _page);
+    final repository = ref.watch(payrollRepositoryProvider);
+    final reader = ref.watch(_payrollReads(_readQuery));
+    return reader.read(
+      _page,
+      fetchPage: (page) =>
+          repository.listSlips(status: filter.apiStatus, page: page),
+    );
   }
 
-  Future<void> refresh() => _reloadPage(1);
+  Future<void> refresh() {
+    _reader.invalidate();
+    return _reloadPage(_visiblePage?.call() ?? _page);
+  }
+
+  Future<void> retry() {
+    _reader.invalidate();
+    return _reloadPage(_page);
+  }
 
   Future<void> previousPage() async {
     final current = state.value;
-    if (current == null || current.page <= 1) return;
-    await _goTo(current.page - 1);
+    final page = _visiblePage?.call() ?? current?.page ?? 1;
+    if (current == null || page <= 1) return;
+    await _goTo(page - 1);
   }
 
   Future<void> nextPage() async {
     final current = state.value;
-    if (current == null || current.page >= current.totalPages) return;
-    await _goTo(current.page + 1);
+    final page = _visiblePage?.call() ?? current?.page ?? 1;
+    if (current == null || page >= current.totalPages) return;
+    await _goTo(page + 1);
   }
 
   /// 直接拉目标页（2026-09-09 工资条列表表格化：表格内置翻页条含跳页输入）。
   Future<void> goToPage(int page) async {
     final current = state.value;
     if (current == null) return;
-    if (page < 1 || page == current.page || page > current.totalPages) return;
+    if (page < 1 || page == (_visiblePage?.call() ?? current.page) || page > current.totalPages) return;
     await _goTo(page);
   }
 
   Future<void> _goTo(int page) async {
     if (state.isLoading) return;
-    await _reloadPage(page);
+    await _reader.paginate(page, () => _reloadPage(page));
   }
 
   Future<void> _reloadPage(int page) async {
     _page = page;
+    _requestedPage = page;
     state = const AsyncLoading<PagedResult<PayrollSlip>>().copyWithPrevious(
       state,
     );

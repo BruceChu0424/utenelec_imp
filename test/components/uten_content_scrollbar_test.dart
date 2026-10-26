@@ -1,7 +1,9 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_content_scrollbar.dart';
+import 'package:uten_imp/core/theme/uten_scrollbar_style.dart';
 
 const _viewportKey = ValueKey('viewport');
 const _viewportHeight = 400.0;
@@ -15,6 +17,7 @@ Widget _harness(
   double contentHeight = 2000,
   double bottomInset = _bottomInset,
   VoidCallback? onContentTap,
+  bool externalLane = false,
 }) => MaterialApp(
   home: Scaffold(
     body: Align(
@@ -27,17 +30,20 @@ Widget _harness(
           behavior: const MaterialScrollBehavior().copyWith(scrollbars: false),
           child: Stack(
             children: [
-              ListView(
-                controller: controller,
-                reverse: reverse,
-                padding: EdgeInsets.only(bottom: bottomInset),
-                children: [
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: onContentTap,
-                    child: SizedBox(height: contentHeight),
-                  ),
-                ],
+              Padding(
+                padding: EdgeInsets.only(right: externalLane ? 16 : 0),
+                child: ListView(
+                  controller: controller,
+                  reverse: reverse,
+                  padding: EdgeInsets.only(bottom: bottomInset),
+                  children: [
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onContentTap,
+                      child: SizedBox(height: contentHeight),
+                    ),
+                  ],
+                ),
               ),
               Positioned(
                 top: 0,
@@ -70,6 +76,34 @@ Future<void> _pump(WidgetTester tester, ScrollController controller) async {
 }
 
 void main() {
+  testWidgets('wheel on an external lane scrolls once and respects Shift', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_harness(controller, externalLane: true));
+    await tester.pumpAndSettle();
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: _point(tester, 32),
+        scrollDelta: const Offset(0, 40),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(controller.offset, 40);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: _point(tester, 32),
+        scrollDelta: const Offset(0, 40),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(controller.offset, 40);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'constraint-only resize reveals a newly scrollable cached child',
     (tester) async {
@@ -101,7 +135,7 @@ void main() {
       height.value = 200;
       await tester.pumpAndSettle();
       expect(controller.position.maxScrollExtent, 180);
-      await tester.tapAt(_point(tester, 190), kind: PointerDeviceKind.mouse);
+      await tester.tapAt(_point(tester, 175), kind: PointerDeviceKind.mouse);
       await tester.pumpAndSettle();
       expect(controller.offset, 160);
     },
@@ -116,7 +150,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller.position.maxScrollExtent, 60);
       final gesture = await tester.startGesture(
-        _point(tester, 10),
+        _point(tester, 26),
         kind: PointerDeviceKind.mouse,
       );
       await gesture.moveBy(const Offset(0, 80));
@@ -149,7 +183,9 @@ void main() {
         _point(tester, 32),
         kind: PointerDeviceKind.mouse,
       );
-      await gesture.moveBy(const Offset(0, 134.4));
+      // 320px rail - two 16px arrows = 288; thumb 288*.16=46.08;
+      // half of the remaining 241.92px travel is 120.96px.
+      await gesture.moveBy(const Offset(0, 120.96));
       await tester.pump();
       expect(
         controller.offset,
@@ -183,7 +219,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.offset, closeTo(_viewportHeight * 0.8, 1));
     expect(contentTaps, 0);
-    await tester.tapAt(_point(tester, 10), kind: PointerDeviceKind.mouse);
+    await tester.tapAt(_point(tester, 24), kind: PointerDeviceKind.mouse);
     await tester.pumpAndSettle();
     expect(controller.offset, 0);
     expect(contentTaps, 0);
@@ -229,17 +265,17 @@ void main() {
     await tester.pumpWidget(_harness(controller, reverse: true));
     await tester.pumpAndSettle();
     final gesture = await tester.startGesture(
-      _point(tester, 294.4),
+      _point(tester, 280.96),
       kind: PointerDeviceKind.mouse,
     );
-    await gesture.moveBy(const Offset(0, -134.4));
+    await gesture.moveBy(const Offset(0, -120.96));
     await tester.pump();
     expect(
       controller.offset,
       closeTo(controller.position.maxScrollExtent / 2, 1),
     );
     await gesture.up();
-    await tester.tapAt(_point(tester, 10), kind: PointerDeviceKind.mouse);
+    await tester.tapAt(_point(tester, 24), kind: PointerDeviceKind.mouse);
     await tester.pumpAndSettle();
     expect(controller.offset, closeTo(840 + 320, 1));
   });
@@ -254,18 +290,26 @@ void main() {
       await tester.pumpAndSettle();
       final paint = find.descendant(
         of: find.byType(UtenContentScrollbar),
-        matching: find.byType(CustomPaint),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is CustomPaint && widget.foregroundPainter != null,
+        ),
       );
       expect(tester.getSize(paint).height, 320);
       expect(
         tester.renderObject(paint),
-        paints..rrect(
-          // 2026-09-25 thumb 加粗 6 → 10：x = 带宽 16 − gutter 3 − thumb 10 = 3。
-          rrect: RRect.fromRectAndRadius(
-            const Rect.fromLTWH(3, 268.8, 10, 51.2),
-            const Radius.circular(5),
+        paints
+          ..rect(
+            rect: const Rect.fromLTWH(0, 0, 16, 320),
+            color: UtenScrollbarStyle.visuals(Brightness.light).trackColor,
+          )
+          ..line()
+          ..rrect(
+            // 2026-09-25 thumb 加粗 6 → 10：x = 带宽 16 − gutter 3 − thumb 10 = 3。
+            rrect: RRect.fromRectAndRadius(
+              const Rect.fromLTWH(3, 16 + (288 - 288 * .16), 10, 288 * .16),
+              const Radius.circular(5),
+            ),
           ),
-        ),
       );
     },
   );
@@ -280,17 +324,24 @@ void main() {
       _harness(controller, height: 300, contentHeight: 3000, bottomInset: 60),
     );
     await tester.pumpAndSettle();
-    // New track: 240; thumb: 19.2; 110.4 px is half of the thumb's travel.
+    // Rail 240 minus two 16px arrows gives track 208; minimum thumb 32.
+    // Grab its center at y32; moving 88px is exactly half of 176px travel.
     final gesture = await tester.startGesture(
-      _point(tester, 9.6),
+      _point(tester, 32),
       kind: PointerDeviceKind.mouse,
     );
-    await gesture.moveBy(const Offset(0, 110.4));
+    await gesture.moveBy(const Offset(0, 88));
     await tester.pump();
     expect(
       controller.offset,
       closeTo(controller.position.maxScrollExtent / 2, 1),
     );
+    await gesture.moveBy(const Offset(0, 1000));
+    await tester.pump();
+    expect(controller.offset, controller.position.maxScrollExtent);
+    await gesture.moveBy(const Offset(0, -2000));
+    await tester.pump();
+    expect(controller.offset, 0);
     await gesture.up();
   });
 

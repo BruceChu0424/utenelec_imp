@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -13,28 +14,31 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/goods_operation_history.dart';
+import '../models/goods_field_edit_policy.dart';
 import '../repositories/goods_operation_history_repository.dart';
 import 'basic_data_l10n.dart';
 
 /// Entry visibility is only a convenience. The server authorizes each change.
-bool canOpenGoodsOperationHistory(Set<String> permissions) => const {
-  Perm.goodsCreate,
-  Perm.goodsEdit,
-  Perm.goodsNameEnEdit,
-  Perm.goodsDelete,
-  Perm.goodsStatus,
-  Perm.goodsImport,
-  Perm.goodsImportUndo,
-  Perm.goodsBomCreate,
-  Perm.goodsBomEdit,
-  Perm.goodsBomDelete,
-  Perm.goodsBomAudit,
-  Perm.materialCategoryCreate,
-  Perm.materialCategoryEdit,
-  Perm.materialCategoryDelete,
-  Perm.materialCategoryMove,
-  Perm.materialCategoryReorder,
-}.any(permissions.contains);
+bool canOpenGoodsOperationHistory(Set<String> permissions) =>
+    GoodsFieldEditPolicy.canEditAny(permissions) ||
+    const {
+      Perm.goodsCreate,
+      Perm.goodsEdit,
+      Perm.goodsNameEnEdit,
+      Perm.goodsDelete,
+      Perm.goodsStatus,
+      Perm.goodsImport,
+      Perm.goodsImportUndo,
+      Perm.goodsBomCreate,
+      Perm.goodsBomEdit,
+      Perm.goodsBomDelete,
+      Perm.goodsBomAudit,
+      Perm.materialCategoryCreate,
+      Perm.materialCategoryEdit,
+      Perm.materialCategoryDelete,
+      Perm.materialCategoryMove,
+      Perm.materialCategoryReorder,
+    }.any(permissions.contains);
 
 Future<void> showGoodsOperationHistory(
   BuildContext context, {
@@ -329,9 +333,16 @@ class _GoodsOperationHistoryPanelState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  l10n.goodsHistoryTitle,
-                  style: Theme.of(context).textTheme.titleLarge,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        l10n.goodsHistoryTitle,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                    UtenFieldHintIcon(info: l10n.goodsHistoryHint, dense: true),
+                  ],
                 ),
                 const SizedBox(height: UtenSpacing.s8),
                 Wrap(
@@ -364,8 +375,6 @@ class _GoodsOperationHistoryPanelState
                 : ListView(
                     padding: const EdgeInsets.all(UtenSpacing.s16),
                     children: [
-                      Text(l10n.goodsHistoryHint),
-                      const SizedBox(height: UtenSpacing.s12),
                       if (_error != null) ...[
                         UtenInlineNotice(
                           level: UtenInlineNoticeLevel.error,

@@ -13,6 +13,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import 'uten_overlay_lifecycle.dart';
 
 class UtenBusyOverlay extends StatefulWidget {
   const UtenBusyOverlay({
@@ -61,27 +62,20 @@ class UtenBusyOverlay extends StatefulWidget {
 
 class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
   OverlayEntry? _entry;
-
-  @override
-  void initState() {
-    super.initState();
-    // 下一帧推入 root Overlay：initState 期 Overlay.of 拿不到宿主层级稳定引用，
-    // 且 build 里同步插 Overlay 会“构建期改树”。
-    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureEntry());
-  }
+  late final _lifecycle = UtenOverlayLifecycle(
+    transient: false,
+    onAvailable: _ensureEntry,
+    onUnavailable: _removeEntry,
+  );
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // TickerMode 变化（宿主被压栈→回前台）时帧后再评估挂载——构建期不能插
-    // OverlayEntry（会 markNeedsBuild during build 崩溃）。
-    if (_entry == null && TickerMode.valuesOf(context).enabled) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _ensureEntry());
-    }
+    _lifecycle.attach(context);
   }
 
   void _ensureEntry() {
-    if (!mounted || _entry != null || !TickerMode.valuesOf(context).enabled) {
+    if (!mounted || _entry != null || !_lifecycle.isAvailable) {
       return;
     }
     _entry = OverlayEntry(builder: (ctx) => _buildOverlay(ctx));
@@ -103,9 +97,28 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
   }
 
   @override
-  void dispose() {
+  void deactivate() {
+    _lifecycle.detach();
+    super.deactivate();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _lifecycle.attach(context);
+    });
+  }
+
+  void _removeEntry() {
     _entry?.remove();
     _entry = null;
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    _removeEntry();
     super.dispose();
   }
 

@@ -125,6 +125,15 @@ class CompanyFileUpload {
         // Refresh the same physical entry, including its optimistic revision.
         entry = await scope.run(() => repository.get(entry!.id));
         if (!entry!.pending && entry!.attachmentId != null) {
+          final receipt = confirmed;
+          if (receipt == null ||
+              receipt.id != entry!.attachmentId ||
+              !_matchesOriginal(receipt, entry!.id, checksum)) {
+            throw ApiException(
+              'ATTACHMENT_INTEGRITY_MISMATCH',
+              '该资料已发布，但无法确认是本次选择的原件。请刷新后核对文件。',
+            );
+          }
           state = CompanyFileUploadState.done;
           onChanged();
           return;
@@ -141,12 +150,7 @@ class CompanyFileUpload {
       scope.checkCurrent();
       confirmed =
           history
-              .where(
-                (a) =>
-                    !a.deleted &&
-                    a.sha256 == checksum &&
-                    a.sizeBytes == bytes.length,
-              )
+              .where((a) => _matchesOriginal(a, owner.id, checksum))
               .firstOrNull ??
           confirmed;
       // A raw PUT/confirm may have succeeded even if its response was lost.
@@ -204,6 +208,12 @@ class CompanyFileUpload {
         );
       }
       scope.checkCurrent();
+      if (!_matchesOriginal(confirmed!, owner.id, checksum)) {
+        throw ApiException(
+          'ATTACHMENT_INTEGRITY_MISMATCH',
+          '服务器收到的文件与所选原件不一致，已停止发布。请检查上传结果。',
+        );
+      }
       state = CompanyFileUploadState.verifying;
       onChanged();
       entry = await scope.run(() => repository.complete(entry!, confirmed!.id));
@@ -219,6 +229,13 @@ class CompanyFileUpload {
       onChanged();
     }
   }
+
+  bool _matchesOriginal(Attachment receipt, String ownerId, String checksum) =>
+      !receipt.deleted &&
+      receipt.ownerType == 'COMPANY_FILE' &&
+      receipt.ownerId == ownerId &&
+      receipt.sha256 == checksum &&
+      receipt.sizeBytes == bytes.length;
 
   static bool _uncertain(Object e) =>
       e is! ApiException ||

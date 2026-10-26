@@ -8,7 +8,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../widgets/master_inline_edit.dart';
 import '../widgets/master_record_history_labels.dart';
@@ -136,7 +135,7 @@ class BasicDataHubPage extends ConsumerWidget {
               masterHistoryViewPermissions.values.any(permissions.contains))
             UtenAppBarActionButton(
               label: masterEditText(context, '修改历史', 'Change history', '변경 기록'),
-              onPressed: () => context.push(RouteName.basicinfoHistory),
+              onPressed: () => pushPage(context, RouteName.basicinfoHistory),
             ),
           const FormDraftsAppBarButton(categoryId: 'basicinfo'),
         ],

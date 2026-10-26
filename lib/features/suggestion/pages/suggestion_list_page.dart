@@ -20,11 +20,11 @@ import '../../../shared/drafts/form_drafts_page.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_list_create_action.dart';
-import '../../../components/feedback/uten_skeleton.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/models/retained_async_page.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -39,15 +39,40 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/suggestion.dart';
 import '../providers/suggestion_providers.dart';
 
-class SuggestionListPage extends ConsumerWidget {
+class SuggestionListPage extends ConsumerStatefulWidget {
   const SuggestionListPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final list = ref.watch(suggestionListProvider);
+  ConsumerState<SuggestionListPage> createState() => _SuggestionListPageState();
+}
+
+class _SuggestionListPageState extends ConsumerState<SuggestionListPage> {
+  final _tableRows = MasterDataTableRowsController<Suggestion>();
+  final _retainedPage = RetainedAsyncPage<PagedResult<Suggestion>>();
+
+  @override
+  Widget build(BuildContext context) {
+    ref
+        .read(suggestionListProvider.notifier)
+        .bindReadView(context, visiblePage: () => _tableRows.visiblePage);
     final scope = ref.watch(suggestionScopeProvider);
     final statusFilter = ref.watch(suggestionStatusFilterProvider);
     final categoryFilter = ref.watch(suggestionCategoryFilterProvider);
+    final list = _retainedPage.resolveFor(ref, (
+      scope,
+      statusFilter,
+      categoryFilter,
+      retainedReaderEpoch(ref),
+    ), suggestionListProvider);
+    final page =
+        list.value ??
+        const PagedResult<Suggestion>(
+          items: [],
+          page: 1,
+          size: 20,
+          total: 0,
+          totalPages: 0,
+        );
     final hasColumnFilters = statusFilter != null || categoryFilter != null;
     final createAction = UtenListCreateAction(
       emptyIcon: Icons.lightbulb_outline_rounded,
@@ -62,57 +87,50 @@ class SuggestionListPage extends ConsumerWidget {
 
     Widget body = RefreshIndicator(
       onRefresh: () => ref.read(suggestionListProvider.notifier).refresh(),
-      child: list.when(
-        loading: () => const UtenSkeletonList(itemCount: 6),
-        error: (e, _) => UtenEmpty.error(
-          message: humanErrorMessage(e) ?? '建议列表加载失败，请稍后重试',
-          onAction: () => ref.invalidate(suggestionListProvider),
-        ),
-        data: (page) {
-          final suggestions = page.items;
-          // 空态不另放提交按钮；所有列表状态均由右下角提供唯一新建入口。
-          // 筛选后空结果仍留表头，用户能清除状态/类别。
-          if (suggestions.isEmpty && !hasColumnFilters) {
-            return createAction.emptyState();
-          }
-          return MasterDataTableView<Suggestion>(
-            tableKey:
-                'features.suggestion.pages.suggestion_list_page.SuggestionListPage.build.1',
-            bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-            key: const Key('suggestion-list-table'),
-            columns: _columns,
-            items: suggestions,
-            facets: {
-              'status': _statusFacets(),
-              // 类别是固定枚举（六类），前端硬编码桶；value=枚举名（后端 category 码）。
-              'category': _categoryFacets(),
-            },
-            nullCounts: const {},
-            filters: {
-              'status': statusFilter?.name,
-              'category': categoryFilter?.name,
-            },
-            onFilterChanged: (key, value) => _onFilterChanged(ref, key, value),
-            // 双击行进入建议详情（保留现有路由与 push 语义）。
-            onRowTap: (s) => context.push(RoutePath.suggestionDetail(s.id)),
-            // 行右键/长按菜单：点赞/取消点赞（原卡片点赞按钮能力移入此处）。
-            rowMenuBuilder: (s) => [
-              UtenMenuItem(
-                label: s.likedByMe ? '取消点赞' : '点赞',
-                icon: s.likedByMe
-                    ? Icons.favorite_rounded
-                    : Icons.favorite_border_rounded,
-                onTap: () => _toggleLike(context, ref, s.id),
-              ),
-            ],
-            emptyMessage: hasColumnFilters ? '当前筛选下暂无建议，可调整表头筛选' : '暂无建议',
-            currentPage: page.page,
-            totalPages: page.totalPages,
-            paginationScope: (scope, statusFilter, categoryFilter),
-            onPageChange: (p) =>
-                ref.read(suggestionListProvider.notifier).goToPage(p),
-          );
+      child: MasterDataTableView<Suggestion>(
+        rowsController: _tableRows,
+        expensiveRowMounts: false,
+        tableKey:
+            'features.suggestion.pages.suggestion_list_page.SuggestionListPage.build.1',
+        bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+        key: const Key('suggestion-list-table'),
+        columns: _columns,
+        items: page.items,
+        isLoading: list.isLoading && !list.hasValue,
+        loadingMore: list.isLoading && list.hasValue,
+        error: list.hasError
+            ? (humanErrorMessage(list.error!) ?? '建议列表加载失败，请稍后重试')
+            : null,
+        onRetry: () => ref.read(suggestionListProvider.notifier).refresh(),
+        facets: {
+          'status': _statusFacets(),
+          // 类别是固定枚举（六类），前端硬编码桶；value=枚举名（后端 category 码）。
+          'category': _categoryFacets(),
         },
+        nullCounts: const {},
+        filters: {
+          'status': statusFilter?.name,
+          'category': categoryFilter?.name,
+        },
+        onFilterChanged: (key, value) => _onFilterChanged(ref, key, value),
+        // 双击行进入建议详情（保留现有路由与 push 语义）。
+        onRowTap: (s) => context.push(RoutePath.suggestionDetail(s.id)),
+        // 行右键/长按菜单：点赞/取消点赞（原卡片点赞按钮能力移入此处）。
+        rowMenuBuilder: (s) => [
+          UtenMenuItem(
+            label: s.likedByMe ? '取消点赞' : '点赞',
+            icon: s.likedByMe
+                ? Icons.favorite_rounded
+                : Icons.favorite_border_rounded,
+            onTap: () => _toggleLike(context, ref, s.id),
+          ),
+        ],
+        emptyMessage: hasColumnFilters ? '当前筛选下暂无建议，可调整表头筛选' : '暂无建议',
+        currentPage: page.page,
+        totalPages: page.totalPages,
+        paginationScope: (scope, statusFilter, categoryFilter),
+        onPageChange: (p) =>
+            ref.read(suggestionListProvider.notifier).goToPage(p),
       ),
     );
     body = Column(

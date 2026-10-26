@@ -122,6 +122,19 @@ class StorageTest(unittest.TestCase):
             with self.assertRaises(storage.StorageError):
                 storage.dispatch('STORAGE_PREVIEW_DELETE', {'resourceIds': [row['id']]}, self.context)
 
+    def test_client_installers_and_updates_cannot_be_selected_for_ordinary_storage_cleanup(self):
+        catalog = self.path('uploads_root', 'client-releases')
+        catalog.mkdir(mode=0o700)
+        (catalog / '.catalog.lock').touch(mode=0o600)
+        for name in ('installer-package.bin', 'update-package.bin', 'withdrawn-release.json'):
+            (catalog / name).write_bytes(b'private retained catalog fixture')
+        rows = self.rows('UPLOADS')
+        row = next(value for value in rows if value['label'] == 'client-releases')
+        self.assertFalse(row['canDelete'])
+        with self.assertRaises(storage.StorageError):
+            storage.dispatch('STORAGE_PREVIEW_DELETE', {'resourceIds': [row['id']]}, self.context)
+        self.assertEqual(4, len(list(catalog.iterdir())))
+
     def test_optional_legacy_root_is_separate_readonly_inventory_not_all_uploads_or_a_second_volume(self):
         self.path('uploads_root', 'current-original').write_bytes(b'new')
         self.path('legacy_uploads_root', 'legacy-original').write_bytes(b'old original')

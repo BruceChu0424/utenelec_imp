@@ -47,6 +47,78 @@ Future<void> _open(WidgetTester tester) async {
 
 void main() {
   testWidgets(
+    'party column uses complete paged source while unrelated facets stay local',
+    (tester) async {
+      final calls = <(String, int)>[];
+      String? selected;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MasterDataTableView<String>(
+              columns: [
+                MasterColumnDef(
+                  key: 'party',
+                  label: '往来方',
+                  width: 200,
+                  value: (_) => '当前引用',
+                ),
+                MasterColumnDef(
+                  key: 'status',
+                  label: '状态',
+                  width: 160,
+                  value: (_) => '已审',
+                ),
+              ],
+              items: const ['row'],
+              facets: const {
+                'status': [MasterFacetBucket(value: '已审', count: 1)],
+              },
+              facetPageLoaders: {
+                'party': (keyword, page) async {
+                  calls.add((keyword, page));
+                  return MasterFacetPage(
+                    items: [
+                      MasterFacetBucket(
+                        value: 'remote-id',
+                        label: keyword.isEmpty ? '完整远端候选' : '远端搜索结果',
+                        count: 0,
+                      ),
+                    ],
+                    hasMore: false,
+                  );
+                },
+              },
+              nullCounts: const {},
+              filters: const {},
+              onFilterChanged: (key, value) {
+                if (key == 'party') selected = value;
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('状态'));
+      await tester.pumpAndSettle();
+      expect(find.text('已审 (1)'), findsOneWidget);
+      expect(calls, isEmpty);
+      await tester.tapAt(const Offset(790, 590));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('往来方'));
+      await tester.pumpAndSettle();
+      expect(find.text('完整远端候选'), findsOneWidget);
+      expect(calls, [('', 1)]);
+      await tester.enterText(find.byType(TextField).last, '编号外的客户');
+      await tester.pump(const Duration(milliseconds: 251));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('远端搜索结果'));
+      await tester.pumpAndSettle();
+      expect(selected, 'remote-id');
+      expect(calls, [('', 1), ('编号外的客户', 1)]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'frozen and ordinary header copies share the remote candidate caption across horizontal scroll',
     (tester) async {
       const id = 'b76b8d7e-e7ac-4e95-8fc3-1f9f0e878d58';

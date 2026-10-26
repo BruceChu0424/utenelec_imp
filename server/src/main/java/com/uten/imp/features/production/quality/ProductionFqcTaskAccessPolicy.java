@@ -19,12 +19,12 @@ import java.util.UUID;
  */
 @Component
 @RequiredArgsConstructor
-public class ProductionFqcTaskAccessPolicy {
+public class ProductionFqcTaskAccessPolicy implements com.uten.imp.application.port.ProductionQualityPoolAccessPort {
 
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
 
-    public boolean canAccessQualityPool() {
+    @Override public boolean canAccessQualityPool() {
         AuthUser actor = currentUser.get().orElse(null);
         if (actor == null || actor.isVisitor()) return false;
         if (actor.isSuperAdmin()) return true;

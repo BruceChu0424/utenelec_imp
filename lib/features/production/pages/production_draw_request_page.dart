@@ -1,6 +1,7 @@
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
@@ -34,6 +35,7 @@ import '../../warehouse/providers/warehouse_count_refresh.dart';
 import '../models/production_draw_request.dart';
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_draw_request_repository.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 /// Review the selected workshop tasks before explicitly requesting materials.
 /// Only the final action makes these tasks visible in the warehouse draw queue.
@@ -447,7 +449,7 @@ class _ProductionDrawRequestPageState
                           absorbing: _saving,
                           child: UtenCollapsingHeaderScrollView(
                             collapsingHeader: _header(preview),
-                            body: Padding(
+                            body: UtenPageEdgePadding(
                               padding: const EdgeInsets.all(UtenSpacing.s12),
                               child: _summaryTable(preview),
                             ),
@@ -514,24 +516,31 @@ class _ProductionDrawRequestPageState
     );
   }
 
-  Widget _header(ProductionDrawRequestPreview preview) => Padding(
+  Widget _header(ProductionDrawRequestPreview preview) => UtenPageEdgePadding(
     padding: const EdgeInsets.all(UtenSpacing.s12),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          '${preview.taskCount} 个车间任务 · ${preview.summaries.length} 项领料汇总 · ${preview.documentCount} 张领料单',
-          style: Theme.of(context).textTheme.titleMedium,
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '${preview.taskCount} 个车间任务 · ${preview.summaries.length} 项领料汇总 · ${preview.documentCount} 张领料单',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            const UtenFieldHintIcon(
+              dense: true,
+              info:
+                  '勾选本次物料并填写应领数量，可分次提交；点击来源可核对本次分配到各任务的数量。\n\n'
+                  '只提交勾选的本次数量，其余保留待领。持续生产可在原任务继续领料；齐套生产须领齐后开工。车间直送料按实际交接投入，不在此重复领料。',
+            ),
+          ],
         ),
         const SizedBox(height: UtenSpacing.s8),
         Text(
-          '领料车间：${_label(preview.tasks.first.workshopName)}。勾选本次物料并填写应领数量，可分次提交；点击来源可核对本次分配到各任务的数量。',
+          '领料车间：${_label(preview.tasks.first.workshopName)}。',
           style: Theme.of(context).textTheme.bodyMedium,
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        Text(
-          '只提交勾选的本次数量，其余保留待领。持续生产可在原任务继续领料；齐套生产须领齐后开工。车间直送料按实际交接投入，不在此重复领料。',
-          style: Theme.of(context).textTheme.bodySmall,
         ),
         if (_submitError != null) ...[
           const SizedBox(height: UtenSpacing.s12),

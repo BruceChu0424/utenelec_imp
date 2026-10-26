@@ -4,6 +4,7 @@
 // 无子层级物料时按直接自制带入。这里的库存仅用于初筛，正式可生产数量由物料分析
 // 按目标仓、安全库存、锁定量与合格供给统一确认。
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_panel_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -84,44 +85,14 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UtenSpacing.s16,
-                UtenSpacing.s12,
-                UtenSpacing.s8,
-                UtenSpacing.s8,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '订单 ${widget.billNo} 的产品与物料',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: UtenSpacing.s4),
-                        Text(
-                          '有子层级物料时在下方展开；无子层级物料时按直接自制带入，不生成领料明细。',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '关闭',
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
+            UtenPanelHeader(
+              title: '订单 ${widget.billNo} 的产品与物料',
+              info:
+                  '有子层级物料时在下方展开；无子层级物料时按直接自制带入，不生成领料明细。\n\n'
+                  '库存口径：下表只显示当前即时库存，未扣安全库存、其他计划锁定量，也未判断在途是否能在开工前到达。'
+                  '带入后以物料分析的子层级齐套结果为准；无子层级物料按直接自制处理。',
+              onClose: () => Navigator.of(context).pop(),
             ),
-            _inventoryScopeNotice(theme),
             const Divider(height: 1),
             Expanded(
               child: _error != null
@@ -160,46 +131,6 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
             _footer(lines),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _inventoryScopeNotice(ThemeData theme) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(
-        UtenSpacing.s16,
-        0,
-        UtenSpacing.s16,
-        UtenSpacing.s8,
-      ),
-      padding: const EdgeInsets.all(UtenSpacing.s8),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.45),
-        borderRadius: UtenRadius.smAll,
-        border: Border.all(
-          color: theme.colorScheme.tertiary.withValues(alpha: 0.35),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.info_outline_rounded,
-            size: 18,
-            color: theme.colorScheme.onTertiaryContainer,
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Text(
-              '库存口径：下表只显示当前即时库存，未扣安全库存、其他计划锁定量，也未判断在途是否能在开工前到达。'
-              '带入后以物料分析的子层级齐套结果为准；无子层级物料按直接自制处理。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onTertiaryContainer,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

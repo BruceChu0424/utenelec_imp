@@ -15,6 +15,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/product_category_node.dart';
@@ -151,36 +152,10 @@ class _ProductCategoryPickerSheetState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.title,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Text(
-                          widget.subtitle,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '关闭', // TODO(l10n): 补 arb
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
+            UtenPanelHeader(
+              title: widget.title,
+              subtitle: widget.subtitle,
+              onClose: () => Navigator.of(context).pop(),
             ),
             const Divider(height: 1),
             // 「全部」同样先暂存，确定后才清空调用方的筛选。
@@ -206,7 +181,7 @@ class _ProductCategoryPickerSheetState
             const Divider(height: 1),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
+                padding: UtenPanelSpacing.body(context),
                 child: widget.tree.isEmpty
                     ? Center(
                         child: Padding(

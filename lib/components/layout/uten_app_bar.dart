@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../core/router/page_navigation_session.dart';
 import '../../shared/auth/page_permission_action.dart';
 import '../buttons/uten_back_button.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
@@ -20,6 +21,8 @@ import 'uten_app_bar_action_scope.dart';
 import 'uten_app_bar_action_feedback.dart';
 import 'uten_app_bar_action_row.dart';
 import 'uten_fit_or_compact.dart';
+import 'uten_page_layout.dart';
+import 'uten_scroll_gutter.dart';
 import '../buttons/uten_button.dart';
 import '../buttons/uten_app_bar_action_button.dart';
 
@@ -92,6 +95,7 @@ class UtenAppBar extends StatefulWidget implements PreferredSizeWidget {
 }
 
 class _UtenAppBarState extends State<UtenAppBar> {
+  final _navigation = PageNavigationSession();
   int _actionRevision = 0;
   _AppBarActionPanel? _actionPanel;
 
@@ -112,7 +116,14 @@ class _UtenAppBarState extends State<UtenAppBar> {
   bool get showPagePermissionAction => widget.showPagePermissionAction;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
   void dispose() {
+    _navigation.dispose();
     ++_actionRevision;
     final panel = _actionPanel;
     if (panel != null && !panel.claimed) {
@@ -270,6 +281,11 @@ class _UtenAppBarState extends State<UtenAppBar> {
           ),
         );
         return AppBar(
+          actionsPadding:
+              UtenPageScrollRoleScope.isPageOf(context) &&
+                  !UtenContentInsetsScope.isPresentOf(context)
+              ? EdgeInsets.only(right: UtenPageChromeMetrics.endOf(context))
+              : EdgeInsets.zero,
           title: _buildTitleArea(context, theme, isDark),
           leading:
               leading ??
@@ -435,7 +451,8 @@ class _UtenAppBarState extends State<UtenAppBar> {
       if (source is UtenButton || source is UtenAppBarActionButton) {
         return UtenAppBarActionPresentation(
           child: UtenAppBarActionScope(
-            actionContext: context,
+            actionContext: this.context,
+            navigation: _navigation,
             claimAction: () => claim(revision),
             dismiss: dismiss,
             closeBeforeAction: true,
@@ -456,7 +473,8 @@ class _UtenAppBarState extends State<UtenAppBar> {
         return ValueListenableBuilder<_AppBarActionPresentation>(
           valueListenable: panel.presentation,
           builder: (_, presentation, _) => UtenAppBarActionScope(
-            actionContext: context,
+            actionContext: this.context,
+            navigation: _navigation,
             claimAction: () => claim(presentation.revision),
             dismiss: dismiss,
             child: Column(

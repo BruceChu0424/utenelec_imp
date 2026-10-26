@@ -110,11 +110,29 @@ public class SupplierService {
 
     @Transactional(readOnly = true)
     public PageResponse<SupplierListItem> list(SupplierQueryFilter f, int page, int size, String sort, String order) {
+        validateReadFilter(f);
         List<UUID> subtreeIds = (f.categoryId() == null) ? null : resolveSubtreeIds(f.categoryId());
         var keyword = keywordPlan(f.keyword());
         Sort defaultSort = Sort.by(Sort.Direction.ASC, "code").and(Sort.by(Sort.Direction.ASC, "id"));
         Sort requestedSort = TableSort.resolve(sort, order, defaultSort, ALLOWED_SORT);
-        Specification<Supplier> spec = (Root<Supplier> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
+        Specification<Supplier> spec = supplierSpec(f, subtreeIds, keyword, requestedSort);
+        Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
+        Page<Supplier> p = com.uten.imp.common.export.MasterExportSource.page(repo, em, Supplier.class, spec, pageable, f);
+        Map<UUID, String> settlementNames = settlementMethodNames(p.getContent());
+        Map<UUID, String> ownerNames = p.isEmpty() ? Map.of() : employeeNameResolver.namesOf(
+                p.getContent().stream().map(Supplier::getOwnerEmployeeId).toList());
+        List<SupplierListItem> items = new ArrayList<>(p.getContent().stream()
+                .map(supplier -> toList(supplier, supplier.getDefaultSettlementMethodId() == null
+                        ? null : settlementNames.get(supplier.getDefaultSettlementMethodId()),
+                        supplier.getOwnerEmployeeId() == null ? null : ownerNames.get(supplier.getOwnerEmployeeId())))
+                .toList());
+        applySubcontractLossRates(items);
+        return new PageResponse<>(items, p);
+    }
+
+    private Specification<Supplier> supplierSpec(SupplierQueryFilter f, List<UUID> subtreeIds,
+            CategoryKeywordSearch.Plan keyword, Sort requestedSort) {
+        return (Root<Supplier> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                         CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
@@ -169,15 +187,6 @@ public class SupplierService {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
-        Page<Supplier> p = repo.findAll(spec, pageable);
-        Map<UUID, String> settlementNames = settlementMethodNames(p.getContent());
-        List<SupplierListItem> items = new ArrayList<>(p.getContent().stream()
-                .map(supplier -> toList(supplier, supplier.getDefaultSettlementMethodId() == null
-                        ? null : settlementNames.get(supplier.getDefaultSettlementMethodId())))
-                .toList());
-        applySubcontractLossRates(items);
-        return new PageResponse<>(items, p);
     }
 
     private CategoryKeywordSearch.Plan keywordPlan(String query) {
@@ -199,13 +208,13 @@ public class SupplierService {
     // ===== 加密 Excel 导出（服务端权威列定义） =====
 
     /**
-     * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
+     * 加密 Excel 导出：复用 list 的同一筛选/映射，后台以 100 行游标批次输出；同步仅保留有界小结果。
      * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（tday）。
      * 2026-09-25 口径「表格显示啥导出啥」：补「损耗率(%)」（ADR-098 汇总视图，表格已有）；
      * 「业务员」导解析人名（空显「未分配」，与表格同兜底），不再导旧库 empId 数字串。
      * 主结账方式与详情/列表同源，按 default_settlement_method_id 解析，不使用旧快照猜测。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ExportPayload export(SupplierQueryFilter f, String sort, String order, int maxRows) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("name", "供应商简称", ExportColumn.TEXT),
@@ -230,7 +239,7 @@ public class SupplierService {
                 new ExportColumn("shipVia", "运输方式", ExportColumn.TEXT),
                 new ExportColumn("shipAddress", "送货地址", ExportColumn.TEXT));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
                 maxRows, (p, size) -> list(f, p, size, sort, order), m -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("_platformRecordId", m.getId());
@@ -259,7 +268,6 @@ public class SupplierService {
                     row.put("shipAddress", m.getShipAddress());
                     return row;
                 });
-        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets（子树范围内各字段 distinct + 空值计数） =====
@@ -345,14 +353,41 @@ public class SupplierService {
     @Transactional(readOnly = true)
     public List<SupplierDictItem> dict() {
         // 排除内部车间：车间=部门，不再作为委外商可选
-        Specification<Supplier> spec = (root, q, cb) -> cb.and(
+        return repo.findAll(dictionarySpec(), Sort.by(Sort.Direction.ASC, "name")).stream()
+                .map(SupplierService::dictionaryItem).toList();
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public List<SupplierDictItem> lookup(Set<UUID> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        if (ids.size() > com.uten.imp.common.validation.RequestLimits.LOOKUP_IDS || ids.stream().anyMatch(java.util.Objects::isNull))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "供应商名称一次最多读取200个有效UUID");
+        var spec = dictionarySpec().and((root, q, cb) -> root.get("id").in(ids));
+        return repo.findAll(spec, Sort.by("name").and(Sort.by("id"))).stream().map(SupplierService::dictionaryItem).toList();
+    }
+
+    private static SupplierDictItem dictionaryItem(Supplier supplier) {
+        return new SupplierDictItem(supplier.getId(), supplier.getCode(), supplier.getName(), supplier.getStatus(),
+                supplier.getDefaultSettlementMethodId());
+    }
+
+    private Specification<Supplier> dictionarySpec() {
+        return (root, q, cb) -> cb.and(
                 cb.isFalse(root.get("deleted")),
                 cb.isFalse(root.get("internalWorkshop")));
-        return repo.findAll(spec, Sort.by(Sort.Direction.ASC, "name")).stream()
-                .map(m -> new SupplierDictItem(
-                        m.getId(), m.getCode(), m.getName(), m.getStatus(),
-                        m.getDefaultSettlementMethodId()))
-                .toList();
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public com.uten.imp.common.web.MasterSearchContext searchContext(SupplierQueryFilter filter, int page, int size) {
+        validateReadFilter(filter);
+        var subtreeIds = filter.categoryId() == null ? null : resolveSubtreeIds(filter.categoryId());
+        var spec = supplierSpec(filter, subtreeIds, keywordPlan(filter.keyword()), Sort.unsorted());
+        return com.uten.imp.common.web.CategorySearchContext.read(em, Supplier.class, spec, "category", page, size);
+    }
+
+    private static void validateReadFilter(SupplierQueryFilter filter) {
+        com.uten.imp.features.master.dto.ContactSensitiveFilter.requireBoundedReadValues(
+                filter.keyword(), filter.mobile(), filter.phone(), filter.phone2(), filter.bankAccount());
     }
 
     @Transactional(readOnly = true)
@@ -546,7 +581,7 @@ public class SupplierService {
         return names;
     }
 
-    private SupplierListItem toList(Supplier m, String settlementMethodName) {
+    private SupplierListItem toList(Supplier m, String settlementMethodName, String ownerEmployeeName) {
         return new SupplierListItem(
                 m.getId(), m.getLegacyId(),
                 m.getName(), m.getDescription(), m.getTday(), m.getPlace(),
@@ -555,7 +590,7 @@ public class SupplierService {
                 m.getBank(), m.getBankAccount(), m.getTaxId(), m.getWebsite(),
                 m.getShipVia(), m.getShipAddress(),
                 m.getCategory() == null ? null : m.getCategory().getId(),
-                employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
+                ownerEmployeeName,
                 null, m.getVersion(), m.getStatus(), m.getDefaultSettlementMethodId(), settlementMethodName);
     }
 

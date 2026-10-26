@@ -95,6 +95,7 @@ public class ExportTableProjectionService {
                 }
             }
         }
+        ExportProjectionPublication.record(allowedScope,customIds);
         return new ExportPayload(columns,rows,rows.size());
     }
 

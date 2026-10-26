@@ -62,6 +62,51 @@ class _RejectingDraftStorage extends MemoryFormDraftStorage {
 }
 
 void registerDailyReportCreateRecoveryTests() {
+  testWidgets(
+    'R1 data scope ABA preserves original UNKNOWN CREATE body and idempotency key',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final storage = MemoryFormDraftStorage();
+      final fake = _IdentityApi()..receiptStatus = 'UNKNOWN';
+      final env = await _openIdentityPage(tester, storage, fake);
+      await _prepareRecoveryInput(tester);
+      await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+      await tester.pumpAndSettle();
+      expect(fake.creates, hasLength(1));
+      final originalBody = fake.creates.single;
+      final before =
+          (jsonDecode(storage.records.values.single) as Map)['data'] as Map;
+      final originalCommand = before[dailyReportCreateCommandKey];
+      expect(before[dailyReportCreateStateKey], 'UNKNOWN');
+      await tester.tap(
+        find.byKey(const Key('daily-report-open-create-recovery')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byType(ProductionDailyReportCreateRecoveryPage),
+        findsOneWidget,
+      );
+      expect(fake.receiptBodies, hasLength(1));
+      for (var change = 0; change < 2; change++) {
+        env.container.read(readScopeRevisionProvider.notifier).state++;
+        await tester.pumpAndSettle();
+        final after =
+            (jsonDecode(storage.records.values.single) as Map)['data'] as Map;
+        expect(after[dailyReportCreateCommandKey], originalCommand);
+        expect(after[dailyReportCreateStateKey], 'UNKNOWN');
+        expect(fake.creates, hasLength(1));
+        expect(fake.receiptBodies, hasLength(change + 2));
+        expect(fake.receiptBodies.last, originalBody);
+        expect(
+          fake.receiptBodies.last['idempotencyKey'],
+          originalBody['idempotencyKey'],
+        );
+      }
+      expect(tester.takeException(), isNull);
+      await _closeIdentityPage(tester, env);
+    },
+  );
   for (final outcome in [
     'confirmed',
     'legacy',

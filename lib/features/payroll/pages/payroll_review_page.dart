@@ -18,9 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
-import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -63,23 +61,26 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
     final detailAsync = selectedId == null
         ? null
         : ref.watch(payrollBatchDetailProvider(selectedId));
-    final selectedBatch = detailAsync?.value;
+    final selectedBatch =
+        !batchesAsync.isLoading &&
+            !batchesAsync.hasError &&
+            detailAsync != null &&
+            !detailAsync.isLoading &&
+            !detailAsync.hasError
+        ? detailAsync.value
+        : null;
     final permissions = ref.watch(currentPermissionsProvider);
 
     Widget body = batchesAsync.when(
-      loading: () => const UtenSkeletonList(),
-      error: (error, _) => UtenEmpty.error(
-        message: humanErrorMessage(error) ?? '工资批次没有加载出来，请稍后重试',
-        actionLabel: '重试',
-        onAction: () => ref.invalidate(payrollBatchListProvider),
+      loading: () => _batchTableFeedback(loading: true),
+      error: (error, _) => _batchTableFeedback(
+        error: humanErrorMessage(error) ?? '工资批次没有加载出来，请稍后重试',
+        onRetry: () => ref.invalidate(payrollBatchListProvider),
       ),
       data: (page) {
         final loadedBatches = page.items;
         if (loadedBatches.isEmpty) {
-          return const UtenEmpty(
-            icon: Icons.payments_outlined,
-            message: '暂无工资批次',
-          );
+          return _batchTableFeedback(emptyMessage: '暂无工资批次');
         }
         return Column(
           children: [
@@ -121,11 +122,10 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
             const Divider(height: 1),
             Expanded(
               child: detailAsync!.when(
-                loading: () => const UtenSkeletonList(),
-                error: (error, _) => UtenEmpty.error(
-                  message: humanErrorMessage(error) ?? '批次详情没有加载出来，请稍后重试',
-                  actionLabel: '重试',
-                  onAction: () =>
+                loading: () => _batchTableFeedback(loading: true),
+                error: (error, _) => _batchTableFeedback(
+                  error: humanErrorMessage(error) ?? '批次详情没有加载出来，请稍后重试',
+                  onRetry: () =>
                       ref.invalidate(payrollBatchDetailProvider(selectedId!)),
                 ),
                 data: (batch) => RefreshIndicator(
@@ -525,45 +525,62 @@ class _BatchDetailState extends State<_BatchDetail> {
         padding: const EdgeInsets.only(top: UtenSpacing.s16),
         child: buildHeader(),
       ),
-      body: batch.slips.isEmpty
-          ? const UtenEmpty(message: '服务器未返回该批次的员工明细')
-          : MasterDataTableView<PayrollSlip>(
-              tableKey:
-                  'features.payroll.pages.payroll_review_page.BatchDetail.build.1',
-              key: const Key('payroll-review-slip-table'),
-              primary: true,
-              columns: _slipColumns,
-              items: batch.slips,
-              facets: const {},
-              nullCounts: const {},
-              filters: const {},
-              onFilterChanged: (_, _) {},
-              // 底部留出右下悬浮操作组的高度，末行可滚出按钮区。
-              bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-              // 行勾选（2026-10-10 防看岔行）：纯阅读辅助、永不挂批量动作（审计
-              // A2 禁的是「勾选+整批生效」的误导按钮，不是高亮本身）；单选互斥
-              // ——点其他行自动换选、再点取消，选中态由行高亮表达，不画勾选框列
-              // 也不驻「已选」胶囊。明细无独立详情页不接 onRowTap，审核入口仍是
-              // 右下整批通过/驳回。
-              selectable: true,
-              showSelectionColumn: false,
-              singleSelection: true,
-              showSelectionSummary: false,
-              idOf: (s) => s.id,
-              selectedIds: _selectedSlipIds,
-              onSelectedIdsChanged: (next) => setState(() {
-                _selectedSlipIds
-                  ..clear()
-                  ..addAll(next);
-              }),
-              emptyMessage: '服务器未返回该批次的员工明细',
-            ),
+      body: MasterDataTableView<PayrollSlip>(
+        tableKey:
+            'features.payroll.pages.payroll_review_page.BatchDetail.build.1',
+        key: const Key('payroll-review-slip-table'),
+        primary: true,
+        columns: _slipColumns,
+        items: batch.slips,
+        facets: const {},
+        nullCounts: const {},
+        filters: const {},
+        onFilterChanged: (_, _) {},
+        // 底部留出右下悬浮操作组的高度，末行可滚出按钮区。
+        bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+        // 行勾选（2026-10-10 防看岔行）：纯阅读辅助、永不挂批量动作（审计
+        // A2 禁的是「勾选+整批生效」的误导按钮，不是高亮本身）；单选互斥
+        // ——点其他行自动换选、再点取消，选中态由行高亮表达，不画勾选框列
+        // 也不驻「已选」胶囊。明细无独立详情页不接 onRowTap，审核入口仍是
+        // 右下整批通过/驳回。
+        selectable: true,
+        showSelectionColumn: false,
+        singleSelection: true,
+        showSelectionSummary: false,
+        idOf: (s) => s.id,
+        selectedIds: _selectedSlipIds,
+        onSelectedIdsChanged: (next) => setState(() {
+          _selectedSlipIds
+            ..clear()
+            ..addAll(next);
+        }),
+        emptyMessage: '服务器未返回该批次的员工明细',
+      ),
     );
   }
 }
 
 /// 员工工资明细列（以原 _SlipRow 字段为准：工号/姓名/应发/扣减/实发；
 /// PayrollSlip 无部门字段，不设部门列）。
+Widget _batchTableFeedback({
+  bool loading = false,
+  String? error,
+  String emptyMessage = '暂无员工工资明细',
+  VoidCallback? onRetry,
+}) => MasterDataTableView<PayrollSlip>(
+  tableKey: 'features.payroll.pages.payroll_review_page.BatchDetail.build.1',
+  columns: _slipColumns,
+  items: const [],
+  facets: const {},
+  nullCounts: const {},
+  filters: const {},
+  onFilterChanged: (_, _) {},
+  isLoading: loading,
+  error: error,
+  onRetry: onRetry,
+  emptyMessage: emptyMessage,
+);
+
 final List<MasterColumnDef<PayrollSlip>> _slipColumns = [
   MasterColumnDef(
     key: 'employeeCode',

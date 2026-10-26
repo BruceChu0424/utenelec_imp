@@ -69,7 +69,10 @@ import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/party_open_balance.dart';
 import '../widgets/finance_party_snapshot_card.dart';
 import '../../../shared/models/procurement_order_closure.dart';
+import '../../../shared/widgets/procurement_order_closure_status.dart';
+import '../../../shared/widgets/procurement_order_closure_quantities.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class FinanceProcurementApprovalReviewPage extends ConsumerStatefulWidget {
   const FinanceProcurementApprovalReviewPage({super.key, required this.caseId});
@@ -127,6 +130,8 @@ class _FinanceProcurementApprovalReviewPageState
   bool _allowsReviewAction(String action) =>
       !_authorityStale &&
       _canView &&
+      _review?.isClosureRequest != true &&
+      _review?.isOrderClosed != true &&
       (_review?.allowedActions.contains(action) ?? false) &&
       (ref.read(isSuperAdminProvider) ||
           switch (action) {
@@ -366,10 +371,23 @@ class _FinanceProcurementApprovalReviewPageState
         return;
       }
       _reviewClaim = null;
+      final review = await ref
+          .read(financeProcurementWorkflowRepositoryProvider)
+          .review(_caseId);
+      if (!mounted ||
+          generation != _loadGeneration ||
+          !container.read(sessionProvider).isSameIdentity(identity)) {
+        return;
+      }
       final permissions = ref.read(currentPermissionsProvider);
-      if (ref.read(isSuperAdminProvider) ||
-          permissions.contains(Perm.financeOrderApprovalApprove) ||
-          permissions.contains(Perm.financeOrderApprovalReject)) {
+      if (review.isPending &&
+          !review.isClosureRequest &&
+          !review.isOrderClosed &&
+          (review.allowedActions.contains('APPROVE') ||
+              review.allowedActions.contains('REJECT')) &&
+          (ref.read(isSuperAdminProvider) ||
+              permissions.contains(Perm.financeOrderApprovalApprove) ||
+              permissions.contains(Perm.financeOrderApprovalReject))) {
         final claim = financeReviewClaim(
           container,
           localizations: AppLocalizations.of(context),
@@ -380,14 +398,6 @@ class _FinanceProcurementApprovalReviewPageState
           await claim.releaseAll();
           return;
         }
-      }
-      final review = await ref
-          .read(financeProcurementWorkflowRepositoryProvider)
-          .review(_caseId);
-      if (!mounted ||
-          generation != _loadGeneration ||
-          !container.read(sessionProvider).isSameIdentity(identity)) {
-        return;
       }
       if (preserveInputs &&
           (review.caseId != previousReview.caseId ||
@@ -569,11 +579,7 @@ class _FinanceProcurementApprovalReviewPageState
                 description: '确认后系统将以当前审核员记录通过责任，本操作即时生效。',
               ),
               const SizedBox(height: UtenSpacing.s12),
-              Text(
-                review.isClosureRequest
-                    ? '${AppLocalizations.of(context).orderClosureApproveHint}\n${AppLocalizations.of(context).orderClosureReceiptFinalityHint}'
-                    : '通过后订货单立即生效，并生成仓库预计到货任务。可填写审批备注(选填)：',
-              ),
+              const Text('通过后订货单立即生效，并生成仓库预计到货任务。可填写审批备注(选填)：'),
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 key: const Key('finance-order-review-approve-remark'),
@@ -647,8 +653,8 @@ class _FinanceProcurementApprovalReviewPageState
                 ),
               ],
               remark: remark,
-              exchangeRate: review.isClosureRequest ? null : reviewedRate,
-              taxRate: review.isClosureRequest ? null : changedTax,
+              exchangeRate: reviewedRate,
+              taxRate: changedTax,
             ),
         request: {
           'exchangeRate': reviewedRate,
@@ -660,11 +666,7 @@ class _FinanceProcurementApprovalReviewPageState
       if (!mounted) return;
       await finishReviewDraft();
       if (!mounted || !formDraftIdentityIsCurrent) return;
-      context.appSuccess(
-        review.isClosureRequest
-            ? AppLocalizations.of(context).orderClosureApprovedToast
-            : '已通过 $widgetSafeBillNo，仓库预计到货任务已生成',
-      );
+      context.appSuccess('已通过 $widgetSafeBillNo，仓库预计到货任务已生成');
       refreshBadges(ref);
       _closeAfterDecision();
     } on ApiException catch (e) {
@@ -708,11 +710,7 @@ class _FinanceProcurementApprovalReviewPageState
                   description: '确认后系统将记录当前审核员、驳回原因和时间，请对本次决定负责。',
                 ),
                 const SizedBox(height: UtenSpacing.s12),
-                Text(
-                  review.isClosureRequest
-                      ? AppLocalizations.of(context).orderClosureRejectHint
-                      : '驳回不改动订货单内容；原因将通知原制单人修改后重新提交。',
-                ),
+                const Text('驳回不改动订货单内容；原因将通知原制单人修改后重新提交。'),
                 const SizedBox(height: UtenSpacing.s12),
                 TextField(
                   key: const Key('finance-order-review-reject-reason'),
@@ -827,6 +825,8 @@ class _FinanceProcurementApprovalReviewPageState
     final review = _review;
     final showActions =
         review != null &&
+        !review.isClosureRequest &&
+        !review.isOrderClosed &&
         (review.isPending &&
                 (_allowsReviewAction('APPROVE') ||
                     _allowsReviewAction('REJECT')) ||
@@ -880,7 +880,7 @@ class _FinanceProcurementApprovalReviewPageState
                   // 会让表头吸到屏幕顶，弃。
                   : UtenContentContainer(
                       child: UtenCollapsingHeaderScrollView(
-                        collapsingHeader: Padding(
+                        collapsingHeader: UtenPageEdgePadding(
                           padding: const EdgeInsets.fromLTRB(
                             UtenSpacing.s12,
                             UtenSpacing.s12,
@@ -891,6 +891,8 @@ class _FinanceProcurementApprovalReviewPageState
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               if (review.isPending &&
+                                  !review.isClosureRequest &&
+                                  !review.isOrderClosed &&
                                   review.allowedActions.isNotEmpty &&
                                   _reviewClaim?.isReady != true) ...[
                                 FinanceReviewClaimNotice(
@@ -903,6 +905,14 @@ class _FinanceProcurementApprovalReviewPageState
                               if (review.isClosureRequest) ...[
                                 const SizedBox(height: UtenSpacing.s12),
                                 _closureCard(theme, review),
+                              ],
+                              if (review.orderClosure case final closure?) ...[
+                                if (!review.isClosureRequest ||
+                                    closure['caseId'] !=
+                                        review.closureRequest?['caseId']) ...[
+                                  const SizedBox(height: UtenSpacing.s12),
+                                  _orderClosureStatus(review, closure),
+                                ],
                               ],
                               if (procurementHeaderUnknownLabels(
                                 review.previousHeaderSnapshot,
@@ -957,7 +967,7 @@ class _FinanceProcurementApprovalReviewPageState
                             ],
                           ),
                         ),
-                        body: Padding(
+                        body: UtenPageEdgePadding(
                           // 底部留出右下悬浮操作组的高度，合计条不被按钮盖住。
                           padding: const EdgeInsets.fromLTRB(
                             UtenSpacing.s12,
@@ -1073,7 +1083,9 @@ class _FinanceProcurementApprovalReviewPageState
         : Icons.verified_rounded;
     final changed = r.previousItems.isNotEmpty;
     final statusText = r.isClosureRequest
-        ? (pending
+        ? (r.isDirectClosure && approved
+              ? AppLocalizations.of(context).orderClosureDirectEnded
+              : pending
               ? AppLocalizations.of(context).orderClosurePending
               : rejected
               ? AppLocalizations.of(context).orderClosureRejected
@@ -1126,6 +1138,7 @@ class _FinanceProcurementApprovalReviewPageState
   }
 
   Widget _closureCard(ThemeData theme, FinanceProcurementApprovalReview r) {
+    if (r.isDirectClosure) return _orderClosureStatus(r, r.closureRequest!);
     final l10n = AppLocalizations.of(context);
     final closure = r.closureRequest!;
     final lines = [
@@ -1152,7 +1165,7 @@ class _FinanceProcurementApprovalReviewPageState
             ),
             Text('${l10n.orderClosureReason}: ${r.closureReason ?? '—'}'),
             const SizedBox(height: UtenSpacing.s8),
-            Text(l10n.orderClosureApproveHint),
+            if (r.isPending) Text(l10n.orderClosureLegacyPendingHint),
             const SizedBox(height: UtenSpacing.s8),
             Text(l10n.orderClosureReceiptFinalityHint),
             if (closure['unverifiedQuantity'] == true)
@@ -1182,15 +1195,40 @@ class _FinanceProcurementApprovalReviewPageState
               ),
             for (final line in lines) ...[
               const SizedBox(height: UtenSpacing.s8),
-              Text(
-                '${line.goodsCode} ${line.goodsName}\n'
-                '${l10n.orderClosureRemaining}: ${_trimNum(line.remainingQty) ?? '—'} ${line.unitName}'
-                ' · ${l10n.orderClosureRemainingGift}: ${_trimNum(line.remainingGiftQty) ?? '—'} ${line.unitName}',
+              ProcurementOrderClosureQuantities(
+                line: line,
+                cancelled: r.status == 'APPROVED',
               ),
             ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _orderClosureStatus(
+    FinanceProcurementApprovalReview review,
+    Map<String, dynamic> closure,
+  ) {
+    final purchase = review.orderType == FinanceProcurementOrderType.purchase;
+    final permissions = ref.read(currentPermissionsProvider);
+    final superAdmin = ref.read(isSuperAdminProvider);
+    return ProcurementOrderClosureStatus(
+      request: ProcurementOrderClosureRequest.fromJson({
+        'status': review.status,
+        ...closure,
+      }),
+      orderType: purchase ? 'PURCHASE' : 'SUBCONTRACT',
+      canOpenReplacement:
+          superAdmin ||
+          permissions.contains(
+            purchase ? Perm.purchaseOrderView : Perm.subcontractOrderView,
+          ),
+      canEditReplacement:
+          superAdmin ||
+          permissions.contains(
+            purchase ? Perm.purchaseOrderEdit : Perm.subcontractOrderEdit,
+          ),
     );
   }
 

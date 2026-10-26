@@ -357,6 +357,23 @@ void main() {
         expect(_table(tester).selectedIds, isEmpty);
         final row = find.byKey(const ValueKey('import-review-row-long'));
         expect(tester.getSize(row).height, lessThan(400));
+        final valueBars = find.descendant(
+          of: row,
+          matching: find.byType(Scrollbar),
+        );
+        expect(valueBars, findsNWidgets(2));
+        for (final bar in valueBars.evaluate()) {
+          final barFinder = find.byWidget(bar.widget);
+          final viewport = find.descendant(
+            of: barFinder,
+            matching: find.byType(SingleChildScrollView),
+          );
+          expect(
+            tester.getRect(barFinder).right - tester.getRect(viewport).right,
+            greaterThanOrEqualTo(16),
+            reason: 'A long imported value must not sit under its scroll thumb',
+          );
+        }
         if (_capture) {
           await saveAuditScreenshot(
             tester,

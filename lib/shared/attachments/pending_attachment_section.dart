@@ -130,6 +130,15 @@ class _PendingAttachmentSectionState
                 builder: (context, constraints) {
                   final heading = UtenSectionHeader(
                     title: widget.title,
+                    info: canAdd
+                        ? AppLocalizations.of(
+                            context,
+                          ).attachmentUploadFormatsHint(
+                            formatAttachmentLimit(
+                              AttachmentLimits.maxFileBytes,
+                            ),
+                          )
+                        : null,
                     icon: Icons.folder_outlined,
                     trailing: items.isEmpty
                         ? null
@@ -299,16 +308,6 @@ class _PendingAttachmentSectionState
                       _dropzoneHint,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      // 上限跟随服务端部署配置 (公共设置下发)，不写死。
-                      AppLocalizations.of(context).attachmentUploadFormatsHint(
-                        formatAttachmentLimit(AttachmentLimits.maxFileBytes),
-                      ),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],

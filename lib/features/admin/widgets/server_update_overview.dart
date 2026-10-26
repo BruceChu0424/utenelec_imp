@@ -5,6 +5,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/display_datetime.dart';
@@ -101,6 +102,7 @@ class ServerUpdateOverview extends StatelessWidget {
       _SummaryCard(
         icon: Icons.manage_search_rounded,
         title: l.serverUpdatePhaseChecking,
+        info: l.serverUpdateLocalOnly,
         trailing: loading
             ? const SizedBox(
                 width: 18,
@@ -121,15 +123,15 @@ class ServerUpdateOverview extends StatelessWidget {
               onPressed: onCheck,
               child: Text(l.serverUpdateCheck),
             ),
-            const SizedBox(height: UtenSpacing.s12),
-            if (value?.lastCheckedAt != null)
+            if (value?.lastCheckedAt != null) ...[
+              const SizedBox(height: UtenSpacing.s12),
               _MetaText(
                 l.serverUpdateLastChecked,
                 DisplayDateTime.beijing(
                   value!.lastCheckedAt!.toIso8601String(),
                 ),
               ),
-            Text(l.serverUpdateLocalOnly, style: theme.textTheme.bodySmall),
+            ],
           ],
         ),
       ),
@@ -256,12 +258,14 @@ class _SummaryCard extends StatelessWidget {
     required this.title,
     required this.child,
     this.trailing,
+    this.info,
     this.accent = false,
   });
   final IconData icon;
   final String title;
   final Widget child;
   final Widget? trailing;
+  final String? info;
   final bool accent;
   @override
   Widget build(BuildContext context) {
@@ -292,6 +296,7 @@ class _SummaryCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (info != null) UtenFieldHintIcon(info: info, dense: true),
                 ?trailing,
               ],
             ),

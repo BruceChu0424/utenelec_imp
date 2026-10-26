@@ -1,3 +1,4 @@
+import '../../paging/scoped_paged_read_view_mixin.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -37,7 +38,20 @@ class _SubjectPicker extends ConsumerStatefulWidget {
   ConsumerState<_SubjectPicker> createState() => _SubjectPickerState();
 }
 
-class _SubjectPickerState extends ConsumerState<_SubjectPicker> {
+class _SubjectPickerState extends ConsumerState<_SubjectPicker>
+    with ScopedPagedReadViewMixin<_SubjectPicker> {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    if (mounted) {
+      setState(_invalidate);
+    }
+    if (mounted) {
+      setState(() {
+        _error = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   final _controller = TextEditingController();
   final _rows = MasterDataTableRowsController<MaterialTraceSubject>();
   MaterialTraceSubject? _selected;
@@ -87,7 +101,7 @@ class _SubjectPickerState extends ConsumerState<_SubjectPicker> {
     });
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     if (!mounted || _keyword.isEmpty) return;
     final request = ++_request;
     final keyword = _keyword;
@@ -98,12 +112,25 @@ class _SubjectPickerState extends ConsumerState<_SubjectPicker> {
       _error = null;
       _rowsReady = false;
     });
+    final kind = widget.kind, exact = _exact;
+    Object pagingQuery() => [
+      ref.read(materialTraceRepositoryProvider),
+      widget.kind,
+      _keyword,
+      _exact,
+    ];
     try {
-      final data = await repository.subjects(
-        kind: widget.kind,
-        keyword: keyword,
-        exact: _exact,
-        page: page,
+      final data = await readScopedPage<MaterialTraceSubject>(
+        page,
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        fetchPage: (target) => repository.subjects(
+          kind: kind,
+          keyword: keyword,
+          exact: exact,
+          page: target,
+        ),
       );
       if (!mounted ||
           request != _request ||
@@ -215,6 +242,7 @@ class _SubjectPickerState extends ConsumerState<_SubjectPicker> {
       ),
       Expanded(
         child: MasterDataTableView<MaterialTraceSubject>(
+          expensiveRowMounts: false,
           key: ValueKey(('material-trace-subjects', widget.kind)),
           columns: [
             MasterColumnDef(
@@ -272,11 +300,11 @@ class _SubjectPickerState extends ConsumerState<_SubjectPicker> {
           currentPage: _data?.page ?? 1,
           totalPages: _data?.totalPages ?? 1,
           paginationScope: (widget.kind, _keyword, _exact, _loadedBoundary),
-          onPageChange: _load,
+          onPageChange: (page) => _load(page, useCache: true),
           isLoading: _loading && _data == null,
           loadingMore: _loading && _data != null,
           error: _error,
-          onRetry: () => _load(_data?.page ?? 1),
+          onRetry: () => _load(_rows.visiblePage ?? _data?.page ?? 1),
           emptyMessage: _keyword.isEmpty
               ? (_batch ? '输入生产批次号或报工单号开始搜索' : '输入单号开始搜索')
               : '没有当前权限范围内的匹配记录',

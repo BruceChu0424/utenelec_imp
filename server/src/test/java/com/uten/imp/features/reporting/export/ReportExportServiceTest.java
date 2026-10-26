@@ -1,0 +1,122 @@
+package com.uten.imp.features.reporting.export;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.common.web.*;
+import com.uten.imp.security.*;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.io.TempDir;
+import java.nio.file.Path;
+import java.time.OffsetDateTime;
+import java.util.*;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class ReportExportServiceTest {
+    @TempDir Path directory;
+    final UUID owner=UUID.randomUUID();
+    final AuthUser user=new AuthUser(owner,UUID.randomUUID(),"fixture",Set.of("sales_report:view","sales_report:export"),false,true,false);
+    ReportExportRepository repository;
+    SubmitterPrincipalRestorer restorer;
+    SecurityContextCurrentUser users;
+    ObjectMapper mapper=new ObjectMapper();
+    ReportExportService service;
+    ReportExportBuildIdentity buildIdentity;
+    ExportRateLimiter rateLimiter;
+    ReadScopeVersionAuthority readScopes;
+    org.springframework.beans.factory.ObjectProvider<com.uten.imp.common.export.ExportProjectionAccessGuard> projectionAccess;
+    @BeforeEach void setup() {
+        repository=mock(ReportExportRepository.class);restorer=mock(SubmitterPrincipalRestorer.class);users=mock(SecurityContextCurrentUser.class);
+        when(users.get()).thenReturn(Optional.of(user));
+        when(restorer.restore(owner,1,1L)).thenReturn(user);
+        when(restorer.currentStamps(owner)).thenReturn(Optional.of(new SubmitterPrincipalRestorer.AuthorizationStamps(1,1)));
+        buildIdentity=mock(ReportExportBuildIdentity.class);when(buildIdentity.revision()).thenReturn("fixture-build");rateLimiter=mock(ExportRateLimiter.class);
+        readScopes=mock(ReadScopeVersionAuthority.class);when(readScopes.scopeFor(anyString(),any())).thenReturn("a".repeat(64));
+        projectionAccess=mock(org.springframework.beans.factory.ObjectProvider.class);
+        service=new ReportExportService(repository,users,restorer,mapper,buildIdentity,rateLimiter,readScopes,projectionAccess,directory.toString());
+    }
+    ReportExportRequest request(UUID id) {return new ReportExportRequest(id,"sales","ORDER/detail",Map.of("dateFrom","2020-01-01"),null,null,null);}
+    ReportExportRepository.Job job(ReportExportRequest request) throws Exception {
+        return new ReportExportRepository.Job(request.id(),owner,1,1,mapper.writeValueAsString(request),"PENDING",false,0,0,
+                OffsetDateTime.now(),null,null,null,null,null,0,ReportExportBuildIdentity.CONTRACT,"fixture-build","a".repeat(64));
+    }
+    @Test void sameIdentityAndConditionsRecoverTheOriginalTaskWithoutAnotherInsert() throws Exception {
+        var request=request(UUID.randomUUID());when(repository.find(request.id())).thenReturn(Optional.of(job(request)));
+        assertEquals(request.id(),service.submit(request).id());
+        verify(repository,never()).insert(any(),any(),anyLong(),anyLong(),anyString(),anyString(),anyString());
+        verify(repository,never()).active(any());
+    }
+    @Test void aDifferentRequestCannotReuseTheSameIdentity() throws Exception {
+        UUID id=UUID.randomUUID();when(repository.find(id)).thenReturn(Optional.of(job(request(id))));
+        var changed=new ReportExportRequest(id,"sales","ORDER/summary",Map.of(),null,null,null);
+        assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,() -> service.submit(changed)).getCode());
+        verify(repository,never()).insert(any(),any(),anyLong(),anyLong(),anyString(),anyString(),anyString());
+    }
+    @Test void anotherUserCannotProbeTheTaskAndPermissionChangesCloseDownloadAuthorization() throws Exception {
+        var request=request(UUID.randomUUID());when(repository.find(request.id())).thenReturn(Optional.of(job(request)));
+        when(users.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"other",user.getPermissions(),false,true,false)));
+        assertEquals(ErrorCode.NOT_FOUND,assertThrows(ApiException.class,() -> service.get(request.id())).getCode());
+        when(users.get()).thenReturn(Optional.of(user));
+        when(restorer.restore(owner,1,1L)).thenThrow(new SubmitterPrincipalRestorer.PrincipalChangedException("revoked"));
+        assertEquals(ErrorCode.FORBIDDEN,assertThrows(ApiException.class,() -> service.authorized(request.id())).getCode());
+    }
+    @Test void impersonationCannotCreateOrDownloadExportTasks() throws Exception {
+        var impersonated=new AuthUser(owner,user.getEmployeeId(),"fixture",user.getPermissions(),false,true,false,false,UUID.randomUUID());
+        when(users.get()).thenReturn(Optional.of(impersonated));
+        assertThrows(ApiException.class,() -> service.submit(request(UUID.randomUUID())));
+        var request=request(UUID.randomUUID());when(repository.find(request.id())).thenReturn(Optional.of(job(request)));
+        assertEquals(ErrorCode.IMPERSONATION_READ_ONLY,assertThrows(ApiException.class,() -> service.authorized(request.id())).getCode());
+    }
+    @Test void disabledStorageAndCredentialParametersNeverCreateAJob() {
+        var disabled=new ReportExportService(repository,users,restorer,mapper,buildIdentity,rateLimiter,readScopes,projectionAccess,"");
+        assertFalse(disabled.available());assertThrows(ApiException.class,() -> disabled.submit(request(UUID.randomUUID())));
+        var credential=new ReportExportRequest(UUID.randomUUID(),"sales","ORDER/detail",Map.of("password","do-not-persist"),null,null,null);
+        assertThrows(ApiException.class,() -> service.submit(credential));
+        verify(repository,never()).insert(any(),any(),anyLong(),anyLong(),anyString(),anyString(),anyString());
+    }
+    @Test void recentTasksCheckStampsOnceAndNeverListAnOldAuthorizationGeneration() throws Exception {
+        var request=request(UUID.randomUUID());var current=job(request);
+        var old=new ReportExportRepository.Job(UUID.randomUUID(),owner,1,0,current.request(),"PENDING",false,0,0,
+                OffsetDateTime.now(),null,null,null,null,null,0,ReportExportBuildIdentity.CONTRACT,"fixture-build","a".repeat(64));
+        when(repository.recent(owner)).thenReturn(List.of(current,old));
+        assertEquals(List.of(current.id()),service.recent().stream().map(ReportExportService.View::id).toList());
+        verify(restorer).currentStamps(owner);verify(restorer,never()).restore(any(),anyLong(),any());
+    }
+    @Test void queuedTasksNeverSilentlyChangeReaderAfterAnUpgrade() throws Exception {
+        var queued=job(request(UUID.randomUUID()));
+        assertDoesNotThrow(() -> service.requireCompatibleReader(queued));
+        when(buildIdentity.revision()).thenReturn("updated-build");
+        var error=assertThrows(ApiException.class,() -> service.requireCompatibleReader(queued));
+        assertEquals(ErrorCode.CONFLICT,error.getCode());
+    }
+    @Test void aDataScopeChangeWithTheSameRoleStampsBlocksTheFileButKeepsTheOriginalTaskReadable() throws Exception {
+        var request=request(UUID.randomUUID());var row=job(request);
+        when(repository.find(request.id())).thenReturn(Optional.of(row));
+        assertDoesNotThrow(() -> service.requireCurrentAccess(row));
+        when(readScopes.scopeFor(anyString(),any())).thenReturn("b".repeat(64));
+        assertEquals(request.id(),service.get(request.id()).id());
+        assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,() -> service.authorizedArtifact(request.id())).getCode());
+        verify(restorer,times(2)).restore(owner,1,1L);
+    }
+    @Test void exportPermissionRetainsTheOriginalSixDomainContractWhileWhereUsedStillRequiresItsOwnView() {
+        for(String domain:List.of("sales","purchase","subcontract","production","stock","finance")) {
+            var exportOnly=new AuthUser(owner,user.getEmployeeId(),"export-only",Set.of(domain+"_report:export"),false,true,false);
+            assertDoesNotThrow(()->ReportExportService.authorizeDomain(exportOnly,domain));
+            assertThrows(ApiException.class,()->ReportExportService.authorizeDomain(exportOnly,"where_used"));
+        }
+        var independent=new AuthUser(owner,user.getEmployeeId(),"engineer",Set.of("production_where_used:view","production_where_used:export"),false,true,false);
+        assertDoesNotThrow(()->ReportExportService.authorizeDomain(independent,"where_used"));
+    }
+    @Test void purchaseTasksKeepTheirIndependentReadAuthorityAndStrictFilterContract() {
+        var request=new ReportExportRequest(UUID.randomUUID(),"workbench_purchase","tasks",Map.of("search.goods","开关_20%"),null,null,null);
+        var permitted=new AuthUser(owner,user.getEmployeeId(),"tasks",Set.of("purchase_order:view","purchase_report:export"),false,true,false);
+        assertDoesNotThrow(()->ReportExportService.authorizeRequest(permitted,request));
+        assertDoesNotThrow(()->WorkbenchReportExportSource.validate(request));
+        var reportOnly=new AuthUser(owner,user.getEmployeeId(),"reports",Set.of("purchase_report:view","purchase_report:export"),false,true,false);
+        assertThrows(ApiException.class,()->ReportExportService.authorizeRequest(reportOnly,request));
+        assertEquals("view_purchase",ReportExportSource.scope(request));
+        assertThrows(ApiException.class,()->WorkbenchReportExportSource.validate(new ReportExportRequest(UUID.randomUUID(),"workbench_purchase","tasks",
+                Map.of("dateFrom","2026-10-26","dateTo","2026-10-01"),null,null,null)));
+        assertThrows(ApiException.class,()->WorkbenchReportExportSource.validate(new ReportExportRequest(UUID.randomUUID(),"workbench_purchase","tasks",
+                Map.of("dateFrom","not-a-date"),null,null,null)));
+    }
+}

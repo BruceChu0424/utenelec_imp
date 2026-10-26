@@ -3,6 +3,8 @@ package com.uten.imp.features.stock.report;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.report.ReportQueryKit;
+import com.uten.imp.common.report.ReportReadPlan;
+import com.uten.imp.common.report.ReportExportCursor;
 import com.uten.imp.common.report.ReportQueryKit.FacetSpec;
 import com.uten.imp.common.report.ReportQueryKit.WhereBuilder;
 import com.uten.imp.common.report.ReportSort;
@@ -98,7 +100,7 @@ public class StockReportService {
                 "WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false AND i.bill_type = '" + dt + "'");
         addCommonFilters(w, billNo, warehouseId, clientId, status, departmentId, dateFrom, dateTo, kw, true);
         return execute(cols.stream().map(c -> c.col).toList(), dataSelect, fromJoin, w,
-                "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", detailFacets(), facets, page, size, sort, order);
+                "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST, i.id", detailFacets(), facets, page, size, sort, order);
     }
 
     @Transactional(readOnly = true)
@@ -115,7 +117,7 @@ public class StockReportService {
                 "WHERE COALESCE(o.is_deleted,false)=false AND o.doc_type = '" + dt + "'");
         addCommonFilters(w, billNo, warehouseId, clientId, status, departmentId, dateFrom, dateTo, kw, false);
         return execute(cols.stream().map(c -> c.col).toList(), dataSelect, fromJoin, w,
-                "o.bill_date DESC, o.bill_no", commonFacets(), facets, page, size, sort, order);
+                "o.bill_date DESC, o.bill_no, o.id", commonFacets(), facets, page, size, sort, order);
     }
 
     // ======================== 明细列集（按 docType） ========================
@@ -576,7 +578,6 @@ public class StockReportService {
         String kw = p == null ? null : p.get("keyword");
         UUID warehouseId = ReportQueryKit.parseUuid(p == null ? null : p.get("warehouseId"));
         boolean includeDisabled = p != null && "true".equalsIgnoreCase(p.get("includeDisabled"));
-        var items = stockQueryService.shelfLabelRows(rack, kw, warehouseId, includeDisabled);
           List<ExportColumn> cols = new ArrayList<>(List.of(
                   new ExportColumn("warehouseName", "实际仓库", "text"),
                   new ExportColumn("rack", "库行", "text"),
@@ -593,7 +594,9 @@ public class StockReportService {
         if (includeDisabled) {
             cols.add(new ExportColumn("status", "状态", "text"));
         }
-        List<Map<String, Object>> rows = new ArrayList<>(items.size());
+        BiFunction<Integer, Integer, ExportPayload> loader = (page, size) -> {
+            var items = stockQueryService.shelfLabelRowsPage(rack, kw, warehouseId, includeDisabled, page, size);
+            List<Map<String, Object>> rows = new ArrayList<>(items.size());
         for (var it : items) {
               Map<String, Object> m = new LinkedHashMap<>();
               m.put("warehouseName", it.getWarehouseName() == null ? "主档建议(未指定仓库)" : it.getWarehouseName());
@@ -613,7 +616,10 @@ public class StockReportService {
             }
             rows.add(m);
         }
-        return new ExportPayload(cols, rows, rows.size());
+            return new ExportPayload(cols, rows, -1);
+        };
+        return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
+                ExportPayload::total, ExportPayload::columns, ExportPayload::rows);
     }
 
     // ======================== 通用执行器（与 purchase/sales 同型） ========================
@@ -644,14 +650,14 @@ public class StockReportService {
         for (ReportColumn c : columns) sortKeys.add(c.key());
         String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
 
-        var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
+        var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
         mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = dataQ.getResultList();
+        List<Object[]> rows = ReportExportCursor.rows(em, dataQ);
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -660,13 +666,16 @@ public class StockReportService {
             items.add(m);
         }
 
-        var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
-        full.params().forEach(countQ::setParameter);
-        long total = ((Number) countQ.getSingleResult()).longValue();
-        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
+            full.params().forEach(countQ::setParameter);
+            total = ((Number) countQ.getSingleResult()).longValue();
+        }
+        int totalPages = ReportReadPlan.totalPages(total, safeSize);
 
         Map<String, List<ReportFacet>> facets = new LinkedHashMap<>();
-        for (FacetSpec spec : specs) {
+        for (FacetSpec spec : ReportReadPlan.current().includeFacets() ? specs : List.<FacetSpec>of()) {
             var fq = em.createNativeQuery("SELECT " + spec.selectExpr() + ", COUNT(*) AS cnt " + fromJoin + " "
                     + baseB.sql() + " GROUP BY " + spec.groupExpr() + " ORDER BY cnt DESC LIMIT 50");
             baseB.params().forEach(fq::setParameter);
@@ -688,9 +697,9 @@ public class StockReportService {
         // 表格下方合计：与列表用同一份 full（日期/facet/关键字 + 对象级授权谓词）在**整个结果集**
         // 上聚合，与翻到第几页无关；派生表不带 LIMIT/OFFSET，所以绝不会出现「只合计当前页」。
         List<com.uten.imp.common.report.ReportTotal> totals =
-                com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(
                         em, dataSelect, fromJoin, full.sql(), full.params(),
-                        reportTotalSpecs(columns, columns));
+                        reportTotalSpecs(columns, columns)) : List.<com.uten.imp.common.report.ReportTotal>of();
 
         totals = com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns);
         List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
@@ -740,7 +749,7 @@ public class StockReportService {
         }
         return switch (spec.filterType()) {
             case "uuid" -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS uuid)", p, UUID.fromString(value));
-            case "bool" -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, Boolean.valueOf(value));
+            case "bool" -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, ReportQueryKit.parseRequiredBoolean(value));
             default -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS text)", p, value);
         };
     }

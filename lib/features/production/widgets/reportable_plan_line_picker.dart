@@ -6,10 +6,12 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/reportable_plan_line.dart';
 import '../repositories/production_repository.dart';
@@ -53,7 +55,8 @@ class _ReportablePlanLineSheet extends ConsumerStatefulWidget {
 }
 
 class _ReportablePlanLineSheetState
-    extends ConsumerState<_ReportablePlanLineSheet> {
+    extends ConsumerState<_ReportablePlanLineSheet>
+    with ScopedPagedReadViewMixin<_ReportablePlanLineSheet> {
   final _search = TextEditingController();
   final _tableRows = MasterDataTableRowsController<ReportablePlanLine>();
   List<ReportablePlanLine>? _items;
@@ -65,6 +68,20 @@ class _ReportablePlanLineSheetState
   int _retryPage = 1;
   int _totalPages = 1;
   int _total = 0;
+
+  @override
+  void scopedPagedReadOwnerChanged() => setState(() {
+    _requestGeneration++;
+    _tableRows.update(const []);
+    _items = null;
+    _picked.clear();
+    _error = scopedPagedReadRejection?.message;
+    _loading = false;
+    _page = 1;
+    _retryPage = 1;
+    _totalPages = 1;
+    _total = 0;
+  });
 
   /// 已点选（高亮）的计划行，**按点选先后保序**；底部「确定」才 pop 返回
   /// （二次操作契约）。保序是因为调用方按这个顺序建行，用户点的顺序=行序。
@@ -111,11 +128,14 @@ class _ReportablePlanLineSheetState
     });
   }
 
-  Future<void> _load({int? page}) async {
+  Future<void> _load({int? page, bool useCache = false}) async {
     if (!mounted) return;
     final generation = ++_requestGeneration;
-    final requestedPage = page ?? _page;
+    final requestedPage = page ?? _tableRows.visiblePage ?? _page;
     final keyword = _search.text.trim();
+    final repository = ref.read(productionDailyReportRepositoryProvider);
+    final segment = widget.executionSegmentId;
+    final department = widget.departmentId;
     setState(() {
       _keyword = keyword;
       _retryPage = requestedPage;
@@ -123,15 +143,24 @@ class _ReportablePlanLineSheetState
       _loading = true;
     });
     try {
-      final result = await ref
-          .read(productionDailyReportRepositoryProvider)
-          .reportablePlanLines(
-            executionSegmentId: widget.executionSegmentId,
-            page: requestedPage,
-            size: 100,
-            keyword: keyword,
-            departmentId: widget.departmentId,
-          );
+      final result = await readScopedPage<ReportablePlanLine>(
+        requestedPage,
+        query: (repository, segment, department, keyword),
+        currentQuery: () => (
+          ref.read(productionDailyReportRepositoryProvider),
+          widget.executionSegmentId,
+          widget.departmentId,
+          _search.text.trim(),
+        ),
+        useCache: useCache,
+        fetchPage: (page) => repository.reportablePlanLines(
+          executionSegmentId: segment,
+          page: page,
+          size: 100,
+          keyword: keyword,
+          departmentId: department,
+        ),
+      );
       if (!mounted || generation != _requestGeneration) return;
       setState(() {
         _items = result.items;
@@ -156,72 +185,14 @@ class _ReportablePlanLineSheetState
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UtenSpacing.s16,
-                UtenSpacing.s12,
-                UtenSpacing.s8,
-                UtenSpacing.s8,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '选择报工子任务',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: UtenSpacing.s4),
-                        Text(
-                          '显示普通可报任务和 FQC 恢复任务；返工可再检报工，报废/拒收补产须重新齐套发料。',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '关闭',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-              padding: const EdgeInsets.all(UtenSpacing.s8),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer.withValues(
-                  alpha: 0.42,
-                ),
-                borderRadius: UtenRadius.smAll,
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.verified_user_outlined,
-                    size: 18,
-                    color: theme.colorScheme.onPrimaryContainer,
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Expanded(
-                    child: Text(
-                      '选择后会锁定计划行、销售订单行、单位口径和 FQC 恢复授权。'
-                      '按实际产量报工；按已生效的允许超产比例核对，越限先办理追加计划。'
-                      '保存和审核均会核对来源、重复申报及接收需求。',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onPrimaryContainer,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            UtenPanelHeader(
+              title: '选择报工子任务',
+              info:
+                  '显示普通可报任务和 FQC 恢复任务；返工可再检报工，报废/拒收补产须重新齐套发料。\n\n'
+                  '选择后会锁定计划行、销售订单行、单位口径和 FQC 恢复授权。'
+                  '按实际产量报工；按已生效的允许超产比例核对，越限先办理追加计划。'
+                  '保存和审核均会核对来源、重复申报及接收需求。',
+              onClose: () => Navigator.of(context).pop(),
             ),
             Padding(
               padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -269,6 +240,7 @@ class _ReportablePlanLineSheetState
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: MasterDataTableView<ReportablePlanLine>(
+        expensiveRowMounts: false,
         showPaginationControls: false,
         tableKey:
             'features.production.widgets.reportable_plan_line_picker.ReportablePlanLineSheetState._body.1',
@@ -279,7 +251,7 @@ class _ReportablePlanLineSheetState
         rowKeyOf: _lineKey,
         currentPage: _page,
         totalPages: _totalPages,
-        onPageChange: (page) => _load(page: page),
+        onPageChange: (page) => _load(page: page, useCache: true),
         paginationScope: (
           widget.departmentId,
           widget.executionSegmentId,

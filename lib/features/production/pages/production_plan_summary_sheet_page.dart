@@ -33,6 +33,7 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import '../models/production_material_analysis.dart';
 import '../repositories/production_repository.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class ProductionPlanSummarySheetPage extends ConsumerStatefulWidget {
   const ProductionPlanSummarySheetPage({
@@ -372,39 +373,42 @@ class _ProductionPlanSummarySheetPageState
     }
     final buyRows = _supplyRows(MaterialSupplyRoute.buy);
     final subcontractRows = _supplyRows(MaterialSupplyRoute.subcontract);
-    return SingleChildScrollView(
-      // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+    return UtenPageEdgePadding.scroll(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s16,
         UtenSpacing.s16,
         UtenSpacing.s16,
         UtenFloatingActionGroup.scrollClearance,
       ),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_workshopsLoading || _workshopsError != null) ...[
+      builder: (context, resolvedPagePadding) => SingleChildScrollView(
+        // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+        padding: resolvedPagePadding,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_workshopsLoading || _workshopsError != null) ...[
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 794),
+                  child: _workshopStatus(),
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+              ],
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 794),
-                child: _workshopStatus(),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-            ],
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 794),
-              child: Material(
-                key: const Key('plan-summary-paper'),
-                color: Colors.white,
-                elevation: 3,
-                borderRadius: UtenRadius.smAll,
-                child: Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s24),
-                  child: _paperBody(buyRows, subcontractRows),
+                child: Material(
+                  key: const Key('plan-summary-paper'),
+                  color: Colors.white,
+                  elevation: 3,
+                  borderRadius: UtenRadius.smAll,
+                  child: Padding(
+                    padding: const EdgeInsets.all(UtenSpacing.s24),
+                    child: _paperBody(buyRows, subcontractRows),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

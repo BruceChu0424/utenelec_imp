@@ -6,6 +6,7 @@ import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
 import '../../core/utils/china_datetime.dart';
 import '../../core/network/server_config.dart';
+import '../../core/router/page_navigation_session.dart';
 import '../../core/ui/app_notification.dart';
 import '../providers/authenticated_scope_provider.dart';
 import 'form_draft_catalog.dart';
@@ -130,6 +131,7 @@ Future<void> resumeTaskFormDraft(
   WidgetRef ref,
   List<FormDraft> drafts, {
   bool choose = false,
+  PageNavigationSession? navigation,
 }) async {
   if (drafts.isEmpty) return;
   final owner = ref.read(authenticatedScopeProvider);
@@ -231,5 +233,11 @@ Future<void> resumeTaskFormDraft(
     context.appWarning('这份草稿已在其它页面更新，请从原任务重新打开');
     return;
   }
-  await context.push(current.resumeLocation);
+  if (navigation != null) {
+    await navigation.push<void>(current.resumeLocation);
+  } else {
+    // Unlocked entry points only open the editor. Owners that wait to release
+    // a navigation guard must supply their page's navigation session.
+    await context.push(current.resumeLocation);
+  }
 }

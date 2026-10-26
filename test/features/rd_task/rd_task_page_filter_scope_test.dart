@@ -72,6 +72,7 @@ void main() {
       reason: '翻页后仍使用完整类别枚举，不随当前页样本变化',
     );
     expect(tester.takeException(), isNull);
+    final beforeHistory = api.queries.length;
     await tester.tap(
       find.descendant(
         of: find.byKey(const Key('rd-task-segments')),
@@ -79,8 +80,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(api.queries.last['status'], 'done');
-    expect(api.queries.last['page'], 1);
+    final historyReads = api.queries.skip(beforeHistory).toList();
+    expect(historyReads.first['page'], 1);
+    expect(historyReads.every((query) => query['status'] == 'done'), isTrue);
+    expect(table().currentPage, 1);
   });
 }
 

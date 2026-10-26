@@ -304,30 +304,9 @@ class _GroupPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Semantics(
       label: '请先在上方选择分类',
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.touch_app_outlined,
-              size: 40,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            Text('在上方选择分类后开始浏览', style: theme.textTheme.titleSmall),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              '新建单据请回「销售管理」的新建单据区',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
+      child: const UtenFilterPlaceholder(description: '新建单据请回「销售管理」的新建单据区'),
     );
   }
 }

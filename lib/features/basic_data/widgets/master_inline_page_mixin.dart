@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/read_scope_revision.dart';
 
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/auth/sensitive_write.dart';
 import '../repositories/master_inline_edit_repository.dart';
 import 'master_data_table_view.dart';
 import 'master_inline_edit.dart';
+
+typedef MasterInlineReadToken = (SensitiveReadBoundary, int);
 
 /// Small flat master workspaces share the same draft, ownership and exit rules.
 mixin MasterInlinePageMixin<W extends ConsumerStatefulWidget, T>
@@ -40,10 +43,25 @@ mixin MasterInlinePageMixin<W extends ConsumerStatefulWidget, T>
         inlineReloadAfterBoundary();
       });
     });
+    ref.listenManual(readScopeRevisionProvider, (previous, next) {
+      if (previous == null || previous == next || !mounted) return;
+      inlineEdit.retireReadScope();
+      setState(inlineClearView);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && ref.read(readScopeRevisionProvider) == next) {
+          inlineReloadAfterBoundary();
+        }
+      });
+    });
   }
 
-  bool inlineAcceptsRead(Object boundary) =>
-      mounted && ref.read(sensitiveReadBoundaryProvider) == boundary;
+  MasterInlineReadToken captureInlineRead() => (
+    ref.read(sensitiveReadBoundaryProvider),
+    ref.read(readScopeRevisionProvider),
+  );
+
+  bool inlineAcceptsRead(MasterInlineReadToken boundary) =>
+      mounted && captureInlineRead() == boundary;
 
   void _inlineChanged() {
     if (_inlineModeActive == inlineEdit.active) return;
@@ -71,13 +89,14 @@ mixin MasterInlinePageMixin<W extends ConsumerStatefulWidget, T>
               columnFields: config.columnFields,
               canCreate: config.canCreate,
               onCreate: (key, values) async {
+                final readToken = captureInlineRead();
                 if (inlineCreation?.canCreate != true || !inlineReadReady) {
                   throw ApiException('FORBIDDEN', '新增权限或列表状态已变化，请刷新后重试');
                 }
                 await runSensitiveWrite(
                   ref,
                   isCurrent: () =>
-                      mounted &&
+                      inlineAcceptsRead(readToken) &&
                       inlineCreation?.canCreate == true &&
                       inlineReadReady,
                   write: () => config.onCreate(key, values),
@@ -124,15 +143,16 @@ mixin MasterInlinePageMixin<W extends ConsumerStatefulWidget, T>
     final expected = <String, Object?>{
       for (final key in patch.keys) key: byKey[key]!.read(row),
     };
-    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final boundary = captureInlineRead();
     await runSensitiveWrite(
       ref,
-      isCurrent: () => mounted && inlineCanEdit && inlineReadReady,
+      isCurrent: () =>
+          inlineAcceptsRead(boundary) && inlineCanEdit && inlineReadReady,
       write: () => ref
           .read(masterInlineEditRepositoryProvider)
           .save(inlineEntityType, id, changes: patch, expected: expected),
     );
-    if (mounted && ref.read(sensitiveReadBoundaryProvider) == boundary) {
+    if (inlineAcceptsRead(boundary)) {
       await inlineReload();
     }
   }

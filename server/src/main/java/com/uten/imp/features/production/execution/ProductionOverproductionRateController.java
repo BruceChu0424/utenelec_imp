@@ -53,7 +53,7 @@ public class ProductionOverproductionRateController {
     }
 
     /** 单号列 facets（2026-09-25 单号列统一）：{plan/segment:[…]}，与列表同一过滤参数。 */
-    @GetMapping("/requests/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/requests/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('production_plan:approve')")
     public Map<String, java.util.List<Map<String,Object>>> facets(
             @RequestParam(defaultValue="PENDING") String status) {

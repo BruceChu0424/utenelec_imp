@@ -422,6 +422,7 @@ class _SubcontractLossClaimDetailPanelState
 
   Widget _linesTable(List<SubcontractLossClaimLine> lines) =>
       MasterDataTableView<SubcontractLossClaimLine>(
+      expensiveRowMounts: false,
         tableKey: 'finance.subcontractLoss.valuation',
         embedded: true,
         platformBinding: PlatformTableBinding(

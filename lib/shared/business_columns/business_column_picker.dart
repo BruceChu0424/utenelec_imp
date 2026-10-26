@@ -294,6 +294,7 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
               : Icons.search_rounded,
         ),
       ),
+      info: _view == _ColumnView.create ? _text.businessColumnNewHint : null,
       useFieldNameHint: _view == _ColumnView.create,
     ),
   );
@@ -390,8 +391,6 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
   Widget _newColumn() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Text(_text.businessColumnNewHint),
-      const SizedBox(height: UtenSpacing.s16),
       _nameField(),
       if (_name.text.trim().isNotEmpty) ...[
         UtenDropdownField(
@@ -400,6 +399,9 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
           enabled: _ready,
           allowClear: false,
           label: _text.businessColumnType,
+          info: _type == 'AMOUNT'
+              ? _text.businessColumnOfficialHint
+              : _text.businessColumnRecordHint,
           items: [
             UtenDropdownItem(value: 'TEXT', label: _text.businessColumnText),
             UtenDropdownItem(
@@ -422,11 +424,6 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
         ),
         const SizedBox(height: UtenSpacing.s16),
         if (_type == 'AMOUNT' && _arithmetic) ...[
-          ColumnEditorNotice(
-            icon: Icons.payments_outlined,
-            text: _text.businessColumnOfficialHint,
-          ),
-          const SizedBox(height: UtenSpacing.s16),
           UtenDropdownField(
             key: const Key('business-column-target'),
             label: _text.businessColumnAmountTarget,
@@ -448,6 +445,11 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
             enabled: _ready,
             allowClear: false,
             label: _text.businessColumnAmountRule,
+            info: _operation == 'ADD'
+                ? _text.businessColumnFixedFeeHint
+                : _operation == 'SUBTRACT'
+                ? _text.businessColumnSubtractHint
+                : _text.businessColumnFactorHint,
             items: [
               UtenDropdownItem(
                 value: 'ADD',
@@ -471,30 +473,13 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
               _saveError = null;
             }),
           ),
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            _operation == 'ADD'
-                ? _text.businessColumnFixedFeeHint
-                : _operation == 'SUBTRACT'
-                ? _text.businessColumnSubtractHint
-                : _text.businessColumnFactorHint,
-          ),
           const SizedBox(height: UtenSpacing.s20),
           _example(),
-          Text(
-            _text.businessColumnOrderHint,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
         ] else if (_type == 'AMOUNT')
           ColumnEditorNotice(
             icon: Icons.lock_outline,
             text: _text.businessColumnAmountUnavailable,
             error: true,
-          )
-        else
-          ColumnEditorNotice(
-            icon: Icons.notes_rounded,
-            text: _text.businessColumnRecordHint,
           ),
         if (_matching != null) ...[
           const SizedBox(height: UtenSpacing.s12),
@@ -522,7 +507,8 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
     );
     return ColumnEditorSection(
       title: _text.businessColumnExampleTitle,
-      description: _text.businessColumnExampleHint,
+      description:
+          '${_text.businessColumnExampleHint}\n${_text.businessColumnOrderHint}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

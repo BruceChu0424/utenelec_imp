@@ -1,6 +1,7 @@
 package com.uten.imp.features.finance.report;
 
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.common.report.ReportReadPlan;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.asset.FixedAssetService;
 import com.uten.imp.features.finance.cost.FinanceCostService;
@@ -33,13 +34,16 @@ import static org.mockito.Mockito.*;
 /** Query projections retain decimal facts and distinguish document, ledger and account currencies. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class FinanceReportUnitsPostgresTest {
-    private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
+    private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine")
+            .withCreateContainerCmdModifier(cmd->cmd.getHostConfig().withMemory(768L*1024*1024).withNanoCPUs(1_000_000_000L));
     private static final UUID CLIENT=UUID.randomUUID(),SUPPLIER=UUID.randomUUID(),CURRENCY=UUID.randomUUID(),ACCOUNT=UUID.randomUUID();
     private static final LocalDate DATE=LocalDate.of(2026,10,12);
     private static JdbcTemplate db;
     private static NamedParameterJdbcTemplate named;
+    private static EntityManager em;
     private static FinanceReportService reports;
     private static List<String> dataColumns=List.of();
+    private static final List<String> executedSql = new java.util.ArrayList<>();
 
     @BeforeAll static void start(){
         PG.start();var source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
@@ -48,8 +52,11 @@ class FinanceReportUnitsPostgresTest {
                 "finance_expenses","finance_expense_items","finance_other_incomes","finance_other_income_items",
                 "finance_reconciliations","account_flow_monthly_summaries","ar_ap_ledger","ar_ap_source_refs","accounts","clients","suppliers",
                 "currencies","employees","departments","payment_styles","client_director_v","client_categories","supplier_categories","sales_orders",
-                "sales_order_items","sales_shipments","sales_shipment_items","customer_open_item_offset_batches","customer_open_item_offsets");
-        EntityManager em=mock(EntityManager.class);when(em.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0)));
+                "sales_order_items","sales_shipments","sales_shipment_items","customer_open_item_offset_batches","customer_open_item_offsets",
+                "fixed_assets","deferred_expenses","fa_depreciation_log","da_amortization_log","gl_entries",
+                "goods","material_categories","v_stock_actual_cogs_postings","units","colors",
+                "purchase_receipts","purchase_receipt_items","purchase_returns","purchase_return_items","sales_returns","sales_return_items");
+        em=mock(EntityManager.class);when(em.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0)));
         var access=mock(FinanceDocumentAccessPolicy.class);when(access.scope()).thenReturn(new OwnerScope(true,Set.of()));
         when(access.hasAuthority(anyString())).thenReturn(true);
         when(access.nativeReadScope(anyString(),anyString(),any(OwnerScope.class))).thenReturn(new NativeReadScope("1=1",null,Set.of()));
@@ -61,17 +68,17 @@ class FinanceReportUnitsPostgresTest {
         db.update("INSERT INTO accounts(id,name,currency_id,init_balance) VALUES (?,'美元账户',?,3)",ACCOUNT,CURRENCY);
     }
     @AfterAll static void stop(){PG.stop();}
-    @BeforeEach void reset(){db.execute("TRUNCATE finance_receipts,finance_receipt_lines,finance_payments,finance_expenses,finance_expense_items,finance_other_incomes,finance_other_income_items,finance_reconciliations,ar_ap_ledger");}
+    @BeforeEach void reset(){db.execute("TRUNCATE finance_receipts,finance_receipt_lines,finance_payments,finance_expenses,finance_expense_items,finance_other_incomes,finance_other_income_items,finance_reconciliations,ar_ap_ledger,fixed_assets,deferred_expenses,fa_depreciation_log,da_amortization_log,gl_entries,goods,material_categories,v_stock_actual_cogs_postings,purchase_receipts,purchase_receipt_items,purchase_returns,purchase_return_items,sales_shipments,sales_shipment_items,sales_returns,sales_return_items");executedSql.clear();}
     private static Query query(String sql){
         Query query=mock(Query.class);Map<String,Object> parameters=new LinkedHashMap<>();
         when(query.setMaxResults(anyInt())).thenReturn(query);
         when(query.setParameter(anyString(),any())).thenAnswer(call->{parameters.put(call.getArgument(0),call.getArgument(1));return query;});
-        when(query.getResultList()).thenAnswer(call->named.query(sql,parameters,(rs,index)->{
+        when(query.getResultList()).thenAnswer(call->{executedSql.add(sql);return named.query(sql,parameters,(rs,index)->{
             Object[] row=new Object[rs.getMetaData().getColumnCount()];var aliases=new java.util.ArrayList<String>();
             for(int i=0;i<row.length;i++){row[i]=rs.getObject(i+1);aliases.add(rs.getMetaData().getColumnLabel(i+1));}
             if(sql.contains("LIMIT :__limit OFFSET :__offset")){ dataColumns=List.copyOf(aliases); }return row;
-        }));
-        when(query.getSingleResult()).thenAnswer(call->named.queryForObject(sql,parameters,Long.class));return query;
+        });});
+        when(query.getSingleResult()).thenAnswer(call->{executedSql.add(sql);return named.queryForObject(sql,parameters,Long.class);});return query;
     }
     private static UUID create(String type){
         UUID id=UUID.randomUUID();String table=switch(type){case "RECEIPT"->"finance_receipts";case "PAYMENT"->"finance_payments";case "EXPENSE"->"finance_expenses";default->"finance_other_incomes";};
@@ -140,6 +147,178 @@ class FinanceReportUnitsPostgresTest {
         var result=reports.accountStatement(ACCOUNT,DATE,DATE,null,1,50);assertThat(result.rows()).hasSize(1);
         valueUnit(result,"inAmount","7","美金");valueUnit(result,"balance","10","美金");
         assertThat(result.totals()).anyMatch(t->t.key().equals("inAmount")&&"美金".equals(t.unitLabel()));
+    }
+
+    @Test void rowOnlyPrepaymentPagesAreBoundedAndKeepTheSameDatedFactsWithoutAggregateQueries(){
+        UUID original=create("RECEIPT");
+        db.update("UPDATE finance_receipts SET receipt_kind='CUSTOMER_PREPAYMENT'");
+        db.update("""
+                INSERT INTO finance_receipts(id,bill_no,bill_date,status,currency_id,account_id,client_id,
+                    amount_original,amount_local,exchange_rate,receipt_kind)
+                SELECT gen_random_uuid(),bill_no||'-SECOND',bill_date,status,currency_id,account_id,client_id,
+                    amount_original,amount_local,exchange_rate,receipt_kind FROM finance_receipts WHERE id=?
+                """,original);
+        var whole=reports.customerPrepaymentEvents(CLIENT,DATE,DATE,1,50);
+        assertThat(whole.total()).isEqualTo(2);
+        executedSql.clear();
+        try(var ignored=ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)){
+            var first=reports.customerPrepaymentEvents(CLIENT,DATE,DATE,1,1);
+            var second=reports.customerPrepaymentEvents(CLIENT,DATE,DATE,2,1);
+            var beyond=reports.customerPrepaymentEvents(CLIENT,DATE,DATE,3,1);
+            assertThat(first.total()).isEqualTo(-1);assertThat(first.totals()).isEmpty();
+            assertThat(first.rows()).containsExactly(whole.rows().get(0));
+            assertThat(second.rows()).containsExactly(whole.rows().get(1));
+            assertThat(beyond.rows()).isEmpty();
+            valueUnit(first,"prepaymentCashOriginal","7","美金");
+        }
+        assertThat(executedSql).hasSize(3).allSatisfy(sql->assertThat(sql)
+                .contains("LIMIT :__limit OFFSET :__offset").doesNotStartWith("SELECT COUNT(*)"));
+    }
+
+    @Test void accountRowOnlyPlanKeepsRunningFactsAndEmptyLaterPagesKeepRequestedMetadata(){
+        db.update("INSERT INTO finance_reconciliations(id,account_id,bill_date,bill_no,posting_seq,in_amount,out_amount) VALUES (gen_random_uuid(),?,?,'REPORT-FLOW',1,7,0)",ACCOUNT,DATE);
+        try(var ignored=ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)){
+            var first=reports.accountStatement(ACCOUNT,DATE,DATE,null,1,1);
+            assertThat(first.total()).isEqualTo(-1);assertThat(first.totals()).isEmpty();
+            valueUnit(first,"balance","10","美金");
+            assertThat(reports.accountStatement(ACCOUNT,DATE,DATE,null,2,1).rows()).isEmpty();
+        }
+        assertThat(executedSql).hasSize(2).allSatisfy(sql->assertThat(sql)
+                .contains("SUM(flow.in_amount-flow.out_amount) OVER(")
+                .doesNotContain("COUNT(*) OVER() AS total_count","SUM(in_amount) OVER() AS total_in","SUM(out_amount) OVER() AS total_out"));
+        executedSql.clear();
+        var beyond=reports.accountStatement(ACCOUNT,DATE,DATE,null,2,1);
+        assertThat(beyond.rows()).isEmpty();assertThat(beyond.total()).isEqualTo(1);
+        assertThat(beyond.totalPages()).isEqualTo(1);
+        assertThat(beyond.totals()).anySatisfy(total->{
+            assertThat(total.key()).isEqualTo("inAmount");assertThat(total.unitLabel()).isEqualTo("美金");
+            assertThat(total.groups().getFirst().value()).isEqualByComparingTo("7");
+        });
+        assertThat(executedSql).hasSize(2);
+    }
+
+    @Test void assetSchedulesPageStableMasterIdentitiesBeforeTheirExactActivePostingAggregates(){
+        for(int index=1;index<=3;index++){
+            UUID asset=UUID.randomUUID(),deferred=UUID.randomUUID();
+            db.update("INSERT INTO fixed_assets(id,code,name,original_value,salvage_rate,useful_months,start_period,status) VALUES (?,?,'同名资产',1000.1234,.05,10,'2026-01','在用')",asset,"B1-FA-"+index);
+            db.update("INSERT INTO deferred_expenses(id,code,name,total_amount,useful_months,start_period,status) VALUES (?,?,'同名待摊',1000.1234,10,'2026-01','摊销中')",deferred,"B1-DA-"+index);
+            for(var source:Map.of("fa_depreciation_log",new Object[]{"asset_id",asset},
+                    "da_amortization_log",new Object[]{"deferred_id",deferred}).entrySet()){
+                String table=source.getKey(),foreign=source.getValue()[0].toString();Object id=source.getValue()[1];
+                db.update("INSERT INTO "+table+"("+foreign+",period,amount,entry_kind,status) VALUES (?,'2026-01',10.0001,'NORMAL','ACTIVE'),(?,'2026-02',20.0002,'NORMAL','ACTIVE'),(?,'2026-03',999,'REVERSAL','ACTIVE'),(?,'2026-04',999,'NORMAL','REVERSED')",id,id,id,id);
+            }
+        }
+        var assets=new FixedAssetService(em,mock(com.uten.imp.security.TxSessionVars.class));
+        var first=assets.depreciationSchedule(1,1);var second=assets.depreciationSchedule(2,1);
+        assertThat(first.total()).isEqualTo(3);assertThat(first.totalPages()).isEqualTo(3);
+        assertThat(first.rows().getFirst()).containsEntry("code","B1-FA-1").containsEntry("postedMonths",2L);
+        assertThat(second.rows().getFirst()).containsEntry("code","B1-FA-2");
+        assertThat((BigDecimal)first.rows().getFirst().get("accumDep")).isEqualByComparingTo("30.0003");
+        assertThat((BigDecimal)first.rows().getFirst().get("netValue")).isEqualByComparingTo("970.12");
+        assertThat((BigDecimal)first.rows().getFirst().get("monthlyDep")).isEqualByComparingTo("95.01");
+        executedSql.clear();
+        try(var ignored=ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)){
+            var page=assets.depreciationSchedule(3,1);var deferred=assets.amortizationSchedule(2,1);
+            assertThat(page.total()).isEqualTo(-1);assertThat(page.rows().getFirst()).containsEntry("code","B1-FA-3");
+            assertThat(deferred.total()).isEqualTo(-1);assertThat(deferred.rows().getFirst()).containsEntry("code","B1-DA-2");
+            assertThat((BigDecimal)deferred.rows().getFirst().get("accumAmt")).isEqualByComparingTo("30.0003");
+            assertThat((BigDecimal)deferred.rows().getFirst().get("remain")).isEqualByComparingTo("970.12");
+            assertThat(deferred.rows().getFirst().get("accumAmtExact")).isEqualTo("30.0003");
+            assertThat(assets.depreciationSchedule(4,1).rows()).isEmpty();
+        }
+        assertThat(executedSql).hasSize(3).allSatisfy(sql->assertThat(sql)
+                .contains("ORDER BY code,id LIMIT :__limit OFFSET :__offset) a","LEFT JOIN LATERAL"));
+    }
+
+    @Test void glTrialBalancePaginatesAfterTheCompleteOpeningAndPeriodAggregation() throws Exception {
+        for(int index=1;index<=3;index++){
+            UUID style=UUID.randomUUID();
+            db.update("INSERT INTO payment_styles(id,code,name,category,level) VALUES (?,?,'同名科目','EXPENSE',0)",style,"B1-GL-"+index);
+            db.update("INSERT INTO gl_entries(voucher_id,style_id,direction,amount,entry_date,period) VALUES (gen_random_uuid(),?,1,10,?,'2026-09'),(gen_random_uuid(),?,1,7,?,'2026-10'),(gen_random_uuid(),?,-1,2,?,'2026-10')",
+                    style,DATE.minusMonths(1),style,DATE,style,DATE);
+        }
+        var constructor=GlReportService.class.getConstructors()[0];
+        var gl=(GlReportService)constructor.newInstance(em,mock(constructor.getParameterTypes()[1]));
+        var first=gl.trialBalance(DATE.withDayOfMonth(1),DATE,1,1);
+        assertThat(first.total()).isEqualTo(3);assertThat(first.rows()).hasSize(1);
+        assertThat(first.rows().getFirst()).containsEntry("styleCode","B1-GL-1");
+        assertThat((BigDecimal)first.rows().getFirst().get("opening")).isEqualByComparingTo("10");
+        assertThat((BigDecimal)first.rows().getFirst().get("closing")).isEqualByComparingTo("15");
+        executedSql.clear();
+        try(var ignored=ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)){
+            var second=gl.trialBalance(DATE.withDayOfMonth(1),DATE,2,1);
+            assertThat(second.total()).isEqualTo(-1);assertThat(second.rows().getFirst()).containsEntry("styleCode","B1-GL-2");
+            assertThat((BigDecimal)second.rows().getFirst().get("opening")).isEqualByComparingTo("10");
+            assertThat((BigDecimal)second.rows().getFirst().get("closing")).isEqualByComparingTo("15");
+            assertThat(gl.trialBalance(DATE.withDayOfMonth(1),DATE,4,1).rows()).isEmpty();
+        }
+        assertThat(executedSql).hasSize(2).allSatisfy(sql->assertThat(sql)
+                .contains("GROUP BY style_id","ORDER BY ps.category, ps.code, ps.name, ps.id LIMIT :__limit OFFSET :__offset"));
+    }
+
+    /** Real COGS classification SQL and snapshot; unrelated fixed-row authorities have explicit fixture values. */
+    @Test void operatingPlReadsEveryClassificationInBoundedBatchesAndKeepsItsPreciseTotalAndTail() throws Exception {
+        db.execute("INSERT INTO material_categories(id,code,name,is_deleted) SELECT gen_random_uuid(),'B1-COGS-'||n,'分类-'||lpad(n::text,5,'0'),false FROM generate_series(1,5001) n");
+        db.execute("INSERT INTO goods(id,code,name,category_id,is_deleted) SELECT gen_random_uuid(),code,'分类夹具货品',id,false FROM material_categories WHERE code LIKE 'B1-COGS-%'");
+        db.update("INSERT INTO v_stock_actual_cogs_postings(goods_id,business_date,amount_local,pending) SELECT id,?,.1234,right(code,1) IN ('1','3','5','7','9') FROM goods WHERE code LIKE 'B1-COGS-%'",DATE);
+        try(var connection=java.sql.DriverManager.getConnection(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword())){
+            connection.setTransactionIsolation(java.sql.Connection.TRANSACTION_REPEATABLE_READ);
+            connection.setReadOnly(true);connection.setAutoCommit(false);
+            var cogs=new NamedParameterJdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true));
+            assertThat(cogs.queryForObject("SHOW transaction_isolation",Map.of(),String.class)).isEqualTo("repeatable read");
+            assertThat(cogs.queryForObject("SHOW transaction_read_only",Map.of(),String.class)).isEqualTo("on");
+            List<Long> offsets=new java.util.ArrayList<>();
+            EntityManager authority=mock(EntityManager.class);
+            when(authority.createNativeQuery(anyString())).thenAnswer(call->{
+                String sql=call.getArgument(0);Query value=mock(Query.class);Map<String,Object> parameters=new LinkedHashMap<>();
+                when(value.setParameter(anyString(),any())).thenAnswer(bind->{parameters.put(bind.getArgument(0),bind.getArgument(1));return value;});
+                when(value.getSingleResult()).thenReturn(sql.contains("subcontract_receipt_items")?BigDecimal.ZERO:new BigDecimal("1000"));
+                when(value.getResultList()).thenAnswer(read->{
+                    if(!sql.contains("v_stock_actual_cogs_postings"))return List.of();
+                    offsets.add(((Number)parameters.get("__groupOffset")).longValue());
+                    assertThat(parameters.get("__groupLimit")).isEqualTo(500);
+                    return cogs.query(sql,parameters,(rs,index)->new Object[]{rs.getString(1),rs.getBigDecimal(2),rs.getBoolean(3)});
+                });
+                return value;
+            });
+            Class<?> linesType=Class.forName("com.uten.imp.features.finance.gl.GlReportLineSource");
+            var linesConstructor=linesType.getDeclaredConstructor(EntityManager.class);linesConstructor.setAccessible(true);
+            var constructor=GlReportService.class.getConstructors()[0];
+            var gl=(GlReportService)constructor.newInstance(authority,linesConstructor.newInstance(authority));
+            var user=new com.uten.imp.security.AuthUser(UUID.randomUUID(),UUID.randomUUID(),"cogs-projection",
+                    Set.of("finance_report:view","finance_report:export","finance:view:all"),false,true,false);
+            org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                    new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(user,null,user.getAuthorities()));
+            org.springframework.transaction.support.TransactionSynchronizationManager.setActualTransactionActive(true);
+            org.springframework.transaction.support.TransactionSynchronizationManager.setCurrentTransactionReadOnly(true);
+            org.springframework.transaction.support.TransactionSynchronizationManager.setCurrentTransactionIsolationLevel(java.sql.Connection.TRANSACTION_REPEATABLE_READ);
+            try{
+                List<com.uten.imp.common.export.ExportPayload> batches=new java.util.ArrayList<>();
+                try(var sink=com.uten.imp.common.export.ExportPageSink.open(batches::add)){
+                    var result=gl.exportInCurrentSnapshot("gl/operating-pl",DATE,DATE.getYear(),DATE.getMonthValue(),10_000);
+                    assertThat(result.rows()).isEmpty();
+                    assertThat(result.total()).isEqualTo(batches.stream().mapToLong(batch->batch.rows().size()).sum());
+                }
+                assertThat(offsets).containsExactlyElementsOf(java.util.stream.LongStream.rangeClosed(0,10).map(value->value*500).boxed().toList());
+                assertThat(batches).allSatisfy(batch->assertThat(batch.rows().size()).isLessThanOrEqualTo(500));
+                var output=batches.stream().flatMap(batch->batch.rows().stream()).toList();
+                assertThat(output.stream().filter(row->"库存价值".equals(row.get("sub"))).map(row->row.get("item")))
+                        .containsExactlyElementsOf(java.util.stream.IntStream.rangeClosed(1,5001)
+                                .mapToObj(value->"分类-"+String.format("%05d",value)).toList());
+                assertThat(output).anySatisfy(row->{
+                    assertThat(row.get("sub")).isEqualTo("销售成本合计");
+                    assertThat((BigDecimal)row.get("amount")).isEqualByComparingTo(new BigDecimal(".1234").multiply(new BigDecimal("5001")));
+                });
+                assertThat(output.getLast().get("sub")).isEqualTo("管理费合计");
+                var page=gl.operatingPlPage(DATE.getYear(),DATE.getMonthValue(),2,500);
+                assertThat(page.rows()).containsExactlyElementsOf(output.subList(500,1000));
+                assertThat(page.total()).isEqualTo(output.size());
+            } finally {
+                org.springframework.transaction.support.TransactionSynchronizationManager.clear();
+                org.springframework.security.core.context.SecurityContextHolder.clearContext();
+                connection.rollback();
+            }
+        }
     }
 
     @Test void accountSearchMatchesAllWordsLiterallyAfterRunningBalancesAndBeforePagingTotalsAndFacets(){
@@ -239,5 +418,55 @@ class FinanceReportUnitsPostgresTest {
         String field=direction.equals("AR")?"client_id":"supplier_id";
         db.update("INSERT INTO ar_ap_ledger(id,direction,"+field+",currency_id,status,is_deleted,bill_no,bill_date,amount_balance) VALUES (?,?,?,?,1,false,?,?,?)",
                 UUID.randomUUID(),direction,party,CURRENCY,"CATEGORY-"+UUID.randomUUID(),DATE,balance);
+    }
+
+    @Test void overviewSameNamePartiesRetainStableIdentityOrderAcrossThreePages() {
+        String key="同名往来"+UUID.randomUUID().toString().substring(0,8);
+        db.update("""
+            INSERT INTO clients(id,code,name,phone,is_deleted)
+            SELECT md5(?||n)::uuid,'SAME-'||?||n,?,'PHONE-'||lpad(n::text,4,'0'),false FROM generate_series(1,1001)n
+            """,key,key,key);
+        List<String> expected=db.queryForList("SELECT phone FROM clients WHERE name=? ORDER BY id",String.class,key);
+        var actual=new java.util.ArrayList<String>();executedSql.clear();
+        try(var ignored=ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)) {
+            for(int page=1;page<=3;page++) {
+                var result=reports.arApOverview(null,null,"ALL",key,"CLIENT",null,page,400);
+                assertThat(result.total()).isEqualTo(-1);assertThat(result.totals()).isEmpty();
+                actual.addAll(result.rows().stream().map(row->(String)row.get("phone")).toList());
+            }
+        }
+        assertThat(actual).containsExactlyElementsOf(expected);assertThat(actual.stream().distinct()).hasSize(1001);
+        assertThat(executedSql).hasSize(3);
+    }
+
+    @ParameterizedTest @ValueSource(strings={"supplier","client"})
+    void statementsWithEqualDatesNamesAndCrossSourceUuidRemainCompleteAndStable(String kind) {
+        boolean supplier=kind.equals("supplier");UUID goods=UUID.randomUUID(),unit=UUID.randomUUID(),document=UUID.randomUUID(),returned=UUID.randomUUID();
+        db.update("INSERT INTO units(id,code,name) VALUES(?,?,'个')",unit,"SAME-U-"+unit);
+        db.update("INSERT INTO goods(id,code,name,unit_id) VALUES(?,'SAME-GOODS','同名产品',?)",goods,unit);
+        String head=supplier?"purchase_receipts":"sales_shipments",items=supplier?"purchase_receipt_items":"sales_shipment_items";
+        String returns=supplier?"purchase_returns":"sales_returns",returnItems=supplier?"purchase_return_items":"sales_return_items";
+        String party=supplier?"supplier_id":"client_id",link=supplier?"receipt_id":"shipment_id";
+        db.update("INSERT INTO "+head+"(id,bill_no,bill_date,status,is_deleted,"+party+") VALUES(?,'SAME-DOC',?,1,false,?)",document,DATE,supplier?SUPPLIER:CLIENT);
+        db.update("INSERT INTO "+returns+"(id,bill_no,bill_date,status,is_deleted,"+party+") VALUES(?,'SAME-DOC-RETURN',?,1,false,?)",returned,DATE,supplier?SUPPLIER:CLIENT);
+        db.update("INSERT INTO "+items+"(id,"+link+",bill_no,bill_date,goods_id,unit_id,line_no,qty,price,amount_original,is_deleted) "
+                +"SELECT ('90000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,?,'SAME-DOC',?,?,?,n,n,.0001,n*.0001,false FROM generate_series(1,1001)n",
+                document,DATE,goods,unit);
+        // Different business sources can legitimately have the same UUID. Their discriminator remains part of the order.
+        db.update("INSERT INTO "+returnItems+"(id,return_id,bill_no,bill_date,goods_id,unit_id,qty,price,amount_original,is_deleted) "
+                +"VALUES('90000000-0000-0000-0000-000000000001',?,'SAME-DOC-RETURN',?,?,?,1009,.0001,.1009,false)",returned,DATE,goods,unit);
+        var service=new FinanceStatementService(em);var actual=new java.util.ArrayList<BigDecimal>();
+        try(var ignored=ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)) {
+            for(int page=1;page<=3;page++) {
+                var result=supplier?service.supplierStatement(null,DATE,DATE,page,400):service.clientStatement(null,DATE,DATE,page,400);
+                assertThat(result.total()).isEqualTo(-1);
+                actual.addAll(result.rows().stream().map(row->(BigDecimal)row.get("qty")).toList());
+            }
+        }
+        var expected=new java.util.ArrayList<BigDecimal>();
+        if(!supplier)expected.add(new BigDecimal("-1009"));
+        java.util.stream.IntStream.rangeClosed(1,1001).forEach(index->expected.add(BigDecimal.valueOf(index)));
+        if(supplier)expected.add(new BigDecimal("-1009"));
+        assertThat(actual).usingElementComparator(BigDecimal::compareTo).containsExactlyElementsOf(expected);
     }
 }

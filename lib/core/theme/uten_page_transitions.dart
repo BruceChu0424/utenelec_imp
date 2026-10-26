@@ -27,6 +27,7 @@ class UtenFadePageTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
+    if (MediaQuery.disableAnimationsOf(context)) return child;
     return FadeTransition(
       opacity: CurvedAnimation(parent: animation, curve: UtenAnim.standard),
       child: child,

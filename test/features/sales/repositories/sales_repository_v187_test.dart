@@ -89,15 +89,21 @@ void main() {
               Response<dynamic>(
                 requestOptions: request,
                 statusCode: 200,
-                data: request.path.endsWith('shippable-lines')
-                    ? [
-                        {
-                          'orderItemId': 'line-1',
-                          'orderId': 'order-1',
-                          'reservedQty': 10,
-                          'writable': true,
-                        },
-                      ]
+                data: request.path.endsWith('shippable-lines/page')
+                    ? {
+                        'items': [
+                          {
+                            'orderItemId': 'line-1',
+                            'orderId': 'order-1',
+                            'reservedQty': 10,
+                            'writable': true,
+                          },
+                        ],
+                        'page': 1,
+                        'size': 100,
+                        'total': 1,
+                        'totalPages': 1,
+                      }
                     : [
                         {'id': 'draft-a'},
                         {'id': 'draft-b'},
@@ -108,8 +114,8 @@ void main() {
         ),
       );
       final repo = SalesRepository(ApiClient(dio), SalesDocType.shipment);
-      final available = await repo.shippableLines();
-      expect(available.single.orderItemId, 'line-1');
+      final available = await repo.shippableLinesPage();
+      expect(available.items.single.orderItemId, 'line-1');
       final created = await repo.batchShip(
         billDate: '2026-09-12',
         idempotencyKey: 'intent-1',

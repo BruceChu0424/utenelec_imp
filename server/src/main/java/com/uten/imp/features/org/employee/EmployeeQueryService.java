@@ -1,6 +1,7 @@
 package com.uten.imp.features.org.employee;
 
 import com.uten.imp.application.port.AttachmentAccessPort;
+import com.uten.imp.application.port.EmployeeIdentityLookupPort;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
@@ -52,6 +53,7 @@ public class EmployeeQueryService {
     private final SecurityContextCurrentUser currentUser;
     private final EmployeeVehiclePhoneService vehiclePhoneService;
     private final AttachmentAccessPort attachmentAccess;
+    private final EmployeeIdentityLookupPort identities;
 
     // ===== 列表（摘要，无敏感） =====
     @Transactional(readOnly = true)
@@ -116,12 +118,17 @@ public class EmployeeQueryService {
 
     private EmployeeDetail assembleDetail(UUID id, DetailView view) {
         tx.bind();
+        UUID requestedId = id;
+        id = identities.canonicalEmployeeId(id);
+        List<UUID> identityMembers = identities.employeeIdentityMembers(id);
+        java.util.Map<UUID,String> identityCodes = identityCodes(identityMembers);
         Employee e = requireEmployee(id);
         EmployeeSensitive s = sensitiveRepo.findByEmployeeId(id).orElse(null);
         EmployeeCompensation c = compensationRepo.findByEmployeeId(id).orElse(null);
 
         EmployeeDetail d = new EmployeeDetail();
         d.setId(e.getId());
+        if (!requestedId.equals(id)) d.setResolvedFromEmployeeId(requestedId);
         d.setCode(e.getCode());
         d.setFullName(e.getFullName());
         d.setGender(e.getGender());
@@ -227,8 +234,8 @@ public class EmployeeQueryService {
         d.setEmergencyContacts(ec);
 
         // 任职轨迹
-        List<NestedDtos.EmploymentHistoryDto> hist = historyRepo.findByEmployeeIdOrderByEventDateDesc(id).stream()
-                .map(this::toHistory).toList();
+        List<NestedDtos.EmploymentHistoryDto> hist = identityHistory(id, identityMembers).stream()
+                .map(h -> withOrigin(toHistory(h), h.getEmployee().getId(), e.getId(), identityCodes)).toList();
         d.setHistory(hist);
 
         // 证书 / 学历（非第三方 PII，全角色可见，与基础档案同级）
@@ -240,6 +247,17 @@ public class EmployeeQueryService {
                 .map(x -> new NestedDtos.EducationDto(x.getId(), x.getDegree(), x.getSchool(),
                         x.getMajor(), x.getStartDate(), x.getEndDate()))
                 .toList());
+        List<UUID> archived = identityMembers.stream().filter(member -> !member.equals(e.getId())).toList();
+        if (!archived.isEmpty()) {
+            d.setHistoricalCertificates(credentialRepo.findByEmployeeIdIn(archived).stream()
+                    .map(x -> withOrigin(new NestedDtos.CredentialDto(x.getId(), x.getType(), x.getName(),
+                            x.getCertNo(), x.getIssuedAt(), x.getExpiresAt()), x.getEmployee().getId(), e.getId(), identityCodes))
+                    .toList());
+            d.setHistoricalEducations(educationRepo.findByEmployeeIdInOrderByEndDateDescIdAsc(archived).stream()
+                    .map(x -> withOrigin(new NestedDtos.EducationDto(x.getId(), x.getDegree(), x.getSchool(),
+                            x.getMajor(), x.getStartDate(), x.getEndDate()), x.getEmployee().getId(), e.getId(), identityCodes))
+                    .toList());
+        }
 
         // 车辆（employee:view 可见，支撑「按车牌找人」）与备用手机号（掩码规则同主手机号）—— ADR-021
         d.setVehicles(vehiclePhoneService.listVehicles(id));
@@ -255,6 +273,31 @@ public class EmployeeQueryService {
         }
 
         return d;
+    }
+
+    @Transactional(readOnly = true)
+    public List<NestedDtos.EmploymentHistoryDto> history(UUID employeeId) {
+        UUID canonical = identities.canonicalEmployeeId(employeeId);
+        requireEmployee(canonical);
+        List<UUID> members = identities.employeeIdentityMembers(canonical);
+        var codes = identityCodes(members);
+        return identityHistory(canonical, members).stream()
+                .map(h -> withOrigin(toHistory(h),h.getEmployee().getId(),canonical,codes)).toList();
+    }
+
+    private java.util.Map<UUID,String> identityCodes(List<UUID> members) {
+        return empRepo.findAllById(members).stream().collect(java.util.stream.Collectors.toMap(
+                Employee::getId, employee -> employee.getCode()==null ? "" : employee.getCode()));
+    }
+    private static <T extends NestedDtos.IdentityOrigin> T withOrigin(T row,UUID source,UUID canonical,
+            java.util.Map<UUID,String> codes) {
+        row.setSourceEmployeeId(source); row.setSourceEmployeeCode(codes.get(source));
+        row.setHistoricalReadOnly(!canonical.equals(source)); return row;
+    }
+
+    private List<EmploymentHistory> identityHistory(UUID canonical, List<UUID> members) {
+        return members.size()==1 ? historyRepo.findByEmployeeIdOrderByEventDateDesc(canonical)
+                : historyRepo.findByEmployeeIdInOrderByEventDateDescIdAsc(members);
     }
 
     // ===== 辅助（同包共享给 Command/Onboarding） =====

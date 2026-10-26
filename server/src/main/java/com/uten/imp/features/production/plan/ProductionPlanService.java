@@ -1449,7 +1449,7 @@ public class ProductionPlanService {
         ownerScope.bind(dataQ);
         @SuppressWarnings("unchecked")
         List<Object[]> rs = (List<Object[]>) dataQ
-                .setParameter("lim", sz).setParameter("off", (p - 1) * sz)
+                .setParameter("lim", sz).setParameter("off", (long) (p - 1) * sz)
                 .getResultList();
 
         // 子计划嵌套进度（按父计划批量取，避免 N+1）

@@ -39,4 +39,14 @@ class ReportQueryKitParsingTest {
                             failure -> assertThat(failure.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
         }
     }
+
+    @Test void booleanFacetsKeepTrueFalseAndRefuseEveryAmbiguousStatus() {
+        assertThat(ReportQueryKit.parseRequiredBoolean("true")).isTrue();
+        assertThat(ReportQueryKit.parseRequiredBoolean("FALSE")).isFalse();
+        for (String value : java.util.Arrays.asList(null, "", " ", "yes", "1", "0", " false ", "true,false")) {
+            assertThatThrownBy(() -> ReportQueryKit.parseRequiredBoolean(value))
+                    .isInstanceOfSatisfying(ApiException.class,
+                            failure -> assertThat(failure.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+        }
+    }
 }

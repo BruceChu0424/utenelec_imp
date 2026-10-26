@@ -18,9 +18,11 @@
 // 840–1200 的小屏窗口（958 宽复现）双列右栏仅 ~470：五个 Tab 横向截断、字段行
 // 被迫两行堆叠；该档改走单列折叠布局（同员工详情页范式），档案区恢复整幅宽度，
 // 「我的部门 / 我的修改申请」两卡并排省一屏纵向空间（<600 仍竖排）。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../../employee/widgets/employee_identity_archive_section.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -227,7 +229,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
               identityGroup.shortcut,
             ],
           );
-    return Padding(
+    return UtenPageEdgePadding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: UtenCollapsingHeaderScrollView(
         collapsingHeader: Padding(
@@ -259,7 +261,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
     required TabBar tabBar,
     required List<Widget> tabViews,
   }) {
-    return Padding(
+    return UtenPageEdgePadding(
       padding: EdgeInsets.fromLTRB(
         horizontalPadding,
         UtenSpacing.s24,
@@ -637,7 +639,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                     label: _historyTitle(l10n, p.history[index]),
                     value: _display(
                       l10n,
-                      [p.history[index].eventDate, p.history[index].remark]
+                      [
+                            if (p.history[index].historicalReadOnly)
+                              employeeIdentitySourceLabel(
+                                context,
+                                p.history[index].sourceEmployeeCode,
+                              ),
+                            p.history[index].eventDate,
+                            p.history[index].remark,
+                          ]
                           .where((value) => value?.trim().isNotEmpty == true)
                           .join(' · '),
                     ),
@@ -646,6 +656,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
               ],
         policy: FieldPolicyKind.hrOnly,
       ),
+      EmployeeIdentityArchiveSection(profile: p),
     ], bottomPadding);
   }
 

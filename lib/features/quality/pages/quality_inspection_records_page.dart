@@ -1,3 +1,6 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
+import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,7 +12,6 @@ import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_date_range_picker.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -21,7 +23,11 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/auth/native_read_view_scope_mixin.dart'
+    show nativeReadAccessDenied;
 import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/quality_inspection_record.dart';
@@ -68,8 +74,26 @@ const _dispositionFacets = [
 ];
 
 class _QualityInspectionRecordsPageState
-    extends ConsumerState<QualityInspectionRecordsPage> {
+    extends ConsumerState<QualityInspectionRecordsPage>
+    with ScopedPagedReadViewMixin<QualityInspectionRecordsPage> {
+  int get _refreshPage => _readingRows.visiblePage ?? (_data?.page ?? 1);
+
+  final _readingRows = MasterDataTableRowsController<QualityInspectionRecord>();
+  @override
+  void scopedPagedReadOwnerChanged() {
+    if (!mounted) return;
+    ++_requestVersion;
+    setState(() {
+      _data = null;
+      _acceptedQuery = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+      _readingRows.update(const []);
+    });
+  }
+
   QualityInspectionRecordPage? _data;
+  Object? _acceptedQuery;
   QualityInspectionRecordDomain? _domain;
   String? _decision;
   String? _sourceType;
@@ -117,11 +141,14 @@ class _QualityInspectionRecordsPageState
         : allowed.first;
   }
 
-  Future<void> _load({int? page}) async {
+  Future<void> _load({int? page, bool useCache = false}) async {
     final domain = _domain;
     if (domain == null) return;
     final requestVersion = ++_requestVersion;
-    final requestedPage = page ?? _data?.page ?? 1;
+    final ownerCurrent = captureReadOwner(ref);
+    bool current() =>
+        mounted && requestVersion == _requestVersion && ownerCurrent();
+    final requestedPage = page ?? _refreshPage;
     final requestedDecision = _decision;
     final requestedSourceType = _sourceType;
     final requestedEffective = _effective;
@@ -138,56 +165,133 @@ class _QualityInspectionRecordsPageState
     final requestedSheetNo = domain == QualityInspectionRecordDomain.fqc
         ? _sheetNoFilter
         : null;
+    final query = (
+      domain,
+      requestedDecision,
+      requestedSourceType,
+      requestedEffective,
+      requestedDisposition,
+      requestedKeyword,
+      requestedRange,
+      requestedSort,
+      requestedOrder,
+      requestedSourceNo,
+      requestedReferenceNo,
+      requestedSheetNo,
+    );
     setState(() {
+      if (_acceptedQuery != query) _data = null;
       _loading = true;
       _error = null;
     });
     try {
       final repository = ref.read(qualityInspectionRecordRepositoryProvider);
-      final result = await repository.list(
-        domain: domain,
-        decision: requestedDecision,
-        keyword: requestedKeyword,
-        dateRange: requestedRange,
-        sourceType: requestedSourceType,
-        effective: requestedEffective,
-        disposition: requestedDisposition,
-        page: requestedPage,
-        sort: requestedSort,
-        order: requestedOrder,
-        sourceNo: requestedSourceNo,
-        referenceNo: requestedReferenceNo,
-        sheetNo: requestedSheetNo,
+      final pageRepository = repository;
+      final pageDomain = domain;
+      final pageDecision = requestedDecision;
+      final pageKeyword = requestedKeyword;
+      final pageDateRange = requestedRange;
+      final pageSourceType = requestedSourceType;
+      final pageEffective = requestedEffective;
+      final pageDisposition = requestedDisposition;
+      final pageSort = requestedSort;
+      final pageOrder = requestedOrder;
+      final pageSourceNo = requestedSourceNo;
+      final pageReferenceNo = requestedReferenceNo;
+      final pageSheetNo = requestedSheetNo;
+
+      final cached = await readScopedPage<QualityInspectionRecord>(
+        requestedPage,
+        slot: '_load',
+        query: [
+          pageRepository,
+          pageDomain,
+          pageDecision,
+          pageKeyword,
+          pageDateRange,
+          pageSourceType,
+          pageEffective,
+          pageDisposition,
+          pageSort,
+          pageOrder,
+          pageSourceNo,
+          pageReferenceNo,
+          pageSheetNo,
+        ],
+        currentQuery: () => [
+          ref.read(qualityInspectionRecordRepositoryProvider),
+          _domain,
+          _decision,
+          _keyword,
+          _dateRange,
+          _sourceType,
+          _effective,
+          _disposition,
+          _sortColumn,
+          _sortColumn == null ? null : (_sortAscending ? 'asc' : 'desc'),
+          _sourceNoFilter,
+          _referenceNoFilter,
+          _domain == QualityInspectionRecordDomain.fqc ? _sheetNoFilter : null,
+        ],
+        useCache: useCache,
+        fetchPage: (target) async {
+          final snapshot = await pageRepository.list(
+            domain: pageDomain,
+            decision: pageDecision,
+            keyword: pageKeyword,
+            dateRange: pageDateRange,
+            sourceType: pageSourceType,
+            effective: pageEffective,
+            disposition: pageDisposition,
+            page: target,
+            sort: pageSort,
+            order: pageOrder,
+            sourceNo: pageSourceNo,
+            referenceNo: pageReferenceNo,
+            sheetNo: pageSheetNo,
+          );
+          return PagedReadSnapshot<
+            QualityInspectionRecord,
+            QualityInspectionRecordPage
+          >(
+            page: PagedResult<QualityInspectionRecord>(
+              items: snapshot.items,
+              page: snapshot.page,
+              size: snapshot.size,
+              total: snapshot.total,
+              totalPages: snapshot.totalPages,
+            ),
+            snapshot: snapshot,
+          );
+        },
       );
+      final result =
+          (cached
+                  as PagedReadSnapshot<
+                    QualityInspectionRecord,
+                    QualityInspectionRecordPage
+                  >)
+              .snapshot;
       // 单号 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
-      Map<String, List<MasterFacetBucket>> facets = const {};
-      try {
-        facets = await repository.facets(
-          domain: domain,
-          decision: requestedDecision,
-          keyword: requestedKeyword,
-          dateRange: requestedRange,
-          sourceType: requestedSourceType,
-          effective: requestedEffective,
-          disposition: requestedDisposition,
-        );
-      } catch (_) {
-        facets = const {};
-      }
-      if (!mounted || requestVersion != _requestVersion) return;
+
+      if (!current()) return;
       setState(() {
-        _docNoFacets = facets;
         _data = result;
+        _acceptedQuery = query;
         _loading = false;
       });
     } on ApiException catch (error) {
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!current()) return;
       setState(() {
+        if (nativeReadAccessDenied(error)) {
+          _data = null;
+          _acceptedQuery = null;
+        }
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!current()) return;
       setState(() {
         _error = '检测记录加载失败，请检查网络后重试';
         _loading = false;
@@ -341,15 +445,6 @@ class _QualityInspectionRecordsPageState
                 message: '您暂无检测记录查看权限',
                 description: '请联系品质主管开通来料检验或生产成品质检查看权限。',
               )
-            : _loading && _data == null
-            ? const UtenSkeletonList()
-            : _error != null && _data == null
-            ? UtenEmpty.error(
-                message: _error,
-                description: '已有检验记录都完好保存在系统里，重新加载不会改动它们。',
-                actionLabel: '重新加载',
-                onAction: () => _load(page: 1),
-              )
             : _buildContent(allowedDomains),
       ),
     );
@@ -490,6 +585,8 @@ class _QualityInspectionRecordsPageState
   Widget _buildTable(
     QualityInspectionRecordPage data,
   ) => MasterDataTableView<QualityInspectionRecord>(
+    rowsController: _readingRows,
+    expensiveRowMounts: false,
     tableKey:
         'features.quality.pages.quality_inspection_records_page.QualityInspectionRecordsPageState._buildTable.1',
     key: const Key('quality-inspection-record-table'),
@@ -512,6 +609,44 @@ class _QualityInspectionRecordsPageState
       'sheetNo': _docNoFacets['sheetNo'] ?? const [],
     },
     nullCounts: const {},
+    facetPageLoaders: nativeFacetLoaders(
+      ref,
+      path: _domain == QualityInspectionRecordDomain.iqc
+          ? '/procurement/inspection/records/facets'
+          : '/production/quality-inspections/records/facets',
+      fields: [
+        'sourceNo',
+        'referenceNo',
+        if (_domain == QualityInspectionRecordDomain.fqc) 'sheetNo',
+      ],
+      filters: ref
+          .read(qualityInspectionRecordRepositoryProvider)
+          .facetParameters(
+            decision: _decision,
+            keyword: _keyword,
+            dateRange: _dateRange,
+            sourceType: _sourceType,
+            effective: _effective,
+            disposition: _disposition,
+          ),
+    ),
+    facetSearchScope: nativeFacetSearchScope(
+      ref,
+      _domain == QualityInspectionRecordDomain.iqc
+          ? '/procurement/inspection/records/facets'
+          : '/production/quality-inspections/records/facets',
+      ref
+          .read(qualityInspectionRecordRepositoryProvider)
+          .facetParameters(
+            decision: _decision,
+            keyword: _keyword,
+            dateRange: _dateRange,
+            sourceType: _sourceType,
+            effective: _effective,
+            disposition: _disposition,
+          ),
+    ),
+
     filters: {
       'decision': _decision,
       'sourceType': _sourceType,
@@ -555,7 +690,7 @@ class _QualityInspectionRecordsPageState
     isLoading: _loading,
     loadingMore: _loading && _data != null,
     error: _data == null ? _error : null,
-    onRetry: () => _load(page: data.page),
+    onRetry: () => _load(page: _refreshPage),
     emptyMessage: '当前筛选下没有检测记录',
     currentPage: data.page,
     totalPages: data.totalPages,
@@ -569,7 +704,7 @@ class _QualityInspectionRecordsPageState
       _dateRange?.start,
       _dateRange?.end,
     ),
-    onPageChange: (page) => _load(page: page),
+    onPageChange: (page) => _load(page: page, useCache: true),
   );
 
   List<MasterColumnDef<QualityInspectionRecord>> get _columns => [
@@ -915,6 +1050,7 @@ class _QualityInspectionRecordDetailPanelState
     final inlineUnit = record.unitName?.trim() ?? '';
     final decidedQty = _qty(record.passQty + record.failQty);
     return MasterDataTableView<_DetailQuantityRow>(
+      expensiveRowMounts: false,
       tableKey:
           'features.quality.pages.quality_inspection_records_page.QualityInspectionRecordDetailPanelState._buildQuantityTable.1',
       key: const Key('quality-inspection-record-detail-quantity'),
@@ -1041,6 +1177,7 @@ class _DetailFieldTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MasterDataTableView<_DetailField>(
+    expensiveRowMounts: false,
     tableKey:
         'features.quality.pages.quality_inspection_records_page.DetailFieldTable.build.1',
     key: tableKey,

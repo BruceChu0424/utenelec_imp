@@ -132,7 +132,7 @@ public class SalesQuoteFinanceService {
                 """ + from + orderBy + " LIMIT :lim OFFSET :off");
         if (!normalizedKeyword.isEmpty()) rowsQuery.setParameter("keyword", normalizedKeyword);
         rowsQuery.setParameter("lim", sz);
-        rowsQuery.setParameter("off", (p - 1) * sz);
+        rowsQuery.setParameter("off", (long) (p - 1) * sz);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = rowsQuery.getResultList();
         Map<String, TaskClaimService.TaskClaimView> claims = claimViews.activeClaimViewsByTargetKey(TARGET);

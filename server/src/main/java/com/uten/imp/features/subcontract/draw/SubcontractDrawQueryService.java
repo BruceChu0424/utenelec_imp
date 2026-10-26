@@ -112,7 +112,7 @@ public class SubcontractDrawQueryService {
         Query query = em.createNativeQuery(sql);
         filters.binder().accept(query);
         query.setParameter("pageLimit", pageSize);
-        query.setParameter("pageOffset", (pageNo - 1) * pageSize);
+        query.setParameter("pageOffset", (long) (pageNo - 1) * pageSize);
         boolean canSubmit = access.hasAuthority(DRAW_AUTHORITY);
         List<Object[]> rows = NativeQueryResults.objectArrayRows(query);
         Object[] head = rows.isEmpty() ? new Object[6] : rows.getFirst();

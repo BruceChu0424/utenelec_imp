@@ -96,6 +96,8 @@ bool canRetainMasterReadShell(
 }
 
 class MasterInlineEditController<T> extends ChangeNotifier {
+  static const _scopeRetiredNotice = '可见范围已变化，输入已保留；请重新载入并核对后保存。';
+  static const _scopeReviewNotice = '部分修改尚未按当前范围核对，或原值已变化；请重新载入并重新编辑对应字段。';
   late final _MasterInlineCreation<T> _creation = _MasterInlineCreation<T>(
     this,
   );
@@ -131,6 +133,7 @@ class MasterInlineEditController<T> extends ChangeNotifier {
   final Map<String, Map<String, dynamic>> _patches = {};
   final Map<String, Map<String, Object?>> _originals = {};
   final Map<String, T> _baselines = {};
+  final Set<String> _retiredReadRows = {};
   final Map<String, Map<String, MasterInlineField<T>>> _fields = {};
   final Map<String, Timer> _validationTimers = {};
   final Map<String, int> _validationTokens = {};
@@ -193,8 +196,38 @@ class MasterInlineEditController<T> extends ChangeNotifier {
   bool get dirty => _patches.isNotEmpty || _creation.dirty;
   int get changedRows => _patches.length + _creation.changedRows;
   T? baselineOf(String id) => _baselines[id];
-  void rememberBaseline(String id, T row) {
+  void rememberBaseline(
+    String id,
+    T row, {
+    Map<String, MasterInlineField<T>>? fields,
+  }) {
     if (!active || busy) return;
+    if (_retiredReadRows.contains(id)) {
+      _baselines[id] = row;
+      if (fields != null) {
+        _fields[id] = {for (final field in fields.values) field.key: field};
+      }
+      final currentFields = _fields[id];
+      if (currentFields != null &&
+          (_patches[id]?.keys.every(
+                (key) =>
+                    currentFields.containsKey(key) &&
+                    (_originals[id]?[key]?.toString() ?? '') ==
+                        (currentFields[key]!.read(row)?.toString() ?? ''),
+              ) ??
+              true)) {
+        _retiredReadRows.remove(id);
+        if (_retiredReadRows.isEmpty &&
+            (error == _scopeRetiredNotice || error == _scopeReviewNotice)) {
+          error = _creation.hasUncertain ? _creation.uncertainMessage : null;
+          final epoch = _epoch;
+          scheduleMicrotask(() {
+            if (epoch == _epoch) notifyListeners();
+          });
+        }
+      }
+      return;
+    }
     if (!_patches.containsKey(id)) {
       _baselines[id] = row;
       _originals.remove(id);
@@ -244,9 +277,25 @@ class MasterInlineEditController<T> extends ChangeNotifier {
     _patches.clear();
     _originals.clear();
     _baselines.clear();
+    _retiredReadRows.clear();
     _fields.clear();
     _clearValidation();
     _creation.reset();
+  }
+
+  /// Same-account data-scope retirement keeps user input and unknown creates,
+  /// while detaching readable DTOs and fencing every pending validation/write.
+  void retireReadScope() {
+    _epoch++;
+    _retiredReadRows.addAll(_patches.keys);
+    _baselines.clear();
+    _fields.clear();
+    _clearValidation();
+    busy = false;
+    preparing = false;
+    _creation.retireReadScope();
+    error = dirty ? _scopeRetiredNotice : null;
+    notifyListeners();
   }
 
   @override
@@ -269,6 +318,13 @@ class MasterInlineEditController<T> extends ChangeNotifier {
     required Object? originalValue,
   }) {
     if (!active || busy) return;
+    final freshBeforeChange = _baselines[id];
+    if (_retiredReadRows.contains(id) && freshBeforeChange != null) {
+      _originals.putIfAbsent(id, () => {})[field.key] = field.read(
+        freshBeforeChange,
+      );
+      _fields.putIfAbsent(id, () => {})[field.key] = field;
+    }
     final originals = _originals.putIfAbsent(id, () => {});
     originals.putIfAbsent(field.key, () => originalValue);
     _fields.putIfAbsent(id, () => {})[field.key] = field;
@@ -279,6 +335,19 @@ class MasterInlineEditController<T> extends ChangeNotifier {
       if (_patches[id]?.isEmpty == true) _patches.remove(id);
     } else {
       _patches.putIfAbsent(id, () => {})[field.key] = normalized;
+    }
+    final freshAfterChange = _baselines[id];
+    if (_retiredReadRows.contains(id) && freshAfterChange != null) {
+      final fields = _fields[id] ?? {};
+      if (_patches[id]?.keys.every(
+            (key) =>
+                fields.containsKey(key) &&
+                (_originals[id]?[key]?.toString() ?? '') ==
+                    (fields[key]!.read(freshAfterChange)?.toString() ?? ''),
+          ) ??
+          true) {
+        _retiredReadRows.remove(id);
+      }
     }
     error = null;
     _validateChanged(id, field, normalized);
@@ -393,6 +462,11 @@ class MasterInlineEditController<T> extends ChangeNotifier {
     Future<void> Function()? beforeWrite,
   }) async {
     if (!active || busy || !dirty) return false;
+    if (_patches.keys.any(_retiredReadRows.contains)) {
+      error = _scopeReviewNotice;
+      notifyListeners();
+      return false;
+    }
     if (!_creation.validate()) {
       notifyListeners();
       return false;
@@ -595,7 +669,7 @@ class MasterInlineEditController<T> extends ChangeNotifier {
                   Text(column.value(row) ?? '—');
             }
             final id = idOf(row);
-            rememberBaseline(id, row);
+            rememberBaseline(id, row, fields: fields);
             return _MasterInlineCell<T>(
               key: ValueKey('inline-$id-${field.key}'),
               controller: this,

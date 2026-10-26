@@ -101,7 +101,7 @@ public class AttachmentController {
     @GetMapping("/{id}/preview")
     @PreAuthorize("hasAuthority('attachment:download')")
     public ResponseEntity<Resource> preview(@PathVariable UUID id) throws java.io.IOException {
-        AttachmentPreviewService.RenderedPreview rendered = previewService.render(id);
+        AttachmentPreviewService.PreviewDownload rendered = previewService.open(id);
         String encoded = URLEncoder.encode(rendered.fileName(), StandardCharsets.UTF_8)
                 .replace("+", "%20");
         return ResponseEntity.ok()
@@ -110,7 +110,7 @@ public class AttachmentController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encoded)
                 .header("X-Content-Type-Options", "nosniff")
                 .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
-                .body(new InputStreamResource(java.nio.file.Files.newInputStream(rendered.file())));
+                .body(new InputStreamResource(rendered.stream()));
     }
 
     /**

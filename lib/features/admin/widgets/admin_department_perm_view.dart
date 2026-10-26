@@ -4,6 +4,7 @@
 // 高密度目录的设置成本；未保存修改通过固定底部操作栏统一提交。
 // 能否配给部门、能否随批量带上只看服务端下发的授权策略(ADR-109)，
 // 「全部授权 / 本模块 / 本组」直接交给服务端按策略补齐，本页不维护任何排除名单。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,13 +21,16 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permission_action_type.dart';
+import '../../department/models/department_node.dart';
 import '../../department/widgets/uten_department_picker.dart';
+import '../../department/widgets/uten_department_tree_view.dart';
 import '../models/admin_models.dart';
 import '../providers/admin_providers.dart';
 import '../repositories/admin_repository.dart';
 import 'permission_catalog_browser.dart';
 import 'permission_action_badge.dart';
 import 'admin_permission_workspace.dart';
+import 'admin_permission_export_button.dart';
 
 class AdminDepartmentPermView extends ConsumerStatefulWidget {
   const AdminDepartmentPermView({
@@ -50,7 +54,8 @@ class _AdminDepartmentPermViewState
   DeptSelection? _dept;
   Set<String>? _localChecked;
   bool _saving = false;
-  int _pickerVersion = 0;
+  bool _showDetail = false;
+  bool _changingDepartment = false;
   bool? _lastReportedPending;
 
   @override
@@ -68,7 +73,10 @@ class _AdminDepartmentPermViewState
       final tree = await ref.read(adminDepartmentTreeProvider.future);
       final selection = buildDeptSelectionMap(tree)[id];
       if (!mounted || selection == null || _dept != null) return;
-      setState(() => _dept = selection);
+      setState(() {
+        _dept = selection;
+        _showDetail = true;
+      });
     } catch (_) {
       // 选择器仍可手动使用；路由中的失效部门 id 不阻塞权限页。
     }
@@ -115,25 +123,28 @@ class _AdminDepartmentPermViewState
   }
 
   Future<void> _onDeptChanged(List<DeptSelection> selection) async {
+    if (_saving || _changingDepartment) return;
     final next = selection.firstOrNull;
-    if (next?.id == _dept?.id) return;
+    if (next?.id == _dept?.id) {
+      setState(() => _showDetail = next != null);
+      return;
+    }
     if (_isDirty) {
+      _changingDepartment = true;
       final confirmed = await UtenDialog.show(
         context,
         title: '丢弃未保存修改',
         content: const Text('当前部门有未保存的权限修改，切换部门将丢弃这些修改。确定切换吗？'),
         confirmLabel: '丢弃并切换',
         danger: true,
-      );
+      ).whenComplete(() => _changingDepartment = false);
       if (!mounted) return;
-      if (confirmed != true) {
-        setState(() => _pickerVersion++);
-        return;
-      }
+      if (confirmed != true) return;
     }
     setState(() {
       _dept = next;
       _localChecked = null;
+      _showDetail = next != null;
     });
   }
 
@@ -284,26 +295,78 @@ class _AdminDepartmentPermViewState
     }
     return AdminPermissionWorkspace(
       navigation: widget.leadingHeader,
-      leading: ListView(
-        padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
-        children: [_departmentPicker(), _scopeNotice()],
-      ),
-      trailing: _details(includeSelector: false),
-      compact: _details(includeSelector: true),
+      leading: _departmentDirectory(),
+      trailing: _details(preserveStart: true),
+      compact: _showDetail && _dept != null
+          ? Column(
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: const ValueKey('admin-department-back-to-directory'),
+                    onPressed: _saving
+                        ? null
+                        : () => setState(() => _showDetail = false),
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('部门目录'),
+                  ),
+                ),
+                Expanded(child: _details(preserveStart: false)),
+              ],
+            )
+          : _departmentDirectory(),
     );
   }
 
-  Widget _departmentPicker() => Padding(
-    padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-    child: UtenDepartmentPicker(
-      key: ValueKey('${_dept?.id ?? 'none'}-$_pickerVersion'),
-      mode: UtenDepartmentPickerMode.single,
-      label: '选择部门',
-      initialSelection: [?_dept],
-      enabled: !_saving,
-      onChanged: _onDeptChanged,
-    ),
-  );
+  Widget _departmentDirectory() {
+    final departments = ref.watch(adminDepartmentTreeProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: departments.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (_, _) => UtenEmpty.error(
+              message: '部门目录加载失败',
+              description: '请检查网络后重试。',
+              actionLabel: '重试',
+              onAction: () => ref.invalidate(adminDepartmentTreeProvider),
+            ),
+            data: (nodes) {
+              if (nodes.isEmpty) {
+                return const UtenEmpty(
+                  icon: Icons.account_tree_outlined,
+                  message: '暂无可设置权限的部门',
+                  description: '请先在人事部门管理中建立组织架构。',
+                );
+              }
+              final selections = buildDeptSelectionMap(nodes);
+              return UtenDepartmentTreeView(
+                key: const ValueKey('admin-permission-department-tree'),
+                nodes: nodes,
+                mode: UtenDepartmentTreeMode.single,
+                flatLevelColors: true,
+                initiallyExpandDepth: 2,
+                selectedIds: {?_dept?.id},
+                searchHint: '搜索部门名称 / 编号',
+                searchFieldKey: const ValueKey(
+                  'admin-permission-department-search',
+                ),
+                nodeEnabledPredicate: (node) =>
+                    !_saving && isOperationalDepartmentNode(node),
+                onToggleSelect: (node) {
+                  final next = selections[node.id];
+                  if (next != null) _onDeptChanged([next]);
+                },
+              );
+            },
+          ),
+        ),
+        _scopeNotice(),
+        const SizedBox(height: UtenSpacing.s16),
+      ],
+    );
+  }
 
   Widget _scopeNotice() => UtenCard(
     margin: const EdgeInsets.only(top: UtenSpacing.s4),
@@ -317,7 +380,7 @@ class _AdminDepartmentPermViewState
     ),
   );
 
-  Widget _details({required bool includeSelector}) {
+  Widget _details({required bool preserveStart}) {
     final theme = Theme.of(context);
     final department = _dept;
     final showSaveBar =
@@ -332,24 +395,23 @@ class _AdminDepartmentPermViewState
             description: '正在写入部门页面权限变更，请勿重复提交或离开本页。',
           ),
         Expanded(
-          child: ListView(
+          child: UtenPageEdgePadding.scroll(
             padding: const EdgeInsets.fromLTRB(
               UtenSpacing.s16,
               UtenSpacing.s4,
               UtenSpacing.s16,
               UtenSpacing.s32,
             ),
-            children: [
-              if (includeSelector) ...[
-                _departmentPicker(),
-                _scopeNotice(),
-                const SizedBox(height: UtenSpacing.s16),
+            preserveStart: preserveStart,
+            builder: (context, pagePadding) => ListView(
+              padding: pagePadding,
+              children: [
+                if (department == null)
+                  _emptyGuide(theme)
+                else
+                  _catalogCard(theme, department),
               ],
-              if (department == null)
-                _emptyGuide(theme)
-              else
-                _catalogCard(theme, department),
-            ],
+            ),
           ),
         ),
         if (showSaveBar)
@@ -427,11 +489,25 @@ class _AdminDepartmentPermViewState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '部门权限 · ${department.name}',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: UtenSpacing.s12,
+            runSpacing: UtenSpacing.s8,
+            children: [
+              Text(
+                '部门权限 · ${department.name}',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              AdminPermissionExportButton(
+                scope: PermissionExportScope.department,
+                sourceId: department.id,
+                sourceName: department.name,
+                enabled: !_isDirty && !_saving && permissionsAsync.hasValue,
+              ),
+            ],
           ),
           const SizedBox(height: 2),
           Text(

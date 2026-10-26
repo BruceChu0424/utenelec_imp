@@ -7,6 +7,31 @@ import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/master_lookup_queue.dart';
 
 void main() {
+  test('queued lookup batches retain their original read scope zone', () async {
+    final gate = Completer<void>();
+    final observed = <(String, Object?)>[];
+    final queue = MasterLookupQueue(
+      batchSize: 1,
+      maxConcurrent: 1,
+      fetch: (ids) async {
+        observed.add((ids.single, Zone.current[#lookupReadScope]));
+        if (ids.single == 'old') await gate.future;
+      },
+    );
+    addTearDown(queue.dispose);
+    final old = runZoned(
+      () => queue.load(['old']),
+      zoneValues: {#lookupReadScope: 'old-scope'},
+    );
+    final fresh = runZoned(
+      () => queue.load(['fresh']),
+      zoneValues: {#lookupReadScope: 'fresh-scope'},
+    );
+    gate.complete();
+    await Future.wait([old, fresh]);
+    expect(observed, [('old', 'old-scope'), ('fresh', 'fresh-scope')]);
+  });
+
   test(
     'disposed lookup queues stop old queued requests and resolve waiters',
     () async {

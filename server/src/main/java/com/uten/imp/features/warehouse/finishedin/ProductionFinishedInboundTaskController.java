@@ -53,7 +53,7 @@ public class ProductionFinishedInboundTaskController {
 
     /** 产成品入库任务 facets（2026-09-25 单号列统一）：{taskNo/planNo:[各单号]}——
      *  同列表过滤口径（不含单号列自身值筛选）。 */
-    @GetMapping("/tasks/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/tasks/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public Map<String, List<Map<String, Object>>> taskFacets(
             @RequestParam(defaultValue = "") String keyword,

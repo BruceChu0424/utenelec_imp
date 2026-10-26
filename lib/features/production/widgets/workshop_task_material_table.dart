@@ -144,6 +144,7 @@ class _WorkshopTaskMaterialTableState
         }
         final small = theme.textTheme.bodySmall;
         return MasterDataTableView<ProductionWorkshopTaskMaterial>(
+          expensiveRowMounts: false,
           key: const Key('workshop-task-material-table'),
           tableKey: 'production.workshopTask.materials',
           embedded: true,

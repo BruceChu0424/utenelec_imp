@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
+import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/position.dart';
@@ -206,24 +207,9 @@ class _PositionListSheetState extends ConsumerState<_PositionListSheet> {
     final positions = _positions;
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '选择岗位',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
-          ),
+        UtenPanelHeader(
+          title: '选择岗位',
+          onClose: () => Navigator.of(context).pop(),
         ),
         Expanded(
           child: positions == null && _error == null

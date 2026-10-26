@@ -15,6 +15,7 @@
 //  - client/supplier 用默认的简版删除确认。
 //
 // 不改任何业务语义/文案/TODO(l10n)；渲染与交互只在这一处维护。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -1077,7 +1078,9 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       ),
       // 页面级局部 SelectionArea：分类树/详情面板/空态文字可框选复制（准则 §3.4）。
       // 内嵌 MasterDataTableView 自带更深层 region，嵌套各管各的；AppBar 不进选择区。
-      body: SafeArea(child: UtenSelectionArea(child: body)),
+      body: SafeArea(
+        child: UtenPageEdgePadding(child: UtenSelectionArea(child: body)),
+      ),
     );
   }
 }

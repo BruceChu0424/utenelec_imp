@@ -5,6 +5,10 @@ package com.uten.imp.application.port;
  * Administrative capability is deliberately not a subscription to every business task.
  */
 public interface TaskAudiencePort {
+    /** Same actual-grant derivation as read(), without entering/reusing a request-local read window. */
+    default com.uten.imp.security.AuthUser freshTaskSubject(com.uten.imp.security.AuthUser sessionSubject) {
+        throw new UnsupportedOperationException("Fresh task identity is required");
+    }
     /** Task projections cannot accept the generic callbacks used by business commands. */
     @FunctionalInterface
     interface ReadQuery<T> {

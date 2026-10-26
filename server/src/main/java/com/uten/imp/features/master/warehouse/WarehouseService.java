@@ -110,7 +110,7 @@ public class WarehouseService {
      * 负责人来自 warehouse_keepers（ADR-115，与列表「负责人」列同一 assignments 查询，
      * 仓库量级个位数，一次带回按仓库分组、「、」连接，无负责人显示「—」）。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ExportPayload export(WarehouseQueryFilter f, int maxRows) {
         Map<UUID, String> keepersByWarehouse = new LinkedHashMap<>();
         for (WarehouseKeeperAssignment a : keeperService.assignments()) {
@@ -127,7 +127,7 @@ public class WarehouseService {
                 new ExportColumn("keepers", "负责人", ExportColumn.TEXT),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
                 maxRows, (p, size) -> list(f, p, size), w -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("_platformRecordId", w.getId());
@@ -141,7 +141,6 @@ public class WarehouseService {
                     row.put("status", w.getStatus());
                     return row;
                 });
-        return new ExportPayload(cols, rows, rows.size());
     }
 
     @Transactional(readOnly = true)
@@ -176,7 +175,7 @@ public class WarehouseService {
         };
         // 主仓置顶(唯一没有上级的仓), 子仓按编号紧随其后(排序在 masterOrder 里)。
         Pageable pageable = Pageables.of(page, size, Sort.unsorted());
-        Page<Warehouse> p = repo.findAll(masterOrder(spec), pageable);
+        Page<Warehouse> p = com.uten.imp.common.export.MasterExportSource.page(repo, em, Warehouse.class, masterOrder(spec), pageable, f);
         Map<UUID, String> workshopNames = workshopNames(p.getContent());
         Map<UUID, String> parentNames = parentNames(p.getContent());
         Selectable selectable = selectable(p.getContent());

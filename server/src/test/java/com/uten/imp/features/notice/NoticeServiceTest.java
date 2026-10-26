@@ -46,6 +46,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
@@ -1125,7 +1126,7 @@ class NoticeServiceTest {
         UUID otherUser = UUID.randomUUID();
         UUID b1 = UUID.randomUUID();
         UUID b2 = UUID.randomUUID();
-        when(blessRepo.findPage(eq(noticeId), anyInt(), anyInt())).thenReturn(List.of(
+        when(blessRepo.findPage(eq(noticeId), anyInt(), anyLong())).thenReturn(List.of(
                 blessingRow(b1, "张三", "生日快乐", otherUser),
                 blessingRow(b2, "我", "同祝", userId)));
         when(blessRepo.countByNoticeId(noticeId)).thenReturn(2L);
@@ -1136,6 +1137,45 @@ class NoticeServiceTest {
         assertEquals(2, p.items().size());
         assertFalse(p.items().get(0).mine());     // 他人
         assertTrue(p.items().get(1).mine());       // 本人
+    }
+
+    @Test
+    void listBlessingsHugeZeroBasedPageReturnsTheActualTotalWithoutWrappingToTheFirstPage() {
+        UUID noticeId = UUID.randomUUID();
+        stubVisibleBroadcast(noticeId);
+        when(blessRepo.countByNoticeId(noticeId)).thenReturn(2L);
+
+        NoticeService.BlessingPage result = service.listBlessings(noticeId, Integer.MAX_VALUE, Integer.MAX_VALUE);
+
+        assertEquals(2L, result.count());
+        assertTrue(result.items().isEmpty());
+        verify(blessRepo, never()).findPage(any(), anyInt(), anyLong());
+    }
+
+    @Test
+    void listBlessingsRetainsALegalNativeLongOffsetAndItsFiftyRowMaximum() {
+        UUID noticeId = UUID.randomUUID();
+        stubVisibleBroadcast(noticeId);
+        long offset = (long) Integer.MAX_VALUE * 50;
+        when(blessRepo.countByNoticeId(noticeId)).thenReturn(offset + 1);
+        when(blessRepo.findPage(noticeId, 50, offset)).thenReturn(List.of(
+                blessingRow(UUID.randomUUID(), "原顺序", "保留长offset", userId)));
+
+        NoticeService.BlessingPage result = service.listBlessings(noticeId, Integer.MAX_VALUE, Integer.MAX_VALUE);
+
+        assertEquals(offset + 1, result.count());
+        assertEquals(1, result.items().size());
+        verify(blessRepo).findPage(noticeId, 50, offset);
+    }
+
+    @Test
+    void listBlessingsEmptyResultsDoNotIssueAnUnnecessaryPageQuery() {
+        UUID noticeId = UUID.randomUUID();
+        stubVisibleBroadcast(noticeId);
+        when(blessRepo.countByNoticeId(noticeId)).thenReturn(0L);
+        NoticeService.BlessingPage result = service.listBlessings(noticeId, -1, -1);
+        assertEquals(0, result.count()); assertTrue(result.items().isEmpty());
+        verify(blessRepo, never()).findPage(any(), anyInt(), anyLong());
     }
 
     @Test
@@ -1172,7 +1212,7 @@ class NoticeServiceTest {
         assertEquals(ErrorCode.NOT_FOUND, acks.getCode());
         assertEquals(ErrorCode.NOT_FOUND, blessings.getCode());
         verify(ackRepository, never()).findRecentAcknowledgers(any(), anyInt());
-        verify(blessRepo, never()).findPage(any(), anyInt(), anyInt());
+        verify(blessRepo, never()).findPage(any(), anyInt(), anyLong());
     }
 
     @Test

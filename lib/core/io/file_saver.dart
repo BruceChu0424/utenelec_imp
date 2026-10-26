@@ -17,6 +17,24 @@ Future<String> saveBytes(
   stillCurrent: stillCurrent,
 );
 
+Future<bool> canSaveStream() => impl.canSaveStream();
+
+/// Writes one chunk at a time. Failed, cancelled or stale reads never publish a
+/// partially downloaded file. [verifyScope] also runs before final publication.
+Future<String> saveStream(
+  Stream<Uint8List> chunks,
+  String filename, {
+  bool Function()? stillCurrent,
+  Future<void> Function()? verifyScope,
+  int maxBytes = 384 * 1024 * 1024,
+}) => impl.saveStream(
+  chunks,
+  sanitizeDownloadFilename(filename),
+  stillCurrent: stillCurrent,
+  verifyScope: verifyScope,
+  maxBytes: maxBytes,
+);
+
 /// Converts a display label or server-provided filename into one safe leaf name.
 ///
 /// File downloads must never be able to escape the selected download directory.

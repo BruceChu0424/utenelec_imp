@@ -240,8 +240,8 @@ void main() {
         await _bottom(tester);
         expect(
           host.requests,
-          isEmpty,
-          reason: 'layout/programmatic scrolling does not prefetch',
+          [2],
+          reason: 'a position jump also represents scrollbar-thumb navigation',
         );
         await _wheel(tester);
         await _wheel(tester);
@@ -256,11 +256,20 @@ void main() {
         expect(_vertical(tester).position.pixels, closeTo(before, 0.5));
         expect(find.widgetWithText(TextFormField, '1'), findsOneWidget);
         await _bottom(tester);
-        await tester.pumpAndSettle();
+        for (
+          var frame = 0;
+          frame < 40 &&
+              find.widgetWithText(TextFormField, '2').evaluate().isEmpty;
+          frame++
+        ) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
         expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
-        expect(host.requests, [
-          2,
-        ], reason: 'scrolling cached rows does not fetch');
+        expect(
+          host.requests,
+          [2, 3],
+          reason: 'approaching the loaded boundary prepares its successor',
+        );
         await _wheel(tester);
         host.responses.last.complete(['A-40']);
         await tester.pumpAndSettle();
@@ -327,7 +336,6 @@ void main() {
       await tester.pumpWidget(_Harness(key: key));
       await tester.pumpAndSettle();
       final host = key.currentState!;
-      await _bottom(tester);
       await _wheel(tester, dy: 0, dx: 300);
       await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
       await _wheel(tester);
@@ -337,9 +345,21 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
       await tester.pump();
       host.responses.single.complete(['page-two']);
+      for (var frame = 0; frame < 40 && host.requests.length < 2; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(host.requests, [
+        2,
+        1,
+      ], reason: 'explicit paging seeds one previous buffer');
+      host.responses.last.complete(List.generate(20, (index) => 'A-$index'));
       await tester.pumpAndSettle();
-      expect(host.rows.items, ['page-two']);
-      expect(_vertical(tester).position.pixels, 0);
+      expect(host.rows.items, [
+        ...List.generate(20, (index) => 'A-$index'),
+        'page-two',
+      ]);
+      expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
+      expect(find.text('page-two'), findsWidgets);
     },
   );
 

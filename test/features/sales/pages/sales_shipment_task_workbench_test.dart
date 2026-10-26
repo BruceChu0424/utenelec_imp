@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,8 @@ import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/pages/finance_sales_shipment_audit_page.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
@@ -23,6 +26,67 @@ late SharedPreferences _preferences;
 final _permissionStateProvider = StateProvider<Set<String>>((ref) => {});
 
 void main() {
+  testWidgets(
+    'shipment read cannot revive through permission ABA or a late old page',
+    (tester) async {
+      final api = _ShipmentTaskApi();
+      await _pump(
+        tester,
+        page: const FinanceSalesShipmentAuditPage(),
+        permission: Perm.salesShipmentFinanceView,
+        api: api,
+        size: const Size(1440, 900),
+      );
+      final tableFinder = find.byKey(const Key('finance-shipment-audit-table'));
+      MasterDataTableView<SalesDocListItem> table() =>
+          tester.widget(tableFinder);
+      final container = ProviderScope.containerOf(tester.element(tableFinder));
+      final old = Completer<void>();
+      api.pendingRead = old;
+      final refresh = tester.widget<UtenRefreshButton>(
+        find.byType(UtenRefreshButton).first,
+      );
+      final pending = Future<void>.sync(refresh.onRefresh);
+      await tester.pump();
+      container.read(_permissionStateProvider.notifier).state = {};
+      await tester.pump();
+      api.billNo = 'FRESH-AFTER-ABA';
+      container.read(_permissionStateProvider.notifier).state = {
+        Perm.salesShipmentFinanceView,
+      };
+      await tester.pumpAndSettle();
+      expect(table().items.single.billNo, 'FRESH-AFTER-ABA');
+      old.complete();
+      await pending;
+      await tester.pumpAndSettle();
+      expect(table().items.single.billNo, 'FRESH-AFTER-ABA');
+      expect(find.text('XS202608310001'), findsNothing);
+      expect(api.writes, isEmpty);
+    },
+  );
+  testWidgets(
+    'server access denial removes accepted shipment rows and old facets',
+    (tester) async {
+      final api = _ShipmentTaskApi();
+      await _pump(
+        tester,
+        page: const FinanceSalesShipmentAuditPage(),
+        permission: Perm.salesShipmentFinanceView,
+        api: api,
+        size: const Size(1440, 900),
+      );
+      api.accessError = ApiException('FORBIDDEN', '服务器已撤销查看权', httpStatus: 403);
+      final refresh = tester.widget<UtenRefreshButton>(
+        find.byType(UtenRefreshButton).first,
+      );
+      await Future<void>.sync(refresh.onRefresh);
+      await tester.pumpAndSettle();
+      expect(find.text('XS202608310001'), findsNothing);
+      expect(find.text('服务器已撤销查看权'), findsOneWidget);
+      expect(api.writes, isEmpty);
+    },
+  );
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
@@ -224,7 +288,8 @@ void main() {
     );
 
     expect(find.text('出货财务审核任务加载失败'), findsOneWidget);
-    expect(find.text('重新加载'), findsOneWidget);
+    expect(find.text('重试'), findsOneWidget);
+    expect(find.byKey(const Key('finance-shipment-audit-table')), findsOneWidget);
   });
 
   testWidgets('missing exact permission shows denial without requesting API', (
@@ -370,6 +435,9 @@ class _ShipmentTaskApi extends ApiClient {
   final bool empty;
   final List<Map<String, dynamic>> shipmentQueries = [];
   final List<String> writes = [];
+  String billNo = 'XS202608310001';
+  Completer<void>? pendingRead;
+  ApiException? accessError;
 
   @override
   Future<Map<String, dynamic>> post(
@@ -389,6 +457,11 @@ class _ShipmentTaskApi extends ApiClient {
   }) async {
     if (path != '/sales/shipments') return const <String, dynamic>{};
     shipmentQueries.add(Map<String, dynamic>.from(query ?? const {}));
+    final capturedBill = billNo;
+    final waiting = pendingRead;
+    pendingRead = null;
+    if (waiting != null) await waiting.future;
+    if (accessError != null) throw accessError!;
     if (fail) throw StateError('offline');
     return <String, dynamic>{
       'items': empty
@@ -396,7 +469,7 @@ class _ShipmentTaskApi extends ApiClient {
           : <Map<String, dynamic>>[
               <String, dynamic>{
                 'id': 'shipment-1',
-                'billNo': 'XS202608310001',
+                'billNo': capturedBill,
                 'billDate': '2026-08-31',
                 'clientId': 'client-1',
                 'warehouseId': 'warehouse-1',
@@ -420,7 +493,7 @@ class _ShipmentTaskApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.endsWith('/clients/dict')) {
+    if (path.endsWith('/clients/lookup')) {
       return const [
         {'id': 'client-1', 'code': 'C001', 'name': '测试客户'},
       ];

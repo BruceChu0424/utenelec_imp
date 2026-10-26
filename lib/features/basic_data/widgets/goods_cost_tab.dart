@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/buttons/uten_tree_expansion_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/data_display/uten_revision_table.dart';
@@ -40,6 +41,8 @@ import '../../../shared/widgets/uten_tree_row_projection.dart';
 import '../models/currency_node.dart';
 import '../models/goods_cost_sheet.dart';
 import '../models/goods_node.dart';
+import '../models/goods_field_edit_policy.dart';
+import '../../../shared/auth/permissions.dart';
 import '../repositories/currency_repository.dart';
 import '../repositories/client_repository.dart';
 import '../repositories/goods_cost_repository.dart';
@@ -51,6 +54,13 @@ import 'master_data_table_view.dart';
 import 'uten_client_picker.dart';
 
 part 'goods_cost_editor.dart';
+
+@visibleForTesting
+int debugGoodsCostTreeProjectionBuilds = 0;
+@visibleForTesting
+int debugGoodsCostPendingFilterVisits = 0;
+@visibleForTesting
+int debugGoodsCostInputLookupBuilds = 0;
 
 /// Versioned cost workbench. Saving a sheet never writes the goods master.
 class GoodsCostTab extends ConsumerStatefulWidget {
@@ -81,19 +91,132 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   GoodsCostCalculation? _calculationValue;
   Map<String, Map<String, dynamic>> _feeResultsByKey = {},
       _costLinesByPath = {};
+  List<Map<String, dynamic>> _materialRows = const [],
+      _pendingIssueRows = const [];
+  Map<String, UtenTreeRowProjection> _materialTreeByPath = {};
+  Map<String, List<String>> _materialPeersByPath = {};
+  final _collapsibleMaterialPaths = <String>{};
+  Set<String> _pendingIssuePaths = const {};
+  List<Map<String, dynamic>>? _visibleMaterialRows;
+  int _materialMaxDepth = 0, _visibleMaterialMaxDepth = 0;
+  int _inputLookupRevision = -1;
+  Map<String, Map<String, dynamic>> _overridesByPath = {};
+  Map<(String, String), Map<String, dynamic>> _priceCellsByKey = {};
   final _calculationSignal = ValueNotifier<int>(0);
   GoodsCostCalculation? get _calculation => _calculationValue;
   set _calculation(GoodsCostCalculation? value) {
     _calculationValue = value;
+    _inputLookupRevision = -1;
+    _materialRows = value?.lines ?? const [];
+    _pendingIssueRows = value?.issues ?? const [];
+    _pendingIssuePaths = {
+      for (final issue in _pendingIssueRows) issue['path'].toString(),
+    };
     _feeResultsByKey = {
       for (final fee in value?.fees ?? <Map<String, dynamic>>[])
         fee['key'].toString(): fee,
     };
     _costLinesByPath = {
-      for (final line in value?.lines ?? <Map<String, dynamic>>[])
-        line['path'].toString(): line,
+      for (final line in _materialRows) line['path'].toString(): line,
     };
+    final projection = utenTreeProjection(
+      _materialRows,
+      depthOf: (row) => (row['depth'] as num?)?.toInt() ?? 0,
+    );
+    _materialTreeByPath = {};
+    _materialPeersByPath = {};
+    _collapsibleMaterialPaths.clear();
+    _materialMaxDepth = 0;
+    final ancestors = <int>[];
+    final peersByParent = <(int?, int), List<String>>{};
+    for (var index = 0; index < _materialRows.length; index++) {
+      final tree = projection[index];
+      if (tree.depth > _materialMaxDepth) _materialMaxDepth = tree.depth;
+      final path = _materialRows[index]['path'].toString();
+      _materialTreeByPath[path] = tree;
+      while (ancestors.isNotEmpty &&
+          projection[ancestors.last].depth >= tree.depth) {
+        ancestors.removeLast();
+      }
+      final parent = ancestors.isEmpty ? null : ancestors.last;
+      final peers = peersByParent.putIfAbsent((parent, tree.depth), () => []);
+      _materialPeersByPath[path] = peers;
+      if (tree.hasChildren) {
+        _collapsibleMaterialPaths.add(path);
+        peers.add(path);
+      }
+      ancestors.add(index);
+    }
+    _visibleMaterialRows = null;
+    assert(() {
+      debugGoodsCostTreeProjectionBuilds++;
+      return true;
+    }());
     _calculationSignal.value++;
+  }
+
+  void _ensureInputLookups() {
+    if (_inputLookupRevision == _inputRevision) return;
+    _overridesByPath = {};
+    for (final row in costMaps(_input['lineOverrides'])) {
+      _overridesByPath.putIfAbsent(row['path'].toString(), () => row);
+    }
+    _priceCellsByKey = {};
+    for (final cell in costMaps(_input['priceCells'])) {
+      _priceCellsByKey.putIfAbsent((
+        cell['path'].toString(),
+        cell['columnKey'].toString(),
+      ), () => cell);
+    }
+    _inputLookupRevision = _inputRevision;
+    assert(() {
+      debugGoodsCostInputLookupBuilds++;
+      return true;
+    }());
+  }
+
+  List<Map<String, dynamic>> get _visibleCostMaterials {
+    final cached = _visibleMaterialRows;
+    if (cached != null) return cached;
+    if (!_onlyPending && _collapsed.isEmpty) {
+      _visibleMaterialMaxDepth = _materialMaxDepth;
+      return _visibleMaterialRows = _materialRows;
+    }
+    final visible = <Map<String, dynamic>>[];
+    var maxDepth = 0;
+    for (var index = 0; index < _materialRows.length; index++) {
+      final row = _materialRows[index];
+      final path = row['path'].toString();
+      final tree = _materialTreeByPath[path]!;
+      if (_onlyPending) {
+        assert(() {
+          debugGoodsCostPendingFilterVisits++;
+          return true;
+        }());
+        if (_pendingIssuePaths.contains(path)) {
+          visible.add(row);
+        }
+      } else {
+        visible.add(row);
+        if (tree.depth > maxDepth) maxDepth = tree.depth;
+        if (_collapsed.contains(path)) {
+          index = tree.subtreeEnd - 1;
+        }
+      }
+    }
+    _visibleMaterialMaxDepth = maxDepth;
+    return _visibleMaterialRows = visible;
+  }
+
+  void _changeMaterialVisibility(VoidCallback change) => setState(() {
+    change();
+    _visibleMaterialRows = null;
+  });
+
+  void _expandCostPeers(String path) {
+    final peers = _materialPeersByPath[path] ?? const [];
+    if (!peers.any(_collapsed.contains)) return;
+    _changeMaterialVisibility(() => _collapsed.removeAll(peers));
   }
 
   GoodsCostSnapshot? _historical;
@@ -112,7 +235,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       _settingsLoading = false,
       _onlyPending = false;
   Future<void>? _previewInFlight;
-  int? _previewRevision;
+  int? _previewRevision, _previewFlightRequest;
   int _tab = 0, _bodyTab = 0, _inputRevision = 0, _previewRequest = 0;
   int _templateRequest = 0;
   int? _calculatedRevision;
@@ -256,6 +379,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     });
     try {
       _input = _freshInput();
+      _inputLookupRevision = -1;
       final versions = await _repository.list(widget.detail.id);
       if (!formDraftIdentityIsCurrent) return;
       _versions = versions;
@@ -377,6 +501,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
         .toList(),
   };
   void _resetEditors() {
+    _inputLookupRevision = -1;
     final old = _controllers.values.toList();
     _controllers.clear();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -437,8 +562,24 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   }
 
   Future<void> _preview() {
-    _previewRevision = _inputRevision;
-    final future = _calculatePreview();
+    _debounce?.cancel();
+    if (_previewInFlight case final inFlight?) {
+      if (_previewRevision == _inputRevision &&
+          _previewFlightRequest == _previewRequest) {
+        return inFlight;
+      }
+    }
+    final revision = _inputRevision;
+    late final Future<void> future;
+    future = _calculatePreview().whenComplete(() {
+      if (identical(_previewInFlight, future)) {
+        _previewInFlight = null;
+        _previewRevision = null;
+        _previewFlightRequest = null;
+      }
+    });
+    _previewRevision = revision;
+    _previewFlightRequest = _previewRequest;
     _previewInFlight = future;
     return future;
   }
@@ -937,8 +1078,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     );
   }
 
-  List<Map<String, dynamic>> get _pendingIssues =>
-      _calculation?.issues ?? const [];
+  List<Map<String, dynamic>> get _pendingIssues => _pendingIssueRows;
   String _currentMoney(Object? value) => _stale ? '…' : _money(value);
   Widget _costSummary() => UtenTotalsSummaryBar(
     entries: [
@@ -972,7 +1112,8 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
         child: Text(_l.costSaveDraft),
       ),
   ];
-  List<Widget> _tableActions() => [
+  List<Widget> _tableActions({Widget? treeExpansion}) => [
+    ?treeExpansion,
     if (_editable)
       UtenButton(
         key: const Key('cost-add-column'),
@@ -1011,7 +1152,8 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       UtenButton(
         key: const Key('cost-pending-filter'),
         height: UtenTableToolbar.controlHeight,
-        onPressed: () => setState(() => _onlyPending = !_onlyPending),
+        onPressed: () =>
+            _changeMaterialVisibility(() => _onlyPending = !_onlyPending),
         child: Text(_onlyPending ? _l.costAllMaterials : _l.costOnlyPending),
       ),
     UtenButton(
@@ -1083,7 +1225,12 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       if (_editable && _capability.canManageTemplates)
         (_l.costSaveTemplate, _saveTemplate),
       if (_editable) (_l.costImport, _importWorkbook),
-      if (widget.canEdit) (_l.costLossPolicy, _lossPolicy),
+      if (widget.canEdit &&
+          GoodsFieldEditPolicy.canEditField(
+            'subcontractAllowedLossPct',
+            ref.watch(currentPermissionsProvider),
+          ))
+        (_l.costLossPolicy, _lossPolicy),
       if (_sheet != null) (_l.costCompare, _compareVersions),
       if (_sheet != null) (_l.costHistory, _showSnapshots),
     ];
@@ -1139,6 +1286,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
           height: MediaQuery.sizeOf(context).height * .6,
           child: MasterDataTableView<Map<String, dynamic>>(
             tableKey: 'master.goods.cost.pending',
+            expensiveRowMounts: false,
             columns: [
               _readColumn('goodsName', _l.costGoodsName, 220),
               _readColumn('goodsCode', _l.costGoodsCode, 120),
@@ -1182,6 +1330,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       setState(() {
         _bodyTab = 0;
         _onlyPending = true;
+        _visibleMaterialRows = null;
         _adjustingPaths.add(selected['path'].toString());
       });
     }
@@ -1208,6 +1357,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     // 水平贴 0：与货品详情页签栏共用左缘（2026-10-24 口径）。
     body: MasterDataTableView<Map<String, dynamic>>(
       tableKey: 'master.goods.cost.versions',
+      expensiveRowMounts: false,
       primary: true,
       onFullscreenChanged: (value) {
         _materialFullscreen = value;

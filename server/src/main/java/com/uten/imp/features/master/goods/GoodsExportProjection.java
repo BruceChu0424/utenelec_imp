@@ -9,13 +9,13 @@ import java.util.Map;
 import java.util.Set;
 
 /** Keeps the import schema when a screen projection omits the category context. */
-final class GoodsExportProjection {
+public final class GoodsExportProjection {
     private static final Map<String, String> REQUIRED = Map.of(
             "name", "货品名称", "code", "编号", "categoryPath", "类别", "goodsId", "系统标识");
 
     private GoodsExportProjection() { }
 
-    static TableColumnProjection forImportTemplate(TableColumnProjection projection) {
+    public static TableColumnProjection forImportTemplate(TableColumnProjection projection) {
         if (projection == null) return null;
         // Leave malformed projections to the shared validator, including duplicates.
         if (projection.columns() == null || projection.columns().isEmpty()

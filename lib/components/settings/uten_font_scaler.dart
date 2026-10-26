@@ -1,5 +1,6 @@
 // 界面大小调节器：所有窗口都显示 85%～200%，旧 75% 保留兼容选中。
 import 'package:flutter/material.dart';
+import '../inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/uten_tokens.dart';
@@ -34,13 +35,24 @@ class UtenFontScaler extends ConsumerWidget {
             spacing: 4,
             runSpacing: 4,
             children: [
-              _pill(
-                theme: theme,
-                label: '自动（100%）',
-                tooltip: '使用标准界面大小，保留系统显示与字体设置',
-                minHeight: minHeight,
-                selected: choice.isAuto,
-                onTap: () => notifier.set(const FontScaleChoice.auto()),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: _pill(
+                      theme: theme,
+                      label: '自动（100%）',
+                      tooltip: '使用标准界面大小，保留系统显示与字体设置',
+                      minHeight: minHeight,
+                      selected: choice.isAuto,
+                      onTap: () => notifier.set(const FontScaleChoice.auto()),
+                    ),
+                  ),
+                  const UtenFieldHintIcon(
+                    info: '文字、图标、按钮、卡片与间距同步调整，内容随可用宽度重新排列。此设置在当前设备按账号独立记忆。',
+                    dense: true,
+                  ),
+                ],
               ),
               for (final scale in levels)
                 _pill(
@@ -52,14 +64,6 @@ class UtenFontScaler extends ConsumerWidget {
                   onTap: () => notifier.set(FontScaleChoice.manual(scale)),
                 ),
             ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '文字、图标、按钮、卡片与间距同步调整，内容随可用宽度重新排列。'
-          '此设置在当前设备按账号独立记忆。',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
       ],

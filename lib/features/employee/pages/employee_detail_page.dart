@@ -10,6 +10,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../widgets/employee_identity_archive_section.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -167,7 +168,14 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     try {
       final p = await ref.read(employeeRepositoryProvider).getById(employeeId);
       if (!current()) return;
-      if (p.id != employeeId) throw const FormatException('员工资料与当前对象不一致');
+      if (p.id != employeeId) {
+        if (p.resolvedFromEmployeeId != employeeId) {
+          throw const FormatException('员工资料与当前对象不一致');
+        }
+        if (!mounted) return;
+        context.replace('/employee/${Uri.encodeComponent(p.id)}');
+        return;
+      }
       setState(() {
         _profile = p;
         _profileOwner = owner;
@@ -1263,7 +1271,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   // Tab 5：任职记录（含转正事件）
   // ============================================================
   Widget _historyTab(AppLocalizations l10n) {
-    if (_p.history.isEmpty) {
+    if (_p.history.isEmpty &&
+        _p.historicalEducations.isEmpty &&
+        _p.historicalCertificates.isEmpty) {
       return const Center(
         child: UtenEmpty(icon: Icons.history_rounded, message: '暂无任职记录'),
       );
@@ -1278,12 +1288,15 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
             title: Text(_historyTitle(l10n, h)),
             subtitle: Text(
               [
+                if (h.historicalReadOnly)
+                  employeeIdentitySourceLabel(context, h.sourceEmployeeCode),
                 if (h.eventDate != null) h.eventDate!,
                 if (h.remark != null && h.remark!.isNotEmpty) h.remark!,
               ].join(' · '),
             ),
           ),
       ]),
+      EmployeeIdentityArchiveSection(profile: _p),
     ]);
   }
 

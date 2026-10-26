@@ -26,6 +26,7 @@ import '../models/paged_result.dart';
 import '../providers/authenticated_scope_provider.dart';
 import '../providers/draft_counts_provider.dart';
 import '../providers/master_name_provider.dart';
+import '../providers/export_context_epoch_provider.dart';
 import 'form_draft_category.dart';
 import 'form_draft_catalog.dart';
 
@@ -206,269 +207,296 @@ String? draftWorkspaceDeletePermission(DraftDocKind kind) {
 }
 
 final draftWorkspaceRowsProvider = FutureProvider.autoDispose
-    .family<List<DraftWorkspaceRow>, DraftDocKind>((ref, kind) async {
-      final scope = ref.watch(authenticatedScopeProvider);
-      final permissions = ref.watch(currentPermissionsProvider);
-      final superAdmin = ref.watch(isSuperAdminProvider);
-      if (scope == null ||
-          (!superAdmin && !permissions.contains(kind.viewPerm))) {
-        return const [];
-      }
-      final names = ref.watch(masterNameServiceProvider);
-      final label = draftWorkspaceKindLabel(kind);
-      String? money(double? amount, [bool masked = false]) =>
-          masked ? '***' : amount?.toStringAsFixed(2);
-      final purchase = _purchaseType(kind);
-      if (purchase != null) {
-        final repo = ref.watch(purchaseRepositoryProvider(purchase));
-        final rows = await loadAllDraftPages(
-          (page) => repo.list(
-            page: page,
-            size: 200,
-            filter: PurchaseDocFilter(
-              status: 0,
-              financeApproval: purchase == PurchaseDocType.order
-                  ? 'NONE'
-                  : null,
-            ),
-          ),
-        );
-        await names.ensureLoaded();
-        return [
-          for (final row in rows)
-            DraftWorkspaceRow(
-              kind: kind,
-              id: row.id,
-              category: label,
-              location: '/purchase/${purchase.pathSegment}/${row.id}',
-              billNo: row.billNo,
-              billDate: row.billDate,
-              party: names.supplier(row.supplierId),
-              amount: money(
-                row.totalLocal,
-                row.priceMasked ||
-                    !PurchaseDocConfig.by(
-                      purchase,
-                    ).canViewCommercial(permissions),
+    .family<List<DraftWorkspaceRow>, DraftDocKind>(
+      (ref, kind) async {
+        ref.watch(exportContextEpochProvider);
+        final scope = ref.watch(authenticatedScopeProvider);
+        final permissions = ref.watch(currentPermissionsProvider);
+        final superAdmin = ref.watch(isSuperAdminProvider);
+        if (scope == null ||
+            (!superAdmin && !permissions.contains(kind.viewPerm))) {
+          return const [];
+        }
+        final names = ref.read(masterNameServiceProvider);
+        final label = draftWorkspaceKindLabel(kind);
+        String? money(double? amount, [bool masked = false]) =>
+            masked ? '***' : amount?.toStringAsFixed(2);
+        final purchase = _purchaseType(kind);
+        if (purchase != null) {
+          final repo = ref.watch(purchaseRepositoryProvider(purchase));
+          final rows = await loadAllDraftPages(
+            (page) => repo.list(
+              page: page,
+              size: 200,
+              filter: PurchaseDocFilter(
+                status: 0,
+                financeApproval: purchase == PurchaseDocType.order
+                    ? 'NONE'
+                    : null,
               ),
-              deletable:
-                  row.status == 0 &&
-                  !row.closed &&
-                  !row.legacyImported &&
-                  (purchase != PurchaseDocType.order ||
-                      row.financeApproval == null ||
-                      row.financeApproval!.status == 'DRAFT'),
             ),
-        ];
-      }
-      final subcontract = _subcontractType(kind);
-      if (subcontract != null) {
-        final repo = ref.watch(subcontractRepositoryProvider(subcontract));
-        final rows = await loadAllDraftPages(
-          (page) => repo.list(
-            page: page,
-            size: 200,
-            filter: SubcontractDocFilter(
-              status: 0,
-              financeApproval: subcontract == SubcontractDocType.order
-                  ? 'NONE'
-                  : null,
-            ),
-          ),
-        );
-        await names.ensureLoaded();
-        return [
-          for (final row in rows)
-            DraftWorkspaceRow(
-              kind: kind,
-              id: row.id,
-              category: label,
-              location: '/subcontract/${subcontract.pathSegment}/${row.id}',
-              billNo: row.billNo,
-              billDate: row.billDate,
-              party: names.supplier(row.supplierId),
-              amount: money(
-                row.totalLocal,
-                row.priceMasked ||
-                    !(superAdmin ||
-                        SubcontractDocConfig.by(
-                          subcontract,
-                        ).canViewCommercial(permissions)),
-              ),
-              deletable:
-                  row.status == 0 &&
-                  !row.closed &&
-                  !row.legacyImported &&
-                  (subcontract != SubcontractDocType.order ||
-                      row.financeApproval == null ||
-                      row.financeApproval!.status == 'DRAFT'),
-            ),
-        ];
-      }
-      final finance = _financeType(kind);
-      if (finance != null) {
-        final repo = ref.watch(financeRepositoryProvider(finance));
-        final financeNames = ref.read(financeNameServiceProvider);
-        final rows = await loadAllDraftPages(
-          (page) => repo.list(
-            page: page,
-            size: 200,
-            filter: const FinanceDocFilter(status: 0),
-          ),
-        );
-        await financeNames.ensureLoaded();
-        return [
-          for (final row in rows)
-            DraftWorkspaceRow(
-              kind: kind,
-              id: row.id,
-              category: label,
-              location: '/finance/${finance.pathSegment}/${row.id}',
-              billNo: row.billNo,
-              billDate: row.billDate,
-              party: switch (finance) {
-                FinanceDocType.receipt => financeNames.client(row.partyId),
-                FinanceDocType.payment => financeNames.supplier(row.partyId),
-                _ => financeNames.account(row.accountId ?? row.outAccountId),
-              },
-              amount: row.amountLocalText ?? money(row.amountLocal),
-              deletable: row.status == 0 && !row.legacyImported,
-            ),
-        ];
-      }
-      if (kind == DraftDocKind.productionPlan) {
-        final repo = ref.watch(productionPlanRepositoryProvider);
-        final rows = await loadAllDraftPages(
-          (page) => repo.list(
-            page: page,
-            size: 200,
-            filter: const ProductionPlanFilter(status: 0),
-          ),
-        );
-        await names.ensureLoaded();
-        return [
-          for (final row in rows)
-            DraftWorkspaceRow(
-              kind: kind,
-              id: row.id,
-              category: label,
-              location: '/production/plans/${row.id}',
-              billNo: row.billNo,
-              billDate: row.billDate,
-              party: row.workshopName ?? names.department(row.departmentId),
-              deletable:
-                  row.status == 0 &&
-                  !row.closed &&
-                  !row.canceled &&
-                  !row.stopped &&
-                  row.legacyId == null,
-            ),
-        ];
-      }
-      if (kind == DraftDocKind.productionDailyReport) {
-        final repo = ref.watch(productionDailyReportRepositoryProvider);
-        final rows = await loadAllDraftPages(
-          (page) => repo.list(
-            page: page,
-            size: 200,
-            filter: const ProductionDailyReportFilter(status: 0),
-          ),
-        );
-        await names.ensureLoaded();
-        return [
-          for (final row in rows)
-            DraftWorkspaceRow(
-              kind: kind,
-              id: row.id,
-              category: label,
-              location: '/production/daily-reports/${row.id}',
-              billNo: row.billNo,
-              billDate: row.billDate,
-              party: row.workshopName ?? names.department(row.departmentId),
-              deletable:
-                  row.status == 0 &&
-                  !row.closed &&
-                  !row.canceled &&
-                  row.legacyId == null,
-            ),
-        ];
-      }
-      final sales = _salesType(kind);
-      if (sales != null) {
-        final repo = ref.watch(salesRepositoryProvider(sales));
-        final salesNames = ref.watch(salesMasterNameServiceProvider);
-        final rows = await loadAllDraftPages(
-          (page) => repo.list(
-            page: page,
-            size: 200,
-            filter: SalesDocFilter(
-              status: 0,
-              financeRejected: sales == SalesDocType.order ? false : null,
-              stage: sales == SalesDocType.shipment
-                  ? SalesShipmentStage.draft
-                  : null,
-              bucket: sales == SalesDocType.quote
-                  ? SalesQuoteStage.draft
-                  : null,
-            ),
-          ),
-        );
-        await salesNames.ensureLoaded();
-        return [
-          for (final row in rows)
-            if (!row.financeRejected &&
-                !row.rejected &&
-                (sales != SalesDocType.shipment ||
-                    salesShipmentStageOf(row) == SalesShipmentStage.draft))
+          );
+          await names.ensureLoaded();
+          await names.loadSupplierNames(
+            rows.map((row) => row.supplierId).whereType<String>(),
+          );
+          return [
+            for (final row in rows)
               DraftWorkspaceRow(
                 kind: kind,
                 id: row.id,
                 category: label,
-                location: '/sales/${sales.pathSegment}/${row.id}',
+                location: '/purchase/${purchase.pathSegment}/${row.id}',
                 billNo: row.billNo,
                 billDate: row.billDate,
-                party: salesNames.client(row.clientId),
-                amount: money(row.totalLocal, row.priceMasked),
-                deletable: isDeletableSalesDraftRow(row, sales),
-                expectedRevision: sales == SalesDocType.quote
-                    ? row.quoteWorkflow.reviewRevision
-                    : null,
+                party: names.supplier(row.supplierId),
+                amount: money(
+                  row.totalLocal,
+                  row.priceMasked ||
+                      !PurchaseDocConfig.by(
+                        purchase,
+                      ).canViewCommercial(permissions),
+                ),
+                deletable:
+                    row.status == 0 &&
+                    !row.closed &&
+                    !row.legacyImported &&
+                    (purchase != PurchaseDocType.order ||
+                        row.financeApproval == null ||
+                        row.financeApproval!.status == 'DRAFT'),
               ),
-        ];
-      }
-      final stockTypes = switch (kind) {
-        DraftDocKind.stockTransfer => [StockDocType.transfer],
-        DraftDocKind.stockCheck => [StockDocType.check],
-        _ => StockDocType.values,
-      };
-      final repositories = {
-        for (final type in stockTypes)
-          type: ref.watch(stockDocRepositoryProvider(type)),
-      };
-      await names.ensureLoaded();
-      return [
-        for (final entry in repositories.entries)
-          for (final row in await loadAllDraftPages(
-            (page) => entry.value.list(
+          ];
+        }
+        final subcontract = _subcontractType(kind);
+        if (subcontract != null) {
+          final repo = ref.watch(subcontractRepositoryProvider(subcontract));
+          final rows = await loadAllDraftPages(
+            (page) => repo.list(
               page: page,
               size: 200,
-              filter: const StockDocFilter(status: 0, standaloneDrafts: true),
+              filter: SubcontractDocFilter(
+                status: 0,
+                financeApproval: subcontract == SubcontractDocType.order
+                    ? 'NONE'
+                    : null,
+              ),
             ),
-          ))
-            DraftWorkspaceRow(
-              kind: kind,
-              id: row.id,
-              category: entry.key.label,
-              location: '/warehouse/${entry.key.code}/${row.id}',
-              billNo: row.billNo,
-              billDate: row.billDate,
-              party: names.warehouse(row.warehouseId),
-              amount: money(row.totalLocal),
-              stockType: entry.key,
-              deletable: row.status == 0 && !row.closed && row.legacyId == null,
+          );
+          await names.ensureLoaded();
+          await names.loadSupplierNames(
+            rows.map((row) => row.supplierId).whereType<String>(),
+          );
+          return [
+            for (final row in rows)
+              DraftWorkspaceRow(
+                kind: kind,
+                id: row.id,
+                category: label,
+                location: '/subcontract/${subcontract.pathSegment}/${row.id}',
+                billNo: row.billNo,
+                billDate: row.billDate,
+                party: names.supplier(row.supplierId),
+                amount: money(
+                  row.totalLocal,
+                  row.priceMasked ||
+                      !(superAdmin ||
+                          SubcontractDocConfig.by(
+                            subcontract,
+                          ).canViewCommercial(permissions)),
+                ),
+                deletable:
+                    row.status == 0 &&
+                    !row.closed &&
+                    !row.legacyImported &&
+                    (subcontract != SubcontractDocType.order ||
+                        row.financeApproval == null ||
+                        row.financeApproval!.status == 'DRAFT'),
+              ),
+          ];
+        }
+        final finance = _financeType(kind);
+        if (finance != null) {
+          final repo = ref.watch(financeRepositoryProvider(finance));
+          final financeNames = ref.read(financeNameServiceProvider);
+          final rows = await loadAllDraftPages(
+            (page) => repo.list(
+              page: page,
+              size: 200,
+              filter: const FinanceDocFilter(status: 0),
             ),
-      ];
-    });
+          );
+          await financeNames.ensureLoaded();
+          await financeNames.loadPartyNames(
+            clientIds: finance == FinanceDocType.receipt
+                ? rows.map((row) => row.partyId).whereType<String>()
+                : const [],
+            supplierIds: finance == FinanceDocType.payment
+                ? rows.map((row) => row.partyId).whereType<String>()
+                : const [],
+          );
+          return [
+            for (final row in rows)
+              DraftWorkspaceRow(
+                kind: kind,
+                id: row.id,
+                category: label,
+                location: '/finance/${finance.pathSegment}/${row.id}',
+                billNo: row.billNo,
+                billDate: row.billDate,
+                party: switch (finance) {
+                  FinanceDocType.receipt => financeNames.client(row.partyId),
+                  FinanceDocType.payment => financeNames.supplier(row.partyId),
+                  _ => financeNames.account(row.accountId ?? row.outAccountId),
+                },
+                amount: row.amountLocalText ?? money(row.amountLocal),
+                deletable: row.status == 0 && !row.legacyImported,
+              ),
+          ];
+        }
+        if (kind == DraftDocKind.productionPlan) {
+          final repo = ref.watch(productionPlanRepositoryProvider);
+          final rows = await loadAllDraftPages(
+            (page) => repo.list(
+              page: page,
+              size: 200,
+              filter: const ProductionPlanFilter(status: 0),
+            ),
+          );
+          await names.ensureLoaded();
+          return [
+            for (final row in rows)
+              DraftWorkspaceRow(
+                kind: kind,
+                id: row.id,
+                category: label,
+                location: '/production/plans/${row.id}',
+                billNo: row.billNo,
+                billDate: row.billDate,
+                party: row.workshopName ?? names.department(row.departmentId),
+                deletable:
+                    row.status == 0 &&
+                    !row.closed &&
+                    !row.canceled &&
+                    !row.stopped &&
+                    row.legacyId == null,
+              ),
+          ];
+        }
+        if (kind == DraftDocKind.productionDailyReport) {
+          final repo = ref.watch(productionDailyReportRepositoryProvider);
+          final rows = await loadAllDraftPages(
+            (page) => repo.list(
+              page: page,
+              size: 200,
+              filter: const ProductionDailyReportFilter(status: 0),
+            ),
+          );
+          await names.ensureLoaded();
+          return [
+            for (final row in rows)
+              DraftWorkspaceRow(
+                kind: kind,
+                id: row.id,
+                category: label,
+                location: '/production/daily-reports/${row.id}',
+                billNo: row.billNo,
+                billDate: row.billDate,
+                party: row.workshopName ?? names.department(row.departmentId),
+                deletable:
+                    row.status == 0 &&
+                    !row.closed &&
+                    !row.canceled &&
+                    row.legacyId == null,
+              ),
+          ];
+        }
+        final sales = _salesType(kind);
+        if (sales != null) {
+          final repo = ref.watch(salesRepositoryProvider(sales));
+          final salesNames = ref.read(salesMasterNameServiceProvider);
+          final rows = await loadAllDraftPages(
+            (page) => repo.list(
+              page: page,
+              size: 200,
+              filter: SalesDocFilter(
+                status: 0,
+                financeRejected: sales == SalesDocType.order ? false : null,
+                stage: sales == SalesDocType.shipment
+                    ? SalesShipmentStage.draft
+                    : null,
+                bucket: sales == SalesDocType.quote
+                    ? SalesQuoteStage.draft
+                    : null,
+              ),
+            ),
+          );
+          await salesNames.ensureLoaded();
+          await salesNames.loadClientNames(
+            rows.map((row) => row.clientId).whereType<String>(),
+          );
+          return [
+            for (final row in rows)
+              if (!row.financeRejected &&
+                  !row.rejected &&
+                  (sales != SalesDocType.shipment ||
+                      salesShipmentStageOf(row) == SalesShipmentStage.draft))
+                DraftWorkspaceRow(
+                  kind: kind,
+                  id: row.id,
+                  category: label,
+                  location: '/sales/${sales.pathSegment}/${row.id}',
+                  billNo: row.billNo,
+                  billDate: row.billDate,
+                  party: salesNames.client(row.clientId),
+                  amount: money(row.totalLocal, row.priceMasked),
+                  deletable: isDeletableSalesDraftRow(row, sales),
+                  expectedRevision: sales == SalesDocType.quote
+                      ? row.quoteWorkflow.reviewRevision
+                      : null,
+                ),
+          ];
+        }
+        final stockTypes = switch (kind) {
+          DraftDocKind.stockTransfer => [StockDocType.transfer],
+          DraftDocKind.stockCheck => [StockDocType.check],
+          _ => StockDocType.values,
+        };
+        final repositories = {
+          for (final type in stockTypes)
+            type: ref.watch(stockDocRepositoryProvider(type)),
+        };
+        await names.ensureLoaded();
+        return [
+          for (final entry in repositories.entries)
+            for (final row in await loadAllDraftPages(
+              (page) => entry.value.list(
+                page: page,
+                size: 200,
+                filter: const StockDocFilter(status: 0, standaloneDrafts: true),
+              ),
+            ))
+              DraftWorkspaceRow(
+                kind: kind,
+                id: row.id,
+                category: entry.key.label,
+                location: '/warehouse/${entry.key.code}/${row.id}',
+                billNo: row.billNo,
+                billDate: row.billDate,
+                party: names.warehouse(row.warehouseId),
+                amount: money(row.totalLocal),
+                stockType: entry.key,
+                deletable:
+                    row.status == 0 && !row.closed && row.legacyId == null,
+              ),
+        ];
+      },
+      dependencies: [
+        masterNameServiceProvider,
+        salesMasterNameServiceProvider,
+        financeNameServiceProvider,
+        exportContextEpochProvider,
+      ],
+    );
 
 Future<void> deleteDraftWorkspaceRow(
   WidgetRef ref,

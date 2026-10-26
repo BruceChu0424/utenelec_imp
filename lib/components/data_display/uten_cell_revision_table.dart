@@ -42,6 +42,7 @@ class UtenCellRevisionTable<T> extends StatelessWidget {
     final red = utenRevisionForeground(context, UtenRevisionKind.removed)!;
     final changed = {for (final row in rows) ...row.changedKeys};
     return MasterDataTableView<UtenCellRevisionRow<T>>(
+      expensiveRowMounts: false,
       embedded: true,
       columns: [
         MasterColumnDef(

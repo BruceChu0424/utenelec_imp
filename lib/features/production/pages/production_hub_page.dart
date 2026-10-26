@@ -32,6 +32,7 @@ import '../widgets/production_pending_badge.dart';
 import '../providers/production_pending_provider.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/badges/badge_scope.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class ProductionHubPage extends ConsumerWidget {
   const ProductionHubPage({super.key});
@@ -265,7 +266,7 @@ class ProductionHubPage extends ConsumerWidget {
         .toList(growable: false);
     if (visibleEntries.isEmpty) return const SizedBox.shrink();
 
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

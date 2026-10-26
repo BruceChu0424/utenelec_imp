@@ -1,5 +1,6 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
@@ -765,9 +766,12 @@ class _WarehouseQualityResultDetailPageState
               UtenInlineNotice(
                 key: const Key('warehouse-quality-detail-pre-stocked'),
                 title: '先入库后检：${detail.preStockedLineCount} 行实物已上架待检',
-                message:
-                    '品质部到库位检验；合格后系统按上架位置自动转正入库，无需再点确认入库；'
-                    '不合格的请到库位取出后在下方「不合格实物退回」登记。',
+                trailing: const UtenFieldHintIcon(
+                  dense: true,
+                  info:
+                      '品质部到库位检验；合格后系统按上架位置自动转正入库，无需再点确认入库；'
+                      '不合格的请到库位取出后在下方「不合格实物退回」登记。',
+                ),
               ),
             ],
             if (detail.containsOwnRelease && detail.items.isNotEmpty) ...[

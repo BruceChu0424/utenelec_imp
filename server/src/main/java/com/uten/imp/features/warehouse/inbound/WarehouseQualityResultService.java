@@ -363,7 +363,7 @@ public class WarehouseQualityResultService {
                 .setParameter("date_from", dateFrom)
                 .setParameter("date_to", dateTo)
                 .setParameter("limit", normalizedSize)
-                .setParameter("offset", (normalizedPage - 1) * normalizedSize);
+                .setParameter("offset", (long) (normalizedPage - 1) * normalizedSize);
         if (!trimmedBillNo.isEmpty()) data.setParameter("bill_no", trimmedBillNo);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = (List<Object[]>) data.getResultList();
@@ -436,7 +436,7 @@ public class WarehouseQualityResultService {
         String search = normalizeSearch(keyword);
         String filters = KEYWORD_WHERE + scopeFilter(warehouseScope) + lifecycleFilter(view) + statusFilter(workStatus) + DATE_WHERE;
         List<Map<String, Object>> buckets = NativeFacets.rowsOf(
-                aggregateQuery(type, search, workStatus, warehouseScope, """
+                aggregateQuery(type, search, workStatus, warehouseScope, "billNo", """
                                 SELECT COALESCE(scope.bill_no, ''), COUNT(*)
                                 %s%s
                                 GROUP BY 1 ORDER BY 1
@@ -666,7 +666,13 @@ public class WarehouseQualityResultService {
 
     private Query aggregateQuery(
             String type, String search, String workStatus, WarehouseTaskScope warehouseScope, String bodySql) {
-        Query query = em.createNativeQuery(ITEM_CTE + bodySql)
+        return aggregateQuery(type, search, workStatus, warehouseScope, null, bodySql);
+    }
+
+    private Query aggregateQuery(String type, String search, String workStatus,
+            WarehouseTaskScope warehouseScope, String facetField, String bodySql) {
+        Query query = (facetField == null ? em.createNativeQuery(ITEM_CTE + bodySql)
+                : NativeFacets.query(em, facetField, ITEM_CTE + bodySql))
                 .setParameter("type", type)
                 .setParameter("keyword", search);
         if (!workStatus.isEmpty()) {

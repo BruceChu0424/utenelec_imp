@@ -11,8 +11,16 @@ import '../../../shared/models/paged_result.dart';
 import '../models/client_access_models.dart';
 import '../models/client_node.dart';
 import '../models/master_facet.dart';
+import '../models/master_search_context.dart';
 
 abstract interface class ClientRepository {
+  Future<MasterSearchContext> searchContext(
+    String keyword, {
+    int page = 1,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
+  });
+
   /// 某分类（子树）下的客户分页。
   ///
   /// [keyword] 模糊匹配名称/编码/全称/联系人/手机；[filters] 字段精确筛选，
@@ -83,6 +91,25 @@ abstract interface class ClientRepository {
 class DioClientRepository implements ClientRepository {
   DioClientRepository(this.api);
   final ApiClient api;
+
+  @override
+  Future<MasterSearchContext> searchContext(
+    String keyword, {
+    int page = 1,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
+  }) async {
+    final json = await api.post(
+      '${ApiEndpoints.clients}/search-context',
+      query: {'page': page, 'size': 100},
+      body: {
+        'keyword': keyword.trim(),
+        'excludeLegacyFinanceStub': excludeLegacyFinanceStub,
+        'selectableOnly': selectableOnly,
+      },
+    );
+    return MasterSearchContext.fromJson(json);
+  }
 
   @override
   Future<PagedResult<ClientListItem>> list(

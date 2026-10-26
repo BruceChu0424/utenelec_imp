@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/currency_display.dart';
@@ -113,30 +114,9 @@ class _FinanceAccountPickerPanelState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            UtenSpacing.s16,
-            UtenSpacing.s8,
-            UtenSpacing.s16,
-            UtenSpacing.s8,
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  widget.title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: '关闭',
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close_rounded, size: 20),
-              ),
-            ],
-          ),
+        UtenPanelHeader(
+          title: widget.title,
+          onClose: () => Navigator.pop(context),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),

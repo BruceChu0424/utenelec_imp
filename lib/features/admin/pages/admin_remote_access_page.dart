@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
@@ -210,193 +211,205 @@ class _RemoteAccessSessionState extends ConsumerState<_RemoteAccessSession> {
         ],
       ),
       body: UtenContentContainer.narrow(
-        child: ListView(
+        child: UtenPageEdgePadding.scroll(
           padding: const EdgeInsets.all(UtenSpacing.s16),
-          children: [
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Text(
-                  _error!,
-                  key: const Key('remote-access-error'),
-                  style: TextStyle(color: theme.colorScheme.error),
+          builder: (context, pagePadding) => ListView(
+            padding: pagePadding,
+            children: [
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Text(
+                    _error!,
+                    key: const Key('remote-access-error'),
+                    style: TextStyle(color: theme.colorScheme.error),
+                  ),
                 ),
-              ),
-            if (status == null)
-              Center(
-                child: _busy
-                    ? const CircularProgressIndicator()
-                    : UtenButton(onPressed: _load, child: Text(t('retry'))),
-              ),
-            if (status != null) ...[
-              SettingsSection(
-                title: t('connection'),
-                children: [
-                  _StatusRow(t('currentPath'), t(status.currentAccessChannel)),
-                  _StatusRow(
-                    t('remote'),
-                    t(
-                      status.remoteChannelConfigured
-                          ? 'configured'
-                          : 'notConfigured',
+              if (status == null)
+                Center(
+                  child: _busy
+                      ? const CircularProgressIndicator()
+                      : UtenButton(onPressed: _load, child: Text(t('retry'))),
+                ),
+              if (status != null) ...[
+                SettingsSection(
+                  title: t('connection'),
+                  children: [
+                    _StatusRow(
+                      t('currentPath'),
+                      t(status.currentAccessChannel),
                     ),
-                  ),
-                  _StatusRow(
-                    t('observed'),
-                    DisplayDateTime.beijing(
-                      status.observedAt.toIso8601String(),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Text(
-                      t('channelHint'),
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              SettingsSection(
-                title: t('access'),
-                children: [
-                  if (status.currentAccessChannel != 'local')
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Text(t('policyOfficeOnly')),
-                    ),
-                  SwitchListTile.adaptive(
-                    key: const Key('remote-access-enabled'),
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(t('enabled')),
-                    subtitle: Text(t('enabledHint')),
-                    value: _enabled,
-                    onChanged: _busy || status.currentAccessChannel != 'local'
-                        ? null
-                        : (value) => setState(() => _enabled = value),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: UtenInput(
-                      key: const Key('remote-access-limit'),
-                      label: t('maxUsers'),
-                      info: t('maxHint'),
-                      controller: _limit,
-                      keyboardType: TextInputType.number,
-                      enabled: !_busy && status.currentAccessChannel == 'local',
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(6),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: UtenButton(
-                        key: const Key('remote-access-save'),
-                        onPressed:
-                            _busy || status.currentAccessChannel != 'local'
-                            ? null
-                            : _save,
-                        isLoading: _busy,
-                        child: Text(t('save')),
+                    _StatusRow(
+                      t('remote'),
+                      t(
+                        status.remoteChannelConfigured
+                            ? 'configured'
+                            : 'notConfigured',
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              SettingsSection(
-                title:
-                    '${t('people')} ${status.authorizedCount}/${status.policy.maxUsers}',
-                children: [
-                  if (status.authorizedUsers.isEmpty)
+                    _StatusRow(
+                      t('observed'),
+                      DisplayDateTime.beijing(
+                        status.observedAt.toIso8601String(),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        t('channelHint'),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                SettingsSection(
+                  title: t('access'),
+                  children: [
+                    if (status.currentAccessChannel != 'local')
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Text(t('policyOfficeOnly')),
+                      ),
+                    SwitchListTile.adaptive(
+                      key: const Key('remote-access-enabled'),
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(t('enabled')),
+                      subtitle: Text(t('enabledHint')),
+                      value: _enabled,
+                      onChanged: _busy || status.currentAccessChannel != 'local'
+                          ? null
+                          : (value) => setState(() => _enabled = value),
+                    ),
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Text(t('noPeople')),
+                      child: UtenInput(
+                        key: const Key('remote-access-limit'),
+                        label: t('maxUsers'),
+                        info: t('maxHint'),
+                        controller: _limit,
+                        keyboardType: TextInputType.number,
+                        enabled:
+                            !_busy && status.currentAccessChannel == 'local',
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(6),
+                        ],
+                      ),
                     ),
-                  for (final user in status.authorizedUsers)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final identity = Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                user.displayName.isEmpty
-                                    ? user.username
-                                    : user.displayName,
-                                style: theme.textTheme.titleSmall,
-                              ),
-                              Text(
-                                '${user.username} · ${t(user.mfaEnabled ? 'mfaBound' : 'mfaMissing')}',
-                                style: theme.textTheme.bodySmall,
-                              ),
-                            ],
-                          );
-                          final actions = Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              if (user.mfaEnabled &&
-                                  status.currentAccessChannel == 'local')
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: UtenButton(
+                          key: const Key('remote-access-save'),
+                          onPressed:
+                              _busy || status.currentAccessChannel != 'local'
+                              ? null
+                              : _save,
+                          isLoading: _busy,
+                          child: Text(t('save')),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                SettingsSection(
+                  title:
+                      '${t('people')} ${status.authorizedCount}/${status.policy.maxUsers}',
+                  children: [
+                    if (status.authorizedUsers.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Text(t('noPeople')),
+                      ),
+                    for (final user in status.authorizedUsers)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final identity = Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  user.displayName.isEmpty
+                                      ? user.username
+                                      : user.displayName,
+                                  style: theme.textTheme.titleSmall,
+                                ),
+                                Text(
+                                  '${user.username} · ${t(user.mfaEnabled ? 'mfaBound' : 'mfaMissing')}',
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ],
+                            );
+                            final actions = Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                if (user.mfaEnabled &&
+                                    status.currentAccessChannel == 'local')
+                                  UtenButton(
+                                    type: UtenButtonType.ghost,
+                                    isLoading: _busy,
+                                    onPressed: _busy
+                                        ? null
+                                        : () => _reset(user),
+                                    child: Text(t('reset')),
+                                  ),
                                 UtenButton(
+                                  key: ValueKey('remote-revoke-${user.id}'),
                                   type: UtenButtonType.ghost,
                                   isLoading: _busy,
-                                  onPressed: _busy ? null : () => _reset(user),
-                                  child: Text(t('reset')),
+                                  onPressed: _busy ? null : () => _revoke(user),
+                                  child: Text(t('revoke')),
                                 ),
-                              UtenButton(
-                                key: ValueKey('remote-revoke-${user.id}'),
-                                type: UtenButtonType.ghost,
-                                isLoading: _busy,
-                                onPressed: _busy ? null : () => _revoke(user),
-                                child: Text(t('revoke')),
-                              ),
-                            ],
-                          );
-                          return constraints.maxWidth < 620
-                              ? Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    identity,
-                                    const SizedBox(height: 8),
-                                    actions,
-                                  ],
-                                )
-                              : Row(
-                                  children: [
-                                    Expanded(child: identity),
-                                    const SizedBox(width: 16),
-                                    actions,
-                                  ],
-                                );
-                        },
+                              ],
+                            );
+                            return constraints.maxWidth < 620
+                                ? Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      identity,
+                                      const SizedBox(height: 8),
+                                      actions,
+                                    ],
+                                  )
+                                : Row(
+                                    children: [
+                                      Expanded(child: identity),
+                                      const SizedBox(width: 16),
+                                      actions,
+                                    ],
+                                  );
+                          },
+                        ),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: UtenButton(
+                          type: UtenButtonType.ghost,
+                          onPressed: _busy
+                              ? null
+                              : () async {
+                                  await context.push(
+                                    RouteName.adminPermissions,
+                                  );
+                                  if (_current) await _load();
+                                },
+                          child: Text(t('managePeople')),
+                        ),
                       ),
                     ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: UtenButton(
-                        type: UtenButtonType.ghost,
-                        onPressed: _busy
-                            ? null
-                            : () async {
-                                await context.push(RouteName.adminPermissions);
-                                if (_current) await _load();
-                              },
-                        child: Text(t('managePeople')),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

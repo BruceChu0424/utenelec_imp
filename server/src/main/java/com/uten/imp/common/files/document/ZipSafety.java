@@ -5,6 +5,10 @@ import com.uten.imp.common.web.ErrorCode;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -48,6 +52,54 @@ public final class ZipSafety {
     /** Only evidence readers may retain external-link metadata; they must never evaluate formulas or open links. */
     public static List<String> inspectSpreadsheetEvidence(byte[] zip) {
         return inspectSpreadsheet(zip, true);
+    }
+
+    /**
+     * Native Office preview accepts more document features than table extraction, but shares the
+     * same path/duplicate validation and bounds actual expansion before invoking the native parser.
+     * No entries are extracted, and ZIP size declarations are never trusted.
+     */
+    public static void inspectOfficePreview(Path file, long maxExpandedBytes, int maxEntries, Duration timeout)
+            throws IOException {
+        byte[] magic;
+        try (InputStream input = Files.newInputStream(file)) { magic = input.readNBytes(4); }
+        if (magic.length < 4 || magic[0] != 'P' || magic[1] != 'K') return;
+        long deadline = System.nanoTime() + timeout.toNanos();
+        long[] expanded = {0};
+        Set<String> names = new HashSet<>();
+        byte[] buffer = new byte[65536];
+        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(file))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                validateName(entry.getName(), names);
+                if (names.size() > maxEntries) throw rejected("文档压缩条目过多");
+                if (entry.getSize() > maxExpandedBytes - expanded[0]) throw rejected("文档展开后过大");
+                var bounded = new java.io.FilterInputStream(zip) {
+                    @Override public int read() throws IOException {
+                        byte[] one = new byte[1]; return read(one, 0, 1) < 0 ? -1 : one[0] & 255;
+                    }
+                    @Override public int read(byte[] bytes, int offset, int length) throws IOException {
+                        int count = super.read(bytes, offset,
+                                (int) Math.min(length, maxExpandedBytes - expanded[0] + 1));
+                        if (count > 0) expanded[0] += count;
+                        if (expanded[0] > maxExpandedBytes) throw rejected("文档展开后过大");
+                        if (Thread.currentThread().isInterrupted() || System.nanoTime() - deadline >= 0) {
+                            throw rejected("文档安全检查超时");
+                        }
+                        return count;
+                    }
+                    @Override public void close() { /* The outer ZIP traversal owns the stream. */ }
+                };
+                String lower = entry.getName().toLowerCase(Locale.ROOT);
+                if (lower.endsWith(".rels")) OfficePreviewXmlSafety.inspect(bounded, OfficePreviewXmlSafety.Kind.RELATIONSHIPS);
+                else if (lower.equals("content.xml") || lower.equals("styles.xml")) {
+                    OfficePreviewXmlSafety.inspect(bounded, OfficePreviewXmlSafety.Kind.OPEN_DOCUMENT);
+                }
+                int count;
+                while ((count = bounded.read(buffer)) != -1) { /* validate bytes not consumed by the XML parser */ }
+            }
+        }
+        if (names.isEmpty()) throw rejected("文档压缩结构无效");
     }
 
     private static List<String> inspectSpreadsheet(byte[] zip, boolean evidenceOnly) {

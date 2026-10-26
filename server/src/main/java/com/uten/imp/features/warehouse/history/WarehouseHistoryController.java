@@ -236,7 +236,7 @@ public class WarehouseHistoryController {
 
     /** 单号 facets（2026-09-25 单号列统一）：{billNo/sourceDocNo:[各单号]}——
      *  同列表过滤口径（不含单号列自身值筛选）。 */
-    @GetMapping("/purchase-receipts/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/purchase-receipts/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('" + WarehouseHistoryPermissions.PURCHASE_RECEIPT_VIEW + "')")
     public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> purchaseReceiptFacets(
             @RequestParam(required = false) String keyword,
@@ -248,7 +248,7 @@ public class WarehouseHistoryController {
     }
 
     /** 单号 facets（2026-09-25 单号列统一）：{billNo/sourceDocNo:[各单号]}。 */
-    @GetMapping("/subcontract-receipts/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/subcontract-receipts/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('" + WarehouseHistoryPermissions.SUBCONTRACT_RECEIPT_VIEW + "')")
     public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> subcontractReceiptFacets(
             @RequestParam(required = false) String keyword,
@@ -260,7 +260,7 @@ public class WarehouseHistoryController {
     }
 
     /** 单号 facets（2026-09-25 单号列统一）：{billNo/sourceDocNo:[各单号]}。 */
-    @GetMapping("/subcontract-material-issues/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/subcontract-material-issues/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('" + WarehouseHistoryPermissions.SUBCONTRACT_MATERIAL_ISSUE_VIEW + "')")
     public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> subcontractMaterialIssueFacets(
             @RequestParam(required = false) String keyword,
@@ -272,7 +272,7 @@ public class WarehouseHistoryController {
     }
 
     /** 单号 facets（2026-09-25 单号列统一）：{billNo/sourceDocNo:[各单号]}。 */
-    @GetMapping("/subcontract-returns/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/subcontract-returns/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('" + WarehouseHistoryPermissions.SUBCONTRACT_RETURN_VIEW + "')")
     public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> subcontractReturnFacets(
             @RequestParam(required = false) String keyword,
@@ -284,7 +284,7 @@ public class WarehouseHistoryController {
     }
 
     /** 单号 facets（2026-09-25 单号列统一）：{billNo/sourceDocNo:[各单号]}。 */
-    @GetMapping("/subcontract-material-returns/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/subcontract-material-returns/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('" + WarehouseHistoryPermissions.SUBCONTRACT_MATERIAL_RETURN_VIEW + "')")
     public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> subcontractMaterialReturnFacets(
             @RequestParam(required = false) String keyword,
@@ -296,7 +296,7 @@ public class WarehouseHistoryController {
     }
 
     /** 单号 facets（2026-09-25 单号列统一）：{billNo/sourceDocNo:[各单号]}。 */
-    @GetMapping("/subcontract-wastes/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/subcontract-wastes/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('" + WarehouseHistoryPermissions.SUBCONTRACT_WASTE_VIEW + "')")
     public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> subcontractWasteFacets(
             @RequestParam(required = false) String keyword,

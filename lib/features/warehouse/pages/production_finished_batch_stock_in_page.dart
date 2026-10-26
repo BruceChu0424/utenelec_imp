@@ -36,6 +36,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_finished_inbound_task.dart';
 import '../models/warehouse_task_item_selection.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class ProductionFinishedBatchStockInPage extends ConsumerStatefulWidget {
   const ProductionFinishedBatchStockInPage({
@@ -485,7 +486,7 @@ class _ProductionFinishedBatchStockInPageState
   }
 
   Widget _buildTable(List<ProductionFinishedInboundTask> rows) {
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.symmetric(
         horizontal: UtenSpacing.s16,
         vertical: UtenSpacing.s12,
@@ -505,6 +506,7 @@ class _ProductionFinishedBatchStockInPageState
           ],
         ),
         body: MasterDataTableView<ProductionFinishedInboundTask>(
+          expensiveRowMounts: false,
           tableKey:
               'features.warehouse.pages.production_finished_batch_stock_in_page.ProductionFinishedBatchStockInPageState._buildTable.1',
           key: const Key('production-finished-batch-stock-in-table'),

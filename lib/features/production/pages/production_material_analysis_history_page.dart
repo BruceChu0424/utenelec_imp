@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -20,6 +21,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_material_analysis.dart';
@@ -38,7 +41,8 @@ class ProductionMaterialAnalysisHistoryPage extends ConsumerStatefulWidget {
 }
 
 class _ProductionMaterialAnalysisHistoryPageState
-    extends ConsumerState<ProductionMaterialAnalysisHistoryPage> {
+    extends ConsumerState<ProductionMaterialAnalysisHistoryPage>
+    with ScopedPagedReadViewMixin<ProductionMaterialAnalysisHistoryPage> {
   static const _statuses = <String, String>{
     'ACTIVE': '进行中',
     'PARTIALLY_PLANNED': '部分已下达，剩余待料',
@@ -58,11 +62,23 @@ class _ProductionMaterialAnalysisHistoryPageState
 
   final _search = TextEditingController();
   PagedResult<MaterialAnalysisListItem>? _page;
+  final _tableRows = MasterDataTableRowsController<MaterialAnalysisListItem>();
+  Object? _acceptedReadQuery;
   String _status = '';
   String _sourceType = '';
   bool _loading = false;
   int _loadGeneration = 0;
   String? _error;
+
+  @override
+  void scopedPagedReadOwnerChanged() => setState(() {
+    _loadGeneration++;
+    _tableRows.update(const []);
+    _acceptedReadQuery = null;
+    _page = null;
+    _error = scopedPagedReadRejection?.message;
+    _loading = false;
+  });
 
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
   String? _myLocation;
@@ -79,37 +95,65 @@ class _ProductionMaterialAnalysisHistoryPageState
     super.dispose();
   }
 
-  Future<void> _load({int page = 1}) async {
+  Future<void> _load({int? page, bool useCache = false}) async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
+    final ownerCurrent = captureReadOwner(ref);
+    final repository = ref.read(productionPlanRepositoryProvider);
+    final keyword = _search.text;
+    final status = _status;
+    final sourceType = _sourceType;
+    final readQuery = (repository, keyword, status, sourceType);
+    page ??= _acceptedReadQuery == readQuery
+        ? _tableRows.visiblePage ?? _page?.page ?? 1
+        : 1;
+    bool current() =>
+        mounted && generation == _loadGeneration && ownerCurrent();
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final namesReady = ref
-          .read(masterNameServiceProvider)
-          .ensureCommonLoaded();
-      final result = await ref
-          .read(productionPlanRepositoryProvider)
-          .materialAnalysisList(
-            page: page,
-            keyword: _search.text,
-            status: _status.isEmpty ? null : _status,
-            sourceType: _sourceType.isEmpty ? null : _sourceType,
-          );
-      await namesReady;
-      if (!mounted || generation != _loadGeneration) return;
+      final rows = readScopedPage<MaterialAnalysisListItem>(
+        page,
+        query: (repository, keyword, status, sourceType),
+        currentQuery: () => (
+          ref.read(productionPlanRepositoryProvider),
+          _search.text,
+          _status,
+          _sourceType,
+        ),
+        useCache: useCache,
+        fetchPage: (target) => repository.materialAnalysisList(
+          page: target,
+          keyword: keyword,
+          status: status.isEmpty ? null : status,
+          sourceType: sourceType.isEmpty ? null : sourceType,
+        ),
+      );
+      unawaited(_warmNames(current));
+      final result = await rows;
+      if (!current()) return;
       setState(() {
         _page = result;
+        _acceptedReadQuery = readQuery;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted || generation != _loadGeneration) return;
+      if (!current()) return;
       setState(() {
         _loading = false;
         _error = productionErrorMessage(error, fallback: '物料分析记录加载失败，请稍后重试');
       });
+    }
+  }
+
+  Future<void> _warmNames(bool Function() current) async {
+    try {
+      await ref.read(masterNameServiceProvider).ensureCommonLoaded();
+      if (current()) setState(() {});
+    } catch (_) {
+      // 行内已有名称/ID可回退；字典失败不能阻塞已返回的记录。
     }
   }
 
@@ -134,7 +178,7 @@ class _ProductionMaterialAnalysisHistoryPageState
       context,
       RouteName.productionMaterialAnalysis,
     );
-    ref.onPageResume(_myLocation!, () => _load(page: _page?.page ?? 1));
+    ref.onPageResume(_myLocation!, () => _load());
     return Scaffold(
       appBar: UtenAppBar(
         title: '物料分析记录',
@@ -159,7 +203,7 @@ class _ProductionMaterialAnalysisHistoryPageState
               tooltip: '生产计划历史',
               onPressed: _loading
                   ? null
-                  : () => context.push(RouteName.productionPlanList),
+                  : () => pushPage(context, RouteName.productionPlanList),
               icon: const Icon(Icons.history_rounded),
             )
           else
@@ -168,7 +212,7 @@ class _ProductionMaterialAnalysisHistoryPageState
               icon: Icons.history_rounded,
               onPressed: _loading
                   ? null
-                  : () => context.push(RouteName.productionPlanList),
+                  : () => pushPage(context, RouteName.productionPlanList),
               child: const Text('生产计划历史'),
             ),
         ],
@@ -278,10 +322,10 @@ class _ProductionMaterialAnalysisHistoryPageState
 
   Widget _content(ThemeData theme, bool compact) {
     final page = _page;
-    if (_loading && page == null) {
+    if (compact && _loading && page == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_error != null && page == null) {
+    if (compact && _error != null && page == null) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -307,6 +351,8 @@ class _ProductionMaterialAnalysisHistoryPageState
     final items = page?.items ?? const <MaterialAnalysisListItem>[];
     if (compact) return _cards(theme, items);
     return MasterDataTableView<MaterialAnalysisListItem>(
+      rowsController: _tableRows,
+      expensiveRowMounts: false,
       tableKey:
           'features.production.pages.production_material_analysis_history_page.ProductionMaterialAnalysisHistoryPageState._content.1',
       key: const Key('analysis-history-table'),
@@ -319,12 +365,12 @@ class _ProductionMaterialAnalysisHistoryPageState
       onRowTap: _open,
       isLoading: _loading,
       error: _error,
-      onRetry: () => _load(page: page?.page ?? 1),
+      onRetry: () => _load(),
       emptyMessage: '没有符合条件的物料分析记录',
       currentPage: page?.page ?? 1,
       totalPages: page?.totalPages ?? 0,
       paginationScope: (_search.text, _status, _sourceType),
-      onPageChange: (value) => _load(page: value),
+      onPageChange: (value) => _load(page: value, useCache: true),
     );
   }
 
@@ -549,7 +595,7 @@ class _ProductionMaterialAnalysisHistoryPageState
         constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
         tooltip: '上一页',
         onPressed: !_loading && page.page > 1
-            ? () => _load(page: page.page - 1)
+            ? () => _load(page: page.page - 1, useCache: true)
             : null,
         icon: const Icon(Icons.chevron_left_rounded),
       ),
@@ -561,7 +607,7 @@ class _ProductionMaterialAnalysisHistoryPageState
         constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
         tooltip: '下一页',
         onPressed: !_loading && page.page < page.totalPages
-            ? () => _load(page: page.page + 1)
+            ? () => _load(page: page.page + 1, useCache: true)
             : null,
         icon: const Icon(Icons.chevron_right_rounded),
       ),

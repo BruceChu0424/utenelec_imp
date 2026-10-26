@@ -23,6 +23,7 @@
 // 两张表只各自提供：列链接（LayerLink）、列宽/列名取值、「该列可否隐藏」判定
 // （如「至少留一列」「必填列锁定」）与「松手隐藏」回调。
 
+import '../inputs/uten_dropdown_scroll_scope.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -32,6 +33,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../feedback/uten_overlay_lifecycle.dart';
 import '../buttons/uten_button.dart';
 import '../data_display/uten_table_text_selection.dart';
 import 'uten_table_horizontal_scroll_controller.dart';
@@ -448,6 +450,7 @@ class _UtenColumnChooserButtonState extends State<UtenColumnChooserButton> {
   final LayerLink _link = LayerLink();
   final ScrollController _scroll = ScrollController();
   OverlayEntry? _overlay;
+  UtenOverlayLifecycle? _overlayLifecycle;
 
   /// 弹层内展示顺序：order 优先（未知 key 忽略、缺列按默认序补齐），否则 entries 原序。
   List<UtenColumnChooserEntry> get _orderedEntries {
@@ -468,9 +471,13 @@ class _UtenColumnChooserButtonState extends State<UtenColumnChooserButton> {
     if (_overlay != null) return;
     _overlay = OverlayEntry(builder: _buildOverlay);
     Overlay.of(context, rootOverlay: true).insert(_overlay!);
+    _overlayLifecycle = UtenOverlayLifecycle(onUnavailable: _close);
+    _overlayLifecycle!.attach(context);
   }
 
   void _close() {
+    _overlayLifecycle?.dispose();
+    _overlayLifecycle = null;
     _overlay?.remove();
     _overlay = null;
   }
@@ -508,6 +515,12 @@ class _UtenColumnChooserButtonState extends State<UtenColumnChooserButton> {
         if (mounted) _overlay?.markNeedsBuild();
       });
     }
+  }
+
+  @override
+  void deactivate() {
+    _close();
+    super.deactivate();
   }
 
   @override
@@ -569,9 +582,7 @@ class _UtenColumnChooserButtonState extends State<UtenColumnChooserButton> {
                   maxHeight: maxHeight,
                   maxWidth: 260,
                 ),
-                child: Scrollbar(
-                  controller: _scroll,
-                  thumbVisibility: entries.length > 8,
+                child: UtenDropdownScrollScope(
                   child: _buildList(
                     theme,
                     entries,
@@ -1135,7 +1146,7 @@ List<String> _spliceVisibleIntoOrder(List<String> order, List<String> seq) {
 /// 并在该指针抬键的微任务里 removeAny 掉系统「全选/复制」工具条——此前右击表头
 /// 弹的就是那个工具条。条目为空时同样压制系统工具条但不弹自家菜单（未开启表头
 /// 设置的编辑表头右键 = 无菜单、也无系统工具条）。
-class UtenColumnHeaderMenuRegion extends StatelessWidget {
+class UtenColumnHeaderMenuRegion extends StatefulWidget {
   const UtenColumnHeaderMenuRegion({
     super.key,
     required this.entriesBuilder,
@@ -1145,9 +1156,30 @@ class UtenColumnHeaderMenuRegion extends StatelessWidget {
   final List<UtenContextMenuEntry> Function() entriesBuilder;
   final Widget child;
 
+  @override
+  State<UtenColumnHeaderMenuRegion> createState() =>
+      _UtenColumnHeaderMenuRegionState();
+}
+
+class _UtenColumnHeaderMenuRegionState
+    extends State<UtenColumnHeaderMenuRegion> {
+  final _menuController = UtenContextMenuController();
+
   /// 本次右键手势的指针 id（静态：开菜单会触发宿主 setState 重建换掉闭包；
   /// 同一时刻只有一路右键手势，单值即可）。
   static int? _secondaryPointerInFlight;
+
+  @override
+  void deactivate() {
+    _menuController.dismiss();
+    super.deactivate();
+  }
+
+  @override
+  void dispose() {
+    _menuController.dismiss();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1156,19 +1188,20 @@ class UtenColumnHeaderMenuRegion extends StatelessWidget {
       onPointerDown: (event) {
         if (!claimUtenContextMenuPointer(event)) return;
         _secondaryPointerInFlight = event.pointer;
-        final entries = entriesBuilder();
+        final entries = widget.entriesBuilder();
         if (entries.isEmpty) return;
         unawaited(
           showUtenContextMenu(
             context,
             globalPosition: event.position,
             entries: entries,
+            controller: _menuController,
           ),
         );
       },
       onPointerUp: (event) => _dismissSystemContextMenu(event.pointer),
       onPointerCancel: (event) => _dismissSystemContextMenu(event.pointer),
-      child: child,
+      child: widget.child,
     );
   }
 
@@ -1278,6 +1311,23 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
 
   OverlayEntry? _columnDragGhostEntry;
   OverlayEntry? _reorderGhostEntry;
+  UtenOverlayLifecycle? _columnDragLifecycle;
+  BuildContext? _columnDragOwnerContext;
+
+  void _watchColumnDrag() {
+    if (_columnDragLifecycle != null) return;
+    _columnDragLifecycle = UtenOverlayLifecycle(
+      onUnavailable: columnHeaderDragReset,
+    );
+    _columnDragLifecycle!.attach(_columnDragOwnerContext ?? context);
+  }
+
+  void _stopColumnDragLifecycleIfIdle() {
+    if (_columnDragGhostEntry != null || _reorderGhostEntry != null) return;
+    _columnDragLifecycle?.dispose();
+    _columnDragLifecycle = null;
+    _columnDragOwnerContext = null;
+  }
 
   void columnDragHideStart(int index) {
     if (columnDragHide.value.index != null) return; // 单指：已有拖拽则忽略后指
@@ -1298,6 +1348,10 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
   }
 
   void columnDragHideEnd(int index) {
+    if (_columnDragLifecycle?.isAvailable == false) {
+      columnHeaderDragReset();
+      return;
+    }
     final s = columnDragHide.value;
     if (s.index != index) return; // 非当前手势
     final willHide = s.armed;
@@ -1349,6 +1403,10 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
   }
 
   void columnReorderEnd() {
+    if (_columnDragLifecycle?.isAvailable == false) {
+      columnHeaderDragReset();
+      return;
+    }
     final drag = columnReorder.value;
     columnReorder.value = const UtenColumnReorderDrag(); // 先清态卸浮层
     _reorderAccumDx = 0;
@@ -1434,11 +1492,13 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
     final overlay = Overlay.of(context, rootOverlay: true);
     _reorderGhostEntry = OverlayEntry(builder: _buildReorderGhost);
     overlay.insert(_reorderGhostEntry!);
+    _watchColumnDrag();
   }
 
   void _removeReorderGhost() {
     _reorderGhostEntry?.remove();
     _reorderGhostEntry = null;
+    _stopColumnDragLifecycleIfIdle();
   }
 
   /// 排序跟手浮层：与隐藏浮层同一视觉语言（root Overlay 最顶层、列宽对齐、阴影
@@ -1477,11 +1537,13 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
     final overlay = Overlay.of(context, rootOverlay: true);
     _columnDragGhostEntry = OverlayEntry(builder: _buildColumnDragGhost);
     overlay.insert(_columnDragGhostEntry!);
+    _watchColumnDrag();
   }
 
   void _removeColumnDragGhost() {
     _columnDragGhostEntry?.remove();
     _columnDragGhostEntry = null;
+    _stopColumnDragLifecycleIfIdle();
   }
 
   /// 跟手浮层：root Overlay 最顶层 → 不被表头/表体裁切、压在整表之上，拖出表头也
@@ -1548,34 +1610,42 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
   /// （拖出去又拖回原位会误判 armed）——start=down 让首拍 delta 从按下点起算，
   /// 往返位移精确归零（2026-09-05 实测）。
   Widget columnHeaderGestureArea(int index, Widget child) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      dragStartBehavior: DragStartBehavior.down,
-      onVerticalDragStart: columnHeaderHideEnabled
-          ? (_) => columnDragHideStart(index)
-          : null,
-      onVerticalDragUpdate: columnHeaderHideEnabled
-          ? (d) => columnDragHideUpdate(index, d.delta.dy)
-          : null,
-      onVerticalDragEnd: columnHeaderHideEnabled
-          ? (_) => columnDragHideEnd(index)
-          : null,
-      onVerticalDragCancel: columnHeaderHideEnabled
-          ? () => columnHeaderDragReset()
-          : null,
-      onHorizontalDragStart: columnHeaderReorderEnabled
-          ? (_) => columnReorderStart(index)
-          : null,
-      onHorizontalDragUpdate: columnHeaderReorderEnabled
-          ? (d) => columnReorderUpdateDelta(d.delta.dx)
-          : null,
-      onHorizontalDragEnd: columnHeaderReorderEnabled
-          ? (_) => columnReorderEnd()
-          : null,
-      onHorizontalDragCancel: columnHeaderReorderEnabled
-          ? columnReorderCancel
-          : null,
-      child: child,
+    return Builder(
+      builder: (gestureContext) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        dragStartBehavior: DragStartBehavior.down,
+        onVerticalDragStart: columnHeaderHideEnabled
+            ? (_) {
+                _columnDragOwnerContext = gestureContext;
+                columnDragHideStart(index);
+              }
+            : null,
+        onVerticalDragUpdate: columnHeaderHideEnabled
+            ? (d) => columnDragHideUpdate(index, d.delta.dy)
+            : null,
+        onVerticalDragEnd: columnHeaderHideEnabled
+            ? (_) => columnDragHideEnd(index)
+            : null,
+        onVerticalDragCancel: columnHeaderHideEnabled
+            ? () => columnHeaderDragReset()
+            : null,
+        onHorizontalDragStart: columnHeaderReorderEnabled
+            ? (_) {
+                _columnDragOwnerContext = gestureContext;
+                columnReorderStart(index);
+              }
+            : null,
+        onHorizontalDragUpdate: columnHeaderReorderEnabled
+            ? (d) => columnReorderUpdateDelta(d.delta.dx)
+            : null,
+        onHorizontalDragEnd: columnHeaderReorderEnabled
+            ? (_) => columnReorderEnd()
+            : null,
+        onHorizontalDragCancel: columnHeaderReorderEnabled
+            ? columnReorderCancel
+            : null,
+        child: child,
+      ),
     );
   }
 
@@ -1615,6 +1685,18 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
         ),
       ],
     );
+  }
+
+  @override
+  void deactivate() {
+    // Remove root entries now; retained header listeners must not rebuild while
+    // GlobalKey deactivation/finalization holds the element tree lock.
+    _removeColumnDragGhost();
+    _removeReorderGhost();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) columnHeaderDragReset();
+    });
+    super.deactivate();
   }
 
   @override

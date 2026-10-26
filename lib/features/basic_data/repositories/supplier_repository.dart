@@ -10,8 +10,15 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/master_facet.dart';
 import '../models/supplier_node.dart';
+import '../models/master_search_context.dart';
 
 abstract interface class SupplierRepository {
+  Future<MasterSearchContext> searchContext(
+    String keyword, {
+    int page = 1,
+    bool selectableOnly = false,
+  });
+
   /// 某分类（子树）下的供应商分页。
   ///
   /// [keyword] 模糊匹配名称/全称/联系人/法人/地区/手机；[filters] 字段精确筛选，
@@ -66,6 +73,20 @@ abstract interface class SupplierRepository {
 class DioSupplierRepository implements SupplierRepository {
   DioSupplierRepository(this.api);
   final ApiClient api;
+
+  @override
+  Future<MasterSearchContext> searchContext(
+    String keyword, {
+    int page = 1,
+    bool selectableOnly = false,
+  }) async {
+    final json = await api.post(
+      '${ApiEndpoints.suppliers}/search-context',
+      query: {'page': page, 'size': 100},
+      body: {'keyword': keyword.trim(), 'selectableOnly': selectableOnly},
+    );
+    return MasterSearchContext.fromJson(json);
+  }
 
   @override
   Future<PagedResult<SupplierListItem>> list(

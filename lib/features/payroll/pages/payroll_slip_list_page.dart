@@ -16,15 +16,11 @@
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/retained_async_page.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../shared/providers/master_name_provider.dart'
-    show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/data_display/uten_status_cell_color.dart';
-import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -47,54 +43,59 @@ class PayrollSlipListPage extends ConsumerStatefulWidget {
 }
 
 class _PayrollSlipListPageState extends ConsumerState<PayrollSlipListPage> {
+  final _tableRows = MasterDataTableRowsController<PayrollSlip>();
   final _retainedPage = RetainedAsyncPage<PagedResult<PayrollSlip>>();
 
   @override
   Widget build(BuildContext context) {
+    ref
+        .read(payrollListProvider.notifier)
+        .bindReadView(context, visiblePage: () => _tableRows.visiblePage);
     final filter = ref.watch(payrollFilterProvider);
-    final paginationScope = (filter, ref.watch(masterDataSessionKeyProvider));
-    final list = _retainedPage.resolve(
+    final paginationScope = (filter, retainedReaderEpoch(ref));
+    final list = _retainedPage.resolveFor(
+      ref,
       paginationScope,
-      ref.watch(payrollListProvider),
+      payrollListProvider,
     );
 
     // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
-    Widget body = list.when(
-      skipLoadingOnReload: true,
-      skipError: true,
-      loading: () => const UtenSkeletonList(itemCount: 8),
-      error: (e, _) => UtenEmpty.error(
-        message: humanErrorMessage(e) ?? '工资条列表没有加载出来，请稍后重试',
-        actionLabel: '重试',
-        onAction: () => ref.invalidate(payrollListProvider),
-      ),
-      data: (page) => RefreshIndicator(
-        onRefresh: () => ref.read(payrollListProvider.notifier).refresh(),
-        child: MasterDataTableView<PayrollSlip>(
-          tableKey:
-              'features.payroll.pages.payroll_slip_list_page.PayrollSlipListPage.build.1',
-          key: const Key('payroll-slip-table'),
-          paginationScope: paginationScope,
-          loadingMore: list.isLoading,
-          error: list.hasError
-              ? (humanErrorMessage(list.error!) ?? '加载更多没有成功，请重试')
-              : null,
-          onRetry: () => ref.invalidate(payrollListProvider),
-          columns: _columns,
-          items: page.items,
-          facets: {'status': _statusFacets(filter)},
-          nullCounts: const {},
-          filters: {'status': _statusFilterOf(filter)},
-          onFilterChanged: (key, value) => _onFilterChanged(ref, key, value),
-          // 双击行进入工资条详情。
-          onRowTap: (slip) =>
-              context.push(RoutePath.payrollSlipDetail(slip.id)),
-          emptyMessage: '此状态下暂无工资条',
-          currentPage: page.page,
-          totalPages: page.totalPages,
-          onPageChange: (p) =>
-              ref.read(payrollListProvider.notifier).goToPage(p),
-        ),
+    final page =
+        list.value ??
+        const PagedResult<PayrollSlip>(
+          items: [],
+          page: 1,
+          size: 20,
+          total: 0,
+          totalPages: 0,
+        );
+    Widget body = RefreshIndicator(
+      onRefresh: () => ref.read(payrollListProvider.notifier).refresh(),
+      child: MasterDataTableView<PayrollSlip>(
+        rowsController: _tableRows,
+        expensiveRowMounts: false,
+        tableKey:
+            'features.payroll.pages.payroll_slip_list_page.PayrollSlipListPage.build.1',
+        key: const Key('payroll-slip-table'),
+        paginationScope: paginationScope,
+        isLoading: list.isLoading && !list.hasValue,
+        loadingMore: list.isLoading && list.hasValue,
+        error: list.hasError
+            ? (humanErrorMessage(list.error!) ?? '加载更多没有成功，请重试')
+            : null,
+        onRetry: () => ref.read(payrollListProvider.notifier).retry(),
+        columns: _columns,
+        items: page.items,
+        facets: {'status': _statusFacets(filter)},
+        nullCounts: const {},
+        filters: {'status': _statusFilterOf(filter)},
+        onFilterChanged: (key, value) => _onFilterChanged(ref, key, value),
+        // 双击行进入工资条详情。
+        onRowTap: (slip) => context.push(RoutePath.payrollSlipDetail(slip.id)),
+        emptyMessage: '此状态下暂无工资条',
+        currentPage: page.page,
+        totalPages: page.totalPages,
+        onPageChange: (p) => ref.read(payrollListProvider.notifier).goToPage(p),
       ),
     );
     body = Column(

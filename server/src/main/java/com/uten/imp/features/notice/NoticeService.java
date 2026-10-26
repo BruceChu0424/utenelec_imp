@@ -636,7 +636,9 @@ public class NoticeService {
         int safePage = Math.max(0, page);
         int safeSize = Math.min(Math.max(1, size), 50);
         // 走带姓名投影的 native 查询（避免逐行 N+1 解析员工姓名）
-        int offset = safePage * safeSize;
+        long offset = (long) safePage * safeSize;
+        long total = blessRepo.countByNoticeId(id);
+        if (offset >= total) return new BlessingPage(List.of(), total);
         List<NoticeBlessingRow> rows = blessRepo.findPage(id, safeSize, offset);
         List<NoticeBlessingDto> items = rows.stream()
                 .map(r -> new NoticeBlessingDto(
@@ -646,7 +648,7 @@ public class NoticeService {
                         r.getCreatedAt(),
                         userId.equals(r.getUserId())))
                 .toList();
-        return new BlessingPage(items, blessRepo.countByNoticeId(id));
+        return new BlessingPage(items, total);
     }
 
     /** Historical versions keep each edit/withdraw/re-blessing; current audience/scope still applies. */

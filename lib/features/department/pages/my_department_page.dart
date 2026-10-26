@@ -11,6 +11,7 @@
 //   普通员工 403；故此处复用「布局与组件」但保留 my-department 安全花名册数据源。
 // 花名册：负责人/管理人排最前；仅安全联系字段；明确负责人看到“去业务页使用本页权限”的说明，
 // 不再在此处维护全目录或中央个人覆盖。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
@@ -241,7 +242,7 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
           UtenRefreshButton(busy: treeAsync.isLoading, onRefresh: _refresh),
         ],
       ),
-      body: SafeArea(child: body),
+      body: SafeArea(child: UtenPageEdgePadding(child: body)),
     );
   }
 
@@ -333,39 +334,49 @@ class _MyDepartmentDetail extends ConsumerWidget {
 
     return CustomScrollView(
       slivers: [
-        SliverPadding(
+        UtenPageEdgePadding.scroll(
           padding: EdgeInsets.fromLTRB(
             hPad,
             UtenSpacing.s16,
             hPad,
             UtenSpacing.s12,
           ),
-          sliver: SliverToBoxAdapter(
-            child: MasterDetailCard(
-              title: node.name,
-              icon: Icons.account_tree_outlined,
-              subtitle:
-                  '${node.level} · ${node.code} · ${searching ? '匹配' : '在册'} ${directCount ?? '-'}',
-              // 详情卡精简（与分类卡统一）：不再展示统计行与路径行，卡片只留标题；
-              // 「我的部门」是只读概览卡，最关键的「在册」人数折进副标题保留。
-              stats: const [],
-              canEdit: false, // 我的部门只读：编辑/删除/新增子部门按钮不渲染
-              onAddChild: () {},
-              onEdit: () {},
-              onDelete: () {},
+          preserveStart: true,
+          builder: (context, pagePadding) => SliverPadding(
+            padding: pagePadding,
+            sliver: SliverToBoxAdapter(
+              child: MasterDetailCard(
+                title: node.name,
+                icon: Icons.account_tree_outlined,
+                subtitle:
+                    '${node.level} · ${node.code} · ${searching ? '匹配' : '在册'} ${directCount ?? '-'}',
+                // 详情卡精简（与分类卡统一）：不再展示统计行与路径行，卡片只留标题；
+                // 「我的部门」是只读概览卡，最关键的「在册」人数折进副标题保留。
+                stats: const [],
+                canEdit: false, // 我的部门只读：编辑/删除/新增子部门按钮不渲染
+                onAddChild: () {},
+                onEdit: () {},
+                onDelete: () {},
+              ),
             ),
           ),
         ),
         ..._rosterSlivers(async, theme, hPad, ref),
         if (isManaged)
-          SliverPadding(
+          UtenPageEdgePadding.scroll(
             padding: EdgeInsets.fromLTRB(
               hPad,
               UtenSpacing.s4,
               hPad,
               UtenSpacing.s16,
             ),
-            sliver: const SliverToBoxAdapter(child: _ManagerPermissionPanel()),
+            preserveStart: true,
+            builder: (context, pagePadding) => SliverPadding(
+              padding: pagePadding,
+              sliver: const SliverToBoxAdapter(
+                child: _ManagerPermissionPanel(),
+              ),
+            ),
           ),
         // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
         SliverPadding(
@@ -388,27 +399,35 @@ class _MyDepartmentDetail extends ConsumerWidget {
         EdgeInsets.fromLTRB(hPad, 0, hPad, bottom);
     return async.when(
       loading: () => [
-        SliverPadding(
+        UtenPageEdgePadding.scroll(
           padding: pad(),
-          sliver: const SliverToBoxAdapter(
-            child: SizedBox(
-              height: 160,
-              child: Center(child: CircularProgressIndicator()),
+          preserveStart: true,
+          builder: (context, pagePadding) => SliverPadding(
+            padding: pagePadding,
+            sliver: const SliverToBoxAdapter(
+              child: SizedBox(
+                height: 160,
+                child: Center(child: CircularProgressIndicator()),
+              ),
             ),
           ),
         ),
       ],
       error: (e, _) => [
-        SliverPadding(
+        UtenPageEdgePadding.scroll(
           padding: pad(),
-          sliver: SliverToBoxAdapter(
-            child: SizedBox(
-              height: 160,
-              child: UtenEmpty.error(
-                message: e is ApiException ? e.message : '花名册加载失败',
-                actionLabel: '重试',
-                onAction: () =>
-                    ref.invalidate(myDepartmentRosterProvider(node.id)),
+          preserveStart: true,
+          builder: (context, pagePadding) => SliverPadding(
+            padding: pagePadding,
+            sliver: SliverToBoxAdapter(
+              child: SizedBox(
+                height: 160,
+                child: UtenEmpty.error(
+                  message: e is ApiException ? e.message : '花名册加载失败',
+                  actionLabel: '重试',
+                  onAction: () =>
+                      ref.invalidate(myDepartmentRosterProvider(node.id)),
+                ),
               ),
             ),
           ),
@@ -426,16 +445,20 @@ class _MyDepartmentDetail extends ConsumerWidget {
         final ordered = [...managers, ...others];
         if (ordered.isEmpty) {
           return [
-            SliverPadding(
+            UtenPageEdgePadding.scroll(
               padding: pad(),
-              sliver: SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 160,
-                  child: UtenEmpty(
-                    icon: Icons.people_outline_rounded,
-                    message: employeeFilter.trim().isEmpty
-                        ? '该部门暂无在册员工'
-                        : '该部门未找到匹配「${employeeFilter.trim()}」的员工',
+              preserveStart: true,
+              builder: (context, pagePadding) => SliverPadding(
+                padding: pagePadding,
+                sliver: SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 160,
+                    child: UtenEmpty(
+                      icon: Icons.people_outline_rounded,
+                      message: employeeFilter.trim().isEmpty
+                          ? '该部门暂无在册员工'
+                          : '该部门未找到匹配「${employeeFilter.trim()}」的员工',
+                    ),
                   ),
                 ),
               ),
@@ -443,22 +466,30 @@ class _MyDepartmentDetail extends ConsumerWidget {
           ];
         }
         return [
-          SliverPadding(
+          UtenPageEdgePadding.scroll(
             padding: pad(bottom: UtenSpacing.s8),
-            sliver: SliverToBoxAdapter(
-              child: _rosterHeader(
-                theme,
-                ordered.length,
-                searching: employeeFilter.trim().isNotEmpty,
+            preserveStart: true,
+            builder: (context, pagePadding) => SliverPadding(
+              padding: pagePadding,
+              sliver: SliverToBoxAdapter(
+                child: _rosterHeader(
+                  theme,
+                  ordered.length,
+                  searching: employeeFilter.trim().isNotEmpty,
+                ),
               ),
             ),
           ),
-          SliverPadding(
+          UtenPageEdgePadding.scroll(
             padding: pad(),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, i) => _staffRow(context, theme, ordered[i]),
-                childCount: ordered.length,
+            preserveStart: true,
+            builder: (context, pagePadding) => SliverPadding(
+              padding: pagePadding,
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) => _staffRow(context, theme, ordered[i]),
+                  childCount: ordered.length,
+                ),
               ),
             ),
           ),

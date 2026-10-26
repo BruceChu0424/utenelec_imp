@@ -7,14 +7,10 @@
 // 响应式：compact 自套 UtenContentContainer 收敛；窄屏表格横向滚动即可。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/models/retained_async_page.dart';
-import '../../../shared/providers/master_name_provider.dart'
-    show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -25,13 +21,35 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
 import '../../visitor/widgets/visitor_status_ui.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read_provider.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
+
+final _blacklistReadProvider =
+    Provider.autoDispose<ScopedPagedReadProviderLease<VisitorBlacklistItem>>(
+      (ref) {
+        ref.watch(visitorStaffRepositoryProvider);
+        return ScopedPagedReadProviderLease(ref, query: const ('blacklist',));
+      },
+      dependencies: [
+        exportContextEpochProvider,
+        visitorStaffRepositoryProvider,
+      ],
+    );
 
 final visitorBlacklistProvider = FutureProvider.autoDispose
-    .family<PagedResult<VisitorBlacklistItem>, int>((ref, page) {
-      return ref
-          .watch(visitorStaffRepositoryProvider)
-          .blacklistPage(page: page);
-    });
+    .family<PagedResult<VisitorBlacklistItem>, int>(
+      (ref, page) {
+        final repository = ref.watch(visitorStaffRepositoryProvider);
+        return ref
+            .watch(_blacklistReadProvider)
+            .read(
+              page,
+              fetchPage: (page) => repository.blacklistPage(page: page),
+            );
+      },
+      retry: pagedReadProviderRetry,
+      dependencies: [_blacklistReadProvider, visitorStaffRepositoryProvider],
+    );
 
 class SecurityBlacklistPage extends ConsumerStatefulWidget {
   const SecurityBlacklistPage({super.key});
@@ -43,6 +61,7 @@ class SecurityBlacklistPage extends ConsumerStatefulWidget {
 
 class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
   int _page = 1;
+  final _tableRows = MasterDataTableRowsController<VisitorBlacklistItem>();
   final _retainedPage = RetainedAsyncPage<PagedResult<VisitorBlacklistItem>>();
   bool _busy = false;
 
@@ -88,38 +107,51 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final paginationScope = ref.watch(masterDataSessionKeyProvider);
-    final list = _retainedPage.resolve(
+    final paginationScope = retainedReaderEpoch(ref);
+    final readLease = ref.watch(_blacklistReadProvider)
+      ..bindView(context, currentQuery: () => const ('blacklist',));
+    final list = _retainedPage.resolveFor(
+      ref,
       paginationScope,
-      ref.watch(visitorBlacklistProvider(_page)),
+      visitorBlacklistProvider(_page),
     );
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.securityBlacklistTitle,
         showBackButton: true,
       ),
-      body: list.when(
-        skipLoadingOnReload: true,
-        skipError: true,
-        loading: () => const UtenSkeletonList(itemCount: 4),
-        error: (e, _) => UtenEmpty.error(
-          message: '$e',
-          actionLabel: l10n.commonRetry,
-          onAction: () => ref.invalidate(visitorBlacklistProvider(_page)),
-        ),
-        data: (page) {
+      body: Builder(
+        builder: (context) {
+          final page =
+              list.value ??
+              const PagedResult<VisitorBlacklistItem>(
+                items: [],
+                page: 1,
+                size: 20,
+                total: 0,
+                totalPages: 0,
+              );
           final isCompact = context.breakpoint.isCompact;
           Widget body = RefreshIndicator(
-            onRefresh: () async =>
-                ref.invalidate(visitorBlacklistProvider(_page)),
+            onRefresh: () async {
+              setState(() => _page = _tableRows.visiblePage ?? _page);
+              readLease.invalidate();
+              ref.invalidate(visitorBlacklistProvider(_page));
+            },
             child: MasterDataTableView<VisitorBlacklistItem>(
+              rowsController: _tableRows,
+              expensiveRowMounts: false,
               tableKey:
                   'features.security.pages.security_blacklist_page.SecurityBlacklistPageState.build.1',
               key: const Key('security-blacklist-table'),
               paginationScope: paginationScope,
-              loadingMore: list.isLoading,
+              isLoading: list.isLoading && !list.hasValue,
+              loadingMore: list.isLoading && list.hasValue,
               error: list.hasError ? '${list.error}' : null,
-              onRetry: () => ref.invalidate(visitorBlacklistProvider(_page)),
+              onRetry: () {
+                readLease.invalidate();
+                ref.invalidate(visitorBlacklistProvider(_page));
+              },
               columns: _columns(l10n),
               items: page.items,
               facets: const {},
@@ -139,14 +171,15 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
               // 黑名单是运营小集合（常态个位数），仍接后端分页防极端堆积。
               currentPage: page.page,
               totalPages: page.totalPages,
-              onPageChange: (p) async {
+              onPageChange: (p) => readLease.paginate(p, () async {
                 setState(() => _page = p);
+                ref.invalidate(visitorBlacklistProvider(_page));
                 await _retainedPage.waitFor(
                   ref,
                   visitorBlacklistProvider(_page),
                   () => ref.read(visitorBlacklistProvider(_page).future),
                 );
-              },
+              }),
             ),
           );
           if (isCompact) {

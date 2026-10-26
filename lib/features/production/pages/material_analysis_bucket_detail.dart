@@ -833,6 +833,7 @@ class _MaterialAnalysisBucketPageState
     // 已下达段只在真有可追加的行时才出勾选列与动作组(ADR-099)。
     final selectable = _canAct && (!_appendMode || rows.any(_canSelectTask));
     return MasterDataTableView<_BucketRow>(
+      expensiveRowMounts: _host._canRoute,
       tableKey:
           'features.production.pages.material_analysis_bucket_detail.MaterialAnalysisBucketPageState._bucketTable.1',
       columns: columns,

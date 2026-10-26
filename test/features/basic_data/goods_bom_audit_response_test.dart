@@ -248,6 +248,17 @@ void main() {
       });
       await _pumpTab(tester, repo);
       await _expand(tester, 'row-left');
+      // A completed audit invalidates this parent's cached alias snapshot.
+      // The next alias must perform a fresh GET, which can overlap a later PUT.
+      await tester.tap(find.byTooltip(_markTooltip).at(1));
+      await tester.pump();
+      repo.tree['goods-shared'] = [
+        _item('row-shared', 'goods-y', '原始组件', audited: true),
+      ];
+      repo.requests.single.result.complete(
+        _item('row-shared', 'goods-y', '原始组件', audited: true),
+      );
+      await _pumpFrames(tester);
       final staleRead = repo.delayNextList('goods-shared');
       await tester.tap(
         find.byKey(const ValueKey('goods-bom-tree-toggle-row-right')),
@@ -255,24 +266,24 @@ void main() {
       await _pumpFrames(tester);
       expect(repo.listCalls, ['goods-a', 'goods-shared', 'goods-shared']);
 
-      await tester.tap(find.byTooltip(_markTooltip).at(1));
+      await tester.tap(find.byTooltip(_unmarkTooltip));
       await tester.pump();
-      expect(repo.requests.single.identity, (
+      expect(repo.requests.last.identity, (
         'goods-shared',
         'row-shared',
-        true,
+        false,
       ));
-      repo.tree['goods-shared'] = [
-        _item('row-shared', 'goods-y', '最新组件', audited: true),
-      ];
-      repo.requests.single.result.complete(
-        _item('row-shared', 'goods-y', '最新组件', audited: true),
+      repo.tree['goods-shared'] = [_item('row-shared', 'goods-y', '最新组件')];
+      repo.requests.last.result.complete(
+        _item('row-shared', 'goods-y', '最新组件'),
       );
       await _pumpFrames(tester);
-      expect(find.byTooltip(_unmarkTooltip), findsOneWidget);
+      expect(find.byTooltip(_unmarkTooltip), findsNothing);
 
       // This GET began before the PUT, but its obsolete snapshot arrives last.
-      staleRead.complete([_item('row-shared', 'goods-y', '过期组件')]);
+      staleRead.complete([
+        _item('row-shared', 'goods-y', '过期组件', audited: true),
+      ]);
       await tester.pumpAndSettle();
       expect(repo.listCalls, [
         'goods-a',
@@ -282,7 +293,7 @@ void main() {
       ]);
       expect(find.text('最新组件'), findsNWidgets(2));
       expect(find.text('过期组件'), findsNothing);
-      expect(find.byTooltip(_unmarkTooltip), findsNWidgets(2));
+      expect(find.byTooltip(_unmarkTooltip), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

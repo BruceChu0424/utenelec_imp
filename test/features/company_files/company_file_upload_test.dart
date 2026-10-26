@@ -88,6 +88,7 @@ class _Attachments extends AttachmentService {
   _Attachments() : super(_api);
   int rawCount = 0, confirmCount = 0, presignCount = 0;
   bool loseConfirmationResponse = false;
+  Attachment confirmation = _receipt;
   Object? presignFailure;
   List<Attachment> receipts = [];
   @override
@@ -139,12 +140,12 @@ class _Attachments extends AttachmentService {
     String? category,
   }) async {
     confirmCount++;
-    receipts = [_receipt];
+    receipts = [confirmation];
     if (loseConfirmationResponse) {
       loseConfirmationResponse = false;
       throw NetworkTimeoutException();
     }
-    return _receipt;
+    return confirmation;
   }
 }
 
@@ -178,6 +179,68 @@ void main() {
       expect(attachments.rawCount, 1);
       expect(attachments.confirmCount, 1);
       expect(phases, contains(CompanyFileUploadState.verifying));
+    },
+  );
+
+  test(
+    'a corrupt confirmation never publishes different bytes as the original',
+    () async {
+      final repository = _Repository();
+      final attachments = _Attachments()
+        ..confirmation = const Attachment(
+          id: 'receipt',
+          ownerType: 'COMPANY_FILE',
+          ownerId: 'node',
+          storageKey: 'private/original',
+          originalName: '模板.txt',
+          sizeBytes: 3,
+          sha256: 'wrong-original-hash',
+        );
+      final file = attempt();
+      await file.send(
+        repository: repository,
+        attachments: attachments,
+        scope: await _scope(),
+        parentId: null,
+        onChanged: () {},
+      );
+      expect(file.complete, isFalse);
+      expect(file.state, CompanyFileUploadState.unknown);
+      expect(
+        (file.error as ApiException).code,
+        'ATTACHMENT_INTEGRITY_MISMATCH',
+      );
+      expect(repository.completeCount, 0);
+      expect(attachments.rawCount, 1);
+    },
+  );
+
+  test(
+    'a resumed node completed elsewhere does not acknowledge these local bytes',
+    () async {
+      final repository = _Repository()..completed = true;
+      final attachments = _Attachments();
+      final file = CompanyFileUpload(
+        name: '模板.txt',
+        bytes: Uint8List.fromList([97, 98, 99]),
+        contentType: 'text/plain',
+        entry: _entry,
+      );
+      await file.send(
+        repository: repository,
+        attachments: attachments,
+        scope: await _scope(),
+        parentId: null,
+        onChanged: () {},
+      );
+      expect(file.complete, isFalse);
+      expect(file.state, CompanyFileUploadState.unknown);
+      expect(
+        (file.error as ApiException).code,
+        'ATTACHMENT_INTEGRITY_MISMATCH',
+      );
+      expect(attachments.rawCount, 0);
+      expect(repository.completeCount, 0);
     },
   );
 

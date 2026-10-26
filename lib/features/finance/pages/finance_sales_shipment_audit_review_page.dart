@@ -61,6 +61,7 @@ import '../widgets/finance_party_snapshot_card.dart';
 import '../../../shared/drafts/review_task_draft.dart';
 import '../../../shared/drafts/review_authority_refresh_mixin.dart';
 import '../../../shared/badges/badge_registry.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class FinanceSalesShipmentAuditReviewPage extends ConsumerStatefulWidget {
   const FinanceSalesShipmentAuditReviewPage({super.key, required this.id});
@@ -426,6 +427,14 @@ class _FinanceSalesShipmentAuditReviewPageState
     try {
       await Future.wait([
         names.ensureLoaded(),
+        names.loadClientNames({
+          ...[detail.clientId].whereType<String>(),
+          ...shipmentReviewSnapshotIds(
+            info.previousCommercialSnapshot,
+            'clientId',
+          ),
+          ...shipmentReviewSnapshotIds(info.commercialSnapshot, 'clientId'),
+        }),
         names.loadGoodsNamesWithCodes(goods),
         names.loadEmployeeNames([
           detail.sellerId,
@@ -840,7 +849,7 @@ class _FinanceSalesShipmentAuditReviewPageState
                       // 滚动仍为折叠头+表内滚：上滑先收卡片区，明细标题吸顶后在表格内部滚。
                       child: UtenContentContainer(
                         child: UtenCollapsingHeaderScrollView(
-                          collapsingHeader: Padding(
+                          collapsingHeader: UtenPageEdgePadding(
                             padding: const EdgeInsets.fromLTRB(
                               UtenSpacing.s12,
                               UtenSpacing.s12,
@@ -889,7 +898,7 @@ class _FinanceSalesShipmentAuditReviewPageState
                               ],
                             ),
                           ),
-                          body: Padding(
+                          body: UtenPageEdgePadding(
                             padding: const EdgeInsets.fromLTRB(
                               UtenSpacing.s12,
                               UtenSpacing.s12,
@@ -1339,6 +1348,7 @@ class _FinanceSalesShipmentAuditReviewPageState
             bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
           )
         : MasterDataTableView<SalesDocItem>(
+      expensiveRowMounts: false,
             tableKey:
                 'features.finance.pages.finance_sales_shipment_audit_review_page.FinanceSalesShipmentAuditReviewPageState._itemsCard.1',
             primary: true,

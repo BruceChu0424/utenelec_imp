@@ -70,6 +70,9 @@ class ProcurementOrderClosureEndToEndTest {
     @Autowired PlatformTransactionManager transactions;
     @Autowired com.uten.imp.security.TxSessionVars tx;
     @Autowired EntityManager em;
+    @Autowired com.uten.imp.features.purchase.report.PurchaseReportService reports;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+    com.uten.imp.features.admin.workflow.WorkflowReviewerEligibility reviewers;
     private FullChainEndToEndTest harness;
 
     private record Fixture(FullChainEndToEndTest.World world, UUID reviewer,
@@ -82,27 +85,29 @@ class ProcurementOrderClosureEndToEndTest {
 
     @AfterEach void logout() { SecurityContextHolder.clearContext(); }
 
-    @Test void partialArrivalRemainsInIqcWhileOnlyFinanceApprovalEndsTheRemainingDelivery() {
+    @Test void buyerDirectlyEndsRemainingDeliveryWhileKeepingRealArrivalAndQualityFacts() {
         Fixture f = fixture("closure-partial", "2");
         UUID receipt = receipt(f, "4", "1");
         String physicalBefore = physicalFacts(receipt);
+        String billNo = db.queryForObject("SELECT bill_no FROM purchase_orders WHERE id=?",String.class,f.order());
+        assertThat(orders.detail(f.order()).getItems().getFirst().getDifferenceQty()).isEqualByComparingTo("-6");
+        assertThat(reports.expediting(billNo,null,null,null,null,java.util.Map.of(),1,50,null,null).rows()).hasSize(1);
         var preview = closure.preview("PURCHASE", f.order());
         assertThat(preview.canSubmit()).isTrue();
         var pending = closure.submit("PURCHASE", f.order(),
                 new ClosureRequest("CLOSE", "供应商停止供货", preview.fingerprint()));
         var pendingDetail = orders.detail(f.order());
-        assertThat(pendingDetail.getClosureRequest().status()).isEqualTo("PENDING");
+        assertThat(pending.status()).isEqualTo("APPROVED");
+        assertThat(pendingDetail.getClosureRequest().status()).isEqualTo("APPROVED");
+        assertThat(pendingDetail.getClosureRequest().executionMode()).isEqualTo("DIRECT");
         assertThat(pendingDetail.getClosureRequest().reason()).isEqualTo("供应商停止供货");
         assertThat(pendingDetail.getFinanceApproval().status()).isEqualTo("APPROVED");
-        assertOpen(f.order());
-        assertThat(status(f.order())).isEqualTo("OPEN");
+        assertThat(status(f.order())).isEqualTo("CLOSED");
         assertThat(number("SELECT ordered_qty FROM purchase_request_items WHERE id=?", f.source()))
-                .isEqualByComparingTo("10");
+                .isEqualByComparingTo("4");
         assertThatThrownBy(() -> closure.submit("PURCHASE", f.order(),
                 new ClosureRequest("CLOSE", "重复申请", preview.fingerprint()))).isInstanceOf(ApiException.class);
-        assertThat(db.queryForObject("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_id=? AND status='PENDING'", Long.class, f.order())).isEqualTo(1L);
-
-        approve(f, pending);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_id=? AND status='PENDING'", Long.class, f.order())).isZero();
         assertThat(db.queryForObject("SELECT is_closed FROM purchase_orders WHERE id=?", Boolean.class, f.order())).isTrue();
         assertThat(orders.detail(f.order()).isCanReverse()).isFalse();
         assertThat(status(f.order())).isEqualTo("CLOSED");
@@ -112,6 +117,11 @@ class ProcurementOrderClosureEndToEndTest {
                 .isInstanceOf(org.springframework.dao.DataAccessException.class);
         assertThat(number("SELECT qty FROM purchase_order_items WHERE id=?", f.item())).isEqualByComparingTo("10");
         assertThat(number("SELECT received_qty FROM purchase_order_items WHERE id=?", f.item())).isEqualByComparingTo("4");
+        assertThat(orders.detail(f.order()).getItems().getFirst().getDifferenceQty()).isEqualByComparingTo("-6");
+        var differenceRows=reports.orderDetail(billNo,null,null,null,null,null,java.util.Map.of(),1,50,null,null).rows();
+        assertThat(differenceRows).hasSize(1);
+        assertThat(differenceRows.getFirst().get("differenceQtyExact")).isEqualTo("-6.0000");
+        assertThat(reports.expediting(billNo,null,null,null,null,java.util.Map.of(),1,50,null,null).rows()).isEmpty();
         assertThat(number("SELECT ordered_qty FROM purchase_request_items WHERE id=?", f.source())).isEqualByComparingTo("4");
         assertThat(number("SELECT gift_ordered_qty FROM purchase_request_items WHERE id=?", f.source())).isEqualByComparingTo("1");
         assertThat(requests.detail(f.request()).getItems().getFirst().getPhysicalRemainingQty()).isEqualByComparingTo("7");
@@ -154,6 +164,50 @@ class ProcurementOrderClosureEndToEndTest {
         assertThat(closure.preview("PURCHASE",f.order()).canSubmit()).isTrue();
     }
 
+    @Test void directCompletionRequiresNoConfiguredFinanceReviewerAndKeepsCancellationEvidence() {
+        Fixture f=fixture("closure-no-reviewer","2");
+        org.mockito.Mockito.doReturn(List.of()).when(reviewers).eligibleReviewersFor(
+                com.uten.imp.features.admin.workflow.WorkflowReviewerEligibility.APPROVE_PERMISSION);
+        var preview=closure.preview("PURCHASE",f.order());
+        var completed=closure.submit("PURCHASE",f.order(),new ClosureRequest("CLOSE","已满足生产要求，取消余量",preview.fingerprint()));
+        assertThat(completed.status()).isEqualTo("APPROVED");
+        var evidence=orders.detail(f.order()).getClosureRequest();
+        assertThat(evidence.executionMode()).isEqualTo("DIRECT");
+        assertThat(evidence.reason()).isEqualTo("已满足生产要求，取消余量");
+        assertThat(evidence.closedAt()).isNotNull();
+        assertThat(evidence.closedByName()).isNotBlank();
+        assertThat(evidence.items()).hasSize(1);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_id=? AND status='PENDING'",Long.class,f.order())).isZero();
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM business_outbox WHERE aggregate_id=? AND event_type=?",Long.class,completed.caseId(),ProcurementFinanceApprovalService.EVENT_SUBMITTED)).isZero();
+        UUID originalCommercialCase=db.queryForObject("SELECT id FROM procurement_order_approval_cases WHERE order_id=? AND request_type='ORDER' AND status='APPROVED' ORDER BY attempt DESC LIMIT 1",UUID.class,f.order());
+        harness.loginAs(f.reviewer());
+        var financialReview=finance.review(originalCommercialCase);
+        assertThat(financialReview.headerSnapshot().get("orderClosure")).isInstanceOf(java.util.Map.class);
+        var financialEvidence=(java.util.Map<?,?>)financialReview.headerSnapshot().get("orderClosure");
+        assertThat(financialEvidence.get("executionMode")).isEqualTo("DIRECT");
+        assertThat(financialEvidence.get("reason")).isEqualTo("已满足生产要求，取消余量");
+        assertThat((List<?>)financialEvidence.get("items")).hasSize(1);
+        assertThat(financialReview.allowedActions()).isEmpty();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"10","10.5"})
+    void fullyReceivedAndApprovedOverReceiptNeverProduceNegativeCancellationOrAnotherDraft(String actual) {
+        Fixture f=fixture("closure-no-remainder-"+actual,"0","5");
+        UUID receipt=receipt(f,actual,"0");finishExistingIqc(f,receipt);
+        var preview=closure.preview("PURCHASE",f.order());
+        assertThat(preview.canSubmit()).isFalse();
+        assertThat(preview.items()).singleElement().satisfies(item->assertThat(item.remainingQty()).isZero());
+        assertThat(preview.canReorder()).isFalse();
+        String before=businessFacts(f);
+        assertThatThrownBy(()->closure.submit("PURCHASE",f.order(),new ClosureRequest("CLOSE_AND_REORDER","已到齐不能重建",preview.fingerprint())))
+                .isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->closure.submit("PURCHASE",f.order(),new ClosureRequest("CLOSE","已到齐不能再次取消",preview.fingerprint())))
+                .isInstanceOf(ApiException.class);
+        assertThat(db.queryForObject("SELECT termination_case_id FROM purchase_orders WHERE id=?",UUID.class,f.order())).isNull();
+        assertThat(businessFacts(f)).isEqualTo(before);
+    }
+
     @Test void anExistingPhysicalReturnCannotBeReversedAfterItsRetainedQuantityWasFinanciallyClosed() {
         Fixture f=fixture("closure-retained-return","0");
         UUID receipt=receipt(f,"4","0"); finishExistingIqc(f,receipt);
@@ -166,23 +220,24 @@ class ProcurementOrderClosureEndToEndTest {
         assertThat(businessFacts(f)).isEqualTo(before);
     }
 
-    @Test void rejectedClosurePreservesTheEffectiveOrderSourcesAndWarehouseWork() {
+    @Test void directClosureCannotBeRejectedByFinanceOrReopenedForFurtherReceipts() {
         Fixture f = fixture("closure-reject", "0");
         var preview = closure.preview("PURCHASE", f.order());
         var pending = closure.submit("PURCHASE", f.order(),
                 new ClosureRequest("CLOSE", "旧库待核对", preview.fingerprint()));
         harness.loginAs(f.reviewer());
-        finance.rejectBatch(List.of(decision(pending)), "还要继续跟进供货");
+        assertThatThrownBy(()->finance.rejectBatch(List.of(new BatchDecisionItem(pending.caseId(),pending.version())), "还要继续跟进供货"))
+                .isInstanceOf(ApiException.class);
         harness.loginAs(f.world().superAdminUserId());
-        assertOpen(f.order());
-        assertThat(status(f.order())).isEqualTo("OPEN");
-        assertThat(number("SELECT ordered_qty FROM purchase_request_items WHERE id=?", f.source())).isEqualByComparingTo("10");
+        assertThat(db.queryForObject("SELECT is_closed FROM purchase_orders WHERE id=?",Boolean.class,f.order())).isTrue();
+        assertThat(status(f.order())).isEqualTo("CLOSED");
+        assertThat(number("SELECT ordered_qty FROM purchase_request_items WHERE id=?", f.source())).isZero();
         assertThat(db.queryForObject("SELECT fn_procurement_order_latest_approval_status('PURCHASE',?)", String.class, f.order()))
                 .isEqualTo("APPROVED");
-        assertThat(closure.preview("PURCHASE", f.order()).canSubmit()).isTrue();
-        assertThat(orders.detail(f.order()).getClosureRequest().rejectionReason()).isEqualTo("还要继续跟进供货");
+        assertThat(closure.preview("PURCHASE", f.order()).canSubmit()).isFalse();
+        assertThat(orders.detail(f.order()).getClosureRequest().rejectionReason()).isNull();
         assertThat(orders.detail(f.order()).getFinanceApproval().status()).isEqualTo("APPROVED");
-        receipt(f, "1", "0");
+        assertThatThrownBy(()->receipt(f, "1", "0")).isInstanceOf(ApiException.class);
     }
 
     @Test void closedOrderLeavesTheReturnedWorkbenchEvenWhenThePriorQuantityReviewWasRejected() {
@@ -219,7 +274,7 @@ class ProcurementOrderClosureEndToEndTest {
         assertThat(number("SELECT gift_ordered_qty FROM purchase_request_items WHERE id=?", f.source())).isEqualByComparingTo("1");
         assertThat(requests.detail(f.request()).getItems().getFirst().getPhysicalRemainingQty()).isZero();
         assertThat(db.queryForObject("SELECT COUNT(*) FROM inbound_expectations WHERE order_id=? AND status='OPEN'", Long.class, replacement)).isZero();
-        assertThatThrownBy(() -> approve(f, pending)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> finance.approveBatch(List.of(new BatchDecisionItem(pending.caseId(),pending.version())),null)).isInstanceOf(ApiException.class);
         assertThat(db.queryForObject("SELECT replacement_order_id FROM procurement_order_approval_cases WHERE id=?", UUID.class, pending.caseId())).isEqualTo(replacement);
 
         harness.loginAs(f.world().superAdminUserId());
@@ -231,7 +286,7 @@ class ProcurementOrderClosureEndToEndTest {
                 .isEqualByComparingTo("7");
     }
 
-    @Test void changedArrivalFactsInvalidateBothSubmissionPreviewAndPendingApproval() {
+    @Test void changedArrivalFactsInvalidateThePreviewAndDirectCompletionStopsFurtherArrival() {
         Fixture f = fixture("closure-stale", "0");
         var oldPreview = closure.preview("PURCHASE", f.order());
         receipt(f, "1", "0");
@@ -239,15 +294,13 @@ class ProcurementOrderClosureEndToEndTest {
                 new ClosureRequest("CLOSE", "旧预览", oldPreview.fingerprint()))).isInstanceOf(ApiException.class);
         var fresh = closure.preview("PURCHASE", f.order());
         var pending = closure.submit("PURCHASE", f.order(), new ClosureRequest("CLOSE", "供应商停供", fresh.fingerprint()));
-        receipt(f, "1", "0");
-        assertThatThrownBy(() -> approve(f, pending)).isInstanceOf(ApiException.class);
-        assertOpen(f.order());
-        assertThat(status(f.order())).isEqualTo("OPEN");
+        assertThatThrownBy(()->receipt(f, "1", "0")).isInstanceOf(ApiException.class);
+        assertThat(status(f.order())).isEqualTo("CLOSED");
         assertThat(db.queryForObject("SELECT status FROM procurement_order_approval_cases WHERE id=?", String.class, pending.caseId()))
-                .isEqualTo("PENDING");
+                .isEqualTo("APPROVED");
     }
 
-    @Test void readOnlyBusinessUserCannotSubmitAndApprovalRequiresTheLiveFinanceClaim() {
+    @Test void readOnlyBusinessUserCannotCloseAndFinanceCannotReapproveADirectlyClosedOrder() {
         Fixture f = fixture("closure-permission", "0");
         UUID commercialApproval = db.queryForObject("SELECT id FROM procurement_order_approval_cases WHERE order_id=? AND status='APPROVED' AND request_type='ORDER'", UUID.class, f.order());
         assertThatThrownBy(() -> db.update("UPDATE purchase_orders SET termination_case_id=? WHERE id=?", commercialApproval, f.order()))
@@ -263,10 +316,10 @@ class ProcurementOrderClosureEndToEndTest {
         harness.loginAs(f.reviewer());
         assertThatThrownBy(() -> finance.approveBatch(List.of(new BatchDecisionItem(pending.caseId(), pending.version())), null))
                 .isInstanceOf(ApiException.class);
-        assertOpen(f.order());
+        assertThat(status(f.order())).isEqualTo("CLOSED");
     }
 
-    @Test void concurrentClosureSubmissionsCreateExactlyOnePendingFinanceCase() throws Exception {
+    @Test void concurrentIdenticalClosureSubmissionsReturnExactlyOneCompletedResult() throws Exception {
         Fixture f = fixture("closure-concurrent", "0");
         var preview = closure.preview("PURCHASE", f.order());
         var start = new java.util.concurrent.CountDownLatch(1);
@@ -287,12 +340,11 @@ class ProcurementOrderClosureEndToEndTest {
             var second = workers.submit(submit);
             start.countDown();
             assertThat(List.of(first.get(40, java.util.concurrent.TimeUnit.SECONDS), second.get(40, java.util.concurrent.TimeUnit.SECONDS)))
-                    .containsExactlyInAnyOrder(true, false);
+                    .containsExactly(true, true);
         }
-        assertThat(db.queryForObject("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_id=? AND status='PENDING'", Long.class, f.order()))
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_id=? AND request_type='CLOSE' AND status='APPROVED'", Long.class, f.order()))
                 .isEqualTo(1L);
-        assertOpen(f.order());
-        assertThat(status(f.order())).isEqualTo("OPEN");
+        assertThat(status(f.order())).isEqualTo("CLOSED");
     }
 
     @Test void productionSupplyReturnsToItsOriginalRequestAndTransfersOnlyOnceToTheReplacementOrder() {
@@ -311,7 +363,7 @@ class ProcurementOrderClosureEndToEndTest {
         assertThat(number("SELECT released_qty FROM production_material_supply_pegs WHERE id=?", requestPeg)).isEqualByComparingTo("20");
         var preview = closure.preview("PURCHASE", original.orderId());
         var pending = closure.submit("PURCHASE", original.orderId(), new ClosureRequest("CLOSE_AND_REORDER", "原供应商停止供货，补齐原生产需求", preview.fingerprint()));
-        harness.loginAs(original.reviewerUserId()); finance.approveBatch(List.of(decision(pending)), null);
+        assertThat(pending.status()).isEqualTo("APPROVED");
         harness.loginAs(w.superAdminUserId());
         UUID replacement = db.queryForObject("SELECT replacement_order_id FROM procurement_order_approval_cases WHERE id=?", UUID.class, pending.caseId());
         assertThat(number("SELECT allocated_qty-released_qty FROM production_material_supply_pegs WHERE id=?", orderPeg)).isZero();
@@ -392,8 +444,7 @@ class ProcurementOrderClosureEndToEndTest {
         long wasteBefore = wasteCount(item);
         var preview = closure.preview("SUBCONTRACT", submitted.orderId());
         var pending = closure.submit("SUBCONTRACT", submitted.orderId(), new ClosureRequest("CLOSE", "加工商停工，材料另行追偿", preview.fingerprint()));
-        harness.loginAs(submitted.reviewerUserId());
-        finance.approveBatch(List.of(decision(pending)), null);
+        assertThat(pending.status()).isEqualTo("APPROVED");
         harness.loginAs(w.superAdminUserId());
         assertThat(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?", Boolean.class, submitted.orderId())).isTrue();
         assertThat(subcontractOrders.detail(submitted.orderId()).isCanReverse()).isFalse();
@@ -456,7 +507,7 @@ class ProcurementOrderClosureEndToEndTest {
         var preview = closure.preview("SUBCONTRACT",original.getId());
         assertThat(preview.items()).singleElement().satisfies(row -> assertThat(row.remainingQty()).isEqualByComparingTo("6"));
         var closing = closure.submit("SUBCONTRACT",original.getId(),new ClosureRequest("CLOSE_AND_REORDER","原加工商停工，保留在外材料责任，余量换厂",preview.fingerprint()));
-        harness.loginAs(reviewer); finance.approveBatch(List.of(decision(closing)),null);
+        assertThat(closing.status()).isEqualTo("APPROVED");
         harness.loginAs(w.superAdminUserId());
         assertThat(number("SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE goods_id=? AND warehouse_id=?",w.goodsE(),w.warehouseId())).isEqualByComparingTo("4");
         assertThat(db.queryForObject("SELECT COUNT(*) FROM subcontract_short_delivery_cases WHERE order_item_id=? AND status IN('PENDING_OWNER','WAITING_MORE')",Long.class,item)).isZero();
@@ -520,7 +571,9 @@ class ProcurementOrderClosureEndToEndTest {
         assertThat(number("SELECT qty FROM purchase_order_items WHERE id=?",item)).isEqualByComparingTo("10");
     }
 
-    private Fixture fixture(String label, String gift) {
+    private Fixture fixture(String label, String gift) {return fixture(label,gift,null);}
+
+    private Fixture fixture(String label, String gift,String allowedOverReceiptPct) {
         var w = harness.seedWorld(label+"-"+UUID.randomUUID());
         harness.loginAs(w.superAdminUserId());
         UUID reviewer = harness.createUserWithPerms(w, "close-review-"+UUID.randomUUID(),
@@ -541,6 +594,7 @@ class ProcurementOrderClosureEndToEndTest {
         var line = new com.uten.imp.features.purchase.order.dto.OrderItemLine();
         line.setGoodsId(w.goodsD()); line.setUnitId(w.unitId()); line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal("10")); line.setGiftQty(new BigDecimal(gift)); line.setPrice(BigDecimal.TEN); line.setRequestItemId(sourceId);
+        line.setAllowedOverReceiptPct(allowedOverReceiptPct==null?null:new BigDecimal(allowedOverReceiptPct));
         order.setItems(List.of(line)); var created = orders.create(order);
         var initial = finance.submit("PURCHASE", created.getId());
         Fixture result = new Fixture(w, reviewer, requested.getId(), sourceId, created.getId(), created.getItems().getFirst().getId());
@@ -564,6 +618,7 @@ class ProcurementOrderClosureEndToEndTest {
     }
 
     private void approve(Fixture f, FinanceApproval pending) {
+        if ("APPROVED".equals(pending.status())) return;
         harness.loginAs(f.reviewer()); finance.approveBatch(List.of(decision(pending)), null);
         harness.loginAs(f.world().superAdminUserId());
     }

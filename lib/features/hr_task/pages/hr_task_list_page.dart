@@ -31,6 +31,7 @@
 // 2026-09-18 UI 统一收口：加载态改 UtenSkeletonList、区块卡片统一 UtenCard、
 // 批量登记转正弹窗改公共 UtenDialog（按钮/限高与全仓弹窗规范一致）。
 // 文档：docs/03-页面/HR任务中心.md
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -39,13 +40,13 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/router/nav_helpers.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
-import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_skeleton.dart';
+import '../../../shared/models/retained_async_page.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -141,6 +142,8 @@ class HrTaskListPage extends ConsumerStatefulWidget {
 }
 
 class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
+  final _retainedSummary = RetainedAsyncPage<HrTaskSummary>();
+
   /// 表头筛选（部门/区间/认领状态）：桶与裁剪都在客户端——summary 是一次性全量
   /// 下发、无分页，不存在「命中行落在其他页」的问题。
   Map<String, String?> _filters = {};
@@ -168,7 +171,11 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
           .read(hrTaskSummaryProvider.notifier)
           .reloadSilently(reportFailure: true),
     );
-    final async = ref.watch(hrTaskSummaryProvider);
+    final async = _retainedSummary.resolveFor(
+      ref,
+      retainedReaderEpoch(ref),
+      hrTaskSummaryProvider,
+    );
     final perms = ref.watch(currentPermissionsProvider);
     final isSuperAdmin = ref.watch(isSuperAdminProvider);
     if (_type == HrTaskType.identity) ref.watch(formDraftsProvider);
@@ -192,14 +199,9 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
         (perms.contains(Perm.employeeView) &&
             perms.contains(Perm.employeeEdit));
 
-    Widget body = async.when(
-      loading: () => const UtenSkeletonList(itemCount: 6),
-      error: (_, _) => UtenEmpty.error(
-        message: '加载失败，请稍后重试',
-        actionLabel: '重试',
-        onAction: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
-      ),
-      data: (s) {
+    Widget body = Builder(
+      builder: (context) {
+        final s = async.value ?? HrTaskSummary.fromJson(const {});
         final items = hrTaskItemsOf(s, _type);
         // 一键祝福只针对「今日」在册且本类型本年未祝福者。
         // 注意：生日列表 hrTaskItemsOf 把 birthdayToday 与未来 30 天的
@@ -242,6 +244,8 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
                     canPublish: canPublish,
                     canBatchConfirm: canBatchConfirm,
                     canReconcile: canReconcile,
+                    loading: async.isLoading && !async.hasValue,
+                    error: async.hasError ? '加载失败，请稍后重试' : null,
                   ),
                 ),
               ],
@@ -252,6 +256,8 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     );
     if (context.breakpoint.isCompact) {
       body = UtenContentContainer(child: body);
+    } else {
+      body = UtenPageEdgePadding(child: body);
     }
     body = HrTaskRefreshFeedback(child: body);
 
@@ -265,7 +271,8 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
               key: const Key('hr-task-reconcile-records'),
               tooltip: AppLocalizations.of(context).hrReconcileRecords,
               icon: const Icon(Icons.history_rounded),
-              onPressed: () => context.push(
+              onPressed: () => pushPage(
+                context,
                 RoutePath.hrReconcile(
                   returnTo: RouteName.hrTaskList(HrTaskType.identity.taskType),
                 ),
@@ -325,6 +332,8 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     required bool canPublish,
     required bool canBatchConfirm,
     required bool canReconcile,
+    bool loading = false,
+    String? error,
   }) {
     final showBatch = switch (_type) {
       HrTaskType.confirm => canBatchConfirm,
@@ -333,9 +342,11 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
       HrTaskType.newhire => false,
     };
     return MasterDataTableView<HrTaskItem>(
+      expensiveRowMounts: false,
       tableKey:
           'features.hr_task.pages.hr_task_list_page.HrTaskListPageState._desktopTable.1',
       key: const Key('hr-task-table'),
+      paginationScope: (_type, retainedReaderEpoch(ref)),
       // 折叠容器联动：拾取注入的 PrimaryScrollController，参与「收开关卡 → 表格内滚」。
       primary: true,
       bottomContentPadding: math.max(
@@ -344,6 +355,9 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
       ),
       columns: _columns(s),
       items: visible,
+      isLoading: loading,
+      error: error,
+      onRetry: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
       facets: _facetsOf(s, all),
       nullCounts: const {},
       filters: _filters,
@@ -988,7 +1002,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
   Widget _celebrationBatchBar(BuildContext context, List<HrTaskItem> toBless) {
     final theme = Theme.of(context);
     final noun = _type == HrTaskType.birthday ? '生日' : '入职周年';
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s12,
         UtenSpacing.s8,
@@ -1075,83 +1089,85 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
   Widget _celebrationAutoToggle({required double horizontalPadding}) {
     final theme = Theme.of(context);
     final async = ref.watch(celebrationSettingsProvider);
-    return UtenCard(
-      margin: EdgeInsets.fromLTRB(
+    return UtenPageEdgePadding(
+      padding: EdgeInsets.fromLTRB(
         horizontalPadding,
         UtenSpacing.s8,
         horizontalPadding,
         UtenSpacing.s4,
       ),
-      padding: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s16,
-          vertical: UtenSpacing.s8,
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final icon = Icon(
-              Icons.auto_awesome_outlined,
-              size: 20,
-              color: theme.colorScheme.primary,
-            );
-            final description = Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '自动发送祝福',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '开：每天 08:00（北京时间）自动为当天生日/入职周年的同事发布祝福卡；'
-                  '关：由人事在本页手动送祝福',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            );
-            final toggle = async.when(
-              loading: () => const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              error: (_, _) => IconButton(
-                tooltip: '重试',
-                icon: const Icon(Icons.refresh_rounded),
-                onPressed: () => ref.invalidate(celebrationSettingsProvider),
-              ),
-              data: (settings) => Switch(
-                key: const Key('hr-task-celebration-auto-switch'),
-                value: settings.autoEnabled,
-                onChanged: _autoToggling ? null : _onToggleCelebrationAuto,
-              ),
-            );
-            if (constraints.maxWidth < 400) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: UtenCard(
+        padding: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UtenSpacing.s16,
+            vertical: UtenSpacing.s8,
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final icon = Icon(
+                Icons.auto_awesome_outlined,
+                size: 20,
+                color: theme.colorScheme.primary,
+              );
+              final description = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  icon,
-                  const SizedBox(height: UtenSpacing.s8),
-                  description,
-                  Align(alignment: Alignment.centerRight, child: toggle),
+                  Text(
+                    '自动发送祝福',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '开：每天 08:00（北京时间）自动为当天生日/入职周年的同事发布祝福卡；'
+                    '关：由人事在本页手动送祝福',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ],
               );
-            }
-            return Row(
-              children: [
-                icon,
-                const SizedBox(width: UtenSpacing.s12),
-                Expanded(child: description),
-                const SizedBox(width: UtenSpacing.s12),
-                toggle,
-              ],
-            );
-          },
+              final toggle = async.when(
+                loading: () => const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                error: (_, _) => IconButton(
+                  tooltip: '重试',
+                  icon: const Icon(Icons.refresh_rounded),
+                  onPressed: () => ref.invalidate(celebrationSettingsProvider),
+                ),
+                data: (settings) => Switch(
+                  key: const Key('hr-task-celebration-auto-switch'),
+                  value: settings.autoEnabled,
+                  onChanged: _autoToggling ? null : _onToggleCelebrationAuto,
+                ),
+              );
+              if (constraints.maxWidth < 400) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    icon,
+                    const SizedBox(height: UtenSpacing.s8),
+                    description,
+                    Align(alignment: Alignment.centerRight, child: toggle),
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  icon,
+                  const SizedBox(width: UtenSpacing.s12),
+                  Expanded(child: description),
+                  const SizedBox(width: UtenSpacing.s12),
+                  toggle,
+                ],
+              );
+            },
+          ),
         ),
       ),
     );

@@ -166,6 +166,7 @@ class AuditLogPage extends PagedResult<AuditLogEntry> {
     required super.total,
     required super.totalPages,
     required this.snapshotId,
+    super.readScopeVersion,
   });
 
   final int snapshotId;
@@ -179,6 +180,7 @@ class AuditLogPage extends PagedResult<AuditLogEntry> {
       total: page.total,
       totalPages: page.totalPages,
       snapshotId: AuditLogEntry._parseInt(json['snapshotId']) ?? 0,
+      readScopeVersion: page.readScopeVersion,
     );
   }
 }

@@ -10,13 +10,26 @@
 // 页面专属筛选（状态/类型/日期等）留在页面本地状态，组装进 fetch 闭包；
 // 控制器只拥有分页/加载/错误/排序与竞态语义。宿主在 build 里用
 // ListenableBuilder(listenable: controller) 订阅重建，本地筛选仍走 setState。
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/network/latest_request_guard.dart';
 import '../../shared/models/paged_result.dart';
+import '../../shared/paging/scoped_paged_read.dart' show pagedReadAccessDenied;
+import '../../shared/paging/paged_read_intent.dart';
+import '../../shared/paging/paged_read_window_binding.dart';
+import '../../shared/paging/paged_read_window_refresh.dart';
+import 'paged_read_cache.dart';
 
 class PagedListController<T> extends ChangeNotifier {
+  final _cache = PagedReadCache<T>();
+  bool Function()? _cacheOwnerCheck;
+  int? _acceptedForegroundPage;
+  PagedReadWindowSession<T>? _window;
+  Future<RefreshedReadWindow<T>>? _windowRefresh;
+  int _windowEpoch = 0;
   PagedResult<T>? page;
   int pageNum = 1;
   bool loading = false;
@@ -96,6 +109,13 @@ class PagedListController<T> extends ChangeNotifier {
   /// Retire private data and pending callbacks without changing the query that
   /// the user is typing or the page's existing search-reset lifecycle.
   void invalidateReadOwner({bool notify = true}) {
+    _cache.clear();
+    _window?.invalidate();
+    _window = null;
+    _windowRefresh = null;
+    ++_windowEpoch;
+    _cacheOwnerCheck = null;
+    _acceptedForegroundPage = null;
     _readRevision = _requests.begin();
     _paginationRevision++;
     _retainedPages = const [];
@@ -124,8 +144,81 @@ class PagedListController<T> extends ChangeNotifier {
     required Future<PagedResult<T>> Function() fetch,
     Future<PagedResult<T>> Function(int page)? fetchPage,
     bool Function()? isCurrent,
+    // Opt in only with a complete immutable business-query snapshot. Keyword
+    // and sort are included here; page number is deliberately excluded. The
+    // owner predicate must remain valid across same-query page navigation.
+    Object? queryScope,
+    // Only an explicit pagination action may reuse a cached page. Ordinary
+    // reloads (including writes that relocate to another page) stay fresh.
+    bool useCachedPage = false,
+    bool Function()? canPrefetch,
   }) async {
+    final bufferSeed = PagedReadIntent.isBufferSeed;
+    final readingPage = PagedReadIntent.readingPage;
     if (_disposed || isCurrent?.call() == false) return;
+    final cacheEnabled = queryScope != null && fetchPage != null;
+    var changedCacheScope = false;
+    if (_cacheOwnerCheck?.call() == false) {
+      _cache.clear();
+      _window?.invalidate();
+      _window = null;
+      _windowRefresh = null;
+      ++_windowEpoch;
+    }
+    if (cacheEnabled) {
+      changedCacheScope = _cache.bind([
+        queryScope,
+        normalizedKeyword,
+        sortKey,
+        sortAsc,
+      ]);
+      if (changedCacheScope) {
+        _acceptedForegroundPage = null;
+        _window?.invalidate();
+        _window = null;
+        _windowRefresh = null;
+        ++_windowEpoch;
+      }
+    } else {
+      _cache.clear();
+    }
+    if (!bufferSeed || changedCacheScope || _cacheOwnerCheck == null) {
+      _cacheOwnerCheck = isCurrent;
+    }
+    final session = cacheEnabled
+        ? (_window ??= PagedReadWindowSession<T>(
+            isCurrent: () => !_disposed && (_cacheOwnerCheck?.call() ?? true),
+          ))
+        : null;
+    final fresh =
+        !bufferSeed &&
+        (silent ||
+            !useCachedPage ||
+            (readingPage ?? _acceptedForegroundPage) == page);
+    final explicit = PagedReadIntent.replaceWindow;
+    final plan = fresh && !silent && !explicit ? session?.capture() : null;
+    final preserveWindow = plan != null && plan.visiblePage == page;
+    final previousRefresh = !fresh && !explicit ? _windowRefresh : null;
+    if (fresh || (explicit && _windowRefresh != null)) {
+      ++_windowEpoch;
+      _windowRefresh = null;
+    }
+    final windowEpoch = _windowEpoch;
+    bool windowCurrent() =>
+        !_disposed &&
+        windowEpoch == _windowEpoch &&
+        (isCurrent?.call() ?? true);
+    if (preserveWindow && this.page != null) {
+      session!.bindResult(this.page!, pending: true);
+    }
+    // Ordinary loads mean refresh, including writes that relocate to another
+    // page. A background refresh also retires all speculative reads.
+    if (!bufferSeed &&
+        (silent ||
+            !useCachedPage ||
+            (readingPage ?? _acceptedForegroundPage) == page)) {
+      _cache.clear();
+    }
     final generation = _requests.begin();
     _readRevision = generation;
     bool current() =>
@@ -157,16 +250,18 @@ class PagedListController<T> extends ChangeNotifier {
           if (!current()) return;
           lastPage = result.totalPages;
           if (result.totalPages == 0) {
-            results[1] = PagedResult<T>(
-              items: const [],
-              page: 1,
-              size: result.size,
-              total: result.total,
-              totalPages: 0,
-              totals: result.totals,
-              facets: result.facets,
-              facetNullCounts: result.facetNullCounts,
-            );
+            results[1] = result.page == 1 && result.items.isEmpty
+                ? result
+                : PagedResult<T>(
+                    items: const [],
+                    page: 1,
+                    size: result.size,
+                    total: result.total,
+                    totalPages: 0,
+                    totals: result.totals,
+                    facets: result.facets,
+                    facetNullCounts: result.facetNullCounts,
+                  );
             window[1] = const [];
             break;
           }
@@ -189,12 +284,49 @@ class PagedListController<T> extends ChangeNotifier {
         // A later response may report a smaller dataset than an earlier one.
         // Invalid page slots must disappear in the same atomic publication.
         window.removeWhere((page, _) => page > r.totalPages && page != 1);
+      } else if (preserveWindow) {
+        final transaction = refreshReadWindow<T>(
+          plan,
+          fetch: (target) => _cache.read(target, () => fetchPage!(target)),
+          isCurrent: windowCurrent,
+          retry: _cache.clear,
+        );
+        _windowRefresh = transaction;
+        final refreshed = await transaction;
+        if (identical(_windowRefresh, transaction)) _windowRefresh = null;
+        r = refreshed.select(plan.visiblePage);
+        window.addAll(refreshed.rows);
       } else {
-        r = await fetch();
+        final previous = previousRefresh == null ? null : await previousRefresh;
+        r = cacheEnabled && !background
+            ? await _cache.read(page, fetch)
+            : await fetch();
+        if (previous != null) {
+          window.addAll(previous.rows);
+          window[r.page] = r.items;
+          window.removeWhere((key, _) => key > r.totalPages && key != 1);
+          if (window.length > 5) {
+            final keys = window.keys.toList()
+              ..sort(
+                (a, b) => (a - r.page).abs().compareTo((b - r.page).abs()),
+              );
+            final keep = keys.take(5).toSet();
+            window.removeWhere((key, _) => !keep.contains(key));
+          }
+        }
         if (background) window[r.page] = r.items;
       }
       if (!current()) return;
+      if (session != null) {
+        session.bindResult(r, replacementPages: window.isEmpty ? null : window);
+      }
       this.page = r;
+      if (!bufferSeed && !background) {
+        _acceptedForegroundPage = r.page;
+        PagedReadIntent.accepted(r.page);
+      }
+      if (cacheEnabled) _cache.accept(r);
+      if (preserveWindow || previousRefresh != null) pageNum = r.page;
       if (background) {
         pageNum = r.page;
         refreshedPages = Map.unmodifiable({
@@ -207,16 +339,35 @@ class PagedListController<T> extends ChangeNotifier {
       refreshing = false;
       refreshError = null;
       _notify();
+      if (cacheEnabled && !bufferSeed) {
+        unawaited(
+          _cache.prefetchAdjacent(
+            r,
+            fetch: fetchPage,
+            isCurrent: () =>
+                !_disposed &&
+                identical(_cacheOwnerCheck, isCurrent) &&
+                (isCurrent?.call() ?? true) &&
+                (canPrefetch?.call() ?? true),
+            onError: (error) {
+              if (error is ApiException && _accessDenied(error)) {
+                invalidateReadOwner(notify: false);
+                _fail(error.message, background: false);
+              }
+            },
+          ),
+        );
+      }
     } on ApiException catch (e) {
       if (!current()) return;
       // These are the same confirmed access failures emitted by
       // ApiExceptionFactory. A denied list must not leave private rows visible.
-      final accessDenied =
-          e.httpStatus == 401 ||
-          e.httpStatus == 403 ||
-          e.code == 'UNAUTHORIZED' ||
-          e.code == 'FORBIDDEN';
+      final accessDenied = _accessDenied(e);
+      if (preserveWindow || previousRefresh != null) _cache.clear();
+      session?.fail(accessDenied: accessDenied);
+      _windowRefresh = null;
       if (accessDenied) {
+        _cache.clear();
         this.page = null;
         refreshedPages = const {};
         _retainedPages = const [];
@@ -225,9 +376,14 @@ class PagedListController<T> extends ChangeNotifier {
       _fail(e.message, background: background && !accessDenied);
     } catch (_) {
       if (!current()) return;
+      if (preserveWindow || previousRefresh != null) _cache.clear();
+      session?.fail();
+      _windowRefresh = null;
       _fail('加载列表失败', background: background); // TODO(l10n): 补 arb
     }
   }
+
+  static bool _accessDenied(ApiException error) => pagedReadAccessDenied(error);
 
   void _fail(String message, {required bool background}) {
     loading = false;
@@ -242,6 +398,12 @@ class PagedListController<T> extends ChangeNotifier {
 
   @override
   void dispose() {
+    _cache.clear();
+    _window?.invalidate();
+    _window = null;
+    _windowRefresh = null;
+    ++_windowEpoch;
+    _cacheOwnerCheck = null;
     _readRevision = _requests.begin();
     _disposed = true;
     super.dispose();

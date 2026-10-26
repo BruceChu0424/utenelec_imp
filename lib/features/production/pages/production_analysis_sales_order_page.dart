@@ -31,6 +31,7 @@ import '../../../shared/measurement/measurement_totals.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/analysis_linked_sales_order.dart';
 import '../repositories/production_repository.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class ProductionAnalysisSalesOrderPage extends ConsumerStatefulWidget {
   const ProductionAnalysisSalesOrderPage({
@@ -107,7 +108,7 @@ class _ProductionAnalysisSalesOrderPageState
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
-          child: Padding(
+          child: UtenPageEdgePadding(
             padding: const EdgeInsets.fromLTRB(
               UtenSpacing.s12,
               UtenSpacing.s12,
@@ -197,6 +198,7 @@ class _ProductionAnalysisSalesOrderPageState
     final theme = Theme.of(context);
     final lines = order?.lines ?? const <AnalysisLinkedSalesOrderLine>[];
     return MasterDataTableView<AnalysisLinkedSalesOrderLine>(
+      expensiveRowMounts: false,
       tableKey:
           'features.production.pages.production_analysis_sales_order_page.ProductionAnalysisSalesOrderPageState._table.1',
       key: const Key('analysis-sales-order-lines'),

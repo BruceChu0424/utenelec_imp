@@ -6,6 +6,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_employee_picker.dart'
@@ -14,12 +15,14 @@ import '../../../components/inputs/uten_employee_picker_access.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 import '../../../shared/formatters/employee_display.dart';
 import '../../../shared/hierarchy/category_tree_search.dart';
 import '../../department/models/department_node.dart';
@@ -102,6 +105,7 @@ class _DeptEmployeePickerSheetState
     extends ConsumerState<_DeptEmployeePickerSheet>
     with EmployeePickerAccessState<_DeptEmployeePickerSheet> {
   static const _pageSize = 100;
+  final _candidatePages = ScopedPagedRead<EmployeeSummary>();
 
   String? _selectedDeptId;
   String? _selectedDeptName;
@@ -144,6 +148,7 @@ class _DeptEmployeePickerSheetState
 
   @override
   void onPickerAccessInvalidated() {
+    _candidatePages.invalidate();
     _invalidated = true;
     _requestVersion++;
     _acceptPendingSearch = false;
@@ -180,6 +185,7 @@ class _DeptEmployeePickerSheetState
 
   @override
   void dispose() {
+    _candidatePages.dispose();
     _keywordCtl.dispose();
     super.dispose();
   }
@@ -278,12 +284,7 @@ class _DeptEmployeePickerSheetState
     final repository = ref.read(employeeRepositoryProvider);
     late final PagedResult<EmployeeSummary> firstPage;
     try {
-      firstPage = await repository.list(
-        size: _pageSize,
-        search: query,
-        statuses: widget.statuses,
-        includeSubtree: true,
-      );
+      firstPage = await _readEmployeePage(1, request: request, keyword: query);
       if (!_isCurrent(request)) return;
       final provisional = resolveHierarchySearch(
         roots: widget.tree,
@@ -317,13 +318,23 @@ class _DeptEmployeePickerSheetState
       contentDepartmentIds =
           await collectPagedHierarchyCategoryIds<EmployeeSummary>(
             seedPage: firstPage,
-            loadPage: (page) => repository.list(
-              page: page,
-              size: _pageSize,
-              search: query,
-              statuses: widget.statuses,
-              includeSubtree: true,
-            ),
+            loadPage: (page) => page == 2
+                ? PagedReadIntent.bufferSeed(
+                    () => _readEmployeePage(
+                      page,
+                      request: request,
+                      keyword: query,
+                      useCache: true,
+                      prepare: false,
+                    ),
+                  )
+                : repository.list(
+                    page: page,
+                    size: _pageSize,
+                    search: query,
+                    statuses: widget.statuses,
+                    includeSubtree: true,
+                  ),
             categoryIdOf: (item) => item.departmentId,
             isCurrent: () => _isCurrent(request),
           );
@@ -346,11 +357,10 @@ class _DeptEmployeePickerSheetState
     // 纯部门命中：右侧浏览该部门全部员工，不把部门词错误地当人员过滤词。
     if (!resolution.hasContentMatches && selectedId != null) {
       try {
-        final categoryPage = await repository.list(
-          size: _pageSize,
+        final categoryPage = await _readEmployeePage(
+          1,
+          request: request,
           departmentId: selectedId,
-          statuses: widget.statuses,
-          includeSubtree: true,
         );
         if (!_isCurrent(request)) return;
         setState(() {
@@ -396,15 +406,12 @@ class _DeptEmployeePickerSheetState
       _error = null;
     });
     try {
-      final result = await ref
-          .read(employeeRepositoryProvider)
-          .list(
-            size: _pageSize,
-            search: keyword,
-            statuses: widget.statuses,
-            departmentId: departmentId,
-            includeSubtree: true,
-          );
+      final result = await _readEmployeePage(
+        1,
+        request: request,
+        departmentId: departmentId,
+        keyword: keyword,
+      );
       if (!_isCurrent(request)) return;
       setState(() {
         _replacePage(result, departmentId: departmentId, keyword: keyword);
@@ -417,6 +424,46 @@ class _DeptEmployeePickerSheetState
         _loading = false;
       });
     }
+  }
+
+  Future<PagedResult<EmployeeSummary>> _readEmployeePage(
+    int page, {
+    required int request,
+    String? departmentId,
+    String? keyword,
+    bool useCache = false,
+    bool prepare = true,
+  }) {
+    final repository = ref.read(employeeRepositoryProvider);
+    final statuses = Set<String>.unmodifiable(widget.statuses);
+    bool current() =>
+        _isCurrent(request) &&
+        identical(repository, ref.read(employeeRepositoryProvider)) &&
+        setEquals(statuses, widget.statuses);
+    return _candidatePages.read(
+      page,
+      scope: [repository, request, departmentId, keyword, statuses],
+      isCurrent: current,
+      useCache: useCache,
+      canPrefetch: () =>
+          prepare &&
+          current() &&
+          TickerMode.valuesOf(context).enabled &&
+          (ModalRoute.of(context)?.isCurrent ?? true),
+      onPrefetchError: (error) {
+        if (current() && pagedReadAccessDenied(error)) {
+          onPickerAccessInvalidated();
+        }
+      },
+      fetchPage: (target) => repository.list(
+        page: target,
+        size: _pageSize,
+        departmentId: departmentId,
+        search: keyword,
+        statuses: statuses,
+        includeSubtree: true,
+      ),
+    );
   }
 
   void _replacePage(
@@ -469,16 +516,13 @@ class _DeptEmployeePickerSheetState
       _loadMoreError = null;
     });
     try {
-      final result = await ref
-          .read(employeeRepositoryProvider)
-          .list(
-            page: nextPage,
-            size: _pageSize,
-            search: _pageKeyword,
-            statuses: widget.statuses,
-            departmentId: _pageDepartmentId,
-            includeSubtree: true,
-          );
+      final result = await _readEmployeePage(
+        nextPage,
+        request: request,
+        keyword: _pageKeyword,
+        departmentId: _pageDepartmentId,
+        useCache: true,
+      );
       if (!_isCurrent(request)) return;
       setState(() {
         _items = [
@@ -524,7 +568,7 @@ class _DeptEmployeePickerSheetState
       showSearch: false,
       header: Padding(
         // 左缘贴 0（2026-10-18 全站分栏口径）：与分类页左栏搜索共缘。
-        padding: const EdgeInsets.fromLTRB(0, 12, 0, 8),
+        padding: UtenPanelSpacing.search(context),
         child: UtenSearchBar(
           controller: _keywordCtl,
           hint: '搜索部门/员工姓名或工号',
@@ -558,29 +602,14 @@ class _DeptEmployeePickerSheetState
     );
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  widget.title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
-          ),
+        UtenPanelHeader(
+          title: widget.title,
+          onClose: () => Navigator.of(context).pop(),
         ),
         const Divider(height: 1),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s12),
+            padding: UtenPanelSpacing.browseBody(context),
             child: body,
           ),
         ),
@@ -683,6 +712,7 @@ class _DeptEmployeePickerSheetState
         Expanded(
           child: MasterDataTableView<UtenEmployeePickerItem>(
             key: const ValueKey('department-employee-table'),
+            virtualized: true,
             columns: [
               MasterColumnDef(
                 key: 'name',

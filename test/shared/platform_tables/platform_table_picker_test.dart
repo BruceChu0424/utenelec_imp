@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -544,7 +545,18 @@ void main() {
     await tester.pumpAndSettle();
     await _choose(tester, 'platform-column-type', '关联资料');
     await _choose(tester, 'platform-column-relation', '模具 · 名称');
-    expect(find.textContaining('只加入你的表头'), findsOneWidget);
+    const guidance = '通过已绑定的资料自动显示。只加入你的表头；资料未关联时显示空，关联变更后同步。';
+    expect(find.textContaining('只加入你的表头'), findsNothing);
+    final typeHint = find.descendant(
+      of: find.byKey(const Key('platform-column-type')),
+      matching: find.byType(UtenFieldHintIcon),
+    );
+    expect(typeHint, findsOneWidget);
+    await _tap(tester, typeHint);
+    expect(find.textContaining(guidance), findsOneWidget);
+    Tooltip.dismissAllToolTips();
+    await tester.pumpAndSettle();
+    expect(find.textContaining(guidance), findsNothing);
     await _tap(tester, find.byKey(const Key('platform-column-create')));
     expect(controller.selected?.relationKey, 'mouldName');
     expect(controller.selected?.related, isTrue);

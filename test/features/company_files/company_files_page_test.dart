@@ -19,6 +19,10 @@ import 'package:uten_imp/components/feedback/uten_context_menu_policy.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
+import 'package:uten_imp/components/layout/uten_content_container.dart';
+import 'package:uten_imp/components/layout/uten_page_scrollbar_host.dart';
+import 'package:uten_imp/components/layout/uten_scroll_gutter.dart';
+import 'package:uten_imp/core/theme/uten_scroll_behavior.dart';
 import 'package:uten_imp/features/company_files/models/company_file.dart';
 import 'package:uten_imp/features/company_files/models/company_file_access_draft.dart';
 import 'package:uten_imp/features/company_files/pages/company_files_page.dart';
@@ -440,6 +444,8 @@ Future<ProviderContainer> _mount(
   bool dark = false,
   double scale = 1,
   AttachmentService? attachments,
+  bool pageChrome = false,
+  bool inheritedPageInsets = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -468,16 +474,22 @@ Future<ProviderContainer> _mount(
           locale: const Locale('zh'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          scrollBehavior: pageChrome ? const UtenScrollBehavior() : null,
           builder: (context, child) => UtenContextMenuPolicy(
             child: MediaQuery(
               data: MediaQuery.of(context).copyWith(
                 textScaler: TextScaler.linear(scale),
                 disableAnimations: true,
               ),
-              child: child!,
+              child: pageChrome ? UtenPageScrollbarHost(child: child!) : child!,
             ),
           ),
-          home: const CompanyFilesPage(),
+          home: inheritedPageInsets
+              ? const UtenContentContainer(
+                  selectable: false,
+                  child: CompanyFilesPage(),
+                )
+              : const CompanyFilesPage(),
         ),
       ),
     ),
@@ -578,6 +590,39 @@ void main() {
     await (FontLoader(
       'NotoSansSC',
     )..addFont(rootBundle.load('assets/fonts/NotoSansSCFull.ttf'))).load();
+  });
+  testWidgets('compact main canvas owns one page end with or without shell', (
+    tester,
+  ) async {
+    for (final inherited in [false, true]) {
+      final repository = _Repository();
+      await _mount(
+        tester,
+        repository,
+        size: const Size(390, 844),
+        pageChrome: true,
+        inheritedPageInsets: inherited,
+      );
+      await tester.pumpAndSettle();
+      final canvas = find.byKey(const ValueKey('company-files-canvas'));
+      final rect = tester.getRect(canvas);
+      final rail = tester.getRect(find.byKey(UtenPageScrollbarHost.railKey));
+      expect(
+        UtenContentInsetsScope.isPresentOf(tester.element(canvas)),
+        isTrue,
+      );
+      expect(rect.right, closeTo(390 - 24, .01));
+      expect(rect.left, closeTo(inherited ? 16 : 0, .01));
+      expect(rail.left - rect.right, closeTo(8, .01));
+      expect(rail.width, closeTo(14, .01));
+      expect(rail.right, closeTo(388, .01));
+      expect(repository.reservations, isEmpty);
+      expect(repository.accessWrites, 0);
+      expect(repository.passwordWrites, 0);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }
   });
   for (final layout in [
     (

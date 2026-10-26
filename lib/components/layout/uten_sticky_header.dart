@@ -25,6 +25,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'uten_scroll_signal_scope.dart';
 import 'package:flutter/services.dart';
 
 /// 吸顶表头的量位与状态核心。三把 key 分别挂在：承载覆盖层的 Stack、吸顶单元
@@ -231,6 +232,7 @@ class UtenStickyWheelGate extends StatefulWidget {
 }
 
 class _UtenStickyWheelGateState extends State<UtenStickyWheelGate> {
+  late final _scrollSignals = UtenScrollSignalController(_onPointerSignal);
   static const double _epsilon = 0.5;
 
   /// 停顿窗内被吞的滚势方向（1=向置顶；0=窗关）。
@@ -242,6 +244,7 @@ class _UtenStickyWheelGateState extends State<UtenStickyWheelGate> {
 
   @override
   void dispose() {
+    _scrollSignals.dispose();
     _releaseHold();
     super.dispose();
   }
@@ -399,10 +402,13 @@ class _UtenStickyWheelGateState extends State<UtenStickyWheelGate> {
   @override
   Widget build(BuildContext context) {
     // opaque：短表撑高后的空白区也要进命中链——用户常对着表格下方空白滚向置顶。
-    return Listener(
-      behavior: HitTestBehavior.opaque,
-      onPointerSignal: _onPointerSignal,
-      child: widget.child,
+    return UtenScrollSignalScope(
+      controller: _scrollSignals,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerSignal: _scrollSignals.dispatch,
+        child: widget.child,
+      ),
     );
   }
 }

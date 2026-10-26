@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,7 +6,10 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/cards/uten_card.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
+import 'package:uten_imp/features/admin/widgets/permission_catalog_browser.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -27,65 +31,199 @@ const _capture = bool.fromEnvironment('UTEN_CAPTURE_PERMISSION_TEMPLATES');
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
-  for (final width in [375.0, 1440.0]) {
-    testWidgets('template detail and editor fit at $width with large text', (
+  testWidgets('delete confirms on the dialog navigator inside a nested page', (
+    tester,
+  ) async {
+    final repository = _Repository();
+    final nested = GlobalKey<NavigatorState>();
+    await _mount(
       tester,
-    ) async {
+      repository,
+      Navigator(
+        key: nested,
+        onGenerateRoute: (_) => MaterialPageRoute<void>(
+          builder: (_) => const Scaffold(body: Text('parent page')),
+        ),
+      ),
+    );
+    nested.currentState!.push(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(
+          body: AdminPermissionTemplatesView(navigation: SizedBox()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('采购模板'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除模板'));
+    await tester.pumpAndSettle();
+    final confirm = find
+        .descendant(
+          of: find.byType(UtenAlertDialog),
+          matching: find.text('删除模板'),
+        )
+        .last;
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+    expect(repository.deletedId, 'template');
+    expect(repository.savedVersion, 3);
+    expect(find.byType(UtenAlertDialog), findsNothing);
+    expect(find.byType(AdminPermissionTemplatesView), findsOneWidget);
+    expect(nested.currentState!.canPop(), isTrue);
+  });
+  testWidgets(
+    'new template dialog only collects metadata then opens permissions',
+    (tester) async {
       final repository = _Repository();
       await _mount(
         tester,
         repository,
         const AdminPermissionTemplatesView(navigation: SizedBox()),
-        width: width,
-        scale: 1.8,
       );
-      await tester.tap(find.text('采购模板'));
+      final newButton = find.byKey(const ValueKey('new-permission-template'));
+      expect(
+        find.ancestor(
+          of: newButton,
+          matching: find.byType(UtenFloatingActionGroup),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('import-permission-template')),
+        findsOneWidget,
+      );
+      await tester.tap(newButton);
       await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-      if (_capture) {
-        await saveAuditScreenshot(
-          tester,
-          _captureKey,
-          'permission-template-detail-${width.toInt()}',
-        );
-      }
-      await tester.ensureVisible(find.text('编辑模板'));
-      await tester.tap(find.text('编辑模板'));
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
       final dialog = find.byType(UtenAlertDialog);
-      final search = find.descendant(
-        of: dialog,
-        matching: find.byKey(const ValueKey('permission-catalog-search')),
+      expect(dialog, findsOneWidget);
+      expect(
+        find.descendant(
+          of: dialog,
+          matching: find.byType(PermissionCatalogBrowser),
+        ),
+        findsNothing,
       );
-      final note = find.byKey(
-        const ValueKey('permission-template-sensitive-note'),
+      await tester.enterText(_field('permission-template-name'), '仓库模板');
+      await tester.enterText(
+        _field('permission-template-description'),
+        '收发货岗位',
       );
-      expect(tester.getRect(note).bottom, lessThan(tester.getRect(search).top));
-      final module = find.descendant(
-        of: dialog,
-        matching: find.byKey(const ValueKey('permission-module-基础资料')),
+      await tester.tap(
+        find.byKey(const ValueKey('create-permission-template')),
       );
-      final field = tester.getRect(
-        find.byKey(const ValueKey('permission-template-name')),
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenAlertDialog), findsNothing);
+      expect(repository.savedName, '仓库模板');
+      expect(repository.savedCodes, isEmpty);
+      expect(repository.savedVersion, isNull);
+      expect(find.byType(PermissionCatalogBrowser), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('save-permission-template')),
+        findsOneWidget,
       );
-      expect(tester.getRect(module).left, greaterThanOrEqualTo(field.left - 1));
-      expect(tester.getRect(module).right, lessThanOrEqualTo(field.right + 1));
+      expect(find.text('仓库模板'), findsWidgets);
+      await _expandCatalog(tester);
+      await tester.tap(find.byKey(const ValueKey('template-code-goods:view')));
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pumpAndSettle();
+      expect(repository.savedCodes, {'goods:view'});
+      expect(repository.savedVersion, 1);
+      expect(
+        tester
+            .getRect(find.byKey(const ValueKey('save-permission-template')))
+            .right,
+        closeTo(tester.getRect(find.byType(UtenCard)).right, 0.1),
+      );
       if (_capture) {
         await saveAuditScreenshot(
           tester,
           _captureKey,
-          'permission-template-editor-${width.toInt()}',
+          'permission-template-workspace-desktop',
         );
       }
-      await tester.tap(find.text('取消'));
-      await tester.pumpAndSettle();
-      expect(repository.writes, 0);
-    });
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('rapid new-template clicks open a single metadata dialog', (
+    tester,
+  ) async {
+    final repository = _Repository();
+    await _mount(
+      tester,
+      repository,
+      const AdminPermissionTemplatesView(navigation: SizedBox()),
+    );
+    final button = find.byKey(const ValueKey('new-permission-template'));
+    final action = tester.widget<UtenButton>(button).onPressed!;
+    final first = Future<void>.sync(action);
+    final second = Future<void>.sync(action);
+    await tester.pumpAndSettle();
+    expect(find.byType(UtenAlertDialog), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    await Future.wait([first, second]);
+    expect(find.byType(UtenAlertDialog), findsNothing);
+    expect(repository.writes, 0);
+  });
+
+  for (final width in [375.0, 1440.0]) {
+    testWidgets(
+      'inline template detail and metadata fit at $width with large text',
+      (tester) async {
+        final repository = _Repository();
+        await _mount(
+          tester,
+          repository,
+          const AdminPermissionTemplatesView(navigation: SizedBox()),
+          width: width,
+          scale: 1.8,
+        );
+        await tester.tap(find.text('采购模板'));
+        await tester.pumpAndSettle();
+        expect(find.byType(PermissionCatalogBrowser), findsOneWidget);
+        expect(find.byType(UtenAlertDialog), findsNothing);
+        expect(tester.takeException(), isNull);
+        if (_capture) {
+          await saveAuditScreenshot(
+            tester,
+            _captureKey,
+            'permission-template-detail-${width.toInt()}',
+          );
+        }
+        final edit = find.byKey(const ValueKey('edit-permission-template'));
+        await tester.ensureVisible(edit);
+        await tester.tap(edit);
+        await tester.pumpAndSettle();
+        final dialog = find.byType(UtenAlertDialog);
+        expect(dialog, findsOneWidget);
+        expect(
+          find.descendant(
+            of: dialog,
+            matching: find.byType(PermissionCatalogBrowser),
+          ),
+          findsNothing,
+        );
+        expect(_field('permission-template-name'), findsOneWidget);
+        expect(_field('permission-template-description'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        if (_capture) {
+          await saveAuditScreenshot(
+            tester,
+            _captureKey,
+            'permission-template-metadata-${width.toInt()}',
+          );
+        }
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+        expect(repository.writes, 0);
+      },
+    );
   }
 
   testWidgets(
-    'expanded catalog stays inside the editor at 200 percent with a keyboard',
+    'expanded inline permissions stay usable at 200 percent on mobile',
     (tester) async {
       final repository = _Repository();
       await _mount(
@@ -98,41 +236,33 @@ void main() {
       );
       await tester.tap(find.text('采购模板'));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('编辑模板'));
-      await tester.tap(find.text('编辑模板'));
-      await tester.pumpAndSettle();
-      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
-      addTearDown(tester.view.resetViewInsets);
-      await tester.pumpAndSettle();
-      final toggle = find.descendant(
-        of: find.byType(UtenAlertDialog),
-        matching: find.byKey(const ValueKey('permission-toggle-all-groups')),
-      );
-      await tester.ensureVisible(toggle);
-      await tester.tap(toggle);
-      await tester.pumpAndSettle();
+      await _expandCatalog(tester);
       final last = find.byKey(
         const ValueKey('template-code-fixture:permission:19'),
       );
       await tester.ensureVisible(last);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(
-        tester
-            .getRect(find.byKey(const ValueKey('save-permission-template')))
-            .bottom,
-        lessThanOrEqualTo(800),
-      );
-      final field = tester.getRect(
-        find.byKey(const ValueKey('permission-template-name')),
-      );
-      expect(tester.getRect(last).left, greaterThanOrEqualTo(field.left - 1));
-      expect(tester.getRect(last).right, lessThanOrEqualTo(field.right + 1));
+      final save = find.byKey(const ValueKey('save-permission-template'));
+      await tester.ensureVisible(save);
+      await tester.pumpAndSettle();
+      expect(tester.getRect(save).bottom, lessThanOrEqualTo(1100));
+      if (_capture) {
+        await saveAuditScreenshot(
+          tester,
+          _captureKey,
+          'permission-template-mobile-expanded-200',
+        );
+      }
+      await tester.tap(last);
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pumpAndSettle();
+      expect(repository.savedCodes, contains('fixture:permission:19'));
     },
   );
 
   testWidgets(
-    'editing saves reviewed codes and version; cancelling never mutates',
+    'metadata edits preserve codes and version; cancelling never writes',
     (tester) async {
       final repository = _Repository();
       await _mount(
@@ -142,14 +272,10 @@ void main() {
       );
       await tester.tap(find.text('采购模板'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('编辑模板'));
+      await tester.tap(find.byKey(const ValueKey('edit-permission-template')));
       await tester.pumpAndSettle();
-      final name = find.descendant(
-        of: find.byKey(const ValueKey('permission-template-name')),
-        matching: find.byType(TextField),
-      );
-      await tester.enterText(name, '采购与仓库');
-      await tester.tap(find.byKey(const ValueKey('save-permission-template')));
+      await tester.enterText(_field('permission-template-name'), '采购与仓库');
+      await tester.tap(find.byKey(const ValueKey('confirm-template-metadata')));
       await tester.pumpAndSettle();
       expect(repository.savedName, '采购与仓库');
       expect(repository.savedCodes, {'goods:view'});
@@ -158,6 +284,207 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'autosave debounces and subsequent saves use the returned version',
+    (tester) async {
+      final repository = _Repository();
+      await _mount(
+        tester,
+        repository,
+        const AdminPermissionTemplatesView(navigation: SizedBox()),
+      );
+      await tester.tap(find.text('采购模板'));
+      await tester.pumpAndSettle();
+      await _expandCatalog(tester);
+      final toggle = find.byKey(const ValueKey('template-code-goods:view'));
+      await tester.tap(toggle);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(repository.writes, 0);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(repository.savedCodes, isEmpty);
+      expect(repository.savedVersion, 3);
+      await tester.tap(toggle);
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pumpAndSettle();
+      expect(repository.savedCodes, {'goods:view'});
+      expect(repository.savedVersion, 4);
+      expect(repository.writes, 2);
+    },
+  );
+
+  testWidgets('manual save flushes the debounce without a duplicate request', (
+    tester,
+  ) async {
+    final repository = _Repository();
+    await _mount(
+      tester,
+      repository,
+      const AdminPermissionTemplatesView(navigation: SizedBox()),
+    );
+    await tester.tap(find.text('采购模板'));
+    await tester.pumpAndSettle();
+    await _expandCatalog(tester);
+    await tester.tap(find.byKey(const ValueKey('template-code-goods:view')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('save-permission-template')));
+    await tester.pumpAndSettle();
+    expect(repository.writes, 1);
+    await tester.pump(const Duration(seconds: 2));
+    expect(repository.writes, 1);
+  });
+
+  testWidgets(
+    'new edits during a save survive the response and save serially',
+    (tester) async {
+      final repository = _Repository();
+      final gate = Completer<void>();
+      repository.nextSaveGate = gate;
+      await _mount(
+        tester,
+        repository,
+        const AdminPermissionTemplatesView(navigation: SizedBox()),
+        manyPermissions: true,
+      );
+      await tester.tap(find.text('采购模板'));
+      await tester.pumpAndSettle();
+      await _expandCatalog(tester);
+      final first = find.byKey(const ValueKey('template-code-goods:view'));
+      final second = find.byKey(
+        const ValueKey('template-code-fixture:permission:0'),
+      );
+      await tester.tap(first);
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(repository.writes, 1);
+      await tester.ensureVisible(second);
+      await tester.tap(second);
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(repository.writes, 1);
+      gate.complete();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pumpAndSettle();
+      expect(repository.writes, 2);
+      expect(repository.savedVersion, 4);
+      expect(repository.savedCodes, {'fixture:permission:0'});
+      expect(tester.widget<Switch>(second).value, isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'unknown autosave outcome preserves edits and blocks automatic retries',
+    (tester) async {
+      final repository = _Repository()..saveError = NetworkTimeoutException();
+      await _mount(
+        tester,
+        repository,
+        const AdminPermissionTemplatesView(navigation: SizedBox()),
+      );
+      await tester.tap(find.text('采购模板'));
+      await tester.pumpAndSettle();
+      await _expandCatalog(tester);
+      final toggle = find.byKey(const ValueKey('template-code-goods:view'));
+      await tester.tap(toggle);
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pumpAndSettle();
+      expect(repository.writes, 1);
+      expect(tester.widget<Switch>(toggle).value, isFalse);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const ValueKey('save-permission-template')),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.pump(const Duration(seconds: 5));
+      expect(repository.writes, 1);
+      expect(find.textContaining('请求结果尚未确认'), findsWidgets);
+    },
+  );
+
+  testWidgets('identity change cancels a pending template autosave', (
+    tester,
+  ) async {
+    final repository = _Repository();
+    final container = await _mount(
+      tester,
+      repository,
+      const AdminPermissionTemplatesView(navigation: SizedBox()),
+    );
+    await tester.tap(find.text('采购模板'));
+    await tester.pumpAndSettle();
+    await _expandCatalog(tester);
+    await tester.tap(find.byKey(const ValueKey('template-code-goods:view')));
+    await tester.pump(const Duration(milliseconds: 200));
+    container.read(_identity.notifier).state = 'other-admin';
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(repository.writes, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('rejected autosave keeps local edits for an explicit retry', (
+    tester,
+  ) async {
+    final repository = _Repository()
+      ..saveError = ApiException(
+        'VALIDATION_FAILED',
+        '请补齐所需查看权限',
+        httpStatus: 400,
+      );
+    await _mount(
+      tester,
+      repository,
+      const AdminPermissionTemplatesView(navigation: SizedBox()),
+    );
+    await tester.tap(find.text('采购模板'));
+    await tester.pumpAndSettle();
+    await _expandCatalog(tester);
+    final toggle = find.byKey(const ValueKey('template-code-goods:view'));
+    await tester.tap(toggle);
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(repository.writes, 1);
+    expect(tester.widget<Switch>(toggle).value, isFalse);
+    expect(find.textContaining('请补齐所需查看权限'), findsWidgets);
+    await tester.pump(const Duration(seconds: 5));
+    expect(repository.writes, 1);
+    repository.saveError = null;
+    await tester.tap(find.byKey(const ValueKey('save-permission-template')));
+    await tester.pumpAndSettle();
+    expect(repository.writes, 2);
+    expect(repository.savedVersion, 3);
+    expect(repository.savedCodes, isEmpty);
+  });
+
+  testWidgets('resizing from split view to mobile retains pending edits', (
+    tester,
+  ) async {
+    final repository = _Repository();
+    await _mount(
+      tester,
+      repository,
+      const AdminPermissionTemplatesView(navigation: SizedBox()),
+    );
+    await tester.tap(find.text('采购模板'));
+    await tester.pumpAndSettle();
+    await _expandCatalog(tester);
+    await tester.tap(find.byKey(const ValueKey('template-code-goods:view')));
+    await tester.pump(const Duration(milliseconds: 200));
+    tester.view.physicalSize = const Size(375, 1100);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(repository.writes, 1);
+    expect(repository.savedCodes, isEmpty);
+    expect(
+      find.byKey(const ValueKey('save-permission-template')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'apply requires preview and sensitive confirmation, mode changes clear both',
@@ -286,6 +613,24 @@ void main() {
   );
 }
 
+Finder _field(String key) => find.descendant(
+  of: find.byKey(ValueKey(key)),
+  matching: find.byType(TextField),
+);
+
+Future<void> _expandCatalog(WidgetTester tester) async {
+  final toggle = find.byKey(const ValueKey('permission-toggle-all-groups'));
+  await tester.ensureVisible(toggle);
+  await tester.pumpAndSettle();
+  for (var i = 0; i < 12 && toggle.hitTestable().evaluate().isEmpty; i++) {
+    await tester.drag(find.byType(ListView).last, const Offset(0, -400));
+    await tester.pumpAndSettle();
+  }
+  expect(toggle.hitTestable(), findsOneWidget);
+  await tester.tap(toggle);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _choose(WidgetTester tester) async {
   await tester.tap(find.text('应用模板'));
   await tester.pumpAndSettle();
@@ -356,6 +701,7 @@ Future<ProviderContainer> _mount(
       child: RepaintBoundary(
         key: _captureKey,
         child: MaterialApp(
+          debugShowCheckedModeBanner: false,
           theme: _capture
               ? auditScreenshotTheme(buildLightTheme())
               : buildLightTheme(),
@@ -390,7 +736,7 @@ const _user = AdminUserSummary(
 
 class _Repository extends PermissionTemplateRepository {
   _Repository() : super(ApiClient(Dio()));
-  final template = PermissionTemplate(
+  var template = PermissionTemplate(
     id: 'template',
     name: '采购模板',
     description: List.filled(12, '采购岗位可复用的操作权限。').join(),
@@ -398,17 +744,33 @@ class _Repository extends PermissionTemplateRepository {
     version: 3,
   );
   int writes = 0;
+  String? deletedId;
   String? savedName;
   Set<String>? savedCodes;
   int? savedVersion;
   String? appliedFingerprint;
   Set<String>? appliedConfirmations;
   Object? applyError;
+  Object? saveError;
+  Completer<void>? nextSaveGate;
+  final extraTemplates = <PermissionTemplate>[];
+  bool deleted = false;
   final previewModes = <bool>[];
   @override
-  Future<List<PermissionTemplate>> list() async => [template];
+  Future<List<PermissionTemplate>> list() async => [
+    if (!deleted) template,
+    ...extraTemplates,
+  ];
   @override
-  Future<void> save({
+  Future<void> delete(PermissionTemplate template) async {
+    deletedId = template.id;
+    deleted = true;
+    savedVersion = template.version;
+    writes++;
+  }
+
+  @override
+  Future<PermissionTemplate> save({
     PermissionTemplate? template,
     required String name,
     required String description,
@@ -418,6 +780,24 @@ class _Repository extends PermissionTemplateRepository {
     savedName = name;
     savedCodes = {...permissions};
     savedVersion = template?.version;
+    final gate = nextSaveGate;
+    nextSaveGate = null;
+    if (gate != null) await gate.future;
+    if (saveError != null) throw saveError!;
+    final saved = PermissionTemplate(
+      id: template?.id ?? 'created-${extraTemplates.length}',
+      name: name.trim(),
+      description: description.trim(),
+      permissions: permissions.toList()..sort(),
+      version: (template?.version ?? 0) + 1,
+    );
+    if (saved.id == this.template.id) {
+      this.template = saved;
+    } else {
+      extraTemplates.removeWhere((item) => item.id == saved.id);
+      extraTemplates.add(saved);
+    }
+    return saved;
   }
 
   @override

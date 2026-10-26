@@ -157,7 +157,7 @@ public class ProductionScheduleService {
         if (!billNoFilter.isEmpty()) dataQ.setParameter("billNo", normalizedBillNo);
         @SuppressWarnings("unchecked")
         List<Object[]> rs = (List<Object[]>) dataQ
-                .setParameter("lim", sz).setParameter("off", (p - 1) * sz)
+                .setParameter("lim", sz).setParameter("off", (long) (p - 1) * sz)
                 .getResultList();
 
         List<PendingPlanRow> out = new ArrayList<>(rs.size());
@@ -306,24 +306,25 @@ public class ProductionScheduleService {
         String kw = KeywordSearch.phrase(keyword);
         LocalDate warn = BusinessTime.today().plusDays(3);
         String filters = pendingFiltersBase(kw, dateFrom, dateTo);
-        var q = em.createNativeQuery("""
+        long urgent = 0, normal = 0;
+        if (!com.uten.imp.common.web.NativeFacetCandidates.active()) {
+            var q = em.createNativeQuery("""
                 SELECT
                   SUM(CASE WHEN %s <= :warn THEN 1 ELSE 0 END),
                   SUM(CASE WHEN (%s IS NULL OR %s > :warn) THEN 1 ELSE 0 END)
                 """.formatted(DELIVER_EXPR, DELIVER_EXPR, DELIVER_EXPR)
                 + filters);
-        bindPendingFilters(q, kw, dateFrom, dateTo, warn, true);
-        Object[] r = (Object[]) q.getSingleResult();
-        long urgent = r[0] == null ? 0 : ((Number) r[0]).longValue();
-        long normal = r[1] == null ? 0 : ((Number) r[1]).longValue();
+            bindPendingFilters(q, kw, dateFrom, dateTo, warn, true);
+            Object[] r = (Object[]) q.getSingleResult();
+            urgent = r[0] == null ? 0 : ((Number) r[0]).longValue();
+            normal = r[1] == null ? 0 : ((Number) r[1]).longValue();
+        }
         // 销售单号桶（2026-09-25 单号列统一）：同一过滤基座按单号分组计数。
-        var billQ = em.createNativeQuery("""
+        var billQ = NativeFacets.query(em, "orderBillNo", """
                 SELECT o.bill_no, COUNT(*)
                 """ + filters + " GROUP BY o.bill_no ORDER BY o.bill_no");
         bindPendingFilters(billQ, kw, dateFrom, dateTo, null, false);
-        @SuppressWarnings("unchecked")
-        List<Object[]> billRows = (List<Object[]>) billQ.getResultList();
-        List<Map<String, Object>> billBuckets = NativeFacets.rows(billRows);
+        List<Map<String, Object>> billBuckets = NativeFacets.rowsOf(billQ);
         return Map.of(
                 "status", List.of(
                         facetBucket("urgent", urgent, "紧急"),

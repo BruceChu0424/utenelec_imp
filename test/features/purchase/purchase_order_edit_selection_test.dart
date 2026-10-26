@@ -500,7 +500,7 @@ class _SelectionApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.contains('/master/suppliers/dict')) {
+    if (path == '${ApiEndpoints.suppliers}/lookup') {
       return const [
         {'id': 's1', 'code': 'GY001', 'name': '洪武五金', 'status': '使用'},
       ];

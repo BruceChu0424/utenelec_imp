@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:uten_imp/components/layout/uten_paged_picker_list.dart';
 import 'package:uten_imp/features/production/models/production_fqc_replenishment_task.dart';
@@ -109,7 +110,8 @@ void main() {
           .widget<UtenPagedPickerList<ProductionFqcReplenishmentMaterialTask>>(
             find.byKey(const Key('fqc-replenishment-task-list')),
           )
-          .currentPage,
+          .rowsController!
+          .visiblePage,
       2,
     );
     expect(tester.takeException(), isNull);
@@ -124,6 +126,7 @@ void main() {
         status: 'AWAITING_CONFIRMATION',
         pages: 3,
         failFirstPageTwo: true,
+        pageTwoGate: Completer<void>(),
       );
       final router = _router();
       addTearDown(router.dispose);
@@ -141,6 +144,7 @@ void main() {
             UtenPagedPickerList<ProductionFqcReplenishmentMaterialTask>
           >(finder);
       final next = list().rowsController!.loadNextPage();
+      api.pageTwoGate!.complete();
       await tester.pumpAndSettle();
       await next;
       expect(list().rowsController!.items.map((row) => row.authorizationId), [
@@ -161,7 +165,7 @@ void main() {
         'authorization-2',
         'authorization-3',
       ]);
-      expect(api.requestedPages, [1, 2, 2, 3, 2]);
+      expect(api.requestedPages, [1, 2, 2, 3]);
       expect(find.text('确认用料并生成领料'), findsNothing);
       expect(tester.takeException(), isNull);
     },
@@ -309,6 +313,7 @@ class _ReplenishmentApi extends ApiClient {
     this.failFirstConfirmation = false,
     this.becomeReadyAfterFirstLoad = false,
     this.failFirstPageTwo = false,
+    this.pageTwoGate,
   }) : super(Dio());
 
   final String status;
@@ -316,6 +321,7 @@ class _ReplenishmentApi extends ApiClient {
   final bool failFirstConfirmation;
   final bool becomeReadyAfterFirstLoad;
   final bool failFirstPageTwo;
+  final Completer<void>? pageTwoGate;
   bool _pageTwoFailed = false;
   String? createdAuthorizationId;
   int materialTaskLoads = 0;
@@ -390,6 +396,7 @@ class _ReplenishmentApi extends ApiClient {
       materialTaskLoads += 1;
       final page = (query?['page'] as num?)?.toInt() ?? 1;
       requestedPages.add(page);
+      if (page == 2 && pageTwoGate != null) await pageTwoGate!.future;
       if (page == 2 && failFirstPageTwo && !_pageTwoFailed) {
         _pageTwoFailed = true;
         throw NetworkException();

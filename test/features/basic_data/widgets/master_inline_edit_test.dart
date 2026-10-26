@@ -62,6 +62,102 @@ Future<void> _pumpRecordEditor(
 );
 
 void main() {
+  test(
+    'data-scope retirement preserves input, fences pending rows and never silently rebases a changed original',
+    () async {
+      final controller = MasterInlineEditController<_Row>()..begin();
+      addTearDown(controller.dispose);
+      const first = (id: '1', name: 'old one', days: 1),
+          second = (id: '2', name: 'old two', days: 2);
+      final fields = {'name': _name, 'days': _days};
+      for (final row in [first, second]) {
+        controller.rememberBaseline(row.id, row);
+        controller.setValue(
+          row.id,
+          _name,
+          'typed ${row.id}',
+          originalValue: row.name,
+        );
+      }
+      final started = Completer<void>(), pending = Completer<void>();
+      final writes = <String>[];
+      final save = controller.save((id, patch) {
+        writes.add(id);
+        started.complete();
+        return pending.future;
+      });
+      await started.future;
+      controller.retireReadScope();
+      expect(controller.baselineOf('1'), isNull);
+      expect(controller.patchFor('1')['name'], 'typed 1');
+      pending.complete();
+      expect(await save, isFalse);
+      expect(writes, ['1']);
+      expect(
+        await controller.save((id, patch) async {
+          writes.add(id);
+        }),
+        isFalse,
+      );
+      controller.rememberBaseline('1', (
+        id: '1',
+        name: 'typed 1',
+        days: 1,
+      ), fields: fields);
+      controller.rememberBaseline('2', second, fields: fields);
+      expect(
+        await controller.save((id, patch) async {
+          writes.add(id);
+        }),
+        isFalse,
+      );
+      expect(
+        writes,
+        ['1'],
+      ); // The first acknowledgement was retired; no duplicate command follows.
+      controller.setValue(
+        '1',
+        _name,
+        'reviewed next',
+        originalValue: 'typed 1',
+      );
+      expect(
+        await controller.save((id, patch) async {
+          writes.add(id);
+        }),
+        isTrue,
+      );
+      expect(writes, ['1', '1', '2']);
+    },
+  );
+  test(
+    'an unchanged freshly authorized row restores the raw edit while a hidden row cannot be submitted',
+    () async {
+      final controller = MasterInlineEditController<_Row>()..begin();
+      addTearDown(controller.dispose);
+      const row = (id: 'one', name: 'same original', days: 1);
+      controller.rememberBaseline(row.id, row);
+      controller.setValue(row.id, _name, '保留的输入', originalValue: row.name);
+      controller.retireReadScope();
+      var writes = 0;
+      expect(
+        await controller.save((id, patch) async {
+          writes++;
+        }),
+        isFalse,
+      );
+      expect(writes, 0);
+      controller.rememberBaseline(row.id, row, fields: {'name': _name});
+      expect(
+        await controller.save((id, patch) async {
+          expect(patch['name'], '保留的输入');
+          writes++;
+        }),
+        isTrue,
+      );
+      expect(writes, 1);
+    },
+  );
   testWidgets(
     'separate mounted aliases share edits without replacing either controller',
     (tester) async {

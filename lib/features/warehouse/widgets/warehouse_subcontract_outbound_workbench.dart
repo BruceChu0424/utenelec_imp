@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 委外出仓工作台(可嵌入; ADR-143 §4.3)：一行 = 委外人员在委外任务中心提交、
 // 仓库还没发出的一张委外领料单(按调用者仓库范围)。仓库核对实际仓与库位后审核
@@ -8,7 +9,6 @@ import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 由对应页面以 embedded=false 包一层继续承接。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -20,11 +20,13 @@ import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
 import '../models/warehouse_task_form_drafts.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/page_navigation_session.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -70,7 +72,24 @@ class WarehouseSubcontractOutboundWorkbench extends ConsumerStatefulWidget {
 
 class _WarehouseSubcontractOutboundWorkbenchState
     extends ConsumerState<WarehouseSubcontractOutboundWorkbench>
-    with UtenRefreshParticipant<WarehouseSubcontractOutboundWorkbench> {
+    with
+        UtenRefreshParticipant<WarehouseSubcontractOutboundWorkbench>,
+        ScopedPagedReadViewMixin<WarehouseSubcontractOutboundWorkbench> {
+  int get _refreshPage => _tableRows.visiblePage ?? (_result?.page ?? 1);
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    ++_requestVersion;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+      _selectedIds = {};
+      _tableRows.update(const []);
+    });
+  }
+
   PagedResult<OutboundTask>? _result;
   bool _loading = false;
   String? _error;
@@ -80,6 +99,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
   final _tableRows = MasterDataTableRowsController<OutboundTask>();
   Set<String> _selectedIds = {};
   bool _openingBatch = false;
+  final _navigation = PageNavigationSession();
 
   bool get _canExecute {
     final permissions = ref.read(currentPermissionsProvider);
@@ -90,6 +110,18 @@ class _WarehouseSubcontractOutboundWorkbenchState
       Perm.subcontractMaterialIssueEdit,
       Perm.subcontractMaterialIssueApprove,
     ].every(permissions.contains);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
+  void dispose() {
+    _navigation.dispose();
+    super.dispose();
   }
 
   @override
@@ -117,7 +149,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
     _load(1);
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     final version = ++_requestVersion;
     setState(() {
       _loading = true;
@@ -125,10 +157,21 @@ class _WarehouseSubcontractOutboundWorkbenchState
     });
     try {
       final repo = ref.read(warehouseSubcontractOutboundRepositoryProvider);
-      final result = await repo.tasks(
-        page: page,
-        keyword: _keyword,
-        scope: WarehouseListScope.of(context),
+      final pageRepository = repo;
+      final pageKeyword = _keyword;
+      final pageScope = WarehouseListScope.of(context);
+
+      final result = await readScopedPage(
+        page,
+        slot: '_load',
+        query: [pageRepository, pageKeyword, pageScope],
+        currentQuery: () => [repo, _keyword, WarehouseListScope.of(context)],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.tasks(
+          page: target,
+          keyword: pageKeyword,
+          scope: pageScope,
+        ),
       );
       if (!mounted || version != _requestVersion) return;
       setState(() {
@@ -166,18 +209,18 @@ class _WarehouseSubcontractOutboundWorkbenchState
       task.issueId,
     );
     if (drafts.isNotEmpty) {
-      await resumeTaskFormDraft(context, ref, drafts);
-      if (mounted) await _load(_result?.page ?? 1);
+      await resumeTaskFormDraft(context, ref, drafts, navigation: _navigation);
+      if (mounted) await _load(_refreshPage);
       return;
     }
     // 保存返回时补刷列表；出仓成功会定位任务中心，由父页刷新。
     final version = _requestVersion;
-    await context.push<bool>(
+    await _navigation.push<bool>(
       RouteName.warehouseSubcontractOutboundDetail(task.issueId),
     );
     await WidgetsBinding.instance.endOfFrame;
     if (mounted && _requestVersion == version) {
-      await _load(_result?.page ?? 1);
+      await _load(_refreshPage);
     }
   }
 
@@ -193,7 +236,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
     setState(() => _openingBatch = true);
     final version = _requestVersion;
     try {
-      final completed = await context.push<bool>(
+      final completed = await _navigation.push<bool>(
         Uri(
           path: '/warehouse/subcontract-outbound/batch',
           queryParameters: {'issueIds': ids.join(',')},
@@ -206,7 +249,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
         } else {
           await WidgetsBinding.instance.endOfFrame;
           if (mounted && _requestVersion == version) {
-            await _load(_result?.page ?? 1);
+            await _load(_refreshPage);
           }
         }
       }
@@ -252,7 +295,6 @@ class _WarehouseSubcontractOutboundWorkbenchState
             _buildStandaloneSearch(result),
             const SizedBox(height: UtenSpacing.s8),
           ],
-          if (widget.showHintBanner) const _OutboundHintBanner(),
           if (!widget.embedded) const SizedBox(height: UtenSpacing.s12),
           if (_error != null && result.items.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),
@@ -268,6 +310,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
         ],
       ),
       body: MasterDataTableView<OutboundTask>(
+        expensiveRowMounts: false,
         rowsController: _tableRows,
         paginationRevision: _result,
         paginationScope: (_keyword, WarehouseListScope.of(context)),
@@ -277,6 +320,9 @@ class _WarehouseSubcontractOutboundWorkbenchState
         primary: true,
         key: const Key('subcontract-outbound-task-table'),
         columns: _columns,
+        toolbarActions: [
+          if (widget.showHintBanner) const _OutboundHintBanner(),
+        ],
         items: result.items,
         // 列表只有一种状态(待发料); 委外商/订货单号走关键字搜索。
         facets: const {},
@@ -321,13 +367,13 @@ class _WarehouseSubcontractOutboundWorkbenchState
         isLoading: _loading,
         loadingMore: _loading && _result != null,
         error: result.items.isEmpty ? _error : null,
-        onRetry: () => _load(result.page),
+        onRetry: () => _load(_refreshPage),
         emptyMessage: _keyword.isNotEmpty
             ? '没有匹配「$_keyword」的委外领料单'
             : '目前没有待发料的委外领料单',
         currentPage: result.page,
         totalPages: result.totalPages,
-        onPageChange: _load,
+        onPageChange: (page) => _load(page, useCache: true),
       ),
     );
   }
@@ -341,7 +387,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
       onChanged: _applySearch,
     );
     final summary = Text(
-      '共 ${result.total} 项 · 单击选中，双击详情',
+      '共 ${result.total} 项',
       key: const Key('subcontract-outbound-table-summary'),
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -451,25 +497,13 @@ class _OutboundHintBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s12,
-        vertical: UtenSpacing.s8,
-      ),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(UtenRadius.md),
-      ),
-      child: Text(
-        '这里只列委外人员已提交、仓库还没发出的委外领料单(一张单 = 一个委外订货单在一个仓要发的直属物料)。'
-        '核对实际仓与库位后审核出仓；数量只能改少不能改多，少发的部分委外下次领料时系统会自动补齐。'
-        '委外商加工后交回的是委外件，回厂时按委外件登记。',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
+    return const UtenFieldHintIcon(
+      dense: true,
+      info:
+          '单击选中，双击详情\n\n'
+          '这里只列委外人员已提交、仓库还没发出的委外领料单(一张单 = 一个委外订货单在一个仓要发的直属物料)。'
+          '核对实际仓与库位后审核出仓；数量只能改少不能改多，少发的部分委外下次领料时系统会自动补齐。'
+          '委外商加工后交回的是委外件，回厂时按委外件登记。',
     );
   }
 }

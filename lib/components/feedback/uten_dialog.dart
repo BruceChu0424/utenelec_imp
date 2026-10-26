@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../buttons/uten_button.dart';
+import '../layout/uten_scroll_gutter.dart';
 import '../../core/responsive/dialog_size.dart';
 import '../../core/responsive/scale.dart';
 import '../../core/theme/uten_anim.dart';
@@ -202,20 +203,28 @@ class UtenAlertDialog extends AlertDialog {
               child: ScrollConfiguration(
                 behavior: const _UtenDialogScrollBehavior(),
                 child: SingleChildScrollView(
-                  child: MediaQuery.removeViewInsets(
-                    context: context,
-                    removeLeft: true,
-                    removeRight: true,
-                    removeTop: true,
-                    removeBottom: true,
-                    child: alert(
-                      bounds.copyWith(
-                        minWidth: bounds.maxWidth,
-                        minHeight: 0,
-                        maxHeight: double.infinity,
+                  // The automatic scrollbar reserves a trailing lane outside
+                  // this viewport. Balance it on the leading side so the
+                  // dialog surface stays centered in the keyboard-safe canvas.
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                      left: UtenScrollGutter.trackWidth,
+                    ),
+                    child: MediaQuery.removeViewInsets(
+                      context: context,
+                      removeLeft: true,
+                      removeRight: true,
+                      removeTop: true,
+                      removeBottom: true,
+                      child: alert(
+                        bounds.copyWith(
+                          minWidth: bounds.maxWidth,
+                          minHeight: 0,
+                          maxHeight: double.infinity,
+                        ),
+                        canScroll: false,
+                        margins: EdgeInsets.zero,
                       ),
-                      canScroll: false,
-                      margins: EdgeInsets.zero,
                     ),
                   ),
                 ),

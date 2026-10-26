@@ -918,12 +918,14 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
     final service = ref.read(masterNameServiceProvider);
     final goodsIds = <String>{};
     final employeeIds = <String>{};
+    final supplierIds = <String>{};
     for (final entry in [...before.entries, ...after.entries]) {
       for (final value in [entry.value, after[entry.key]]) {
         if (!AuditFieldLabels.looksLikeUuid(value)) continue;
         final kind = _refKindOf(entry.key);
         if (kind == _RefKind.goods) goodsIds.add(value as String);
         if (kind == _RefKind.employee) employeeIds.add(value as String);
+        if (kind == _RefKind.supplier) supplierIds.add(value as String);
       }
     }
     try {
@@ -931,6 +933,7 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
       await Future.wait([
         service.loadGoodsNames(goodsIds),
         service.loadEmployeeNames(employeeIds.toList()),
+        service.loadSupplierNames(supplierIds),
       ]);
       if (mounted) setState(() {});
     } catch (_) {

@@ -20,6 +20,7 @@ import '../../../shared/documents/document_unapproval.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../shared/widgets/imported_document_status_badge.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -73,6 +74,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class ProductionPlanDetailPage extends ConsumerStatefulWidget {
   const ProductionPlanDetailPage({
@@ -1239,66 +1241,70 @@ class _ProductionPlanDetailPageState
                     )
                   : _detail == null
                   ? const SizedBox.shrink()
-                  : ListView(
+                  : UtenPageEdgePadding.scroll(
                       padding: const EdgeInsets.fromLTRB(
                         UtenSpacing.s12,
                         UtenSpacing.s12,
                         UtenSpacing.s12,
                         UtenFloatingActionGroup.scrollClearance,
                       ),
-                      children: [
-                        // 越权/只读提示永远压在最顶：它决定了下面所有按钮点不点得动。
-                        DocumentScopeWriteNotice(
-                          capability: scopeCapability,
-                          ownerEmployeeId: _detail!.makerId,
-                          onRetry: () => ref
-                              .read(sessionSnapshotProvider.notifier)
-                              .refresh(),
-                        ),
-                        // ① 摘要区。
-                        documentUnapprovalBannerForRoute(
-                          'production',
-                          'plans',
-                          widget.id,
-                        ),
-                        _summaryHeroCard(theme, names),
-                        if (_detail!.legacyId != null &&
-                            _detail!.status == kProductionStatusApproved &&
-                            !_detail!.closed &&
-                            !_detail!.stopped &&
-                            !_detail!.canceled)
-                          const LegacyContinuationNotice(
-                            description: '继续办理前，请先核对剩余生产量、历史完工入库及真实来源。',
+                      builder: (context, resolvedPagePadding) => ListView(
+                        padding: resolvedPagePadding,
+                        children: [
+                          // 越权/只读提示永远压在最顶：它决定了下面所有按钮点不点得动。
+                          DocumentScopeWriteNotice(
+                            capability: scopeCapability,
+                            ownerEmployeeId: _detail!.makerId,
+                            onRetry: () => ref
+                                .read(sessionSnapshotProvider.notifier)
+                                .refresh(),
                           ),
-                        if (_detail!.items.any(
-                          (item) => item.salesRequirements.isNotEmpty,
-                        )) ...[
-                          const SizedBox(height: UtenSpacing.s16),
-                          ProductionSalesRequirements(
-                            requirements: [
-                              for (final item in _detail!.items)
-                                ...item.salesRequirements,
-                            ],
+                          // ① 摘要区。
+                          documentUnapprovalBannerForRoute(
+                            'production',
+                            'plans',
+                            widget.id,
                           ),
-                        ],
-                        // ② 主体区：执行子计划卡自带标题与状态计数，不再另加区块标题。
-                        const SizedBox(height: UtenSpacing.s16),
-                        if (!_detail!.legacyImported)
-                          ProductionExecutionSegmentsCard(
-                            key: ValueKey(
-                              '${widget.id}|$_executionSegmentsRevision',
+                          _summaryHeroCard(theme, names),
+                          if (_detail!.legacyId != null &&
+                              _detail!.status == kProductionStatusApproved &&
+                              !_detail!.closed &&
+                              !_detail!.stopped &&
+                              !_detail!.canceled)
+                            const LegacyContinuationNotice(
+                              description: '继续办理前，请先核对剩余生产量、历史完工入库及真实来源。',
                             ),
-                            planId: widget.id,
-                            canAssign: _canAssignExecution,
-                            canReleaseDefer: _canReleaseExecutionDefer,
-                            canReport: _canReport,
-                            canStart: _canStartExecution,
-                            initialSegmentId: _focusedExecutionSegmentId,
-                            onChanged: _loadSubplans,
-                          ),
-                        // ③ 参考区（默认折叠）。
-                        ..._referenceSections(theme),
-                      ],
+                          if (_detail!.items.any(
+                            (item) => item.salesRequirements.isNotEmpty,
+                          )) ...[
+                            const SizedBox(height: UtenSpacing.s16),
+                            ProductionSalesRequirements(
+                              requirements: [
+                                for (final item in _detail!.items)
+                                  ...item.salesRequirements,
+                              ],
+                            ),
+                          ],
+                          // ② 主体区：执行子计划卡自带标题与状态计数，不再另加区块标题。
+                          const SizedBox(height: UtenSpacing.s16),
+                          if (!_detail!.legacyImported)
+                            ProductionExecutionSegmentsCard(
+                              key: ValueKey(
+                                '${widget.id}|$_executionSegmentsRevision',
+                              ),
+                              planId: widget.id,
+                              refreshAfterNavigation: false,
+                              canAssign: _canAssignExecution,
+                              canReleaseDefer: _canReleaseExecutionDefer,
+                              canReport: _canReport,
+                              canStart: _canStartExecution,
+                              initialSegmentId: _focusedExecutionSegmentId,
+                              onChanged: _loadSubplans,
+                            ),
+                          // ③ 参考区（默认折叠）。
+                          ..._referenceSections(theme),
+                        ],
+                      ),
                     ),
               NativeReadRefreshFeedback(
                 refreshing: _backgroundRefresh,
@@ -1639,15 +1645,13 @@ class _ProductionPlanDetailPageState
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+                const UtenFieldHintIcon(
+                  dense: true,
+                  info:
+                      '结构化关联投影：销售订单(含客户/业务员)、领料、成品入库、采购/委外申请、已审核报工；'
+                      '采购/委外订货、收货、IQC 与发运仍需在各权威单据核对。',
+                ),
               ],
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              '结构化关联投影：销售订单(含客户/业务员)、领料、成品入库、采购/委外申请、已审核报工；'
-              '采购/委外订货、收货、IQC 与发运仍需在各权威单据核对。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
             ),
             if (d.traceSalesOrders.isNotEmpty)
               _traceGroup(

@@ -16,6 +16,7 @@ import '../../../components/data_display/uten_table_surface.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
@@ -65,6 +66,7 @@ import '../repositories/production_fqc_repository.dart';
 import '../widgets/inspection_report_confirm_dialog.dart';
 import '../widgets/production_fqc_dialogs.dart' show fqcStatusLabel;
 import '../../../shared/badges/badge_registry.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 /// 数量展示（去尾零，保留实际精度）——与 production_fqc_dialogs.fqcQtyText 同口径。
 String fqty(double value) => value
@@ -1101,7 +1103,7 @@ class _ProductionFqcSheetHandlingPageState
                       key: const Key('fqc-sheet-pre-stocked-notice'),
                     )
                     case final notice?) ...[
-                  Padding(
+                  UtenPageEdgePadding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: UtenSpacing.s16,
                     ),
@@ -1116,13 +1118,13 @@ class _ProductionFqcSheetHandlingPageState
                       canDecide: _canDecide,
                     )
                     case final notice?)
-                  Padding(
+                  UtenPageEdgePadding(
                     padding: const EdgeInsets.all(UtenSpacing.s12),
                     child: notice,
                   ),
                 if (_error != null) ...[
                   const SizedBox(height: UtenSpacing.s8),
-                  Padding(
+                  UtenPageEdgePadding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: UtenSpacing.s16,
                     ),
@@ -1249,11 +1251,24 @@ class _ProductionFqcSheetHandlingPageState
     int activeCount,
   ) {
     final sheet = detail.sheet;
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
       child: UtenDetailSummaryCard(
         key: ValueKey('fqc-sheet-summary-${sheet.id}'),
-        heading: Text('品质检查单 ${sheet.sheetNo}'),
+        heading: Row(
+          children: [
+            Flexible(child: Text('品质检查单 ${sheet.sheetNo}')),
+            if (_canDecide)
+              const UtenFieldHintIcon(
+                dense: true,
+                info:
+                    '一行是一批实物(需求份 / 计划公共 / 实际超产合在一起)，行内直接修改整批的'
+                    '合格数量/不合格数量(默认全合格)，合格先满足需求份、不合格先扣实际超产；'
+                    '含不合格的行另选处置方式；勾选后点「提交报告」整批一起提交，'
+                    '任一行失败则本次新增决定全部回滚；待核对行保留原内容继续办理。',
+              ),
+          ],
+        ),
         status: UtenStatusBadge(
           // ADR-169：待检=绿——轮到品质动手；已办结=灰。
           label: sheet.active ? '待检' : '已办结',
@@ -1323,31 +1338,27 @@ class _ProductionFqcSheetHandlingPageState
             UtenSummaryField(label: '登记备注', value: sheet.remark),
         ],
         notices: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.info_outline_rounded,
-                size: 18,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Text(
-                  _canDecide
-                      ? '一行是一批实物(需求份 / 计划公共 / 实际超产合在一起)，行内直接修改整批的'
-                            '合格数量/不合格数量(默认全合格)，合格先满足需求份、不合格先扣实际超产；'
-                            '含不合格的行另选处置方式；勾选后点「提交报告」整批一起提交，'
-                            '任一行失败则本次新增决定全部回滚；待核对行保留原内容继续办理。'
-                      : '当前为只读查看；登记决定需要生产质检审批权限，且账号必须属于品质任务组织。',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w600,
+          if (!_canDecide)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.info_outline_rounded,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                Expanded(
+                  child: Text(
+                    '当前为只读查看；登记决定需要生产质检审批权限，且账号必须属于品质任务组织。',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
         ],
       ),
     );
@@ -1946,53 +1957,58 @@ class _ProductionFqcInspectionPageState
                   extraPinned: [_decisionPinned],
                   controller: _pageScroll,
                   child: UtenContentContainer.wide(
-                    child: ListView(
-                      controller: _pageScroll,
+                    child: UtenPageEdgePadding.scroll(
                       padding: const EdgeInsets.fromLTRB(
                         UtenSpacing.s16,
                         UtenSpacing.s16,
                         UtenSpacing.s16,
                         UtenFloatingActionGroup.scrollClearance,
                       ),
-                      children: [
-                        if (fqcPreStockedNotice(
-                              [inspection!],
-                              key: const Key(
-                                'fqc-inspection-pre-stocked-notice',
-                              ),
-                            )
-                            case final notice?) ...[
-                          notice,
+                      builder: (context, resolvedPagePadding) => ListView(
+                        controller: _pageScroll,
+                        padding: resolvedPagePadding,
+                        children: [
+                          if (fqcPreStockedNotice(
+                                [inspection!],
+                                key: const Key(
+                                  'fqc-inspection-pre-stocked-notice',
+                                ),
+                              )
+                              case final notice?) ...[
+                            notice,
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
+                          _buildFactsCard(inspection),
                           const SizedBox(height: UtenSpacing.s12),
+                          if (_fqcSubmissionNotice(
+                                [?_row],
+                                key: const Key(
+                                  'fqc-inspection-submission-result',
+                                ),
+                                canDecide: _canDecide,
+                              )
+                              case final notice?) ...[
+                            notice,
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
+                          if (_error != null) ...[
+                            Text(
+                              '刷新或本机保存未完成：$_error',
+                              style: TextStyle(color: theme.colorScheme.error),
+                            ),
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
+                          if (_canDecide &&
+                              _row != null &&
+                              !_row!.completed) ...[
+                            _buildDecisionForm(theme, _row!),
+                            const SizedBox(height: UtenSpacing.s12),
+                          ] else
+                            ..._readOnlyHint(theme, inspection),
+                          _buildAttachments(theme, inspection),
+                          const SizedBox(height: UtenSpacing.s24),
                         ],
-                        _buildFactsCard(inspection),
-                        const SizedBox(height: UtenSpacing.s12),
-                        if (_fqcSubmissionNotice(
-                              [?_row],
-                              key: const Key(
-                                'fqc-inspection-submission-result',
-                              ),
-                              canDecide: _canDecide,
-                            )
-                            case final notice?) ...[
-                          notice,
-                          const SizedBox(height: UtenSpacing.s12),
-                        ],
-                        if (_error != null) ...[
-                          Text(
-                            '刷新或本机保存未完成：$_error',
-                            style: TextStyle(color: theme.colorScheme.error),
-                          ),
-                          const SizedBox(height: UtenSpacing.s12),
-                        ],
-                        if (_canDecide && _row != null && !_row!.completed) ...[
-                          _buildDecisionForm(theme, _row!),
-                          const SizedBox(height: UtenSpacing.s12),
-                        ] else
-                          ..._readOnlyHint(theme, inspection),
-                        _buildAttachments(theme, inspection),
-                        const SizedBox(height: UtenSpacing.s24),
-                      ],
+                      ),
                     ),
                   ),
                 ),

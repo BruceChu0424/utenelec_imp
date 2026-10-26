@@ -425,8 +425,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // 2026-09-04 修复回归锁：子类徽章与列表加载解耦——计数不依赖选中。
-      // 来源与作业都默认全部；首次计数与列表加载分别刷新。
-      expect(gateway.statusCountsCalls, 2);
+      // 来源与作业都默认全部；计数与列表并发，仅发一次计数请求。
+      expect(gateway.statusCountsCalls, 1);
       expect(gateway.listReceiptTypes, [null]);
 
       final table = tester

@@ -12,6 +12,11 @@ import org.springframework.stereotype.Service;
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,46 +37,110 @@ public class TabularPdfExportService {
     private static final Color HEADER = new Color(234, 242, 237);
 
     public byte[] build(ExportDocument document, String password) {
-        if (password != null && password.length() > 128) throw new IllegalArgumentException("导出密码长度不能超过 128 位");
-        long cells = document.sections().stream().mapToLong(s -> (long) s.columns().size() * s.rows().size()).sum();
-        if (cells > 60_000) throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,
-                "PDF 明细较多，请缩小范围或下载 Excel");
-        try (PDDocument pdf = new PDDocument();
-             var fontFile = TabularPdfExportService.class.getResourceAsStream("/fonts/NotoSansSCFullPdf.ttf");
-             ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
-            if (fontFile == null) throw new IllegalStateException("导出中文字体资源缺失");
-            PDType0Font font = PDType0Font.load(pdf, fontFile, true);
-            pdf.getDocumentInformation().setTitle(document.title());
-            pdf.getDocumentInformation().setProducer("Uten IMP");
-            var metadata = document.metadata().stream().map(value -> Map.<String, Object>of("value", value)).toList();
-            renderSection(pdf, font, document.title(), new ExportDocument.Section("版本与口径",
-                    List.of(new ExportColumn("value", "来源说明", ExportColumn.TEXT, (double) WIDTH)), metadata));
-            for (ExportDocument.Section section : document.sections()) renderSection(pdf, font, document.title(), section);
-            if (password != null && !password.isEmpty()) {
-                var policy = new StandardProtectionPolicy(UUID.randomUUID().toString(), password, new AccessPermission());
-                policy.setEncryptionKeyLength(256);
-                policy.setPreferAES(true);
-                pdf.protect(policy);
+        validatePassword(password);
+        Path root=null;
+        try {
+            root=Files.createTempDirectory("uten-pdf-sync-");
+            try(var writer=openDocumentStream(root,password);var bytes=new ByteArrayOutputStream()) {
+                DocumentPageSink.emitDocument(document,writer);
+                writer.finish(bytes);
+                return bytes.toByteArray();
             }
-            pdf.save(bytes);
-            return bytes.toByteArray();
         } catch (IOException failure) {
             throw new IllegalStateException("生成成本 PDF 失败", failure);
+        } finally {
+            if(root!=null)try{Files.deleteIfExists(root);}catch(IOException ignored){}
         }
     }
 
-    private static void renderSection(PDDocument pdf, PDType0Font font, String title,
-                                      ExportDocument.Section section) throws IOException {
+    public StreamingDocumentWriter openDocumentStream(Path privateDirectory) {return openDocumentStream(privateDirectory,null);}
+    public StreamingDocumentWriter openDocumentStream(Path privateDirectory,String password) {
+        validatePassword(password);
+        try{return new StreamingPdfDocumentWriter(privateDirectory,password);}
+        catch(IOException failure){throw new java.io.UncheckedIOException(failure);}
+    }
+    static void validatePassword(String password) {
+        if(password!=null&&password.length()>128)throw new IllegalArgumentException("导出密码长度不能超过 128 位");
+    }
+    static void protectDocument(PDDocument pdf,String password)throws IOException {
+        if(password==null||password.isEmpty())return;
+        var policy=new StandardProtectionPolicy(UUID.randomUUID().toString(),password,new AccessPermission());
+        policy.setEncryptionKeyLength(256);policy.setPreferAES(true);pdf.protect(policy);
+    }
+
+    /** Private disk copy for a single authorized download; passwords are never persisted. */
+    public void protect(Path source,Path target,String password)throws IOException {
+        validatePassword(password);
+        LegacyExportBudget.checkpoint();
+        if(!Files.isRegularFile(source,LinkOption.NOFOLLOW_LINKS)||Files.isSymbolicLink(source))throw new IOException("Invalid PDF source");
+        long sourceBytes=Files.size(source);
+        if(sourceBytes>ExportResourceLimits.ARTIFACT_BYTES)throw new IOException("Export file size limit exceeded");
+        Path parent=target.toAbsolutePath().getParent();
+        if(Files.getFileStore(parent).getUsableSpace()<ExportResourceLimits.FREE_RESERVE_BYTES+sourceBytes+1024*1024)
+            throw new IOException("Export free space reserve reached");
+        Path scratch=null;boolean created=false,complete=false;
+        try {
+            if(password==null||password.isEmpty()) {
+                try(var file=Files.newOutputStream(target,StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE)) {
+                    created=true;
+                    try(var input=Files.newInputStream(source)) {
+                        input.transferTo(ExportTemporaryBudget.artifactOutput(file,parent,LegacyExportBudget::checkpoint));
+                    }
+                }
+            } else {
+                scratch=StreamingPdfDocumentWriter.privateDirectory(parent,"report-download-pdf-");
+                Path cache=scratch;
+                try(var pdf=org.apache.pdfbox.Loader.loadPDF(source.toFile(),()->new org.apache.pdfbox.io.ScratchFile(
+                        org.apache.pdfbox.io.MemoryUsageSetting.setupTempFileOnly(ExportResourceLimits.SHEET_TEMP_BYTES).setTempDir(cache.toFile())))) {
+                    if(pdf.getNumberOfPages()>250)throw new IOException("PDF page limit exceeded");
+                    protectDocument(pdf,password);
+                    try(var file=Files.newOutputStream(target,StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE)) {
+                        created=true;pdf.save(ExportTemporaryBudget.artifactOutput(file,parent,LegacyExportBudget::checkpoint));
+                    }
+                }
+            }
+            complete=true;
+        }finally{
+            if(created&&!complete)Files.deleteIfExists(target);
+            if(scratch!=null)StreamingPdfDocumentWriter.removePrivateDirectory(scratch);
+        }
+    }
+
+    interface RowCursor extends AutoCloseable {
+        Map<String,Object> next()throws IOException;
+        @Override void close()throws IOException;
+    }
+    interface RowSource {
+        String name();List<ExportColumn> columns();RowCursor open()throws IOException;
+    }
+    static RowSource memorySection(ExportDocument.Section section) {
+        return new RowSource() {
+            public String name(){return section.name();}public List<ExportColumn> columns(){return section.columns();}
+            public RowCursor open(){var rows=section.rows().iterator();return new RowCursor(){
+                public Map<String,Object> next(){return rows.hasNext()?rows.next():null;}public void close(){}
+            };}
+        };
+    }
+
+    static void renderSection(PDDocument pdf, PDType0Font font, String title,
+                                      RowSource section,Runnable checkpoint) throws IOException {
         float[] desired = new float[section.columns().size()];
         boolean repeatIdentity = !isNumeric(section.columns().getFirst());
         for (int i = 0; i < desired.length; i++) {
-            ExportColumn column = section.columns().get(i);
-            float max = width(font, clean(column.label()), FONT_SIZE) + 16;
-            for (Map<String, Object> row : section.rows()) max = Math.max(max,
-                    width(font, clean(value(row.get(column.key()))), FONT_SIZE) + 16);
+            desired[i]=width(font,clean(section.columns().get(i).label()),FONT_SIZE)+16;
+        }
+        try(var rows=section.open()) {
+            Map<String,Object> values;
+            while((values=rows.next())!=null) {
+                checkpoint.run();
+                for(int i=0;i<desired.length;i++)desired[i]=Math.max(desired[i],width(font,clean(ExportCellValues.display(section.columns().get(i),values)),FONT_SIZE)+16);
+            }
+        }
+        for(int i=0;i<desired.length;i++) {
+            ExportColumn column=section.columns().get(i);
             float limit = desired.length == 1 ? WIDTH : isNumeric(column)
                     ? WIDTH - (repeatIdentity && i > 0 ? desired[0] : 0) : 240;
-            desired[i] = Math.min(limit, Math.max(66, max));
+            desired[i] = Math.min(limit, Math.max(66, desired[i]));
         }
         List<List<Integer>> panels = panels(desired, repeatIdentity);
         for (int group = 0; group < panels.size(); group++) {
@@ -81,8 +150,10 @@ public class TabularPdfExportService {
             float stretch = WIDTH / total;
             float[] widths = new float[columns.size()];
             for (int c = 0; c < columns.size(); c++) widths[c] = desired[columns.get(c)] * stretch;
-            int offset = 0;
+            try(var rows=section.open()) {
+            Map<String,Object> values=rows.next();
             do {
+                checkpoint.run();
                 if (pdf.getNumberOfPages() >= 250) throw new com.uten.imp.common.web.ApiException(
                         com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED, "PDF 超过 250 页，请缩小范围或下载 Excel");
                 PDPage page = new PDPage(PAPER);
@@ -95,17 +166,20 @@ public class TabularPdfExportService {
                     row(stream, font, columns.stream().map(c -> section.columns().get(c).label()).toList(),
                             null, widths, y, true);
                     y -= ROW;
-                    while (offset < section.rows().size() && y > MARGIN + 30) {
-                        Map<String, Object> row = section.rows().get(offset++);
-                        List<String> cells = columns.stream().map(c -> value(row.get(section.columns().get(c).key()))).toList();
+                    while (values!=null && y > MARGIN + 30) {
+                        checkpoint.run();
+                        Map<String,Object> current=values;
+                        List<String> cells = columns.stream().map(c -> ExportCellValues.display(section.columns().get(c),current)).toList();
                         List<Boolean> numbers = columns.stream().map(c -> isNumeric(section.columns().get(c))).toList();
                         row(stream, font, cells, numbers, widths, y, false);
                         y -= ROW;
+                        values=rows.next();
                     }
                     text(stream, font, "第 " + pdf.getNumberOfPages() + " 页 - " + section.name(), MARGIN,
                             MARGIN - 1, 8, WIDTH, false);
                 }
-            } while (offset < section.rows().size());
+            } while (values!=null);
+            }
         }
     }
 
@@ -114,12 +188,15 @@ public class TabularPdfExportService {
         List<List<Integer>> result = new ArrayList<>();
         int next = 0;
         while (next < widths.length) {
+            int before=next;
             List<Integer> panel = new ArrayList<>();
             float used = 0;
             if (next > 0 && repeatIdentity) { panel.add(0); used = widths[0]; }
             while (next < widths.length && (panel.isEmpty() || used + widths[next] <= WIDTH)) {
                 panel.add(next); used += widths[next++];
             }
+            // Floating point or an exceptionally wide column must never leave the iterator stationary.
+            if(next==before)panel.add(next++);
             // Every individual column is capped below WIDTH - identity width.
             result.add(List.copyOf(panel));
         }

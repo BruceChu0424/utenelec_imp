@@ -63,7 +63,7 @@ void main() {
         find.byKey(const ValueKey('uten-reference-open-picker')),
       );
       await tester.pumpAndSettle();
-      expect(repository.requests, [('5M开关', 1)]);
+      expect(repository.requests, [('5M开关', 1), ('5M开关', 2)]);
       expect(repository.hintRequests, isEmpty);
       expect(find.text('系列 / 分类'), findsOneWidget);
       await tester.tap(find.byTooltip('关闭'));
@@ -121,7 +121,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 201));
     fresh.complete(_page('新模具', page: 1));
     await tester.pumpAndSettle();
-    expect(repository.requests, [('', 1), ('螺丝 M3', 1)]);
+    expect(repository.requests, [('', 1), ('螺丝 M3', 1), ('螺丝 M3', 2)]);
     expect(find.text('新模具'), findsOneWidget);
     expect(find.text('旧模具'), findsNothing);
   });
@@ -176,7 +176,7 @@ void main() {
     repository.release('', 2);
     await tester.tap(find.text('重试'));
     await tester.pumpAndSettle();
-    expect(repository.requests, [('', 1), ('', 2), ('', 2)]);
+    expect(repository.requests, [('', 1), ('', 2), ('', 2), ('', 1)]);
     expect(find.text('第2页模具'), findsOneWidget);
   });
 

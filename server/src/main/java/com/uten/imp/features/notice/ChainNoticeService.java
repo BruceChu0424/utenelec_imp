@@ -605,7 +605,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 case EVENT_RESERVATION_YIELDED ->
                         notifyReservationYielded(aggregateId, payload.path("qty").asText(""),
                                 payload.path("reason").asText(""), payload.path("yielderOrderNo").asText(""));
-                case EVENT_PROCUREMENT_FINANCE_SUBMITTED,
+                case "PROCUREMENT_ORDER_CLOSED", EVENT_PROCUREMENT_FINANCE_SUBMITTED,
                      EVENT_PROCUREMENT_FINANCE_CHANGE_SUBMITTED,
                      EVENT_PROCUREMENT_FINANCE_APPROVED,
                      EVENT_PROCUREMENT_FINANCE_REJECTED ->
@@ -5085,6 +5085,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                            approval_case.status AS approval_status,
                            approval_case.replacement_order_id,
                            approval_case.submission_snapshot #>> '{closureRequest,reason}' AS closure_reason,
+                           approval_case.submission_snapshot #>> '{closureRequest,executionMode}' AS closure_execution_mode,
                            CASE WHEN approval_case.order_type='PURCHASE' THEN
                                (SELECT termination_case_id IS NOT NULL FROM purchase_orders WHERE id=approval_case.order_id)
                                ELSE (SELECT termination_case_id IS NOT NULL FROM subcontract_orders WHERE id=approval_case.order_id)
@@ -5120,21 +5121,17 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 String orderRoute = (subcontract ? "/subcontract/orders/" : "/purchase/orders/") + orderId;
                 if (EVENT_PROCUREMENT_FINANCE_SUBMITTED.equals(eventType)) {
                     if (approval.get("approval_status")!=null && !"PENDING".equals(str(approval.get("approval_status")))) return;
-                    String mode = "CLOSE_AND_REORDER".equals(str(approval.get("request_type"))) ? "结束并按剩余量重建订单" : "直接结束";
-                    for (UUID reviewer : financeReviewerUserIds()) {
-                        sendToUser(reviewer,TYPE_APPROVAL,"结束待财务审批："+billNo,
-                                orderLabel+" "+billNo+" 申请"+mode+"。原因："+str(approval.get("closure_reason"))
-                                        +"。审批通过前继续按原订单办理，审批时会再次核对实际收退货和物料事实。",
-                                "/finance/procurement-approvals",EVENT_PROCUREMENT_FINANCE_SUBMITTED,null,approvalCaseId);
-                    }
+                    notifyUser((UUID)approval.get("submitted_by_user_id"),TYPE_WORKFLOW,"请重新核对并结束订单："+billNo,
+                            orderLabel+" "+billNo+" 的历史结束申请已改由采购或委外直接办理。请回原订单重新核对剩余数量后结束，无需财务批准。",
+                            orderRoute);
                 } else if (EVENT_PROCUREMENT_FINANCE_REJECTED.equals(eventType)) {
                     notifyUser((UUID)approval.get("submitted_by_user_id"),TYPE_URGENT,"结束申请被财务退回："+billNo,
                             orderLabel+" "+billNo+" 的结束申请未通过。原因："+str(approval.get("rejection_reason"))
                                     +"。原订单继续履行；核对原因后可重新申请结束。",orderRoute);
-                } else if (EVENT_PROCUREMENT_FINANCE_APPROVED.equals(eventType)) {
+                } else if (EVENT_PROCUREMENT_FINANCE_APPROVED.equals(eventType) || "PROCUREMENT_ORDER_CLOSED".equals(eventType)) {
                     UUID replacement=(UUID)approval.get("replacement_order_id");
                     notifyUser((UUID)approval.get("submitted_by_user_id"),TYPE_WORKFLOW,"订单已结束："+billNo,
-                            orderLabel+" "+billNo+" 的结束申请已获财务批准，仓库不再跟进原单剩余到货。"
+                            orderLabel+" "+billNo+("DIRECT".equals(str(approval.get("closure_execution_mode")))?" 已由采购或委外取消剩余数量并直接结束，仓库不再跟进原单剩余到货。":" 的历史结束申请已获财务批准，仓库不再跟进原单剩余到货。")
                                     +"已合格待入库的实物可继续入库，账务及在外材料责任保留；已核定实收的更正须另行核对。"
                                     +(replacement==null?"":"剩余量已生成新订单草稿，请选择新供应商、确认条款后重新提交财务审批。"),
                             replacement==null?orderRoute:(subcontract?"/subcontract/orders/":"/purchase/orders/")+replacement);

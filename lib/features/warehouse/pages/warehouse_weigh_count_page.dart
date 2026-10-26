@@ -6,6 +6,7 @@
 // 单重管理 任一) 时点「保存抽样」存一条称样记录, 单重立即重算、越学越准。
 // 本页不改任何库存: 只算数, 可选保存抽样。
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -160,6 +161,12 @@ class _WarehouseWeighCountPageState
           onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
         ),
         actions: [
+          const UtenFieldHintIcon(
+            dense: true,
+            info:
+                '选好货品后: 把货放上秤输入毛重 (可以分几次称, 自动相加), 扣掉箱/袋皮重,'
+                ' 就按单重折算出大约多少件; 单重还没学准时, 数 10 件以上放秤录入本批抽样即可。',
+          ),
           if (goods != null)
             IconButton(
               key: const Key('weigh-count-open-learning'),
@@ -193,19 +200,7 @@ class _WarehouseWeighCountPageState
                 ),
               ],
               const SizedBox(height: UtenSpacing.s16),
-              if (goods == null)
-                Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s24),
-                  child: Text(
-                    '选好货品后: 把货放上秤输入毛重 (可以分几次称, 自动相加), 扣掉箱/袋皮重,'
-                    ' 就按单重折算出大约多少件; 单重还没学准时, 数 10 件以上放秤录入本批抽样即可。',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                )
-              else
+              if (goods != null)
                 UtenCard(
                   child: WeighCountPanel(
                     key: ValueKey('weigh-count-panel-${goods.id}-$_round'),

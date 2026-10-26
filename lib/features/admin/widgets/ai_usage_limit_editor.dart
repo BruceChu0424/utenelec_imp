@@ -379,6 +379,7 @@ class _AiUsageLimitEditorState extends ConsumerState<AiUsageLimitEditor> {
           UtenInput(
             key: const ValueKey('ai-usage-limit-tokens'),
             label: l10n.aiUsageLimitTokensLabel,
+            info: l10n.aiUsageLimitHint,
             controller: _tokens,
             enabled: !_saving,
             keyboardType: TextInputType.number,
@@ -390,11 +391,11 @@ class _AiUsageLimitEditorState extends ConsumerState<AiUsageLimitEditor> {
               if (_message != null) setState(() => _message = null);
             },
           ),
-          _HelperText(text: l10n.aiUsageLimitHint),
           const SizedBox(height: UtenSpacing.s12),
           UtenInput(
             key: const ValueKey('ai-usage-limit-jobs'),
             label: l10n.aiUsageLimitJobsLabel,
+            info: l10n.aiUsageLimitHint,
             controller: _jobs,
             enabled: !_saving,
             keyboardType: TextInputType.number,
@@ -406,7 +407,6 @@ class _AiUsageLimitEditorState extends ConsumerState<AiUsageLimitEditor> {
               if (_message != null) setState(() => _message = null);
             },
           ),
-          _HelperText(text: l10n.aiUsageLimitHint),
           if (_message != null) ...[
             const SizedBox(height: UtenSpacing.s8),
             UtenInlineNotice(
@@ -456,27 +456,6 @@ class _AiUsageLimitEditorState extends ConsumerState<AiUsageLimitEditor> {
       ),
     ),
   );
-}
-
-/// helper text 常驻(不只在出错时出现): 说明「留空=跟随全局默认」。
-class _HelperText extends StatelessWidget {
-  const _HelperText({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s6, left: UtenSpacing.s4),
-      child: Text(
-        text,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
-    );
-  }
 }
 
 class _Header extends StatelessWidget {

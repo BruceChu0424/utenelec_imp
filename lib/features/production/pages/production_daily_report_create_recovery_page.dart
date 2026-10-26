@@ -16,6 +16,7 @@ import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../models/production_daily_report_create_request.dart';
 import '../models/daily_report_attachment_recovery.dart';
 import '../repositories/production_repository.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class DailyReportCreateRecoveryResult {
   const DailyReportCreateRecoveryResult(this.resolution, this.checkpoint);
@@ -324,82 +325,87 @@ class _ProductionDailyReportCreateRecoveryPageState
               )
             : !nativeReadAccessConfirmed
             ? nativeReadAccessNotice()
-            : ListView(
+            : UtenPageEdgePadding.scroll(
                 padding: const EdgeInsets.all(20),
-                children: [
-                  Text(
-                    _missingOriginal
-                        ? '原创建请求未完整保留，暂不能自动核对'
-                        : result?.committed == true
-                        ? '已确认原提交创建了生产日报'
-                        : result?.status == 'LEGACY_UNCONFIRMED'
-                        ? '旧版记录缺少完整字段证明，仍待核对'
-                        : '创建结果仍未确认',
-                    key: const Key('daily-create-recovery-outcome'),
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    result?.committed == true
-                        ? '不会再次创建。未完成附件仍留在原草稿，核对不会上传文件。'
-                        : '原输入和提交标识继续保留。此页只读取回执，不会重新创建，也不会用相似内容猜测已成功。',
-                  ),
-                  if (result?.committed == true) ...[
-                    const SizedBox(height: 12),
-                    Text('单据号：${result!.detail!.billNo ?? result.reportId}'),
-                    if (result.deleted) const Text('已删除（原提交记录永久保留）'),
+                builder: (context, resolvedPagePadding) => ListView(
+                  padding: resolvedPagePadding,
+                  children: [
                     Text(
-                      '当前业务状态：${switch (result.detail!.status) {
-                        0 => '草稿',
-                        1 => '已审',
-                        -1 => '红冲',
-                        _ => '尚未提供',
-                      }}',
+                      _missingOriginal
+                          ? '原创建请求未完整保留，暂不能自动核对'
+                          : result?.committed == true
+                          ? '已确认原提交创建了生产日报'
+                          : result?.status == 'LEGACY_UNCONFIRMED'
+                          ? '旧版记录缺少完整字段证明，仍待核对'
+                          : '创建结果仍未确认',
+                      key: const Key('daily-create-recovery-outcome'),
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
-                  ],
-                  if (_attachmentNotice != null) ...[
                     const SizedBox(height: 12),
-                    Text(_attachmentNotice!),
-                  ],
-                  const SizedBox(height: 20),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      FilledButton(
-                        onPressed: _load,
-                        child: const Text('再次核对原提交'),
-                      ),
-                      if (widget.returnToEditor &&
-                          _checkpoint != null &&
-                          permissions.contains(Perm.productionDailyReportView))
-                        OutlinedButton(
-                          onPressed: _returnConfirmed,
-                          child: const Text('返回原页面，保留已确认检查点'),
-                        ),
-                      if (!widget.returnToEditor &&
-                          _checkpoint != null &&
-                          result?.deleted != true &&
-                          !_attachmentDeleted &&
-                          permissions.contains(
-                            Perm.productionDailyReportCreate,
-                          ) &&
-                          permissions.contains(
-                            Perm.productionDailyReportEdit,
-                          ) &&
-                          permissions.contains(Perm.attachmentUpload))
-                        OutlinedButton(
-                          onPressed: _continueAttachments,
-                          child: const Text('继续处理待上传附件'),
-                        ),
-                      OutlinedButton(
-                        onPressed: () =>
-                            context.go(RouteName.productionDailyReportList),
-                        child: const Text('返回日报列表'),
+                    Text(
+                      result?.committed == true
+                          ? '不会再次创建。未完成附件仍留在原草稿，核对不会上传文件。'
+                          : '原输入和提交标识继续保留。此页只读取回执，不会重新创建，也不会用相似内容猜测已成功。',
+                    ),
+                    if (result?.committed == true) ...[
+                      const SizedBox(height: 12),
+                      Text('单据号：${result!.detail!.billNo ?? result.reportId}'),
+                      if (result.deleted) const Text('已删除（原提交记录永久保留）'),
+                      Text(
+                        '当前业务状态：${switch (result.detail!.status) {
+                          0 => '草稿',
+                          1 => '已审',
+                          -1 => '红冲',
+                          _ => '尚未提供',
+                        }}',
                       ),
                     ],
-                  ),
-                ],
+                    if (_attachmentNotice != null) ...[
+                      const SizedBox(height: 12),
+                      Text(_attachmentNotice!),
+                    ],
+                    const SizedBox(height: 20),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        FilledButton(
+                          onPressed: _load,
+                          child: const Text('再次核对原提交'),
+                        ),
+                        if (widget.returnToEditor &&
+                            _checkpoint != null &&
+                            permissions.contains(
+                              Perm.productionDailyReportView,
+                            ))
+                          OutlinedButton(
+                            onPressed: _returnConfirmed,
+                            child: const Text('返回原页面，保留已确认检查点'),
+                          ),
+                        if (!widget.returnToEditor &&
+                            _checkpoint != null &&
+                            result?.deleted != true &&
+                            !_attachmentDeleted &&
+                            permissions.contains(
+                              Perm.productionDailyReportCreate,
+                            ) &&
+                            permissions.contains(
+                              Perm.productionDailyReportEdit,
+                            ) &&
+                            permissions.contains(Perm.attachmentUpload))
+                          OutlinedButton(
+                            onPressed: _continueAttachments,
+                            child: const Text('继续处理待上传附件'),
+                          ),
+                        OutlinedButton(
+                          onPressed: () =>
+                              context.go(RouteName.productionDailyReportList),
+                          child: const Text('返回日报列表'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
       ),
     );

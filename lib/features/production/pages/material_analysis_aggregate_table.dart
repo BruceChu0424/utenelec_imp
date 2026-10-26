@@ -1807,6 +1807,7 @@ final class _MaterialAggregateTableController {
         key: ValueKey('material-aggregate-rate-${aggregate.key}'),
         controller: controller,
         enabled: owner._canGenerate && !owner._busy && !uncertain,
+        readOnlyPresentation: !owner._canGenerate,
         onChanged: (value) => owner._mutateAggregateTable(() {
           if (workshopGroups(aggregate).any(owner._tableGroupIssued)) return;
           final draft = begin(aggregate);

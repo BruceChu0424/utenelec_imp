@@ -15,6 +15,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -56,6 +57,7 @@ import '../widgets/workshop_material_labels.dart';
 import '../widgets/workshop_material_line_grid.dart';
 import '../widgets/workshop_material_first_use_card.dart';
 import '../../../employee/repositories/employee_picker_candidates.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class WorkshopMaterialIssuePage extends ConsumerStatefulWidget {
   const WorkshopMaterialIssuePage({
@@ -1091,7 +1093,7 @@ class _WorkshopMaterialIssuePageState
                           actionLabel: '重试',
                           onAction: _load,
                         )
-                      : SingleChildScrollView(
+                      : UtenPageEdgePadding.scroll(
                           padding:
                               const EdgeInsets.symmetric(
                                 horizontal: UtenSpacing.s4,
@@ -1099,7 +1101,11 @@ class _WorkshopMaterialIssuePageState
                                 top: UtenSpacing.s16,
                                 bottom: UtenFloatingActionGroup.scrollClearance,
                               ),
-                          child: _form(l10n, theme),
+                          builder: (context, resolvedPagePadding) =>
+                              SingleChildScrollView(
+                                padding: resolvedPagePadding,
+                                child: _form(l10n, theme),
+                              ),
                         ),
                 ),
                 if (_saving)
@@ -1469,26 +1475,36 @@ class _WorkshopMaterialIssuePageState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        CheckboxListTile(
-          key: const Key('wm-issue-supplement'),
-          contentPadding: EdgeInsets.zero,
-          controlAffinity: ListTileControlAffinity.leading,
-          value: _supplement,
-          onChanged: !_editable || _saving || periods.isEmpty
-              ? null
-              : (v) => setState(() {
-                  _supplement = v ?? false;
-                  if (_supplement && periods.length == 1) {
-                    _supplementPeriodId = periods.first.id;
-                  }
-                }),
-          title: Text(l10n.wmSupplementFlag),
-          subtitle: Text(
-            periods.isEmpty
-                ? '现在没有盘点中或已盘点还没结算的期间, 不用补录'
-                : '盘点开始前已经发了、当时忘了录的料才勾; 只能补到盘点中或已盘点还没结算的那一期',
-            style: theme.textTheme.bodySmall,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: CheckboxListTile(
+                key: const Key('wm-issue-supplement'),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: _supplement,
+                onChanged: !_editable || _saving || periods.isEmpty
+                    ? null
+                    : (v) => setState(() {
+                        _supplement = v ?? false;
+                        if (_supplement && periods.length == 1) {
+                          _supplementPeriodId = periods.first.id;
+                        }
+                      }),
+                title: Text(l10n.wmSupplementFlag),
+                subtitle: periods.isEmpty
+                    ? Text(
+                        '现在没有盘点中或已盘点还没结算的期间, 不用补录',
+                        style: theme.textTheme.bodySmall,
+                      )
+                    : null,
+              ),
+            ),
+            const UtenFieldHintIcon(
+              dense: true,
+              info: '盘点开始前已经发了、当时忘了录的料才勾; 只能补到盘点中或已盘点还没结算的那一期',
+            ),
+          ],
         ),
         if (_supplement) ...[
           const SizedBox(height: UtenSpacing.s8),

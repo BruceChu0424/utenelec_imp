@@ -19,6 +19,8 @@ import '../../../../core/l10n/gen/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
+import '../../../../shared/auth/native_read_view_scope_mixin.dart'
+    show nativeReadAccessDenied;
 import '../models/workshop_material_models.dart';
 import '../repositories/workshop_material_repository.dart';
 import 'workshop_material_labels.dart';
@@ -102,6 +104,8 @@ class WmMachinesTab extends ConsumerStatefulWidget {
 
 class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
   final _grid = UtenEditableGridController<WmMachineRow>();
+  final _deniedGrid = UtenEditableGridController<WmMachineRow>();
+  bool _readDenied = false;
   final _nonce = const Uuid().v4();
   List<String> _containerNames = const [];
   bool _loading = true;
@@ -120,6 +124,7 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
   @override
   void dispose() {
     _grid.dispose();
+    _deniedGrid.dispose();
     super.dispose();
   }
 
@@ -136,6 +141,7 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
       if (mounted) {
         setState(() {
           _loading = false;
+          _readDenied = _readDenied || nativeReadAccessDenied(e);
           _error = e.message;
         });
       }
@@ -166,6 +172,7 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
       ..sort((a, b) => order[a]!.compareTo(order[b]!));
     setState(() {
       _containerNames = names;
+      _readDenied = false;
       _grid.replaceAll([for (final m in sorted) WmMachineRow(m)]);
       _loading = false;
     });
@@ -257,7 +264,8 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
         numeric: true,
       ),
     ),
-    for (final containerName in _containerNames)
+    for (final containerName
+        in _readDenied ? const <String>[] : _containerNames)
       EditableGridColumn<WmMachineRow>(
         key: 'cap-$containerName',
         label: '$containerName (${l10n.wmKg})',
@@ -468,16 +476,6 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    if (_loading && _grid.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null && _grid.isEmpty) {
-      return UtenEmpty.error(
-        message: _error,
-        actionLabel: '重试',
-        onAction: _load,
-      );
-    }
     return Stack(
       children: [
         SingleChildScrollView(
@@ -489,25 +487,34 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (_grid.isEmpty)
-                const UtenEmpty(
-                  icon: Icons.precision_manufacturing_outlined,
-                  message: '还没有机台',
-                  description: '点"批量新增机台", 一次建好全部机台和每台的容器',
-                )
-              else
-                UtenEditableGrid<WmMachineRow>(
-                  tableKey:
-                      'features.warehouse.materialbin.widgets.workshop_material_machines_tab.WmMachinesTabState.build.1',
-                  key: const Key('wm-machines-grid'),
-                  controller: _grid,
-                  columns: _columns(l10n),
-                  showAddRow: false,
-                  selectable: true,
-                  deleteConfirmLabel: '删除这台机? 盘点用过的机台只能停用, 不能删除。',
-                  onDeleteRow: (row, _) => _delete(row),
-                  showColumnSettings: false,
-                ),
+              UtenEditableGrid<WmMachineRow>(
+                tableKey:
+                    'features.warehouse.materialbin.widgets.workshop_material_machines_tab.WmMachinesTabState.build.1',
+                key: const Key('wm-machines-grid'),
+                controller: _readDenied ? _deniedGrid : _grid,
+                columns: _columns(l10n),
+                emptyPlaceholder: _loading
+                    ? const SizedBox(
+                        height: 80,
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    : _error != null
+                    ? UtenEmpty.error(
+                        message: _error,
+                        actionLabel: '重试',
+                        onAction: _load,
+                      )
+                    : const UtenEmpty(
+                        icon: Icons.precision_manufacturing_outlined,
+                        message: '还没有机台',
+                        description: '点"批量新增机台", 一次建好全部机台和每台的容器',
+                      ),
+                showAddRow: false,
+                selectable: true,
+                deleteConfirmLabel: '删除这台机? 盘点用过的机台只能停用, 不能删除。',
+                onDeleteRow: (row, _) => _delete(row),
+                showColumnSettings: false,
+              ),
             ],
           ),
         ),
@@ -521,7 +528,9 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
                 type: UtenButtonType.secondary,
                 size: UtenButtonSize.large,
                 icon: Icons.library_add_outlined,
-                onPressed: _busyTitle == null ? _batchCreate : null,
+                onPressed: _busyTitle == null && !_loading && _error == null
+                    ? _batchCreate
+                    : null,
                 child: Text(l10n.wmMachinesBatchCreate),
               ),
               if (!_grid.isEmpty)
@@ -529,7 +538,9 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
                   key: const Key('wm-machines-save'),
                   size: UtenButtonSize.large,
                   icon: Icons.save_outlined,
-                  onPressed: _busyTitle == null ? _save : null,
+                  onPressed: _busyTitle == null && !_loading && !_readDenied
+                      ? _save
+                      : null,
                   child: Text(l10n.wmMachinesSaveChanges),
                 ),
             ],

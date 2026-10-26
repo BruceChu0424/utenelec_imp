@@ -18,6 +18,7 @@ import '../../../shared/ai/guided/ai_guided_file_plan.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -1025,15 +1026,19 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
     padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
     child: ExpansionTile(
       key: const ValueKey('sales-intake-extra-columns'),
-      title: Text(salesIntakeExtraText(context, 'title')),
+      title: Row(
+        children: [
+          Expanded(child: Text(salesIntakeExtraText(context, 'title'))),
+          UtenFieldHintIcon(
+            info: salesIntakeExtraText(context, 'hint'),
+            dense: true,
+          ),
+        ],
+      ),
       subtitle: Text(
         _result.extraColumns.map((column) => column.label).join(' · '),
       ),
       children: [
-        Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Text(salesIntakeExtraText(context, 'hint')),
-        ),
         for (final column in _result.extraColumns)
           CheckboxListTile(
             key: ValueKey('sales-intake-extra-${column.key}'),

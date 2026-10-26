@@ -29,7 +29,7 @@ import static org.mockito.Mockito.times;
 class GlReportSourceSemanticsTest {
     @Test
     void groupedReportProxyEntrypointsHaveTheirOwnRepeatableReadSnapshotIncludingExportCalls() {
-        Set<String> grouped = Set.of("balanceSheet", "profitAnnual", "profitMonthly", "adminExpense", "operatingPl");
+        Set<String> grouped = Set.of("balanceSheet", "profitAnnual", "profitMonthly", "adminExpense", "operatingPl", "operatingPlPage");
         int found = 0;
         for (var method : GlReportService.class.getDeclaredMethods()) {
             Transactional tx = method.getAnnotation(Transactional.class);

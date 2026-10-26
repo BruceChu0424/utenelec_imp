@@ -128,62 +128,39 @@ public class GoodsActualCostQueryService implements GoodsActualCostQueryPort {
         var objectRows = db.queryForList(OBJECTS_SQL,args);
         if (objectRows.size()>500) throw invalid("实际成本对象超过500个，请缩小期间或选择工单");
         List<Gap> gaps = new ArrayList<>();
-        gaps.add(new Gap("LABOR_ACTUAL_NOT_LINKED",null,null,"LABOR"));
-        gaps.add(new Gap("OVERHEAD_ACTUAL_NOT_LINKED",null,null,"OVERHEAD"));
-        if (objectRows.isEmpty()) {
-            gaps.add(new Gap("NO_VALUATION_EVIDENCE",null,query.goodsId(),"INVENTORY_PRODUCTION_COST"));
-            return result(query,new Summary(null,null,null,null,null,null,null,null,null,true,false,"INVENTORY_PRODUCTION_COST_ONLY",0),List.of(),List.of(),List.of(),List.of(),gaps);
+        var math = new ActualCostEvidenceMath(objectRows,query.goodsId(),gaps::add);
+        if(objectRows.isEmpty()) {
+            math.finish(query.goodsId());
+            return result(query,math.summary(),math.objects(),List.of(),List.of(),List.of(),gaps);
         }
         args.addValue("ids",objectRows.stream().map(row->uuid(row,"cost_object_id")).toList());
-        var inputs = db.queryForList(INPUTS_SQL,args).stream().map(GoodsActualCostQueryService::input).toList();
-        for(var line:inputs) {
-            if(line.goodsCode()==null||line.goodsName()==null||line.unitId()==null||line.unitName()==null)
-                gaps.add(new Gap("ORIGINAL_INPUT_IDENTITY_MISSING",line.costObjectId(),line.inputNodeId(),"IDENTITY"));
-            if(line.grossQtyBase()==null||line.returnedQtyBase()==null||line.knownAmountLocal()==null)
-                gaps.add(new Gap("INPUT_REVISION_EVIDENCE_MISSING",line.costObjectId(),line.inputNodeId(),"INVENTORY_PRODUCTION_COST"));
-        }
-        var outputs = db.queryForList(OUTPUTS_SQL,args).stream().map(GoodsActualCostQueryService::output).toList();
-        var revisions = db.queryForList("""
-                SELECT r.*,(SELECT count(*) FROM stock_value_production_cost_tasks t WHERE t.revision_id=r.id AND t.status='PENDING') pending_tasks
-                FROM stock_value_production_cost_revisions r WHERE r.execution_segment_id IN (:ids)
-                ORDER BY r.execution_segment_id,r.version DESC
-                """,args).stream().map(row->new Revision(uuid(row,"execution_segment_id"),uuid(row,"id"),number(row,"version"),time(row,"occurred_at"),bool(row,"scope_complete"),decimal(row,"target_qty_base"),decimal(row,"output_qty_base"),number(row,"pending_tasks"),text(row,"source_doc_type"),uuid(row,"source_doc_id"),uuid(row,"source_item_id"))).toList();
-        List<CostObject> objects = new ArrayList<>();
-        for (var row:objectRows) {
-            UUID id=uuid(row,"cost_object_id");
-            var own=inputs.stream().filter(line->id.equals(line.costObjectId())).toList();
-            BigDecimal known=sumNullable(own.stream().map(InputLine::knownAmountLocal).toList());
-            BigDecimal allocated=sumNullable(own.stream().map(InputLine::allocatedAmountLocal).toList());
-            BigDecimal target=decimal(row,"target_qty_base");
-            BigDecimal held=known==null||allocated==null?null:known.subtract(allocated).max(BigDecimal.ZERO);
-            BigDecimal adjustment=known==null||allocated==null?null:known.subtract(allocated).min(BigDecimal.ZERO);
-            List<String> reasons=new ArrayList<>();
-            if(uuid(row,"revision_id")==null)reasons.add("NO_APPROVED_COST_REVISION");
-            if(number(row,"pending_tasks")>0)reasons.add("ALLOCATION_APPLYING");
-            if(!bool(row,"historical")&&(bool(row,"business_refresh_pending")||bool(row,"dirty")||bool(row,"value_work_pending")))reasons.add("SOURCE_REFRESH_PENDING");
-            if(!bool(row,"historical")&&!"FINAL".equals(text(row,"state")))reasons.add("COST_STATE_"+text(row,"state"));
-            if(!bool(row,"scope_complete"))reasons.add("SCOPE_NOT_COMPLETE");
-            BigDecimal revisionOutput=decimal(row,"output_qty_base");
-            if(target==null||target.signum()<=0||revisionOutput==null||revisionOutput.compareTo(target)>0)reasons.add("OUTPUT_BASIS_PENDING");
-            if(own.isEmpty())reasons.add("NO_INPUT_COST_EVIDENCE");
-            if(own.stream().anyMatch(InputLine::pending))reasons.add("INPUT_COST_PENDING");
-            String status=reasons.contains("ALLOCATION_APPLYING")||reasons.contains("SOURCE_REFRESH_PENDING")?"APPLYING":reasons.contains("OUTPUT_BASIS_PENDING")?"PENDING_BASIS":reasons.contains("COST_STATE_PENDING_CLASSIFICATION")?"PENDING_CLASSIFICATION":reasons.isEmpty()?"FINAL":"PROVISIONAL";
-            objects.add(new CostObject(id,text(row,"source_kind"),"PRODUCTION_EXECUTION".equals(text(row,"source_kind"))?id:null,text(row,"execution_no"),uuid(row,"revision_id"),number(row,"revision_version"),status,target,decimal(row,"output_qty_base"),known,allocated,target!=null&&target.signum()>0?held:BigDecimal.ZERO,adjustment,target==null||target.signum()==0?held:BigDecimal.ZERO,!reasons.isEmpty(),bool(row,"historical"),List.copyOf(reasons)));
-            reasons.forEach(reason->gaps.add(new Gap(reason,id,uuid(row,"revision_id"),"INVENTORY_PRODUCTION_COST")));
-        }
-        BigDecimal outputQty=sumNullable(outputs.stream().map(OutputLine::effectiveQtyBase).toList());
-        BigDecimal outputAmount=sumNullable(outputs.stream().map(OutputLine::knownAmountLocal).toList());
-        BigDecimal scopeAllocated=sumNullable(objects.stream().map(CostObject::allocatedOutputCostLocal).toList());
-        boolean pending=objects.stream().anyMatch(CostObject::pending)||outputs.stream().anyMatch(OutputLine::pending)||outputs.isEmpty();
-        BigDecimal unit=!pending&&outputAmount!=null&&outputQty!=null&&outputQty.signum()>0?outputAmount.divide(outputQty,12,RoundingMode.HALF_UP):null;
-        Summary summary=new Summary(sumNullable(objects.stream().map(CostObject::knownInputCostLocal).toList()),outputs.isEmpty()?null:outputAmount,
-                scopeAllocated,scopeAllocated==null||outputAmount==null?null:scopeAllocated.subtract(outputAmount),
-                sumNullable(objects.stream().map(CostObject::heldWipLocal).toList()),sumNullable(objects.stream().map(CostObject::pendingReallocationLocal).toList()),
-                sumNullable(objects.stream().map(CostObject::unclassifiedLocal).toList()),outputQty,unit,pending,false,"INVENTORY_PRODUCTION_COST_ONLY",inputs.stream().filter(InputLine::pending).count());
-        return result(query,summary,objects,inputs,outputs,revisions,gaps);
+        var inputs=db.queryForList(INPUTS_SQL,args).stream().map(GoodsActualCostQueryService::input).toList();
+        inputs.forEach(math::accept);
+        var outputs=db.queryForList(OUTPUTS_SQL,args).stream().map(GoodsActualCostQueryService::output).toList();
+        outputs.forEach(math::accept);
+        var revisions=db.queryForList(REVISIONS_SQL,args).stream().map(GoodsActualCostQueryService::revision).toList();
+        math.finish(query.goodsId());
+        return result(query,math.summary(),math.objects(),inputs,outputs,revisions,gaps);
     }
 
-    private static InputLine input(Map<String,Object> row) {
+    static final String REVISIONS_SQL = """
+            SELECT r.execution_segment_id,r.id,r.version,r.occurred_at,r.scope_complete,
+                   r.target_qty_base,r.output_qty_base,r.source_doc_type,r.source_doc_id,r.source_item_id,
+                   (SELECT count(*) FROM stock_value_production_cost_tasks t WHERE t.revision_id=r.id AND t.status='PENDING') pending_tasks
+            FROM stock_value_production_cost_revisions r WHERE r.execution_segment_id IN (:ids)
+            ORDER BY r.execution_segment_id,r.version DESC
+            """;
+    static Revision revision(Map<String,Object> row) {
+        return new Revision(uuid(row,"execution_segment_id"),uuid(row,"id"),number(row,"version"),time(row,"occurred_at"),bool(row,"scope_complete"),decimal(row,"target_qty_base"),decimal(row,"output_qty_base"),number(row,"pending_tasks"),text(row,"source_doc_type"),uuid(row,"source_doc_id"),uuid(row,"source_item_id"));
+    }
+
+    @Override
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public StreamingRead openStream(Query query,int perSectionLimit,java.util.function.Consumer<List<InputLine>> inputInspector) {
+        return new GoodsActualCostStreamReader(db).open(query,perSectionLimit,inputInspector);
+    }
+
+    static InputLine input(Map<String,Object> row) {
         BigDecimal gross=decimal(row,"gross_qty"),returned=decimal(row,"returned_qty"),basis=decimal(row,"basis_value");
         boolean legacy=!"EXACT_SOURCE_SHARES".equals(text(row,"value_model"));
         boolean evidenceMissing=gross==null||returned==null||basis==null||row.get("value_revision")==null||row.get("pending_parents")==null;
@@ -196,20 +173,20 @@ public class GoodsActualCostQueryService implements GoodsActualCostQueryPort {
                 gross,returned,gross==null||returned==null?null:gross.subtract(returned),amount,allocated,amount==null||allocated==null?null:amount.subtract(allocated),returned!=null&&returned.signum()==0?decimal(row,"exact_lower"):null,returned!=null&&returned.signum()==0?decimal(row,"exact_upper"):null,
                 legacy?"LEGACY_UNVERIFIED":"VALUATION_BOOKED_LOCAL",text(row,"source_doc_type"),uuid(row,"source_doc_id"),uuid(row,"source_item_id"),time(row,"occurred_at"),legacy||evidenceMissing||!bool(row,"identity_complete")||number(row,"pending_parents")>0,number(row,"value_revision")>1);
     }
-    private static OutputLine output(Map<String,Object> row) {
+    static OutputLine output(Map<String,Object> row) {
         boolean withdrawn=uuid(row,"withdrawn_movement_id")!=null;
         return new OutputLine(uuid(row,"cost_object_id"),uuid(row,"revision_id"),uuid(row,"source_node_id"),number(row,"value_revision"),uuid(row,"movement_id"),uuid(row,"withdrawn_movement_id"),uuid(row,"warehouse_id"),uuid(row,"color_id"),date(row,"business_date"),text(row,"source_doc_type"),uuid(row,"source_doc_id"),uuid(row,"source_item_id"),decimal(row,"qty_base"),withdrawn?BigDecimal.ZERO:decimal(row,"qty_base"),withdrawn?BigDecimal.ZERO:decimal(row,"amount"),withdrawn,bool(row,"pending"),number(row,"value_revision")>1);
     }
     static BigDecimal sumNullable(List<BigDecimal> amounts) { return amounts.stream().filter(Objects::nonNull).reduce(BigDecimal::add).orElse(null); }
     private static ActualCostSnapshot result(Query query,Summary summary,List<CostObject> objects,List<InputLine> inputs,List<OutputLine> outputs,List<Revision> revisions,List<Gap> gaps) {
-        return new ActualCostSnapshot(query.goodsId(),OffsetDateTime.now(),"LOCAL","PHYSICAL_OUTPUT_BUSINESS_DATE","FULL_ORIGINAL_COST_OBJECT",query,summary,List.copyOf(objects),List.copyOf(inputs),List.copyOf(outputs),List.copyOf(revisions),List.copyOf(gaps));
+        return new ActualCostSnapshot(query.goodsId(),OffsetDateTime.now(),ActualCostEvidenceMath.CURRENCY,ActualCostEvidenceMath.PERIOD,ActualCostEvidenceMath.INPUT_SCOPE,query,summary,List.copyOf(objects),List.copyOf(inputs),List.copyOf(outputs),List.copyOf(revisions),List.copyOf(gaps));
     }
     private static ApiException invalid(String message) { return new ApiException(ErrorCode.VALIDATION_FAILED,message); }
-    private static UUID uuid(Map<String,Object> row,String key) { Object value=row.get(key);return value==null?null:value instanceof UUID id?id:UUID.fromString(value.toString()); }
-    private static String text(Map<String,Object> row,String key) { Object value=row.get(key);return value==null?null:value.toString(); }
-    private static BigDecimal decimal(Map<String,Object> row,String key) { Object value=row.get(key);return value==null?null:value instanceof BigDecimal amount?amount:new BigDecimal(value.toString()); }
-    private static long number(Map<String,Object> row,String key) { Object value=row.get(key);return value==null?0:((Number)value).longValue(); }
-    private static boolean bool(Map<String,Object> row,String key) { return Boolean.TRUE.equals(row.get(key)); }
-    private static OffsetDateTime time(Map<String,Object> row,String key) { Object value=row.get(key);return value==null?null:value instanceof OffsetDateTime time?time:((java.sql.Timestamp)value).toInstant().atOffset(java.time.ZoneOffset.UTC); }
-    private static LocalDate date(Map<String,Object> row,String key) { Object value=row.get(key);return value==null?null:value instanceof LocalDate date?date:((java.sql.Date)value).toLocalDate(); }
+    static UUID uuid(Map<String,Object> row,String key) { Object value=row.get(key);return value==null?null:value instanceof UUID id?id:UUID.fromString(value.toString()); }
+    static String text(Map<String,Object> row,String key) { Object value=row.get(key);return value==null?null:value.toString(); }
+    static BigDecimal decimal(Map<String,Object> row,String key) { Object value=row.get(key);return value==null?null:value instanceof BigDecimal amount?amount:new BigDecimal(value.toString()); }
+    static long number(Map<String,Object> row,String key) { Object value=row.get(key);return value==null?0:((Number)value).longValue(); }
+    static boolean bool(Map<String,Object> row,String key) { return Boolean.TRUE.equals(row.get(key)); }
+    static OffsetDateTime time(Map<String,Object> row,String key) { Object value=row.get(key);return value==null?null:value instanceof OffsetDateTime time?time:((java.sql.Timestamp)value).toInstant().atOffset(java.time.ZoneOffset.UTC); }
+    static LocalDate date(Map<String,Object> row,String key) { Object value=row.get(key);return value==null?null:value instanceof LocalDate date?date:((java.sql.Date)value).toLocalDate(); }
 }

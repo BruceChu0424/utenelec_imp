@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/network/api_exception.dart';
-import '../../core/theme/uten_tokens.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
 import '../../features/department/models/department_node.dart';
 import '../../features/employee/providers/employee_picker_department_tree_provider.dart';
@@ -13,6 +12,7 @@ import '../../shared/formatters/employee_display.dart';
 import '../../shared/widgets/uten_hierarchy_tree_view.dart';
 import '../feedback/uten_empty.dart';
 import '../layout/uten_adaptive_panel.dart';
+import '../layout/uten_panel_header.dart';
 import '../layout/uten_picker_confirm_bar.dart';
 import '../layout/uten_split_view.dart';
 import '../layout/uten_panel_opening_scope.dart';
@@ -428,7 +428,7 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
 
   Widget _search() => Padding(
     // 左缘贴 0（2026-10-18 全站分栏口径）：与分类页左栏搜索共缘。
-    padding: const EdgeInsets.symmetric(vertical: 8),
+    padding: UtenPanelSpacing.search(context),
     child: UtenSearchBar(
       key: const Key('uten-employee-picker-search'),
       controller: _searchController,
@@ -531,40 +531,17 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
     }
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (widget.departmentName?.isNotEmpty == true)
-                      Text(
-                        widget.departmentName!,
-                        style: theme.textTheme.bodySmall,
-                      ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: '关闭',
-                onPressed: _cancel,
-                icon: const Icon(Icons.close_rounded),
-              ),
-            ],
-          ),
+        UtenPanelHeader(
+          title: widget.title,
+          subtitle: widget.departmentName?.isNotEmpty == true
+              ? widget.departmentName
+              : null,
+          onClose: _cancel,
         ),
         const Divider(height: 1),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s12),
+            padding: UtenPanelSpacing.browseBody(context),
             child: UtenPanelDeferredView(builder: (_) => body),
           ),
         ),
@@ -602,6 +579,7 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
       (item) => item.subtitle?.trim().isNotEmpty == true || !item.enabled,
     );
     return MasterDataTableView<UtenEmployeePickerItem>(
+      expensiveRowMounts: false,
       key: const Key('uten-employee-picker-candidates'),
       columns: [
         MasterColumnDef(

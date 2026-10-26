@@ -14,7 +14,7 @@ Widget _app(Widget child) => MaterialApp(
 Future<void> _drag(WidgetTester tester, Finder view) async {
   final rect = tester.getRect(view);
   final gesture = await tester.startGesture(
-    Offset(rect.right - 5, rect.top + 14),
+    Offset(rect.right - 5, rect.top + 32),
     kind: PointerDeviceKind.mouse,
   );
   await gesture.moveBy(const Offset(0, 20));
@@ -70,6 +70,12 @@ void main() {
       );
       final bodyList = tester.widget<ListView>(find.byType(ListView).first);
       final cellBar = tester.widget<Scrollbar>(bars);
+      expect(
+        tester.getRect(bars),
+        tester.getRect(cellView),
+        reason:
+            'The independent SDK thumb must paint at the real cell viewport edge',
+      );
       expect(cellBar.controller, isNot(same(bodyList.controller)));
       expect(
         find.byWidgetPredicate(

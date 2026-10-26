@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import '../../../shared/search/keyword_search.dart';
 import 'package:flutter/material.dart';
 
@@ -472,33 +473,35 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
       onExpandedChanged: (expanded) =>
           _setModuleExpanded(module.module, expanded),
       trailing: canBatch
-          ? PopupMenuButton<_PermissionGroupAction>(
-              tooltip: '批量设置${module.module}',
-              icon: const Icon(Icons.more_horiz_rounded),
-              onSelected: (action) {
-                switch (action) {
-                  case _PermissionGroupAction.enable:
-                    widget.onGrantScope?.call(
-                      PermissionBulkScope(module: module.module),
-                    );
-                    break;
-                  case _PermissionGroupAction.disable:
-                    widget.onDisableGroup?.call(module.fullPerms);
-                    break;
-                }
-              },
-              itemBuilder: (context) => [
-                if (widget.onGrantScope != null)
-                  PopupMenuItem(
-                    value: _PermissionGroupAction.enable,
-                    child: Text(widget.enableModuleLabel),
-                  ),
-                if (widget.onDisableGroup != null)
-                  PopupMenuItem(
-                    value: _PermissionGroupAction.disable,
-                    child: Text(widget.disableModuleLabel),
-                  ),
-              ],
+          ? UtenDropdownScrollScope(
+              child: PopupMenuButton<_PermissionGroupAction>(
+                tooltip: '批量设置${module.module}',
+                icon: const Icon(Icons.more_horiz_rounded),
+                onSelected: (action) {
+                  switch (action) {
+                    case _PermissionGroupAction.enable:
+                      widget.onGrantScope?.call(
+                        PermissionBulkScope(module: module.module),
+                      );
+                      break;
+                    case _PermissionGroupAction.disable:
+                      widget.onDisableGroup?.call(module.fullPerms);
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  if (widget.onGrantScope != null)
+                    PopupMenuItem(
+                      value: _PermissionGroupAction.enable,
+                      child: Text(widget.enableModuleLabel),
+                    ),
+                  if (widget.onDisableGroup != null)
+                    PopupMenuItem(
+                      value: _PermissionGroupAction.disable,
+                      child: Text(widget.disableModuleLabel),
+                    ),
+                ],
+              ),
             )
           : null,
       children: [for (final subcat in module.subcats) _categorySection(subcat)],
@@ -521,36 +524,38 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
       expanded: _isCategoryExpanded(group),
       onExpandedChanged: (expanded) => _setCategoryExpanded(group, expanded),
       trailing: canBatch
-          ? PopupMenuButton<_PermissionGroupAction>(
-              tooltip: '批量设置${group.category}',
-              icon: const Icon(Icons.more_horiz_rounded),
-              onSelected: (action) {
-                switch (action) {
-                  case _PermissionGroupAction.enable:
-                    widget.onGrantScope?.call(
-                      PermissionBulkScope(
-                        module: group.module,
-                        category: group.category,
-                      ),
-                    );
-                    break;
-                  case _PermissionGroupAction.disable:
-                    widget.onDisableGroup?.call(group.permissions);
-                    break;
-                }
-              },
-              itemBuilder: (context) => [
-                if (widget.onGrantScope != null)
-                  PopupMenuItem(
-                    value: _PermissionGroupAction.enable,
-                    child: Text(widget.enableGroupLabel),
-                  ),
-                if (widget.onDisableGroup != null)
-                  PopupMenuItem(
-                    value: _PermissionGroupAction.disable,
-                    child: Text(widget.disableGroupLabel),
-                  ),
-              ],
+          ? UtenDropdownScrollScope(
+              child: PopupMenuButton<_PermissionGroupAction>(
+                tooltip: '批量设置${group.category}',
+                icon: const Icon(Icons.more_horiz_rounded),
+                onSelected: (action) {
+                  switch (action) {
+                    case _PermissionGroupAction.enable:
+                      widget.onGrantScope?.call(
+                        PermissionBulkScope(
+                          module: group.module,
+                          category: group.category,
+                        ),
+                      );
+                      break;
+                    case _PermissionGroupAction.disable:
+                      widget.onDisableGroup?.call(group.permissions);
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  if (widget.onGrantScope != null)
+                    PopupMenuItem(
+                      value: _PermissionGroupAction.enable,
+                      child: Text(widget.enableGroupLabel),
+                    ),
+                  if (widget.onDisableGroup != null)
+                    PopupMenuItem(
+                      value: _PermissionGroupAction.disable,
+                      child: Text(widget.disableGroupLabel),
+                    ),
+                ],
+              ),
             )
           : null,
       children: [

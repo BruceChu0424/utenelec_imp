@@ -1,0 +1,7 @@
+
+Algorithm Hash                                                             Path
+--------- ----                                                             ----
+SHA256    B12196FBE4A8131CC2E93A1CB57B30742258DF2D45D48DD6C360B4C25D469E73 D:\Projects\uten_imp\server\src\main\resourc…
+SHA256    930FFFA49611B15F736C8600F768A7C440257DB49603360AAEC158934EA5EFCC D:\Projects\uten_imp\server\src\main\resourc…
+
+

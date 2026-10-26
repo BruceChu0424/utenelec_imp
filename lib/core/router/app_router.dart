@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'editor_resource_key.dart';
 import '../../features/client_update/client_update_navigation.dart';
+import '../../features/client_update/software_downloads_page.dart';
 import '../../features/company_files/pages/company_files_page.dart';
 import '../../features/stock/models/instant_inventory_scope.dart';
 import '../../shared/ai/guided/ai_guided_file_plan.dart';
@@ -550,6 +551,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.dashboard,
             name: 'dashboard',
             builder: (_, _) => const DashboardPage(),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.softwareDownloads,
+            name: 'software-downloads',
+            builder: (_, _) => const SoftwareDownloadsPage(),
           ),
           DraftAwareGoRoute(
             path: RouteName.profile,

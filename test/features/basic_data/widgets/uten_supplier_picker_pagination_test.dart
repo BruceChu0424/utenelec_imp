@@ -155,11 +155,23 @@ ScrollableState _scrollable(WidgetTester tester) {
   return Scrollable.of(tester.element(row), axis: Axis.vertical);
 }
 
-Future<void> _edge(WidgetTester tester, {required bool top}) async {
+Future<void> _edge(
+  WidgetTester tester, {
+  required bool top,
+  bool settle = true,
+}) async {
   final position = _scrollable(tester).position;
   position.jumpTo(top ? position.minScrollExtent : position.maxScrollExtent);
   // Bounded tables admit offscreen business rows over successive frames.
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    // An intentionally held page keeps loading feedback animating. Admit
+    // bounded row frames without waiting for that network gate to complete.
+    for (var frame = 0; frame < 8; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+  }
 }
 
 Future<void> _wheel(WidgetTester tester, double dy) async {
@@ -200,13 +212,13 @@ void main() {
     tester,
   ) async {
     final suppliers = _Suppliers();
+    final response = suppliers.hold('A', 2);
     await _open(tester, suppliers);
     await tester.tap(find.text('A-委外商1-0'));
     await tester.pumpAndSettle();
     expect(find.text('已选择：A-委外商1-0'), findsOneWidget);
 
-    final response = suppliers.hold('A', 2);
-    await _edge(tester, top: false);
+    await _edge(tester, top: false, settle: false);
     await _wheel(tester, 150);
     await _wheel(tester, 150);
     expect(suppliers.requests, [('A', 1), ('A', 2)]);
@@ -219,7 +231,7 @@ void main() {
     await _edge(tester, top: false);
     await tester.pumpAndSettle();
     expect(find.widgetWithText(TextField, '2'), findsOneWidget);
-    expect(suppliers.requests, [('A', 1), ('A', 2)]);
+    expect(suppliers.requests, [('A', 1), ('A', 2), ('A', 3), ('A', 4)]);
     await _edge(tester, top: true);
     await tester.pumpAndSettle();
     expect(find.widgetWithText(TextField, '1'), findsOneWidget);
@@ -246,7 +258,7 @@ void main() {
       final oldRowTop = tester.getTopLeft(find.text('A-委外商3-0')).dy;
       await _wheel(tester, -150);
       await tester.pumpAndSettle();
-      expect(suppliers.requests, [('A', 1), ('A', 3), ('A', 2)]);
+      expect(suppliers.requests, [('A', 1), ('A', 2), ('A', 3), ('A', 4)]);
       expect(
         tester.getTopLeft(find.text('A-委外商3-0')).dy,
         closeTo(oldRowTop, 1),
@@ -273,9 +285,9 @@ void main() {
     'supplier failed next page retains page and retries the same page',
     (tester) async {
       final suppliers = _Suppliers();
-      await _open(tester, suppliers);
       final failed = suppliers.hold('A', 2);
-      await _edge(tester, top: false);
+      await _open(tester, suppliers);
+      await _edge(tester, top: false, settle: false);
       await _wheel(tester, 150);
       failed.completeError(StateError('offline'));
       await tester.pumpAndSettle();
@@ -301,9 +313,9 @@ void main() {
     tester,
   ) async {
     final suppliers = _Suppliers();
-    await _open(tester, suppliers, size: const Size(375, 812));
     final oldResponse = suppliers.hold('A', 2);
-    await _edge(tester, top: false);
+    await _open(tester, suppliers, size: const Size(375, 812));
+    await _edge(tester, top: false, settle: false);
     await _wheel(tester, 150);
     expect(suppliers.requests, [('A', 1), ('A', 2)]);
     await tester.tap(find.byIcon(Icons.account_tree_rounded));

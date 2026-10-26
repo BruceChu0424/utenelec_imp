@@ -1,6 +1,7 @@
 // API 客户端：基于 Dio，注入 AuthInterceptor；统一把 DioException 转成 ApiException。
 // 基址由 api_base_url.dart 统一校验：Web release 默认同源 /api，
 // 移动/桌面 release 必须显式传 HTTPS，避免误请求用户设备 localhost。
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -15,6 +16,7 @@ import 'data_write_revision.dart';
 import 'api_error.dart';
 import 'api_exception.dart';
 import 'authenticated_request_scope.dart';
+import 'native_facet_routes.dart';
 import 'interceptors/auth_interceptor.dart';
 import 'interceptors/automatic_request_interceptor.dart';
 import 'interceptors/device_audit_interceptor.dart';
@@ -25,11 +27,73 @@ import 'interceptors/write_deadline_interceptor.dart';
 import 'network_policy.dart';
 import 'responsive_json_decoder.dart';
 import 'responsive_json_transformer.dart';
+import 'streaming_download_adapter.dart';
+import 'streaming_download_contract.dart';
+import 'read_scope_revision.dart';
+import 'interceptors/read_scope_revision_interceptor.dart';
 
 class ApiClient {
-  ApiClient(this._dio);
+  ApiClient(this._dio, {this.streamingDownloads = false});
 
   final Dio _dio;
+  final bool streamingDownloads;
+
+  /// Read one already-authorized export artifact, without accumulating its body.
+  Stream<Uint8List> downloadExportStream(
+    String path, {
+    Object? body,
+    bool Function()? stillCurrent,
+  }) async* {
+    if (!RegExp(
+      r'^/report-export-jobs/[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}/download$',
+    ).hasMatch(path)) {
+      throw const FormatException('Invalid export artifact path');
+    }
+    final cancellation = CancelToken();
+    final guard = stillCurrent == null
+        ? null
+        : Timer.periodic(const Duration(milliseconds: 200), (_) {
+            if (!stillCurrent()) cancellation.cancel('Export identity retired');
+          });
+    try {
+      final response = await _dio.post<dynamic>(
+        path,
+        data: body,
+        cancelToken: cancellation,
+        options: Options(
+          responseType: ResponseType.stream,
+          followRedirects: false,
+          receiveTimeout: apiDownloadReceiveTimeout,
+          extra: const {
+            safeRequestRetryDisabledKey: true,
+            streamingDownloadRequestKey: true,
+          },
+        ),
+      );
+      final value = response.data;
+      if (value is! ResponseBody) {
+        throw const FormatException('Empty export artifact');
+      }
+      final declared = int.tryParse(
+        value.headers[Headers.contentLengthHeader]?.first ?? '',
+      );
+      final encoded = value.headers['content-encoding']?.first;
+      var bytes = 0;
+      await for (final chunk in value.stream) {
+        bytes += chunk.length;
+        if (bytes > maxExportDownloadBytes) throw StateError('导出文件超过本机保存上限');
+        yield chunk;
+      }
+      if (declared != null && encoded == null && bytes != declared) {
+        throw const FormatException('导出下载不完整，请重试原任务');
+      }
+    } on DioException catch (error) {
+      throw _convert(error);
+    } finally {
+      guard?.cancel();
+      cancellation.cancel('Export reader closed');
+    }
+  }
 
   Future<AuthenticatedRequestScope> captureRequestScope({
     required bool Function() isCurrent,
@@ -48,7 +112,7 @@ class ApiClient {
   }) async {
     try {
       final r = await _dio.get<dynamic>(path, queryParameters: query);
-      return _asMap(r.data);
+      return _objectResponse(r);
     } on DioException catch (e) {
       throw _convert(e);
     }
@@ -145,7 +209,7 @@ class ApiClient {
         queryParameters: query,
         cancelToken: cancelToken,
       );
-      return _asMap(r.data);
+      return _objectResponse(r);
     } on DioException catch (e) {
       throw _convert(e);
     }
@@ -164,9 +228,37 @@ class ApiClient {
         queryParameters: query,
         options: headers == null ? null : Options(headers: headers),
       );
-      return _asMap(r.data);
+      return _objectResponse(r);
     } on DioException catch (e) {
       throw _convert(e);
+    }
+  }
+
+  /// Exact read-only candidate endpoints retain their typed legacy form filters.
+  Future<Map<String, dynamic>> postForm(
+    String path, {
+    required Map<String, dynamic> body,
+  }) async {
+    if (!isNativeFacetPath(path)) {
+      throw ApiException('VALIDATION_FAILED', '只读候选接口无效');
+    }
+    final encoded = jsonEncode(body);
+    if (utf8.encode(encoded).length > 65536) {
+      throw ApiException('VALIDATION_FAILED', '候选筛选条件过大');
+    }
+    final frozen = jsonDecode(encoded) as Map<String, dynamic>;
+    try {
+      final response = await _dio.post<dynamic>(
+        path,
+        data: frozen,
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          followRedirects: false,
+        ),
+      );
+      return _objectResponse(response);
+    } on DioException catch (error) {
+      throw _convert(error);
     }
   }
 
@@ -185,7 +277,7 @@ class ApiClient {
         data: body,
         options: Options(receiveTimeout: receiveTimeout),
       );
-      return _asMap(r.data);
+      return _objectResponse(r);
     } on DioException catch (e) {
       throw _convert(e);
     }
@@ -232,7 +324,7 @@ class ApiClient {
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
     try {
       final r = await _dio.put<dynamic>(path, data: body);
-      return _asMap(r.data);
+      return _objectResponse(r);
     } on DioException catch (e) {
       throw _convert(e);
     }
@@ -251,7 +343,7 @@ class ApiClient {
         data: body,
         queryParameters: query,
       );
-      return _asMap(r.data);
+      return _objectResponse(r);
     } on DioException catch (e) {
       throw _convert(e);
     }
@@ -302,7 +394,7 @@ class ApiClient {
           receiveTimeout: receiveTimeout,
         ),
       );
-      return _asMap(r.data);
+      return _objectResponse(r);
     } on DioException catch (e) {
       throw _convert(e);
     }
@@ -332,7 +424,7 @@ class ApiClient {
           receiveTimeout: receiveTimeout,
         ),
       );
-      return _asMap(r.data);
+      return _objectResponse(r);
     } on DioException catch (e) {
       throw _convert(e);
     }
@@ -371,7 +463,10 @@ class ApiClient {
           responseType: ResponseType.stream,
           followRedirects: false,
           receiveTimeout: const Duration(minutes: 15),
-          extra: const {safeRequestRetryDisabledKey: true},
+          extra: const {
+            safeRequestRetryDisabledKey: true,
+            streamingDownloadRequestKey: true,
+          },
         ),
       );
       if (response.data == null) throw const FormatException('Empty package');
@@ -407,7 +502,7 @@ class ApiClient {
   Future<Map<String, dynamic>> patch(String path, {Object? body}) async {
     try {
       final r = await _dio.patch<dynamic>(path, data: body);
-      return _asMap(r.data);
+      return _objectResponse(r);
     } on DioException catch (e) {
       throw _convert(e);
     }
@@ -419,6 +514,21 @@ class ApiClient {
   static Map<String, dynamic> _asMap(dynamic data) {
     if (data is Map<String, dynamic>) return data;
     return <String, dynamic>{};
+  }
+
+  static Map<String, dynamic> _objectResponse(Response<dynamic> response) {
+    final data = _asMap(response.data);
+    final version = response.headers.value('X-Uten-Read-Scope-Version');
+    if (version == null || version.isEmpty || version.length > 256) return data;
+    if (data['readScopeVersion'] != null &&
+        data['readScopeVersion'] != version) {
+      throw ApiException(
+        'READ_SCOPE_CHANGED',
+        '数据访问范围已变化，请重新打开页面后核对',
+        httpStatus: 403,
+      );
+    }
+    return {...data, 'readScopeVersion': version};
   }
 
   /// [query] 作为查询参数发送(例如乐观锁版本号 `?version=`)。
@@ -521,14 +631,30 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   final baseUrl = ref.watch(apiBaseUrlProvider);
   final jsonDecoder = ResponsiveJsonDecoder();
   ref.onDispose(jsonDecoder.dispose);
+  late final AuthInterceptor authInterceptor;
+  final readScope = ReadScopeRevisionInterceptor(
+    currentRevision: () =>
+        ref.mounted ? ref.read(readScopeRevisionProvider) : -1,
+    retire: () {
+      if (ref.mounted) ref.read(readScopeRevisionProvider.notifier).state++;
+    },
+    identity: AuthInterceptor.retainedIdentity,
+    isCurrent: (options) async =>
+        ref.mounted &&
+        ref.read(apiBaseUrlProvider) == baseUrl &&
+        await authInterceptor.requestBelongsToCurrentIdentity(options),
+  );
   Dio auditedDioFactory() {
     final client = Dio(buildApiBaseOptions(baseUrl));
+    installStreamingDownloadAdapter(client);
     client.transformer = ResponsiveJsonTransformer(jsonDecoder);
     client.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
+    client.interceptors.add(readScope);
     return client;
   }
 
   final dio = Dio(buildApiBaseOptions(baseUrl));
+  installStreamingDownloadAdapter(dio);
   // Large responses use a native isolate or a same-origin Web Worker. Web's
   // ordinary compute/BackgroundTransformer does not create a worker; model
   // conversion after JSON decoding must also keep its own bounded UI budget.
@@ -538,13 +664,13 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   dio.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
   // 用户没在操作时发出的请求 (轮询/定时刷新) 声明为自动请求，服务端不据此续期会话 (ADR-110)。
   dio.interceptors.add(const AutomaticRequestInterceptor());
-  dio.interceptors.add(
-    AuthInterceptor(
-      storage: storage,
-      baseUrl: baseUrl,
-      dioFactory: auditedDioFactory,
-    ),
+  authInterceptor = AuthInterceptor(
+    storage: storage,
+    baseUrl: baseUrl,
+    dioFactory: auditedDioFactory,
   );
+  dio.interceptors.add(authInterceptor);
+  dio.interceptors.add(readScope);
   // 敏感操作被要求再认证 (403 REAUTH_REQUIRED) 时弹统一密码框、带凭证重发一次 (ADR-110)。
   dio.interceptors.add(StepUpInterceptor(dio));
   dio.interceptors.add(RemoteMfaInterceptor());
@@ -553,5 +679,5 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   dio.interceptors.add(
     DataWriteRevisionInterceptor((options) => recordDataWrite(ref, options)),
   );
-  return ApiClient(dio);
+  return ApiClient(dio, streamingDownloads: true);
 });

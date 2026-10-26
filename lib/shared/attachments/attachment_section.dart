@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/io/file_saver.dart';
 import '../../core/l10n/gen/app_localizations.dart';
+import '../../core/network/authenticated_request_scope.dart';
 import '../../components/cards/uten_card.dart';
 import '../../components/inputs/uten_drop_target.dart';
 import '../../components/layout/uten_section_header.dart';
@@ -22,6 +23,8 @@ import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
 import '../../core/utils/china_datetime.dart';
 import '../auth/permissions.dart';
+import '../providers/sensitive_read_boundary_provider.dart';
+import '../widgets/sensitive_content_boundary.dart';
 import 'attachment.dart';
 import 'attachment_category_control.dart';
 import 'attachment_file_rules.dart';
@@ -83,10 +86,28 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
 
   /// 正在保存分类的附件 id（该行控件暂时不接受新点击）。
   final Set<String> _savingCategory = {};
+  final Set<String> _readingIds = {};
+  int _readEpoch = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    ref.listenManual(sensitiveReadBoundaryProvider, (before, after) {
+      if (before != after && mounted) {
+        ++_readEpoch;
+        setState(() => _readingIds.clear());
+      }
+    });
+  }
 
   @override
   void didUpdateWidget(covariant AttachmentSection oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.ownerId != widget.ownerId ||
+        oldWidget.ownerType != widget.ownerType) {
+      ++_readEpoch;
+      _readingIds.clear();
+    }
     if (identical(oldWidget.attachments, widget.attachments)) return;
     // 服务端已回读到同一分类（或文件已不在列表）时丢弃本地值，
     // 以免长期遮住别人改过的分类。
@@ -123,6 +144,13 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
               Expanded(
                 child: UtenSectionHeader(
                   title: widget.title ?? '附件 / 发票',
+                  info: canUpload
+                      ? AppLocalizations.of(
+                          context,
+                        ).attachmentUploadFormatsHint(
+                          formatAttachmentLimit(AttachmentLimits.maxFileBytes),
+                        )
+                      : null,
                   icon: Icons.folder_outlined,
                   trailing: widget.attachments.isEmpty
                       ? null
@@ -297,16 +325,6 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      // 上限跟随服务端部署配置 (公共设置下发)，不写死。
-                      AppLocalizations.of(context).attachmentUploadFormatsHint(
-                        formatAttachmentLimit(AttachmentLimits.maxFileBytes),
-                      ),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -411,13 +429,19 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
           if (canDownload)
             IconButton(
               tooltip: previewable ? '预览' : '下载',
-              icon: Icon(
-                previewable
-                    ? Icons.visibility_outlined
-                    : Icons.download_outlined,
-                size: 20,
-              ),
-              onPressed: () => _view(a),
+              icon: _readingIds.contains(a.id)
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      previewable
+                          ? Icons.visibility_outlined
+                          : Icons.download_outlined,
+                      size: 20,
+                    ),
+              onPressed: _readingIds.contains(a.id) ? null : () => _view(a),
             ),
           if (widget.onSetAvatar != null && a.isImage && !a.avatar)
             IconButton(
@@ -581,49 +605,118 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
   }
 
   Future<void> _view(Attachment a) async {
-    if (!_canUse(Perm.attachmentDownload, true)) return;
+    if (_readingIds.contains(a.id) || !_canUse(Perm.attachmentDownload, true)) {
+      return;
+    }
+    final epoch = _readEpoch;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final owner = (type: widget.ownerType, id: widget.ownerId);
+    bool current() =>
+        mounted &&
+        epoch == _readEpoch &&
+        owner == (type: widget.ownerType, id: widget.ownerId) &&
+        ref.read(sensitiveReadBoundaryProvider) == boundary &&
+        _canUse(Perm.attachmentDownload, true);
+    setState(() => _readingIds.add(a.id));
     final service = ref.read(attachmentServiceProvider);
     try {
+      final scope = await boundary.api.captureRequestScope(isCurrent: current);
+      Future<void> downloadOriginal() async {
+        final original = await scope.run(() => service.downloadBytes(a));
+        scope.checkCurrent();
+        await saveBytes(
+          original,
+          a.originalName,
+          stillCurrent: () => scope.isCurrent,
+        );
+      }
+
       // 2026-09-10 Office 文档：服务端 LibreOffice 转 PDF 后内嵌查看；
       // 服务器未装转换组件/转换失败 → 提示并回落为下载原件。
       if (AttachmentPreviewDialog.isOffice(a.originalName, a.contentType)) {
         Uint8List? pdf;
         try {
-          pdf = await service.previewBytes(a);
+          pdf = await scope.run(() => service.previewBytes(a));
         } catch (_) {
           pdf = null;
         }
+        scope.checkCurrent();
         if (!mounted) return;
         if (pdf != null && pdf.isNotEmpty) {
-          await _showPreview(pdf, a.originalName, 'application/pdf');
+          setState(() => _readingIds.remove(a.id));
+          await _showPreview(
+            pdf,
+            a.originalName,
+            'application/pdf',
+            scope: scope,
+            boundary: boundary,
+            onDownload: downloadOriginal,
+          );
           return;
         }
         context.appWarning('该文件暂不支持在线预览，已改为下载原件');
       }
-      final bytes = await service.downloadBytes(a);
-      if (!mounted) return;
+      final bytes = await scope.run(() => service.downloadBytes(a));
+      scope.checkCurrent();
       // 图片/PDF/文本点开即看；其余（zip 等）保存落盘。
       final inline =
           !AttachmentPreviewDialog.isOffice(a.originalName, a.contentType) &&
           AttachmentPreviewDialog.canPreview(a.originalName, a.contentType);
       if (inline) {
-        await _showPreview(bytes, a.originalName, a.contentType);
+        setState(() => _readingIds.remove(a.id));
+        await _showPreview(
+          bytes,
+          a.originalName,
+          a.contentType,
+          scope: scope,
+          boundary: boundary,
+          onDownload: downloadOriginal,
+        );
       } else {
-        final saved = await saveBytes(bytes, a.originalName);
-        if (mounted) context.appSuccess('已保存到 $saved');
+        final saved = await saveBytes(
+          bytes,
+          a.originalName,
+          stillCurrent: () => scope.isCurrent,
+        );
+        if (mounted && current()) context.appSuccess('已保存到 $saved');
       }
     } catch (e) {
-      if (mounted) context.appError('打开失败：$e');
+      if (mounted && current()) context.appError('打开失败：$e');
+    } finally {
+      if (mounted && epoch == _readEpoch) {
+        setState(() => _readingIds.remove(a.id));
+      }
     }
   }
 
-  Future<void> _showPreview(Uint8List bytes, String name, String? contentType) {
+  Future<void> _showPreview(
+    Uint8List bytes,
+    String name,
+    String? contentType, {
+    required AuthenticatedRequestScope scope,
+    required SensitiveReadBoundary boundary,
+    required Future<void> Function() onDownload,
+  }) {
     return showDialog<void>(
       context: context,
-      builder: (_) => AttachmentPreviewDialog(
-        bytes: bytes,
-        name: name,
-        contentType: contentType,
+      builder: (_) => SensitiveContentBoundary(
+        boundary: boundary,
+        scope: scope,
+        invalidatedBuilder: (context) => UtenAlertDialog(
+          title: const Text('附件访问权限已变化，请重新打开'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+        child: AttachmentPreviewDialog(
+          bytes: bytes,
+          name: name,
+          contentType: contentType,
+          onDownload: onDownload,
+        ),
       ),
     );
   }

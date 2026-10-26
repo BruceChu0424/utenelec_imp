@@ -1,3 +1,6 @@
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,7 +36,20 @@ class GoodsPriceFacetPicker extends ConsumerStatefulWidget {
 }
 
 class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
-    with NativeReadViewScopeMixin<GoodsPriceFacetPicker> {
+    with
+        NativeReadViewScopeMixin<GoodsPriceFacetPicker>,
+        ScopedPagedReadViewMixin<GoodsPriceFacetPicker> {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _clear();
+    if (mounted) {
+      setState(() {
+        _error = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
+  final _readViewportRows = MasterDataTableRowsController<MasterFacetBucket>();
   String _column = 'sourceNo', _search = '';
   int _page = 1, _pages = 1;
   bool _loading = false;
@@ -80,7 +96,7 @@ class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
   void nativeReadPermissionChanged() => _clear();
   @override
   Future<void> nativeReadReload() => _load(1);
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     if (!mounted || !_allowed) return;
     final accepts = captureNativeRead(_identity, () => _identity);
     if (!accepts()) return;
@@ -89,24 +105,53 @@ class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
       _error = null;
       _picked = null;
     });
+    final repository = ref.read(priceAnalysisRepositoryProvider),
+        goodsId = widget.goodsId;
+    final parameters = Map<String, dynamic>.unmodifiable({
+      ...widget.query,
+      'column': _column,
+      'search': _search,
+      'size': 50,
+    });
+    Object pagingQuery() => [
+      ref.read(priceAnalysisRepositoryProvider),
+      widget.goodsId,
+      widget.query,
+      _column,
+      _search,
+    ];
     try {
-      final response = await ref
-          .read(priceAnalysisRepositoryProvider)
-          .historyFacets(widget.goodsId, {
-            ...widget.query,
-            'column': _column,
-            'search': _search,
-            'page': page,
-            'size': 50,
+      final cached = await readScopedPage<MasterFacetBucket>(
+        page,
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        fetchPage: (target) async {
+          final response = await repository.historyFacets(goodsId, {
+            ...parameters,
+            'page': target,
           });
+          final rows = priceMaps(
+            response['buckets'],
+          ).map(MasterFacetBucket.fromJson).toList();
+          return PagedReadSnapshot<MasterFacetBucket, Map<String, dynamic>>(
+            page: PagedResult(
+              items: rows,
+              page: (response['page'] as num?)?.toInt() ?? target,
+              size: 50,
+              total: (response['total'] as num?)?.toInt() ?? rows.length,
+              totalPages: (response['totalPages'] as num?)?.toInt() ?? 1,
+            ),
+            snapshot: response,
+          );
+        },
+      );
       if (!accepts() || !_allowed) return;
       acceptNativeRead();
       setState(() {
-        _rows = priceMaps(
-          response['buckets'],
-        ).map(MasterFacetBucket.fromJson).toList();
-        _page = (response['page'] as num?)?.toInt() ?? page;
-        _pages = (response['totalPages'] as num?)?.toInt() ?? 1;
+        _rows = cached.items;
+        _page = cached.page;
+        _pages = cached.totalPages;
         _loading = false;
       });
     } catch (e) {
@@ -135,7 +180,7 @@ class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
         nativeReadAccessConfirmed &&
         _allowed &&
         !_loading &&
-        _rows.contains(row);
+        _readViewportRows.items.contains(row);
     return Stack(
       children: [
         LayoutBuilder(
@@ -245,6 +290,8 @@ class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
                               onAction: () => _load(1),
                             )
                           : MasterDataTableView<MasterFacetBucket>(
+                              rowsController: _readViewportRows,
+                              expensiveRowMounts: false,
                               tableKey: 'goods.price-facet-values',
                               primary: true,
                               virtualized: true,
@@ -261,7 +308,8 @@ class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
                               rowKeyOf: (row) => row.value,
                               currentPage: _page,
                               totalPages: _pages,
-                              onPageChange: _load,
+                              onPageChange: (page) =>
+                                  _load(page, useCache: true),
                               paginationScope: _identity,
                               isSelected: (row) => row.value == _picked?.value,
                               onRowTap: (row) {

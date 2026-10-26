@@ -4,17 +4,96 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_content_container.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/theme/uten_scroll_behavior.dart';
+import 'package:uten_imp/features/dashboard/pages/dashboard_page.dart';
+import 'package:uten_imp/features/dashboard/providers/dashboard_overview_provider.dart';
+import 'package:uten_imp/features/notice/providers/notice_providers.dart';
+import 'package:uten_imp/features/notice/models/notice.dart';
+import 'package:uten_imp/features/profile/pages/profile_page.dart';
+import 'package:uten_imp/features/profile/providers/profile_change_providers.dart';
 import 'package:uten_imp/features/shell/pages/main_shell_page.dart';
 import 'package:uten_imp/features/shell/widgets/floating_capsule_nav_bar.dart';
+import 'package:uten_imp/shared/ai/chat/ai_chat_overlay.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
 import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/repositories/public_settings_repository.dart';
+import 'helpers/badge_summary_fixture.dart';
+import 'shared/drafts/memory_form_draft_storage.dart';
 
 void main() {
+  for (final width in [1366.0, 1920.0, 2560.0]) {
+    testWidgets(
+      'dashboard scrollbar reaches the page edge with inner content margins at $width',
+      (tester) async {
+        final router = await _pumpShell(
+          tester,
+          width: width,
+          dashboardFixture: true,
+        );
+        router.go('/dashboard');
+        await tester.pumpAndSettle();
+
+        final dashboard = find.byType(DashboardPage);
+        final viewport = find.byKey(const Key('dashboard-page-scroll'));
+        final scrollable = find
+            .descendant(of: viewport, matching: find.byType(Scrollable))
+            .first;
+        final scrollState = tester.state<ScrollableState>(scrollable);
+        final pageRect = tester.getRect(viewport);
+        final bars = find.descendant(
+          of: viewport,
+          matching: find.byType(Scrollbar),
+        );
+        expect(bars, findsOneWidget);
+        expect(tester.getRect(bars).right, closeTo(width, .01));
+        expect(pageRect.right, closeTo(width, .01));
+        expect(scrollState.position.maxScrollExtent, greaterThan(0));
+
+        final contentContainer = tester.widget<UtenContentContainer>(
+          find.byKey(const Key('dashboard-page-content')),
+        );
+        final contentRect = tester.getRect(
+          find.byWidget(contentContainer.child),
+        );
+        expect(contentRect.left, greaterThanOrEqualTo(pageRect.left + 16));
+        expect(contentRect.right, lessThanOrEqualTo(pageRect.right - 16));
+        expect(
+          find.descendant(of: dashboard, matching: find.text('你好，边界检查管理员')),
+          findsOneWidget,
+        );
+        scrollState.position.jumpTo(120);
+        await tester.pump();
+
+        router.go('/shell-probe');
+        await tester.pumpAndSettle();
+        router.go('/dashboard');
+        await tester.pumpAndSettle();
+        final returnedScroll = tester.state<ScrollableState>(
+          find
+              .descendant(
+                of: find.byKey(const Key('dashboard-page-scroll')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        expect(returnedScroll, same(scrollState));
+        expect(returnedScroll.position.pixels, closeTo(120, .01));
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
   for (final variant in _ContentVariant.values) {
     for (final width in [1440.0, 1920.0, 2560.0]) {
       testWidgets('collapsing navigation widens ${variant.name} body at $width', (
@@ -27,14 +106,17 @@ void main() {
           height: width == 1440 ? 360 : 1000,
           brightness: width == 1440 ? Brightness.dark : Brightness.light,
         );
+        await _expandRail(tester);
         final expandedWidth = tester.getSize(find.byKey(_surfaceKey)).width;
         final expandedBodyWidth = tester.getSize(find.byKey(_bodyKey)).width;
         final expandedRailWidth = tester
             .getSize(find.byType(NavigationRail))
             .width;
-        // The shell owns the single 32dp page gutter. Business pages retain
+        // The shell owns the single bounded page gutter. Business pages retain
         // the same content edges as the dashboard, including after collapse.
-        expect(expandedWidth, closeTo(width - expandedRailWidth - 64, 0.01));
+        final available = width - expandedRailWidth;
+        final gutter = available < 1440 ? 16.0 : 24.0;
+        expect(expandedWidth, closeTo(available - gutter - 24, 0.01));
         expect(expandedBodyWidth, closeTo(expandedWidth, 0.01));
         expect(
           tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
@@ -87,7 +169,13 @@ void main() {
   testWidgets('collapse and business navigation keep input and scroll state', (
     tester,
   ) async {
+    final previousUrlPolicy = GoRouter.optionURLReflectsImperativeAPIs;
+    GoRouter.optionURLReflectsImperativeAPIs = false;
+    addTearDown(
+      () => GoRouter.optionURLReflectsImperativeAPIs = previousUrlPolicy,
+    );
     final router = await _pumpShell(tester);
+    await _expandRail(tester);
     final probe = tester.state<_BusinessProbeState>(
       find.byType(_BusinessProbe),
     );
@@ -113,6 +201,8 @@ void main() {
       greaterThan(expandedBodyWidth),
     );
 
+    final browserPathBeforePush =
+        router.routeInformationProvider.value.uri.path;
     router.push('/shell-probe/detail');
     await tester.pumpAndSettle();
     expect(find.text('业务详情'), findsOneWidget);
@@ -121,6 +211,15 @@ void main() {
       tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
       isFalse,
     );
+    expect(
+      router.routeInformationProvider.value.uri.path,
+      browserPathBeforePush,
+    );
+    expect(
+      tester.widget<AiChatOverlay>(find.byType(AiChatOverlay)).currentRoute,
+      '/shell-probe/detail',
+    );
+    await _expandRail(tester);
 
     router.pop();
     await tester.pumpAndSettle();
@@ -148,53 +247,272 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('responsive navigation preserves the manual desktop preference', (
+  testWidgets(
+    'responsive navigation preserves manual expansion on the same page',
+    (tester) async {
+      await _pumpShell(tester, width: 1024);
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isFalse,
+      );
+      expect(find.byTooltip('收起导航栏'), findsNothing);
+      expect(find.byTooltip('展开导航栏'), findsNothing);
+
+      await _resize(tester, 1920);
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isFalse,
+      );
+      await _expandRail(tester);
+
+      await _resize(tester, 1024);
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isFalse,
+      );
+      expect(find.byTooltip('展开导航栏'), findsNothing);
+
+      await _resize(tester, 390);
+      expect(find.byType(NavigationRail), findsNothing);
+      expect(find.byType(FloatingCapsuleNavBar), findsOneWidget);
+      expect(find.byTooltip('展开导航栏'), findsNothing);
+
+      await _resize(tester, 1920);
+      expect(find.byType(FloatingCapsuleNavBar), findsNothing);
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isTrue,
+      );
+      expect(find.byTooltip('收起导航栏'), findsOneWidget);
+      await tester.tap(find.byTooltip('收起导航栏'));
+      await tester.pumpAndSettle();
+      await _resize(tester, 1024);
+      await _resize(tester, 1920);
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isFalse,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'new business paths collapse while query and refresh retain the current manual state',
+    (tester) async {
+      final router = await _pumpShell(tester);
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isFalse,
+      );
+      final probe = tester.state<_BusinessProbeState>(
+        find.byType(_BusinessProbe),
+      );
+      final position = probe.scrollController.position;
+      await tester.enterText(find.byKey(_inputKey), '同页筛选不丢输入');
+      await _expandRail(tester);
+      router.go('/shell-probe?filter=changed');
+      await tester.pumpAndSettle();
+      router.refresh();
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isTrue,
+      );
+      expect(
+        tester.state<_BusinessProbeState>(find.byType(_BusinessProbe)),
+        same(probe),
+      );
+      expect(probe.scrollController.position, same(position));
+      expect(probe.textController.text, '同页筛选不丢输入');
+      router.push('/shell-probe/detail');
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isFalse,
+      );
+      await _expandRail(tester);
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isFalse,
+      );
+      expect(
+        tester.state<_BusinessProbeState>(find.byType(_BusinessProbe)),
+        same(probe),
+      );
+      expect(probe.scrollController.position, same(position));
+      expect(probe.textController.text, '同页筛选不丢输入');
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'dashboard preference is independent from the default of other pages',
+    (tester) async {
+      final router = await _pumpShell(tester, dashboardFixture: true);
+      router.go('/dashboard');
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isTrue,
+      );
+      await tester.tap(find.byTooltip('收起导航栏'));
+      await tester.pumpAndSettle();
+      router.go('/shell-probe');
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isFalse,
+      );
+      await _expandRail(tester);
+      router.go('/dashboard');
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isFalse,
+      );
+      await _expandRail(tester);
+      router.go('/shell-probe');
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isFalse,
+      );
+      router.go('/dashboard');
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isTrue,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('notice profile and settings each enter collapsed', (
     tester,
   ) async {
-    await _pumpShell(tester, width: 1024);
-    expect(
-      tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
-      isFalse,
-    );
-    expect(find.byTooltip('收起导航栏'), findsNothing);
-    expect(find.byTooltip('展开导航栏'), findsNothing);
-
-    await _resize(tester, 1920);
-    expect(
-      tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
-      isTrue,
-    );
-    await tester.tap(find.byTooltip('收起导航栏'));
-    await tester.pumpAndSettle();
-
-    await _resize(tester, 1024);
-    expect(
-      tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
-      isFalse,
-    );
-    expect(find.byTooltip('展开导航栏'), findsNothing);
-
-    await _resize(tester, 390);
-    expect(find.byType(NavigationRail), findsNothing);
-    expect(find.byType(FloatingCapsuleNavBar), findsOneWidget);
-    expect(find.byTooltip('展开导航栏'), findsNothing);
-
-    await _resize(tester, 1920);
-    expect(find.byType(FloatingCapsuleNavBar), findsNothing);
-    expect(
-      tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
-      isFalse,
-    );
-    expect(find.byTooltip('展开导航栏'), findsOneWidget);
-    await tester.tap(find.byTooltip('展开导航栏'));
-    await tester.pumpAndSettle();
-    expect(
-      tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
-      isTrue,
-    );
+    final router = await _pumpShell(tester);
+    for (final location in [
+      '/notice',
+      '/profile',
+      '/settings',
+      '/notice',
+      '/shell-probe',
+    ]) {
+      router.go(location);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<AiChatOverlay>(find.byType(AiChatOverlay)).currentRoute,
+        location,
+      );
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isFalse,
+      );
+      await _expandRail(tester);
+      expect(
+        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isTrue,
+      );
+    }
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'cached main tabs keep stable layout domains and business routes inherit no tab domain',
+    (tester) async {
+      final router = await _pumpShell(tester, dashboardFixture: true);
+      final domains = <Type, Object>{};
+      final roots = <Type, Element>{};
+      final expectedTypes = <String, String>{
+        '/dashboard': 'DashboardPage',
+        '/notice': 'NoticeListPage',
+        '/profile': 'ProfilePage',
+        '/settings': 'SettingsPage',
+      };
+      for (final location in [
+        '/dashboard',
+        '/notice',
+        '/profile',
+        '/settings',
+        '/shell-probe',
+        '/dashboard',
+      ]) {
+        router.go(location);
+        await tester.pumpAndSettle();
+        expect(
+          tester.binding.hasScheduledFrame,
+          isFalse,
+          reason: 'The real tab and its layout domain must settle at $location',
+        );
+        if (location == '/profile') {
+          final profile = find.byType(ProfilePage);
+          final state = ProviderScope.containerOf(
+            tester.element(profile),
+          ).read(myEmployeeProfileProvider);
+          expect(state.isLoading, isFalse);
+          expect(state.hasValue, isTrue);
+          expect(state.value, isNull);
+          expect(
+            find.descendant(
+              of: profile,
+              matching: find.byType(CircularProgressIndicator),
+            ),
+            findsNothing,
+          );
+        }
+        final scopes = tester
+            .widgetList<UtenPageLayoutDomainScope>(
+              find.byType(UtenPageLayoutDomainScope, skipOffstage: false),
+            )
+            .toList();
+        for (final scope in scopes) {
+          final type = scope.child.runtimeType;
+          final element = tester.element(
+            find.byWidget(scope.child, skipOffstage: false),
+          );
+          if (domains.containsKey(type)) {
+            expect(scope.domain, same(domains[type]));
+            expect(element, same(roots[type]));
+          } else {
+            domains[type] = scope.domain;
+            roots[type] = element;
+          }
+          expect(scope.active, type.toString() == expectedTypes[location]);
+        }
+        if (location == '/shell-probe') {
+          expect(
+            UtenPageLayoutDomainScope.maybeOf(
+              tester.element(find.byKey(_inputKey)),
+            ),
+            isNull,
+          );
+        }
+      }
+      expect(domains, hasLength(4));
+      expect(domains.values.toSet(), hasLength(4));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+}
+
+Future<void> _expandRail(WidgetTester tester) async {
+  expect(
+    tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+    isFalse,
+  );
+  await tester.tap(find.byTooltip('展开导航栏'));
+  await tester.pumpAndSettle();
+  expect(
+    tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+    isTrue,
+  );
 }
 
 const _surfaceKey = Key('business-surface');
@@ -217,6 +535,7 @@ Future<GoRouter> _pumpShell(
   double height = 1000,
   Brightness brightness = Brightness.light,
   _ContentVariant variant = _ContentVariant.standard,
+  bool dashboardFixture = false,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = Size(width, height);
@@ -232,6 +551,12 @@ Future<GoRouter> _pumpShell(
       ShellRoute(
         builder: (_, _, child) => MainShellPage(child: child),
         routes: [
+          GoRoute(
+            path: '/dashboard',
+            builder: (_, _) => const SizedBox.shrink(),
+          ),
+          for (final tab in ['/notice', '/profile', '/settings'])
+            GoRoute(path: tab, builder: (_, _) => const SizedBox.shrink()),
           GoRoute(
             path: '/shell-probe',
             builder: (_, _) => _BusinessProbe(variant: variant),
@@ -251,6 +576,23 @@ Future<GoRouter> _pumpShell(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        if (dashboardFixture) ...[
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+          sessionProvider.overrideWith(_DashboardSession.new),
+          sessionSnapshotProvider.overrideWith(_DashboardSnapshot.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'dashboard-edge-admin'),
+          ),
+          currentPermissionsProvider.overrideWithValue(const {}),
+          isSuperAdminProvider.overrideWithValue(true),
+          dashboardOverviewProvider.overrideWith((ref) async => null),
+          myCelebrationTodayProvider.overrideWith((ref) async => const []),
+          // This authenticated fixture has no employee binding. Keep the real
+          // ProfilePage in its completed unbound state instead of leaving an
+          // unmocked self-profile request and its loading animation active.
+          myEmployeeProfileProvider.overrideWith((ref) async => null),
+          fixedBadgeSummaryOverride(),
+        ],
         apiBaseUrlProvider.overrideWithValue('https://shell-test.invalid/api'),
         platformBrandingSnapshotProvider.overrideWithValue(
           PlatformBranding.defaults,
@@ -263,13 +605,18 @@ Future<GoRouter> _pumpShell(
         ),
         badgeTotalTodoProvider.overrideWithValue(5),
         unreadNoticeCountProvider.overrideWithValue(2),
+        noticeListProvider.overrideWith(_EmptyShellNotices.new),
         publicSettingsRepositoryProvider.overrideWithValue(
           const _PublicSettingsRepository(),
         ),
       ],
       child: MaterialApp.router(
+        scrollBehavior: const UtenScrollBehavior(),
         routerConfig: router,
-        theme: ThemeData(brightness: brightness),
+        theme: ThemeData(
+          brightness: brightness,
+          platform: TargetPlatform.windows,
+        ),
         locale: const Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
@@ -278,6 +625,29 @@ Future<GoRouter> _pumpShell(
   );
   await tester.pumpAndSettle();
   return router;
+}
+
+class _DashboardSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: 'dashboard-edge-admin',
+      code: 'ADMIN',
+      name: '边界检查管理员',
+      superAdmin: true,
+    ),
+  );
+}
+
+class _EmptyShellNotices extends NoticeListNotifier {
+  @override
+  Future<List<Notice>> build() async => const [];
+}
+
+class _DashboardSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
 }
 
 Future<void> _resize(WidgetTester tester, double width) async {

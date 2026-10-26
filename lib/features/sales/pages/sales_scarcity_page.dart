@@ -22,6 +22,7 @@ import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 /// 稀缺库存让单（主管仲裁页）：选货品 → 列出该货品全部生效预留（跨颜色，
 /// 按优先级升序、创建时间升序）→ 对低优先级行"让单"释放现货预留回池。
@@ -226,7 +227,7 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
                   title: '正在提交让单',
                   description: '正在释放预留并回池库存，请勿重复提交或离开本页。',
                 ),
-              Padding(
+              UtenPageEdgePadding(
                 padding: const EdgeInsets.all(UtenSpacing.s12),
                 child: Row(
                   children: [

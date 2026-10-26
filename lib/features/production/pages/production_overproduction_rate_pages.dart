@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +18,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -25,6 +27,7 @@ import '../providers/production_execution_refresh.dart';
 import '../widgets/production_review_reason_dialog.dart';
 import '../repositories/production_overproduction_rate_repository.dart';
 import '../widgets/production_overproduction_rate_revision.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class ProductionOverproductionRateListPage extends ConsumerStatefulWidget {
   const ProductionOverproductionRateListPage({super.key});
@@ -33,18 +36,31 @@ class ProductionOverproductionRateListPage extends ConsumerStatefulWidget {
       _RateListState();
 }
 
-class _RateListState
-    extends ConsumerState<ProductionOverproductionRateListPage> {
+class _RateListState extends ConsumerState<ProductionOverproductionRateListPage>
+    with ScopedPagedReadViewMixin<ProductionOverproductionRateListPage> {
   PagedResult<ProductionOverproductionRateRequest>? _data;
+  final _tableRows =
+      MasterDataTableRowsController<ProductionOverproductionRateRequest>();
+  Object? _acceptedReadQuery;
   String _status = 'PENDING';
   bool _loading = true;
   String? _error;
   int _request = 0;
 
+  @override
+  void scopedPagedReadOwnerChanged() => setState(() {
+    _request++;
+    _tableRows.update(const []);
+    _acceptedReadQuery = null;
+    _data = null;
+    _error = scopedPagedReadRejection?.message;
+    _loading = false;
+  });
+
   // 2026-09-25 单号列统一：计划号/工单号表头排序 + 值筛选（服务端白名单/facets）。
   String? _sortColumn;
   bool _sortAscending = true;
-  Map<String, List<MasterFacetBucket>> _docNoFacets = const {};
+  final Map<String, List<MasterFacetBucket>> _docNoFacets = const {};
   String? _planFilter;
   String? _segmentFilter;
   @override
@@ -53,7 +69,7 @@ class _RateListState
     Future.microtask(() => _load());
   }
 
-  Future<void> _load([int page = 1]) async {
+  Future<void> _load([int? page, bool useCache = false]) async {
     final request = ++_request;
     // 2026-09-25 单号列统一：单号排序/值筛选随列表下推（服务端白名单）。
     final requestedStatus = _status;
@@ -63,6 +79,17 @@ class _RateListState
         : (_sortAscending ? 'asc' : 'desc');
     final requestedPlan = _planFilter;
     final requestedSegment = _segmentFilter;
+    final requestedAscending = _sortAscending;
+    final readQuery = (
+      requestedStatus,
+      requestedSort,
+      requestedAscending,
+      requestedPlan,
+      requestedSegment,
+    );
+    page ??= _acceptedReadQuery == readQuery
+        ? _tableRows.visiblePage ?? _data?.page ?? 1
+        : 1;
     setState(() {
       _loading = true;
       _error = null;
@@ -71,25 +98,40 @@ class _RateListState
       final repository = ref.read(
         productionOverproductionRateRepositoryProvider,
       );
-      final data = await repository.list(
-        status: requestedStatus,
-        page: page,
-        sort: requestedSort,
-        order: requestedOrder,
-        planNo: requestedPlan,
-        segmentCode: requestedSegment,
+      final data = await readScopedPage<ProductionOverproductionRateRequest>(
+        page,
+        query: (
+          repository,
+          requestedStatus,
+          requestedSort,
+          requestedAscending,
+          requestedPlan,
+          requestedSegment,
+        ),
+        currentQuery: () => (
+          ref.read(productionOverproductionRateRepositoryProvider),
+          _status,
+          _sortColumn,
+          _sortAscending,
+          _planFilter,
+          _segmentFilter,
+        ),
+        useCache: useCache,
+        fetchPage: (target) => repository.list(
+          status: requestedStatus,
+          page: target,
+          sort: requestedSort,
+          order: requestedOrder,
+          planNo: requestedPlan,
+          segmentCode: requestedSegment,
+        ),
       );
       // 单号 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
-      Map<String, List<MasterFacetBucket>> facets = const {};
-      try {
-        facets = await repository.facets(status: requestedStatus);
-      } catch (_) {
-        facets = const {};
-      }
+
       if (mounted && request == _request) {
         setState(() {
-          _docNoFacets = facets;
           _data = data;
+          _acceptedReadQuery = readQuery;
         });
       }
     } on ApiException catch (error) {
@@ -109,7 +151,7 @@ class _RateListState
   Widget build(BuildContext context) {
     ref.onPageResume(
       RouteName.productionOverproductionRateRequests,
-      () => _load(_data?.page ?? 1),
+      () => _load(),
       refreshKeys: [productionOverproductionRateRefreshKey],
     );
     return Scaffold(
@@ -119,7 +161,7 @@ class _RateListState
           onPressed: () =>
               popOrBackTo(context, defaultPath: RouteName.productionPlanList),
         ),
-        actions: [UtenRefreshButton(onRefresh: () => _load(_data?.page ?? 1))],
+        actions: [UtenRefreshButton(onRefresh: () => _load())],
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -140,6 +182,8 @@ class _RateListState
               ),
               Expanded(
                 child: MasterDataTableView<ProductionOverproductionRateRequest>(
+                  rowsController: _tableRows,
+                  expensiveRowMounts: false,
                   tableKey:
                       'features.production.pages.production_overproduction_rate_pages.RateListState.build.1',
                   columns: [
@@ -210,6 +254,18 @@ class _RateListState
                     'segment': _docNoFacets['segment'] ?? const [],
                   },
                   nullCounts: const {},
+                  facetPageLoaders: nativeFacetLoaders(
+                    ref,
+                    path: '/production/overproduction-rate/requests/facets',
+                    fields: const ['plan', 'segment'],
+                    filters: {'status': _status},
+                  ),
+                  facetSearchScope: nativeFacetSearchScope(
+                    ref,
+                    '/production/overproduction-rate/requests/facets',
+                    {'status': _status},
+                  ),
+
                   filters: {'plan': ?_planFilter, 'segment': ?_segmentFilter},
                   onFilterChanged: (key, value) {
                     // 2026-09-25 单号列统一：单号值筛选走服务端精确匹配。
@@ -245,7 +301,7 @@ class _RateListState
                   currentPage: _data?.page ?? 1,
                   totalPages: _data?.totalPages ?? 0,
                   paginationScope: _status,
-                  onPageChange: _load,
+                  onPageChange: (page) => _load(page, true),
                   emptyMessage: '没有符合条件的比例申请',
                 ),
               ),
@@ -392,7 +448,7 @@ class _RateDetailState
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (_busy) const LinearProgressIndicator(),
-                    Padding(
+                    UtenPageEdgePadding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -435,7 +491,7 @@ class _RateDetailState
                         request: detail,
                       ),
                     ),
-                    Padding(
+                    UtenPageEdgePadding(
                       padding: const EdgeInsets.all(16),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,

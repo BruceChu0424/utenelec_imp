@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/product_category_node.dart';
@@ -177,23 +178,9 @@ class _SupplierCategoryPickerFieldState
       builder: (sheetCtx) => StatefulBuilder(
         builder: (context, setSheetState) => Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '选择供应商分类',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '关闭',
-                    onPressed: () => Navigator.of(sheetCtx).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
+            UtenPanelHeader(
+              title: '选择供应商分类',
+              onClose: () => Navigator.of(sheetCtx).pop(),
             ),
             const Divider(height: 1),
             Expanded(

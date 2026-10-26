@@ -35,7 +35,7 @@ public class GoodsSubcontractLossPolicyController {
             @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal percent) {}
 
     @PutMapping("/api/master/goods/{id}/subcontract-loss-policy")
-    @PreAuthorize("hasAuthority('goods:edit') and hasAuthority('goods:cost:view')")
+    @PreAuthorize("hasAuthority('goods:purchase:edit') and hasAuthority('goods:cost:view')")
     @Transactional
     public GoodsDetail update(@PathVariable UUID id, @Valid @RequestBody Policy policy) {
         tx.bind();

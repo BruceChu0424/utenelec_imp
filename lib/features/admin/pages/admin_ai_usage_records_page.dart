@@ -9,6 +9,7 @@
 //   * 路由 /admin/* 要求 authorization:manage; 服务端 Controller 另校验 superAdmin;
 //     页内再叠超管门禁(会话/快照/服务器/权限任一变化即失效, 与用量看板同款)。
 //   * 读端点不写数据; 保存计费走抽屉(服务端要求再认证, 网络层弹统一密码框)。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
@@ -35,6 +36,10 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import '../../../shared/paging/paged_query_identity.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/ai_provider_models.dart';
 import '../models/ai_usage_audit_models.dart';
@@ -107,7 +112,8 @@ class _AdminAiUsageRecordsSession extends ConsumerStatefulWidget {
 }
 
 class _AdminAiUsageRecordsPageState
-    extends ConsumerState<_AdminAiUsageRecordsSession> {
+    extends ConsumerState<_AdminAiUsageRecordsSession>
+    with ScopedPagedReadViewMixin<_AdminAiUsageRecordsSession> {
   late final Object? _owner;
   bool get _current =>
       mounted && _owner != null && _owner == _recordsOwner(ref);
@@ -120,6 +126,8 @@ class _AdminAiUsageRecordsPageState
   String? _userId;
   String? _providerId;
   int _page = 0;
+  final _recordRows = MasterDataTableRowsController<AiUsageAuditRecord>();
+  Object? _acceptedQuery;
 
   AiUsageAuditResult? _data;
 
@@ -155,25 +163,99 @@ class _AdminAiUsageRecordsPageState
     }
   }
 
-  Future<void> _load({bool resetPage = false}) async {
-    if (!_current) return;
-    final generation = ++_generation;
-    if (resetPage) _page = 0;
+  @override
+  void scopedPagedReadOwnerChanged() {
+    final rejection = scopedPagedReadRejection;
+    if (rejection != null) {
+      _deny(rejection);
+      return;
+    }
+    _generation++;
+    if (!mounted) return;
     setState(() {
+      _data = null;
+      _acceptedQuery = null;
+      _users = [];
+      _providers = const [];
+      _loading = false;
+      _error = null;
+    });
+  }
+
+  Object get _readQuery => {
+    'owner': _owner,
+    'repository': _repository,
+    'days': _days,
+    'userId': _userId,
+    'providerId': _providerId,
+    'size': _pageSize,
+  };
+
+  Future<void> _navigatePage(int page) =>
+      _load(requestedPage: page - 1, useCache: true);
+
+  Future<void> _load({
+    bool resetPage = false,
+    int? requestedPage,
+    bool useCache = false,
+  }) async {
+    if (!_current) return;
+    final query = freezePagedReadQuery(_readQuery)!;
+    final repository = _repository;
+    final days = _days, userId = _userId, providerId = _providerId;
+    final visiblePage = _recordRows.visiblePage;
+    final target = resetPage
+        ? 0
+        : requestedPage ?? (visiblePage == null ? _page : visiblePage - 1);
+    final generation = ++_generation;
+    setState(() {
+      if (!samePagedReadQuery(_acceptedQuery, query)) _data = null;
       _loading = true;
       _error = null;
     });
     try {
-      final result = await _repository.read(
-        days: _days,
-        page: _page,
-        userId: _userId,
-        providerId: _providerId,
+      final result = await readScopedPage<AiUsageAuditRecord>(
+        target + 1,
+        query: query,
+        currentQuery: () => _readQuery,
+        isCurrent: () => _current,
+        useCache: useCache,
+        onPrefetchError: (error) {
+          if (_current && !_accessDenied && _isAccessDenied(error)) {
+            _deny(error as ApiException);
+          }
+        },
+        fetchPage: (page) async {
+          final raw = await repository.read(
+            days: days,
+            page: page - 1,
+            userId: userId,
+            providerId: providerId,
+          );
+          final typed = AiUsageAuditResult.fromJson(raw);
+          return PagedReadSnapshot<AiUsageAuditRecord, AiUsageAuditResult>(
+            page: PagedResult(
+              items: typed.records,
+              page: page,
+              size: _pageSize,
+              total: typed.total,
+              totalPages: ((typed.total + _pageSize - 1) ~/ _pageSize).clamp(
+                1,
+                1 << 30,
+              ),
+            ),
+            snapshot: typed,
+          );
+        },
       );
       if (!_current || generation != _generation) return;
-      final typed = AiUsageAuditResult.fromJson(result);
+      final typed =
+          (result as PagedReadSnapshot<AiUsageAuditRecord, AiUsageAuditResult>)
+              .snapshot;
       setState(() {
         _data = typed;
+        _acceptedQuery = query;
+        _page = (result.page - 1).clamp(0, result.totalPages - 1);
         if (_userId == null) _users = typed.users;
         _loading = false;
         _accessDenied = false;
@@ -201,12 +283,15 @@ class _AdminAiUsageRecordsPageState
   }
 
   void _deny(ApiException error) {
+    invalidateScopedPageReads();
     _generation++;
     setState(() {
       _loading = false;
       _accessDenied = true;
       _data = null;
+      _acceptedQuery = null;
       _users = [];
+      _providers = const [];
       _userId = null;
       _providerId = null;
       _error = error.message;
@@ -312,22 +397,25 @@ class _AdminAiUsageRecordsPageState
 
   Widget _content(AppLocalizations l10n) {
     final data = _data;
-    return ListView(
-      key: const ValueKey('ai-records-list'),
+    return UtenPageEdgePadding.scroll(
       padding: const EdgeInsets.all(UtenSpacing.s16),
-      children: [
-        _SummaryRow(key: const ValueKey('ai-records-summary'), data: data),
-        const SizedBox(height: UtenSpacing.s8),
-        _PlatformNote(text: l10n.aiAuditPlatformOnly),
-        const SizedBox(height: UtenSpacing.s16),
-        _toolbar(l10n),
-        const SizedBox(height: UtenSpacing.s12),
-        if (_view == _RecordsView.records)
-          _recordsCard(l10n, data)
-        else
-          _peopleCard(l10n, data),
-        const SizedBox(height: UtenSpacing.s24),
-      ],
+      builder: (context, pagePadding) => ListView(
+        key: const ValueKey('ai-records-list'),
+        padding: pagePadding,
+        children: [
+          _SummaryRow(key: const ValueKey('ai-records-summary'), data: data),
+          const SizedBox(height: UtenSpacing.s8),
+          _PlatformNote(text: l10n.aiAuditPlatformOnly),
+          const SizedBox(height: UtenSpacing.s16),
+          _toolbar(l10n),
+          const SizedBox(height: UtenSpacing.s12),
+          if (_view == _RecordsView.records)
+            _recordsCard(l10n, data)
+          else
+            _peopleCard(l10n, data),
+          const SizedBox(height: UtenSpacing.s24),
+        ],
+      ),
     );
   }
 
@@ -414,7 +502,7 @@ class _AdminAiUsageRecordsPageState
   Widget _recordsCard(AppLocalizations l10n, AiUsageAuditResult? data) {
     final totalPages = data == null
         ? 1
-        : (data.total + _pageSize - 1) ~/ _pageSize;
+        : ((data.total + _pageSize - 1) ~/ _pageSize).clamp(1, 1 << 30);
     final page = _page.clamp(0, totalPages - 1);
     return UtenCard(
       key: const ValueKey('ai-records-card'),
@@ -425,25 +513,25 @@ class _AdminAiUsageRecordsPageState
         children: [
           if (_loading) const LinearProgressIndicator(minHeight: 2),
           MasterDataTableView<AiUsageAuditRecord>(
+            rowsController: _recordRows,
+            expensiveRowMounts: false,
             tableKey:
                 'features.admin.pages.admin_ai_usage_records_page.RecordsTable.build.1',
             key: const Key('ai-records-table'),
             embedded: true,
             isLoading: _loading && data == null,
+            loadingMore: _loading && data != null,
             items: data?.records ?? const <AiUsageAuditRecord>[],
             columns: _recordColumns(l10n),
             facets: const {},
             nullCounts: const {},
             filters: const {},
             onFilterChanged: (key, value) {},
-            onRowTap: (record) => _showDetail(record),
+            onRowTap: _loading ? null : (record) => _showDetail(record),
             rowKeyOf: (record) => record.id,
             currentPage: page + 1,
             totalPages: totalPages,
-            onPageChange: (target) {
-              _page = target - 1;
-              _load();
-            },
+            onPageChange: _navigatePage,
             paginationScope: (_days, _userId, _providerId),
             paginationRevision: data,
             emptyMessage: l10n.aiAuditEmpty,
@@ -463,6 +551,7 @@ class _AdminAiUsageRecordsPageState
         children: [
           if (_loading) const LinearProgressIndicator(minHeight: 2),
           MasterDataTableView<AiUsageAuditUser>(
+            expensiveRowMounts: false,
             tableKey:
                 'features.admin.pages.admin_ai_usage_records_page.PeopleTable.build.1',
             key: const Key('ai-records-people-table'),
@@ -1077,27 +1166,30 @@ class _LoadingSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      key: const ValueKey('ai-records-skeleton'),
+    return UtenPageEdgePadding.scroll(
       padding: const EdgeInsets.all(UtenSpacing.s16),
-      physics: const NeverScrollableScrollPhysics(),
-      children: const [
-        Row(
-          children: [
-            Expanded(child: UtenSkeleton(height: 108, borderRadius: 14)),
-            SizedBox(width: UtenSpacing.s8),
-            Expanded(child: UtenSkeleton(height: 108, borderRadius: 14)),
-            SizedBox(width: UtenSpacing.s8),
-            Expanded(child: UtenSkeleton(height: 108, borderRadius: 14)),
-            SizedBox(width: UtenSpacing.s8),
-            Expanded(child: UtenSkeleton(height: 108, borderRadius: 14)),
-          ],
-        ),
-        SizedBox(height: UtenSpacing.s16),
-        UtenSkeleton(height: 44, borderRadius: 10),
-        SizedBox(height: UtenSpacing.s12),
-        UtenSkeleton(height: 280, borderRadius: 14),
-      ],
+      builder: (context, pagePadding) => ListView(
+        key: const ValueKey('ai-records-skeleton'),
+        padding: pagePadding,
+        physics: const NeverScrollableScrollPhysics(),
+        children: const [
+          Row(
+            children: [
+              Expanded(child: UtenSkeleton(height: 108, borderRadius: 14)),
+              SizedBox(width: UtenSpacing.s8),
+              Expanded(child: UtenSkeleton(height: 108, borderRadius: 14)),
+              SizedBox(width: UtenSpacing.s8),
+              Expanded(child: UtenSkeleton(height: 108, borderRadius: 14)),
+              SizedBox(width: UtenSpacing.s8),
+              Expanded(child: UtenSkeleton(height: 108, borderRadius: 14)),
+            ],
+          ),
+          SizedBox(height: UtenSpacing.s16),
+          UtenSkeleton(height: 44, borderRadius: 10),
+          SizedBox(height: UtenSpacing.s12),
+          UtenSkeleton(height: 280, borderRadius: 14),
+        ],
+      ),
     );
   }
 }

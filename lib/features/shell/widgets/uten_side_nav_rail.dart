@@ -50,7 +50,17 @@ class UtenSideNavRail extends StatelessWidget {
   final VoidCallback? onToggleExtended;
 
   /// 展开态最小宽度
-  static const double _extendedWidth = 216;
+  static const double extendedWidth = 216;
+
+  /// The rail and shell overlays share one width contract. Explicitly passing
+  /// these values to NavigationRail also keeps themed widths in agreement.
+  static double widthFor(BuildContext context, {required bool extended}) {
+    final theme = Theme.of(context);
+    final collapsed =
+        theme.navigationRailTheme.minWidth ??
+        (theme.useMaterial3 ? 80.0 : 72.0);
+    return extended ? math.max(extendedWidth, collapsed) : collapsed;
+  }
 
   /// 展开（常驻标签）要求的最小画布宽
   static const double extendedMinCanvasWidth = 1280;
@@ -101,7 +111,8 @@ class UtenSideNavRail extends StatelessWidget {
       ),
       child: NavigationRail(
         extended: extended,
-        minExtendedWidth: _extendedWidth,
+        minWidth: widthFor(context, extended: false),
+        minExtendedWidth: widthFor(context, extended: true),
         // 贴顶排布（品牌位之下即目的地）
         groupAlignment: -1,
         // extended 要求 labelType 必须为 none（标签随 extended 自动常驻）；

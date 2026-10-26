@@ -6,6 +6,7 @@ import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.features.finance.report.ReportColumn;
 import com.uten.imp.features.finance.report.ReportTableResponse;
 import jakarta.persistence.EntityManager;
+import com.uten.imp.common.report.ReportReadPlan;
 import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -438,12 +439,12 @@ public class FinanceCostService {
         String name = cols.stream().anyMatch(column -> column.key().equals("goodsName")) ? "t.\"goodsName\"" : "t.party_name";
         String rank = searching ? TaskKeywordSearch.rankNamesFirstParameter("kw", new String[]{name}, new String[]{}, fields.toArray(String[]::new)) + ", " : "";
         String wrapped = "SELECT * FROM (" + coreSql + ") t " + where;
-        var dq = em.createNativeQuery(wrapped + " ORDER BY " + rank + orderBy + " LIMIT :__l OFFSET :__o");
+        var dq = com.uten.imp.common.report.ReportExportCursor.query(em, wrapped + " ORDER BY " + rank + orderBy + " LIMIT :__l OFFSET :__o");
         bindRaw(dq, keyword, from, to, extraParams);
         dq.setParameter("__l", safeSize);
         dq.setParameter("__o", offset);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = dq.getResultList();
+        List<Object[]> rows = com.uten.imp.common.report.ReportExportCursor.rows(em, dq);
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -453,10 +454,13 @@ public class FinanceCostService {
             }
             items.add(m);
         }
-        var cq = em.createNativeQuery("SELECT COUNT(*) FROM (" + coreSql + ") t " + where);
-        bindRaw(cq, keyword, from, to, extraParams);
-        long total = ((Number) cq.getSingleResult()).longValue();
-        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var cq = em.createNativeQuery("SELECT COUNT(*) FROM (" + coreSql + ") t " + where);
+            bindRaw(cq, keyword, from, to, extraParams);
+            total = ((Number) cq.getSingleResult()).longValue();
+        }
+        int totalPages = ReportReadPlan.totalPages(total, safeSize);
         return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages);
     }
 

@@ -54,6 +54,7 @@ class GoodsImportHistoryPostgresTest {
     EntityManager em;
     GoodsImportService importer;
     GoodsOperationHistoryService history;
+    SecurityContextCurrentUser current;
     UUID actor, categoryId, existingId;
     String existingCode, newCode;
 
@@ -80,9 +81,9 @@ class GoodsImportHistoryPostgresTest {
         em = SharedEntityManagerCreator.createSharedEntityManager(factory); actor = UUID.randomUUID(); categoryId = UUID.randomUUID(); existingId = UUID.randomUUID();
         existingCode = ("IE" + UUID.randomUUID().toString().replace("-", "")).toUpperCase(Locale.ROOT);
         newCode = ("IN" + UUID.randomUUID().toString().replace("-", "")).toUpperCase(Locale.ROOT);
-        Set<String> permissions = Set.of("goods:view", "goods:edit", "goods:import", "goods:import:undo", "goods:price:edit", "goods:price:view");
+        Set<String> permissions = Set.of("goods:view", "goods:edit", "goods:purchase:edit", "goods:sales:edit", "goods:import", "goods:import:undo", "goods:price:edit", "goods:price:view");
         var principal = new AuthUser(actor, UUID.randomUUID(), "import-test", permissions, false, true, true);
-        var current = mock(SecurityContextCurrentUser.class);
+        current = mock(SecurityContextCurrentUser.class);
         when(current.requireId()).thenReturn(actor); when(current.get()).thenReturn(Optional.of(principal));
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal, "n/a",
                 permissions.stream().map(SimpleGrantedAuthority::new).toList()));
@@ -91,6 +92,9 @@ class GoodsImportHistoryPostgresTest {
         when(goods.findByCodeAndDeletedFalse(anyString())).thenAnswer(call -> em.createQuery(
                 "from Goods g where g.code=:code and g.deleted=false", Goods.class)
                 .setParameter("code", call.getArgument(0)).getResultStream().findFirst());
+        when(goods.findRestorableDeletedIdsByCode(anyString())).thenAnswer(call -> em.createQuery(
+                "select g.id from Goods g where g.code=:code and g.deleted=true",UUID.class)
+                .setParameter("code",call.getArgument(0)).getResultList());
         when(goods.findImportIdentities()).thenAnswer(call -> em.createQuery("""
                 select new com.uten.imp.features.master.goods.importing.GoodsImportIdentity(
                   g.id,g.version,g.code,g.name,c.id,g.deleted,g.ownerEmployeeId)
@@ -319,6 +323,136 @@ class GoodsImportHistoryPostgresTest {
         }
     }
 
+    @Test void salesImportCanUpdateCustomerModelWithoutGeneralGoodsEdit() throws Exception {
+        authorize("goods:view","goods:import","goods:sales:edit");
+        byte[] file=fieldWorkbook("客户型号","333");
+        var plan=inTx(()->importer.detect(file));
+        inTx(()-> { provenance("/api/master/goods/import/commit","POST"); return importer.commit(plan.planId(),file,"sales-only.xlsx",Set.of("goods:2")); });
+        assertEquals("333",scalar("SELECT c_number FROM goods WHERE id=:id",existingId));
+        assertEquals("保留规格",scalar("SELECT spec FROM goods WHERE id=:id",existingId));
+    }
+    @Test void purchaseImportCanUpdateOrderPolicyWithoutGeneralGoodsEdit() throws Exception {
+        authorize("goods:view","goods:import","goods:purchase:edit");
+        byte[] file=fieldWorkbook("最小起订量","25");
+        var plan=inTx(()->importer.detect(file));
+        inTx(()-> { provenance("/api/master/goods/import/commit","POST"); return importer.commit(plan.planId(),file,"purchase-only.xlsx",Set.of()); });
+        assertEquals(new java.math.BigDecimal("25"),new java.math.BigDecimal(scalar("SELECT min_order_qty FROM goods WHERE id=:id",existingId)).stripTrailingZeros());
+        assertEquals("111",scalar("SELECT c_number FROM goods WHERE id=:id",existingId));
+    }
+    @Test void importCannotCrossFieldGroupsAndRejectedBatchesLeaveNoWrites() throws Exception {
+        for(String permission:List.of("goods:sales:edit","goods:purchase:edit","goods:edit")) {
+            authorize("goods:view","goods:import",permission);
+            String field=permission.equals("goods:purchase:edit")?"客户型号":permission.equals("goods:edit")?"最小起订量":"规格";
+            byte[] file=fieldWorkbook(field,field.equals("最小起订量")?"25":"越权变更");
+            var plan=inTx(()->importer.detect(file));
+            Set<String> replace=plan.conflictRows()>0?Set.of("goods:2"):Set.of();
+            assertThrows(ApiException.class,()->inTx(()-> { provenance("/api/master/goods/import/commit","POST"); return importer.commit(plan.planId(),file,"denied.xlsx",replace); }));
+        }
+        assertEquals("111",scalar("SELECT c_number FROM goods WHERE id=:id",existingId));
+        assertEquals("保留规格",scalar("SELECT spec FROM goods WHERE id=:id",existingId));
+        assertEquals(0L,((Number)em.createNativeQuery("SELECT count(*) FROM goods_import_batches WHERE created_by=:actor").setParameter("actor",actor).getSingleResult()).longValue());
+    }
+    @Test void restoringImportedGoodsPreservesInvisibleHistoricalCostsAndPrices() throws Exception {
+        inTx(()-> { em.createNativeQuery("UPDATE goods SET source_e=42.1234,g_total=17.0000,is_deleted=true,deleted_at=now(),version=version+1 WHERE id=:id").setParameter("id",existingId).executeUpdate();return null; });
+        authorize("goods:view","goods:import","goods:edit","goods:sales:edit","goods:purchase:edit");
+        byte[] file=fieldWorkbook("客户型号","111");
+        var plan=inTx(()->importer.detect(file));
+        assertTrue(plan.errors().isEmpty(),plan.errors().toString());
+        var result=inTx(()->{provenance("/api/master/goods/import/commit","POST");return importer.commit(plan.planId(),file,"restore-costs.xlsx",Set.of());});
+        assertEquals(1,result.restoredCount());
+        assertEquals("42.1234",scalar("SELECT source_e::text FROM goods WHERE id=:id",existingId));
+        assertEquals("17.0000",scalar("SELECT g_total::text FROM goods WHERE id=:id",existingId));
+        assertEquals("12.3400",scalar("SELECT price::text FROM goods WHERE id=:id",existingId));
+    }
+    @Test void restoringDeletedGoodsPreservesMissingColumnsThroughUndoAndRedo() throws Exception {
+        verifyRestoredWorkbookPreservesUnprovidedValues(false);
+    }
+    @Test void restoringDeletedGoodsPreservesBlankColumnsThroughUndoAndRedo() throws Exception {
+        verifyRestoredWorkbookPreservesUnprovidedValues(true);
+    }
+    private void verifyRestoredWorkbookPreservesUnprovidedValues(boolean blankColumns) throws Exception {
+        inTx(() -> {
+            em.createNativeQuery("""
+                    UPDATE goods SET short_name='保留简称',model='保留型号',series='保留系列',
+                      stock_place='A-01',material='ABS',thickness=2.5000,m_weight=3.2500,
+                      pack='保留包装',pieces=12,paper='保留备注',rear_insert_code='MR-7',
+                      source_type='采购',min_order_qty=25.1250,order_multiple_qty=5,
+                      client_goods_name='保留客户名称',status='禁用',source_e=42.1234,g_total=17,
+                      color_legacy_id=991001,unit_legacy_id=991002,mould_legacy_id=991003,
+                      client_legacy_id=991004,vend_legacy_id=991005,vend2_legacy_id=991006,
+                      thickness_unit_legacy_id=991007,m_weight_unit_legacy_id=991008,
+                      is_deleted=true,deleted_at=now(),version=version+1 WHERE id=:id
+                    """).setParameter("id",existingId).executeUpdate();
+            return null;
+        });
+        // Restoration alone does not grant sales, procurement, status or price edits.
+        authorize("goods:view","goods:import","goods:import:undo","goods:edit");
+        String before=preservedRestoreFacts();
+        byte[] file=restorePreservationWorkbook(blankColumns);
+        var plan=inTx(() -> importer.detect(file));
+        assertTrue(plan.errors().isEmpty(),plan.errors().toString());
+        assertEquals(1,plan.restorableRows());
+        var result=inTx(() -> {
+            provenance("/api/master/goods/import/commit","POST");
+            return importer.commit(plan.planId(),file,"restore-preserve.xlsx",Set.of());
+        });
+        assertEquals(1,result.restoredCount());
+        assertEquals(before,preservedRestoreFacts());
+        assertEquals("false",scalar("SELECT is_deleted::text FROM goods WHERE id=:id",existingId));
+        UUID operation=UUID.fromString(scalar("SELECT operation_id::text FROM goods_import_batches WHERE id=:id",result.batchId()));
+        inTx(() -> {
+            provenance("/api/master/goods/import/"+result.batchId(),"DELETE");
+            return importer.undo(result.batchId());
+        });
+        assertEquals(before,preservedRestoreFacts());
+        assertEquals("true",scalar("SELECT is_deleted::text FROM goods WHERE id=:id",existingId));
+        inTx(() -> {
+            provenance("/api/master/goods/history/"+operation+"/redo","POST");
+            return history.redo(operation,1);
+        });
+        assertEquals(before,preservedRestoreFacts());
+        assertEquals("false",scalar("SELECT is_deleted::text FROM goods WHERE id=:id",existingId));
+    }
+    private String preservedRestoreFacts() {
+        return scalar("""
+                SELECT jsonb_build_array(code,name,short_name,model,spec,series,stock_place,material,
+                  thickness,m_weight,pack,pieces,paper,rear_insert_code,source_type,min_order_qty,
+                  order_multiple_qty,c_number,client_goods_name,name_en,name_en_source,
+                  color_id,color_legacy_id,unit_id,unit_legacy_id,mould_id,mould_legacy_id,
+                  client_id,client_legacy_id,default_supplier_id,vend_legacy_id,
+                  secondary_supplier_id,vend2_legacy_id,thickness_unit_id,thickness_unit_legacy_id,
+                  m_weight_unit_id,m_weight_unit_legacy_id,status,price,source_e,g_total)::text
+                FROM goods WHERE id=:id
+                """,existingId);
+    }
+    private byte[] restorePreservationWorkbook(boolean blankColumns) throws Exception {
+        try(var book=new XSSFWorkbook();var out=new ByteArrayOutputStream()) {
+            var sheet=book.createSheet("货品");var header=sheet.createRow(0);var row=sheet.createRow(1);
+            var titles=new ArrayList<>(List.of("编号","名称","类别"));
+            if(blankColumns) titles.addAll(List.of("客户型号","客户货品名称","英文名称","系列","型号",
+                    "规格","材质","后模镶件编号","备注","来源","价格","最小起订量","订货倍数","状态","主颜色","单位"));
+            String[] required={existingCode,"现有货品",categoryName()};
+            for(int i=0;i<titles.size();i++) {
+                header.createCell(i).setCellValue(titles.get(i));
+                row.createCell(i).setCellValue(i<required.length?required[i]:"  \t  ");
+            }
+            book.write(out);return out.toByteArray();
+        }
+    }
+    private void authorize(String... permissions) {
+        var codes=Set.of(permissions);
+        var principal=new AuthUser(actor,UUID.randomUUID(),"import-field-test",codes,false,true,false);
+        when(current.get()).thenReturn(Optional.of(principal));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal,"n/a",principal.getAuthorities()));
+    }
+    private byte[] fieldWorkbook(String field,String value) throws Exception {
+        try(var book=new XSSFWorkbook();var out=new ByteArrayOutputStream()) {
+            var sheet=book.createSheet("货品");var header=sheet.createRow(0);var row=sheet.createRow(1);
+            String[] titles={"编号","名称","类别",field},values={existingCode,"现有货品",categoryName(),value};
+            for(int i=0;i<titles.length;i++) {header.createCell(i).setCellValue(titles[i]);row.createCell(i).setCellValue(values[i]);}
+            book.write(out);return out.toByteArray();
+        }
+    }
     private String categoryName() { return "导入核对" + categoryId; }
     private byte[] workbook() throws Exception { return workbook("222"); }
     private byte[] workbook(String customerModel) throws Exception {

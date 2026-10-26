@@ -139,6 +139,10 @@ void main() {
   testWidgets('action buttons are hidden without action permissions', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1000, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await _pump(
       tester,
       detail: _awaitingDetail,

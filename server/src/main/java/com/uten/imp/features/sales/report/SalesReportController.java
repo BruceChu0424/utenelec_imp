@@ -53,6 +53,7 @@ public class SalesReportController {
     private final SecurityContextCurrentUser currentUser;
 
     /** 明细报表（4 单据类型参数化；docType 决定查哪张明细表 + 列集）。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/{docType}/detail")
     @PreAuthorize("hasAuthority('sales_report:view')")
     public ReportTableResponse detail(
@@ -76,6 +77,7 @@ public class SalesReportController {
     }
 
     /** 汇总报表（4 单据类型参数化；一行一单号）。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/{docType}/summary")
     @PreAuthorize("hasAuthority('sales_report:view')")
     public ReportTableResponse summary(
@@ -123,6 +125,7 @@ public class SalesReportController {
 
     // ---------- 保留：月度汇总 / 待交货 ----------
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/monthly")
     @PreAuthorize("hasAuthority('sales_report:view')")
     public List<MonthlySummaryRow> monthly(
@@ -135,6 +138,7 @@ public class SalesReportController {
         return service.monthly(docType, clientId, goodsId, dateFrom, dateTo, limit);
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/pending")
     @PreAuthorize("hasAuthority('sales_report:view')")
     public List<PendingRow> pending(

@@ -106,6 +106,66 @@ Future<void> _activateCreation(
 
 void main() {
   testWidgets(
+    'a retired details dialog retains even invalid unapplied input in its private creation draft',
+    (tester) async {
+      final controller = _controller(
+        fields: const [
+          _name,
+          MasterFieldDef(
+            key: 'styleId',
+            label: 'Account style',
+            required: true,
+          ),
+        ],
+        create: (_, _) async {},
+      );
+      addTearDown(controller.dispose);
+      await _table(tester, controller);
+      final key = controller.creationDraftKeys.first;
+      await tester.tap(find.byKey(ValueKey('inline-create-other-$key')));
+      await tester.pumpAndSettle();
+      final text = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.hintText == 'Name',
+      );
+      expect(text, findsOneWidget);
+      await tester.enterText(text, '未应用的本地输入');
+      controller.retireReadScope();
+      await tester.pumpAndSettle();
+      expect(find.text('Account style'), findsNothing);
+      expect(controller.creationValuesFor(key)['name'], '未应用的本地输入');
+      expect(controller.creationIsUncertain(key), isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  test(
+    'scope retirement during an unknown create keeps its original key and never resubmits it',
+    () async {
+      final started = Completer<void>(), pending = Completer<void>();
+      final writes = <String>[];
+      final controller = _controller(
+        create: (key, body) {
+          writes.add(key);
+          started.complete();
+          return pending.future;
+        },
+      );
+      addTearDown(controller.dispose);
+      final key = controller.creationDraftKeys.first;
+      controller.setCreationValue(key, 'name', '尚未确认的新资料');
+      final save = controller.save((id, patch) async {});
+      await started.future;
+      controller.retireReadScope();
+      expect(controller.creationIsUncertain(key), isTrue);
+      expect(controller.creationValuesFor(key)['name'], '尚未确认的新资料');
+      pending.complete();
+      expect(await save, isFalse);
+      expect(await controller.save((id, patch) async {}), isFalse);
+      expect(writes, [key]);
+      expect(controller.creationDraftKeys, contains(key));
+    },
+  );
+  testWidgets(
     'new rows defer choice requests and the first character does not rebuild sibling editors',
     (tester) async {
       var loads = 0, builds = 0;

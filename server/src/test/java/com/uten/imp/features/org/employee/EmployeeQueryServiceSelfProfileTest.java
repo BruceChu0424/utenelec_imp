@@ -1,6 +1,10 @@
 package com.uten.imp.features.org.employee;
 
 import com.uten.imp.application.port.AttachmentAccessPort;
+import com.uten.imp.application.port.EmployeeIdentityLookupPort;
+import org.junit.jupiter.api.BeforeEach;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.model.UserAccountRepository;
@@ -62,9 +66,16 @@ class EmployeeQueryServiceSelfProfileTest {
     @Mock private SecurityContextCurrentUser currentUser;
     @Mock private EmployeeVehiclePhoneService vehiclePhoneService;
     @Mock private AttachmentAccessPort attachmentAccess;
+    @Mock private EmployeeIdentityLookupPort identities;
 
     @InjectMocks
     private EmployeeQueryService service;
+
+    @BeforeEach
+    void identityDefaults() {
+        lenient().when(identities.canonicalEmployeeId(any())).thenAnswer(call -> call.getArgument(0));
+        lenient().when(identities.employeeIdentityMembers(any())).thenAnswer(call -> List.of(call.getArgument(0,UUID.class)));
+    }
 
     @Test
     void selfWithBasePermissionSeesOwnPersonalPiiButNotBankOrCompensation() {
@@ -228,6 +239,31 @@ class EmployeeQueryServiceSelfProfileTest {
         verifyNoInteractions(empRepo);
     }
 
+    @Test void verifiedAliasFactsHaveAnOriginAndNeverEnterEditableReplacementLists() {
+        when(currentUser.get()).thenReturn(Optional.of(staff(SELF_ID,Set.of("employee:view"))));
+        Employee canonical=stubDetail(SELF_ID,"当前档案"); canonical.setCode("UT0010");
+        Employee alias=new Employee(); alias.setId(OTHER_ID); alias.setCode("UT0189"); alias.setDeleted(true);
+        when(identities.canonicalEmployeeId(OTHER_ID)).thenReturn(SELF_ID);
+        when(identities.employeeIdentityMembers(SELF_ID)).thenReturn(List.of(SELF_ID,OTHER_ID));
+        when(empRepo.findAllById(List.of(SELF_ID,OTHER_ID))).thenReturn(List.of(canonical,alias));
+        EmployeeEducation education=new EmployeeEducation(); education.setEmployee(alias); education.setSchool("原学历");
+        EmployeeCredential credential=new EmployeeCredential(); credential.setEmployee(alias); credential.setName("原证书");
+        EmploymentHistory event=new EmploymentHistory(); event.setEmployee(alias); event.setEventType("resign");
+        when(educationRepo.findByEmployeeIdInOrderByEndDateDescIdAsc(List.of(OTHER_ID))).thenReturn(List.of(education));
+        when(credentialRepo.findByEmployeeIdIn(List.of(OTHER_ID))).thenReturn(List.of(credential));
+        when(historyRepo.findByEmployeeIdInOrderByEventDateDescIdAsc(List.of(SELF_ID,OTHER_ID))).thenReturn(List.of(event));
+        EmployeeDetail detail=service.detail(OTHER_ID);
+        assertEquals(SELF_ID,detail.getId()); assertEquals(OTHER_ID,detail.getResolvedFromEmployeeId());
+        assertEquals(0,detail.getEducations().size()); assertEquals(0,detail.getCertificates().size());
+        assertEquals("原学历",detail.getHistoricalEducations().getFirst().getSchool());
+        assertEquals(OTHER_ID,detail.getHistoricalEducations().getFirst().getSourceEmployeeId());
+        assertEquals("UT0189",detail.getHistoricalCertificates().getFirst().getSourceEmployeeCode());
+        org.junit.jupiter.api.Assertions.assertTrue(detail.getHistoricalEducations().getFirst().isHistoricalReadOnly());
+        org.junit.jupiter.api.Assertions.assertTrue(detail.getHistory().getFirst().isHistoricalReadOnly());
+        verify(sensitiveRepo,never()).findByEmployeeId(OTHER_ID);
+        verify(compensationRepo,never()).findByEmployeeId(OTHER_ID);
+    }
+
     @Test
     void visitorFailsClosedEvenIfGrantedSelfProfilePermission() {
         AuthUser visitor = AuthUser.visitor(
@@ -294,7 +330,7 @@ class EmployeeQueryServiceSelfProfileTest {
         when(userRepo.findByEmployeeId(employeeId)).thenReturn(Optional.empty());
         when(emergencyRepo.findByEmployeeIdOrderBySortOrderAsc(employeeId))
                 .thenReturn(List.of(emergency));
-        when(historyRepo.findByEmployeeIdOrderByEventDateDesc(employeeId)).thenReturn(List.of());
+        lenient().when(historyRepo.findByEmployeeIdOrderByEventDateDesc(employeeId)).thenReturn(List.of());
         when(credentialRepo.findByEmployeeId(employeeId)).thenReturn(List.of());
         when(educationRepo.findByEmployeeIdOrderByEndDateDesc(employeeId)).thenReturn(List.of());
         when(vehiclePhoneService.listVehicles(employeeId)).thenReturn(List.of());

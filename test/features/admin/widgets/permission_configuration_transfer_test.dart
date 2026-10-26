@@ -29,6 +29,43 @@ final _captureKey = GlobalKey();
 const _capture = bool.fromEnvironment('UTEN_CAPTURE_PERMISSION_TRANSFER');
 
 void main() {
+  testWidgets('department file import cannot select baseline or data scopes', (
+    tester,
+  ) async {
+    final repository = _Repository();
+    final configuration = PermissionConfiguration.decode(
+      _backup()
+          .select(
+            PermissionConfigurationScope.department,
+            sourceId: 'department-old',
+          )
+          .encode(),
+    );
+    await _mount(
+      tester,
+      repository,
+      Consumer(
+        builder: (context, ref, _) => TextButton(
+          onPressed: () => showDialog<void>(
+            context: context,
+            builder: (_) => PermissionConfigurationImportDialog(
+              configuration: configuration,
+              boundary: ref.read(sensitiveReadBoundaryProvider),
+            ),
+          ),
+          child: const Text('open scoped import'),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open scoped import'));
+    await tester.pumpAndSettle();
+    expect(find.text('导入全员基础包'), findsNothing);
+    expect(find.text('同时导入所选员工的可查看数据范围'), findsNothing);
+    expect(repository.importPreviews.single['importBaseline'], isFalse);
+    expect(repository.importPreviews.single['importDataScopes'], isFalse);
+    expect(repository.importPreviews.single['users'], isEmpty);
+  });
+
   test('source keys are namespaced and malformed scopes fail before UI', () {
     Map<String, dynamic> document() =>
         jsonDecode(jsonEncode(_backup().json)) as Map<String, dynamic>;

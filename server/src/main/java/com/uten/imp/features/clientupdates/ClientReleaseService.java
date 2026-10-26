@@ -20,6 +20,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.Semaphore;
 import lombok.RequiredArgsConstructor;
@@ -29,8 +30,11 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class ClientReleaseService {
-    public static final String PUBLISH_EXPRESSION = "hasAuthority('authorization:manage') and principal.superAdmin "
+    public static final String PUBLISH_PERMISSION = "client_release:publish";
+    public static final String PUBLISH_EXPRESSION = "hasAuthority('" + PUBLISH_PERMISSION + "') "
             + "and !principal.visitor and !principal.mustChangePassword and principal.impersonatedBy == null";
+    public static final String DOWNLOADS_EXPRESSION = "isAuthenticated() and !principal.visitor "
+            + "and !principal.mustChangePassword and (principal.superAdmin or principal.employeeId != null)";
     private static final Set<String> PLATFORMS = Set.of("windows", "android", "ios", "macos", "linux");
     private static final Set<String> ARCHITECTURES = Set.of("x86", "x64", "arm64", "armeabi-v7a", "universal");
     private final ClientReleaseCatalog catalog;
@@ -144,10 +148,11 @@ public class ClientReleaseService {
             if ("PUBLISHED".equals(release.state())) return release;
             requireDraft(release);
             long previousBuild = catalog.list(root).stream().filter(other -> other.publishedAt() != null
-                            && other.platform().equals(release.platform()) && overlaps(other.architecture(), release.architecture()))
+                            && other.platform().equals(release.platform()) && overlaps(other.architecture(), release.architecture())
+                            && other.packageKind().equals(release.packageKind()))
                     .mapToLong(ClientReleaseDto.Release::buildNumber).max().orElse(0);
             if (release.buildNumber() <= previousBuild)
-                throw new ApiException(ErrorCode.CONFLICT, "构建号必须大于同平台和架构已经发布过的版本");
+                throw new ApiException(ErrorCode.CONFLICT, "构建号必须大于同平台、架构及包类型已经发布过的版本");
             if (!"store".equals(release.installMode())) {
                 Path binary = packagePath(root, id);
                 if (release.sha256() == null || !Files.isRegularFile(binary, LinkOption.NOFOLLOW_LINKS)
@@ -188,6 +193,7 @@ public class ClientReleaseService {
         if (currentBuildNumber < 0 || currentBuildNumber > Integer.MAX_VALUE) throw invalid("当前客户端构建号无效");
         ClientReleaseDto.Release latest = catalog.locked(root -> catalog.list(root).stream()
                 .filter(release -> "PUBLISHED".equals(release.state()) && release.platform().equals(platform)
+                        && "update".equals(release.packageKind())
                         && (release.architecture().equals(architecture) || "universal".equals(release.architecture()))
                         && release.buildNumber() > currentBuildNumber)
                 .max(Comparator.comparingLong(ClientReleaseDto.Release::buildNumber)
@@ -196,10 +202,29 @@ public class ClientReleaseService {
                 Math.max(60, Math.min(properties.getPollIntervalSeconds(), 86400)));
     }
 
+    @PreAuthorize(DOWNLOADS_EXPRESSION)
+    public List<ClientReleaseDto.Release> downloads() {
+        employeeDownloader();
+        return catalog.locked(root -> {
+            var latest = new TreeMap<String, ClientReleaseDto.Release>();
+            for (var release : catalog.list(root)) {
+                if (!"PUBLISHED".equals(release.state()) || !"windows".equals(release.platform())
+                        || !"installer".equals(release.packageKind()) || !"windows_setup".equals(release.installMode())) continue;
+                Path binary = packagePath(root, release.id());
+                if (release.sha256() == null || release.sizeBytes() <= 0
+                        || !Files.isRegularFile(binary, LinkOption.NOFOLLOW_LINKS) || Files.size(binary) != release.sizeBytes()) continue;
+                latest.merge(release.architecture(), release,
+                        (previous, candidate) -> candidate.buildNumber() > previous.buildNumber() ? candidate : previous);
+            }
+            return List.copyOf(latest.values());
+        });
+    }
+
     public Download download(UUID id) {
         authenticated();
         return catalog.locked(root -> {
             ClientReleaseDto.Release release = catalog.require(root, id);
+            if ("installer".equals(release.packageKind())) employeeDownloader();
             if (!"PUBLISHED".equals(release.state()) || "store".equals(release.installMode()))
                 throw new ApiException(ErrorCode.NOT_FOUND, "此客户端更新包当前不可下载");
             Path binary = packagePath(root, id);
@@ -212,6 +237,9 @@ public class ClientReleaseService {
     private ClientReleaseDto.Release normalize(ClientReleaseDto.Create request) {
         if (request == null || request.requestId() == null) throw invalid("请提供本次发布编号");
         requireTarget(request.platform(), request.architecture());
+        if (!Set.of("update", "installer").contains(request.packageKind())) throw invalid("客户端包类型无效");
+        if ("installer".equals(request.packageKind()) && !"windows".equals(request.platform()))
+            throw invalid("当前仅支持 Windows 完整客户端发布");
         if ("linux".equals(request.platform())) throw invalid("Linux 客户端暂不支持在线更新发布");
         if (request.version() == null || request.version().length() > 64
                 || !request.version().matches("[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?")) throw invalid("请填写有效的客户端版本号，例如 2.5.28");
@@ -225,6 +253,7 @@ public class ClientReleaseService {
         String storeUrl = request.storeUrl() == null || request.storeUrl().isBlank() ? null : request.storeUrl().strip();
         String mode;
         if (storeUrl != null) {
+            if ("installer".equals(request.packageKind())) throw invalid("Windows 完整客户端必须上传专用安装文件，不能使用商店链接");
             validateStoreUrl(storeUrl, request.platform());
             if (fileName != null && !fileName.isBlank() || expectedSha != null && !expectedSha.isBlank())
                 throw invalid("应用商店版本不能同时上传更新包");
@@ -233,16 +262,21 @@ public class ClientReleaseService {
             mode = "store";
         } else {
             if (!Set.of("windows", "android").contains(request.platform())) throw invalid("iOS 和 macOS 请填写官方应用商店更新链接");
-            String extension = "windows".equals(request.platform()) ? ".zip" : ".apk";
+            boolean windowsSetup = "windows".equals(request.platform()) && "installer".equals(request.packageKind())
+                    && fileName != null && fileName.toLowerCase(Locale.ROOT).endsWith(".exe");
+            String extension = windowsSetup ? ".exe" : "windows".equals(request.platform()) ? ".zip" : ".apk";
             if (fileName == null || !fileName.matches("[A-Za-z0-9][A-Za-z0-9._ -]{0,180}")
-                    || !fileName.toLowerCase(Locale.ROOT).endsWith(extension)) throw invalid("请选择对应平台的 ZIP 或 APK 文件，文件名请使用字母和数字");
+                    || !fileName.toLowerCase(Locale.ROOT).endsWith(extension)) throw invalid("请选择对应平台和用途的 EXE、ZIP 或 APK 文件，文件名请使用字母和数字");
             if (expectedSha == null || !expectedSha.matches("[0-9a-fA-F]{64}")) throw invalid("请提供更新包的 SHA-256 校验值");
             expectedSha = expectedSha.toLowerCase(Locale.ROOT);
-            mode = "windows".equals(request.platform()) ? "windows_archive" : "android_package";
+            mode = "windows".equals(request.platform())
+                    ? "installer".equals(request.packageKind()) ? windowsSetup ? "windows_setup" : "windows_bundle" : "windows_archive"
+                    : "android_package";
         }
         return new ClientReleaseDto.Release(request.requestId(), request.platform(), request.architecture(), request.version(),
                 request.buildNumber(), notes, request.mandatory(), fileName, expectedSha, null, 0, mode, storeUrl,
-                "store".equals(mode) ? null : "/api/client-updates/" + request.requestId() + "/download", "DRAFT", Instant.now(), null);
+                "store".equals(mode) ? null : "/api/client-updates/" + request.requestId() + "/download", "DRAFT", Instant.now(), null,
+                request.packageKind());
     }
 
     private static void requireTarget(String platform, String architecture) {
@@ -283,19 +317,26 @@ public class ClientReleaseService {
     private static ClientReleaseDto.Release copy(ClientReleaseDto.Release release, String sha, long size, String state, Instant published) {
         return new ClientReleaseDto.Release(release.id(), release.platform(), release.architecture(), release.version(), release.buildNumber(),
                 release.releaseNotes(), release.mandatory(), release.fileName(), release.expectedSha256(), sha, size,
-                release.installMode(), release.storeUrl(), release.downloadUrl(), state, release.createdAt(), published);
+                release.installMode(), release.storeUrl(), release.downloadUrl(), state, release.createdAt(), published, release.packageKind());
     }
     private static boolean sameDraft(ClientReleaseDto.Release left, ClientReleaseDto.Release right) {
         return left.platform().equals(right.platform()) && left.architecture().equals(right.architecture()) && left.version().equals(right.version())
                 && left.buildNumber() == right.buildNumber() && left.releaseNotes().equals(right.releaseNotes()) && left.mandatory() == right.mandatory()
+                && left.packageKind().equals(right.packageKind())
                 && java.util.Objects.equals(left.fileName(), right.fileName()) && java.util.Objects.equals(left.expectedSha256(), right.expectedSha256())
                 && java.util.Objects.equals(left.storeUrl(), right.storeUrl());
     }
     private AuthUser authenticated() { return currentUser.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED)); }
+    private AuthUser employeeDownloader() {
+        AuthUser actor = authenticated();
+        if (actor.isVisitor() || actor.isMustChangePassword() || !actor.isSuperAdmin() && actor.getEmployeeId() == null)
+            throw new ApiException(ErrorCode.FORBIDDEN);
+        return actor;
+    }
     private AuthUser publisher() {
         AuthUser actor = authenticated();
-        if (!actor.isSuperAdmin() || actor.isVisitor() || actor.isMustChangePassword() || actor.getImpersonatedBy() != null
-                || !actor.getPermissions().contains("authorization:manage")) throw new ApiException(ErrorCode.FORBIDDEN);
+        if (actor.isVisitor() || actor.isMustChangePassword() || actor.getImpersonatedBy() != null
+                || !actor.getPermissions().contains(PUBLISH_PERMISSION)) throw new ApiException(ErrorCode.FORBIDDEN);
         return actor;
     }
     private void record(AuthUser actor, String action, UUID id) {

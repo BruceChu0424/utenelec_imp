@@ -16,6 +16,7 @@ import '../../../../components/feedback/uten_inline_notice.dart';
 import '../../../../components/inputs/uten_date_field.dart';
 import '../../../../components/inputs/uten_dropdown_field.dart';
 import '../../../../components/inputs/uten_filter_picker_field.dart';
+import '../../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../components/layout/uten_editable_grid.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
@@ -469,69 +470,90 @@ class _WorkshopBinOpeningPanelState
         const SizedBox(height: UtenSpacing.s12),
         SizedBox(
           width: double.infinity,
-          child: UtenFilterPickerField(
-            key: const Key('wm-bin-panel-source'),
-            label: l10n.wmBinColSource,
-            value: _followOwning ? null : _sourceLabel(),
-            placeholder: l10n.wmBinSourceDefault,
-            icon: Icons.warehouse_outlined,
-            width: null,
-            enabled: !_saving && !_followOwning,
-            onTap: () => _pickSource(l10n),
+          child: Row(
+            children: [
+              Expanded(
+                child: UtenFilterPickerField(
+                  key: const Key('wm-bin-panel-source'),
+                  label: l10n.wmBinColSource,
+                  value: _followOwning ? null : _sourceLabel(),
+                  placeholder: l10n.wmBinSourceDefault,
+                  icon: Icons.warehouse_outlined,
+                  width: null,
+                  enabled: !_saving && !_followOwning,
+                  onTap: () => _pickSource(l10n),
+                ),
+              ),
+              UtenFieldHintIcon(info: l10n.wmBinSourceHint, dense: true),
+            ],
           ),
         ),
         if (widget.mode == WmBinPanelMode.source)
-          SwitchListTile(
-            key: const Key('wm-bin-panel-follow-owning'),
-            contentPadding: EdgeInsets.zero,
-            value: _followOwning,
-            onChanged: _saving
-                ? null
-                : (value) => setState(() {
-                    _followOwning = value;
-                    _error = null;
-                  }),
-            title: Text(l10n.wmBinSourceFollowOwning),
-            subtitle: Text(l10n.wmBinSourceFollowOwningHint),
+          Row(
+            children: [
+              Expanded(
+                child: SwitchListTile(
+                  key: const Key('wm-bin-panel-follow-owning'),
+                  contentPadding: EdgeInsets.zero,
+                  value: _followOwning,
+                  onChanged: _saving
+                      ? null
+                      : (value) => setState(() {
+                          _followOwning = value;
+                          _error = null;
+                        }),
+                  title: Text(l10n.wmBinSourceFollowOwning),
+                ),
+              ),
+              UtenFieldHintIcon(
+                info: l10n.wmBinSourceFollowOwningHint,
+                dense: true,
+              ),
+            ],
           ),
-        const SizedBox(height: UtenSpacing.s4),
-        Text(
-          l10n.wmBinSourceHint,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
         if (_choosesPeriodic && widget.mode == WmBinPanelMode.open) ...[
           const SizedBox(height: UtenSpacing.s8),
-          SwitchListTile(
-            key: const Key('wm-bin-panel-periodic'),
-            contentPadding: EdgeInsets.zero,
-            value: _periodic,
-            onChanged: _saving ? null : _setPeriodic,
-            title: Text(l10n.wmBinAlsoPeriodic),
-            subtitle: Text(l10n.wmBinAlsoPeriodicHint),
+          Row(
+            children: [
+              Expanded(
+                child: SwitchListTile(
+                  key: const Key('wm-bin-panel-periodic'),
+                  contentPadding: EdgeInsets.zero,
+                  value: _periodic,
+                  onChanged: _saving ? null : _setPeriodic,
+                  title: Text(l10n.wmBinAlsoPeriodic),
+                ),
+              ),
+              UtenFieldHintIcon(info: l10n.wmBinAlsoPeriodicHint, dense: true),
+            ],
           ),
         ],
         if (periodic) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          UtenInlineNotice(
-            key: const Key('wm-enable-flow-notice'),
-            message: l10n.wmBinPeriodicFlowNotice,
-          ),
           const SizedBox(height: UtenSpacing.s12),
-          SizedBox(
-            width: 240,
-            child: UtenDateField(
-              key: const Key('wm-enable-go-live'),
-              label: l10n.wmGoLiveDate,
-              required: true,
-              enabled: !_saving,
-              value: _goLive,
-              firstDate: today.subtract(const Duration(days: 31)),
-              lastDate: today.add(const Duration(days: 366)),
-              onChanged: (v) =>
-                  setState(() => _goLive = ChinaDateTime.asWallTime(v)),
-            ),
+          Row(
+            children: [
+              Flexible(
+                child: SizedBox(
+                  width: 240,
+                  child: UtenDateField(
+                    key: const Key('wm-enable-go-live'),
+                    label: l10n.wmGoLiveDate,
+                    required: true,
+                    enabled: !_saving,
+                    value: _goLive,
+                    firstDate: today.subtract(const Duration(days: 31)),
+                    lastDate: today.add(const Duration(days: 366)),
+                    onChanged: (v) =>
+                        setState(() => _goLive = ChinaDateTime.asWallTime(v)),
+                  ),
+                ),
+              ),
+              UtenFieldHintIcon(
+                key: const Key('wm-enable-flow-notice'),
+                info: l10n.wmBinPeriodicFlowNotice,
+                dense: true,
+              ),
+            ],
           ),
           const SizedBox(height: UtenSpacing.s16),
           Text(

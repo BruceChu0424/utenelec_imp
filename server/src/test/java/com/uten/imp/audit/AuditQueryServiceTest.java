@@ -43,6 +43,19 @@ import static org.mockito.Mockito.withSettings;
 
 class AuditQueryServiceTest {
 
+    /** Formatting tests supply detached rows through the new reader boundary;
+     * actual metadata/payload SQL is covered by its isolated PostgreSQL tests. */
+    private static void installExportFixture(AuditQueryService service,AuditLogRepository repository) {
+        var reader=mock(AuditExportProjectionReader.class);
+        org.mockito.Mockito.doAnswer(call->{
+            @SuppressWarnings("unchecked") Specification<AuditLog> spec=call.getArgument(0);
+            @SuppressWarnings("unchecked") java.util.function.Consumer<List<AuditLog>> consume=call.getArgument(2);
+            consume.accept(repository.findAll(spec,org.springframework.data.domain.PageRequest.of(0,100)).getContent());
+            return null;
+        }).when(reader).read(any(),org.mockito.ArgumentMatchers.anyLong(),any());
+        service.setExportReader(reader);
+    }
+
     private static final UUID SELECTED_ACTOR =
             UUID.fromString("11111111-1111-1111-1111-111111111111");
 
@@ -393,6 +406,7 @@ class AuditQueryServiceTest {
                 Mockito.<Specification<AuditLog>>notNull(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(log)));
 
+        installExportFixture(service,repository);
         ExportPayload payload = service.export(criteria(null), 100);
 
         assertEquals(1, payload.total());
@@ -414,7 +428,8 @@ class AuditQueryServiceTest {
         assertFalse(payload.rows().getFirst().containsKey("resultCode"));
         assertFalse(payload.rows().getFirst().containsKey("before"));
         assertFalse(payload.rows().getFirst().containsKey("after"));
-        verify(repository).findMaxId();
+        // Export completeness comes from RR, never an inferred maximum-ID fence.
+        verify(repository, never()).findMaxId();
 
         ArgumentCaptor<Specification<AuditLog>> specificationCaptor =
                 ArgumentCaptor.captor();
@@ -423,7 +438,8 @@ class AuditQueryServiceTest {
         CriteriaBuilder criteriaBuilder = mock(
                 CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
         specificationCaptor.getValue().toPredicate(root, null, criteriaBuilder);
-        verify(criteriaBuilder).lessThanOrEqualTo(root.get("id"), 73L);
+        Path<Long> exportId = root.get("id");
+        verify(criteriaBuilder, never()).lessThanOrEqualTo(exportId, 73L);
     }
 
     @Test
@@ -457,6 +473,7 @@ class AuditQueryServiceTest {
         when(repository.findAll(Mockito.<Specification<AuditLog>>notNull(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(succeeded, httpFailed)));
 
+        installExportFixture(service,repository);
         ExportPayload payload = service.export(criteria(null), 100);
 
         assertEquals("成功", payload.rows().get(0).get("outcome"));
@@ -496,6 +513,7 @@ class AuditQueryServiceTest {
         when(repository.findAll(Mockito.<Specification<AuditLog>>notNull(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(anonymous)));
 
+        installExportFixture(service,repository);
         ExportPayload payload = service.export(criteria(null), 100);
 
         assertEquals("未识别访问", payload.rows().getFirst().get("actor"));
@@ -536,6 +554,7 @@ class AuditQueryServiceTest {
 
         AuditLogRow row = service.query(criteria(null), 1, 20).getItems().getFirst();
         AuditLogDetail detail = service.detail(9L);
+        installExportFixture(service,repository);
         ExportPayload payload = service.export(criteria(null), 100);
         Map<String, Object> exported = payload.rows().getFirst();
 
@@ -600,6 +619,7 @@ class AuditQueryServiceTest {
                 repository, new AuditEventInterpreter(), emptyActorDirectory());
         when(repository.count(Mockito.<Specification<AuditLog>>notNull())).thenReturn(101L);
 
+        installExportFixture(service,repository);
         ApiException error = assertThrows(
                 ApiException.class,
                 () -> service.export(criteria(null), 100));
@@ -717,6 +737,22 @@ class AuditQueryServiceTest {
                 null, null, null, null, false));
     }
 
+    @Test void employeeTargetSearchExpandsVerifiedAliasesWhileActorUuidStaysExact() {
+        UUID canonical=UUID.randomUUID(),alias=UUID.randomUUID();
+        var identities=mock(com.uten.imp.application.port.EmployeeIdentityLookupPort.class);
+        when(identities.employeeIdentityMembers(canonical)).thenReturn(List.of(canonical,alias));
+        AuditQueryService service=new AuditQueryService(mock(AuditLogRepository.class),
+                new AuditEventInterpreter(),emptyActorDirectory(),null,identities);
+        Root<AuditLog> root=mock(Answers.RETURNS_DEEP_STUBS);
+        CriteriaBuilder cb=mock(CriteriaBuilder.class,Answers.RETURNS_DEEP_STUBS);
+        var criteria=new AuditSearchCriteria(null,null,null,null,null,null,null,"employees",canonical.toString(),
+                null,null,null,null,null,null,SELECTED_ACTOR,false);
+        service.specification(criteria).toPredicate(root,null,cb);
+        verify(cb.lower(root.<String>get("targetId"))).in(List.of(canonical.toString(),alias.toString()));
+        verify(cb).equal(root.get("actorId"),SELECTED_ACTOR);
+        verify(identities).employeeIdentityMembers(canonical);
+    }
+
     @Test
     void activityViewUsesExactActorAndExcludesDatabaseDerivedRows() {
         AuditQueryService service = new AuditQueryService(
@@ -809,6 +845,7 @@ class AuditQueryServiceTest {
 
         assertEquals(0, service.query(system, 1, 20).getTotal());
         assertEquals(0, service.summary(system).total());
+        installExportFixture(service,repository);
         assertEquals(0, service.export(system, 100).total());
     }
 
@@ -870,6 +907,7 @@ class AuditQueryServiceTest {
         when(repository.findMaxId()).thenReturn(9L);
         when(repository.count(Mockito.<Specification<AuditLog>>notNull())).thenReturn(10_001L);
 
+        installExportFixture(service,repository);
         ApiException error = assertThrows(
                 ApiException.class,
                 () -> service.export(criteria(null), 100_000));

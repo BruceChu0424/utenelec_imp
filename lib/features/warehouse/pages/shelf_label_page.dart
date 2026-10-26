@@ -5,6 +5,8 @@
 // 2026-09-29 口径：库行分段退役（库行会越积越多放不下，筛选走列头「货架」）；
 // 顶部工具条+货架图随上滑收起、表格置顶后表内滚动（UtenCollapsingHeaderScrollView）。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_filter_chip.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -29,6 +31,8 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/auth/native_read_view_scope_mixin.dart'
+    show nativeReadAccessDenied;
 import '../../../core/print/pdf_printer.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -59,6 +63,7 @@ class ShelfLabelPage extends ConsumerStatefulWidget {
 
 class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
   List<ShelfLabelRow>? _rows;
+  Object? _acceptedQuery;
   bool _loading = false;
   String? _error;
 
@@ -96,16 +101,28 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         _filters.clear();
       });
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await ref.read(masterNameServiceProvider).ensureLoaded();
-      await _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_warmWarehouseNames());
+      _load();
     });
+  }
+
+  Future<void> _warmWarehouseNames() async {
+    final current = captureReadOwner(ref);
+    try {
+      await ref.read(masterNameServiceProvider).ensureWarehousesLoaded();
+      if (current()) setState(() {});
+    } catch (_) {
+      // Row data is independent of this warehouse-label enrichment.
+    }
   }
 
   /// 仓库筛选 = 侧滑面板查询口径（2026-09-11 全站统一，与即时库存同款）：
   /// 「全部」= 参与核算仓库聚合（_warehouseId=null）；选主仓 = 自身 + 全部子仓聚合。
   /// 换仓后库位定位态清空，主表与货架图（由行集推导）一起重取。
   Future<void> _pickWarehouse() async {
+    await _warmWarehouseNames();
+    if (!mounted) return;
     final result = await showUtenWarehousePickerPanel(
       context,
       hierarchy: ref.read(masterNameServiceProvider).warehouseHierarchy,
@@ -127,7 +144,9 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
 
   Future<void> _load() async {
     final generation = _rowRequests.begin();
+    final query = (_keyword, _warehouseId, _includeDisabled);
     setState(() {
+      if (_acceptedQuery != query) _rows = null;
       _loading = true;
       _error = null;
     });
@@ -140,10 +159,19 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
             includeDisabled: _includeDisabled,
           );
       if (!mounted || !_rowRequests.isCurrent(generation)) return;
-      setState(() => _rows = rows);
+      setState(() {
+        _rows = rows;
+        _acceptedQuery = query;
+      });
     } on ApiException catch (e) {
       if (!mounted || !_rowRequests.isCurrent(generation)) return;
-      setState(() => _error = e.message);
+      setState(() {
+        if (nativeReadAccessDenied(e)) {
+          _rows = null;
+          _acceptedQuery = null;
+        }
+        _error = e.message;
+      });
     } catch (_) {
       if (!mounted || !_rowRequests.isCurrent(generation)) return;
       setState(() => _error = '加载失败'); // TODO(l10n): 补 arb
@@ -456,7 +484,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
           UtenRefreshButton(
             // 整页刷新：字典 + 清单（货架图由行集推导，随清单一起刷新）。
             onRefresh: () async {
-              await ref.read(masterNameServiceProvider).ensureLoaded();
+              unawaited(_warmWarehouseNames());
               await _load();
             },
           ),

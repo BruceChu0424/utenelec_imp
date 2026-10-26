@@ -35,7 +35,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show mapEquals, setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
@@ -58,6 +57,7 @@ import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_navigation_session.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -83,6 +83,9 @@ import '../../../shared/widgets/procurement_order_closure_dialog.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../shared/models/procurement_order_closure.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/paged_read_window_binding.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/widgets/procurement_order_closure_batch_dialog.dart';
 import '../../../shared/widgets/procurement_order_closure_selection_action.dart';
 
@@ -156,7 +159,9 @@ class SubcontractDecompositionPage extends ConsumerStatefulWidget {
 
 class _SubcontractDecompositionPageState
     extends ConsumerState<SubcontractDecompositionPage>
-    with UtenRefreshParticipant<SubcontractDecompositionPage> {
+    with
+        UtenRefreshParticipant<SubcontractDecompositionPage>,
+        ScopedPagedReadViewMixin<SubcontractDecompositionPage> {
   OperationsWorkbenchData? _data;
   Map<String, Object?>? _acceptedQuery;
   Map<String, int>? _categoryCounts;
@@ -221,6 +226,41 @@ class _SubcontractDecompositionPageState
   String? _drawApplicationLabel;
   final Set<String> _selectedDrawIds = <String>{};
   bool _drawNavigating = false;
+  final _navigation = PageNavigationSession();
+  final _drawRead = ScopedPagedRead<SubcontractDrawTaskRow>();
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _drawRead.invalidate();
+    setState(() {
+      _readerGeneration++;
+      _taskRows.update(const []);
+      _pendingRows.update(const []);
+      _requestId++;
+      _drawRequestId++;
+      _drawCountRequestId++;
+      _data = null;
+      _acceptedQuery = null;
+      _categoryCounts = null;
+      _acceptedCategoryScope = null;
+      _drawData = null;
+      _acceptedDrawQuery = null;
+      _drawCount = null;
+      _submittedCount = null;
+      _selectedIds.clear();
+      _selectedDrawIds.clear();
+      _retainedPages = const [];
+      _refreshedPages = const {};
+      _refreshedPendingPages = const {};
+      _paginationRevision++;
+      _loading = false;
+      _backgroundRefresh = false;
+      _drawLoading = false;
+      _drawBackgroundRefresh = false;
+      _error = scopedPagedReadRejection?.message;
+      _drawError = null;
+    });
+  }
 
   /// 正在「通知研发完善」的申请行(防连点)；null = 没有在途请求。
   String? _forwardingBomTaskId;
@@ -405,6 +445,19 @@ class _SubcontractDecompositionPageState
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
+  void dispose() {
+    _drawRead.dispose();
+    _navigation.dispose();
+    super.dispose();
+  }
+
+  @override
   void initState() {
     super.initState();
     ref.listenManual(authenticatedScopeProvider, (previous, next) {
@@ -442,6 +495,8 @@ class _SubcontractDecompositionPageState
   }
 
   void _resetReadState() {
+    invalidateScopedPageReads();
+    _drawRead.invalidate();
     _closureBusy = false;
     // Reader changes invalidate all three visible GET owners, including a draw
     // list that the next segment no longer needs to request.
@@ -589,9 +644,16 @@ class _SubcontractDecompositionPageState
     int? page,
     int size = 50,
     bool background = false,
+    bool useCache = false,
     _RetainedRefreshBatch? batch,
   }) => trackRefresh(
-    _loadRows(page: page, size: size, background: background, batch: batch),
+    _loadRows(
+      page: page,
+      size: size,
+      background: background,
+      batch: batch,
+      useCache: useCache,
+    ),
     replaceKey: 'rows',
   );
 
@@ -599,6 +661,7 @@ class _SubcontractDecompositionPageState
     int? page,
     int size = 50,
     bool background = false,
+    bool useCache = false,
     _RetainedRefreshBatch? batch,
   }) async {
     if (!mounted) return;
@@ -611,7 +674,10 @@ class _SubcontractDecompositionPageState
     final range = seg?.history == true ? _historyTime.range : null;
     final retainRows =
         background && _data != null && mapEquals(_acceptedQuery, query);
-    final requestedPage = page ?? _page;
+    final requestedPage =
+        page ??
+        (_pendingSeg ? _pendingRows.visiblePage : _taskRows.visiblePage) ??
+        _page;
     final retainedPages = _retainedPages.isEmpty
         ? [requestedPage]
         : List<int>.of(_retainedPages);
@@ -620,6 +686,7 @@ class _SubcontractDecompositionPageState
     final sort = _sortColumn;
     final ascending = _sortAscending;
     final columnFilters = Map<String, String?>.of(_columnFilters);
+    if (background) invalidateScopedPageReads();
     bool current() =>
         mounted && requestId == _requestId && mapEquals(query, _queryIdentity);
     setState(() {
@@ -698,7 +765,26 @@ class _SubcontractDecompositionPageState
         next = results[requestedPage] ?? results.values.last;
         results.removeWhere((page, _) => page > next.totalPages && page != 1);
       } else {
-        next = await fetch(requestedPage);
+        if (!listing) {
+          next = await fetch(requestedPage);
+        } else {
+          final cached = await readScopedPage<OperationsWorkbenchTask>(
+            requestedPage,
+            slot: 'applications',
+            query: [repository, query, size],
+            currentQuery: () => [_repository, _queryIdentity, size],
+            useCache: useCache,
+            fetchPage: (page) async =>
+                (await fetch(page)).toPagedReadSnapshot(),
+          );
+          next =
+              (cached
+                      as PagedReadSnapshot<
+                        OperationsWorkbenchTask,
+                        OperationsWorkbenchData
+                      >)
+                  .snapshot;
+        }
       }
       if (!current()) return;
       final visibleIds =
@@ -841,21 +927,45 @@ class _SubcontractDecompositionPageState
   Future<void> _loadDraw({
     int? page,
     bool background = false,
+    bool useCache = false,
     _RetainedRefreshBatch? batch,
   }) => trackRefresh(
-    _loadDrawRows(page: page, background: background, batch: batch),
+    _loadDrawRows(
+      page: page,
+      background: background,
+      batch: batch,
+      useCache: useCache,
+    ),
     replaceKey: 'draw-rows',
   );
 
   Future<void> _loadDrawRows({
     int? page,
     bool background = false,
+    bool useCache = false,
     _RetainedRefreshBatch? batch,
   }) async {
     if (!mounted || !_pendingSeg || !_drawVisible) return;
     final requestId = ++_drawRequestId;
     final requestedPage = page ?? _drawPage;
     final query = _drawQueryIdentity;
+    final reader = _readerGeneration;
+    final repository = _drawRepository;
+    final keyword = _keyword;
+    final orderId = _drawOrderId;
+    final orderItemId = _drawOrderItemId;
+    final applicationItemIds = List<String>.unmodifiable(
+      _drawApplicationItemIds,
+    );
+    final applicationId = _drawApplicationId;
+    bool readCurrent() =>
+        mounted &&
+        reader == _readerGeneration &&
+        query == _drawQueryIdentity &&
+        identical(repository, _drawRepository) &&
+        _pendingSeg &&
+        _drawVisible;
+    if (background) _drawRead.invalidate();
     final retainRows =
         background &&
         _drawData != null &&
@@ -866,18 +976,61 @@ class _SubcontractDecompositionPageState
       _drawLoading = true;
       _drawBackgroundRefresh = retainRows;
       _drawError = null;
-      if (!retainRows) _drawData = null;
+      if (!retainRows && _acceptedDrawQuery != query) _drawData = null;
     });
     try {
-      final next = await _drawRepository.list(
-        page: requestedPage,
+      Future<SubcontractDrawTaskList> fetch(int page) => repository.list(
+        page: page,
         size: SubcontractDrawRepository.listLimit,
-        keyword: _keyword,
-        orderId: _drawOrderId,
-        orderItemIds: _drawOrderItemId == null ? const [] : [_drawOrderItemId!],
-        applicationItemIds: _drawApplicationItemIds.toList(growable: false),
-        applicationId: _drawApplicationId,
+        keyword: keyword,
+        orderId: orderId,
+        orderItemIds: orderItemId == null ? const [] : [orderItemId],
+        applicationItemIds: applicationItemIds,
+        applicationId: applicationId,
       );
+      final SubcontractDrawTaskList next;
+      if (background) {
+        next = await fetch(requestedPage);
+      } else {
+        final cached = await _drawRead.read(
+          requestedPage,
+          scope: [reader, query, repository],
+          useCache: useCache,
+          isCurrent: readCurrent,
+          canPrefetch: () =>
+              TickerMode.valuesOf(context).enabled &&
+              (ModalRoute.of(context)?.isCurrent ?? true),
+          fetchPage: (page) async {
+            final result = await fetch(page);
+            return PagedReadSnapshot(page: result.page, snapshot: result);
+          },
+          onPrefetchError: (error) {
+            if (!readCurrent() || !pagedReadAccessDenied(error)) return;
+            setState(() {
+              _drawRequestId++;
+              _drawData = null;
+              _acceptedDrawQuery = null;
+              _selectedDrawIds.clear();
+              _drawCount = null;
+              _submittedCount = null;
+              _drawLoading = false;
+              _drawBackgroundRefresh = false;
+              final forbidden =
+                  error is ApiException &&
+                  (error.httpStatus == 403 || error.code == 'FORBIDDEN');
+              if (forbidden) _drawVisible = false;
+              _drawError = forbidden ? null : (error as ApiException).message;
+            });
+          },
+        );
+        next =
+            (cached
+                    as PagedReadSnapshot<
+                      SubcontractDrawTaskRow,
+                      SubcontractDrawTaskList
+                    >)
+                .snapshot;
+      }
       if (!mounted ||
           requestId != _drawRequestId ||
           query != _drawQueryIdentity) {
@@ -1107,7 +1260,7 @@ class _SubcontractDecompositionPageState
     }
     setState(() => _drawNavigating = true);
     try {
-      final submitted = await context.push<bool>(
+      final submitted = await _navigation.push<bool>(
         RouteName.operationsSubcontractDrawRequestFor(orderItemIds),
       );
       if (!mounted) return;
@@ -1327,10 +1480,7 @@ class _SubcontractDecompositionPageState
           'ORDER',
           'SUBCONTRACT_ORDER',
         }.contains(document?.docType.toUpperCase()) &&
-        !const {
-          'ORDER_CLOSED',
-          'ORDER_CLOSE_PENDING',
-        }.contains(task.progressStatus) &&
+        task.progressStatus != 'ORDER_CLOSED' &&
         (ref.read(isSuperAdminProvider) ||
             ref
                 .read(currentPermissionsProvider)
@@ -1583,32 +1733,14 @@ class _SubcontractDecompositionPageState
         externalHeader: _buildStageToolbar(_categoryCounts ?? const {}),
       );
     }
-    if (_data == null && _loading) {
-      return _withInitialStages(
-        Center(
-          child: Semantics(
-            label: '正在加载委外任务',
-            child: const CircularProgressIndicator(),
-          ),
-        ),
-      );
-    }
-    if (_error != null && _data == null) {
-      return _withInitialStages(
-        UtenEmpty.error(
-          message: '无法加载委外任务',
-          description: _error,
-          actionLabel: '重试',
-          onAction: () => _load(),
-        ),
-      );
-    }
-    final data = _data;
-    if (data == null) {
-      return _withInitialStages(
-        UtenEmpty.error(actionLabel: '重试', onAction: () => _load()),
-      );
-    }
+    // Keep the category/time controls and table header mounted while a new
+    // query is pending. The empty model only describes the table shell; rows
+    // and capabilities remain owned by an accepted server response.
+    final data =
+        _data ??
+        const OperationsWorkbenchData.loading(
+          department: OperationsWorkbenchDepartment.subcontract,
+        );
 
     // 大小屏同一张表（2026-10-09 用户口径：窄屏横向滚动，窄屏卡片列表退役，
     // 不再单独维护两套渲染）。
@@ -1697,6 +1829,14 @@ class _SubcontractDecompositionPageState
       body: Builder(
         builder: (context) {
           if (seg == null) {
+            if (_error != null) {
+              return UtenEmpty.error(
+                message: '无法加载委外任务',
+                description: _error,
+                actionLabel: '重试',
+                onAction: () => _load(),
+              );
+            }
             return const UtenFilterPlaceholder(
               message: '在上方选择阶段后开始办理',
               description: '阶段默认不选中；终态任务请用末尾「历史记录」按时间查阅',
@@ -1711,14 +1851,6 @@ class _SubcontractDecompositionPageState
     );
   }
 
-  Widget _withInitialStages(Widget body) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      _buildStageToolbar(_categoryCounts ?? const {}),
-      Expanded(child: body),
-    ],
-  );
-
   Widget _buildTable(OperationsWorkbenchData data) {
     // 「待处理」= 拍平的一张表(ADR-171 修订二)：领料行钉顶(自有数据源一次拉全) +
     // 委外申请行(工作台投影服务端分页)，不再分「委外申请 / 领料」子分类。
@@ -1730,6 +1862,7 @@ class _SubcontractDecompositionPageState
         _hasDecomposePermissions &&
         data.capabilities.canCreateSubcontractOrder;
     return MasterDataTableView<OperationsWorkbenchTask>(
+      expensiveRowMounts: false,
       rowsController: _taskRows,
       tableKey:
           'features.subcontract.pages.subcontract_decomposition_page.SubcontractDecompositionPageState._buildTable.1',
@@ -1930,7 +2063,8 @@ class _SubcontractDecompositionPageState
           : [_createOrderButton()],
       isLoading: _loading && !_backgroundRefresh,
       isRefreshing: _backgroundRefresh,
-      refreshError: _error,
+      error: _data == null ? _error : null,
+      refreshError: _data == null ? null : _error,
       onRetry: () => _load(background: true),
       emptyMessage: _seg?.history == true ? '该时间段内暂无委外任务' : '当前筛选下没有委外任务',
       currentPage: data.page,
@@ -1947,7 +2081,7 @@ class _SubcontractDecompositionPageState
       ),
       onPageChange: (page) {
         setState(() => _page = page);
-        _load(page: page);
+        return _load(page: page, useCache: true);
       },
     );
   }
@@ -1998,7 +2132,7 @@ class _SubcontractDecompositionPageState
 
   void _changeDrawPage(int page) {
     _selectedDrawIds.clear();
-    _loadDraw(page: page);
+    _loadDraw(page: page, useCache: true);
   }
 
   bool _actionableDraw(SubcontractDrawTaskRow row) =>
@@ -2015,9 +2149,16 @@ class _SubcontractDecompositionPageState
             in _drawData?.page.items ?? const <SubcontractDrawTaskRow>[])
           SubcontractPendingDrawRow(row),
     ];
-    final applicationRows = [
-      for (final task in data.items) SubcontractApplicationRow(task),
-    ];
+    List<SubcontractPendingRow> projectApplications(
+      List<OperationsWorkbenchTask> tasks,
+    ) => [for (final task in tasks) SubcontractApplicationRow(task)];
+    final applicationRows = projectApplications(data.items);
+    projectReadWindowBinding(
+      data.items,
+      applicationRows,
+      project: projectApplications,
+      projectionKey: ('subcontract-pending-application-rows', _pendingSeg),
+    );
     String rowId(SubcontractPendingRow row) => switch (row) {
       SubcontractApplicationRow(:final task) => task.id,
       SubcontractPendingDrawRow(:final row) => 'draw-${row.orderItemId}',
@@ -2038,6 +2179,7 @@ class _SubcontractDecompositionPageState
           ),
         );
     return MasterDataTableView<SubcontractPendingRow>(
+      expensiveRowMounts: false,
       rowsController: _pendingRows,
       tableKey:
           'features.subcontract.pages.subcontract_decomposition_page.SubcontractDecompositionPageState._buildPendingTable.1',
@@ -2337,7 +2479,8 @@ class _SubcontractDecompositionPageState
           (_loading && !_backgroundRefresh) ||
           (_drawLoading && !_drawBackgroundRefresh),
       isRefreshing: _backgroundRefresh || _drawBackgroundRefresh,
-      refreshError: _error ?? _drawError,
+      error: _data == null ? _error : null,
+      refreshError: (_data == null ? null : _error) ?? _drawError,
       onRetry: () => _refreshAll(background: true),
       emptyMessage: _drawScoped || _keyword.isNotEmpty
           ? '当前筛选下没有待处理的委外任务'
@@ -2350,7 +2493,7 @@ class _SubcontractDecompositionPageState
       paginationScope: (_readerGeneration, _keyword, _seg, _exception),
       onPageChange: (page) {
         setState(() => _page = page);
-        _load(page: page);
+        return _load(page: page, useCache: true);
       },
     );
   }

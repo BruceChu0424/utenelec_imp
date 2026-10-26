@@ -10,6 +10,7 @@
 // 仓库负责人(仓管员, ADR-115 / ADR-149)：列表「负责人」列 + 详情「设置负责人」。负责关系决定
 // 谁看、谁收仓库任务(服务端唯一判定)：登记在主仓上 = 仓库主管(看全部、可挑任一仓)；登记在子仓上
 // = 只看、只收自己负责的仓；没登记负责人的仓交主管，没登记的同事也看得到。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../widgets/master_operation_history_panel.dart';
@@ -25,6 +26,9 @@ import '../../../components/inputs/uten_employee_multi_picker.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
+import 'package:collection/collection.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../components/print/complete_print_snapshot.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -87,6 +91,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
   bool get inlineCanEdit => _canEdit;
   @override
   bool get inlineReadReady =>
+      _warehouses != null &&
       !_loading &&
       !_detailLoading &&
       !_tableBatchBusy &&
@@ -228,7 +233,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
       ref.read(currentPermissionsProvider).contains(Perm.warehouseStatus);
 
   Future<void> _loadWarehouses() async {
-    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final boundary = captureInlineRead();
     final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
@@ -278,7 +283,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
   }
 
   Future<void> _loadKeepers() async {
-    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final boundary = captureInlineRead();
     try {
       final assignments = await ref
           .read(warehouseKeeperRepositoryProvider)
@@ -627,7 +632,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
   }
 
   Future<void> _showDetail(String id) async {
-    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final boundary = captureInlineRead();
     final generation = _detailRequests.begin();
     setState(() {
       _selectedId = id;
@@ -688,24 +693,47 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
     ...masterFilterQueryParams(_filters),
   };
 
-  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  /// 打印预览数据：按当前筛选口径完整分页读取，列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
-    final result = await ref
-        .read(warehouseRepositoryProvider)
-        .list(
-          size: 2000,
-          keyword: _keyword.trim().isEmpty ? null : _keyword,
-          filters: _filters,
-        );
-    return UtenPrintTable(
-      columnKeys: [for (final c in _columns) c.key],
-      rowIds: [for (final item in result.items) item.id],
-      headers: [for (final c in _columns) c.label],
-      rows: [
-        for (final item in result.items)
-          [for (final c in _columns) c.value(item) ?? ''],
-      ],
+    final repository = ref.read(warehouseRepositoryProvider);
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final epoch = ref.read(exportContextEpochProvider);
+    final version = _tableBatchEpoch;
+    final query = Map<String, dynamic>.of(_exportQuery);
+    final filters = Map<String, String?>.unmodifiable(_filters);
+    final keyword = _keyword.trim().isEmpty ? null : _keyword;
+    final columns = List.of(_columns);
+    var retired = false;
+    bool current() {
+      if (retired || !mounted) return false;
+      retired =
+          version != _tableBatchEpoch ||
+          epoch != ref.read(exportContextEpochProvider) ||
+          boundary != ref.read(sensitiveReadBoundaryProvider) ||
+          !const DeepCollectionEquality().equals(query, _exportQuery);
+      return !retired;
+    }
+
+    final scope = await boundary.api.captureRequestScope(isCurrent: current);
+    final table = await scope.run(
+      () => loadCompletePrintSnapshot(
+        loadPage: (page, size) => repository.list(
+          page: page,
+          size: size,
+          keyword: keyword,
+          filters: filters,
+        ),
+        idOf: (row) => row.id,
+        headers: [for (final column in columns) column.label],
+        columnKeys: [for (final column in columns) column.key],
+        cellsOf: (row) => [
+          for (final column in columns) column.value(row) ?? '',
+        ],
+        isCurrent: () => current() && scope.isCurrent,
+      ),
     );
+    await scope.verify();
+    return table;
   }
 
   List<MasterColumnDef<WarehouseListItem>> get _columns {
@@ -1325,6 +1353,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
               _directoryHeader(context, showCreate: false),
               Expanded(
                 child: MasterDataTableView<WarehouseDetail>(
+      expensiveRowMounts: inlineEdit.active,
                   appendRowsSource: inlineAppendRowsSource,
                   key: const Key('warehouse-master-table'),
                   tableKey: 'master.warehouses',
@@ -1397,7 +1426,9 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
         : (detail.code ?? l10n.warehouseMasterTitle);
     final remark = detail.remark?.trim();
     final fields = _fields(editing: detail);
-    return Padding(
+    return UtenPageEdgePadding(
+      preserveStart: true,
+
       key: ValueKey('warehouse-master-detail-${detail.id}'),
       padding: EdgeInsets.symmetric(
         horizontal: context.breakpoint.isCompact ? 0 : UtenSpacing.s16,
@@ -1566,15 +1597,17 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
             child: SelectionArea(
               child: _tableView
                   ? _warehouseTable(context)
-                  : UtenSplitView(
-                      persistenceKey: 'basicData.warehouse',
-                      minTwoPaneWidth: 840,
-                      leadingNoun: l10n.warehouseMasterWarehouseLabel,
-                      selectedLeadingKey: _selectedId,
-                      selectedLeadingLabel: selected?.name,
-                      compactHeader: _directoryHeader(context),
-                      leading: _directory(context),
-                      trailing: _detailPane(context),
+                  : UtenPageEdgePadding(
+                      child: UtenSplitView(
+                        persistenceKey: 'basicData.warehouse',
+                        minTwoPaneWidth: 840,
+                        leadingNoun: l10n.warehouseMasterWarehouseLabel,
+                        selectedLeadingKey: _selectedId,
+                        selectedLeadingLabel: selected?.name,
+                        compactHeader: _directoryHeader(context),
+                        leading: _directory(context),
+                        trailing: _detailPane(context),
+                      ),
                     ),
             ),
           ),

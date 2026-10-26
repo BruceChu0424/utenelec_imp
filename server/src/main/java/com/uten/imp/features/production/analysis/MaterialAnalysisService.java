@@ -495,7 +495,7 @@ public class MaterialAnalysisService {
                 .setParameter("sourceType", normalizedSource)
                 .setParameter("keyword", normalizedKeyword)
                 .setParameter("limit", safeSize)
-                .setParameter("offset", (safePage - 1) * safeSize);
+                .setParameter("offset", (long) (safePage - 1) * safeSize);
         ownerScope.bind(dataQuery);
         List<AnalysisListItem> items = NativeQueryResults.objectArrayRows(dataQuery).stream()
                 .map(row -> new AnalysisListItem(
@@ -1165,7 +1165,7 @@ public class MaterialAnalysisService {
                 """ + orderBy);
         if (!kw.isEmpty()) idsQuery.setParameter("kw", kw);
         if (billNoFilter) idsQuery.setParameter("orderBillNo", orderBillNo.strip());
-        idsQuery.setFirstResult((page - 1) * size).setMaxResults(size);
+        idsQuery.setFirstResult(com.uten.imp.common.web.Pageables.checkedOffset(page, size)).setMaxResults(size);
         @SuppressWarnings("unchecked")
         List<UUID> orderIds = (List<UUID>) idsQuery.getResultList();
         if (orderIds.isEmpty()) {
@@ -1262,7 +1262,7 @@ public class MaterialAnalysisService {
     public java.util.Map<String, List<java.util.Map<String, Object>>> salesCandidatesFacets(
             String keyword) {
         String kw = KeywordSearch.phrase(keyword);
-        Query query = em.createNativeQuery(
+        Query query = NativeFacets.query(em, "orderNo",
                 "SELECT o.bill_no, COUNT(DISTINCT o.id)\n"
                         + salesCandidatesFromWhere(kw, false)
                         + " GROUP BY o.bill_no"
@@ -1271,7 +1271,7 @@ public class MaterialAnalysisService {
                 .setMaxResults(500);
         if (!kw.isEmpty()) query.setParameter("kw", kw);
         return java.util.Map.of("orderNo",
-                NativeFacets.rows(NativeQueryResults.objectArrayRows(query)));
+                NativeFacets.rowsOf(query));
     }
 
     /** salesCandidates 列表/facets 共用的 FROM + LATERAL(在制草稿) + WHERE 基座。 */

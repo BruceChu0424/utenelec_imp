@@ -1,3 +1,4 @@
+import '../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../shared/formatters/exact_decimal.dart';
 // 「从上游单据引入」两步大面板（采购/销售/委外编辑页共用）。
 //
@@ -15,7 +16,7 @@ import '../../shared/formatters/exact_decimal.dart';
 // 数量校验与提交）。确认后弹出 [UtenDocLinkPickResult]，由调用方
 // 映射为各自领域的结果类型。
 //
-// 注意：名称类闭包（docColumns、partyEntries、partyName、goodsName 等）
+// 注意：名称类闭包（docColumns、partyName、goodsName 等）
 // 接收 sheet build 期由 [UtenDocLinkPickerConfig.watchNames] 统一解析
 // （ref.watch）的名称对象，异步更新会触发 sheet 重建；异步上下文闭包
 // （listDocs、loadDetail、initNames、loadGoodsNames）接收 WidgetRef，
@@ -32,15 +33,19 @@ import '../inputs/uten_field_message.dart';
 import '../../shared/models/paged_result.dart';
 import '../../shared/models/procurement_source_terms.dart';
 import '../forms/link_quantity_validator.dart';
-import '../inputs/uten_dropdown_field.dart';
 import '../inputs/uten_input_decoration.dart';
 import '../inputs/uten_search_bar.dart';
 import 'uten_adaptive_panel.dart';
+import 'uten_panel_header.dart';
 import 'uten_editable_grid.dart';
 
 // 过渡依赖：MasterDataTableView 目前仍在 features/basic_data 下
 // （审计 §4.1 第 4 批迁入 components/ 后本导入同步改写）。
 import '../../features/basic_data/widgets/master_data_table_view.dart';
+import '../../features/basic_data/widgets/uten_master_picker.dart';
+import '../../shared/providers/export_context_epoch_provider.dart';
+
+typedef UtenDocLinkParty = ({String id, String name});
 
 /// 上游单据详情的归一化视图：往来方 id + 明细行（由配置方从领域模型转换）。
 ///
@@ -180,7 +185,8 @@ class UtenDocLinkPickerConfig<D, I, N> {
     required this.docIdOf,
     required this.partyIdOf,
     required this.watchNames,
-    required this.partyEntries,
+    required this.pickParty,
+    required this.loadPartyNames,
     required this.partyName,
     required this.initNames,
     required this.loadGoodsNames,
@@ -222,8 +228,10 @@ class UtenDocLinkPickerConfig<D, I, N> {
   /// sheet build 期解析名称服务（实现内部用 ref.watch）。
   final N Function(WidgetRef ref) watchNames;
 
-  /// 往来方下拉选项。
-  final Map<String, String> Function(N names) partyEntries;
+  /// Complete, authorized candidates come from the existing paged master picker.
+  final Future<UtenDocLinkParty?> Function(BuildContext context, WidgetRef ref)
+  pickParty;
+  final Future<void> Function(WidgetRef ref, Set<String> ids) loadPartyNames;
 
   /// 往来方显示名（Step2 标题用）。
   final String Function(N names, String? partyId) partyName;
@@ -324,7 +332,33 @@ class _UtenDocLinkPickerSheet<D, I, N> extends ConsumerStatefulWidget {
 }
 
 class _UtenDocLinkPickerSheetState<D, I, N>
-    extends ConsumerState<_UtenDocLinkPickerSheet<D, I, N>> {
+    extends ConsumerState<_UtenDocLinkPickerSheet<D, I, N>>
+    with ScopedPagedReadViewMixin<_UtenDocLinkPickerSheet<D, I, N>> {
+  final _readViewportRows = MasterDataTableRowsController<D>();
+  int get _visibleReadPage => _docPage == null
+      ? (_docPage?.page ?? 1)
+      : (_readViewportRows.visiblePage ?? (_docPage?.page ?? 1));
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _docsRequests.invalidate();
+    _detailRequests.invalidate();
+    if (mounted) {
+      setState(() {
+        _docPage = null;
+        _upDetail = null;
+        _grid.clear();
+        _loadingDocs = false;
+        _loadingItems = false;
+      });
+    }
+    if (mounted) {
+      setState(() {
+        _docsError = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   UtenDocLinkPickerConfig<D, I, N> get _cfg => widget.config;
 
   // Step1 · 上游单据
@@ -337,6 +371,7 @@ class _UtenDocLinkPickerSheetState<D, I, N>
   String? _sortKey;
   bool _sortAsc = true;
   final _docsRequests = LatestLinkRequestGuard();
+  bool _readerInvalidated = false;
   final _detailRequests = LatestLinkRequestGuard();
 
   // Step2 · 明细
@@ -351,6 +386,21 @@ class _UtenDocLinkPickerSheetState<D, I, N>
   @override
   void initState() {
     super.initState();
+    ref.listenManual(exportContextEpochProvider, (previous, next) {
+      if (!mounted || _readerInvalidated || previous == next) return;
+      _readerInvalidated = true;
+      _docsRequests.invalidate();
+      _detailRequests.invalidate();
+      setState(() {
+        _docPage = null;
+        _upDetail = null;
+        _grid.clear();
+        _loadingDocs = false;
+        _loadingItems = false;
+        _docsError = null;
+      });
+      Navigator.of(context).pop();
+    });
     _grid = UtenEditableGridController<UtenDocLinkItemRow<I>>();
     // 表头已选往来方 → 面板往来方筛选锁定为该往来方。
     _partyId = widget.initialPartyId;
@@ -369,7 +419,8 @@ class _UtenDocLinkPickerSheetState<D, I, N>
 
   // ---- Step1：上游单据 ---------------------------------------------------
 
-  Future<void> _loadDocs(int page) async {
+  Future<void> _loadDocs(int page, {bool useCache = false}) async {
+    if (_readerInvalidated) return;
     final requestVersion = _docsRequests.begin();
     // 用户刷新筛选条件时，任何尚未完成的明细请求都不再有资格切换步骤。
     _detailRequests.invalidate();
@@ -378,14 +429,28 @@ class _UtenDocLinkPickerSheetState<D, I, N>
       _loadingItems = false;
       _docsError = null;
     });
+    final config = _cfg;
+    final keyword = _keyword.trim().isEmpty ? null : _keyword;
+    final partyId = _partyId, sort = _sortKey;
+    final order = sort == null ? null : (_sortAsc ? 'asc' : 'desc');
+    Object pagingQuery() => [_cfg, _keyword, _partyId, _sortKey, _sortAsc];
     try {
-      final r = await _cfg.listDocs(
-        ref,
+      final r = await readScopedPage<D>(
         page,
-        _keyword.trim().isEmpty ? null : _keyword,
-        _partyId,
-        _sortKey,
-        _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        fetchPage: (target) =>
+            config.listDocs(ref, target, keyword, partyId, sort, order),
+      );
+      if (!mounted || !_docsRequests.isCurrent(requestVersion)) return;
+      await _cfg.loadPartyNames(
+        ref,
+        r.items
+            .map(_cfg.partyIdOf)
+            .whereType<String>()
+            .where((id) => id.isNotEmpty)
+            .toSet(),
       );
       if (!mounted || !_docsRequests.isCurrent(requestVersion)) return;
       setState(() {
@@ -440,6 +505,10 @@ class _UtenDocLinkPickerSheetState<D, I, N>
         setState(() => _loadingItems = false);
         context.appError('上游单据${_cfg.partyNoun}与表头${_cfg.partyNoun}不一致，已阻止引入');
         return;
+      }
+      if (detail.partyId?.isNotEmpty == true) {
+        await _cfg.loadPartyNames(ref, {detail.partyId!});
+        if (!mounted || !_detailRequests.isCurrent(requestVersion)) return;
       }
       final goodsIds = detail.items
           .map(_cfg.itemFields.goodsId)
@@ -631,35 +700,16 @@ class _UtenDocLinkPickerSheetState<D, I, N>
     final title = inStep2
         ? '选择明细(${_cfg.partyName(names, _upDetail!.partyId)})'
         : _cfg.step1Title;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s8,
-        UtenSpacing.s12,
-        UtenSpacing.s4,
-        UtenSpacing.s8,
-      ),
-      child: Row(
-        children: [
-          if (inStep2)
-            TextButton.icon(
+    return UtenPanelHeader(
+      title: title,
+      onClose: () => Navigator.of(context).pop(),
+      leading: inStep2
+          ? TextButton.icon(
               onPressed: () => setState(() => _upDetail = null),
               icon: const Icon(Icons.arrow_back_rounded, size: 18),
               label: const Text('重选单据'), // TODO(l10n): 补 arb
-            ),
-          Expanded(
-            child: Text(
-              title,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close_rounded),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
-      ),
+            )
+          : null,
     );
   }
 
@@ -687,24 +737,24 @@ class _UtenDocLinkPickerSheetState<D, I, N>
               const SizedBox(width: UtenSpacing.s12),
               SizedBox(
                 width: 240,
-                child: UtenDropdownField(
+                child: UtenMasterPickerField<UtenDocLinkParty>(
                   label: _partyLocked
                       ? '${_cfg.partyNoun}(已锁定)'
                       : _cfg.partyNoun,
-                  value: _partyId ?? '',
-                  enabled: !_partyLocked,
+                  icon: Icons.filter_alt_outlined,
+                  hint: _cfg.allPartiesLabel,
+                  initialId: _partyId,
+                  initialName: _partyId == null
+                      ? null
+                      : _cfg.partyName(names, _partyId),
+                  enabled: !_partyLocked && !_readerInvalidated,
                   allowClear: !_partyLocked,
-                  items: [
-                    if (!_partyLocked)
-                      UtenDropdownItem(value: '', label: _cfg.allPartiesLabel),
-                    for (final e in _cfg.partyEntries(names).entries)
-                      UtenDropdownItem(value: e.key, label: e.value),
-                  ],
-                  onChanged: (v) {
+                  idOf: (party) => party.id,
+                  nameOf: (party) => party.name,
+                  onPick: () => _cfg.pickParty(context, ref),
+                  onChanged: (value) {
                     if (_partyLocked) return;
-                    setState(() {
-                      _partyId = (v == null || v.isEmpty) ? null : v;
-                    });
+                    setState(() => _partyId = value);
                     _loadDocs(1);
                   },
                 ),
@@ -714,6 +764,8 @@ class _UtenDocLinkPickerSheetState<D, I, N>
         ),
         Expanded(
           child: MasterDataTableView<D>(
+            rowsController: _readViewportRows,
+            expensiveRowMounts: false,
             columns: _cfg.docColumns(names),
             items: _docPage?.items ?? const [],
             facets: const {},
@@ -727,12 +779,12 @@ class _UtenDocLinkPickerSheetState<D, I, N>
             isLoading: _loadingDocs && _docPage == null,
             loadingMore: _loadingDocs && _docPage != null,
             error: _docsError,
-            onRetry: () => _loadDocs(1),
+            onRetry: () => _loadDocs(_visibleReadPage),
             emptyMessage: _cfg.step1EmptyMessage,
             currentPage: _docPage?.page ?? 1,
             totalPages: _docPage?.totalPages ?? 1,
             paginationScope: (_keyword, _partyId),
-            onPageChange: (p) => _loadDocs(p),
+            onPageChange: (p) => _loadDocs(p, useCache: true),
           ),
         ),
       ],

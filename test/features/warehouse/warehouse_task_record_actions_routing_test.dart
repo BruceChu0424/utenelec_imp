@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/nav_helpers.dart';
+import 'package:uten_imp/core/router/page_navigation_session.dart';
 import 'package:uten_imp/core/router/route_access_policy.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
@@ -115,6 +116,20 @@ class _ActionButton extends ConsumerStatefulWidget {
 }
 
 class _ActionButtonState extends ConsumerState<_ActionButton> {
+  final _navigation = PageNavigationSession();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
+  void dispose() {
+    _navigation.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -130,9 +145,15 @@ class _ActionButtonState extends ConsumerState<_ActionButton> {
               context,
               ref,
               widget.rows,
+              navigation: _navigation,
               preStock: widget.preStock,
             )
-          : openWarehouseTaskRecord(context, ref, widget.rows.single);
+          : openWarehouseTaskRecord(
+              context,
+              ref,
+              widget.rows.single,
+              navigation: _navigation,
+            );
       future.catchError((Object error) => widget.errors.add(error));
     },
     child: const Text('打开原报工'),

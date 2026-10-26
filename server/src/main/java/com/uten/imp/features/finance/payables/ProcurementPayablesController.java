@@ -52,7 +52,7 @@ public class ProcurementPayablesController {
     }
 
     /** 来源单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
-    @GetMapping("/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('ar_ap_ledger:view') and hasAuthority('finance:view:all')")
     public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(
             @RequestParam(required = false) String businessType,

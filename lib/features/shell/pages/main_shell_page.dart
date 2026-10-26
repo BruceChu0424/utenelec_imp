@@ -31,6 +31,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_page_scrollbar_host.dart';
+import '../../../components/layout/uten_page_layout.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/responsive/display_zoom.dart';
@@ -52,6 +54,8 @@ import '../../../shared/ai/chat/ai_chat_overlay.dart';
 
 typedef MainShellReminderBuilder =
     Widget Function({required bool visible, required Widget child});
+
+enum _MainShellTabLayoutDomain { dashboard, notice, profile, settings }
 
 class MainShellPage extends ConsumerStatefulWidget {
   const MainShellPage({super.key, required this.child, this.reminderBuilder});
@@ -81,8 +85,23 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
   /// 连续页位置（喂胶囊滑块跟手；由 UtenSlidingTabView 随转场 lerp 驱动）
   late final ValueNotifier<double> _position;
 
-  /// 手动收起偏好由外壳持有，切换业务路由或临时缩窄窗口不会重置。
-  bool _railCollapsed = false;
+  /// Dashboard keeps its own preference; other pages start collapsed on each
+  /// path entry and retain manual changes only while that path stays active.
+  bool _dashboardRailCollapsed = false;
+  bool _pageRailCollapsed = true;
+  String? _activeRailPath;
+
+  bool _railCollapsedFor(String location) => location == RouteName.dashboard
+      ? _dashboardRailCollapsed
+      : _pageRailCollapsed;
+
+  void _toggleRail(String location) => setState(() {
+    if (location == RouteName.dashboard) {
+      _dashboardRailCollapsed = !_dashboardRailCollapsed;
+    } else {
+      _pageRailCollapsed = !_pageRailCollapsed;
+    }
+  });
 
   @override
   void initState() {
@@ -154,11 +173,35 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
       // rail 桌面：都关——点 Tab 即时切换，避免大屏整页横移突兀，也不开横滑手势。
       swipeEnabled: context.breakpoint.isCompact,
       animated: context.breakpoint.isCompact,
-      children: const [
-        _KeepAlivePage(child: DashboardPage()),
-        _KeepAlivePage(child: NoticeListPage()),
-        _KeepAlivePage(child: ProfilePage()),
-        _KeepAlivePage(child: SettingsPage()),
+      children: [
+        _KeepAlivePage(
+          child: UtenPageLayoutDomainScope(
+            domain: _MainShellTabLayoutDomain.dashboard,
+            active: tabIndex == 0,
+            child: const DashboardPage(),
+          ),
+        ),
+        _KeepAlivePage(
+          child: UtenPageLayoutDomainScope(
+            domain: _MainShellTabLayoutDomain.notice,
+            active: tabIndex == 1,
+            child: const NoticeListPage(),
+          ),
+        ),
+        _KeepAlivePage(
+          child: UtenPageLayoutDomainScope(
+            domain: _MainShellTabLayoutDomain.profile,
+            active: tabIndex == 2,
+            child: const ProfilePage(),
+          ),
+        ),
+        _KeepAlivePage(
+          child: UtenPageLayoutDomainScope(
+            domain: _MainShellTabLayoutDomain.settings,
+            active: tabIndex == 3,
+            child: const SettingsPage(),
+          ),
+        ),
       ],
     );
   }
@@ -174,6 +217,12 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     // 「确认执行没反应」即此)。Tab/子页判定、高亮归属、点 Tab 回调三处同口径。
     final routerState = GoRouterState.of(context);
     final location = routerState.uri.path;
+    // Use the actual internal leaf path above, including imperative pushes.
+    // Browser URL, query-only filtering and refreshes are not page identities.
+    if (_activeRailPath != location) {
+      _activeRailPath = location;
+      _pageRailCollapsed = true;
+    }
 
     // 「返回即刷新」(ADR-108)：回到工作台时按需重拉——期间本端写过数据或距上次
     // 超过 30 秒才动，且推迟到转场结束：徽章汇总一次请求 + 今日概览(重聚合)按需一次，
@@ -211,7 +260,15 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     }
 
     // compact 保留悬浮胶囊；medium+ 切换为左侧 Rail + 内容收敛
-    final shell = context.breakpoint.isCompact
+    final compact = context.breakpoint.isCompact;
+    final canExtend =
+        !compact &&
+        UtenSideNavRail.extendedFor(
+          canvasWidth: context.screenWidth,
+          fontZoom: UtenDisplayScale.fontZoomOf(context),
+        );
+    final railExtended = canExtend && !_railCollapsedFor(location);
+    final shell = compact
         ? _buildCompactShell(
             tabIndex: tabIndex,
             labels: labels,
@@ -224,9 +281,17 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
             labels: labels,
             unread: unread,
             workbenchTodos: workbenchTodos,
+            canExtend: canExtend,
+            extended: railExtended,
           );
     // 包空闲超时守卫：监听全局活动续期，超时弹窗 + 登出（仅已登录区生效）
-    final body = AiChatOverlay(currentRoute: location, child: shell);
+    final body = AiChatOverlay(
+      currentRoute: location,
+      launcherRailWidth: compact
+          ? null
+          : UtenSideNavRail.widthFor(context, extended: railExtended),
+      child: shell,
+    );
     return IdleTimeoutGuard(
       child:
           widget.reminderBuilder?.call(
@@ -263,21 +328,24 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
                 // 仅以 Offstage 隐藏；否则各 Tab 的滚动位置/状态随 PageView 卸载而丢失
                 // （从 Tab 进子页再返回会回到顶部）。Offstage 仍 layout 子树、保留 element
                 // 与 State，PageView 的 widget 树位置恒定，切回 Tab 原样恢复位置。
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: TickerMode(
-                        // 业务子页保留四个主 Tab 的 State/滚动位置，但不可继续
-                        // 驱动骨架屏、轮播等 ticker，避免隐藏页面占用渲染帧。
-                        enabled: tabIndex != null,
-                        child: Offstage(
-                          offstage: tabIndex == null,
-                          child: _slidingTabs(tabIndex: tabIndex),
+                child: UtenPageScrollbarHost(
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: TickerMode(
+                          // 业务子页保留四个主 Tab 的 State/滚动位置，但不可继续
+                          // 驱动骨架屏、轮播等 ticker，避免隐藏页面占用渲染帧。
+                          enabled: tabIndex != null,
+                          child: Offstage(
+                            offstage: tabIndex == null,
+                            child: _slidingTabs(tabIndex: tabIndex),
+                          ),
                         ),
                       ),
-                    ),
-                    if (tabIndex == null) Positioned.fill(child: widget.child),
-                  ],
+                      if (tabIndex == null)
+                        Positioned.fill(child: widget.child),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -308,11 +376,9 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     required List<String> labels,
     required int unread,
     required int workbenchTodos,
+    required bool canExtend,
+    required bool extended,
   }) {
-    final canExtend = UtenSideNavRail.extendedFor(
-      canvasWidth: context.screenWidth,
-      fontZoom: UtenDisplayScale.fontZoomOf(context),
-    );
     return Scaffold(
       // 与 compact 保持一致：键盘弹起不压缩页面（桌面端影响可忽略）
       resizeToAvoidBottomInset: false,
@@ -322,10 +388,8 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             UtenSideNavRail(
-              extended: canExtend && !_railCollapsed,
-              onToggleExtended: canExtend
-                  ? () => setState(() => _railCollapsed = !_railCollapsed)
-                  : null,
+              extended: extended,
+              onToggleExtended: canExtend ? () => _toggleRail(location) : null,
               // 主 Tab 页高亮当前页；业务子页面高亮归属 tab（前缀匹配）
               selectedIndex: tabIndex ?? _capsuleIndex(location),
               onTap: _onTabTap,
@@ -335,28 +399,35 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
             Expanded(
               // 页面正文不设固定版心，随导航收起 / 展开使用全部可用宽度。
               // 只改约束、不切换容器结构，保留表单输入、滚动位置和常驻 Tab State。
-              child: UtenContentContainer(
-                // ⚠️ selectable:false 必须保留：此容器包住所有 medium+ 路由页（含常驻
-                // 保活的工作台/通知 Tab），若包 SelectionArea 等于变相全局包裹——
-                // 徽章/通知轮询的动态重建与拖选并发会触发框架 CME（准则 §3.4、
-                // 2026-07-30 事故）。页面级选择由各页面自己的容器/局部包裹承担。
-                selectable: false,
-                // PageView 常驻保活（同 compact 分支理由）：进业务子页面时仅 Offstage
-                // 隐藏 PageView、子页面叠上层，切回 Tab 时滚动位置不丢
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: TickerMode(
-                        // 与 compact 分支一致：保活不等于继续耗帧。
-                        enabled: tabIndex != null,
-                        child: Offstage(
-                          offstage: tabIndex == null,
-                          child: _slidingTabs(tabIndex: tabIndex),
+              child: UtenPageScrollbarHost(
+                child: UtenContentContainer(
+                  // The dashboard owns margins inside its scroll viewport so
+                  // its page scrollbar can reach the outer right edge. Keep the
+                  // same shell subtree mounted when routes/tabs change.
+                  applyGutter: tabIndex != 0,
+                  // ⚠️ selectable:false 必须保留：此容器包住所有 medium+ 路由页（含常驻
+                  // 保活的工作台/通知 Tab），若包 SelectionArea 等于变相全局包裹——
+                  // 徽章/通知轮询的动态重建与拖选并发会触发框架 CME（准则 §3.4、
+                  // 2026-07-30 事故）。页面级选择由各页面自己的容器/局部包裹承担。
+                  selectable: false,
+                  // PageView 常驻保活（同 compact 分支理由）：进业务子页面时仅 Offstage
+                  // 隐藏 PageView、子页面叠上层，切回 Tab 时滚动位置不丢
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: TickerMode(
+                          // 与 compact 分支一致：保活不等于继续耗帧。
+                          enabled: tabIndex != null,
+                          child: Offstage(
+                            offstage: tabIndex == null,
+                            child: _slidingTabs(tabIndex: tabIndex),
+                          ),
                         ),
                       ),
-                    ),
-                    if (tabIndex == null) Positioned.fill(child: widget.child),
-                  ],
+                      if (tabIndex == null)
+                        Positioned.fill(child: widget.child),
+                    ],
+                  ),
                 ),
               ),
             ),

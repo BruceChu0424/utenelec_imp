@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -6,11 +9,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:uten_imp/components/layout/uten_split_view.dart';
+import 'package:uten_imp/components/layout/uten_scroll_prefetch_policy.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
+import 'package:uten_imp/features/admin/models/permission_template.dart';
 import 'package:uten_imp/features/admin/pages/admin_permissions_page.dart';
 import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
+import 'package:uten_imp/features/admin/repositories/permission_template_repository.dart';
+import 'package:uten_imp/features/admin/widgets/admin_permission_export_button.dart';
+import 'package:uten_imp/features/admin/widgets/admin_permission_templates.dart';
 import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
 import 'package:uten_imp/features/admin/widgets/admin_permission_transfer_actions.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
@@ -31,6 +40,101 @@ const _captureScreenshots = bool.fromEnvironment(
 );
 
 void main() {
+  testWidgets(
+    'account list prefetches before the end once and preserves the viewport',
+    (tester) async {
+      final pending = Completer<PagedResult<AdminUserSummary>>();
+      final repository = _PrefetchRepository(pageTwo: pending);
+      await _mount(
+        tester,
+        repository,
+        _AiRepository(),
+        width: 1440,
+        initialEmployeeId: null,
+      );
+      final list = find.byKey(const ValueKey('admin-account-list-scroll'));
+      final original = tester.element(list);
+      final scrollable = find
+          .descendant(of: list, matching: find.byType(Scrollable))
+          .first;
+      final position = tester.state<ScrollableState>(scrollable).position;
+      expect(repository.pages, [1]);
+      expect(
+        position.extentAfter,
+        greaterThan(UtenScrollPrefetchPolicy.distanceOf(position)),
+      );
+      position.jumpTo(
+        position.maxScrollExtent -
+            UtenScrollPrefetchPolicy.distanceOf(position) / 2,
+      );
+      expect(position.extentAfter, greaterThan(0));
+      await tester.pump();
+      await tester.pump();
+      expect(repository.pages, [1, 2]);
+      position.jumpTo(position.pixels + 1);
+      await tester.pump();
+      expect(repository.pages, [
+        1,
+        2,
+      ], reason: 'Only one read may be pending for the next page');
+      final offset = position.pixels;
+      pending.complete(repository.page(2));
+      await tester.pumpAndSettle();
+      expect(repository.pages, [1, 2]);
+      expect(tester.element(list), same(original));
+      expect(
+        tester.state<ScrollableState>(scrollable).position,
+        same(position),
+      );
+      expect(position.pixels, closeTo(offset, .01));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'account prefetch failure waits for manual retry without replacing loaded rows',
+    (tester) async {
+      final repository = _PrefetchRepository(failPageTwoOnce: true);
+      await _mount(
+        tester,
+        repository,
+        _AiRepository(),
+        width: 1440,
+        initialEmployeeId: null,
+      );
+      final list = find.byKey(const ValueKey('admin-account-list-scroll'));
+      final scrollable = find
+          .descendant(of: list, matching: find.byType(Scrollable))
+          .first;
+      final position = tester.state<ScrollableState>(scrollable).position;
+      position.jumpTo(
+        position.maxScrollExtent -
+            UtenScrollPrefetchPolicy.distanceOf(position) / 2,
+      );
+      await tester.pumpAndSettle();
+      expect(repository.pages, [1, 2]);
+      position.jumpTo(position.pixels + 1);
+      await tester.pumpAndSettle();
+      expect(repository.pages, [1, 2]);
+      await tester.scrollUntilVisible(
+        find.text('加载更多'),
+        160,
+        scrollable: scrollable,
+      );
+      await tester.pumpAndSettle();
+      expect(repository.pages, [1, 2]);
+      await tester.tap(find.text('加载更多'));
+      await tester.pumpAndSettle();
+      expect(repository.pages, [1, 2, 2]);
+      expect(find.text('加载更多'), findsNothing);
+      expect(
+        tester.state<ScrollableState>(scrollable).position,
+        same(position),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   if (_captureScreenshots) {
     testWidgets('capture permission workspace modes', (tester) async {
       await loadAuditScreenshotFonts(tester);
@@ -40,6 +144,7 @@ void main() {
         _AiRepository(),
         width: 1440,
         initialDepartmentId: 'department-target',
+        templates: _TemplateRepository(),
       );
       await _selectMode(tester, '按员工');
       await saveAuditScreenshot(
@@ -59,6 +164,17 @@ void main() {
         _captureKey,
         'permission-workspace-baseline',
       );
+      await _selectMode(tester, '按模板');
+      await tester.tap(
+        find.byKey(const ValueKey('permission-template-layout-template')),
+      );
+      await tester.pumpAndSettle();
+      await saveAuditScreenshot(
+        tester,
+        _captureKey,
+        'permission-workspace-template',
+      );
+      await _selectMode(tester, '全员基础包');
       tester.view.physicalSize = const Size(375, 1000);
       await tester.pumpAndSettle();
       await saveAuditScreenshot(
@@ -131,6 +247,160 @@ void main() {
       },
     );
   }
+
+  testWidgets('super administrator export explains the non-restorable scope', (
+    tester,
+  ) async {
+    await _mount(
+      tester,
+      _Repository(superAdmin: true),
+      _AiRepository(),
+      width: 1440,
+    );
+    final export = tester.widget<AdminPermissionExportButton>(
+      find.byType(AdminPermissionExportButton),
+    );
+    expect(export.scope, PermissionExportScope.employee);
+    expect(export.enabled, isFalse);
+    expect(export.disabledReason, contains('超级管理员'));
+    expect(export.disabledReason, contains('可恢复权限文件'));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'template first visit is lazy and autosave survives switching modes',
+    (tester) async {
+      final templates = _TemplateRepository();
+      final saveGate = Completer<void>();
+      templates.saveGate = saveGate;
+      await _mount(
+        tester,
+        _Repository(editablePermission: true),
+        _AiRepository(),
+        width: 1440,
+        templates: templates,
+      );
+      expect(templates.listReads, 0);
+      expect(
+        find.byType(AdminPermissionTemplatesView, skipOffstage: false),
+        findsNothing,
+      );
+      await _selectMode(tester, '按模板');
+      expect(templates.listReads, 1);
+      await tester.tap(
+        find.byKey(const ValueKey('permission-template-layout-template')),
+      );
+      await tester.pumpAndSettle();
+      final workspace = tester.state(find.byType(AdminPermissionTemplatesView));
+      await tester.tap(
+        find.byKey(const ValueKey('permission-toggle-all-groups')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('template-code-goods:view')));
+      await tester.pump();
+      await tester.pump();
+      _expectGlobalImportEnabled(tester, false);
+      expect(templates.savedCodes, isEmpty);
+
+      await _selectMode(tester, '全员基础包', settle: false);
+      expect(
+        tester.state(
+          find.byType(AdminPermissionTemplatesView, skipOffstage: false),
+        ),
+        same(workspace),
+      );
+      _expectGlobalImportEnabled(tester, false);
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pump();
+      expect(templates.savedCodes, [
+        <String>{'goods:view'},
+      ]);
+      expect(templates.savedVersions, [4]);
+      await _selectMode(tester, '按员工', settle: false);
+      _expectGlobalImportEnabled(tester, false);
+      saveGate.complete();
+      await tester.pump();
+      await tester.pumpAndSettle();
+      _expectGlobalImportEnabled(tester, true);
+
+      await _selectMode(tester, '按模板');
+      expect(
+        tester.state(find.byType(AdminPermissionTemplatesView)),
+        same(workspace),
+      );
+      expect(
+        tester
+            .widget<Switch>(
+              find.byKey(const ValueKey('template-code-goods:view')),
+            )
+            .value,
+        isTrue,
+      );
+      expect(templates.savedCodes, hasLength(1));
+      expect(find.textContaining('已自动保存'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'each mode exports its saved subject while the header exports all',
+    (tester) async {
+      final templates = _TemplateRepository();
+      await _mount(
+        tester,
+        _Repository(editablePermission: true),
+        _AiRepository(),
+        width: 1440,
+        initialDepartmentId: 'department-target',
+        templates: templates,
+      );
+      expect(find.text('导出全部权限'), findsOneWidget);
+      await _selectMode(tester, '按员工');
+      var export = tester.widget<AdminPermissionExportButton>(
+        find.byType(AdminPermissionExportButton),
+      );
+      expect(export.scope, PermissionExportScope.employee);
+      expect(export.sourceId, 'user-target');
+      expect(export.sourceName, '测试员工');
+      expect(export.enabled, isTrue);
+
+      await _selectMode(tester, '按部门');
+      export = tester.widget<AdminPermissionExportButton>(
+        find.byType(AdminPermissionExportButton),
+      );
+      expect(export.scope, PermissionExportScope.department);
+      expect(export.sourceId, 'department-target');
+      expect(export.sourceName, '制造部');
+      expect(export.enabled, isTrue);
+      expect(
+        find.byKey(const ValueKey('admin-permission-department-tree')),
+        findsOneWidget,
+      );
+
+      await _selectMode(tester, '全员基础包');
+      export = tester.widget<AdminPermissionExportButton>(
+        find.byType(AdminPermissionExportButton),
+      );
+      expect(export.scope, PermissionExportScope.baseline);
+      expect(export.sourceId, isNull);
+      expect(export.enabled, isTrue);
+
+      await _selectMode(tester, '按模板');
+      await tester.tap(
+        find.byKey(const ValueKey('permission-template-layout-template')),
+      );
+      await tester.pumpAndSettle();
+      export = tester.widget<AdminPermissionExportButton>(
+        find.byType(AdminPermissionExportButton),
+      );
+      expect(export.scope, PermissionExportScope.template);
+      expect(export.template, templates.template);
+      expect(export.enabled, isTrue);
+      expect(find.text('导出全部权限'), findsOneWidget);
+      _expectGlobalImportEnabled(tester, true);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'department and baseline drafts also block imports across modes',
@@ -292,10 +562,11 @@ void main() {
         _AiRepository(),
         width: width,
         scale: 1.6,
+        templates: _TemplateRepository(),
       );
       final navigation = find.byKey(const ValueKey('admin-permission-modules'));
       final position = tester.getTopLeft(navigation);
-      for (final mode in ['按部门', '全员基础包', '按员工']) {
+      for (final mode in ['按部门', '全员基础包', '按模板', '按员工']) {
         await _selectMode(tester, mode);
         expect(tester.getTopLeft(navigation), position);
         expect(tester.takeException(), isNull);
@@ -453,7 +724,23 @@ AdminPermissionArchiveActions _archiveActions(WidgetTester tester) => tester
     .whereType<AdminPermissionArchiveActions>()
     .single;
 
-Future<void> _selectMode(WidgetTester tester, String label) async {
+void _expectGlobalImportEnabled(WidgetTester tester, bool enabled) {
+  expect(_archiveActions(tester).importEnabled, enabled);
+  expect(
+    tester
+        .widget<UtenButton>(
+          find.byKey(const ValueKey('import-permission-configuration')),
+        )
+        .onPressed,
+    enabled ? isNotNull : isNull,
+  );
+}
+
+Future<void> _selectMode(
+  WidgetTester tester,
+  String label, {
+  bool settle = true,
+}) async {
   final navigation = find.byKey(const ValueKey('admin-permission-modules'));
   final choice = find.descendant(of: navigation, matching: find.text(label));
   if (choice.evaluate().isEmpty) {
@@ -465,7 +752,12 @@ Future<void> _selectMode(WidgetTester tester, String label) async {
   } else {
     await tester.tap(choice);
   }
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+    await tester.pump();
+  }
 }
 
 Future<void> _mount(
@@ -476,6 +768,7 @@ Future<void> _mount(
   double scale = 1,
   String? initialEmployeeId = 'employee-target',
   String? initialDepartmentId,
+  _TemplateRepository? templates,
 }) async {
   tester.view.physicalSize = Size(width, 1000);
   tester.view.devicePixelRatio = 1;
@@ -483,6 +776,7 @@ Future<void> _mount(
   addTearDown(tester.view.resetDevicePixelRatio);
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
+  final api = ApiClient(Dio(BaseOptions(baseUrl: 'https://example.test/api')));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -496,6 +790,10 @@ Future<void> _mount(
         sessionSnapshotProvider.overrideWith(_Snapshot.new),
         adminRepositoryProvider.overrideWithValue(repository),
         pagePermissionDelegationRepositoryProvider.overrideWithValue(ai),
+        if (templates != null) ...[
+          apiClientProvider.overrideWithValue(api),
+          permissionTemplateRepositoryProvider.overrideWithValue(templates),
+        ],
       ],
       child: RepaintBoundary(
         key: _captureKey,
@@ -550,11 +848,13 @@ class _Repository implements AdminRepository {
     this.paged = false,
     this.editablePermission = false,
     this.aiPermission = false,
+    this.superAdmin = false,
   });
   final bool protected;
   final bool paged;
   final bool editablePermission;
   final bool aiPermission;
+  final bool superAdmin;
   final lockedUsers = <String>[];
   final resetUsers = <String>[];
   int refreshedTargets = 0;
@@ -655,12 +955,13 @@ class _Repository implements AdminRepository {
   Future<List<String>> permissionBaseline() async => [];
   @override
   Future<EffectivePermissions> effectivePermissions(String userId) async =>
-      const EffectivePermissions(
-        departmentPermissions: [],
-        baselinePermissions: [],
-        grants: [],
-        revokes: [],
-        effective: [],
+      EffectivePermissions(
+        superAdmin: superAdmin,
+        departmentPermissions: const [],
+        baselinePermissions: const [],
+        grants: const [],
+        revokes: const [],
+        effective: const [],
       );
   @override
   Future<void> lockUser(String userId) async {
@@ -676,4 +977,92 @@ class _Repository implements AdminRepository {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _PrefetchRepository extends _Repository {
+  _PrefetchRepository({this.pageTwo, this.failPageTwoOnce = false});
+  final Completer<PagedResult<AdminUserSummary>>? pageTwo;
+  final bool failPageTwoOnce;
+  bool _failed = false;
+  final pages = <int>[];
+
+  PagedResult<AdminUserSummary> page(int number) => PagedResult(
+    page: number,
+    size: 30,
+    total: 60,
+    totalPages: 2,
+    items: [
+      for (var row = 0; row < 30; row++)
+        AdminUserSummary(
+          id: 'prefetch-account-$number-$row',
+          loginAccount: 'UT-$number-$row',
+          employeeName: '预加载员工 $number-$row',
+          employeeCode: 'P$number-$row',
+          employeeStatus: 'active',
+          currentEmployee: true,
+          status: 'active',
+          mustChangePassword: false,
+          remoteAccess: false,
+          accountSupportAllowed: true,
+        ),
+    ],
+  );
+
+  @override
+  Future<PagedResult<AdminUserSummary>> listUsers({
+    int page = 1,
+    int size = 20,
+    String? search,
+    String? status,
+  }) async {
+    pages.add(page);
+    if (page == 2 && failPageTwoOnce && !_failed) {
+      _failed = true;
+      throw StateError('Mock pagination failure');
+    }
+    if (page == 2 && pageTwo != null) return pageTwo!.future;
+    return this.page(page);
+  }
+}
+
+class _TemplateRepository extends PermissionTemplateRepository {
+  _TemplateRepository() : super(ApiClient(Dio()));
+
+  var template = const PermissionTemplate(
+    id: 'layout-template',
+    name: '布局测试模板',
+    description: '用于岗位操作权限',
+    permissions: [],
+    version: 4,
+  );
+  int listReads = 0;
+  final savedCodes = <Set<String>>[];
+  final savedVersions = <int>[];
+  Completer<void>? saveGate;
+
+  @override
+  Future<List<PermissionTemplate>> list() async {
+    listReads++;
+    return [template];
+  }
+
+  @override
+  Future<PermissionTemplate> save({
+    PermissionTemplate? template,
+    required String name,
+    required String description,
+    required Set<String> permissions,
+  }) async {
+    savedCodes.add({...permissions});
+    savedVersions.add(template?.version ?? 0);
+    await saveGate?.future;
+    this.template = PermissionTemplate(
+      id: template?.id ?? 'layout-template',
+      name: name,
+      description: description,
+      permissions: permissions.toList(),
+      version: (template?.version ?? 0) + 1,
+    );
+    return this.template;
+  }
 }

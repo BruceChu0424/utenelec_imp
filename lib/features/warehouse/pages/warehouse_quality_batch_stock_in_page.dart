@@ -45,6 +45,7 @@ import '../widgets/warehouse_quality_merged_table.dart';
 import '../widgets/warehouse_quality_slice_table.dart';
 import '../widgets/warehouse_quality_stock_in_warehouse_picker.dart';
 import '../../../shared/badges/badge_registry.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class WarehouseQualityBatchStockInPage extends ConsumerStatefulWidget {
   const WarehouseQualityBatchStockInPage({
@@ -589,39 +590,42 @@ class _WarehouseQualityBatchStockInPageState
   }
 
   Widget _buildBody(ThemeData theme) {
-    return ListView(
-      controller: _pageScroll,
+    return UtenPageEdgePadding.scroll(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s12,
         UtenSpacing.s12,
         UtenSpacing.s12,
         UtenFloatingActionGroup.scrollClearance,
       ),
-      children: [
-        Text(
-          _canConfirmStockIn
-              ? '核对每行来源商、合格待入量、目标叶仓和实际库位。默认勾选可入库明细；'
-                    '可改小本次数量，或为不同明细选择不同叶仓，提交后才增加库存。'
-              : '当前为只读预览；入库办理需要 IQC 待入库查看和确认入库权限。',
-          style: theme.textTheme.bodySmall,
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        WarehouseQualityMergedTable(
-          controller: _grid,
-          editable: _canConfirmStockIn,
-          saving: _saving || _loading || _pendingCommand != null,
-          onChanged: () => setState(() {}),
-          onPickWarehouse: _pickWarehouse,
-          showReceipt: true,
-          stickyHeaderPinned: _gridPinned,
-          // 「放行重量」按用户的重量显示单位(自动/千克/...)。
-          weightDisplay: ref.watch(warehouseWeightUnitsPrefsProvider).display,
-        ),
-        if (_error != null) ...[
+      builder: (context, resolvedPagePadding) => ListView(
+        controller: _pageScroll,
+        padding: resolvedPagePadding,
+        children: [
+          Text(
+            _canConfirmStockIn
+                ? '核对每行来源商、合格待入量、目标叶仓和实际库位。默认勾选可入库明细；'
+                      '可改小本次数量，或为不同明细选择不同叶仓，提交后才增加库存。'
+                : '当前为只读预览；入库办理需要 IQC 待入库查看和确认入库权限。',
+            style: theme.textTheme.bodySmall,
+          ),
           const SizedBox(height: UtenSpacing.s8),
-          _MessagePanel(message: _error!, icon: Icons.error_outline_rounded),
+          WarehouseQualityMergedTable(
+            controller: _grid,
+            editable: _canConfirmStockIn,
+            saving: _saving || _loading || _pendingCommand != null,
+            onChanged: () => setState(() {}),
+            onPickWarehouse: _pickWarehouse,
+            showReceipt: true,
+            stickyHeaderPinned: _gridPinned,
+            // 「放行重量」按用户的重量显示单位(自动/千克/...)。
+            weightDisplay: ref.watch(warehouseWeightUnitsPrefsProvider).display,
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            _MessagePanel(message: _error!, icon: Icons.error_outline_rounded),
+          ],
         ],
-      ],
+      ),
     );
   }
 

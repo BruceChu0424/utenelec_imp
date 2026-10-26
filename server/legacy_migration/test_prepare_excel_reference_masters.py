@@ -83,6 +83,26 @@ class ExcelReferenceMastersTest(unittest.TestCase):
         self.assertTrue(all('UF-30' in row["remark"] for row in moulds))
         self.assertEqual([row["original_code"] for row in evidence if row["domain"] == "mould"], ["UF-30", "UF-30"])
 
+    def test_unique_original_and_explicit_excel_mould_codes_remain_business_codes(self):
+        _, moulds, _, _, _, _ = self.enrich([reference(模具编号="NEW-9", 模具名称="新模具")])
+        self.assertEqual({row["code"] for row in moulds}, {"UA-41【B3-07】", "NEW-9"})
+
+    def test_reviewed_duplicate_codes_require_exact_source_identity_and_stay_unique(self):
+        decisions = {"10": {"expected_code": "UF-30", "code": "UF-30-OLD"},
+                     "11": {"expected_code": "UF-30", "code": "UF-30-NEW"}}
+        result = subject.enrich(SUPPLIER_HEADERS, [supplier()], MOULD_HEADERS,
+                                [mould(code="UF-30"), mould("11", "新模", "UF-30")], [], decisions)
+        self.assertEqual([row["code"] for row in result[1]], ["UF-30-OLD", "UF-30-NEW"])
+        decisions["10"]["expected_code"] = "WRONG"
+        with self.assertRaisesRegex(ValueError, "source identity"):
+            subject.enrich(SUPPLIER_HEADERS, [], MOULD_HEADERS, [mould(code="UF-30")], [], decisions)
+
+    def test_generated_ambiguous_code_never_collides_with_an_original_business_code(self):
+        _, moulds, _, _, _, _ = self.enrich([], moulds=[mould(code="UF-30"),
+            mould("11", "同号新模", "UF-30"), mould("12", "已有MJ号", "MJ000001")])
+        self.assertEqual(moulds[2]["code"], "MJ000001")
+        self.assertEqual(len({row["code"] for row in moulds}), 3)
+
     def test_duplicate_original_code_can_resolve_only_with_unique_exact_name(self):
         _, _, mapping, conflicts, _, _ = self.enrich([reference(模具编号="UF-30", 模具名称="插座面框")],
             moulds=[mould(code="UF-30"), mould("11", "插座面框", "UF-30")])

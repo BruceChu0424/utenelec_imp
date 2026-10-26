@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../shared/models/paged_result.dart';
 import '../models/master_facet.dart';
 import '../models/reference_method_option.dart';
 import '../models/settlement_method_admin.dart';
@@ -35,12 +36,37 @@ class ReferenceMethodRepository {
   /// [kMasterFilterNullValue] 表示筛该字段为空（nullFields 哨兵）。
   Future<List<SettlementMethodAdminItem>> settlementAdminList({
     Map<String, String?> filters = const {},
+    String? keyword,
   }) async {
     final rows = await api.getList(
       ApiEndpoints.settlementMethodsAdmin,
-      query: masterFilterQueryParams(filters),
+      query: {
+        ...masterFilterQueryParams(filters),
+        if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
+      },
     );
     return rows.map(SettlementMethodAdminItem.fromJson).toList();
+  }
+
+  Future<PagedResult<SettlementMethodAdminItem>> settlementAdminPage({
+    int page = 1,
+    int size = 100,
+    String? keyword,
+    Map<String, String?> filters = const {},
+  }) async {
+    final json = await api.get(
+      '${ApiEndpoints.settlementMethodsAdmin}/page',
+      query: {
+        ...masterFilterQueryParams(filters),
+        'page': page,
+        'size': size,
+        if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
+      },
+    );
+    return PagedResult.fromJsonResponsive(
+      json,
+      SettlementMethodAdminItem.fromJson,
+    );
   }
 
   /// 结算方式表头筛选桶（各可筛字段可选值 + 空值计数）。

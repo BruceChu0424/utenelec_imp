@@ -38,6 +38,7 @@ import '../../core/theme/uten_tokens.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'uten_page_layout.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'uten_adaptive_hierarchy_pane.dart';
@@ -264,7 +265,7 @@ class _UtenSplitViewState extends State<UtenSplitView> {
         return UtenAdaptiveHierarchyPane(
           leading: UtenHierarchyContentWidthScope(
             controller: _contentWidths,
-            child: widget.leading,
+            child: UtenPageScrollRoleScope.local(child: widget.leading),
           ),
           trailing: widget.trailing,
           selectedLabel: widget.selectedLeadingLabel,

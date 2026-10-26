@@ -10,6 +10,7 @@
 //
 // 数据契约：权限项零写死，全部来自服务端目录(page_permission_delegation_models)。
 
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -902,6 +903,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       children: [
         Expanded(
           child: MasterDataTableView<PagePermissionStaffSummary>(
+            expensiveRowMounts: false,
             key: const ValueKey('page-permission-staff-table'),
             columns: [
               MasterColumnDef(
@@ -1239,24 +1241,26 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       PermCatalogGroupSection(
         title: group.root ? '${group.title} · 本页' : group.title,
         countLabel: '已授 $label',
-        trailing: PopupMenuButton<String>(
-          tooltip: '本组批量',
-          icon: const Icon(Icons.more_vert_rounded, size: 18),
-          itemBuilder: (context) => [
-            PopupMenuItem(
-              value: 'grant',
-              child: Text(
-                AppLocalizations.of(context).permissionBatchNormalOnly,
-                style: theme.textTheme.bodyMedium,
+        trailing: UtenDropdownScrollScope(
+          child: PopupMenuButton<String>(
+            tooltip: '本组批量',
+            icon: const Icon(Icons.more_vert_rounded, size: 18),
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'grant',
+                child: Text(
+                  AppLocalizations.of(context).permissionBatchNormalOnly,
+                  style: theme.textTheme.bodyMedium,
+                ),
               ),
-            ),
-            PopupMenuItem(
-              value: 'revoke',
-              child: Text('本组全部收回（不含锁定项）', style: theme.textTheme.bodyMedium),
-            ),
-          ],
-          onSelected: (value) =>
-              _applyBatch(group.permissions, value == 'grant'),
+              PopupMenuItem(
+                value: 'revoke',
+                child: Text('本组全部收回（不含锁定项）', style: theme.textTheme.bodyMedium),
+              ),
+            ],
+            onSelected: (value) =>
+                _applyBatch(group.permissions, value == 'grant'),
+          ),
         ),
         children: _familyRows(group),
       ),

@@ -1,3 +1,5 @@
+import 'package:flutter/rendering.dart' show RenderParagraph;
+import 'package:uten_imp/components/layout/uten_scroll_gutter.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -389,8 +391,13 @@ void main() {
           );
           await tester.pumpAndSettle();
           expect(tester.getSize(find.byKey(_treeKey)).width, 160);
-          // 2026-10-18 左缘贴 0 口径：左栏搜索框水平内边距为 0，贴满面板宽。
-          expect(tester.getSize(_search()).width, 160);
+          // The directory remains 160 wide. Its full-width search reserves
+          // the same trailing scrollbar lane as the tree rows; leading inset
+          // remains zero.
+          expect(
+            tester.getSize(_search()).width,
+            160 - UtenScrollGutter.trackWidth,
+          );
           expect(
             find.byTooltip('$_company / $_salesCenter / 业务部 / $_longTeam'),
             findsNWidgets(2),
@@ -402,7 +409,20 @@ void main() {
           await tester.pumpAndSettle();
           expect(tester.getSize(find.byKey(_treeKey)).width, 160);
           expect(_treeText('全部部门'), findsOneWidget);
-          expect(tester.getSize(_treeText('全部部门')).width, greaterThan(60));
+          final allDepartments = _treeText('全部部门');
+          expect(tester.widget<Text>(allDepartments).maxLines, 1);
+          final paragraph = tester.renderObject<RenderParagraph>(
+            find.descendant(
+              of: allDepartments,
+              matching: find.byType(RichText),
+            ),
+          );
+          expect(
+            paragraph.didExceedMaxLines,
+            isFalse,
+            reason:
+                'the complete label fits its actual font; 60px may be its exact intrinsic width',
+          );
         }
       }
       await tester.tap(find.text('张明'));

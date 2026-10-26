@@ -34,8 +34,9 @@ class _Gateway implements OperationsWorkbenchGateway {
     this.subcontract, {
     this.application = false,
     this.mixedApplication = false,
+    this.legacyClosure = false,
   });
-  final bool subcontract, application, mixedApplication;
+  final bool subcontract, application, mixedApplication, legacyClosure;
   int reads = 0;
   @override
   Future<OperationsWorkbenchData> load({
@@ -74,6 +75,7 @@ class _Gateway implements OperationsWorkbenchGateway {
             'requiredQty': 3,
             'openQty': 3,
             'taskStatus': application ? 'WAITING_ORDER' : 'FINANCE_APPROVED',
+            if (legacyClosure) 'displayStage': 'ORDER_CLOSE_PENDING',
             'supplyRoute': subcontract ? 'SUBCONTRACT' : 'PURCHASE',
             'actionDocType': application || (mixedApplication && i == 2)
                 ? (subcontract ? 'SUBCONTRACT_APPLICATION' : 'PURCHASE_REQUEST')
@@ -154,7 +156,9 @@ class _Api extends ApiClient {
     submissions.add(payload);
     return {
       'submittedCount': (payload['items'] as List).length,
-      'approvals': <Map<String, dynamic>>[],
+      'approvals': [
+        for (final _ in payload['items'] as List) {'status': 'APPROVED'},
+      ],
     };
   }
 }
@@ -166,6 +170,7 @@ Future<({ProviderContainer container, _Gateway gateway, _Api api})> _mount(
   bool mixedApplication = false,
   bool draw = false,
   bool permission = true,
+  bool legacyClosure = false,
   double width = 1400,
   _Api? api,
   GlobalKey? capture,
@@ -179,6 +184,7 @@ Future<({ProviderContainer container, _Gateway gateway, _Api api})> _mount(
     subcontract,
     application: application,
     mixedApplication: mixedApplication,
+    legacyClosure: legacyClosure,
   );
   final client = api ?? _Api();
   final drawGateway = FakeSubcontractDrawGateway(
@@ -259,6 +265,29 @@ void _selectOrders(WidgetTester tester, Set<String> ids) {
 }
 
 void main() {
+  for (final subcontract in [false, true]) {
+    testWidgets(
+      '${subcontract ? 'subcontract' : 'purchase'} historical closure stays selectable for direct execution',
+      (tester) async {
+        final fixture = await _mount(tester, subcontract, legacyClosure: true);
+          expect(find.text('历史结束申请待业务确认'), findsWidgets);
+        _selectOrders(tester, {'row-0'});
+        await tester.pumpAndSettle();
+        expect(tester.widget<UtenButton>(_action).onPressed, isNotNull);
+        await tester.tap(_action);
+        await tester.pumpAndSettle();
+        expect(find.textContaining('无需财务批准'), findsWidgets);
+        expect(fixture.api.previews.last['orders'], [
+          {
+            'orderType': subcontract ? 'SUBCONTRACT' : 'PURCHASE',
+            'orderId': 'order-1',
+          },
+        ]);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('shared table keeps summary-first order: 已选胶囊最左、业务动作在右', (
     tester,
   ) async {
@@ -336,7 +365,7 @@ void main() {
             'orderId': 'order-2',
           },
         ]);
-        expect(find.textContaining('包含订单全部明细'), findsOneWidget);
+        expect(find.textContaining('包含全部明细'), findsOneWidget);
         await tester.enterText(
           find.byKey(const Key('procurement-order-closure-batch-reason')),
           '供应商停止供货',
@@ -360,7 +389,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(_action, findsOneWidget);
         expect(tester.widget<UtenButton>(_action).onPressed, isNull);
-        expect(find.byTooltip('缺少提交财务审批权限，请联系管理员授权。'), findsOneWidget);
+        expect(find.byTooltip('缺少采购或委外订单办理权限，请联系管理员授权。'), findsOneWidget);
         expect(fixture.api.previews, isEmpty);
       },
     );

@@ -59,19 +59,33 @@ public class AuditSessionQueryService {
             int page,
             int size,
             Long requestedSnapshotAuditId) {
-        validateSessionScope(actorId, dateFrom, dateTo, page, size);
-        long snapshotAuditId = snapshot(requestedSnapshotAuditId);
+        return sessionPage(actorId,dateFrom,dateTo,page,size,requestedSnapshotAuditId,null,false);
+    }
+
+    /** Internal export pagination: RR is the snapshot, not an inferred maximum ID. */
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('audit_log:view')")
+    public AuditSessionPageResponse sessionsForExport(UUID actorId,LocalDate dateFrom,LocalDate dateTo,
+            int page,int size,Long explicitSnapshotAuditId,Long knownTotal) {
+        return sessionPage(actorId,dateFrom,dateTo,page,size,explicitSnapshotAuditId,knownTotal,true);
+    }
+    private AuditSessionPageResponse sessionPage(UUID actorId,LocalDate dateFrom,LocalDate dateTo,
+            int page,int size,Long requestedSnapshotAuditId,Long knownTotal,boolean exporting) {
+        validateSessionScope(actorId,dateFrom,dateTo,page,exporting?Math.min(size,MAX_SESSION_PAGE_SIZE):size);
+        if(exporting&&(size<1||size>100))throw malformed("导出读取批次必须在1到100之间");
+        long snapshotAuditId = exporting&&requestedSnapshotAuditId==null?Long.MAX_VALUE
+                : exporting&&knownTotal!=null?requestedSnapshotAuditId:snapshot(requestedSnapshotAuditId);
         OffsetDateTime from = BusinessTime.startOfDay(dateFrom);
         OffsetDateTime toExclusive = BusinessTime.startOfDay(dateTo.plusDays(1));
 
-        if (hasArchivedSessions(actorId, from, toExclusive)) {
+        if (knownTotal==null && hasArchivedSessions(actorId, from, toExclusive)) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
                     "所选日期范围包含已转入冷归档的登录会话；"
                             + "当前审计中心只提供在线日志，请缩小到在线留存日期");
         }
 
-        long total = sessionCount(actorId, from, toExclusive, snapshotAuditId);
+        long total = knownTotal==null?sessionCount(actorId, from, toExclusive, snapshotAuditId):knownTotal;
         if (total == 0) {
             return new AuditSessionPageResponse(
                     List.of(), page, size, 0, 0, snapshotAuditId);

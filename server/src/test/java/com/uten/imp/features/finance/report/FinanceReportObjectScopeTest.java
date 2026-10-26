@@ -350,7 +350,7 @@ class FinanceReportObjectScopeTest {
         when(statementService.supplierStatement(null, null, null, 1, 500)).thenReturn(empty);
         when(costService.productCost(null, null, null, 1, 500)).thenReturn(empty);
         when(glReportService.trialBalance(null, null, 1, 500)).thenReturn(empty);
-        when(fixedAssetService.depreciationSchedule()).thenReturn(empty);
+        when(fixedAssetService.depreciationSchedule(1, 500)).thenReturn(empty);
         return new Fixture(
                 new FinanceReportService(
                         em,

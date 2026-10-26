@@ -44,6 +44,10 @@ public final class AuditRequestContext {
     private static final Set<String> AUDITED_METHODS =
             Set.of("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD");
     private static final Set<String> READ_METHODS = Set.of("GET", "HEAD");
+    private static final String CONTROLLED_READ_ATTRIBUTE=AuditRequestContext.class.getName()+".controlledRead";
+    private static final Object CONTROLLED_READ_MARKER=new Object();
+    /** Internal, validated read handlers only; neither an HTTP header nor a body parameter can set this identity. */
+    public static void markControlledRead(HttpServletRequest request){if(request!=null)request.setAttribute(CONTROLLED_READ_ATTRIBUTE,CONTROLLED_READ_MARKER);}
 
     private AuditRequestContext() {
     }
@@ -158,7 +162,8 @@ public final class AuditRequestContext {
 
     static boolean isRead(HttpServletRequest request) {
         return request != null && request.getMethod() != null
-                && READ_METHODS.contains(request.getMethod().toUpperCase(Locale.ROOT));
+                && (READ_METHODS.contains(request.getMethod().toUpperCase(Locale.ROOT))
+                ||request.getAttribute(CONTROLLED_READ_ATTRIBUTE)==CONTROLLED_READ_MARKER);
     }
 
     /**

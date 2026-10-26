@@ -1037,30 +1037,19 @@ class _AuditTechnicalTab extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
       children: [
         UtenCard(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.info_outline_rounded,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              Expanded(
-                child: Text(
-                  '以下内容仅用于技术排查。普通核查请优先阅读概览、业务变化和设备证据。',
-                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s12),
-        UtenCard(
           padding: EdgeInsets.zero,
           child: ExpansionTile(
             key: const ValueKey('audit-technical-expansion'),
-            title: const Text('展开技术排查数据'),
-            subtitle: const Text('包含操作关联编号、请求路径、中文对象类型和客户端标识'),
+            title: const Row(
+              children: [
+                Expanded(child: Text('展开技术排查数据')),
+                UtenFieldHintIcon(
+                  info:
+                      '以下内容仅用于技术排查。普通核查请优先阅读概览、业务变化和设备证据。\n\n包含操作关联编号、请求路径、中文对象类型和客户端标识',
+                  dense: true,
+                ),
+              ],
+            ),
             children: [
               const Divider(height: 1),
               Padding(

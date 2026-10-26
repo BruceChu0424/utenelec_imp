@@ -66,6 +66,8 @@ class _FakeConfirmationRepository
   final List<Map<String, int>> batchRevisions = [];
   final List<Map<String, String>> batchClaimIds = [];
   Completer<SalesOrderFinancePendingPage>? blockedChanges;
+  Completer<SalesOrderFinancePendingPage>? blockedRead;
+  Object? taskError;
   Object? batchError;
   bool batchErrorAfterCommit = false;
   Object? loadErrorAfterBatch;
@@ -90,6 +92,10 @@ class _FakeConfirmationRepository
       changes: changesOnly,
       confirmed: confirmed,
     ));
+    if (size > 1) {
+      if (blockedRead case final blocked?) return blocked.future;
+      if (taskError case final error?) throw error;
+    }
     if (batchIds.isNotEmpty) {
       if (loadErrorAfterBatch case final error?) throw error;
     }
@@ -389,6 +395,60 @@ Future<void> _pumpReview(
 late SharedPreferences _preferences;
 
 void main() {
+  testWidgets(
+    'slow bill-number query clears prior sales confirmations and selection',
+    (tester) async {
+      final repository = _FakeConfirmationRepository([
+        _item(id: 'old', billNo: 'XD-OLD'),
+      ]);
+      await _pumpPage(tester, repository, size: const Size(1400, 900));
+      MasterDataTableView<SalesOrderFinancePendingItem> table() => tester
+          .widget(find.byKey(const Key('sales-order-finance-desktop-table')));
+      table().onSelectedIdsChanged!({'old'});
+      await tester.pump();
+      final blocked = Completer<SalesOrderFinancePendingPage>();
+      repository.blockedRead = blocked;
+      table().onFilterChanged('billNo', 'XD-NEW');
+      await tester.pump();
+      expect(table().items, isEmpty);
+      expect(table().selectedIds, isEmpty);
+      expect(table().isLoading, isTrue);
+      blocked.completeError(ApiException('NETWORK', '新筛选暂时无法读取'));
+      await tester.pumpAndSettle();
+      expect(table().items, isEmpty);
+      expect(table().error, '新筛选暂时无法读取');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'same-query sales confirmation refresh retains rows on network error and clears on 403',
+    (tester) async {
+      final repository = _FakeConfirmationRepository([
+        _item(id: 'old', billNo: 'XD-OLD'),
+      ]);
+      await _pumpPage(tester, repository, size: const Size(1400, 900));
+      MasterDataTableView<SalesOrderFinancePendingItem> table() => tester
+          .widget(find.byKey(const Key('sales-order-finance-desktop-table')));
+      repository.taskError = ApiException('NETWORK', '网络暂时失败');
+      table().onRetry!();
+      await tester.pumpAndSettle();
+      expect(table().items.single.billNo, 'XD-OLD');
+      repository.taskError = ApiException(
+        'FORBIDDEN',
+        '确认读取权限已撤销',
+        httpStatus: 403,
+      );
+      table().onRetry!();
+      await tester.pumpAndSettle();
+      expect(table().items, isEmpty);
+      expect(table().selectedIds, isEmpty);
+      expect(table().error, '确认读取权限已撤销');
+      expect(table().isLoading, isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();

@@ -21,7 +21,24 @@ public record ReportTableResponse(
         int size,
         long total,
         int totalPages,
-        List<ReportTotal> totals) {
+        List<ReportTotal> totals,
+        String readScopeVersion,
+        String statisticsGeneratedAt) {
+    public ReportTableResponse(List<ReportColumn> columns, List<Map<String,Object>> rows,
+            Map<String,List<ReportFacet>> facets,int page,int size,long total,int totalPages,
+            List<ReportTotal> totals,String readScopeVersion) {
+        this(columns,rows,facets,page,size,total,totalPages,totals,readScopeVersion,
+                com.uten.imp.common.report.ReportReadPlan.statisticsGeneratedAt(total,facets,totals));
+    }
+
+
+    public ReportTableResponse(List<ReportColumn> columns, List<Map<String, Object>> rows,
+                               Map<String, List<ReportFacet>> facets, int page, int size,
+                               long total, int totalPages, List<ReportTotal> totals) {
+        this(columns,rows,facets,page,size,total,totalPages,totals,
+                com.uten.imp.common.report.ReportReadPlan.current().readScopeVersion());
+    }
+
 
     /** Internal identity/unit metadata stays available in rows, never as a visible/exported column. */
     public ReportTableResponse {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import 'uten_table_cell_spec.dart';
 
 /// A compact editable value that mounts its editor only after activation.
 ///
@@ -59,17 +60,29 @@ class _UtenInlineEditCellState extends State<UtenInlineEditCell> {
       );
     }
     final theme = Theme.of(context);
+    // Preview and active editor share the table's 32/48 role. Large text may
+    // grow naturally; activating a cell must not add a second row of padding.
+    final inTable = UtenTableCellInputTheme.contains(context);
+    final radius = inTable
+        ? UtenEditableGridCellSpec.borderRadius
+        : UtenRadius.controlAll;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         key: widget.activationKey,
         onTap: widget.enabled ? _activate : null,
-        borderRadius: UtenRadius.controlAll,
+        borderRadius: radius,
         child: Semantics(
           button: true,
           enabled: widget.enabled,
           label: widget.semanticLabel,
           child: Container(
+            constraints: inTable
+                ? BoxConstraints(
+                    minHeight: UtenEditableGridCellSpec.heightOf(context),
+                  )
+                : null,
+            alignment: inTable ? AlignmentDirectional.centerStart : null,
             decoration: BoxDecoration(
               border: Border.all(
                 color: widget.requiredEmpty
@@ -77,13 +90,17 @@ class _UtenInlineEditCellState extends State<UtenInlineEditCell> {
                     : theme.colorScheme.outlineVariant,
                 width: widget.requiredEmpty ? 1.5 : 1,
               ),
-              borderRadius: UtenRadius.controlAll,
+              borderRadius: radius,
             ),
-            padding: const EdgeInsets.symmetric(
-              horizontal: UtenSpacing.s8,
-              vertical: UtenSpacing.s8,
-            ),
-            child: widget.preview,
+            padding: inTable
+                ? EdgeInsets.symmetric(
+                    horizontal: UtenEditableGridCellSpec.contentPadding.left,
+                    vertical: UtenSpacing.s4,
+                  )
+                : const EdgeInsets.all(UtenSpacing.s8),
+            child: inTable
+                ? SizedBox(width: double.infinity, child: widget.preview)
+                : widget.preview,
           ),
         ),
       ),

@@ -108,6 +108,7 @@ class UtenRevisionTable<T> extends StatelessWidget {
     this.platformBinding,
     this.highlightColumnKeys = const {},
     this.cellBuilders,
+    this.expensiveRowMounts,
     this.selectable = false,
     this.showSelectionColumn = true,
     this.singleSelection = false,
@@ -122,6 +123,7 @@ class UtenRevisionTable<T> extends StatelessWidget {
   final List<MasterColumnDef<T>> columns;
   final List<UtenRevisionRow<T>> rows;
   final bool embedded;
+  final bool? expensiveRowMounts;
   final bool primary;
   final Widget? summaryBar;
   final double bottomContentPadding;
@@ -174,6 +176,7 @@ class UtenRevisionTable<T> extends StatelessWidget {
         );
     final interactiveKeys = cellBuilders?.keys.toSet() ?? const <String>{};
     return MasterDataTableView<UtenRevisionRow<T>>(
+      expensiveRowMounts: expensiveRowMounts ?? interactiveKeys.isNotEmpty,
       tableKey: tableKey,
       platformBinding: binding == null
           ? null

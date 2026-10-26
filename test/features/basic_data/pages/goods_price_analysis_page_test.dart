@@ -122,6 +122,7 @@ class _Repository implements PriceAnalysisRepository {
   final historyQueries = <Map<String, dynamic>>[];
   final tableQueries = <Map<String, dynamic>>[];
   final facetQueries = <Map<String, dynamic>>[];
+  int facetPages = 1;
   final supplierQueries = <Map<String, dynamic>>[];
   final pendingTables = <Completer<PagedResult<PriceObservation>>>[];
   bool supplierApplicable = false, highCardinality = false;
@@ -168,12 +169,19 @@ class _Repository implements PriceAnalysisRepository {
     return {
       'column': query['column'],
       'buckets': [
-        {'value': 'PO-201', 'label': '第201条单据', 'count': 1},
+        if (facetPages == 1)
+          {'value': 'PO-201', 'label': '第201条单据', 'count': 1}
+        else
+          {
+            'value': 'PO-${query['page']}',
+            'label': '第${query['page']}页取值',
+            'count': 1,
+          },
       ],
       'page': query['page'] ?? 1,
       'size': 50,
-      'total': 1,
-      'totalPages': 1,
+      'total': facetPages,
+      'totalPages': facetPages,
       'nullCount': 0,
       'hasMore': false,
     };
@@ -1987,7 +1995,7 @@ void main() {
     );
     updated.onFilterChanged('amount', '__null__');
     await tester.pumpAndSettle();
-    expect(repository.tableQueries.last['page'], 1);
+    expect(repository.tableQueries.last['page'], 2);
     expect(jsonDecode(repository.tableQueries.last['filters'] as String), {
       'amount': '__null__',
     });
@@ -2098,6 +2106,55 @@ void main() {
         child: const Text('open-price-panel'),
       ),
     ),
+  );
+
+  testWidgets(
+    'facet confirmation uses its accepted window after a leading seed',
+    (tester) async {
+      final repository = _Repository()..facetPages = 2;
+      Object? returned;
+      await pump(
+        tester,
+        repository,
+        child: panelHost(
+          const GoodsPriceFacetPicker(
+            goodsId: 'a',
+            query: {'kind': 'PURCHASE'},
+          ),
+          (value) => returned = value,
+        ),
+      );
+      await tester.tap(find.text('open-price-panel'));
+      await tester.pumpAndSettle();
+      final tableFinder = find.byType(MasterDataTableView<MasterFacetBucket>);
+      final pageInput = find.descendant(
+        of: tableFinder,
+        matching: find.byType(TextFormField),
+      );
+      await tester.enterText(pageInput, '2');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<MasterFacetBucket>>(
+        tableFinder,
+      );
+      expect(
+        table.currentPage,
+        1,
+        reason: 'the leading seed is the latest server response',
+      );
+      expect(table.rowsController!.visiblePage, 2);
+      final selected = table.rowsController!.items.singleWhere(
+        (row) => row.value == 'PO-2',
+      );
+      table.onRowTap!(selected);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('goods-price-facet-confirm')));
+      await tester.pumpAndSettle();
+      expect(returned, isA<(String, MasterFacetBucket)>());
+      expect((returned as (String, MasterFacetBucket)).$2.value, 'PO-2');
+      expect(repository.facetQueries.map((query) => query['page']), [1, 2]);
+      expect(tester.takeException(), isNull);
+    },
   );
 
   for (final change in ['cancel', 'query', 'permission']) {

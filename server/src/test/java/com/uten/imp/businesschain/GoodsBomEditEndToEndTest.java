@@ -239,7 +239,7 @@ class GoodsBomEditEndToEndTest {
                 owner,"BOM-OWNER-"+owner,"另一个货品负责人",department);
         db.update("UPDATE goods SET owner_employee_id=? WHERE id=?",owner,shared);
         db.update("INSERT INTO user_data_scopes(user_id,scope,owner_employee_id) VALUES(?,'goods',?)",actor,owner);
-        ReflectionTestUtils.setField(goodsService,"goodsOwnerScopeEnabled",true);
+        ReflectionTestUtils.setField(ReflectionTestUtils.getField(goodsService, "goodsReadScopePolicy"), "ownerScopeEnabled", true);
         try {
             var snapshot=edits.snapshot(shared);
             assertFalse(snapshot.goods().componentGoodsWritable());
@@ -247,7 +247,7 @@ class GoodsBomEditEndToEndTest {
             String before=masterState(shared);
             assertThrows(ApiException.class,()->edits.preview(root,request));
             assertEquals(before,masterState(shared));
-        } finally { ReflectionTestUtils.setField(goodsService,"goodsOwnerScopeEnabled",false); }
+        } finally { ReflectionTestUtils.setField(ReflectionTestUtils.getField(goodsService, "goodsReadScopePolicy"), "ownerScopeEnabled", false); }
     }
 
     private UUID editableGoods(String tag) {

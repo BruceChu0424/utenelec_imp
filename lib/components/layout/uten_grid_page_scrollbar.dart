@@ -5,9 +5,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/theme/uten_scroll_behavior.dart';
-import 'uten_content_scrollbar.dart';
 import 'uten_floating_action_group.dart';
+import 'uten_vertical_scroll_area.dart';
 
 class UtenGridPageScrollbar extends StatefulWidget {
   const UtenGridPageScrollbar({
@@ -41,25 +40,12 @@ class UtenGridPageScrollbar extends StatefulWidget {
 class _UtenGridPageScrollbarState extends State<UtenGridPageScrollbar> {
   @override
   Widget build(BuildContext context) {
-    return UtenScrollbarOwnerScope(
+    return UtenVerticalScrollArea(
       controller: widget.controller,
-      child: Stack(
-        children: [
-          widget.child,
-          // 贴视口右缘；内容未溢出时 UtenContentScrollbar 自动隐藏。
-          Positioned(
-            top: 0,
-            right: 0,
-            bottom: 0,
-            width: 16,
-            child: UtenContentScrollbar(
-              controller: widget.controller,
-              bottomInset:
-                  widget.bottomInset ?? UtenFloatingActionGroup.scrollClearance,
-            ),
-          ),
-        ],
-      ),
+      pageScrollbar: true,
+      bottomInset:
+          widget.bottomInset ?? UtenFloatingActionGroup.scrollClearance,
+      child: widget.child,
     );
   }
 }

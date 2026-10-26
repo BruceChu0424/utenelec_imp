@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/theme/uten_tokens.dart';
 
@@ -8,12 +9,75 @@ const double _treeToggleExtent = 48;
 
 /// Reusable tree identity cell for data tables.
 ///
-/// Hierarchy is deliberately redundant: indentation + continuous guide rails +
-/// cascading sequence + an explicit level label. Colour only reinforces the
-/// level and is never the sole signal. Expansion has a dedicated hit area so
+/// The default presentation includes sequence and level labels; [compact]
+/// expresses hierarchy through indentation and continuous guide rails alone.
+/// Colour reinforces structure. Expansion has a dedicated hit area so
 /// row selection and navigation do not compete; touch targets remain at least
 /// 48dp while dense desktop hosts can select their table control role.
 class UtenTreeTableCell extends StatelessWidget {
+  /// BOM tables share one compact identity: guides, toggle and a single name.
+  /// Editors retain the shared cell role; touch and large text may grow rows.
+  const UtenTreeTableCell.compact({
+    Key? key,
+    required int depth,
+    required String title,
+    String? subtitle,
+    String? levelLabel,
+    Widget? titleBadge,
+    String? titleBadgeLabel,
+    Widget? titleWidget,
+    Widget? leafAction,
+    Color? foregroundColor,
+    bool hasChildren = false,
+    bool expanded = false,
+    VoidCallback? onToggle,
+    VoidCallback? onExpandPeers,
+    Key? toggleKey,
+    String? toggleTooltip,
+    int maxVisualDepth = defaultMaxVisualDepth,
+    List<bool> ancestorContinuations = const [],
+    bool isLastChild = false,
+    int? childCount,
+    double guideBleed = compactCellVerticalPadding,
+    Color? guideColor,
+    Color? toggleColor,
+  }) : this(
+         key: key,
+         depth: depth,
+         title: title,
+         sequence: '',
+         sequenceInline: true,
+         levelLabel: levelLabel,
+         subtitle: subtitle,
+         titleBadge: titleBadge,
+         titleBadgeLabel: titleBadgeLabel,
+         titleWidget: titleWidget,
+         leafAction: leafAction,
+         foregroundColor: foregroundColor,
+         hasChildren: hasChildren,
+         expanded: expanded,
+         onToggle: onToggle,
+         onExpandPeers: onExpandPeers,
+         toggleKey: toggleKey,
+         toggleTooltip: toggleTooltip,
+         maxVisualDepth: maxVisualDepth,
+         ancestorContinuations: ancestorContinuations,
+         isLastChild: isLastChild,
+         childCount: childCount,
+         showLeafMarker: false,
+         mutedToggleWhenChildless: true,
+         indent: compactIndent,
+         desktopToggleExtent: compactDesktopToggleExtent,
+         guideBleed: guideBleed,
+         guideColor: guideColor,
+         toggleColor: toggleColor,
+       );
+
+  static const double compactIndent = UtenSpacing.s24;
+  static const double compactDesktopToggleExtent =
+      UtenControlMetrics.cellHeight;
+  static const double compactCellVerticalPadding = UtenSpacing.s4;
+
   const UtenTreeTableCell({
     super.key,
     required this.depth,
@@ -30,6 +94,7 @@ class UtenTreeTableCell extends StatelessWidget {
     this.hasChildren = false,
     this.expanded = false,
     this.onToggle,
+    this.onExpandPeers,
     this.toggleKey,
     this.toggleTooltip,
     this.maxVisualDepth = defaultMaxVisualDepth,
@@ -66,6 +131,56 @@ class UtenTreeTableCell extends StatelessWidget {
   }) =>
       depth.clamp(0, maxVisualDepth) * indent +
       toggleExtentOf(context, desktop: desktopToggleExtent);
+
+  /// Column drag limits must leave room for guides, the shared hit target and
+  /// a short name. Hosts may supply their own cell insets and title allowance.
+  static double compactMinimumWidthOf(
+    BuildContext context, {
+    required int depth,
+    double titleWidth = UtenSpacing.s24,
+    double horizontalPadding = UtenSpacing.s24,
+  }) =>
+      prefixWidthOf(
+        context,
+        depth: depth,
+        indent: compactIndent,
+        desktopToggleExtent: compactDesktopToggleExtent,
+      ) +
+      horizontalPadding +
+      titleWidth;
+
+  /// Rich identity columns use the table's bounded text-measurement queue.
+  /// This returns content width; the host adds its ordinary cell insets.
+  static double compactMeasureWidthOf(
+    BuildContext context, {
+    required String title,
+    required int depth,
+    required TextScaler textScaler,
+    double titleChrome = 0,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: title,
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: textScaler,
+    )..layout();
+    final width =
+        painter.width +
+        prefixWidthOf(
+          context,
+          depth: depth,
+          indent: compactIndent,
+          desktopToggleExtent: compactDesktopToggleExtent,
+        ) +
+        UtenSpacing.s8 +
+        titleChrome;
+    painter.dispose();
+    return width;
+  }
 
   /// Dense desktop tables may match their cell control role. Touch targets
   /// retain the shared minimum, including compensation for application zoom.
@@ -145,6 +260,10 @@ class UtenTreeTableCell extends StatelessWidget {
   final bool hasChildren;
   final bool expanded;
   final VoidCallback? onToggle;
+
+  /// Ctrl + click opens only this occurrence's siblings under the same parent.
+  /// Hosts keep ownership of their tree, loading and edit-session boundaries.
+  final VoidCallback? onExpandPeers;
   final Key? toggleKey;
 
   /// 展开钮悬停文案（可选）：默认「展开下级/收起下级」；分组头等需要更具体
@@ -193,7 +312,7 @@ class UtenTreeTableCell extends StatelessWidget {
       title,
       if (titleBadgeLabel?.trim().isNotEmpty == true) titleBadgeLabel!,
       if (sequence.trim().isNotEmpty) '级联号 $sequence',
-      if (!sequenceInline) effectiveLevelLabel,
+      if (!sequenceInline || levelLabel != null) effectiveLevelLabel,
       if (safeSubtitle?.isNotEmpty == true) safeSubtitle!,
     ].join('，');
     Widget sequenceChip(ThemeData theme) => Container(
@@ -293,13 +412,20 @@ class UtenTreeTableCell extends StatelessWidget {
                           ),
                           padding: EdgeInsets.zero,
                           tooltip:
-                              toggleTooltip ??
-                              (expanded
-                                  ? '收起下级'
-                                  : (childCount != null
-                                        ? '展开 $childCount 个下级'
-                                        : '展开下级')),
-                          onPressed: onToggle,
+                              '${toggleTooltip ?? (expanded ? '收起下级' : (childCount != null ? '展开 $childCount 个下级' : '展开下级'))}'
+                              '${onExpandPeers == null ? '' : '\nCtrl + 点击：展开同层'}',
+                          onPressed: onToggle == null
+                              ? null
+                              : () {
+                                  if (HardwareKeyboard
+                                          .instance
+                                          .isControlPressed &&
+                                      onExpandPeers != null) {
+                                    onExpandPeers!();
+                                  } else {
+                                    onToggle!();
+                                  }
+                                },
                           // 2026-09-10 用户口径「展开箭头要一眼看到」：由淡色线性图标
                           // 改为 28px 层级色实心圆底 + 反相箭头；2026-09-12 再加强
                           //（用户口径「箭头粗一点、浅色模式亮一点」）：箭头改自绘粗描边

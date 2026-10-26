@@ -263,7 +263,8 @@ v2 恢复须同时恢复 `media/local/final/` 到独立的 local 根，并创建
 出现未绑定的客户端备份目录会拒绝校验。
 
 默认查找 `media_root/client-releases`，以及已配置的 `local_media_root/client-releases`。
-应用显式设置 `UTEN_CLIENT_RELEASES_DIR` 时，备份配置必须同步设置同一个绝对路径
+部署模板显式把 `UTEN_CLIENT_RELEASES_DIR` 固定在该默认子目录，不改变备份范围。
+应用把 `UTEN_CLIENT_RELEASES_DIR` 覆盖为其他目录时，备份配置必须同步设置同一个绝对路径
 `client_releases_root`；此时使用单独的 `configured` 范围。备份服务的只读路径权限也需覆盖该目录。
 没有创建过的目录表示本次没有客户端发布记录；不能把其他未知目录当成已备份。
 
@@ -272,6 +273,10 @@ v2 恢复须同时恢复 `media/local/final/` 到独立的 local 根，并创建
 不创建或改写源目录的锁文件。`release.json` 原始字节、包大小、实际 SHA-256、预期摘要及 UUID
 关系一起校验。已上传的草稿、已发布及已撤回软件包均保留；商店链接版本只需元数据。
 已发布安装包缺失、大小或摘要不符会使整次备份失败，旧成功指针与恢复点保留。
+Windows 安装程序使用 `packageKind=installer`、`installMode=windows_setup`，原始文件名为 `.exe`；
+与原有 `windows_archive` ZIP 更新包共用同一目录和锁。历史 `windows_bundle` 完整 ZIP 仍保留兼容，
+新软件下载入口只提供 Setup.exe。备份核验类型/安装模式/Windows 平台配对及安全 EXE 文件名，
+恢复保留原始元数据和全部包字节；旧元数据缺少 `packageKind`（或为 null）仍按更新包兼容。
 `.upload-*.tmp`、`.metadata-*.tmp` 不属于已提交发布；元数据尚未确认上传的草稿恢复后继续要求
 重新上传，不把中断后残留的二进制提升为已上传包。符号链接、硬链接、路径越界及异常目录均拒绝。
 

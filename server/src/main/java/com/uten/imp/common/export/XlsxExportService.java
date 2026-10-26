@@ -45,128 +45,255 @@ public class XlsxExportService {
 
     /** Multi-sheet snapshot export; this never rereads mutable platform values. */
     public byte[] buildDocument(ExportDocument document) {
-        try (SXSSFWorkbook wb = new SXSSFWorkbook(ROW_ACCESS_WINDOW);
-             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            CellStyle header = wb.createCellStyle();
-            Font font = wb.createFont();
-            font.setBold(true);
-            header.setFont(font);
-            header.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
-            header.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-            header.setDataFormat(wb.createDataFormat().getFormat("@"));
-            CellStyle number = wb.createCellStyle();
-            number.setDataFormat(wb.createDataFormat().getFormat("#,##0.00"));
-            number.setAlignment(HorizontalAlignment.RIGHT);
-            CellStyle exact = wb.createCellStyle();
-            exact.setDataFormat(wb.createDataFormat().getFormat("General"));
-            exact.setAlignment(HorizontalAlignment.RIGHT);
-            CellStyle text = wb.createCellStyle();
-            text.setDataFormat(wb.createDataFormat().getFormat("@"));
-            Map<String, CellStyle> unitStyles = new java.util.HashMap<>();
-            var info = wb.createSheet("说明");
-            int infoRow = 0;
-            for (String value : java.util.stream.Stream.concat(java.util.stream.Stream.of(document.title()),
-                    document.metadata().stream()).toList()) {
-                Cell cell = info.createRow(infoRow++).createCell(0);
-                cell.setCellValue(value);
-                cell.setCellStyle(text);
-            }
-            info.setColumnWidth(0, 100 * 256);
-            int sheetIndex = 1;
-            for (ExportDocument.Section section : document.sections()) {
-                String name = org.apache.poi.ss.util.WorkbookUtil.createSafeSheetName(section.name());
-                if (wb.getSheet(name) != null) name = "表" + sheetIndex;
-                Sheet sheet = wb.createSheet(name);
-                Row labels = sheet.createRow(0);
-                for (int c = 0; c < section.columns().size(); c++) {
-                    ExportColumn column = section.columns().get(c);
-                    Cell label = labels.createCell(c);
-                    label.setCellValue(column.label());
-                    label.setCellStyle(header);
-                    int width = column.width() == null ? Math.max(12, Math.min(42, column.label().length() * 2 + 4))
-                            : Math.max(8, Math.min(100, (int) Math.round(column.width() / 7)));
-                    sheet.setColumnWidth(c, width * 256);
-                }
-                int rowIndex = 1;
-                for (Map<String, Object> values : section.rows()) {
-                    Row row = sheet.createRow(rowIndex++);
-                    for (int c = 0; c < section.columns().size(); c++) {
-                        ExportColumn column = section.columns().get(c);
-                        Cell cell = row.createCell(c);
-                        writeCell(cell, column.type(), values.get(column.key()), number, exact, text);
-                        applyUnit(cell, column, values, wb, unitStyles);
-                    }
-                }
-                sheet.createFreezePane(0, 1);
-                sheet.setRepeatingRows(new org.apache.poi.ss.util.CellRangeAddress(0, 0, -1, -1));
-                sheet.getPrintSetup().setLandscape(true);
-                sheet.setFitToPage(true);
-                sheet.getPrintSetup().setFitWidth((short) 1);
-                sheet.getPrintSetup().setFitHeight((short) 0);
-                sheetIndex++;
-            }
-            wb.write(out);
+        LegacyExportBudget.requireRows(document.sections().getFirst().rows().size());
+        try (var out=new ByteArrayOutputStream();var writer=openDocumentStream(null)) {
+            DocumentPageSink.emitDocument(document,writer);
+            writer.finish(out);
+            return out.toByteArray();
+        } catch(IOException failure) {
+            throw new IllegalStateException("生成 Excel 失败",failure);
+        }
+    }
+    public byte[] build(List<ExportColumn> columns, List<Map<String, Object>> rows) {
+        LegacyExportBudget.requireRows(rows.size());
+        try (var out = new ByteArrayOutputStream(); var writer = openStream(null, null)) {
+            writer.accept(new ExportPayload(columns, rows, rows.size()));
+            writer.finish(out);
             return out.toByteArray();
         } catch (IOException error) {
             throw new IllegalStateException("生成 Excel 失败", error);
         }
     }
 
-    public byte[] build(List<ExportColumn> columns, List<Map<String, Object>> rows) {
-        try (SXSSFWorkbook wb = new SXSSFWorkbook(ROW_ACCESS_WINDOW);
-             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            // 样式：表头（加粗灰底居中）+ 数值（千分位 2 位小数）
-            CellStyle headerStyle = wb.createCellStyle();
-            Font headerFont = wb.createFont();
-            headerFont.setBold(true);
-            headerStyle.setFont(headerFont);
-            headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
-            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-            headerStyle.setAlignment(HorizontalAlignment.CENTER);
-            headerStyle.setDataFormat(wb.createDataFormat().getFormat("@"));
-            CellStyle numStyle = wb.createCellStyle();
-            numStyle.setDataFormat(wb.createDataFormat().getFormat("#,##0.00"));
-            // 用量：常规格式，整数不带小数点、小数不补零也不截断(与 BOM 导入按值读取互为往返)
-            CellStyle qtyStyle = wb.createCellStyle();
-            qtyStyle.setDataFormat(wb.createDataFormat().getFormat("General"));
-            // 文本格式（DataFormat "@"）：强制 Excel/WPS 把字符串当字面文本，防 =cmd|'/c calc'!A1 / =HYPERLINK()
-            // 公式注入（安全策略 §10.1「单元格按文本写防 =CMD() 公式注入」）。POI setCellValue(String) 虽写为
-            // STRING 类型，但部分表格（WPS/旧 Excel）仍可能对前导 = + - @ \t \r 自动公式化；显式文本格式是权威防御，
-            // 且不改变显示内容（区别于加单引号前缀）。AES-256 不防此——文件被合法查看者解密后才被解释。
-            CellStyle textStyle = wb.createCellStyle();
-            textStyle.setDataFormat(wb.createDataFormat().getFormat("@"));
-            Map<String, CellStyle> unitStyles = new java.util.HashMap<>();
+    /** Bounded page writer; shares the same projection, precision, units and literal text rules. */
+    public StreamingWorkbook openStream(TableColumnProjection projection, String allowedScope) {
+        return new StreamingWorkbook(projection, allowedScope, null);
+    }
 
-            Sheet sheet = wb.createSheet("data");
-            // 表头
-            Row header = sheet.createRow(0);
-            for (int i = 0; i < columns.size(); i++) {
-                Cell c = header.createCell(i);
-                c.setCellValue(columns.get(i).label());
-                c.setCellStyle(headerStyle);
-                // 列宽：按表头长度估，限 [10,50] 字符宽
-                int w = columns.get(i).width()==null ? Math.min(50, Math.max(10, columns.get(i).label().length() + 4))
-                        : Math.min(100, Math.max(6, (int)Math.round(columns.get(i).width()/7)));
-                sheet.setColumnWidth(i, w * 256);
-            }
-            // 数据
-            int r = 1;
-            for (Map<String, Object> row : rows) {
-                Row R = sheet.createRow(r++);
+    public StreamingWorkbook openStream(TableColumnProjection projection, String allowedScope, java.nio.file.Path temporaryDirectory) {
+        return new StreamingWorkbook(projection, allowedScope, new ExportTemporaryBudget(temporaryDirectory));
+    }
+
+    public StreamingDocumentWriter openDocumentStream(java.nio.file.Path temporaryDirectory) {
+        return new DocumentWorkbook(new StreamingWorkbook(null,null,
+                temporaryDirectory==null?null:new ExportTemporaryBudget(temporaryDirectory)));
+    }
+
+    private static final ThreadLocal<ExportTemporaryBudget> SHEET_BUDGET = new ThreadLocal<>();
+    private static final class PrivateSheetWriter extends org.apache.poi.xssf.streaming.GZIPSheetDataWriter {
+        private PrivateSheetWriter() throws IOException { super(); }
+        @Override public java.io.File createTempFile() throws IOException {
+            ExportTemporaryBudget budget = Objects.requireNonNull(SHEET_BUDGET.get());
+            var path = java.nio.file.Files.createTempFile(budget.directory,"report-sheet-",".xml.gz");
+            budget.files.add(path);
+            return path.toFile();
+        }
+        @Override protected java.io.OutputStream decorateOutputStream(java.io.FileOutputStream output) throws IOException {
+            return new java.util.zip.GZIPOutputStream(Objects.requireNonNull(SHEET_BUDGET.get()).guard(output));
+        }
+    }
+
+    public final class StreamingWorkbook implements AutoCloseable {
+        private final SXSSFWorkbook workbook;
+        private final ExportTemporaryBudget tempBudget;
+        private final TableColumnProjection projection;
+        private final String allowedScope;
+        private final CellStyle header;
+        private final CellStyle number;
+        private final CellStyle quantity;
+        private final CellStyle text;
+        private final Map<String, CellStyle> units = new java.util.HashMap<>();
+        private final Map<String,SheetState> sheets=new java.util.LinkedHashMap<>();
+        private boolean finished;
+        private boolean written;
+        private boolean closed;
+        private final class SheetState {
+            final Sheet sheet;final List<ExportColumn> columns;int rowIndex=1;
+            SheetState(Sheet sheet,List<ExportColumn> columns){this.sheet=sheet;this.columns=List.copyOf(columns);}
+        }
+
+        private StreamingWorkbook(TableColumnProjection projection, String allowedScope, ExportTemporaryBudget tempBudget) {
+            this.tempBudget = tempBudget;
+            workbook = tempBudget == null ? new SXSSFWorkbook(ROW_ACCESS_WINDOW) : new SXSSFWorkbook(ROW_ACCESS_WINDOW) {
+                @Override protected org.apache.poi.xssf.streaming.SheetDataWriter createSheetDataWriter() throws IOException {
+                    ExportTemporaryBudget previous = SHEET_BUDGET.get();
+                    SHEET_BUDGET.set(tempBudget);
+                    try { return new PrivateSheetWriter(); }
+                    finally { if (previous == null) SHEET_BUDGET.remove(); else SHEET_BUDGET.set(previous); }
+                }
+            };
+            this.projection = projection;
+            this.allowedScope = allowedScope;
+            workbook.setCompressTempFiles(true);
+            header = workbook.createCellStyle();
+            Font font = workbook.createFont();
+            font.setBold(true);
+            header.setFont(font);
+            header.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+            header.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            header.setAlignment(HorizontalAlignment.CENTER);
+            header.setDataFormat(workbook.createDataFormat().getFormat("@"));
+            number = workbook.createCellStyle();
+            number.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00"));
+            number.setAlignment(HorizontalAlignment.RIGHT);
+            quantity = workbook.createCellStyle();
+            quantity.setDataFormat(workbook.createDataFormat().getFormat("General"));
+            quantity.setAlignment(HorizontalAlignment.RIGHT);
+            text = workbook.createCellStyle();
+            text.setDataFormat(workbook.createDataFormat().getFormat("@"));
+        }
+
+        public void accept(ExportPayload page) {
+            if (finished||closed) throw new IllegalStateException("Workbook is already finished or closed");
+            ExportPayload selected = projection == null ? page
+                    : projections.getObject().project(page.columns(), page.rows(), projection, allowedScope);
+            LegacyExportBudget.requireRows((long)rowCount()+selected.rows().size());
+            append(section("data","data",selected.columns(),false),selected.columns(),selected.rows());
+        }
+
+        private SheetState section(String id,String name,List<ExportColumn> columns,boolean document) {
+            if(finished||closed)throw new IllegalStateException("Workbook is already finished or closed");
+            SheetState state=sheets.get(id);
+            if(state==null) {
+                String safeName=org.apache.poi.ss.util.WorkbookUtil.createSafeSheetName(name);
+                if(workbook.getSheet(safeName)!=null) {
+                    int suffix=sheets.size()+1;
+                    do{safeName="表"+suffix++;}while(workbook.getSheet(safeName)!=null);
+                }
+                Sheet sheet=workbook.createSheet(safeName);
+                state=new SheetState(sheet,columns);sheets.put(id,state);
+                Row labels = sheet.createRow(0);
                 for (int i = 0; i < columns.size(); i++) {
-                    ExportColumn col = columns.get(i);
-                    Object v = row == null ? null : row.get(col.key());
-                    Cell cell = R.createCell(i);
-                    writeCell(cell, col.type(), v, numStyle, qtyStyle, textStyle);
-                    applyUnit(cell, col, row, wb, unitStyles);
+                    ExportColumn column = columns.get(i);
+                    Cell label = labels.createCell(i);
+                    label.setCellValue(column.label());
+                    label.setCellStyle(header);
+                    int width = column.width() == null
+                            ? document?Math.max(12,Math.min(42,column.label().length()*2+4)):Math.min(50, Math.max(10, column.label().length() + 4))
+                            : Math.min(100, Math.max(document?8:6, (int) Math.round(column.width() / 7)));
+                    sheet.setColumnWidth(i, width * 256);
+                }
+                sheet.createFreezePane(0, 1);
+                if(document) {
+                    sheet.setRepeatingRows(new org.apache.poi.ss.util.CellRangeAddress(0,0,-1,-1));
+                    sheet.getPrintSetup().setLandscape(true);sheet.setFitToPage(true);
+                    sheet.getPrintSetup().setFitWidth((short)1);sheet.getPrintSetup().setFitHeight((short)0);
                 }
             }
-            sheet.createFreezePane(0, 1); // 冻结首行
-            wb.write(out);
-            return out.toByteArray();
-        } catch (IOException e) {
-            throw new RuntimeException("生成 Excel 失败", e);
+            return state;
         }
+
+        private void append(SheetState state,List<ExportColumn> columns,List<Map<String,Object>> rows) {
+            if (!state.columns.equals(columns)) {
+                throw new IllegalStateException("Export columns changed while writing");
+            }
+            for (Map<String, Object> values : rows) {
+                if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+                if (state.rowIndex >= 1_048_576) throw new IllegalStateException("Excel row limit exceeded");
+                Row row = state.sheet.createRow(state.rowIndex++);
+                for (int i = 0; i < columns.size(); i++) {
+                    ExportColumn column = columns.get(i);
+                    Cell cell = row.createCell(i);
+                    writeCell(cell, column.type(), values == null ? null : values.get(column.key()), number, quantity, text);
+                    applyUnit(cell, column, values, workbook, units);
+                }
+            }
+        }
+
+        public int rowCount() { return Math.toIntExact(sheets.values().stream().mapToLong(state->state.rowIndex-1).sum()); }
+
+        public void finish(java.io.OutputStream output) throws IOException {
+            finish(output,LegacyExportBudget::checkpoint);
+        }
+        private void finish(java.io.OutputStream output,Runnable checkpoint)throws IOException {
+            if (finished || closed || sheets.isEmpty()) throw new IllegalStateException("Workbook is not writable");
+            finished = true;
+            var bounded=ExportTemporaryBudget.artifactOutput(output,tempBudget==null?null:tempBudget.directory,checkpoint);
+            if (tempBudget == null) workbook.write(bounded);
+            else workbook.writeAvoidingTempFiles(bounded);
+            written=true;
+        }
+
+        @Override public void close() throws IOException {
+            if(closed)return;closed=true;
+            IOException failure=null;
+            // POI closes a sheet writer before dispose tries to flush its remaining window.
+            // An unpublished window can be discarded; a successful write is already flushed.
+            for(Sheet raw:workbook)if(raw instanceof org.apache.poi.xssf.streaming.SXSSFSheet sheet) {
+                if(!written) {
+                    var pending=new java.util.ArrayList<Row>();sheet.forEach(pending::add);
+                    pending.forEach(sheet::removeRow);
+                }
+                try{sheet.flushRows();}catch(IOException error){if(failure==null)failure=error;else failure.addSuppressed(error);}
+            }
+            try { workbook.close(); }catch(Exception error){failure=error instanceof IOException io?io:new IOException("Closing workbook failed",error);}
+            try {workbook.dispose();}catch(RuntimeException error){
+                if(failure==null)failure=new IOException("Disposing workbook failed",error);else failure.addSuppressed(error);
+            }
+            if(tempBudget!=null)try{tempBudget.cleanupFiles();}catch(IOException error){
+                if(failure==null)failure=error;else failure.addSuppressed(error);
+            }
+            if(failure!=null)throw failure;
+        }
+    }
+
+    private final class DocumentWorkbook implements StreamingDocumentWriter {
+        final StreamingWorkbook writer;
+        final DocumentPageSink.RowBudget rowBudget=new DocumentPageSink.RowBudget();
+        DocumentPageSink.Header document;
+        boolean failed,finished,closed;
+        Runnable checkpoint=LegacyExportBudget::checkpoint;
+        DocumentWorkbook(StreamingWorkbook writer){this.writer=writer;}
+        @Override public void onCheckpoint(Runnable value){checkpoint=Objects.requireNonNull(value);}
+        private void writable(){if(failed||finished||closed)throw new IllegalStateException("Document writer is not writable");}
+        @Override public void begin(DocumentPageSink.Header header) {
+            writable();if(document!=null){failed=true;throw new IllegalStateException("Document header already supplied");}
+            try {
+                if(writer.tempBudget!=null)writer.tempBudget.requireFreeReserve();
+                rowBudget.begin(header);
+                if(header.expectedPrimaryRows()>=0)LegacyExportBudget.requireRows(header.expectedPrimaryRows());
+                document=Objects.requireNonNull(header);
+                Sheet info=writer.workbook.createSheet("说明");int row=0;
+                for(String value:java.util.stream.Stream.concat(java.util.stream.Stream.of(header.title()),header.metadata().stream()).toList()) {
+                    Cell cell=info.createRow(row++).createCell(0);cell.setCellValue(value);cell.setCellStyle(writer.text);
+                }
+                info.setColumnWidth(0,100*256);
+                for(var section:header.sections())writer.section(section.id(),section.name(),section.columns(),true);
+            }catch(IOException failure){failed=true;throw new java.io.UncheckedIOException(failure);}
+            catch(RuntimeException failure){failed=true;throw failure;}
+        }
+        @Override public void accept(DocumentPageSink.Page page) {
+            writable();if(document==null){failed=true;throw new IllegalStateException("Document header is required");}
+            try {
+                var section=document.sections().stream().filter(candidate->candidate.id().equals(page.sectionId())).findFirst()
+                        .orElseThrow(()->new IllegalArgumentException("Undeclared document section"));
+                rowBudget.accept(page);
+                if(section.primary())LegacyExportBudget.requireRows(primaryRowCount()+page.rows().size());
+                writer.append(writer.sheets.get(section.id()),section.columns(),page.rows());
+            }catch(RuntimeException failure){failed=true;throw failure;}
+        }
+        @Override public long primaryRowCount(){
+            if(document==null)return 0;
+            String id=document.sections().stream().filter(DocumentPageSink.Section::primary).findFirst().orElseThrow().id();
+            return writer.sheets.get(id).rowIndex-1;
+        }
+        @Override public long rowCount(){return writer.rowCount();}
+        @Override public void finish(java.io.OutputStream output)throws IOException {
+            writable();if(document==null)throw new IllegalStateException("Document header is required");
+            if(document.expectedPrimaryRows()>=0&&primaryRowCount()!=document.expectedPrimaryRows()) {
+                failed=true;throw new IllegalStateException("Document primary rows are incomplete");
+            }
+            finished=true;
+            for(var section:document.sections()) {
+                var state=writer.sheets.get(section.id());
+                if(section.omitIfEmpty()&&state.rowIndex==1) {
+                    ((org.apache.poi.xssf.streaming.SXSSFSheet)state.sheet).flushRows();
+                    writer.workbook.removeSheetAt(writer.workbook.getSheetIndex(state.sheet));
+                }
+            }
+            writer.finish(output,checkpoint);
+        }
+        @Override public void close()throws IOException{closed=true;writer.close();}
     }
 
     private static void writeCell(Cell cell, String type, Object v, CellStyle numStyle, CellStyle qtyStyle,
@@ -174,12 +301,14 @@ public class XlsxExportService {
         if (v == null) return;
         switch (type == null ? ExportColumn.TEXT : type) {
             case ExportColumn.MONEY, ExportColumn.NUMBER, ExportColumn.QTY -> {
-                BigDecimal d = toBigDecimal(v);
+                BigDecimal d = ExportCellValues.decimal(v);
                 if (d != null) {
-                    if(d.stripTrailingZeros().precision()>15) {
-                        cell.setCellValue(d.toPlainString()); cell.setCellStyle(textStyle);
+                    double value=d.doubleValue();
+                    if(d.stripTrailingZeros().precision()>15 || !Double.isFinite(value)
+                            || d.signum()!=0&&Math.abs(value)<Double.MIN_NORMAL) {
+                        cell.setCellValue(ExportCellValues.exactText(d)); cell.setCellStyle(textStyle);
                     } else {
-                        cell.setCellValue(d.doubleValue());
+                        cell.setCellValue(value);
                         cell.setCellStyle(ExportColumn.MONEY.equals(type) ? numStyle : qtyStyle);
                     }
                 } else {
@@ -188,8 +317,8 @@ public class XlsxExportService {
                     cell.setCellStyle(textStyle);
                 }
             }
-            case ExportColumn.BOOL -> { cell.setCellValue(toBool(v) ? "是" : "否"); cell.setCellStyle(textStyle); }
-            case ExportColumn.DATE -> { cell.setCellValue(toDateStr(v)); cell.setCellStyle(textStyle); }
+            case ExportColumn.BOOL -> { cell.setCellValue(ExportCellValues.bool(v) ? "是" : "否"); cell.setCellStyle(textStyle); }
+            case ExportColumn.DATE -> { cell.setCellValue(ExportCellValues.date(v)); cell.setCellStyle(textStyle); }
             default -> { cell.setCellValue(Objects.toString(v)); cell.setCellStyle(textStyle); }
         }
     }
@@ -198,12 +327,9 @@ public class XlsxExportService {
     private static void applyUnit(Cell cell, ExportColumn column, Map<String, Object> row,
                                   SXSSFWorkbook workbook, Map<String, CellStyle> cache) {
         Object raw = row == null ? null : row.get(column.key());
-        if (raw == null || toBigDecimal(raw) == null) return;
-        String unit = column.unitKey() == null ? column.unitLabel()
-                : Objects.toString(row.get(column.unitKey()), "");
-        if (unit == null || unit.isBlank()) return;
-        unit = unit.strip();
-        if ("人民币".equals(unit)) unit = "元";
+        if (raw == null || ExportCellValues.decimal(raw) == null) return;
+        String unit=ExportCellValues.unit(column,row);
+        if(unit.isEmpty())return;
         String base = cell.getCellType() == org.apache.poi.ss.usermodel.CellType.STRING ? "@"
                 : ExportColumn.MONEY.equals(column.type()) ? "#,##0.00############" : "0.################";
         String literal = unit.replace("\\", "\\\\").replace("\"", "\\\"");
@@ -218,25 +344,4 @@ public class XlsxExportService {
         cell.setCellStyle(style);
     }
 
-    private static BigDecimal toBigDecimal(Object v) {
-        if (v instanceof BigDecimal b) return b;
-        if (v instanceof Number n) return new BigDecimal(n.toString());
-        if (v instanceof String s && !s.isBlank()) {
-            try { return new BigDecimal(s.trim()); } catch (NumberFormatException ignored) {}
-        }
-        return null;
-    }
-
-    private static boolean toBool(Object v) {
-        if (v instanceof Boolean b) return b;
-        if (v instanceof Number n) return n.intValue() != 0;
-        return "true".equalsIgnoreCase(Objects.toString(v)) || "1".equals(Objects.toString(v));
-    }
-
-    /** 报表 norm() 已把日期转成 yyyy-MM-dd 字符串；兼容 LocalDate/Date 直接 toString。 */
-    private static String toDateStr(Object v) {
-        if (v instanceof java.time.LocalDate d) return d.toString();
-        if (v instanceof java.util.Date d) return new java.sql.Date(d.getTime()).toLocalDate().toString();
-        return Objects.toString(v);
-    }
 }

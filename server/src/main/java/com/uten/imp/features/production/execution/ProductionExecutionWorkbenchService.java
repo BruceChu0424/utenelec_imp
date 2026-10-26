@@ -132,7 +132,7 @@ public class ProductionExecutionWorkbenchService {
         String filters = rootFilters(
                 keyword, workshopDepartmentId, mine, employeeId,
                 canSearchClient, null);
-        var query = em.createNativeQuery(
+        var query = NativeFacets.query(em, "orders",
                 "SELECT COALESCE(root.sales_order_preview, ''), COUNT(*)"
                 + " FROM v_production_execution_workbench_roots root WHERE ("
                 + scope.predicate() + ") AND " + CURRENT_ROOT_PREDICATE + filters
@@ -460,12 +460,12 @@ public class ProductionExecutionWorkbenchService {
         boolean history = "COMPLETED".equals(status);
         String from = " FROM v_production_execution_workbench_segments task WHERE "
                 + predicate;
-        var sourcePlanQuery = em.createNativeQuery("""
+        var sourcePlanQuery = NativeFacets.query(em, "sourcePlan", """
                 SELECT COALESCE(%s, ''), COUNT(*)
                 """.formatted(ROOT_ANALYSIS_NO_SQL) + from
                 + " GROUP BY 1 HAVING COALESCE(" + ROOT_ANALYSIS_NO_SQL
                 + ", '') <> '' ORDER BY 1");
-        var segmentQuery = em.createNativeQuery(
+        var segmentQuery = NativeFacets.query(em, "segment",
                 "SELECT COALESCE(task.segment_code, ''), COUNT(*)" + from
                 + " GROUP BY 1 ORDER BY 1");
         UUID scopedEmployeeId = seeAll ? null : employeeId;

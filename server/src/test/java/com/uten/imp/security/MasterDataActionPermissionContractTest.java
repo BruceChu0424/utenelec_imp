@@ -89,6 +89,12 @@ class MasterDataActionPermissionContractTest {
             throws Exception {
         for (MasterSpec spec : MASTERS) {
             String source = source(spec.service());
+            if (spec.prefix().equals("goods")) {
+                assertThat(source).contains("GoodsFieldEditPolicy.requireChanged(g, req)");
+                assertThat(source(type("com.uten.imp.features.master.goods.GoodsFieldEditPolicy")))
+                        .contains("CurrentAuthorityGuard.requireAll(\"goods:edit\")");
+                continue;
+            }
             assertThat(source)
                     .contains("CurrentAuthorityGuard.requireAll(\""
                             + spec.prefix() + ":edit\")")

@@ -11,9 +11,9 @@ class ReportSortTest {
     void onlyServerAliasesAndLiteralDirectionsBecomeSql() {
         var keys = List.of("goodsCode", "amount");
         assertThat(ReportSort.resolveOrderBy("amount", "DeSc", "id ASC", keys))
-                .isEqualTo("\"amount\" DESC");
+                .isEqualTo("\"amount\" DESC, id ASC");
         assertThat(ReportSort.resolveOrderBy("goodsCode", "asc; SELECT pg_sleep(1)", "id ASC", keys))
-                .isEqualTo("\"goodsCode\" ASC");
+                .isEqualTo("\"goodsCode\" ASC, id ASC");
         for (String request : List.of("amount\" DESC; SELECT pg_sleep(1)--", "amount DESC", "unknown")) {
             assertThat(ReportSort.resolveOrderBy(request, "desc", "id ASC", keys)).isEqualTo("id ASC");
         }

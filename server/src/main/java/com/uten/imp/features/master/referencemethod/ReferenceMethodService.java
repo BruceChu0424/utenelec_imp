@@ -96,11 +96,38 @@ public class ReferenceMethodService {
      */
     @Transactional(readOnly = true)
     public List<SettlementMethodAdminItem> settlementAdminList(SettlementMethodAdminQueryFilter f) {
-        Specification<SettlementMethod> spec = (Root<SettlementMethod> root,
+        var result = settlementAdminPage(f, org.springframework.data.domain.PageRequest.of(0, 501));
+        if (result.getTotal() > 500) throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                "结算方式超过同步列表上限，请使用分页查询");
+        return result.getItems();
+    }
+
+    @Transactional(readOnly = true)
+    public com.uten.imp.common.web.PageResponse<SettlementMethodAdminItem> settlementAdminPage(
+            SettlementMethodAdminQueryFilter f, int page, int size) {
+        return settlementAdminPage(f, com.uten.imp.common.web.Pageables.of(page, size));
+    }
+
+    private com.uten.imp.common.web.PageResponse<SettlementMethodAdminItem> settlementAdminPage(
+            SettlementMethodAdminQueryFilter f, org.springframework.data.domain.Pageable requested) {
+        var pageable = org.springframework.data.domain.PageRequest.of(requested.getPageNumber(), requested.getPageSize(),
+                Sort.by(Sort.Direction.ASC, "sortOrder").and(Sort.by(Sort.Direction.ASC, "code")).and(Sort.by("id")));
+        var search = com.uten.imp.common.util.NameRefKeyword.page(settlementAdminSpec(f), pageable, f.keyword());
+        var rows = com.uten.imp.common.export.MasterExportSource.page(settlementMethods, em, SettlementMethod.class,
+                search.specification(), search.pageable(), f);
+        return new com.uten.imp.common.web.PageResponse<>(rows.getContent().stream()
+                .map(ReferenceMethodService::toAdminItem).toList(), rows);
+    }
+
+    private Specification<SettlementMethod> settlementAdminSpec(SettlementMethodAdminQueryFilter f) {
+        return (Root<SettlementMethod> root,
                 jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(com.uten.imp.common.util.NameRefKeyword.match(root,q,cb,f.keyword(),pattern->cb.or(
+                    com.uten.imp.common.util.NameRefKeyword.text(cb,root.get("name"),pattern),
+                    com.uten.imp.common.util.NameRefKeyword.text(cb,root.get("code"),pattern))));
             addEq(ps, cb, root, "status", f.status());
             addEq(ps, cb, root, "systemRole", f.systemRole());
             addEq(ps, cb, root, "termsBase", f.termsBase());
@@ -112,11 +139,6 @@ public class ReferenceMethodService {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        return settlementMethods.findAll(spec, Sort.by(Sort.Direction.ASC, "sortOrder")
-                        .and(Sort.by(Sort.Direction.ASC, "code")))
-                .stream()
-                .map(ReferenceMethodService::toAdminItem)
-                .toList();
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<SettlementMethod> root,
@@ -177,12 +199,8 @@ public class ReferenceMethodService {
      * 加密 Excel 导出（settlement_method:export）：小字典不分页，全量导出。
      * 列集与前端结算方式表格一致：编号 / 名称 / 状态 / 系统角色 / 到期基准 / 到期规则 / 账期口径。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ExportPayload exportSettlementAdmin(SettlementMethodAdminQueryFilter f, int maxRows) {
-        List<SettlementMethodAdminItem> items = settlementAdminList(f);
-        if (items.size() > maxRows) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出行数超过上限 " + maxRows);
-        }
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "编号", ExportColumn.TEXT),
                 new ExportColumn("name", "名称", ExportColumn.TEXT),
@@ -191,8 +209,8 @@ public class ReferenceMethodService {
                 new ExportColumn("termsBase", "到期基准", ExportColumn.TEXT),
                 new ExportColumn("dueRule", "到期规则", ExportColumn.TEXT),
                 new ExportColumn("terms", "账期口径", ExportColumn.TEXT));
-        List<Map<String, Object>> rows = new ArrayList<>(items.size());
-        for (SettlementMethodAdminItem m : items) {
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols, maxRows,
+                (page,size) -> settlementAdminPage(f,page,size), m -> {
             boolean lockedBySystemRole = m.systemRole() != null && !m.systemRole().isEmpty();
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("_platformRecordId", m.id());
@@ -207,9 +225,8 @@ public class ReferenceMethodService {
             row.put("termsBase", termsBaseLabel(m.termsBase()));
             row.put("dueRule", dueRuleLabel(m.dueRule()));
             row.put("terms", termsSummary(m));
-            rows.add(row);
-        }
-        return new ExportPayload(cols, rows, rows.size());
+            return row;
+        });
     }
 
     // ===== facets（各可筛字段 distinct + 空值计数） =====

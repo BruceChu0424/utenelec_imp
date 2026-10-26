@@ -14,6 +14,7 @@
 //  - 右下角悬浮操作组：有入职权限者给「入职登记」主按钮(与员工列表页 FAB 同动作)；
 //  - 正文统一包 UtenContentContainer(与各 hub 页同款 gutter)，区块内边距收口为 s4。
 // 文档：docs/03-页面/HR任务中心.md
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -21,6 +22,7 @@ import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/router/nav_helpers.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
@@ -124,7 +126,7 @@ class HrWorkbenchPage extends ConsumerWidget {
               key: const ValueKey('hr-workbench-reconcile-records'),
               tooltip: '核对记录',
               icon: const Icon(Icons.history_rounded),
-              onPressed: () => context.push(RouteName.hrReconcile),
+              onPressed: () => pushPage(context, RouteName.hrReconcile),
             ),
           UtenRefreshButton(
             busy: async.isLoading,
@@ -178,7 +180,7 @@ class HrWorkbenchPage extends ConsumerWidget {
         () => context.push(publishWith('newborn')),
       ),
     ];
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s4,
         UtenSpacing.s20,
@@ -228,69 +230,71 @@ class HrWorkbenchPage extends ConsumerWidget {
     if (mine.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
     // UtenCard 的 Material 即 ink 表面：内部 HrTaskTile 的点按涟漪照常渲染。
-    return UtenCard(
-      margin: const EdgeInsets.fromLTRB(
+    return UtenPageEdgePadding(
+      padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s4,
         UtenSpacing.s12,
         UtenSpacing.s4,
         0,
       ),
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s16,
-              UtenSpacing.s12,
-              UtenSpacing.s16,
-              UtenSpacing.s4,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.assignment_ind_outlined,
-                  size: 20,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Text(
-                  '我处理中的事项',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Text(
-                  '${mine.length} 项',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          for (var i = 0; i < mine.length && i < 5; i++) ...[
-            if (i > 0) const Divider(height: 1, indent: 16, endIndent: 16),
-            HrTaskTile(
-              type: mine[i].$1,
-              item: mine[i].$2,
-              isToday: hrTaskIsToday(s, mine[i].$1, mine[i].$2),
-            ),
-          ],
-          if (mine.length > 5)
+      child: UtenCard(
+        padding: EdgeInsets.zero,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Padding(
-              padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-              child: Center(
-                child: Text(
-                  '其余 ${mine.length - 5} 项见各事务子页',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+              padding: const EdgeInsets.fromLTRB(
+                UtenSpacing.s16,
+                UtenSpacing.s12,
+                UtenSpacing.s16,
+                UtenSpacing.s4,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.assignment_ind_outlined,
+                    size: 20,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Text(
+                    '我处理中的事项',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Text(
+                    '${mine.length} 项',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            for (var i = 0; i < mine.length && i < 5; i++) ...[
+              if (i > 0) const Divider(height: 1, indent: 16, endIndent: 16),
+              HrTaskTile(
+                type: mine[i].$1,
+                item: mine[i].$2,
+                isToday: hrTaskIsToday(s, mine[i].$1, mine[i].$2),
+              ),
+            ],
+            if (mine.length > 5)
+              Padding(
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                child: Center(
+                  child: Text(
+                    '其余 ${mine.length - 5} 项见各事务子页',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -342,7 +346,7 @@ class HrWorkbenchPage extends ConsumerWidget {
           theme.colorScheme.error,
         ),
     ];
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s4,
         UtenSpacing.s12,
@@ -393,36 +397,40 @@ class HrWorkbenchPage extends ConsumerWidget {
   // ---- 老数据补录提示 ----
   Widget _legacyBanner(BuildContext context, HrTaskSummary s) {
     final theme = Theme.of(context);
-    return Container(
-      margin: const EdgeInsets.fromLTRB(
+    return UtenPageEdgePadding(
+      padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s4,
         UtenSpacing.s12,
         UtenSpacing.s4,
         0,
       ),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: UtenRadius.mdAll,
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.info_outline_rounded,
-            size: 18,
-            color: theme.colorScheme.onSurfaceVariant,
+      child: Container(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.5,
           ),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Text(
-              '另有 ${s.unconfirmedLegacyCount} 名入职满一年的员工未登记转正日期，'
-              '请在员工档案中使用「登记转正」补登（编辑档案不可直改转正日期）。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+          borderRadius: UtenRadius.mdAll,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.info_outline_rounded,
+              size: 18,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                '另有 ${s.unconfirmedLegacyCount} 名入职满一年的员工未登记转正日期，'
+                '请在员工档案中使用「登记转正」补登（编辑档案不可直改转正日期）。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

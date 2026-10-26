@@ -476,9 +476,24 @@ abstract class _MaterialAnalysisCandidatesState
     // 错误走下方内联条——否则加载失败期间搜索中的焦点与输入法组合被打断
     //（2026-10-09 根因修复口径）。
     final page = _candidatePage;
-    final lines = (page?.lines ?? const <MaterialAnalysisSalesCandidateLine>[])
+    final source = page == null
+        ? const <MaterialAnalysisSalesCandidateLine>[]
+        : _candidateReadRows ?? page.lines;
+    List<MaterialAnalysisSalesCandidateLine> visibleLines(
+      List<MaterialAnalysisSalesCandidateLine> rows,
+    ) => rows
         .where((line) => line.remainingQty == null || line.remainingQty! > 0)
         .toList(growable: false);
+    final lines = visibleLines(source);
+    projectReadWindowBinding(
+      source,
+      lines,
+      project: visibleLines,
+      projectionKey: (
+        'sales-candidates-with-remaining-quantity',
+        _candidateTab,
+      ),
+    );
     if (context.breakpoint.isCompact) {
       return _compactCandidateBody(theme, page, lines);
     }
@@ -534,11 +549,7 @@ abstract class _MaterialAnalysisCandidatesState
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _manualDemandIntro(theme),
-                        const SizedBox(height: UtenSpacing.s8),
-                        ..._manualDemandCards(compact: false),
-                      ],
+                      children: [..._manualDemandCards(compact: false)],
                     ),
                   ),
           ),
@@ -601,11 +612,7 @@ abstract class _MaterialAnalysisCandidatesState
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _manualDemandIntro(theme),
-                  const SizedBox(height: UtenSpacing.s8),
-                  ..._manualDemandCards(compact: false),
-                ],
+                children: [..._manualDemandCards(compact: false)],
               ),
             ),
           ),
@@ -636,8 +643,6 @@ abstract class _MaterialAnalysisCandidatesState
               child: _inlineError(theme, _error!, () => _previewAnalysis()),
             ),
           ),
-        gap,
-        SliverToBoxAdapter(child: _manualDemandIntro(theme)),
         gap,
         for (final card in _manualDemandCards(compact: true))
           SliverToBoxAdapter(child: card),
@@ -676,32 +681,14 @@ abstract class _MaterialAnalysisCandidatesState
   );
 
   /// 顶部一行说明：两个分段录入的内容合在一起联合分析。
-  Widget _candidateGuidance(ThemeData theme) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Padding(
-        padding: const EdgeInsets.only(top: 1),
-        child: Icon(
-          Icons.info_outline_rounded,
-          size: 20,
-          color: theme.colorScheme.primary,
-        ),
-      ),
-      const SizedBox(width: UtenSpacing.s8),
-      Expanded(
-        child: Text(
-          widget.planCreateEntry
-              ? '在「手工需求单」里选择要投产的产品与数量，点右下角「联合分析」'
-                    '展开 BOM 层级表；在表里逐行填下单数量、指派车间/负责人后「下单」，'
-                    '每个自制行生成一张生产计划单。'
-              : '勾选销售订单产品，或在「手工需求」录入返工、试制、样品、备库需求，'
-                    '再点右下角「联合分析」一起分析。',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
-    ],
+  Widget _candidateGuidance(ThemeData theme) => UtenSectionHeader(
+    title: widget.planCreateEntry ? '手工需求' : '分析来源',
+    info: widget.planCreateEntry
+        ? '在「手工需求单」里选择要投产的产品与数量，点右下角「联合分析」'
+              '展开 BOM 层级表；在表里逐行填下单数量、指派车间/负责人后「下单」，'
+              '每个自制行生成一张生产计划单。'
+        : '勾选销售订单产品，或在「手工需求」录入返工、试制、样品、备库需求，'
+              '再点右下角「联合分析」一起分析。',
   );
 
   /// 两个分段的文字；[twoLine] 时计数换到第二行(窄屏大字号用)。
@@ -764,6 +751,7 @@ abstract class _MaterialAnalysisCandidatesState
     MaterialAnalysisSalesCandidatePage? page,
     List<MaterialAnalysisSalesCandidateLine> lines,
   ) => MasterDataTableView<MaterialAnalysisSalesCandidateLine>(
+    expensiveRowMounts: _sourceQtyControllers.isNotEmpty,
     rowsController: _candidateTableRows,
     paginationRevision: page,
     tableKey:
@@ -781,6 +769,18 @@ abstract class _MaterialAnalysisCandidatesState
     // 2026-09-25 单号列统一：销售单号值来自服务端 facets
     // (与列表同一过滤上下文)，值筛选走服务端精确匹配。
     facets: {'orderNo': _candidateDocNoFacets['orderNo'] ?? const []},
+    facetPageLoaders: nativeFacetLoaders(
+      ref,
+      path: '/production/material-analyses/sales-candidates/facets',
+      fields: const ['orderNo'],
+      filters: {'keyword': _candidateKeyword},
+    ),
+    facetSearchScope: nativeFacetSearchScope(
+      ref,
+      '/production/material-analyses/sales-candidates/facets',
+      {'keyword': _candidateKeyword},
+    ),
+
     nullCounts: const {},
     filters: {'orderNo': _candidateOrderNoFilter},
     onFilterChanged: (key, value) {
@@ -806,15 +806,14 @@ abstract class _MaterialAnalysisCandidatesState
     currentPage: page?.page ?? _candidatePageNo,
     totalPages: page?.totalPages ?? 1,
     paginationScope: _candidateKeyword,
-    onPageChange: (value) => _loadCandidates(page: value),
+    onPageChange: (value) => _loadCandidates(page: value, useCache: true),
   );
 
-  Widget _manualDemandIntro(ThemeData theme) => Text(
-    '一张手工需求单 = 一个需求编号 + 多个货品。同一编号的货品录在同一张单里，'
-    '不同编号请再建一张单；需求编号用于后续找回任务，来源原因随分析留痕。',
-    style: theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
-    ),
+  Widget _manualDemandInfo() => const UtenFieldHintIcon(
+    dense: true,
+    info:
+        '一张手工需求单 = 一个需求编号 + 多个货品。同一编号的货品录在同一张单里，'
+        '不同编号请再建一张单；需求编号用于后续找回任务，来源原因随分析留痕。',
   );
 
   List<Widget> _manualDemandCards({required bool compact}) {
@@ -853,14 +852,22 @@ abstract class _MaterialAnalysisCandidatesState
     ),
   );
 
-  Widget _addManualDemandButton({bool expanded = false}) => UtenButton(
-    key: const Key('manual-demand-add-card'),
-    type: UtenButtonType.tonal,
-    icon: Icons.add_rounded,
-    isExpanded: expanded,
-    onPressed: _busy ? null : _addManualDemandDraft,
-    child: const Text('再建一张手工需求单'),
-  );
+  Widget _addManualDemandButton({bool expanded = false}) {
+    final button = UtenButton(
+      key: const Key('manual-demand-add-card'),
+      type: UtenButtonType.tonal,
+      icon: Icons.add_rounded,
+      onPressed: _busy ? null : _addManualDemandDraft,
+      child: const Text('再建一张手工需求单'),
+    );
+    return Row(
+      mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
+      children: [
+        if (expanded) Expanded(child: button) else button,
+        _manualDemandInfo(),
+      ],
+    );
+  }
 
   Widget _candidateStartButton(int selectedCount) => UtenButton(
     key: const Key('material-analysis-start'),
@@ -985,8 +992,6 @@ abstract class _MaterialAnalysisCandidatesState
             SliverToBoxAdapter(child: _compactSelectedSourceSummary(theme)),
           ],
         ] else ...[
-          SliverToBoxAdapter(child: _manualDemandIntro(theme)),
-          gap,
           for (final card in _manualDemandCards(compact: true))
             SliverToBoxAdapter(child: card),
           if (_canManage) ...[
@@ -1448,7 +1453,7 @@ abstract class _MaterialAnalysisCandidatesState
             style: TextButton.styleFrom(minimumSize: Size(extent, extent)),
             onPressed: _loadingCandidates || currentPage <= 1
                 ? null
-                : () => _loadCandidates(page: currentPage - 1),
+                : () => _loadCandidates(page: currentPage - 1, useCache: true),
             icon: const Icon(Icons.chevron_left_rounded),
             label: const Text('上一页'),
           );
@@ -1467,7 +1472,7 @@ abstract class _MaterialAnalysisCandidatesState
             style: TextButton.styleFrom(minimumSize: Size(extent, extent)),
             onPressed: _loadingCandidates || currentPage >= totalPages
                 ? null
-                : () => _loadCandidates(page: currentPage + 1),
+                : () => _loadCandidates(page: currentPage + 1, useCache: true),
             iconAlignment: IconAlignment.end,
             icon: const Icon(Icons.chevron_right_rounded),
             label: const Text('下一页'),

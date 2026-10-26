@@ -12,6 +12,7 @@
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）；
 // 窄屏表格横向滚动即可。
 // 文档：docs/03-页面/员工列表页.md
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -250,6 +251,8 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
     Widget body = _body();
     if (context.breakpoint.isCompact) {
       body = UtenContentContainer(child: body);
+    } else {
+      body = UtenPageEdgePadding(child: body);
     }
 
     return Scaffold(
@@ -298,6 +301,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
     return Padding(
       padding: const EdgeInsets.only(top: UtenSpacing.s12),
       child: MasterDataTableView<EmployeeSummary>(
+      expensiveRowMounts: false,
         tableKey:
             'features.employee.pages.employee_list_page.EmployeeListPageState._body.1',
         bottomContentPadding: UtenFloatingActionGroup.scrollClearance,

@@ -575,7 +575,10 @@ void main() {
       await tester.tap(_button('清除筛选'));
       await tester.pumpAndSettle();
       // 清除筛选回到历史门默认的近三个月（2026-10-24 口径）。
-      expect(wire.queries.last, _defaultDatedQuery());
+      expect(
+        wire.queries.lastWhere((query) => !query.containsKey('cursor')),
+        _defaultDatedQuery(),
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -587,13 +590,16 @@ void main() {
       await _pump(tester, wire);
       final initial = wire.queries.length;
       // 初始查询即带历史门默认的近三个月（2026-10-24 口径）。
-      expect(wire.queries.last, _defaultDatedQuery());
+      expect(wire.queries, [
+        _defaultDatedQuery(),
+        {..._defaultDatedQuery(), 'cursor': 'opaque-next-token'},
+      ]);
       expect(find.text('第一页货品'), findsOneWidget);
       expect(find.text('第 1 页'), findsOneWidget);
       expect(tester.widget<UtenButton>(_button('上一页')).onPressed, isNull);
       await tester.tap(_button('下一页'));
       await tester.pumpAndSettle();
-      expect(wire.queries.length, initial + 1);
+      expect(wire.queries.length, initial);
       expect(wire.queries.last['cursor'], 'opaque-next-token');
       expect(find.text('第一页货品'), findsNothing);
       expect(find.text('第二页货品'), findsOneWidget);
@@ -619,8 +625,8 @@ void main() {
       );
       await tester.tap(_button('上一页'));
       await tester.pumpAndSettle();
-      expect(wire.queries.length, initial + 2);
-      expect(wire.queries.last.containsKey('cursor'), isFalse);
+      expect(wire.queries.length, initial);
+      expect(wire.queries.first.containsKey('cursor'), isFalse);
       expect(find.text('第一页货品'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -666,7 +672,10 @@ void main() {
       expect(wire.queries.last['cursor'], 'opaque-next-token');
       await _searchHeader(tester, 'recordLabel', '通过摘要匹配');
       expect(wire.queries.last['keyword'], '通过摘要匹配');
-      expect(wire.queries.last.containsKey('cursor'), isFalse);
+      expect(
+        wire.queries.lastWhere((query) => !query.containsKey('cursor'))['keyword'],
+        '通过摘要匹配',
+      );
       expect(find.text('第 1 页'), findsOneWidget);
       // The server may match an immutable before-value/summary that is absent
       // from visible identity cells. A local current-page search would hide it.
@@ -680,7 +689,10 @@ void main() {
       await tester.tap(find.text('客户资料').last);
       await tester.pumpAndSettle();
       expect(wire.queries.last['entityType'], 'clients');
-      expect(wire.queries.last.containsKey('cursor'), isFalse);
+      expect(
+        wire.queries.lastWhere((query) => !query.containsKey('cursor'))['entityType'],
+        'clients',
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -790,7 +802,10 @@ void main() {
       expect(wire.queries.last['cursor'], 'opaque-next-token');
       await _searchHeader(tester, 'recordCode', ' V8 ');
       expect(wire.queries.last['keyword'], 'V8');
-      expect(wire.queries.last.containsKey('cursor'), isFalse);
+      expect(
+        wire.queries.lastWhere((query) => !query.containsKey('cursor'))['keyword'],
+        'V8',
+      );
       final table = tester
           .widget<MasterDataTableView<history.MasterRecordRevision>>(
             find.byKey(const Key('master-record-history-table')),

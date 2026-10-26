@@ -14,16 +14,12 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/models/retained_async_page.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../shared/providers/master_name_provider.dart'
-    show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -227,6 +223,7 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
     if (failures.isNotEmpty) {
       context.appError(l10n.myVisitorsBatchIncomplete(failures.first));
     }
+    setState(() => _page = _tableRows.visiblePage ?? _page);
     ref.invalidate(myAsHostProvider);
     refreshBadges(ref);
   }
@@ -254,39 +251,48 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final paginationScope = (
-      _history,
-      _status,
-      ref.watch(masterDataSessionKeyProvider),
-    );
-    final list = _retainedPage.resolve(
+    final paginationScope = (_history, _status, retainedReaderEpoch(ref));
+    final readLease = ref.watch(visitorHostReadProvider(_query.status))
+      ..bindView(context, currentQuery: () => (_query.status,));
+    final list = _retainedPage.resolveFor(
+      ref,
       paginationScope,
-      ref.watch(myAsHostProvider(_query)),
+      myAsHostProvider(_query),
     );
     return Scaffold(
       appBar: UtenAppBar(title: l10n.myVisitorsTitle, showBackButton: true),
-      body: list.when(
-        skipLoadingOnReload: true,
-        skipError: true,
-        loading: () => const UtenSkeletonList(itemCount: 4),
-        error: (e, _) => UtenEmpty.error(
-          message: '$e',
-          actionLabel: l10n.commonRetry,
-          onAction: () => ref.invalidate(myAsHostProvider(_query)),
-        ),
-        data: (page) {
+      body: Builder(
+        builder: (context) {
+          final page =
+              list.value ??
+              const PagedResult<VisitorApplication>(
+                items: [],
+                page: 1,
+                size: 20,
+                total: 0,
+                totalPages: 0,
+              );
           final isCompact = context.breakpoint.isCompact;
           final counts = ref.watch(visitorHostCountsProvider);
           Widget body = RefreshIndicator(
-            onRefresh: () async => ref.invalidate(myAsHostProvider(_query)),
+            onRefresh: () async {
+              setState(() => _page = _tableRows.visiblePage ?? _page);
+              readLease.invalidate();
+              ref.invalidate(myAsHostProvider(_query));
+            },
             child: MasterDataTableView<VisitorApplication>(
+              expensiveRowMounts: false,
               tableKey:
                   'features.visitor_approval.pages.my_visitors_page.MyVisitorsPageState.build.1',
               key: const Key('my-visitors-table'),
               paginationScope: paginationScope,
-              loadingMore: list.isLoading,
+              isLoading: list.isLoading && !list.hasValue,
+              loadingMore: list.isLoading && list.hasValue,
               error: list.hasError ? '${list.error}' : null,
-              onRetry: () => ref.invalidate(myAsHostProvider(_query)),
+              onRetry: () {
+                readLease.invalidate();
+                ref.invalidate(myAsHostProvider(_query));
+              },
               columns: _columns(l10n),
               items: page.items,
               rowsController: _tableRows,
@@ -327,14 +333,15 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
               // 常态 0-3 条；仍接分页以防极端堆积。
               currentPage: page.page,
               totalPages: page.totalPages,
-              onPageChange: (p) async {
+              onPageChange: (p) => readLease.paginate(p, () async {
                 setState(() => _page = p);
+                ref.invalidate(myAsHostProvider(_query));
                 await _retainedPage.waitFor(
                   ref,
                   myAsHostProvider(_query),
                   () => ref.read(myAsHostProvider(_query).future),
                 );
-              },
+              }),
             ),
           );
           // 分段栏(ADR-100)：本页此前只有表头下拉筛状态、且不带任何计数，于是

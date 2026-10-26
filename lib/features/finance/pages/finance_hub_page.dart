@@ -48,6 +48,7 @@ import '../../../shared/auth/permissions.dart';
 import '../widgets/finance_audit_center_badge.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/badges/badge_scope.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class FinanceHubPage extends ConsumerStatefulWidget {
   const FinanceHubPage({super.key});
@@ -332,7 +333,7 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
     List<_Entry> entries,
   ) {
     if (entries.isEmpty) return const SizedBox.shrink();
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -89,21 +89,42 @@ function Read-Manifest($Value, [bool]$RequireTarget) {
         $Value.executable -cne 'uten_imp.exe') { throw 'Unsupported release manifest.' }
     if ($RequireTarget -and ($Value.architecture -cne $Architecture -or
         [long]$Value.buildNumber -ne $BuildNumber)) { throw 'Release platform/build does not match.' }
+    $packageKind = 'update'
+    $kindProperty = $Value.PSObject.Properties['packageKind']
+    if ($null -ne $kindProperty) { $packageKind = [string]$kindProperty.Value }
+    if ($packageKind -cnotin @('update', 'installer') -or
+        ($RequireTarget -and $packageKind -cne 'update')) {
+        throw 'Only application update packages may replace an installed client.'
+    }
     $records = @($Value.files)
     if ($records.Count -lt 4 -or $records.Count -gt 20000) { throw 'Invalid release file count.' }
     $files = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::OrdinalIgnoreCase)
     [long]$expanded = 0
+    $bootstrapUpdaterSeen = $false
     foreach ($record in $records) {
         $relative = [string]$record.path
-        Assert-ReleasePath $relative
+        $bootstrapUpdater = -not $RequireTarget -and $packageKind -ceq 'installer' -and
+            $relative -ceq 'client_updater/client_updater.ps1'
+        if (-not $bootstrapUpdater) { Assert-ReleasePath $relative }
         if ($relative -ceq $manifestName -or $files.ContainsKey($relative) -or
+            ($bootstrapUpdater -and $bootstrapUpdaterSeen) -or
             [string]$record.sha256 -cnotmatch '^[a-f0-9]{64}$' -or
-            [long]$record.size -lt 0 -or [long]$record.size -gt 536870912) {
+            [long]$record.size -lt 0 -or [long]$record.size -gt 536870912 -or
+            ($bootstrapUpdater -and [long]$record.size -eq 0)) {
             throw 'Invalid or duplicate release file.'
         }
         $expanded += [long]$record.size
         if ($expanded -gt 2147483648) { throw 'Expanded release exceeds 2 GiB.' }
+        if ($bootstrapUpdater) {
+            # A first-install manifest accounts for the trusted updater, but it
+            # never belongs to the replacement/removal/rollback runtime journal.
+            $bootstrapUpdaterSeen = $true
+            continue
+        }
         $files.Add($relative, $record)
+    }
+    if ($packageKind -ceq 'installer' -and -not $bootstrapUpdaterSeen) {
+        throw 'The first-install manifest is missing its fixed updater.'
     }
     foreach ($required in @('uten_imp.exe', 'flutter_windows.dll', 'data/app.so', 'data/icudtl.dat')) {
         if (-not $files.ContainsKey($required)) { throw "Missing required runtime: $required" }

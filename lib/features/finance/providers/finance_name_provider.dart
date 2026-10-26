@@ -16,6 +16,7 @@ import '../../../shared/formatters/exact_decimal.dart';
 import '../../basic_data/models/payment_style_node.dart';
 import '../../basic_data/repositories/account_repository.dart';
 import '../../../shared/providers/master_dictionary_repository.dart';
+import '../../../shared/providers/master_party_lookup.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 import '../../basic_data/repositories/payment_style_repository.dart';
@@ -77,17 +78,30 @@ class FinanceNameService extends ChangeNotifier {
     this.api,
     this._paymentStyleRepo, [
     MasterDictionaryRepository? dictionaries,
-  ]) : _dictionaries = dictionaries ?? MasterDictionaryRepository(api) {
+    MasterPartyLookup? partyReferences,
+  ]) : _ownsDictionaries = dictionaries == null,
+       _dictionaries = dictionaries ?? MasterDictionaryRepository(api) {
+    _partyReferences = partyReferences ?? _dictionaries.partyReferences;
     _invalidations = _dictionaries.invalidations.listen(_onInvalidated);
   }
   final ApiClient api;
   final PaymentStyleRepository _paymentStyleRepo;
   final MasterDictionaryRepository _dictionaries;
+  final bool _ownsDictionaries;
+  late final MasterPartyLookup _partyReferences;
   late final StreamSubscription<String> _invalidations;
   Map<String, FinanceCurrencyReference> _currencyReferences = {};
 
-  Map<String, String> _clients = {};
-  Map<String, String> _suppliers = {};
+  late final _clients = MasterPartyNameMap(
+    _partyReferences,
+    MasterPartyKind.client,
+    (ids) => _loadPartyNames(MasterPartyKind.client, ids, refresh: false),
+  );
+  late final _suppliers = MasterPartyNameMap(
+    _partyReferences,
+    MasterPartyKind.supplier,
+    (ids) => _loadPartyNames(MasterPartyKind.supplier, ids, refresh: false),
+  );
   Map<String, String> _accounts = {};
   Map<String, String> _accountEntries = {};
   Map<String, String> _accountCurrencies = {};
@@ -96,8 +110,6 @@ class FinanceNameService extends ChangeNotifier {
   String? _accountLoadError;
   Map<String, String> _currencies = {};
   Future<void>? _load;
-  Future<void>? _counterpartyLoad;
-  bool _counterpartiesRequested = false;
   Future<void>? _departmentLoad;
   int _departmentRequestId = 0;
   bool _departmentsRequested = false;
@@ -113,43 +125,69 @@ class FinanceNameService extends ChangeNotifier {
   final Map<String, int> _styleRequestIds = {};
   final Set<String> _requestedStyleCategories = {};
   bool _disposed = false;
+  bool _partyNotifyScheduled = false;
+  Timer? _partyNotifyTimer;
 
   Future<void> ensureLoaded({
     bool refreshAccounts = false,
     bool includeCounterparties = true,
   }) async {
     final alreadyLoaded = _load != null;
-    _counterpartiesRequested |= includeCounterparties;
-    await Future.wait([
-      _load ??= _ensureLoaded(),
-      if (includeCounterparties)
-        _counterpartyLoad ??= _ensureCounterpartiesLoaded(),
-    ]);
+    await Future.wait([_load ??= _ensureLoaded()]);
     if (refreshAccounts && alreadyLoaded) {
       await _refreshAccounts();
     }
   }
 
-  Future<void> _ensureCounterpartiesLoaded() async {
-    // 各 dict 独立加载、独立容错：单个端点失败不影响其它。
-    Future<Map<String, String>> loadDict(String dictUrl) async {
-      try {
-        final list = await _dictionaries.load(dictUrl);
-        return {
-          for (final e in list)
-            (e['id'] as String): ((e['name'] ?? '') as String),
-        };
-      } catch (_) {
-        return const {};
+  Future<void> loadClientNames(Iterable<String> ids) =>
+      _loadPartyNames(MasterPartyKind.client, ids);
+  Future<void> loadSupplierNames(Iterable<String> ids) =>
+      _loadPartyNames(MasterPartyKind.supplier, ids);
+  Future<void> loadPartyNames({
+    Iterable<String> clientIds = const [],
+    Iterable<String> supplierIds = const [],
+  }) =>
+      Future.wait([loadClientNames(clientIds), loadSupplierNames(supplierIds)]);
+  Future<void> _loadPartyNames(
+    MasterPartyKind kind,
+    Iterable<String> ids, {
+    bool refresh = true,
+  }) async {
+    if (_disposed) return;
+    final before = _partyReferences.dataRevision(kind);
+    try {
+      await _partyReferences.load(kind, ids, refresh: refresh);
+    } catch (_) {
+      if (!_disposed && before != _partyReferences.dataRevision(kind)) {
+        _schedulePartyNotification();
       }
+      return;
     }
+    if (!_disposed && before != _partyReferences.dataRevision(kind)) {
+      _schedulePartyNotification();
+    }
+  }
 
-    final results = await Future.wait<Map<String, String>>([
-      loadDict(ApiEndpoints.clientsDict),
-      loadDict(ApiEndpoints.suppliersDict),
-    ]);
-    _clients = results[0];
-    _suppliers = results[1];
+  void _schedulePartyNotification() {
+    if (_partyNotifyScheduled || _disposed) return;
+    _partyNotifyScheduled = true;
+    _partyNotifyTimer = Timer(Duration.zero, () {
+      _partyNotifyTimer = null;
+      _partyNotifyScheduled = false;
+      if (!_disposed) notifyListeners();
+    });
+  }
+
+  bool clientReferenceKnown(String? id) =>
+      _partyReferences.positive(MasterPartyKind.client, id);
+  bool clientReferenceSelectable(String? id) =>
+      _partyReferences.selectable(MasterPartyKind.client, id);
+  bool supplierReferenceSelectable(String? id) =>
+      _partyReferences.selectable(MasterPartyKind.supplier, id);
+
+  bool supplierReferenceKnown(String? id) {
+    final row = _partyReferences.reference(MasterPartyKind.supplier, id);
+    return row != null && (row['status'] as String?)?.isNotEmpty == true;
   }
 
   Future<void> _ensureLoaded() async {
@@ -442,21 +480,16 @@ class FinanceNameService extends ChangeNotifier {
       unawaited(ensureDepartmentsLoaded());
       return;
     }
-    const watched = {
-      ApiEndpoints.clientsDict,
-      ApiEndpoints.suppliersDict,
-      ApiEndpoints.currenciesDict,
-      AccountEndpoints.dict,
-    };
-    if (_load == null || !watched.contains(key)) return;
     if (key == ApiEndpoints.clientsDict || key == ApiEndpoints.suppliersDict) {
-      if (!_counterpartiesRequested) return;
-      _counterpartyLoad = null;
+      notifyListeners();
+      return;
     }
+    const watched = {ApiEndpoints.currenciesDict, AccountEndpoints.dict};
+    if (_load == null || !watched.contains(key)) return;
     if (_refreshingAccounts && key == AccountEndpoints.dict) return;
     _load = null;
     unawaited(
-      ensureLoaded(includeCounterparties: _counterpartiesRequested).then((_) {
+      ensureLoaded(includeCounterparties: false).then((_) {
         if (!_disposed) notifyListeners();
       }),
     );
@@ -465,7 +498,11 @@ class FinanceNameService extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _partyNotifyTimer?.cancel();
+    _partyNotifyTimer = null;
+    _partyNotifyScheduled = false;
     unawaited(_invalidations.cancel());
+    if (_ownsDictionaries) _dictionaries.dispose();
     super.dispose();
   }
 }
@@ -496,9 +533,10 @@ final financeNameServiceProvider = ChangeNotifierProvider<FinanceNameService>((
     ref.watch(apiClientProvider),
     ref.watch(paymentStyleRepositoryProvider),
     ref.watch(masterDictionaryRepositoryProvider),
+    ref.watch(masterPartyLookupProvider),
   );
   ref.listen<int>(paymentStyleRevisionProvider, (_, _) {
     unawaited(service.refreshLoadedStyleCategories());
   });
   return service;
-});
+}, dependencies: [masterPartyLookupProvider]);

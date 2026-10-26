@@ -19,6 +19,7 @@ import '../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../core/print/pdf_printer.dart';
 import '../../core/print/isolated_print_pdf.dart';
 import '../../core/performance/ui_work_budget.dart';
+import '../../core/network/read_scope_revision.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
@@ -305,6 +306,7 @@ Future<void> showUtenPrintPreview({
     // Standalone paper previews also work outside the authenticated app shell.
   }
   final readBoundary = container?.read(sensitiveReadBoundaryProvider);
+  final readRevision = container?.read(readScopeRevisionProvider);
   PlatformTableRepository? repository;
   if (projection?.columns.any((column) => column.key.startsWith('platform:')) ==
       true) {
@@ -331,6 +333,7 @@ Future<void> showUtenPrintPreview({
         repository: repository,
         providerContainer: container,
         readBoundary: readBoundary,
+        readRevision: readRevision,
       );
       return container == null
           ? dialog
@@ -435,6 +438,7 @@ class _UtenPrintPreviewDialog extends StatefulWidget {
     this.repository,
     this.providerContainer,
     this.readBoundary,
+    this.readRevision,
   });
 
   final String title;
@@ -452,6 +456,7 @@ class _UtenPrintPreviewDialog extends StatefulWidget {
   final PlatformTableRepository? repository;
   final ProviderContainer? providerContainer;
   final SensitiveReadBoundary? readBoundary;
+  final int? readRevision;
 
   @override
   State<_UtenPrintPreviewDialog> createState() =>
@@ -462,6 +467,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
   UtenPrintTable? _table;
   String? _error;
   ProviderSubscription<SensitiveReadBoundary>? _boundarySubscription;
+  ProviderSubscription<int>? _revisionSubscription;
   int _contextVersion = 0;
   bool _invalidated = false;
   bool _printing = false;
@@ -483,28 +489,45 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
       sensitiveReadBoundaryProvider,
       (_, next) {
         if (next == widget.readBoundary || _invalidated || !mounted) return;
-        setState(() {
-          _contextVersion++;
-          _invalidated = true;
-          _printing = false;
-          _table = null;
-          _pdfGenerator.dispose();
-          _resetFullPaperSelection();
-          _selectedPaperText = '';
-          _error = '账号、服务器或权限已变化，请关闭后重新预览';
-        });
+        _retireRead();
+      },
+      fireImmediately: true,
+    );
+    _revisionSubscription = widget.providerContainer?.listen(
+      readScopeRevisionProvider,
+      (_, next) {
+        if (next == widget.readRevision || _invalidated || !mounted) return;
+        _retireRead();
       },
       fireImmediately: true,
     );
     _load();
   }
 
+  void _retireRead() {
+    if (_invalidated || !mounted) return;
+    setState(() {
+      _contextVersion++;
+      _invalidated = true;
+      _printing = false;
+      _table = null;
+      _pdfGenerator.dispose();
+      _resetFullPaperSelection();
+      _selectedPaperText = '';
+      _error = '账号、服务器或权限已变化，请关闭后重新预览';
+    });
+  }
+
   bool _isCurrent(int version) {
     if (!mounted || _invalidated || version != _contextVersion) return false;
     try {
       return widget.providerContainer == null ||
-          widget.readBoundary ==
-              widget.providerContainer!.read(sensitiveReadBoundaryProvider);
+          (widget.readBoundary ==
+                  widget.providerContainer!.read(
+                    sensitiveReadBoundaryProvider,
+                  ) &&
+              widget.readRevision ==
+                  widget.providerContainer!.read(readScopeRevisionProvider));
     } on StateError {
       return false;
     }
@@ -516,6 +539,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
     _selectionRevision++;
     _pdfGenerator.dispose();
     _boundarySubscription?.close();
+    _revisionSubscription?.close();
     super.dispose();
   }
 

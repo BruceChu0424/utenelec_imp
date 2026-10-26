@@ -22,6 +22,10 @@ ExecStartPre=/bin/sh -c 'if [ "$${UTEN_ATTACHMENT_SCANNER_PROVIDER:-disabled}" =
 # current 是指向 releases/<version> 的原子 symlink，禁止原位覆盖
 WorkingDirectory=/opt/uten-imp/current
 EnvironmentFile=/etc/uten-imp/server.env
+# Installer/update packages have their own persistent namespace. The existing
+# media-only write boundary below covers this child without opening program files.
+Environment=UTEN_CLIENT_RELEASES_DIR=/var/lib/uten-imp-media/attachments/client-releases
+Environment=UTEN_CLIENT_UPDATE_MIN_FREE_BYTES=10737418240
 Environment=UTEN_SERVER_STATUS_HOST_ALERT_FILE=/var/lib/uten-alert/events.json
 ExecStartPre=/usr/bin/pg_isready -q -h 127.0.0.1 -p 5432 -d uten_imp -t 10
 ExecStartPre=/usr/bin/test -L /opt/uten-imp/current

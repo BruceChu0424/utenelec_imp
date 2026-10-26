@@ -73,6 +73,7 @@ import '../widgets/warehouse_task_session_guard.dart';
 import '../../production/providers/production_execution_refresh.dart';
 import '../repositories/stock_doc_repository.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class StockDocDetailPage extends ConsumerStatefulWidget {
   const StockDocDetailPage({
@@ -1361,7 +1362,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
                     // 2026-09-11 折叠头+表内滚（对齐采购/货品资料页）：上滑先收头部
                     // （提示条/生产链横幅/表头卡/出库凭证），明细标题吸顶后表格内部继续滚。
                     : UtenCollapsingHeaderScrollView(
-                        collapsingHeader: Padding(
+                        collapsingHeader: UtenPageEdgePadding(
                           padding: const EdgeInsets.fromLTRB(
                             UtenSpacing.s12,
                             UtenSpacing.s12,
@@ -1447,7 +1448,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
                           ),
                         ),
                         // body：表格占满内滚（primary 拾取联动控制器）。
-                        body: Padding(
+                        body: UtenPageEdgePadding(
                           padding: const EdgeInsets.all(UtenSpacing.s12),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1591,6 +1592,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
     );
 
     return MasterDataTableView<StockDocItem>(
+      expensiveRowMounts: capturing,
       tableKey: 'warehouse.${widget.docType.name}.items',
       primary: true,
       rowKeyOf: (item) => item.id,

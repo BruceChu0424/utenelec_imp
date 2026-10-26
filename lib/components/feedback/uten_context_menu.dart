@@ -21,6 +21,7 @@
 //     onMenuOpening: () => 先选中该行,
 //     child: 行内容,
 //   )
+import '../inputs/uten_dropdown_scroll_scope.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -30,6 +31,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import 'uten_context_menu_policy.dart';
+import 'uten_overlay_lifecycle.dart';
 
 /// 菜单条目基类（[UtenMenuItem] 或 [UtenMenuDivider]）。
 sealed class UtenContextMenuEntry {
@@ -78,6 +80,24 @@ enum UtenContextMenuCloseReason {
   actionCompleted,
 }
 
+/// Lets a widget dismiss its transient menu immediately on deactivation.
+/// Once an item starts, its asynchronous business action no longer belongs to
+/// this controller and continues to completion under the caller's own guards.
+class UtenContextMenuController {
+  VoidCallback? _dismiss;
+
+  void dismiss() => _dismiss?.call();
+
+  void _attach(VoidCallback dismiss) {
+    this.dismiss();
+    _dismiss = dismiss;
+  }
+
+  void _detach(VoidCallback dismiss) {
+    if (identical(_dismiss, dismiss)) _dismiss = null;
+  }
+}
+
 /// 在 [globalPosition]（全局坐标，通常取手势事件的 globalPosition）弹出菜单。
 /// 条目为空时什么都不弹。返回的 Future 在菜单关闭后完成；选择条目时会继续等待
 /// 条目的动作回调及 [onActionCompleted] 完成，再返回
@@ -87,8 +107,9 @@ Future<UtenContextMenuCloseReason> showUtenContextMenu(
   required Offset globalPosition,
   required List<UtenContextMenuEntry> entries,
   FutureOr<void> Function(UtenMenuItem item)? onActionCompleted,
+  UtenContextMenuController? controller,
 }) {
-  if (entries.isEmpty) {
+  if (entries.isEmpty || !context.mounted) {
     return Future.value(UtenContextMenuCloseReason.dismissed);
   }
   final overlay = Overlay.of(context, rootOverlay: true);
@@ -100,11 +121,14 @@ Future<UtenContextMenuCloseReason> showUtenContextMenu(
       : globalPosition;
   final completer = Completer<UtenContextMenuCloseReason>();
   late OverlayEntry entry;
+  late UtenOverlayLifecycle lifecycle;
   var closed = false;
 
   void dismiss() {
     if (closed) return;
     closed = true;
+    controller?._detach(dismiss);
+    lifecycle.dispose();
     entry.remove();
     completer.complete(UtenContextMenuCloseReason.dismissed);
   }
@@ -112,6 +136,8 @@ Future<UtenContextMenuCloseReason> showUtenContextMenu(
   Future<void> runAction(UtenMenuItem item) async {
     if (closed) return;
     closed = true;
+    controller?._detach(dismiss);
+    lifecycle.dispose();
     // 必须先移除菜单，业务动作才能安全地继续弹确认框/详情框。
     entry.remove();
     try {
@@ -126,21 +152,26 @@ Future<UtenContextMenuCloseReason> showUtenContextMenu(
   }
 
   entry = OverlayEntry(
-    builder: (ctx) => _UtenContextMenuOverlay(
-      position: position,
-      entries: entries,
-      onDismiss: dismiss,
-      onItemSelected: (item) => unawaited(runAction(item)),
+    builder: (ctx) => UtenDropdownScrollScope(
+      child: _UtenContextMenuOverlay(
+        position: position,
+        entries: entries,
+        onDismiss: dismiss,
+        onItemSelected: (item) => unawaited(runAction(item)),
+      ),
     ),
   );
   overlay.insert(entry);
+  lifecycle = UtenOverlayLifecycle(onUnavailable: dismiss);
+  controller?._attach(dismiss);
+  lifecycle.attach(context);
   return completer.future;
 }
 
 /// 给子树挂「右击/长按出菜单」能力的包裹组件。
 /// [entriesBuilder] 在手势触发那一刻才调用（取最新状态决定条目可用性）；
 /// 返回空列表则不弹菜单。[onMenuOpening] 在菜单弹出前同步调用（用于先把该行置为选中）。
-class UtenContextMenuRegion extends StatelessWidget {
+class UtenContextMenuRegion extends StatefulWidget {
   const UtenContextMenuRegion({
     super.key,
     required this.entriesBuilder,
@@ -156,18 +187,27 @@ class UtenContextMenuRegion extends StatelessWidget {
   final Widget child;
   final HitTestBehavior behavior;
 
+  @override
+  State<UtenContextMenuRegion> createState() => _UtenContextMenuRegionState();
+}
+
+class _UtenContextMenuRegionState extends State<UtenContextMenuRegion> {
+  final _menuController = UtenContextMenuController();
+
   Future<void> _open(BuildContext context, Offset globalPosition) async {
     // 菜单的可用状态依赖本次右键刚选中的行，必须先更新选择再构建条目。
-    onMenuOpening?.call();
-    final entries = entriesBuilder();
+    widget.onMenuOpening?.call();
+    final entries = widget.entriesBuilder();
     if (entries.isEmpty) return;
+    final actionCompleted = widget.onActionCompleted;
     await showUtenContextMenu(
       context,
       globalPosition: globalPosition,
       entries: entries,
+      controller: _menuController,
       onActionCompleted: (item) async {
         if (!item.preserveSelectionAfterAction) {
-          await Future<void>.sync(() => onActionCompleted?.call());
+          await Future<void>.sync(() => actionCompleted?.call());
         }
       },
     );
@@ -176,6 +216,18 @@ class UtenContextMenuRegion extends StatelessWidget {
   /// 本次右键手势的指针 id（静态：开菜单会触发宿主 setState 重建换掉闭包，
   /// 局部变量存不住跨重建的指针；同一时刻只有一路右键手势，单值即可）。
   static int? _secondaryPointerInFlight;
+
+  @override
+  void deactivate() {
+    _menuController.dismiss();
+    super.deactivate();
+  }
+
+  @override
+  void dispose() {
+    _menuController.dismiss();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -189,7 +241,7 @@ class UtenContextMenuRegion extends StatelessWidget {
     // 在该指针抬键的微任务里 removeAny 掉它（微任务在本次事件同步分发之后、
     // 下一帧绘制之前执行，系统工具条不会闪出来），用户只看到我们的一份。
     return Listener(
-      behavior: behavior,
+      behavior: widget.behavior,
       onPointerDown: (event) {
         if (!claimUtenContextMenuPointer(event)) return;
         _secondaryPointerInFlight = event.pointer;
@@ -198,7 +250,7 @@ class UtenContextMenuRegion extends StatelessWidget {
       onPointerUp: (event) => _dismissSystemContextMenu(event.pointer),
       onPointerCancel: (event) => _dismissSystemContextMenu(event.pointer),
       child: GestureDetector(
-        behavior: behavior,
+        behavior: widget.behavior,
         // 手机/触屏：长按出同一个菜单。与单击选中/双击打开共存：
         // 长按与 tap 是不同识别器，tap 先赢则长按自动取消，行为符合直觉。
         // 只挂触屏类设备——桌面右键已由上面的 Listener 覆盖，鼠标长按留给
@@ -211,7 +263,7 @@ class UtenContextMenuRegion extends StatelessWidget {
           PointerDeviceKind.trackpad,
         },
         onLongPressStart: (d) => unawaited(_open(context, d.globalPosition)),
-        child: child,
+        child: widget.child,
       ),
     );
   }

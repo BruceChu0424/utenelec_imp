@@ -23,6 +23,7 @@ import 'package:uten_imp/features/warehouse/widgets/warehouse_draw_task_segment.
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
@@ -305,6 +306,46 @@ Finder _batchButton() => find.byKey(const Key('warehouse-draw-batch-issue'));
 Finder _rowCheckbox(int rowIndex) => find.byType(Checkbox).at(rowIndex + 1);
 
 void main() {
+  for (final navigation in ['go', 'platform']) {
+    testWidgets('$navigation return releases batch draw navigation', (
+      tester,
+    ) async {
+      final repo = _FakeRepository()
+        ..captureBatchRoute = true
+        ..pages[1] = [_task('nav-draw')];
+      await _pump(tester, repo, _approverIssuer);
+      for (var visit = 0; visit < 2; visit++) {
+        if (visit == 0) {
+          await tester.tap(find.byType(Checkbox).first);
+          await tester.pumpAndSettle();
+        } else {
+          final table = tester.widget<MasterDataTableView<WarehouseDrawTask>>(
+            find.byType(MasterDataTableView<WarehouseDrawTask>),
+          );
+          expect(table.selectedIds, {'nav-draw'});
+        }
+        await tester.tap(_batchButton());
+        await tester.pumpAndSettle();
+        expect(find.text('批量领料核对页'), findsOneWidget);
+        if (navigation == 'go') {
+          repo.router.go('/');
+        } else {
+          await repo.router.routeInformationProvider.didPushRouteInformation(
+            RouteInformation(uri: Uri.parse('/')),
+          );
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('批量领料核对页'), findsNothing);
+      }
+      expect(
+        repo.batchKeys,
+        isEmpty,
+        reason: 'Opening or leaving never issues stock.',
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     _prefs = await SharedPreferences.getInstance();
@@ -581,6 +622,26 @@ void main() {
 
   // 2026-09-24 用户口径「生产计划那里表头加个排序，能够快速排序」：表头排序交给服务端
   // 在整个结果集上排(不是只排当前页)，换排序回第 1 页；取消排序回服务端默认顺序。
+  testWidgets('business merged rows keep one read window session across pages', (tester) async {
+    final repository = _FakeRepository()
+      ..pages[1] = [_task('d1')]
+      ..pages[2] = [_task('d2')];
+    await _pump(tester, repository, _issuer);
+    MasterDataTableView<WarehouseDrawTask> table() => tester.widget(
+      find.byKey(const Key('warehouse-draw-task-table')),
+    );
+    final first = readWindowBindingOf(table().items);
+    expect(first, isNotNull);
+    expect(first!.projectionKey, 'warehouse-draw-batch-goods-v1');
+    await table().rowsController!.loadNextPage();
+    await tester.pumpAndSettle();
+    final next = readWindowBindingOf(table().items);
+    expect(next, isNotNull);
+    expect(next!.sameSession(first), isTrue);
+    expect(table().rowsController!.items, isNotEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('plan header sorts on the server and resets to page 1', (
     tester,
   ) async {
@@ -597,7 +658,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('从大到小'));
     await tester.pumpAndSettle();
-    expect(repo.requests.last, (page: 1, sort: 'planNo', ascending: false));
+    expect(repo.requests.where((request) => request.page == 1).last, (
+      page: 1,
+      sort: 'planNo',
+      ascending: false,
+    ));
 
     await tester.ensureVisible(find.text('领料单号'));
     await tester.pumpAndSettle();
@@ -605,7 +670,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('从小到大'));
     await tester.pumpAndSettle();
-    expect(repo.requests.last, (page: 1, sort: 'docNo', ascending: true));
+    expect(repo.requests.where((request) => request.page == 1).last, (
+      page: 1,
+      sort: 'docNo',
+      ascending: true,
+    ));
 
     await tester.ensureVisible(find.text('待出库'));
     await tester.pumpAndSettle();
@@ -613,7 +682,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('从大到小'));
     await tester.pumpAndSettle();
-    expect(repo.requests.last, (page: 1, sort: 'openQty', ascending: false));
+    expect(repo.requests.where((request) => request.page == 1).last, (
+      page: 1,
+      sort: 'openQty',
+      ascending: false,
+    ));
   });
 
   // 计数形态（docs/00-项目准则/14-徽章与计数口径.md）：「待完成」是这批活的总量段

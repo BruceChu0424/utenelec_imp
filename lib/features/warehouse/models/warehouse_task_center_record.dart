@@ -1,5 +1,6 @@
 import '../../basic_data/models/master_facet.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../shared/models/paged_result.dart';
 
 /// A warehouse projection keeps the original business object and its next action.
 /// A number shared by an order, receipt and exception is never a row identity.
@@ -160,21 +161,16 @@ class WarehouseTaskLine {
       );
 }
 
-class WarehouseTaskCenterPageResult {
+class WarehouseTaskCenterPageResult
+    extends PagedResult<WarehouseTaskCenterRecord> {
   const WarehouseTaskCenterPageResult({
-    required this.items,
-    required this.page,
-    required this.size,
-    required this.total,
-    required this.totalPages,
-    this.facets = const {},
+    required super.items,
+    required super.page,
+    required super.size,
+    required super.total,
+    required super.totalPages,
+    super.facets,
   });
-  final List<WarehouseTaskCenterRecord> items;
-  final int page;
-  final int size;
-  final int total;
-  final int totalPages;
-  final Map<String, List<MasterFacetBucket>> facets;
   List<MasterFacetBucket> get statusFacets => facets['status'] ?? const [];
 
   factory WarehouseTaskCenterPageResult.fromJson(Map<String, dynamic> json) {

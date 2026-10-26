@@ -47,6 +47,8 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
     private static EntityManagerFactory entityManagerFactory;
     private static EntityManager entityManager;
     private static TransactionTemplate transactions;
+    private static final java.util.List<String> exportSql=new java.util.ArrayList<>();
+    private static boolean recordingExport;
 
     @BeforeAll
     static void migrate() throws Exception {
@@ -66,6 +68,9 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
         properties.setProperty("hibernate.hbm2ddl.auto", "none");
         properties.setProperty("hibernate.show_sql", "false");
         properties.setProperty("hibernate.jdbc.time_zone", "UTC");
+        properties.put("hibernate.session_factory.statement_inspector",(org.hibernate.resource.jdbc.spi.StatementInspector)sql->{
+            if(recordingExport)exportSql.add(sql);return sql;
+        });
         factory.setJpaProperties(properties);
         factory.afterPropertiesSet();
 
@@ -502,6 +507,61 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
         assertEquals(105, export.total());
         assertEquals(104, export.rows().stream().filter(row -> new BigDecimal("0.05").compareTo((BigDecimal) row.get("requiredQty")) == 0).count());
         assertTrue(export.rows().stream().allMatch(row -> "件".equals(row.get("unitName"))));
+    }
+
+    @Test void cursorExportReads1001RealRequestItemsInOneSnapshotAndLeavesLateCommitsForANewExport() throws Exception {
+        Fixture data;String unique="B1CURSOR"+UUID.randomUUID();
+        java.util.List<BigDecimal> expected;
+        try(Connection connection=connection()) {
+            data=fixture(connection);UUID item=insertPurchaseDecompositionTask(connection,data);
+            insert(connection,"UPDATE goods SET name=? WHERE id=?",unique,data.materialB());
+            insert(connection,"""
+                    INSERT INTO purchase_request_items(id,bill_no,bill_date,request_id,line_no,goods_id,unit_id,
+                        unit_rate,qty,ordered_qty,deliver_date,production_plan_no,source_doc_no,goods_snapshot_source)
+                    SELECT gen_random_uuid(),first.bill_no,first.bill_date,first.request_id,number,
+                           first.goods_id,first.unit_id,1,number::numeric/1000,0,first.deliver_date,
+                           first.production_plan_no,first.source_doc_no,'MASTER_AT_SAVE'
+                    FROM purchase_request_items first CROSS JOIN generate_series(2,1001) AS number WHERE first.id=?
+                    """,item);
+            try(var statement=connection.prepareStatement("SELECT qty FROM purchase_request_items WHERE request_id=(SELECT request_id FROM purchase_request_items WHERE id=?) ORDER BY qty")) {
+                statement.setObject(1,item);
+                try(var facts=statement.executeQuery()) {expected=new java.util.ArrayList<>();while(facts.next())expected.add(facts.getBigDecimal(1).stripTrailingZeros());}
+            }
+        }
+        assertEquals(1001,expected.size());
+        var access=mock(FulfillmentWorkbenchAccessPolicy.class);
+        when(access.documentAccess("PURCHASE","PURCHASE_REQUEST")).thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true,false));
+        var service=new FulfillmentWorkbenchQueryService(entityManager,access);
+        var table=new FulfillmentWorkbenchTableQuery("goods","asc",java.util.Map.of("search.goods",unique),null,null,null,null);
+        var snapshot=new TransactionTemplate(new JpaTransactionManager(entityManagerFactory));
+        snapshot.setReadOnly(true);snapshot.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);snapshot.setTimeout(90);
+        var pages=new java.util.ArrayList<com.uten.imp.common.export.ExportPayload>();
+        exportSql.clear();recordingExport=true;
+        try {
+            var output=snapshot.execute(status->{
+                try(var cursor=com.uten.imp.common.report.ReportExportCursor.open();
+                    var sink=com.uten.imp.common.export.ExportPageSink.open(page->{
+                        pages.add(page);
+                        if(pages.size()==1)try(Connection late=connection()){insertPurchaseDecompositionTask(late,data);}
+                        catch(Exception error){throw new IllegalStateException(error);}
+                    })) {return service.exportPurchase("WAITING_ORDER","","",null,null,table,100_000);}
+            });
+            assertNotNull(output);assertEquals(1001,output.total());assertTrue(output.rows().isEmpty());
+        } finally {recordingExport=false;}
+        assertEquals(java.util.List.of(500,500,1),pages.stream().map(page->page.rows().size()).toList());
+        var delivered=pages.stream().flatMap(page->page.rows().stream()).map(row->((BigDecimal)row.get("requiredQty")).stripTrailingZeros()).sorted().toList();
+        assertEquals(expected,delivered);
+        assertTrue(pages.stream().flatMap(page->page.rows().stream()).allMatch(row->"件".equals(row.get("unitName"))));
+        assertEquals(1,exportSql.size(),exportSql.toString());
+        assertTrue(exportSql.getFirst().contains("v_procurement_decomposition_tasks"));
+        assertTrue(!java.util.regex.Pattern.compile("(?is)\\sLIMIT\\s+(?:\\?|:\\w+)\\s+OFFSET\\s+(?:\\?|:\\w+)\\s*$")
+                .matcher(exportSql.getFirst()).find());
+        var next=snapshot.execute(status->{
+            try(var cursor=com.uten.imp.common.report.ReportExportCursor.open();var sink=com.uten.imp.common.export.ExportPageSink.open(page->{})){
+                return service.exportPurchase("WAITING_ORDER","","",null,null,table,100_000);
+            }
+        });
+        assertNotNull(next);assertEquals(1002,next.total());
     }
 
     private static Fixture fixture(Connection connection) throws Exception {

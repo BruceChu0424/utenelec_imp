@@ -86,6 +86,28 @@ MasterDataTableView<VisitorApplication> _table(WidgetTester tester) =>
       ),
     );
 
+void _expectHostReviewingReadWindow(
+  _FakeVisitorStaffRepository repo, {
+  required int pageTwoReads,
+}) {
+  expect(repo.listCalls.first, {'status': null, 'page': 1});
+  expect(
+    repo.listCalls.where((call) => call['page'] == 2),
+    hasLength(pageTwoReads),
+  );
+  expect(
+    repo.listCalls.length,
+    inInclusiveRange(pageTwoReads + 1, pageTwoReads + 2),
+  );
+  expect(
+    repo.listCalls.every(
+      (call) => call['status'] == null && const {1, 2}.contains(call['page']),
+    ),
+    isTrue,
+    reason: '相邻页预读仍在同一查询窗口，不能改变当前可见页或请求其他分类',
+  );
+}
+
 void main() {
   testWidgets(
     'pending family page keeps the mounted table and appends its rows',
@@ -130,7 +152,7 @@ void main() {
         'first',
         'second',
       ]);
-      expect(repo.listCalls.map((call) => call['page']), [1, 2]);
+      _expectHostReviewingReadWindow(repo, pageTwoReads: 1);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },
@@ -153,9 +175,15 @@ void main() {
       final originalState = tester.state(finder);
       final request = _table(tester).rowsController!.loadNextPage();
       await tester.pump();
+      await tester.pump();
       firstAttempt.completeError(StateError('offline'));
       await tester.pumpAndSettle();
       await request;
+      expect(
+        repo.listCalls.where((call) => call['page'] == 2),
+        hasLength(1),
+        reason: 'the foreground append must join its pending look-ahead read',
+      );
       expect(tester.state(finder), same(originalState));
       expect(_table(tester).currentPage, 1);
       expect(_table(tester).rowsController!.items.map((row) => row.id), [
@@ -183,7 +211,7 @@ void main() {
         'first',
         'second',
       ]);
-      expect(repo.listCalls.map((call) => call['page']), [1, 2, 2]);
+      _expectHostReviewingReadWindow(repo, pageTwoReads: 2);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },

@@ -1,3 +1,7 @@
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -61,7 +65,34 @@ class AccountDetailPage extends ConsumerStatefulWidget {
   ConsumerState<AccountDetailPage> createState() => _AccountDetailPageState();
 }
 
-class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
+class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
+    with ScopedPagedReadViewMixin<AccountDetailPage> {
+  final _readViewportRows =
+      MasterDataTableRowsController<AccountStatementRow>();
+  int get _visibleReadPage => _statement == null
+      ? (_flowPage)
+      : (_readViewportRows.visiblePage ?? (_flowPage));
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _detailLoadEpoch++;
+    _flowRequests.begin();
+    if (mounted) {
+      setState(() {
+        _detail = null;
+        _statement = null;
+        _flowLoading = false;
+        _loading = false;
+      });
+    }
+    if (mounted) {
+      setState(() {
+        _error = scopedPagedReadRejection?.message;
+        _flowError = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   AccountDetail? _detail;
   Map<String, CurrencyListItem> _currencies = const {};
   List<MasterSelectOption> _styleOptions = const [];
@@ -124,6 +155,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
       '${value.day.toString().padLeft(2, '0')}';
 
   Future<void> _load({bool initial = false, bool clearCurrent = false}) async {
+    final flowPage = _statement == null ? 1 : _visibleReadPage;
     final epoch = ++_detailLoadEpoch;
     bool current() => mounted && epoch == _detailLoadEpoch;
     setState(() {
@@ -148,7 +180,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
       });
       // Statement browsing has its own loading state and cannot delay opening
       // the account editor or replace the dialog's in-progress input.
-      if (_canViewFlow) unawaited(_loadFlow(1));
+      if (_canViewFlow) unawaited(_loadFlow(flowPage));
       if (initial && widget.startEditing && mounted && _canEdit) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _showEdit();
@@ -230,7 +262,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
     }
   }
 
-  Future<void> _loadFlow(int page) async {
+  Future<void> _loadFlow(int page, {bool useCache = false}) async {
     if (!_canViewFlow) return;
     if (_from.isAfter(_to)) {
       context.appError('起始日期不能晚于结束日期');
@@ -242,17 +274,54 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
       _flowError = null;
       _flowPage = page;
     });
+    final repository = ref.read(accountRepositoryProvider);
+    final accountId = widget.accountId,
+        from = _date(_from),
+        to = _date(_to),
+        keyword = _flowKeyword,
+        billNo = _columnFilters['billNo'];
+    Object pagingQuery() => [
+      ref.read(accountRepositoryProvider),
+      widget.accountId,
+      _date(_from),
+      _date(_to),
+      _flowKeyword,
+      _columnFilters['billNo'],
+    ];
     try {
-      final result = await ref
-          .read(accountRepositoryProvider)
-          .statement(
-            accountId: widget.accountId,
-            dateFrom: _date(_from),
-            dateTo: _date(_to),
-            keyword: _flowKeyword,
-            page: page,
-            billNo: _columnFilters['billNo'],
+      final cached = await readScopedPage<AccountStatementRow>(
+        page,
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        fetchPage: (target) async {
+          final result = await repository.statement(
+            accountId: accountId,
+            dateFrom: from,
+            dateTo: to,
+            keyword: keyword,
+            page: target,
+            billNo: billNo,
           );
+          return PagedReadSnapshot<AccountStatementRow, AccountStatementPage>(
+            page: PagedResult(
+              items: result.rows,
+              page: result.page,
+              size: result.size,
+              total: result.total,
+              totalPages: result.totalPages,
+            ),
+            snapshot: result,
+          );
+        },
+      );
+      final result =
+          (cached
+                  as PagedReadSnapshot<
+                    AccountStatementRow,
+                    AccountStatementPage
+                  >)
+              .snapshot;
       if (!mounted || !_flowRequests.isCurrent(generation)) return;
       // 单号 facets 与流水同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
       unawaited(_loadBillNoFacets());
@@ -839,7 +908,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
     return Padding(
       padding: const EdgeInsets.only(top: UtenSpacing.s8),
       child: UtenCollapsingHeaderScrollView(
-        collapsingHeader: Padding(
+        collapsingHeader: UtenPageEdgePadding(
           padding: const EdgeInsets.fromLTRB(
             UtenSpacing.s4,
             UtenSpacing.s8,
@@ -931,6 +1000,8 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
         _flowFilters(),
         Expanded(
           child: MasterDataTableView<AccountStatementRow>(
+            rowsController: _readViewportRows,
+            expensiveRowMounts: false,
             tableKey:
                 'features.basic_data.pages.account_detail_page.AccountDetailPageState._buildFlowBody.1',
             primary: true,
@@ -957,12 +1028,12 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
             isLoading: _flowLoading && _statement == null,
             loadingMore: _flowLoading && _statement != null,
             error: _flowError,
-            onRetry: () => _loadFlow(_flowPage),
+            onRetry: () => _loadFlow(_visibleReadPage),
             emptyMessage: '该时间范围内暂无账户流水',
             currentPage: _statement?.page ?? 1,
             totalPages: _statement?.totalPages ?? 1,
             paginationScope: (widget.accountId, _flowKeyword, _from, _to),
-            onPageChange: _loadFlow,
+            onPageChange: (page) => _loadFlow(page, useCache: true),
           ),
         ),
       ],
@@ -988,7 +1059,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
 
   Widget _flowFilters() {
     final theme = Theme.of(context);
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s4,
         0,

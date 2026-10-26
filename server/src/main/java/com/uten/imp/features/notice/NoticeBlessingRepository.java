@@ -57,13 +57,13 @@ public interface NoticeBlessingRepository extends JpaRepository<NoticeBlessing, 
                    b.user_id AS userId
             FROM notice_blessings b
             WHERE b.notice_id = :noticeId AND NOT b.is_deleted
-            ORDER BY b.created_at DESC
+            ORDER BY b.created_at DESC,b.id DESC
             LIMIT :limit
             OFFSET :offset
             """, nativeQuery = true)
     List<NoticeBlessingRow> findPage(@Param("noticeId") UUID noticeId,
                                      @Param("limit") int limit,
-                                     @Param("offset") int offset);
+                                     @Param("offset") long offset);
 
     /** 祝福列表投影（native query 结果接口）。 */
     interface NoticeBlessingRow {

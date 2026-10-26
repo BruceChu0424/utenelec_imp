@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/formatters/china_number_format.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -47,11 +48,9 @@ class InstantInventoryOverviewContent extends ConsumerWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(scopeLabel, style: theme.textTheme.titleSmall),
-              Text(
-                '当前筛选的全部结果 · 与翻页无关',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+              UtenFieldHintIcon(
+                dense: true,
+                info: '当前筛选的全部结果 · 与翻页无关\n\n${_inventoryCalculationNotes[0]}',
               ),
             ],
           ),
@@ -85,13 +84,15 @@ class InstantInventoryOverviewContent extends ConsumerWidget {
             const SizedBox(height: UtenSpacing.s24),
             _SectionPanel(
               title: '进一步分析',
-              subtitle: '周转天数 · ABC 分类 · FIFO 库龄 · 盘点建议',
+              subtitle:
+                  '周转天数 · ABC 分类 · FIFO 库龄 · 盘点建议\n\n'
+                  '进入库存分析后，可重新选择仓库范围；这里的分类与表头筛选不会带入。\n\n'
+                  '${_inventoryCalculationNotes[5]}',
               child: Wrap(
                 spacing: UtenSpacing.s20,
                 runSpacing: UtenSpacing.s12,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  const Text('进入库存分析后，可重新选择仓库范围；这里的分类与表头筛选不会带入。'),
                   UtenButton(
                     key: const Key('inventory-overview-advanced-analysis'),
                     onPressed: onAdvancedAnalysis,
@@ -103,8 +104,6 @@ class InstantInventoryOverviewContent extends ConsumerWidget {
               ),
             ),
           ],
-          const SizedBox(height: UtenSpacing.s16),
-          const _CalculationNotes(),
         ],
       ),
     );
@@ -214,6 +213,7 @@ class _OverviewMetrics extends StatelessWidget {
                 : negative > 0
                 ? '需优先核查各仓余额'
                 : '当前范围未发现负余额',
+            descriptionIsStatus: true,
             icon: Icons.warning_amber_rounded,
             compact: compactMetrics,
             danger: (negative ?? 0) > 0,
@@ -276,6 +276,7 @@ class _MetricCard extends StatelessWidget {
     this.trailing,
     this.onTap,
     this.compact = false,
+    this.descriptionIsStatus = false,
   });
 
   final String label;
@@ -288,6 +289,7 @@ class _MetricCard extends StatelessWidget {
   final Widget? trailing;
   final VoidCallback? onTap;
   final bool compact;
+  final bool descriptionIsStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -295,30 +297,39 @@ class _MetricCard extends StatelessWidget {
     final scheme = theme.colorScheme;
     final color = danger ? scheme.error : scheme.primary;
     if (compact) {
-      return Tooltip(
-        message: description,
-        child: UtenCard(
-          borderRadius: UtenRadius.lg,
-          onTap: onTap,
-          child: Row(
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(width: UtenSpacing.s12),
-              Expanded(child: Text(label, style: theme.textTheme.labelLarge)),
-              const SizedBox(width: UtenSpacing.s8),
-              Flexible(
-                child: Text(
-                  value,
-                  textAlign: TextAlign.end,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                    fontFeatures: const [FontFeature.tabularFigures()],
+      return UtenCard(
+        borderRadius: UtenRadius.lg,
+        onTap: onTap,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(width: UtenSpacing.s12),
+                Expanded(child: Text(label, style: theme.textTheme.labelLarge)),
+                if (!descriptionIsStatus)
+                  UtenFieldHintIcon(info: description, dense: true),
+                const SizedBox(width: UtenSpacing.s8),
+                Flexible(
+                  child: Text(
+                    value,
+                    textAlign: TextAlign.end,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w700,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
                 ),
-              ),
+              ],
+            ),
+            if (descriptionIsStatus) ...[
+              const SizedBox(height: UtenSpacing.s4),
+              Text(description, style: theme.textTheme.bodySmall),
             ],
-          ),
+          ],
         ),
       );
     }
@@ -337,6 +348,8 @@ class _MetricCard extends StatelessWidget {
             children: [
               Icon(icon, color: color, size: 20),
               Text(label, style: theme.textTheme.labelLarge),
+              if (!descriptionIsStatus)
+                UtenFieldHintIcon(info: description, dense: true),
               ?trailing,
             ],
           ),
@@ -354,13 +367,15 @@ class _MetricCard extends StatelessWidget {
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
           ),
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            description,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: scheme.onSurfaceVariant,
+          if (descriptionIsStatus) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Text(
+              description,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -385,14 +400,7 @@ class _SectionPanel extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        UtenSectionHeader(title: title),
-        const SizedBox(height: UtenSpacing.s4),
-        Text(
-          subtitle,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
+        UtenSectionHeader(title: title, info: subtitle),
         const SizedBox(height: UtenSpacing.s20),
         child,
       ],
@@ -417,7 +425,10 @@ class _AdvicePanel extends StatelessWidget {
     final advice = summary.advice;
     return _SectionPanel(
       title: '智能处理建议',
-      subtitle: '按优先级整理 · 每一项都有数据依据',
+      subtitle:
+          '按优先级整理 · 每一项都有数据依据\n\n'
+          '规则分析 · 零库存不等于缺货。缺货预警还需匹配需求、预留量、可用库存和到货日期。\n\n'
+          '${_inventoryCalculationNotes[4]}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -437,13 +448,6 @@ class _AdvicePanel extends StatelessWidget {
                   : advice[index].attention == selectedRisk,
             ),
           ],
-          const SizedBox(height: UtenSpacing.s16),
-          Text(
-            '规则分析 · 零库存不等于缺货。缺货预警还需匹配需求、预留量、可用库存和到货日期。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
         ],
       ),
     );
@@ -581,7 +585,10 @@ class _StockStructure extends StatelessWidget {
         positive + zero + negative > 0;
     return _SectionPanel(
       title: '库存结构',
-      subtitle: '按货品 × 颜色计数，不混加不同单位的数量',
+      subtitle:
+          '按货品 × 颜色计数，不混加不同单位的数量\n\n'
+          '零库存仅反映账面余额；待检与合格待入库是独立阶段，尚未计入库存。\n\n'
+          '${_inventoryCalculationNotes[1]}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -620,13 +627,6 @@ class _StockStructure extends StatelessWidget {
           const Divider(height: UtenSpacing.s24),
           _ValueRow('有待检货物', _count(summary.count('pending_inspection_rows'))),
           _ValueRow('有合格待入库', _count(summary.count('pending_stock_in_rows'))),
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            '零库存仅反映账面余额；待检与合格待入库是独立阶段，尚未计入库存。',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-          ),
         ],
       ),
     );
@@ -642,7 +642,10 @@ class _WeightCoverage extends StatelessWidget {
     final coverage = summary.weightCoverage;
     return _SectionPanel(
       title: '重量数据质量',
-      subtitle: '仅统计非零库存项，已知重量包含估算',
+      subtitle:
+          '仅统计非零库存项，已知重量包含估算\n\n'
+          '覆盖率表示数据完整度，不代表称重准确率。未称部分不会作为零重量参与合计。\n\n'
+          '${_inventoryCalculationNotes[2]}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -667,13 +670,6 @@ class _WeightCoverage extends StatelessWidget {
           ),
           const Divider(height: UtenSpacing.s24),
           _ValueRow('计量待核', _count(summary.count('missing_unit_rows'))),
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            '覆盖率表示数据完整度，不代表称重准确率。未称部分不会作为零重量参与合计。',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
         ],
       ),
     );
@@ -760,7 +756,7 @@ class _UnitQuantities extends StatelessWidget {
 
     return _SectionPanel(
       title: '按单位统计',
-      subtitle: '同一单位横向比较三个阶段 · 全零单位已隐藏',
+      subtitle: '同一单位横向比较三个阶段 · 全零单位已隐藏\n\n${_inventoryCalculationNotes[3]}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -830,6 +826,7 @@ class _UnitQuantities extends StatelessWidget {
                   );
                 }
                 return MasterDataTableView<InventoryUnitSummary>(
+                  expensiveRowMounts: false,
                   tableKey: 'stock.inventory_overview.unit_quantities',
                   embedded: true,
                   showColumnChooser: false,
@@ -899,27 +896,11 @@ class _UnitQuantities extends StatelessWidget {
   }
 }
 
-class _CalculationNotes extends StatelessWidget {
-  const _CalculationNotes();
-
-  @override
-  Widget build(BuildContext context) => const UtenCard(
-    padding: EdgeInsets.symmetric(horizontal: UtenSpacing.s20),
-    borderRadius: UtenRadius.lg,
-    child: ExpansionTile(
-      tilePadding: EdgeInsets.zero,
-      childrenPadding: EdgeInsets.only(bottom: UtenSpacing.s20),
-      title: Text('计算口径与分析边界'),
-      children: [
-        Text(
-          '1. 所有合计覆盖当前分类、仓库、关键词及表头筛选的全部结果，与翻页无关。\n\n'
-          '2. 库存项按货品 × 颜色计数；库存分布按汇总数量的正、零、负分类。单仓负库存另按仓库 × 货品 × 颜色检查，避免跨仓正负抵消。\n\n'
-          '3. 重量覆盖率 = 已知重量的非零库存项 ÷ 全部非零库存项。已知中包含估算；覆盖率不是称重准确率。\n\n'
-          '4. 数量仅在相同单位内合计；库存、待检与合格待入库独立列示，不互相相加。全为零的单位行隐藏，负数保留。\n\n'
-          '5. 优先顺序：负库存核查 → 库存不大于零且合格待入库 → 库存不大于零且待检 → 补全重量与单位。同一项可能命中多条规则，不能累加成异常总数。\n\n'
-          '6. 当前库存可能含不良品仓，账面库存不能直接当可用量。真实补货量需按同一需求口径计算 max(到期需求 + 安全库存 − 可用供应, 0)，并核对到货日期；本摘要尚未接入这些事实，不输出缺货预测或采购建议量。',
-        ),
-      ],
-    ),
-  );
-}
+const _inventoryCalculationNotes = [
+  '1. 所有合计覆盖当前分类、仓库、关键词及表头筛选的全部结果，与翻页无关。',
+  '2. 库存项按货品 × 颜色计数；库存分布按汇总数量的正、零、负分类。单仓负库存另按仓库 × 货品 × 颜色检查，避免跨仓正负抵消。',
+  '3. 重量覆盖率 = 已知重量的非零库存项 ÷ 全部非零库存项。已知中包含估算；覆盖率不是称重准确率。',
+  '4. 数量仅在相同单位内合计；库存、待检与合格待入库独立列示，不互相相加。全为零的单位行隐藏，负数保留。',
+  '5. 优先顺序：负库存核查 → 库存不大于零且合格待入库 → 库存不大于零且待检 → 补全重量与单位。同一项可能命中多条规则，不能累加成异常总数。',
+  '6. 当前库存可能含不良品仓，账面库存不能直接当可用量。真实补货量需按同一需求口径计算 max(到期需求 + 安全库存 − 可用供应, 0)，并核对到货日期；本摘要尚未接入这些事实，不输出缺货预测或采购建议量。',
+];

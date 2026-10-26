@@ -1,3 +1,6 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
+    show pagedReadAccessDenied;
+import '../../../shared/providers/master_party_options.dart';
 // 往来对帐单页 (I/J/K/L/X)（finance_report:view）。
 //
 // 单独卡：side 分段切换 应收(客户)/应付(供应商) + 选往来单位 + 报表类型分段：
@@ -9,8 +12,8 @@
 // 筛选口径（方向/报表类型/往来单位/年度/日期范围/排序）按账号服务端持久化
 // （report.finance.statement，ReportFilterPrefs：docType=side、extra={view,partyId,year}）；
 // 关键字不持久化。
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
-import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 
@@ -23,7 +26,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_client.dart';
-import '../../../core/network/api_endpoints.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -33,8 +36,13 @@ import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/uten_client_picker.dart';
+import '../../basic_data/widgets/uten_supplier_picker.dart';
+import '../providers/finance_name_provider.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
+import '../../report/shared/report_metadata_reuse.dart';
+import '../../report/shared/report_paged_read.dart';
 import '../../report/shared/report_date_range.dart';
 import '../widgets/finance_date_range_filter.dart';
 import '../../report/shared/report_filter_prefs.dart';
@@ -42,12 +50,6 @@ import '../../report/shared/report_sort.dart';
 import '../../report/shared/report_total.dart';
 
 enum _StmtView { flow, detail, annual }
-
-class _Party {
-  const _Party(this.id, this.name);
-  final String id;
-  final String name;
-}
 
 class FinanceStatementPage extends ConsumerStatefulWidget {
   const FinanceStatementPage({super.key});
@@ -61,9 +63,6 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   String _side = 'AR'; // AR=客户 / AP=供应商
   _StmtView _view = _StmtView.flow;
   String? _partyId;
-  List<_Party> _partyList = const [];
-  bool _partyLoading = false;
-  int _partyGeneration = 0;
   int _year = ChinaDateTime.today().year;
   DateTime _from = defaultReportFrom();
   DateTime _to = ChinaDateTime.today();
@@ -76,6 +75,10 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   bool _sortAsc = true;
 
   ReportData? _data;
+  final _reportMetadata = ReportMetadataReuse();
+  final _tableRows = MasterDataTableRowsController<Map<String, dynamic>>();
+  Object? _acceptedReadQuery;
+  late final _reportRead = ReportPagedRead(_reportMetadata);
   bool _loading = false;
   int _loadGeneration = 0;
 
@@ -90,14 +93,12 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
       if (!mounted || previous == next) return;
       setState(() {
         ++_loadGeneration;
+        _reportRead.invalidate();
         _data = null;
         _loading = false;
         _page = 1;
         _keyword = '';
         _partyId = null;
-        _partyList = const [];
-        _partyLoading = false;
-        ++_partyGeneration;
       });
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -158,41 +159,20 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   }
 
   Future<void> _loadParties() async {
-    final generation = ++_partyGeneration;
-    final readEpoch = ref.read(exportContextEpochProvider);
-    bool current() =>
-        mounted &&
-        generation == _partyGeneration &&
-        readEpoch == ref.read(exportContextEpochProvider);
-    setState(() => _partyLoading = true);
-    final api = ref.read(apiClientProvider);
-    try {
-      final path = _side == 'AR'
-          ? ApiEndpoints.clientsDict
-          : ApiEndpoints.suppliersDict;
-      final list = await api.getList(path);
-      final parties = list
-          .map((j) {
-            return _Party(
-              j['id']?.toString() ?? '',
-              j['name']?.toString() ?? '',
-            );
-          })
-          .where((p) => p.id.isNotEmpty)
-          .toList();
-      if (!mounted || !current()) return;
-      setState(() {
-        _partyList = parties;
-        // 保留仍然有效的 partyId（偏好恢复的选中不被覆盖）；已失效（被删/换方向）才清空。
-        if (_partyId != null && parties.every((p) => p.id != _partyId)) {
-          _partyId = null;
-        }
-        _partyLoading = false;
-      });
-    } catch (_) {
-      if (!mounted || !current()) return;
-      setState(() => _partyLoading = false);
+    final id = _partyId;
+    if (id == null || id.isEmpty) return;
+    final names = ref.read(financeNameServiceProvider);
+    if (_side == 'AR') {
+      await names.loadClientNames([id]);
+    } else {
+      await names.loadSupplierNames([id]);
     }
+    // Only resolve the restored reference; an absent/failed name cannot erase its exact UUID.
+  }
+
+  void _onPartyChanged(String? value) {
+    setState(() => _partyId = value);
+    _persistAndReload();
   }
 
   String get _endpoint => switch (_view) {
@@ -201,7 +181,19 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
     _StmtView.annual => '/finance/reports/statement/annual',
   };
 
-  Future<void> _load() async {
+  Map<String, dynamic> get _readQuery => <String, dynamic>{
+    if (_partyId != null) 'partyId': _partyId,
+    'side': _side,
+    'size': _size,
+    if (_view != _StmtView.annual) ...{
+      'dateFrom': _fmt(_from),
+      'dateTo': _fmt(_to),
+    },
+    if (_view == _StmtView.annual) 'year': _year,
+    ...sortQueryParams(_sortKey, _sortAsc),
+  };
+
+  Future<void> _load({int? page, bool reuseMetadata = false}) async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
     final readEpoch = ref.read(exportContextEpochProvider);
@@ -209,36 +201,68 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
         mounted &&
         generation == _loadGeneration &&
         readEpoch == ref.read(exportContextEpochProvider);
-    final requestedPage = _page;
     setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
     try {
-      final query = <String, dynamic>{
-        if (_partyId != null) 'partyId': _partyId,
-        'side': _side,
-        'page': requestedPage,
-        'size': _size,
-        if (_view != _StmtView.annual) ...{
-          'dateFrom': _fmt(_from),
-          'dateTo': _fmt(_to),
+      final query = _readQuery;
+      final endpoint = _endpoint;
+      bool queryCurrent() =>
+          mounted &&
+          readEpoch == ref.read(exportContextEpochProvider) &&
+          identical(api, ref.read(apiClientProvider)) &&
+          endpoint == _endpoint &&
+          const DeepCollectionEquality().equals(query, _readQuery);
+      final readIdentity = [readEpoch, api, endpoint, query];
+      final requestedPage =
+          page ??
+          (const DeepCollectionEquality().equals(
+                _acceptedReadQuery,
+                readIdentity,
+              )
+              ? (_tableRows.visiblePage ?? _page)
+              : _page);
+      final read = _reportRead.begin(
+        endpoint: endpoint,
+        query: query,
+        readerEpoch: readEpoch,
+        reusePages: reuseMetadata,
+        fetch: (parameters) => api.get(endpoint, query: parameters),
+        isCurrent: queryCurrent,
+        canPrefetch: () =>
+            mounted &&
+            TickerMode.valuesOf(context).enabled &&
+            (ModalRoute.of(context)?.isCurrent ?? true),
+        onPrefetchError: (error) {
+          if (!queryCurrent() ||
+              error is! ApiException ||
+              !pagedReadAccessDenied(error)) {
+            return;
+          }
+          _reportRead.invalidate();
+          ++_loadGeneration;
+          context.appError(error.message);
+          setState(() {
+            _data = null;
+            _loading = false;
+          });
         },
-        if (_view == _StmtView.annual) 'year': _year,
-        ...sortQueryParams(_sortKey, _sortAsc),
-      };
-      final json = await api.get(_endpoint, query: query);
-      if (!mounted || !current()) return;
-      final decodedReport = await parseReportResponseResponsive(
-        json,
-        requestedPage,
-        isCurrent: current,
       );
-      if (!mounted || !current()) return;
+      final snapshot = await read.read(requestedPage) as ReportPageSnapshot;
+      if (!mounted || !current() || !_reportRead.accept(snapshot)) return;
       setState(() {
-        _data = decodedReport;
+        _data = snapshot.snapshot;
+        _page = snapshot.page;
+        _acceptedReadQuery = readIdentity;
         _loading = false;
       });
     } catch (e) {
       if (!mounted || !current()) return;
+      if (pagedReadAccessDenied(e)) {
+        _reportRead.invalidate();
+        setState(() {
+          _data = null;
+        });
+      }
       context.appError(humanErrorMessage(e) ?? '对账单没有加载出来，请稍后重试');
       setState(() => _loading = false);
     }
@@ -282,7 +306,12 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
     final api = ref.read(apiClientProvider);
     final json = await api.get(
       _endpoint,
-      query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
+      query: <String, dynamic>{
+        ..._exportQuery,
+        'page': 1,
+        'size': 2000,
+        ...reportRowsOnlyQuery,
+      },
     );
     final data = await parseReportResponseResponsive(json, 1);
     return UtenPrintTable(
@@ -341,6 +370,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   }
 
   Widget _buildFilterPane(ThemeData theme) {
+    final names = ref.watch(financeNameServiceProvider);
     return Padding(
       padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
       child: Column(
@@ -384,32 +414,43 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
             children: [
               SizedBox(
                 width: 240,
-                child: _partyLoading
-                    ? const LinearProgressIndicator()
-                    : DropdownButtonFormField<String?>(
-                        initialValue: _partyId,
-                        isExpanded: true,
-                        decoration: UtenInputDecoration(
-                          InputDecoration(
-                            isDense: true,
-                            labelText: _side == 'AR' ? '客户' : '供应商',
+                child: _side == 'AR'
+                    ? ClientPickerField(
+                        initialId: _partyId,
+                        initialName: _partyId == null
+                            ? null
+                            : names.client(_partyId),
+                        onPick: () => resolvePickedParty(
+                          ref,
+                          () => showUtenClientPicker(
+                            context,
+                            ref,
+                            selectableOnly: false,
                           ),
+                          idOf: (party) => party.id,
+                          loadNames: names.loadClientNames,
+                          isResolved: (id) => names.clientReferenceKnown(id),
                         ),
-                        items: [
-                          for (final party in _partyList)
-                            DropdownMenuItem<String?>(
-                              value: party.id,
-                              child: Text(
-                                party.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                        onChanged: (value) {
-                          setState(() => _partyId = value);
-                          _persistAndReload();
-                        },
+                        onChanged: _onPartyChanged,
+                      )
+                    : SupplierPickerField(
+                        initialId: _partyId,
+                        initialName: _partyId == null
+                            ? null
+                            : names.supplier(_partyId),
+                        onPick: () => resolvePickedParty(
+                          ref,
+                          () => showUtenSupplierPicker(
+                            context,
+                            ref,
+                            selectableOnly: false,
+                            allowQuickCreate: false,
+                          ),
+                          idOf: (party) => party.id,
+                          loadNames: names.loadSupplierNames,
+                          isResolved: (id) => names.supplierReferenceKnown(id),
+                        ),
+                        onChanged: _onPartyChanged,
                       ),
               ),
               if (_view == _StmtView.annual)
@@ -484,10 +525,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
     if (_partyId == null) {
       return const Center(child: Text('请先选择往来单位'));
     }
-    if (_loading && _data == null) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
-    }
-    final data = _data;
+    final data = _data ?? (_loading ? _reportMetadata.loadingData : null);
     if (data == null) {
       return const Center(child: Text('点击「查询」加载'));
     }
@@ -513,6 +551,8 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
         )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
+      rowsController: _tableRows,
+      expensiveRowMounts: false,
       primary: true,
       tableKey:
           'features.finance.pages.finance_statement_page.FinanceStatementPageState._buildTable.1',
@@ -552,16 +592,29 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
       sortAscending: _sortAsc,
       onSortChange: _onSortChange,
       isLoading: _loading,
+      onRetry: _load,
       emptyMessage: '暂无对帐数据',
       // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
       // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
-      summaryBar: reportTotalsBar(data.totals),
+      summaryBar: reportTotalsBar(
+        data.totals,
+        statisticsGeneratedAt: data.statisticsGeneratedAt,
+      ),
       currentPage: data.page,
       totalPages: data.totalPages,
-      paginationScope: (_side, _view, _partyId, _year, _from, _to, _keyword),
+      paginationScope: (
+        _reportRead.snapshotRevision,
+        _side,
+        _view,
+        _partyId,
+        _year,
+        _from,
+        _to,
+        _keyword,
+      ),
       onPageChange: (p) {
         _page = p;
-        _load();
+        return _load(page: p, reuseMetadata: true);
       },
     );
   }

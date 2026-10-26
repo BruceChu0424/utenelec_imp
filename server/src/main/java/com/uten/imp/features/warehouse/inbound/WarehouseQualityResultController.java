@@ -57,7 +57,7 @@ public class WarehouseQualityResultController {
 
     /** 收货单号 facets（2026-09-25 单号列统一）：{billNo:[各收货单号]}——
      *  同列表过滤口径（不含 billNo 自身值筛选）。 */
-    @GetMapping("/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     public Map<String, List<Map<String, Object>>> facets(
             @RequestParam(defaultValue = "") String keyword,
             @RequestParam(defaultValue = "ALL") String receiptType,

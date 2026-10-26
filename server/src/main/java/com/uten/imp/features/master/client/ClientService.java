@@ -122,12 +122,90 @@ public class ClientService {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResponse<ClientListItem> list(ClientQueryFilter f, int page, int size, String sort, String order) {
+        validateReadFilter(f);
         List<UUID> subtreeIds = (f.categoryId() == null) ? null : resolveSubtreeIds(f.categoryId());
         ClientAccessPolicy.ClientScope accessScope = clientAccessPolicy.evaluate();
         var keyword = keywordPlan(f.keyword());
         Sort defaultSort = Sort.by(Sort.Direction.ASC, "code").and(Sort.by(Sort.Direction.ASC, "id"));
         Sort requestedSort = TableSort.resolve(sort, order, defaultSort, ALLOWED_SORT);
-        Specification<Client> spec = (Root<Client> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
+        Specification<Client> spec = clientSpec(f, subtreeIds, accessScope, keyword, requestedSort);
+        Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
+        Page<Client> p = com.uten.imp.common.export.MasterExportSource.page(repo, em, Client.class, spec, pageable, f);
+        Map<UUID, String> settlementNames = settlementMethodNames(p.getContent());
+        Map<UUID, String> ownerNames = p.isEmpty() ? Map.of() : employeeNameResolver.namesOf(
+                p.getContent().stream().map(Client::getOwnerEmployeeId).toList());
+        return new PageResponse<>(
+                p.getContent().stream()
+                        // settlementNames 可能为空 Map.of()（不可变），null key 的 get 会抛 NPE，先判空。
+                        .map(client -> toList(
+                                client,
+                                client.getDefaultSettlementMethodId() == null
+                                        ? null
+                                        : settlementNames.get(client.getDefaultSettlementMethodId()),
+                                client.getOwnerEmployeeId() == null ? null : ownerNames.get(client.getOwnerEmployeeId()),
+                                accessScope))
+                        .toList(),
+                p);
+    }
+
+    /** 全量字典（单据名称解析用；client:view 全员有）。无此端点时 /dict 会落到 /{id} 报 Invalid UUID。 */
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public List<ClientDictItem> dict() {
+        return dict(true);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public List<ClientDictItem> dict(boolean excludeLegacyFinanceStub) {
+        ClientAccessPolicy.ClientScope scope = clientAccessPolicy.evaluate();
+        return repo.findAll(dictionarySpec(scope, excludeLegacyFinanceStub), Sort.by(Sort.Direction.ASC, "name")).stream()
+                .map(ClientService::dictionaryItem).toList();
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public List<ClientDictItem> lookup(Set<UUID> ids, boolean excludeLegacyFinanceStub) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        if (ids.size() > com.uten.imp.common.validation.RequestLimits.LOOKUP_IDS || ids.stream().anyMatch(Objects::isNull))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户名称一次最多读取200个有效UUID");
+        var scope = clientAccessPolicy.evaluate();
+        var spec = dictionarySpec(scope, excludeLegacyFinanceStub).and((root, q, cb) -> root.get("id").in(ids));
+        return repo.findAll(spec, Sort.by("name").and(Sort.by("id"))).stream().map(ClientService::dictionaryItem).toList();
+    }
+
+    private static ClientDictItem dictionaryItem(Client client) {
+        return new ClientDictItem(client.getId(), client.getCode(), client.getName(), "使用".equals(client.getStatus()));
+    }
+
+    private Specification<Client> dictionarySpec(ClientAccessPolicy.ClientScope scope, boolean excludeLegacyFinanceStub) {
+        return (root, q, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.isFalse(root.get("deleted")));
+            predicates.add(clientAccessPolicy.readablePredicate(root, q, cb, scope));
+            if (excludeLegacyFinanceStub) {
+                predicates.add(cb.or(
+                        cb.isNull(root.get("code")),
+                        cb.notLike(cb.lower(root.get("code")), "legacy-fin-cl-%")));
+            }
+            return cb.and(predicates.toArray(Predicate[]::new));
+        };
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public com.uten.imp.common.web.MasterSearchContext searchContext(ClientQueryFilter filter, int page, int size) {
+        validateReadFilter(filter);
+        var subtreeIds = filter.categoryId() == null ? null : resolveSubtreeIds(filter.categoryId());
+        var scope = clientAccessPolicy.evaluate();
+        var spec = clientSpec(filter, subtreeIds, scope, keywordPlan(filter.keyword()), Sort.unsorted());
+        return com.uten.imp.common.web.CategorySearchContext.read(em, Client.class, spec, "category", page, size);
+    }
+
+    private static void validateReadFilter(ClientQueryFilter filter) {
+        com.uten.imp.features.master.dto.ContactSensitiveFilter.requireBoundedReadValues(
+                filter.keyword(), filter.mobile(), filter.phone(), filter.phone2(), filter.bankAccount());
+    }
+
+    private Specification<Client> clientSpec(ClientQueryFilter f, List<UUID> subtreeIds,
+            ClientAccessPolicy.ClientScope accessScope, CategoryKeywordSearch.Plan keyword, Sort requestedSort) {
+        return (Root<Client> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                       CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
@@ -186,49 +264,6 @@ public class ClientService {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
-        Page<Client> p = repo.findAll(spec, pageable);
-        Map<UUID, String> settlementNames = settlementMethodNames(p.getContent());
-        return new PageResponse<>(
-                p.getContent().stream()
-                        // settlementNames 可能为空 Map.of()（不可变），null key 的 get 会抛 NPE，先判空。
-                        .map(client -> toList(
-                                client,
-                                client.getDefaultSettlementMethodId() == null
-                                        ? null
-                                        : settlementNames.get(client.getDefaultSettlementMethodId()),
-                                accessScope))
-                        .toList(),
-                p);
-    }
-
-    /** 全量字典（单据名称解析用；client:view 全员有）。无此端点时 /dict 会落到 /{id} 报 Invalid UUID。 */
-    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public List<ClientDictItem> dict() {
-        return dict(true);
-    }
-
-    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public List<ClientDictItem> dict(boolean excludeLegacyFinanceStub) {
-        ClientAccessPolicy.ClientScope scope = clientAccessPolicy.evaluate();
-        Specification<Client> spec = (root, q, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.isFalse(root.get("deleted")));
-            predicates.add(clientAccessPolicy.readablePredicate(root, q, cb, scope));
-            if (excludeLegacyFinanceStub) {
-                predicates.add(cb.or(
-                        cb.isNull(root.get("code")),
-                        cb.notLike(cb.lower(root.get("code")), "legacy-fin-cl-%")));
-            }
-            return cb.and(predicates.toArray(Predicate[]::new));
-        };
-        return repo.findAll(spec, Sort.by(Sort.Direction.ASC, "name")).stream()
-                .map(client -> new ClientDictItem(
-                        client.getId(),
-                        client.getCode(),
-                        client.getName(),
-                        "\u4f7f\u7528".equals(client.getStatus())))
-                .toList();
     }
 
     private CategoryKeywordSearch.Plan keywordPlan(String query) {
@@ -250,7 +285,7 @@ public class ClientService {
     // ===== 加密 Excel 导出（服务端权威列定义） =====
 
     /**
-     * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
+     * 加密 Excel 导出：复用 list 的同一筛选/映射，后台以 100 行游标批次输出；同步仅保留有界小结果。
      * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（tday/credit）。
      * 2026-09-25 口径「表格显示啥导出啥」：列集与前端表格一致——「负责人」导解析人名
      * （空显「未分配」，与表格同兜底），不再导旧库 empId 数字串；表格没有「状态」列
@@ -284,7 +319,7 @@ public class ClientService {
                 new ExportColumn("creditFloor", "铺底额", ExportColumn.MONEY),
                 new ExportColumn("website", "网址", ExportColumn.TEXT));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
                 maxRows, (p, size) -> list(f, p, size, sort, order), m -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("_platformRecordId", m.getId());
@@ -316,7 +351,6 @@ public class ClientService {
                     row.put("website", m.getWebsite());
                     return row;
                 });
-        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets（子树范围内各字段 distinct + 空值计数） =====
@@ -582,6 +616,7 @@ public class ClientService {
     private ClientListItem toList(
             Client m,
             String settlementMethodName,
+            String ownerEmployeeName,
             ClientAccessPolicy.ClientScope scope) {
         return new ClientListItem(
                 m.getId(), m.getCode(), m.getName(), m.getFullName(), m.getClientXz(),
@@ -591,7 +626,7 @@ public class ClientService {
                 m.getCredit(), m.getCreditFloor(), m.getWebsite(), m.getStatus(), m.getLegacyId(),
                 m.getCategory() == null ? null : m.getCategory().getId(),
                 m.getOwnerEmployeeId(),
-                employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
+                ownerEmployeeName,
                 m.getDefaultSettlementMethodId(), settlementMethodName,
                 clientAccessPolicy.canWrite(m, scope),
                 clientAccessPolicy.canManageAccess(m, scope),

@@ -256,8 +256,22 @@ void main() {
       final rect = tester.getRect(
         find.byKey(const Key('master-revision-scrollbar')),
       );
+      final viewport = tester.getRect(
+        find.byKey(const Key('master-revision-scroll')),
+      );
+      expect(
+        viewport.left,
+        closeTo(rect.left, .01),
+        reason:
+            'Revision content keeps its leading edge; only the trailing rail is reserved',
+      );
+      expect(
+        rect.right - viewport.right,
+        greaterThanOrEqualTo(16),
+        reason: 'Revision values leave a separate lane for the vertical thumb',
+      );
       final gesture = await tester.startGesture(
-        Offset(rect.right - 8, rect.top + 12),
+        Offset(rect.right - 8, rect.top + 32),
         kind: PointerDeviceKind.mouse,
       );
       await gesture.moveBy(const Offset(0, 260));

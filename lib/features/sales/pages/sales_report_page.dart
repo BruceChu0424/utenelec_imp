@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
+    show pagedReadAccessDenied;
 // 销售报表页（销售管理，sales_report:view）：
 //
 // 2 张卡（明细/汇总）共用本页，由 [kind] 区分；卡内用 UtenFilterToolbar 分段切 4 类单据（订货/出货/退货/其它出货），
@@ -19,6 +21,7 @@
 // 范围或失效客户 UUID 把新数据滤成空白（曾发生：prefs 记了 5~7 月，8 月新单全被滤空）。
 // 关键字亦不持久化。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
@@ -34,6 +37,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -47,6 +51,8 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
+import '../../report/shared/report_metadata_reuse.dart';
+import '../../report/shared/report_paged_read.dart';
 import '../../report/shared/report_date_range.dart';
 import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
@@ -63,7 +69,7 @@ class SalesReportPage extends ConsumerStatefulWidget {
 }
 
 class _SalesReportPageState extends ConsumerState<SalesReportPage> {
-  late final SalesReportKind _kind = widget.kind;
+  SalesReportKind get _kind => widget.kind;
   // 默认单据类型：明细=订货、汇总=订货（用户可在左栏切换）。
   SalesReportDocType _docType = SalesReportDocType.order;
   DateTime _from = defaultReportFrom();
@@ -78,6 +84,8 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
   bool _sortAsc = true;
 
   final _reportPages = PagedListController<Map<String, dynamic>>();
+  final _reportMetadata = ReportMetadataReuse();
+  late final _reportRead = ReportPagedRead(_reportMetadata);
 
   ReportData? _data;
   bool _loading = false;
@@ -97,6 +105,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
 
   @override
   void dispose() {
+    _reportRead.dispose();
     _reportPages.dispose();
     super.dispose();
   }
@@ -109,6 +118,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
       if (!mounted || previous == next) return;
       setState(() {
         _reportPages.invalidateReadOwner(notify: false);
+        _reportRead.invalidate();
         ++_loadGeneration;
         _data = null;
         _loading = false;
@@ -120,6 +130,37 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _applyPrefs(ref.read(_prefsProvider));
       _load();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant SalesReportPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.kind == widget.kind) return;
+    // A route can reuse this State for a different report. Retire the whole
+    // former schema/query before either its foreground or prepared read returns.
+    ++_loadGeneration;
+    _reportPages.invalidateReadOwner(notify: false);
+    _reportRead.invalidate();
+    _data = null;
+    _loading = true;
+    _page = 1;
+    _keyword = '';
+    _filters.clear();
+    _sortKey = null;
+    _sortAsc = true;
+    _from = defaultReportFrom();
+    _to = ChinaDateTime.today();
+    _dirty = false;
+    _myLocation = null;
+    _docType = SalesReportDocType.order;
+    _applyPrefs(ref.read(_prefsProvider));
+    final identity = widget.kind;
+    final generation = _loadGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && identity == widget.kind && generation == _loadGeneration) {
+        _load();
+      }
     });
   }
 
@@ -166,7 +207,22 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     ref.read(_prefsProvider.notifier).update(_snapshot());
   }
 
-  Future<void> _load({bool background = false}) async {
+  String get _readEndpoint =>
+      '/sales/reports/${_docType.code}/${_kind.endpoint}';
+
+  Map<String, dynamic> get _readQuery => <String, dynamic>{
+    'dateFrom': _fmt(_from),
+    'dateTo': _fmt(_to),
+    if (_keyword.isNotEmpty) 'keyword': _keyword,
+    'size': _size,
+    for (final e in _filters.entries) 'f.${e.key}': e.value,
+    ...sortQueryParams(_sortKey, _sortAsc),
+  };
+
+  Future<void> _load({
+    bool background = false,
+    bool reuseMetadata = false,
+  }) async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
     final readEpoch = ref.read(exportContextEpochProvider);
@@ -175,40 +231,45 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
         generation == _loadGeneration &&
         readEpoch == ref.read(exportContextEpochProvider);
     final requestedPage = _page;
-    final reports = <int, ReportData>{};
     final api = ref.read(apiClientProvider);
-    Future<PagedResult<Map<String, dynamic>>> fetchPage(int targetPage) async {
-      final query = <String, dynamic>{
-        'dateFrom': _fmt(_from),
-        'dateTo': _fmt(_to),
-        if (_keyword.isNotEmpty) 'keyword': _keyword,
-        'page': targetPage,
-        'size': _size,
-        for (final e in _filters.entries) 'f.${e.key}': e.value,
-        ...sortQueryParams(_sortKey, _sortAsc),
-      };
-      final json = await api.get(
-        '/sales/reports/${_docType.code}/${_kind.endpoint}',
-        query: query,
-      );
-      if (!current()) throw StateError('Report query changed');
-      final report = await parseReportResponseResponsive(
-        json,
-        targetPage,
-        isCurrent: current,
-      );
-      if (!current()) throw StateError('Report query changed');
-      reports[report.page] = report;
-      return PagedResult(
-        items: report.rows,
-        page: report.page,
-        size: _size,
-        total: report.total,
-        totalPages: report.totalPages,
-        totals: report.totals,
-        facets: report.facets,
-      );
-    }
+    final endpoint = _readEndpoint;
+    final query = _readQuery;
+    bool queryCurrent() =>
+        mounted &&
+        readEpoch == ref.read(exportContextEpochProvider) &&
+        identical(api, ref.read(apiClientProvider)) &&
+        endpoint == _readEndpoint &&
+        const DeepCollectionEquality().equals(query, _readQuery);
+    final read = _reportRead.begin(
+      endpoint: endpoint,
+      query: query,
+      readerEpoch: readEpoch,
+      reusePages: reuseMetadata && !background,
+      revalidatingWindow: background,
+      fetch: (parameters) => api.get(endpoint, query: parameters),
+      isCurrent: queryCurrent,
+      canPrefetch: () =>
+          mounted &&
+          TickerMode.valuesOf(context).enabled &&
+          (ModalRoute.of(context)?.isCurrent ?? true),
+      onPrefetchError: (error) {
+        if (!queryCurrent() ||
+            error is! ApiException ||
+            !pagedReadAccessDenied(error)) {
+          return;
+        }
+        _reportPages.invalidateReadOwner(notify: false);
+        _reportPages.error = error.message;
+        _reportRead.invalidate();
+        ++_loadGeneration;
+        setState(() {
+          _data = null;
+          _loading = false;
+        });
+      },
+    );
+    Future<PagedResult<Map<String, dynamic>>> fetchPage(int targetPage) =>
+        read.read(targetPage);
 
     final pending = _reportPages.load(
       requestedPage,
@@ -227,19 +288,8 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
       _loading = false;
       if (_reportPages.page == null) {
         _data = null;
-      } else if (failure == null && reports.isNotEmpty) {
-        final report = reports[_reportPages.currentPage] ?? reports.values.last;
-        final page = _reportPages.page!;
-        _data = ReportData(
-          columns: report.columns,
-          rows: page.items,
-          facets: report.facets,
-          page: page.page,
-          totalPages: page.totalPages,
-          total: page.total,
-          meta: report.meta,
-          totals: report.totals,
-        );
+      } else if (failure == null && _reportRead.accept(_reportPages.page)) {
+        _data = (_reportPages.page! as ReportPageSnapshot).snapshot;
         _page = _reportPages.pageNum;
       }
     });
@@ -378,7 +428,12 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     final api = ref.read(apiClientProvider);
     final json = await api.get(
       '/sales/reports/${_docType.code}/${_kind.endpoint}',
-      query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
+      query: <String, dynamic>{
+        ..._exportQuery,
+        'page': 1,
+        'size': 2000,
+        ...reportRowsOnlyQuery,
+      },
     );
     final data = await parseReportResponseResponsive(json, 1);
     return UtenPrintTable(
@@ -530,10 +585,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
   }
 
   Widget _buildTable() {
-    if (_loading && _data == null) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
-    }
-    final data = _data;
+    final data = _data ?? (_loading ? _reportMetadata.loadingData : null);
     if (data == null) {
       final error = _reportPages.error;
       return Center(
@@ -568,6 +620,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
       ...mapped.where((col) => !_isReportStatusLabel(col.label)),
     ];
     return MasterDataTableView<Map<String, dynamic>>(
+      expensiveRowMounts: false,
       tableKey:
           'features.sales.pages.sales_report_page.SalesReportPageState._buildTable.1',
       columns: columns,
@@ -614,13 +667,23 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
       emptyMessage: _kind.isDetail ? '暂无明细数据' : '暂无汇总数据',
       // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
       // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
-      summaryBar: reportTotalsBar(data.totals),
+      summaryBar: reportTotalsBar(
+        data.totals,
+        statisticsGeneratedAt: data.statisticsGeneratedAt,
+      ),
       currentPage: data.page,
       totalPages: data.totalPages,
-      paginationScope: (_kind, _docType, _from, _to, _keyword),
+      paginationScope: (
+        _reportRead.snapshotRevision,
+        _kind,
+        _docType,
+        _from,
+        _to,
+        _keyword,
+      ),
       onPageChange: (p) {
         _page = p;
-        _load();
+        _load(reuseMetadata: true);
       },
     );
   }
@@ -685,6 +748,9 @@ class _SalesClientDetailDialogState
     extends ConsumerState<SalesClientDetailDialog> {
   bool _readerChanged = false;
   ReportData? _data;
+  final _reportMetadata = ReportMetadataReuse();
+  late final _reportRead = ReportPagedRead(_reportMetadata);
+  final _tableRows = MasterDataTableRowsController<Map<String, dynamic>>();
   bool _loading = false;
   int _loadGeneration = 0;
   int _page = 1;
@@ -699,6 +765,7 @@ class _SalesClientDetailDialogState
       if (!mounted || previous == next) return;
       setState(() {
         ++_loadGeneration;
+        _reportRead.invalidate();
         _data = null;
         _loading = false;
         _readerChanged = true;
@@ -707,49 +774,118 @@ class _SalesClientDetailDialogState
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  Future<void> _load() async {
+  Object get _identity => (
+    widget.docType,
+    widget.docSeg,
+    widget.clientId,
+    widget.currencyId,
+    widget.clientName,
+    widget.dateFrom,
+    widget.dateTo,
+  );
+
+  String get _readEndpoint => '/sales/reports/${widget.docType.code}/detail';
+  Map<String, dynamic> get _readQuery => {
+    'dateFrom': widget.dateFrom,
+    'dateTo': widget.dateTo,
+    if (widget.clientId != null)
+      'clientId': widget.clientId
+    else
+      'f.clientName': kMasterFilterNullValue,
+    if (widget.docType == SalesReportDocType.order && widget.currencyId != null)
+      'currencyId': widget.currencyId,
+    'size': _size,
+    ...sortQueryParams(_sortKey, _sortAsc),
+  };
+
+  @override
+  void didUpdateWidget(covariant SalesClientDetailDialog oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final previous = (
+      oldWidget.docType,
+      oldWidget.docSeg,
+      oldWidget.clientId,
+      oldWidget.currencyId,
+      oldWidget.clientName,
+      oldWidget.dateFrom,
+      oldWidget.dateTo,
+    );
+    if (previous == _identity) return;
+    ++_loadGeneration;
+    _reportRead.invalidate();
+    _data = null;
+    _page = 1;
+    _sortKey = null;
+    _sortAsc = true;
+    _load(page: 1);
+  }
+
+  @override
+  void dispose() {
+    _reportRead.dispose();
+    super.dispose();
+  }
+
+  void _retireRead() {
+    if (!mounted) return;
+    ++_loadGeneration;
+    _reportRead.invalidate();
+    setState(() {
+      _data = null;
+      _loading = false;
+      _readerChanged = true;
+    });
+  }
+
+  Future<void> _load({int? page, bool reuseMetadata = false}) async {
     if (!mounted || _readerChanged) return;
     final generation = ++_loadGeneration;
     final readEpoch = ref.read(exportContextEpochProvider);
-    bool current() =>
-        mounted &&
-        generation == _loadGeneration &&
-        readEpoch == ref.read(exportContextEpochProvider);
-    final requestedPage = _page;
-    setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
+    final endpoint = _readEndpoint;
+    final query = _readQuery;
+    bool queryCurrent() =>
+        mounted &&
+        !_readerChanged &&
+        readEpoch == ref.read(exportContextEpochProvider) &&
+        identical(api, ref.read(apiClientProvider)) &&
+        endpoint == _readEndpoint &&
+        const DeepCollectionEquality().equals(query, _readQuery);
+    bool current() => queryCurrent() && generation == _loadGeneration;
+    final requestedPage = page ?? _tableRows.visiblePage ?? _page;
+    setState(() => _loading = true);
     try {
-      final json = await api.get(
-        '/sales/reports/${widget.docType.code}/detail',
-        query: <String, dynamic>{
-          'dateFrom': widget.dateFrom,
-          'dateTo': widget.dateTo,
-          if (widget.clientId != null)
-            'clientId': widget.clientId
-          else
-            'f.clientName': kMasterFilterNullValue, // 空客户档
-          if (widget.docType == SalesReportDocType.order &&
-              widget.currencyId != null)
-            'currencyId': widget.currencyId,
-          'page': requestedPage,
-          'size': _size,
-          ...sortQueryParams(_sortKey, _sortAsc),
+      final read = _reportRead.begin(
+        endpoint: endpoint,
+        query: query,
+        readerEpoch: readEpoch,
+        reusePages: reuseMetadata,
+        fetch: (parameters) => api.get(endpoint, query: parameters),
+        isCurrent: queryCurrent,
+        canPrefetch: () =>
+            mounted &&
+            TickerMode.valuesOf(context).enabled &&
+            (ModalRoute.of(context)?.isCurrent ?? true),
+        onPrefetchError: (error) {
+          if (queryCurrent() && pagedReadAccessDenied(error)) _retireRead();
         },
       );
-      if (!mounted || !current()) return;
-      final decodedReport = await parseReportResponseResponsive(
-        json,
-        requestedPage,
-        isCurrent: current,
-      );
-      if (!mounted || !current()) return;
+      final result = await read.read(requestedPage);
+      if (!current() || !_reportRead.accept(result)) return;
       setState(() {
-        _data = decodedReport;
+        _data = (result as ReportPageSnapshot).snapshot;
+        _page = result.page;
         _loading = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted || !current()) return;
-      context.appError('客户明细加载失败，请稍后重试');
+      if (pagedReadAccessDenied(error)) {
+        _retireRead();
+        return;
+      }
+      context.appError(
+        error is ApiException ? error.message : '客户明细加载失败，请稍后重试',
+      );
       setState(() => _loading = false);
     }
   }
@@ -760,7 +896,7 @@ class _SalesClientDetailDialogState
       _sortAsc = ascending;
       _page = 1;
     });
-    _load();
+    _load(page: 1);
   }
 
   void _onRowTap(Map<String, dynamic> row) {
@@ -778,6 +914,7 @@ class _SalesClientDetailDialogState
     final factValues = <Map<String, String?>>[];
     final rows = <List<String>>[];
     var page = 1;
+    int? total;
     while (true) {
       final json = await api.get(
         '/sales/reports/${widget.docType.code}/detail',
@@ -793,10 +930,13 @@ class _SalesClientDetailDialogState
             'currencyId': widget.currencyId,
           'page': page,
           'size': 500,
+          ...reportRowsOnlyQuery,
+          'includeCount': page == 1,
           ...sortQueryParams(_sortKey, _sortAsc),
         },
       );
       final data = await parseReportResponseResponsive(json, page);
+      if (data.total >= 0) total = data.total;
       if (headers.isEmpty) {
         headers.addAll([for (final c in data.columns) c.label]);
         columnKeys.addAll([for (final c in data.columns) c.key]);
@@ -808,7 +948,9 @@ class _SalesClientDetailDialogState
         });
         rows.add([for (final c in data.columns) formatReportCell(c, r) ?? '']);
       }
-      if (rows.length >= data.total || data.rows.length < 500) break;
+      if ((total != null && rows.length >= total) || data.rows.length < 500) {
+        break;
+      }
       if (rows.length >= 2000) break;
       page++;
     }
@@ -917,6 +1059,8 @@ class _SalesClientDetailDialogState
                     : MasterDataTableView<Map<String, dynamic>>(
                         tableKey:
                             'features.sales.pages.sales_report_page.SalesClientDetailDialogState.build.1',
+                        rowsController: _tableRows,
+                        expensiveRowMounts: false,
                         columns: columns,
                         items: data.rows,
                         facets: const {},
@@ -927,10 +1071,14 @@ class _SalesClientDetailDialogState
                         sortAscending: _sortAsc,
                         onSortChange: _onSortChange,
                         onRowTap: _onRowTap,
-                        isLoading: _loading,
+                        isLoading: _loading && data.rows.isEmpty,
+                        loadingMore: _loading && data.rows.isNotEmpty,
                         emptyMessage: '该客户在此日期范围内暂无明细',
                         // 下钻明细同样服务端分页，合计同样来自后端整个结果集。
-                        summaryBar: reportTotalsBar(data.totals),
+                        summaryBar: reportTotalsBar(
+                          data.totals,
+                          statisticsGeneratedAt: data.statisticsGeneratedAt,
+                        ),
                         currentPage: data.page,
                         totalPages: data.totalPages,
                         paginationScope: (
@@ -940,10 +1088,12 @@ class _SalesClientDetailDialogState
                           widget.currencyId,
                           widget.dateFrom,
                           widget.dateTo,
+                          _sortKey,
+                          _sortAsc,
+                          _reportRead.snapshotRevision,
                         ),
                         onPageChange: (p) {
-                          _page = p;
-                          _load();
+                          return _load(page: p, reuseMetadata: true);
                         },
                       ),
               ),

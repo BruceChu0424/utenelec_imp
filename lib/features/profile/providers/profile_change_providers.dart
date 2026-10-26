@@ -2,7 +2,11 @@
 // 文档：docs/03-页面/我的页.md
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/scoped_paged_read_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 
@@ -25,19 +29,72 @@ final myEmployeeProfileProvider = FutureProvider.autoDispose<EmployeeProfile?>((
 });
 
 /// 员工自查列表（按状态过滤 + 分页；status null = 全部）。
+final myProfileChangesReadProvider = Provider.autoDispose
+    .family<ScopedPagedReadProviderLease<MyProfileChangeListItem>, String?>(
+      (ref, status) {
+        ref.watch(masterDataSessionKeyProvider);
+        ref.watch(authenticatedScopeProvider);
+        ref.watch(profileChangeRepositoryProvider);
+        return ScopedPagedReadProviderLease(ref, query: (status,));
+      },
+      dependencies: [
+        exportContextEpochProvider,
+        masterDataSessionKeyProvider,
+        authenticatedScopeProvider,
+        profileChangeRepositoryProvider,
+      ],
+    );
+
+Future<PagedReadSnapshot<T, ProfileChangePage<T>>> _profilePageSnapshot<T>(
+  Future<ProfileChangePage<T>> pending,
+) async {
+  final result = await pending;
+  return PagedReadSnapshot(
+    page: PagedResult(
+      items: result.items,
+      page: result.page,
+      size: result.size,
+      total: result.total,
+      totalPages: result.totalPages,
+    ),
+    snapshot: result,
+  );
+}
+
 /// family key 含 page：列表页翻页时换 key 触发后端按页拉取（修原先写死 page=1
 /// 致 >20 条静默截断的 bug）。计数入口（profile_page）传 page=1、读 page.total 即真总数。
 final myProfileChangesProvider = FutureProvider.autoDispose
     .family<
       ProfileChangePage<MyProfileChangeListItem>,
       ({String? status, int page})
-    >((ref, key) {
-      ref.watch(masterDataSessionKeyProvider);
-      ref.watch(authenticatedScopeProvider);
-      return ref
-          .watch(profileChangeRepositoryProvider)
-          .myList(page: key.page, status: key.status);
-    });
+    >(
+      (ref, key) async {
+        ref.watch(masterDataSessionKeyProvider);
+        ref.watch(authenticatedScopeProvider);
+        final repository = ref.watch(profileChangeRepositoryProvider);
+        final result = await ref
+            .watch(myProfileChangesReadProvider(key.status))
+            .read(
+              key.page,
+              fetchPage: (page) => _profilePageSnapshot(
+                repository.myList(page: page, status: key.status),
+              ),
+            );
+        return (result
+                as PagedReadSnapshot<
+                  MyProfileChangeListItem,
+                  ProfileChangePage<MyProfileChangeListItem>
+                >)
+            .snapshot;
+      },
+      retry: pagedReadProviderRetry,
+      dependencies: [
+        masterDataSessionKeyProvider,
+        authenticatedScopeProvider,
+        profileChangeRepositoryProvider,
+        myProfileChangesReadProvider,
+      ],
+    );
 
 /// 员工自查单批详情。
 final myProfileChangeDetailProvider = FutureProvider.autoDispose
@@ -80,21 +137,66 @@ final hrProfileEmployeePendingProvider = FutureProvider.autoDispose
 
 /// HR 队列页专用（2026-09-10）：key 增 departmentId——表头「部门」筛选下推后端
 /// （原先只裁剪当前页，命中行可能落在其他页）；换筛选即换 key，回第 1 页由页面负责。
+final hrProfileChangeQueueReadProvider = Provider.autoDispose
+    .family<
+      ScopedPagedReadProviderLease<HrProfileChangeListItem>,
+      ({String? status, String? departmentId})
+    >(
+      (ref, query) {
+        ref.watch(masterDataSessionKeyProvider);
+        ref.watch(authenticatedScopeProvider);
+        ref.watch(profileChangeRepositoryProvider);
+        return ScopedPagedReadProviderLease(ref, query: query);
+      },
+      dependencies: [
+        exportContextEpochProvider,
+        masterDataSessionKeyProvider,
+        authenticatedScopeProvider,
+        profileChangeRepositoryProvider,
+      ],
+    );
+
 final hrProfileChangeQueueProvider = FutureProvider.autoDispose
     .family<
       ProfileChangePage<HrProfileChangeListItem>,
       ({String? status, String? departmentId, int page})
-    >((ref, key) {
-      ref.watch(masterDataSessionKeyProvider);
-      ref.watch(authenticatedScopeProvider);
-      return ref
-          .watch(profileChangeRepositoryProvider)
-          .hrList(
-            page: key.page,
-            status: key.status,
-            departmentId: key.departmentId,
-          );
-    });
+    >(
+      (ref, key) async {
+        ref.watch(masterDataSessionKeyProvider);
+        ref.watch(authenticatedScopeProvider);
+        final repository = ref.watch(profileChangeRepositoryProvider);
+        final result = await ref
+            .watch(
+              hrProfileChangeQueueReadProvider((
+                status: key.status,
+                departmentId: key.departmentId,
+              )),
+            )
+            .read(
+              key.page,
+              fetchPage: (page) => _profilePageSnapshot(
+                repository.hrList(
+                  page: page,
+                  status: key.status,
+                  departmentId: key.departmentId,
+                ),
+              ),
+            );
+        return (result
+                as PagedReadSnapshot<
+                  HrProfileChangeListItem,
+                  ProfileChangePage<HrProfileChangeListItem>
+                >)
+            .snapshot;
+      },
+      retry: pagedReadProviderRetry,
+      dependencies: [
+        masterDataSessionKeyProvider,
+        authenticatedScopeProvider,
+        profileChangeRepositoryProvider,
+        hrProfileChangeQueueReadProvider,
+      ],
+    );
 
 /// HR 队列表头筛选桶（部门），按当前分段状态取后端聚合（全量，非当前页）。
 final hrProfileChangeFacetsProvider = FutureProvider.autoDispose

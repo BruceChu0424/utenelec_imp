@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../components/buttons/uten_button.dart';
+import '../../components/feedback/uten_inline_notice.dart';
+import '../../core/l10n/platform_table_recovery_text.dart';
 import 'platform_table_controller.dart';
 import 'platform_table_models.dart';
 import 'platform_table_picker.dart';
@@ -83,15 +86,37 @@ class PlatformTableStatus extends StatelessWidget {
     super.key,
     required this.error,
     required this.retry,
+    this.loading = false,
+    this.failure,
   });
   final String? error;
   final VoidCallback retry;
+  final bool loading;
+  final PlatformTableReadFailure? failure;
   @override
   Widget build(BuildContext context) => error == null
       ? const SizedBox.shrink()
-      : TextButton.icon(
-          onPressed: retry,
-          icon: const Icon(Icons.refresh_rounded),
-          label: Tooltip(message: error!, child: const Text('扩展字段读取失败，重试')),
+      : ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: UtenInlineNotice(
+            key: const ValueKey('platform-table-read-error'),
+            level: loading
+                ? UtenInlineNoticeLevel.info
+                : UtenInlineNoticeLevel.error,
+            title: platformTableRecoveryText(
+              context,
+              loading ? 'loading' : 'title',
+            ),
+            message:
+                '${platformTableRecoveryReason(context, error!)}\n${platformTableRecoveryText(context, failure?.name ?? 'unavailable')}',
+            trailing: UtenButton(
+              key: const ValueKey('platform-table-read-retry'),
+              type: UtenButtonType.secondary,
+              icon: Icons.refresh_rounded,
+              isLoading: loading,
+              onPressed: loading ? null : retry,
+              child: Text(platformTableRecoveryText(context, 'retry')),
+            ),
+          ),
         );
 }

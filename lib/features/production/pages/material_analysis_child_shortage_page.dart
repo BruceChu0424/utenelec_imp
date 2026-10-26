@@ -144,8 +144,7 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
               children: [
                 lines.isEmpty
                     ? _doneState(theme)
-                    : ListView(
-                        key: const Key('child-shortage-list'),
+                    : UtenPageEdgePadding.scroll(
                         padding: const EdgeInsets.fromLTRB(
                           UtenSpacing.s16,
                           UtenSpacing.s12,
@@ -153,15 +152,19 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
                           // 末尾留白：把最后一行完整滚到右下悬浮操作组上方。
                           UtenFloatingActionGroup.scrollClearance,
                         ),
-                        children: [
-                          _summaryCard(theme, lines, urged),
-                          ?_host._preparationSupplyUsageAction(),
-                          const SizedBox(height: UtenSpacing.s12),
-                          for (final root in roots) ...[
-                            _rootSection(theme, root, urged),
+                        builder: (context, resolvedPagePadding) => ListView(
+                          key: const Key('child-shortage-list'),
+                          padding: resolvedPagePadding,
+                          children: [
+                            _summaryCard(theme, lines, urged),
+                            ?_host._preparationSupplyUsageAction(),
                             const SizedBox(height: UtenSpacing.s12),
+                            for (final root in roots) ...[
+                              _rootSection(theme, root, urged),
+                              const SizedBox(height: UtenSpacing.s12),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                 // 遮罩只跟宿主的网络段走(与分桶页、级联页同一份)：提交前宿主还会弹确认框，
                 // 那段时间挂遮罩会把确认框盖在转圈背后点不动。

@@ -270,6 +270,8 @@ public class SecurityConfig {
         cfg.setExposedHeaders(List.of(
                 "Content-Disposition",
                 "Retry-After",
+                "X-Uten-Read-Scope-Version",
+                "X-Uten-Read-Scope-Domain",
                 AuditRequestContext.RESPONSE_REQUEST_ID_HEADER,
                 AuditDeviceContext.HEADER_CLIENT_EVENT_ID));
         // Authentication is carried only in an explicit Bearer header, never cookies.

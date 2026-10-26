@@ -7,6 +7,8 @@ import 'dart:math' as math;
 import 'package:uten_imp/core/theme/uten_tokens.dart';
 import '../../shared/search/keyword_search.dart';
 import 'uten_table_column_kit.dart';
+import '../inputs/uten_dropdown_scroll_scope.dart';
+import '../feedback/uten_overlay_lifecycle.dart';
 
 class GridHeaderFilterBucket {
   const GridHeaderFilterBucket({
@@ -59,6 +61,7 @@ class GridHeaderFilterCell extends StatefulWidget {
 class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
   final LayerLink _link = LayerLink();
   OverlayEntry? _overlay;
+  UtenOverlayLifecycle? _overlayLifecycle;
   TextEditingController? _searchCtl;
   Object? _openScope;
   int _menuVersion = 0;
@@ -119,9 +122,13 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
     _searchCtl = TextEditingController(text: widget.search);
     _overlay = OverlayEntry(builder: _buildOverlay);
     overlay.insert(_overlay!);
+    _overlayLifecycle = UtenOverlayLifecycle(onUnavailable: _close);
+    _overlayLifecycle!.attach(context);
   }
 
   void _close() {
+    _overlayLifecycle?.dispose();
+    _overlayLifecycle = null;
     _overlay?.remove();
     _overlay = null;
     _menuVersion++;
@@ -165,6 +172,12 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
         if (_current && version == _menuVersion) _overlay?.markNeedsBuild();
       });
     }
+  }
+
+  @override
+  void deactivate() {
+    _close();
+    super.deactivate();
   }
 
   @override
@@ -399,34 +412,38 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
                               ),
                             ),
                           Flexible(
-                            child: ListView(
-                              shrinkWrap: true,
-                              padding: EdgeInsets.zero,
-                              children: <Widget>[
-                                _menuItem(
-                                  ctx,
-                                  label: '所有',
-                                  isSelected:
-                                      _sanitized == null &&
-                                      widget.search.isEmpty,
-                                  onTap: () {
-                                    if (version == _menuVersion) _select(null);
-                                  },
-                                  theme: theme,
-                                ),
-                                for (final b in buckets)
+                            child: UtenDropdownScrollScope(
+                              child: ListView(
+                                shrinkWrap: true,
+                                padding: EdgeInsets.zero,
+                                children: <Widget>[
                                   _menuItem(
                                     ctx,
-                                    label: '${b.display}（${b.count}）',
-                                    isSelected: _sanitized == b.value,
+                                    label: '所有',
+                                    isSelected:
+                                        _sanitized == null &&
+                                        widget.search.isEmpty,
                                     onTap: () {
                                       if (version == _menuVersion) {
-                                        _select(b.value);
+                                        _select(null);
                                       }
                                     },
                                     theme: theme,
                                   ),
-                              ],
+                                  for (final b in buckets)
+                                    _menuItem(
+                                      ctx,
+                                      label: '${b.display}（${b.count}）',
+                                      isSelected: _sanitized == b.value,
+                                      onTap: () {
+                                        if (version == _menuVersion) {
+                                          _select(b.value);
+                                        }
+                                      },
+                                      theme: theme,
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                         ],

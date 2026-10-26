@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 import 'dart:async';
 
@@ -25,6 +27,9 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/auth/native_read_view_scope_mixin.dart'
+    show nativeReadAccessDenied;
 import '../../../shared/drafts/form_draft_store.dart';
 import '../../../shared/drafts/task_form_drafts.dart';
 import '../../../shared/drafts/form_draft_category.dart';
@@ -103,8 +108,28 @@ class _QStatusSeg {
 
 class _WarehouseQualityResultsPageState
     extends ConsumerState<WarehouseQualityResultsPage>
-    with UtenRefreshParticipant<WarehouseQualityResultsPage> {
+    with
+        UtenRefreshParticipant<WarehouseQualityResultsPage>,
+        ScopedPagedReadViewMixin<WarehouseQualityResultsPage> {
+  int get _refreshPage => _readingRows.visiblePage ?? (_result?.page ?? 1);
+
+  final _readingRows =
+      MasterDataTableRowsController<WarehouseQualityResultTask>();
+  @override
+  void scopedPagedReadOwnerChanged() {
+    ++_requestVersion;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+      _selectedIds = <String>{};
+      _readingRows.update(const []);
+    });
+  }
+
   PagedResult<WarehouseQualityResultTask>? _result;
+  Object? _acceptedQuery;
   bool _loading = false;
   String? _error;
   int _requestVersion = 0;
@@ -180,7 +205,7 @@ class _WarehouseQualityResultsPageState
     );
     if (drafts.isNotEmpty) {
       await resumeTaskFormDraft(context, ref, drafts);
-      if (mounted) await _load(_result?.page ?? 1);
+      if (mounted) await _load(_refreshPage);
       return;
     }
     final List<String>? selectedItems;
@@ -203,7 +228,7 @@ class _WarehouseQualityResultsPageState
       ).toString(),
     );
     if (!mounted) return;
-    if (done == true) await _load(_result?.page ?? 1);
+    if (done == true) await _load(_refreshPage);
   }
 
   @override
@@ -211,7 +236,6 @@ class _WarehouseQualityResultsPageState
     super.initState();
     // 全来源与全部作业是明确的默认范围；徽章只报告工作量，不代用户收窄。
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _refreshStatusCounts();
       trackRefresh(_load(1));
     });
   }
@@ -241,6 +265,7 @@ class _WarehouseQualityResultsPageState
   /// 独立于列表加载：进页面（全来源）/ 切换来源时主动刷新，列表加载时联动刷新。
   Future<void> _refreshStatusCounts() {
     final version = ++_statusCountRequestVersion;
+    final ownerCurrent = captureReadOwner(ref);
     final receiptType = _receiptType;
     final keyword = _effectiveKeyword;
     return ref
@@ -251,7 +276,9 @@ class _WarehouseQualityResultsPageState
           scopeWarehouseId: _scopeWarehouseId,
         )
         .then<void>((counts) {
-          if (mounted && version == _statusCountRequestVersion) {
+          if (mounted &&
+              ownerCurrent() &&
+              version == _statusCountRequestVersion) {
             setState(() => _statusCounts = counts);
           }
         })
@@ -306,7 +333,6 @@ class _WarehouseQualityResultsPageState
       // 切换来源后旧计数口径失效，清空待新值（避免显示上一来源的数字）。
       _statusCounts = null;
     });
-    _refreshStatusCounts();
     _load(1);
   }
 
@@ -323,51 +349,124 @@ class _WarehouseQualityResultsPageState
     _load(1);
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     if (!_shouldLoad) return;
     final version = ++_requestVersion;
+    final ownerCurrent = captureReadOwner(ref);
+    final query = (
+      _statusSeg,
+      _receiptType,
+      _historyTime,
+      _effectiveKeyword,
+      _columnFilters.sortColumn,
+      _columnFilters.sortAscending,
+      _columnFilters['billNo'],
+      _scopeWarehouseId,
+    );
+    bool current() => mounted && version == _requestVersion && ownerCurrent();
     setState(() {
+      if (_acceptedQuery != query) {
+        _result = null;
+        _selectedIds = {};
+      }
       _loading = true;
       _error = null;
     });
+    unawaited(_refreshStatusCounts());
     try {
       final repo = ref.read(warehouseQualityResultRepositoryProvider);
       final seg = _statusSeg!;
       final range = seg.history ? _historyTime.range : null;
-      final result = await repo.list(
-        page: page,
-        view: seg.history
-            ? WarehouseTaskView.history
-            : WarehouseTaskView.active,
-        receiptType: _receiptType,
-        workStatus: seg.status,
-        keyword: _effectiveKeyword.isEmpty ? null : _effectiveKeyword,
-        dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
-        dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
-        sort: _kSortFields[_columnFilters.sortColumn],
-        order: _columnFilters.sortColumn == null
-            ? null
-            : (_columnFilters.sortAscending ? 'asc' : 'desc'),
-        billNo: _columnFilters['billNo'],
-        scopeWarehouseId: _scopeWarehouseId,
+      final pageRepository = repo;
+      final pageView = seg.history
+          ? WarehouseTaskView.history
+          : WarehouseTaskView.active;
+      final pageReceiptType = _receiptType;
+      final pageWorkStatus = seg.status;
+      final pageKeyword = _effectiveKeyword.isEmpty ? null : _effectiveKeyword;
+      final pageDateFrom = range == null
+          ? null
+          : ChinaDateTime.formatDate(range.start);
+      final pageDateTo = range == null
+          ? null
+          : ChinaDateTime.formatDate(range.end);
+      final pageSort = _kSortFields[_columnFilters.sortColumn];
+      final pageOrder = _columnFilters.sortColumn == null
+          ? null
+          : (_columnFilters.sortAscending ? 'asc' : 'desc');
+      final pageBillNo = _columnFilters['billNo'];
+      final pageScopeWarehouseId = _scopeWarehouseId;
+
+      final result = await readScopedPage(
+        page,
+        slot: '_load',
+        query: [
+          pageRepository,
+          pageView,
+          pageReceiptType,
+          pageWorkStatus,
+          pageKeyword,
+          pageDateFrom,
+          pageDateTo,
+          pageSort,
+          pageOrder,
+          pageBillNo,
+          pageScopeWarehouseId,
+        ],
+        currentQuery: () => [
+          repo,
+          seg.history ? WarehouseTaskView.history : WarehouseTaskView.active,
+          _receiptType,
+          seg.status,
+          _effectiveKeyword.isEmpty ? null : _effectiveKeyword,
+          range == null ? null : ChinaDateTime.formatDate(range.start),
+          range == null ? null : ChinaDateTime.formatDate(range.end),
+          _kSortFields[_columnFilters.sortColumn],
+          _columnFilters.sortColumn == null
+              ? null
+              : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+          _columnFilters['billNo'],
+          _scopeWarehouseId,
+        ],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.list(
+          page: target,
+          view: pageView,
+          receiptType: pageReceiptType,
+          workStatus: pageWorkStatus,
+          keyword: pageKeyword,
+          dateFrom: pageDateFrom,
+          dateTo: pageDateTo,
+          sort: pageSort,
+          order: pageOrder,
+          billNo: pageBillNo,
+          scopeWarehouseId: pageScopeWarehouseId,
+        ),
       );
-      // 状态计数失败不阻断列表（分段按钮降级为 '—'）。
-      await _refreshStatusCounts();
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
-      unawaited(_loadBillNoFacets());
-      if (!mounted || version != _requestVersion) return;
+
+      if (!current()) return;
       setState(() {
         _result = result;
+        _acceptedQuery = query;
         _loading = false;
       });
     } on ApiException catch (error) {
-      if (!mounted || version != _requestVersion) return;
+      if (!mounted) return;
+      if (!current()) return;
       setState(() {
+        if (nativeReadAccessDenied(error)) {
+          ++_statusCountRequestVersion;
+          _result = null;
+          _acceptedQuery = null;
+          _statusCounts = null;
+          _selectedIds = {};
+        }
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || version != _requestVersion) return;
+      if (!current()) return;
       setState(() {
         _error = '品质检查结果加载失败，请检查网络后重试';
         _loading = false;
@@ -399,35 +498,6 @@ class _WarehouseQualityResultsPageState
 
   /// 收货单号 facets（2026-09-25 单号列统一）：与列表同过滤口径
   /// （不含单号列自身值筛选）。
-  Future<void> _loadBillNoFacets() {
-    final seg = _statusSeg;
-    if (seg == null) return Future.value();
-    final range = seg.history ? _historyTime.range : null;
-    return _columnFilters.loadFacets(
-      () async => {
-        'billNo': await ref
-            .read(warehouseQualityResultRepositoryProvider)
-            .billNoFacets(
-              view: seg.history
-                  ? WarehouseTaskView.history
-                  : WarehouseTaskView.active,
-              receiptType: _receiptType,
-              workStatus: seg.status,
-              keyword: _effectiveKeyword.isEmpty ? null : _effectiveKeyword,
-              dateFrom: range == null
-                  ? null
-                  : ChinaDateTime.formatDate(range.start),
-              dateTo: range == null
-                  ? null
-                  : ChinaDateTime.formatDate(range.end),
-              scopeWarehouseId: _scopeWarehouseId,
-            ),
-      },
-      onLoaded: () {
-        if (mounted) setState(() {});
-      },
-    );
-  }
 
   int? _statusCount(WarehouseQualityWorkStatus status) {
     final counts = _statusCounts;
@@ -512,7 +582,7 @@ class _WarehouseQualityResultsPageState
     if (!mounted) return;
     if (done == true) {
       setState(() => _selectedIds = {});
-      await _load(_result?.page ?? 1);
+      await _load(_refreshPage);
     }
   }
 
@@ -544,7 +614,7 @@ class _WarehouseQualityResultsPageState
     final drafts = _taskDrafts(task);
     if (drafts.isNotEmpty) {
       await resumeTaskFormDraft(context, ref, drafts);
-      if (mounted) await _load(_result?.page ?? 1);
+      if (mounted) await _load(_refreshPage);
       return;
     }
     await context.push(
@@ -560,7 +630,7 @@ class _WarehouseQualityResultsPageState
       ).toString(),
     );
     if (!mounted) return;
-    await _load(_result?.page ?? 1);
+    await _load(_refreshPage);
   }
 
   @override
@@ -614,6 +684,8 @@ class _WarehouseQualityResultsPageState
                       description: '采购与委外任务一起显示，可在表头筛选来源类型',
                     ))
             : MasterDataTableView<WarehouseQualityResultTask>(
+                rowsController: _readingRows,
+                expensiveRowMounts: false,
                 tableKey:
                     'features.warehouse.pages.warehouse_quality_results_page.WarehouseQualityResultsPageState.build.1',
                 // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
@@ -648,6 +720,50 @@ class _WarehouseQualityResultsPageState
                   ],
                 },
                 nullCounts: const {},
+                facetPageLoaders: nativeFacetLoaders(
+                  ref,
+                  path: '/warehouse/quality-results/facets',
+                  fields: const ['billNo'],
+                  filters: {
+                    'view': _statusSeg?.history == true ? 'HISTORY' : 'ACTIVE',
+                    'receiptType': _receiptType?.apiValue,
+                    'status': _statusSeg?.status?.apiValue,
+                    'keyword': _effectiveKeyword,
+                    'dateFrom':
+                        _statusSeg?.history == true &&
+                            _historyTime.range != null
+                        ? ChinaDateTime.formatDate(_historyTime.range!.start)
+                        : null,
+                    'dateTo':
+                        _statusSeg?.history == true &&
+                            _historyTime.range != null
+                        ? ChinaDateTime.formatDate(_historyTime.range!.end)
+                        : null,
+                    'scopeWarehouseId': _scopeWarehouseId,
+                  },
+                ),
+                facetSearchScope: nativeFacetSearchScope(
+                  ref,
+                  '/warehouse/quality-results/facets',
+                  {
+                    'view': _statusSeg?.history == true ? 'HISTORY' : 'ACTIVE',
+                    'receiptType': _receiptType?.apiValue,
+                    'status': _statusSeg?.status?.apiValue,
+                    'keyword': _effectiveKeyword,
+                    'dateFrom':
+                        _statusSeg?.history == true &&
+                            _historyTime.range != null
+                        ? ChinaDateTime.formatDate(_historyTime.range!.start)
+                        : null,
+                    'dateTo':
+                        _statusSeg?.history == true &&
+                            _historyTime.range != null
+                        ? ChinaDateTime.formatDate(_historyTime.range!.end)
+                        : null,
+                    'scopeWarehouseId': _scopeWarehouseId,
+                  },
+                ),
+
                 filters: {
                   'workStatus': _statusSeg?.status?.apiValue,
                   'billNo': _columnFilters['billNo'],
@@ -689,7 +805,7 @@ class _WarehouseQualityResultsPageState
                 isLoading: _loading && _result == null,
                 loadingMore: _loading && _result != null,
                 error: result.items.isEmpty ? _error : null,
-                onRetry: () => _load(result.page),
+                onRetry: () => _load(_refreshPage),
                 emptyMessage: _emptyMessage,
                 currentPage: result.page,
                 totalPages: result.totalPages,
@@ -699,7 +815,7 @@ class _WarehouseQualityResultsPageState
                   _statusSeg,
                   _historyTime,
                 ),
-                onPageChange: _load,
+                onPageChange: (page) => _load(page, useCache: true),
               ),
       ),
     );

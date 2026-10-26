@@ -549,6 +549,18 @@ class ProductionWhereUsedQueryServiceTest {
                 .doesNotContain("UNION ALL");
     }
 
+    @Test void relationshipAndUnattributedQuantitiesExposeSharedExactTextsAcrossTheJsonBoundary() {
+        String exact="12345678901234.5678";BigDecimal quantity=new BigDecimal(exact);
+        Query metadata=chainableQuery();when(metadata.getSingleResult()).thenReturn(new Object[]{1L,quantity});
+        Query data=chainableQuery();Object[] values=reportRow(UUID.randomUUID());values[29]=quantity;values[45]=quantity;
+        when(data.getResultList()).thenReturn(List.<Object[]>of(values));when(em.createNativeQuery(anyString())).thenReturn(metadata,data);
+        var result=service().whereUsed(UUID.randomUUID(),"all",null,null,1,50,null,null);
+        assertThat(result.rows().getFirst().get("legacyRequiredQty")).isEqualTo(quantity);
+        assertThat(result.rows().getFirst().get("legacyRequiredQtyExact")).isEqualTo(exact);
+        assertThat(result.rows().getFirst().get("__subcontractReturnedQtyExact")).isEqualTo(exact);
+        assertThat(result.meta().get("unattributedDemandQtyExact")).isEqualTo(exact);
+    }
+
     @Test
     void v186AddsWhereUsedReadIndexesWithoutBackportingThemToOlderMigrations()
             throws Exception {

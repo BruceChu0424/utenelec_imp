@@ -37,6 +37,7 @@ import '../models/sales_doc.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/badges/badge_scope.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class SalesHubPage extends ConsumerWidget {
   const SalesHubPage({super.key});
@@ -175,7 +176,7 @@ class SalesHubPage extends ConsumerWidget {
     String title,
     List<_Entry> entries,
   ) {
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

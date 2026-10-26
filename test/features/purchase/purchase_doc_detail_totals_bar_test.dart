@@ -109,6 +109,36 @@ void main() {
     );
   }
 
+  testWidgets(
+    'naturally completed purchase retains quantity changes but cannot cancel remaining delivery',
+    (tester) async {
+      await _pumpDetail(
+        tester,
+        permissions: const {
+          Perm.purchaseOrderView,
+          Perm.purchaseOrderReverse,
+          Perm.purchaseOrderChangeQty,
+          Perm.purchaseOrderSubmitFinance,
+        },
+        priceMasked: true,
+        nativeApproved: true,
+        closed: true,
+      );
+      expect(
+        find.byKey(const Key('purchase-order-change-qty')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const Key('purchase-order-request-close')),
+            )
+            .onPressed,
+        isNull,
+      );
+    },
+  );
+
   testWidgets('按总金额计价显示完整参考单价及服务端真实总金额', (tester) async {
     await _pumpDetail(
       tester,
@@ -202,6 +232,7 @@ Future<void> _pumpDetail(
   String? closureStatus,
   bool legacyApproved = false,
   bool nativeApproved = false,
+  bool closed = false,
   GlobalKey? capture,
 }) async {
   tester.view.physicalSize = const Size(1400, 1600);
@@ -219,6 +250,7 @@ Future<void> _pumpDetail(
     closureStatus: closureStatus,
     legacyApproved: legacyApproved,
     nativeApproved: nativeApproved,
+    closed: closed,
   );
   await tester.pumpWidget(
     ProviderScope(
@@ -256,6 +288,7 @@ class _TestApi extends ApiClient {
     this.closureStatus,
     this.legacyApproved = false,
     this.nativeApproved = false,
+    this.closed = false,
   }) : super(Dio());
 
   final bool priceMasked;
@@ -265,6 +298,7 @@ class _TestApi extends ApiClient {
   final String? closureStatus;
   final bool legacyApproved;
   final bool nativeApproved;
+  final bool closed;
 
   @override
   Future<List<Map<String, dynamic>>> getList(
@@ -295,6 +329,7 @@ class _TestApi extends ApiClient {
         'id': 'order-1',
         'makerId': 'maker-1',
         'historyReadOnly': legacyApproved,
+        'closed': closed,
         'legacyImported': legacyApproved,
         'billNo': 'PO-001',
         'billDate': '2026-09-01',

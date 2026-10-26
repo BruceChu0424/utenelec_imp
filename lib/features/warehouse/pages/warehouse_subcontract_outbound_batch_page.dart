@@ -59,6 +59,7 @@ import '../navigation/warehouse_subcontract_outbound_navigation.dart';
 import '../widgets/subcontract_outbound_detail_table.dart';
 import '../models/warehouse_form_draft_codec.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class WarehouseSubcontractOutboundBatchPage extends ConsumerStatefulWidget {
   const WarehouseSubcontractOutboundBatchPage({
@@ -1427,107 +1428,118 @@ class _WarehouseSubcontractOutboundBatchPageState
                             child: UtenGridPageScrollbar(
                               pinned: _gridPinned,
                               controller: _pageScroll,
-                              child: ListView(
-                                controller: _pageScroll,
+                              child: UtenPageEdgePadding.scroll(
                                 padding: const EdgeInsets.fromLTRB(
                                   UtenSpacing.s12,
                                   UtenSpacing.s16,
                                   UtenSpacing.s12,
                                   UtenFloatingActionGroup.scrollClearance,
                                 ),
-                                children: [
-                                  if (_recoveryOnly)
-                                    _atomicRecoverySummary()
-                                  else
-                                    _headers(),
-                                  if (_atomicUnknownIds.isNotEmpty)
-                                    const Text(
-                                      '原出仓结果待核对，原内容和操作编号继续保留；未查到回执不能视为未提交',
-                                    ),
-                                  if (!_atomicEntry &&
-                                      _drafts.any(
-                                        (draft) => draft.lines.any(
-                                          (line) => !WarehouseTaskItemSelection(
-                                            widget.selectedItemIds,
-                                          ).contains(line.draftItemId),
-                                        ),
-                                      ))
-                                    Text(
-                                      '该领料单需整单确认，请返回任务中心选齐同单明细',
-                                      style: TextStyle(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.error,
+                                builder: (context, resolvedPagePadding) => ListView(
+                                  controller: _pageScroll,
+                                  padding: resolvedPagePadding,
+                                  children: [
+                                    if (_recoveryOnly)
+                                      _atomicRecoverySummary()
+                                    else
+                                      _headers(),
+                                    if (_atomicUnknownIds.isNotEmpty)
+                                      const Text(
+                                        '原出仓结果待核对，原内容和操作编号继续保留；未查到回执不能视为未提交',
                                       ),
-                                    ),
-                                  for (final draft in _drafts)
-                                    if (draft.error != null)
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: UtenSpacing.s8,
+                                    if (!_atomicEntry &&
+                                        _drafts.any(
+                                          (draft) => draft.lines.any(
+                                            (line) =>
+                                                !WarehouseTaskItemSelection(
+                                                  widget.selectedItemIds,
+                                                ).contains(line.draftItemId),
+                                          ),
+                                        ))
+                                      Text(
+                                        '该领料单需整单确认，请返回任务中心选齐同单明细',
+                                        style: TextStyle(
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.error,
                                         ),
-                                        child: Text(
-                                          '${draft.detail.orderBillNo ?? '—'}: ${draft.error}',
-                                          style: TextStyle(
-                                            color: Theme.of(
-                                              context,
-                                            ).colorScheme.error,
+                                      ),
+                                    for (final draft in _drafts)
+                                      if (draft.error != null)
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: UtenSpacing.s8,
+                                          ),
+                                          child: Text(
+                                            '${draft.detail.orderBillNo ?? '—'}: ${draft.error}',
+                                            style: TextStyle(
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.error,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                  // 明细表紧接单据卡，不再写「出库明细」标题:
-                                  // 页面本身就叫批量出库详情，表头已说明每列是什么。
-                                  if (!_recoveryOnly) ...[
-                                    const SizedBox(height: UtenSpacing.s16),
-                                    SubcontractOutboundDetailTable(
-                                      quantityHint: _atomicEntry
-                                          ? '只能改少，不能超过原领料数量。填0和未选行继续保留在原单待发，本次只出库勾选的正数行。'
-                                          : subcontractOutboundQuantityHint,
-                                      stickyHeaderPinned: _gridPinned,
-                                      rows: [
-                                        for (final draft in _drafts)
-                                          for (final line in draft.lines)
-                                            if (WarehouseTaskItemSelection(
-                                              widget.selectedItemIds,
-                                            ).contains(line.draftItemId))
-                                              SubcontractOutboundTableRow(
-                                                draft: line,
-                                                warehouse: names.warehouse(
-                                                  draft.warehouseId,
+                                    // 明细表紧接单据卡，不再写「出库明细」标题:
+                                    // 页面本身就叫批量出库详情，表头已说明每列是什么。
+                                    if (!_recoveryOnly) ...[
+                                      const SizedBox(height: UtenSpacing.s16),
+                                      SubcontractOutboundDetailTable(
+                                        quantityHint: _atomicEntry
+                                            ? '只能改少，不能超过原领料数量。填0和未选行继续保留在原单待发，本次只出库勾选的正数行。'
+                                            : subcontractOutboundQuantityHint,
+                                        stickyHeaderPinned: _gridPinned,
+                                        rows: [
+                                          for (final draft in _drafts)
+                                            for (final line in draft.lines)
+                                              if (WarehouseTaskItemSelection(
+                                                widget.selectedItemIds,
+                                              ).contains(line.draftItemId))
+                                                SubcontractOutboundTableRow(
+                                                  draft: line,
+                                                  warehouse: names.warehouse(
+                                                    draft.warehouseId,
+                                                  ),
+                                                  orderBillNo:
+                                                      draft.detail.orderBillNo,
+                                                  supplierName:
+                                                      draft.detail.supplierName,
+                                                  documentNo:
+                                                      draft
+                                                          .detail
+                                                          .issueBillNo ??
+                                                      draft.document.billNo,
+                                                  documentRemark: draft.remark,
+                                                  warehouseId:
+                                                      draft.warehouseId,
+                                                  warehouseAutofilled:
+                                                      draft.warehouseAutofilled,
+                                                  warehouses:
+                                                      names.warehouseHierarchy,
+                                                  onWarehouseChanged: (value) =>
+                                                      setState(() {
+                                                        draft.warehouseId =
+                                                            value;
+                                                        draft.warehouseAutofilled =
+                                                            false;
+                                                      }),
+                                                  status: _rowStatus(
+                                                    draft,
+                                                    line,
+                                                  ),
+                                                  editable: draft.pending,
                                                 ),
-                                                orderBillNo:
-                                                    draft.detail.orderBillNo,
-                                                supplierName:
-                                                    draft.detail.supplierName,
-                                                documentNo:
-                                                    draft.detail.issueBillNo ??
-                                                    draft.document.billNo,
-                                                documentRemark: draft.remark,
-                                                warehouseId: draft.warehouseId,
-                                                warehouseAutofilled:
-                                                    draft.warehouseAutofilled,
-                                                warehouses:
-                                                    names.warehouseHierarchy,
-                                                onWarehouseChanged: (value) =>
-                                                    setState(() {
-                                                      draft.warehouseId = value;
-                                                      draft.warehouseAutofilled =
-                                                          false;
-                                                    }),
-                                                status: _rowStatus(draft, line),
-                                                editable: draft.pending,
-                                              ),
-                                      ],
-                                      editable: _canExecute,
-                                      selectable: true,
-                                      onRowSelected: (row, selected) {
-                                        row.draft.selected = selected;
-                                      },
-                                      showOrder: true,
-                                      onChanged: () => setState(() {}),
-                                    ),
+                                        ],
+                                        editable: _canExecute,
+                                        selectable: true,
+                                        onRowSelected: (row, selected) {
+                                          row.draft.selected = selected;
+                                        },
+                                        showOrder: true,
+                                        onChanged: () => setState(() {}),
+                                      ),
+                                    ],
                                   ],
-                                ],
+                                ),
                               ),
                             ),
                           ),

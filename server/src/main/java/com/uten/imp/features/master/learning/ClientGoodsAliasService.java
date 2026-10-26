@@ -82,7 +82,7 @@ public class ClientGoodsAliasService {
             rows.setParameter("clientId", clientId);
             rows.setParameter("kw", normalized);
             rows.setParameter("size", safeSize);
-            rows.setParameter("offset", (safePage - 1) * safeSize);
+            rows.setParameter("offset", (long) (safePage - 1) * safeSize);
             for (Object[] row : (List<Object[]>) rows.getResultList()) {
                 items.add(new ClientGoodsAliasView(
                         (UUID) row[0], "CLIENT", (String) row[1], (String) row[2], contextText((String) row[3]),

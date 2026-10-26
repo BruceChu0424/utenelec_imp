@@ -134,7 +134,24 @@ void main() {
         )
         .onPageChange!(2);
     await tester.pumpAndSettle();
-    expect(api.lastQuery?['page'], 2);
+    expect(
+      tester
+          .widget<MasterDataTableView<ExpenseClaim>>(
+            find.byKey(const Key('expense-list-table')),
+          )
+          .currentPage,
+      2,
+    );
+    expect(
+      api.queries.where(
+        (query) =>
+            query['page'] == 2 &&
+            query['sort'] == 'claimNo' &&
+            query['order'] == 'asc',
+      ),
+      hasLength(1),
+      reason: 'pagination adopts its existing warm read',
+    );
     tester
         .widget<MasterDataTableView<ExpenseClaim>>(
           find.byKey(const Key('expense-list-table')),
@@ -143,7 +160,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.lastQuery?['order'], 'desc');
     expect(
-      api.lastQuery?['page'],
+      api.queries.where((query) => query['order'] == 'desc').first['page'],
       1,
       reason: 'Changing only the sort direction resets the accumulated range',
     );
@@ -157,6 +174,7 @@ class _ExpenseApi extends ApiClient {
   final int totalPages;
 
   Map<String, dynamic>? lastQuery;
+  final queries = <Map<String, dynamic>>[];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -180,6 +198,7 @@ class _ExpenseApi extends ApiClient {
     }
     if (path.contains('/mine')) {
       lastQuery = query == null ? null : Map<String, dynamic>.from(query);
+      queries.add(Map<String, dynamic>.from(query ?? const {}));
       return {
         'items': [
           {

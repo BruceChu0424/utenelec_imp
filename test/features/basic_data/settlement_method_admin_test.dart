@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/search/keyword_search.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -232,7 +234,26 @@ class _ReferenceMethodRepositoryFake extends ReferenceMethodRepository {
   );
 
   @override
+  Future<PagedResult<SettlementMethodAdminItem>> settlementAdminPage({
+    int page = 1,
+    int size = 100,
+    String? keyword,
+    Map<String, String?> filters = const {},
+  }) async {
+    final all = (await settlementAdminList(keyword: keyword, filters: filters))
+        .where((item) => matchesKeywordSearch([item.name, item.code], keyword ?? '')).toList();
+    return PagedResult(
+      items: all.skip((page - 1) * size).take(size).toList(),
+      page: page,
+      size: size,
+      total: all.length,
+      totalPages: (all.length / size).ceil(),
+    );
+  }
+
+  @override
   Future<List<SettlementMethodAdminItem>> settlementAdminList({
+    String? keyword,
     Map<String, String?> filters = const {},
   }) async {
     listCalls++;

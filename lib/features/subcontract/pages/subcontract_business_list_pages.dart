@@ -1,3 +1,4 @@
+import '../../../shared/providers/master_party_options.dart';
 import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 // 委外业务列表页族（共用 _SubcontractBusinessListPage，按 _ListPresentation 参数化）。
@@ -17,6 +18,7 @@ import '../../../shared/auth/read_owner_fence.dart';
 // 已审与反审由历史状态列呈现，不把已完成记录误标为进行中。
 // 主类与历史时间随页头收起；默认不选不加载。
 import 'dart:async';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../shared/drafts/form_draft_master_names.dart';
@@ -550,10 +552,15 @@ class _SubcontractBusinessListPageState
     super.dispose();
   }
 
-  Future<PagedResult<SubcontractDocListItem>> _fetch([int? requestedPage]) {
+  Future<PagedResult<SubcontractDocListItem>> _fetch([
+    int? requestedPage,
+  ]) async {
     final seg = _seg!;
     final range = seg.history ? _historyTime.range : null;
-    return ref
+    final names = ref.read(mn.masterNameServiceProvider);
+    final current = captureReadOwner(ref);
+    final selectedParty = _supplierIdFilter;
+    final result = await ref
         .read(subcontractRepositoryProvider(_p.type))
         .list(
           page: requestedPage ?? _controller.pageNum,
@@ -578,6 +585,17 @@ class _SubcontractBusinessListPageState
           sort: _controller.sortKey,
           order: _controller.sortOrder,
         );
+    if (!current()) throw StateError('读取作用域已变化');
+    unawaited(
+      names.loadSupplierNames(
+        partyReferenceIds([
+          ...result.items.map((item) => item.supplierId),
+          selectedParty,
+        ]),
+      ),
+    );
+    if (!current()) throw StateError('读取作用域已变化');
+    return result;
   }
 
   /// 单据号值筛选桶随过滤上下文重取（失败静默保持旧桶，不阻断列表；
@@ -634,12 +652,44 @@ class _SubcontractBusinessListPageState
     ]);
   }
 
-  Future<void> _reload([int? page, bool silent = false]) {
+  List<Object?> get _pageQueryScope => [
+    _controller.normalizedKeyword,
+    _controller.sortKey,
+    _controller.sortAsc,
+    _readerGeneration,
+    _p.type,
+    widget.archiveOnly,
+    _seg,
+    _historyTime,
+    _historyTime.range?.start,
+    _historyTime.range?.end,
+    _apPostedFilter,
+    _supplierIdFilter,
+    _warehouseIdFilter,
+    Map.of(_columnFilters.values),
+  ];
+
+  Future<void> _navigatePage(int page) => _reload(page, false, true);
+
+  Future<void> _reload([
+    int? page,
+    bool silent = false,
+    bool useCachedPage = false,
+  ]) {
     trackRefresh(Future<void>.value(), replaceKey: 'refresh');
-    return trackRefresh(_reloadRows(page, silent), replaceKey: 'rows');
+    return trackRefresh(
+      _reloadRows(page, silent, useCachedPage),
+      replaceKey: 'rows',
+    );
   }
 
-  Future<void> _reloadRows([int? page, bool silent = false]) async {
+  Future<void> _reloadRows([
+    int? page,
+    bool silent = false,
+    bool useCachedPage = false,
+  ]) async {
+    final cacheQuery = _pageQueryScope;
+    final ownerCurrent = captureReadOwner(ref);
     final generation = ++_reloadGeneration;
     if (!_shouldLoad) {
       final keyword = _controller.keyword;
@@ -656,7 +706,16 @@ class _SubcontractBusinessListPageState
       silent: silent,
       fetch: _fetch,
       fetchPage: _fetch,
-      isCurrent: captureReadOwner(ref),
+      useCachedPage: useCachedPage,
+      canPrefetch: () =>
+          mounted &&
+          TickerMode.valuesOf(context).enabled &&
+          (ModalRoute.of(context)?.isCurrent ?? true),
+      queryScope: cacheQuery,
+      isCurrent: () =>
+          mounted &&
+          ownerCurrent() &&
+          const DeepCollectionEquality().equals(cacheQuery, _pageQueryScope),
     );
     if (!mounted ||
         generation != _reloadGeneration ||
@@ -703,6 +762,7 @@ class _SubcontractBusinessListPageState
     return FormDraftCategoryTable<SubcontractDocListItem>(
       scope: formDraftScopeForDocumentStatus(scope),
       table: table,
+      localReadRevision: _reloadGeneration,
       localValue: (draft, key) => formDraftMasterColumnValue(
         draft,
         key,
@@ -1077,13 +1137,21 @@ class _SubcontractBusinessListPageState
                                 ),
                               ],
                             'billNo': _columnFilters.bucketOf('billNo'),
-                            'supplier': masterDictionaryFacets(
-                              names.supplierEntries,
+                            'supplier': selectedPartyFacet(
+                              _supplierIdFilter,
+                              names.supplier,
                             ),
                             'warehouse': masterDictionaryFacets(
                               names.warehouseEntries,
                             ),
                           },
+                          facetPageLoaders: {
+                            'supplier': supplierPartyFacetLoader(ref),
+                          },
+                          facetSearchScope: partyFacetSearchScope(ref, (
+                            'subcontract-list-party',
+                            _p.type,
+                          )),
                           nullCounts: const {},
                           filters: {
                             ..._columnFilters.values,
@@ -1132,7 +1200,7 @@ class _SubcontractBusinessListPageState
                             _historyTime,
                             _apPostedFilter,
                           ),
-                          onPageChange: (p) => _reload(p),
+                          onPageChange: _navigatePage,
                         ),
                       ),
               );

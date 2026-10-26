@@ -2,25 +2,34 @@ import 'package:flutter/material.dart';
 
 import '../../core/l10n/gen/app_localizations.dart';
 
-/// The route mounts controllers and access subscriptions immediately. Heavy
-/// view regions wait for the composited opening transition to finish.
-class UtenPanelOpeningScope extends InheritedWidget {
-  const UtenPanelOpeningScope({
-    super.key,
-    required this.ready,
-    required super.child,
-  });
+/// Mount controllers and access subscriptions immediately. Heavy view regions
+/// wait for every containing route or panel's opening transition to finish.
+/// A ready inner panel cannot release a view while its outer page is opening.
+class UtenOpeningScope extends StatelessWidget {
+  const UtenOpeningScope({super.key, required this.ready, required this.child});
 
   final bool ready;
+  final Widget child;
 
   static bool isReadyOf(BuildContext context) =>
-      context
-          .dependOnInheritedWidgetOfExactType<UtenPanelOpeningScope>()
-          ?.ready ??
+      context.dependOnInheritedWidgetOfExactType<_OpeningReadiness>()?.ready ??
       true;
 
   @override
-  bool updateShouldNotify(UtenPanelOpeningScope oldWidget) =>
+  Widget build(BuildContext context) =>
+      _OpeningReadiness(ready: ready && isReadyOf(context), child: child);
+}
+
+/// Compatibility name for existing panels and heavy table/tree consumers.
+typedef UtenPanelOpeningScope = UtenOpeningScope;
+
+class _OpeningReadiness extends InheritedWidget {
+  const _OpeningReadiness({required this.ready, required super.child});
+
+  final bool ready;
+
+  @override
+  bool updateShouldNotify(_OpeningReadiness oldWidget) =>
       ready != oldWidget.ready;
 }
 

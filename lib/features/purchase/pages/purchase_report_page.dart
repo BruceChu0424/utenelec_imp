@@ -22,6 +22,7 @@ import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../report/shared/report_date_range.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class _Monthly {
   const _Monthly(
@@ -120,6 +121,9 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
         names.loadGoodsNames(goodsIds),
         names.ensureReportNamesLoaded(
           suppliers: m.any((entry) => entry['supplierId'] != null),
+          supplierIds: m
+              .map((entry) => entry['supplierId'])
+              .whereType<String>(),
           colors: p.any((entry) => entry['colorId'] != null),
         ),
       ]);
@@ -202,8 +206,7 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                     ? const Center(
                         child: CircularProgressIndicator(strokeWidth: 2.5),
                       )
-                    : ListView.builder(
-                        // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
+                    : UtenPageEdgePadding.scroll(
                         padding: EdgeInsets.fromLTRB(
                           UtenSpacing.s12,
                           UtenSpacing.s12,
@@ -213,134 +216,141 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                             UtenCapsuleNavScope.occlusionOf(context),
                           ),
                         ),
-                        itemCount: entries.length,
-                        itemBuilder: (context, index) {
-                          final (kind, data) = entries[index];
-                          switch (kind) {
-                            case _RowKind.toolbar:
-                              return UtenFilterToolbar<String>(
-                                segments: [
-                                  for (final t in const [
-                                    'ORDER',
-                                    'RECEIPT',
-                                    'RETURN',
-                                  ])
-                                    UtenFilterSegment(
-                                      value: t,
-                                      label: _docLabel(t),
-                                    ),
-                                ],
-                                selected: {_docType!},
-                                // 切类型即刻重查：此前只切标题不重查，数据还是旧类型。
-                                onSelectionChanged: (v) {
-                                  if (v == _docType) return;
-                                  setState(() => _docType = v);
-                                  _load();
-                                },
-                              );
-                            case _RowKind.dates:
-                              return Padding(
-                                padding: const EdgeInsets.only(
-                                  top: UtenSpacing.s8,
-                                ),
-                                child: Wrap(
-                                  spacing: 12,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    TextButton.icon(
-                                      onPressed: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _from,
-                                          firstDate: DateTime(2010),
-                                          lastDate: DateTime(2100),
-                                        );
-                                        // 撤掉「查询」按钮后，选完日期即刻重查。
-                                        if (picked != null) {
-                                          setState(() => _from = picked);
-                                          _load();
-                                        }
-                                      },
-                                      icon: const Icon(
-                                        Icons.event_outlined,
-                                        size: 18,
+                        builder: (context, resolvedPagePadding) => ListView.builder(
+                          // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
+                          padding: resolvedPagePadding,
+                          itemCount: entries.length,
+                          itemBuilder: (context, index) {
+                            final (kind, data) = entries[index];
+                            switch (kind) {
+                              case _RowKind.toolbar:
+                                return UtenFilterToolbar<String>(
+                                  segments: [
+                                    for (final t in const [
+                                      'ORDER',
+                                      'RECEIPT',
+                                      'RETURN',
+                                    ])
+                                      UtenFilterSegment(
+                                        value: t,
+                                        label: _docLabel(t),
                                       ),
-                                      label: Text('起 ${_fmt(_from)}'),
-                                    ),
-                                    TextButton.icon(
-                                      onPressed: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: _to,
-                                          firstDate: DateTime(2010),
-                                          lastDate: DateTime(2100),
-                                        );
-                                        if (picked != null) {
-                                          setState(() => _to = picked);
-                                          _load();
-                                        }
-                                      },
-                                      icon: const Icon(
-                                        Icons.event_outlined,
-                                        size: 18,
-                                      ),
-                                      label: Text('止 ${_fmt(_to)}'),
-                                    ),
                                   ],
-                                ),
-                              );
-                            case _RowKind.monthlyHeader:
-                              return Padding(
-                                padding: const EdgeInsets.only(
-                                  top: UtenSpacing.s12,
-                                ),
-                                child: Text(
-                                  '月度汇总(${_docLabel(_docType!)}，共 ${_monthly.length} 条)',
-                                  style: theme.textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w600,
+                                  selected: {_docType!},
+                                  // 切类型即刻重查：此前只切标题不重查，数据还是旧类型。
+                                  onSelectionChanged: (v) {
+                                    if (v == _docType) return;
+                                    setState(() => _docType = v);
+                                    _load();
+                                  },
+                                );
+                              case _RowKind.dates:
+                                return Padding(
+                                  padding: const EdgeInsets.only(
+                                    top: UtenSpacing.s8,
                                   ),
-                                ),
-                              );
-                            case _RowKind.pendingHeader:
-                              return Padding(
-                                padding: const EdgeInsets.only(
-                                  top: UtenSpacing.s12,
-                                ),
-                                child: Text(
-                                  '待交货订货汇总(共 ${_pending.length} 条)',
-                                  style: theme.textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w600,
+                                  child: Wrap(
+                                    spacing: 12,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: [
+                                      TextButton.icon(
+                                        onPressed: () async {
+                                          final picked = await showDatePicker(
+                                            context: context,
+                                            initialDate: _from,
+                                            firstDate: DateTime(2010),
+                                            lastDate: DateTime(2100),
+                                          );
+                                          // 撤掉「查询」按钮后，选完日期即刻重查。
+                                          if (picked != null) {
+                                            setState(() => _from = picked);
+                                            _load();
+                                          }
+                                        },
+                                        icon: const Icon(
+                                          Icons.event_outlined,
+                                          size: 18,
+                                        ),
+                                        label: Text('起 ${_fmt(_from)}'),
+                                      ),
+                                      TextButton.icon(
+                                        onPressed: () async {
+                                          final picked = await showDatePicker(
+                                            context: context,
+                                            initialDate: _to,
+                                            firstDate: DateTime(2010),
+                                            lastDate: DateTime(2100),
+                                          );
+                                          if (picked != null) {
+                                            setState(() => _to = picked);
+                                            _load();
+                                          }
+                                        },
+                                        icon: const Icon(
+                                          Icons.event_outlined,
+                                          size: 18,
+                                        ),
+                                        label: Text('止 ${_fmt(_to)}'),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              );
-                            case _RowKind.empty:
-                              return const UtenEmpty();
-                            case _RowKind.monthly:
-                              final r = data as _Monthly;
-                              return ListTile(
-                                dense: true,
-                                title: Text(names.goods(r.goodsId)),
-                                subtitle: Text(
-                                  '${r.ym.substring(0, 10)}  ·  ${names.supplier(r.supplierId)}',
-                                  style: theme.textTheme.labelSmall,
-                                ),
-                                trailing: Text(
-                                  '¥${r.amt.toStringAsFixed(0)} · ${r.qty.toStringAsFixed(1)}',
-                                ),
-                              );
-                            case _RowKind.pending:
-                              final r = data as _Pending;
-                              return ListTile(
-                                dense: true,
-                                title: Text(names.goods(r.goodsId)),
-                                subtitle: Text(
-                                  names.color(r.colorId),
-                                  style: theme.textTheme.labelSmall,
-                                ),
-                                trailing: Text('待 ${r.qty.toStringAsFixed(1)}'),
-                              );
-                          }
-                        },
+                                );
+                              case _RowKind.monthlyHeader:
+                                return Padding(
+                                  padding: const EdgeInsets.only(
+                                    top: UtenSpacing.s12,
+                                  ),
+                                  child: Text(
+                                    '月度汇总(${_docLabel(_docType!)}，共 ${_monthly.length} 条)',
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                );
+                              case _RowKind.pendingHeader:
+                                return Padding(
+                                  padding: const EdgeInsets.only(
+                                    top: UtenSpacing.s12,
+                                  ),
+                                  child: Text(
+                                    '待交货订货汇总(共 ${_pending.length} 条)',
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                );
+                              case _RowKind.empty:
+                                return const UtenEmpty();
+                              case _RowKind.monthly:
+                                final r = data as _Monthly;
+                                return ListTile(
+                                  dense: true,
+                                  title: Text(names.goods(r.goodsId)),
+                                  subtitle: Text(
+                                    '${r.ym.substring(0, 10)}  ·  ${names.supplier(r.supplierId)}',
+                                    style: theme.textTheme.labelSmall,
+                                  ),
+                                  trailing: Text(
+                                    '¥${r.amt.toStringAsFixed(0)} · ${r.qty.toStringAsFixed(1)}',
+                                  ),
+                                );
+                              case _RowKind.pending:
+                                final r = data as _Pending;
+                                return ListTile(
+                                  dense: true,
+                                  title: Text(names.goods(r.goodsId)),
+                                  subtitle: Text(
+                                    names.color(r.colorId),
+                                    style: theme.textTheme.labelSmall,
+                                  ),
+                                  trailing: Text(
+                                    '待 ${r.qty.toStringAsFixed(1)}',
+                                  ),
+                                );
+                            }
+                          },
+                        ),
                       ),
               ),
             ],

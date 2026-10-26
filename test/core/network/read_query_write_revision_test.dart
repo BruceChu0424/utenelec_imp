@@ -23,6 +23,52 @@ class _Adapter implements HttpClientAdapter {
 
 void main() {
   test(
+    'B1 selection and export task POSTs never masquerade as business saves',
+    () {
+      const id = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+      for (final prefix in ['', '/api']) {
+        for (final route in [
+          '$prefix/sales/orders/shippable-lines/selection',
+          '$prefix/master/clients/search-context',
+          '$prefix/master/suppliers/search-context',
+          for (final domain in [
+            'sales',
+            'purchase',
+            'subcontract',
+            'production',
+            'stock',
+            'finance',
+          ])
+            '$prefix/$domain/reports/export',
+          '$prefix/report-export-jobs',
+          '$prefix/report-export-jobs/$id/cancel',
+          '$prefix/report-export-jobs/$id/download',
+        ]) {
+          expect(
+            isBusinessWrite(RequestOptions(method: 'POST', path: route)),
+            isFalse,
+          );
+          expect(
+            isBusinessWrite(RequestOptions(method: 'PUT', path: route)),
+            isTrue,
+          );
+        }
+      }
+      for (final route in [
+        '/sales/orders/shippable-lines/selection/save',
+        '/other/orders/shippable-lines/selection',
+        '/report-export-jobs/$id/approve',
+        '/report-export-jobs/not-a-uuid/download',
+        '/other/report-export-jobs',
+      ]) {
+        expect(
+          isBusinessWrite(RequestOptions(method: 'POST', path: route)),
+          isTrue,
+        );
+      }
+    },
+  );
+  test(
     'fresh-scan POST actions use exact business-read routes and methods',
     () {
       const document = '11111111-2222-3333-4444-555555555555';

@@ -20,6 +20,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/layout/uten_doc_link_picker_sheet.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/uten_supplier_picker.dart';
+import '../../../shared/providers/master_party_options.dart';
 import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -199,7 +201,31 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
         docIdOf: (d) => d.id,
         partyIdOf: (d) => d.supplierId,
         watchNames: (ref) => ref.watch(masterNameServiceProvider),
-        partyEntries: (names) => names.supplierEntries,
+        pickParty: (context, ref) async {
+          final selected = await resolvePickedParty(
+            ref,
+            () => showUtenSupplierPicker(
+              context,
+              ref,
+              selectableOnly: false,
+              allowQuickCreate: false,
+            ),
+            idOf: (party) => party.id,
+            loadNames: ref.read(masterNameServiceProvider).loadSupplierNames,
+            isResolved: (id) =>
+                ref.read(masterNameServiceProvider).supplierReferenceKnown(id),
+          );
+          return selected == null
+              ? null
+              : (
+                  id: selected.id,
+                  name: ref
+                      .read(masterNameServiceProvider)
+                      .supplier(selected.id),
+                );
+        },
+        loadPartyNames: (ref, ids) =>
+            ref.read(masterNameServiceProvider).loadSupplierNames(ids),
         partyName: (names, supplierId) => names.supplier(supplierId),
         initNames: (ref) async {
           ref.read(masterNameServiceProvider).ensureLoaded();

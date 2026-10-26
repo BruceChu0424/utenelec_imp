@@ -1044,7 +1044,7 @@ public class SubcontractMaterialPlanService {
         com.uten.imp.common.util.TaskKeywordSearch.bind(count, normalized, false);
         com.uten.imp.common.util.TaskKeywordSearch.bind(list, normalized, true);
         list.setParameter("pageLimit", pageSize);
-        list.setParameter("pageOffset", (pageNo - 1) * pageSize);
+        list.setParameter("pageOffset", (long) (pageNo - 1) * pageSize);
         long total = ((Number) count.getSingleResult()).longValue();
         List<OutboundTaskListItem> items = new ArrayList<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(list)) {

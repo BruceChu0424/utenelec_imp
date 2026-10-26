@@ -157,7 +157,7 @@ void main() {
                   minimumWidthOf: (_) => 72,
                   value: (row) => '$row',
                   measureWidthOf: measure,
-                  measureWidthScope: (fontSize, rtl),
+                  measureWidthScope: (measure, fontSize, rtl),
                 ),
               ],
               items: rows,

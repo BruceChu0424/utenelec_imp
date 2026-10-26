@@ -12,6 +12,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_detail_page.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
@@ -282,6 +283,105 @@ bool _hasEditing(WidgetTester tester) => tester
     );
 
 void main() {
+  for (final family in _Family.values) {
+    for (final failedLateRead in [false, true]) {
+      testWidgets(
+        '${family.name} data scope revision retires accepted fields and rejects same-role ABA late ${failedLateRead ? 'failure' : 'success'}',
+        (tester) async {
+          final api = _Api(family);
+          final container = await _pump(tester, api);
+          final initialScope = container.read(authenticatedScopeProvider);
+          final initialSnapshot = container.read(sessionSnapshotProvider);
+          final initialPermissions = container.read(currentPermissionsProvider);
+          expect(find.textContaining('A-private'), findsWidgets);
+          final late = Completer<Map<String, dynamic>>();
+          api.gates.add(late);
+          container.read(readScopeRevisionProvider.notifier).state++;
+          await _frames(tester);
+          await tester.pump(const Duration(milliseconds: 250));
+          expect(find.textContaining('A-private'), findsNothing);
+          expect(_hasEditing(tester), isFalse);
+          expect(api.reads, 2);
+          expect(container.read(authenticatedScopeProvider), initialScope);
+          expect(container.read(sessionSnapshotProvider), initialSnapshot);
+          expect(
+            container.read(currentPermissionsProvider),
+            initialPermissions,
+          );
+          api.marker = 'A-current';
+          container.read(readScopeRevisionProvider.notifier).state++;
+          await tester.pumpAndSettle();
+          expect(find.textContaining('A-current'), findsWidgets);
+          if (failedLateRead) {
+            late.completeError(ApiException('NETWORK', 'B-scope-late-failure'));
+          } else {
+            late.complete(api.detail('B-scope-late-private'));
+          }
+          await tester.pumpAndSettle();
+          expect(find.textContaining('B-scope-late-'), findsNothing);
+          expect(find.textContaining('A-current'), findsWidgets);
+          expect(api.reads, 3);
+          expect(api.writes, 0);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  testWidgets(
+    'data scope revision preserves private purchase raw input while requiring a new native read',
+    (tester) async {
+      final api = _Api(_Family.purchase, request: true);
+      final container = await _pump(tester, api);
+      final field = find.byKey(const ValueKey('purchase-request-qty-line-1'));
+      await tester.enterText(field, '37.000');
+      final originalInput = tester.widget<TextField>(field).controller!;
+      final late = Completer<Map<String, dynamic>>();
+      api.gates.add(late);
+      container.read(readScopeRevisionProvider.notifier).state++;
+      await _frames(tester);
+      expect(field, findsNothing);
+      expect(originalInput.text, '37.000');
+      container.read(readScopeRevisionProvider.notifier).state++;
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(field).controller, same(originalInput));
+      expect(tester.widget<TextField>(field).controller!.text, '37.000');
+      late.complete(api.detail('B-scope-late-private'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(field).controller!.text, '37.000');
+      expect(api.puts, isEmpty);
+      expect(api.writes, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'same-role data scope ABA never revives an old private quote confirmation',
+    (tester) async {
+      final api = _Api(_Family.sales);
+      final container = await _pump(tester, api);
+      await tester.tap(find.byKey(const ValueKey('sales-quote-submit')));
+      await tester.pumpAndSettle();
+      final originalConfirm = tester.widget<UtenButton>(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.widgetWithText(UtenButton, '提交财务核价'),
+        ),
+      );
+      container.read(readScopeRevisionProvider.notifier).state++;
+      await tester.pumpAndSettle();
+      expect(find.text('操作权限已更新'), findsOneWidget);
+      container.read(readScopeRevisionProvider.notifier).state++;
+      await tester.pumpAndSettle();
+      expect(find.text('操作权限已更新'), findsOneWidget);
+      originalConfirm.onPressed!();
+      await tester.pumpAndSettle();
+      expect(api.writes, 0);
+      expect(container.read(authenticatedScopeProvider), _a);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final family in _Family.values) {
     for (final transition in ['account', 'server', 'actor']) {
       testWidgets(

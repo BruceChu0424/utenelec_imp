@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_overlay_lifecycle.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../weight_params.dart';
@@ -335,6 +336,7 @@ class WeightUnitMenuButton<V> extends StatefulWidget {
 class _WeightUnitMenuButtonState<V> extends State<WeightUnitMenuButton<V>> {
   final LayerLink _link = LayerLink();
   OverlayEntry? _overlay;
+  UtenOverlayLifecycle? _overlayLifecycle;
 
   /// 本次浮层向上还是向下展开 (下方空间不够时向上)。
   bool _openAbove = false;
@@ -363,9 +365,13 @@ class _WeightUnitMenuButtonState<V> extends State<WeightUnitMenuButton<V>> {
     }
     _overlay = OverlayEntry(builder: _buildOverlay);
     Overlay.of(context, rootOverlay: true).insert(_overlay!);
+    _overlayLifecycle = UtenOverlayLifecycle(onUnavailable: _close);
+    _overlayLifecycle!.attach(context);
   }
 
   void _close() {
+    _overlayLifecycle?.dispose();
+    _overlayLifecycle = null;
     _overlay?.remove();
     _overlay = null;
   }
@@ -373,6 +379,12 @@ class _WeightUnitMenuButtonState<V> extends State<WeightUnitMenuButton<V>> {
   void _select(V option) {
     _close();
     widget.onSelected(option);
+  }
+
+  @override
+  void deactivate() {
+    _close();
+    super.deactivate();
   }
 
   @override

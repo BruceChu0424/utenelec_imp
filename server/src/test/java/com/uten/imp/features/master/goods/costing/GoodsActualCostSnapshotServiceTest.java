@@ -51,13 +51,13 @@ class GoodsActualCostSnapshotServiceTest {
                 "costObjects":[],"outputs":[],"revisions":[],"gaps":[]}
                 """, GoodsActualCostQueryPort.ActualCostSnapshot.class);
         when(port.snapshot(any())).thenReturn(snapshot);
-        doThrow(new ApiException(ErrorCode.FORBIDDEN)).when(sheets).requireGoodsScope(component);
+        doThrow(new ApiException(ErrorCode.FORBIDDEN)).when(sheets).requireGoodsScopeBatch(argThat(ids -> ids.contains(component)));
         var service = new GoodsActualCostSnapshotService(port, sheets, new GoodsCostJson(mapper), mapper);
         var query = new GoodsActualCostQueryPort.Query(root, null, null, null, null);
         assertThatThrownBy(() -> service.view(query)).isInstanceOf(ApiException.class);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("test", null,
                 List.of(new SimpleGrantedAuthority("goods:cost:view"), new SimpleGrantedAuthority("goods:cost:export"))));
         assertThatThrownBy(() -> service.export(query, "a".repeat(64))).isInstanceOf(ApiException.class);
-        verify(sheets, times(2)).requireGoodsScope(component);
+        verify(sheets, times(2)).requireGoodsScopeBatch(argThat(ids -> ids.contains(component)));
     }
 }

@@ -22,6 +22,8 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/widgets/read_owned_dialog.dart';
 import '../../../shared/auth/cost_workbench_capability.dart';
 import '../../../shared/stock_ledger/stock_ledger_models.dart';
 import '../models/goods_cost_sheet.dart';
@@ -67,11 +69,43 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
   void initState() {
     super.initState();
     _segment = widget.executionSegmentId;
+    listenReadOwner(ref, _retireRead);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  void _retireRead() {
+    _request++;
+    if (!mounted) return;
+    setState(() {
+      _snapshot = null;
+      _objects = [];
+      _baselines = [];
+      _baseline = null;
+      _baselineId = null;
+      _error = null;
+      _loading = false;
+    });
+    final current = captureReadOwner(ref);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (current()) _load();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant GoodsCostActualPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.goodsId != widget.goodsId ||
+        oldWidget.executionSegmentId != widget.executionSegmentId) {
+      _segment = widget.executionSegmentId;
+      _revision = null;
+      _retireRead();
+    }
   }
 
   Future<void> _load() async {
     if (!ref.read(costWorkbenchCapabilityProvider).canRead) return;
+    final current = captureReadOwner(ref), goodsId = widget.goodsId;
+    final filters = Map<String, dynamic>.of(_filters);
     final request = ++_request;
     setState(() {
       _loading = true;
@@ -80,11 +114,13 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
     try {
       final snapshot = await ref
           .read(goodsCostRepositoryProvider)
-          .actual(widget.goodsId, _filters);
+          .actual(goodsId, filters);
       final baselines = await ref
           .read(goodsCostRepositoryProvider)
-          .list(widget.goodsId);
-      if (!mounted || request != _request) return;
+          .list(goodsId);
+      if (!current() || request != _request || widget.goodsId != goodsId) {
+        return;
+      }
       setState(() {
         _snapshot = snapshot;
         _baselines = baselines
@@ -95,11 +131,20 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
         }
       });
     } catch (e) {
-      if (mounted && request == _request) {
-        setState(() => _error = e is ApiException ? e.message : _l.commonError);
+      if (current() && request == _request && widget.goodsId == goodsId) {
+        setState(() {
+          _snapshot = null;
+          _objects = [];
+          _baselines = [];
+          _baseline = null;
+          _baselineId = null;
+          _error = e is ApiException ? e.message : _l.commonError;
+        });
       }
     } finally {
-      if (mounted && request == _request) setState(() => _loading = false);
+      if (current() && request == _request && widget.goodsId == goodsId) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -258,7 +303,8 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
   );
   Future<void> _showPending() async {
     final pending = _pendingItems();
-    final selected = await showDialog<Map<String, dynamic>>(
+    final selected = await showReadOwnedDialog<Map<String, dynamic>>(
+      ref: ref,
       context: context,
       builder: (dialog) => UtenAlertDialog(
         maxWidth: 1150,
@@ -268,6 +314,7 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
           height: MediaQuery.sizeOf(context).height * .65,
           child: MasterDataTableView<Map<String, dynamic>>(
             tableKey: 'master.goods.cost.pending',
+            expensiveRowMounts: false,
             columns: [
               _column('problem', _l.costPendingItems, 290),
               _column('scopeName', _l.costEvidenceScope, 170),
@@ -376,7 +423,8 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
     add('code', _l.costGapCode, row['code']);
     add('occurredAt', _l.costUpdated, row['occurredAt'] ?? row['businessDate']);
     final path = _sourceRoute(row);
-    await showDialog<void>(
+    await showReadOwnedDialog<void>(
+      ref: ref,
       context: context,
       builder: (dialog) => UtenAlertDialog(
         maxWidth: 1000,
@@ -395,6 +443,7 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
               Expanded(
                 child: MasterDataTableView<Map<String, dynamic>>(
                   tableKey: 'master.goods.cost.actual.evidence',
+                  expensiveRowMounts: false,
                   columns: [
                     _column('label', _l.costEvidenceField, 220),
                     MasterColumnDef(
@@ -500,6 +549,9 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
                 ),
             ],
             onChanged: (id) async {
+              final current = captureReadOwner(ref),
+                  request = _request,
+                  goods = widget.goodsId;
               if (id == null) {
                 setState(() {
                   _baselineId = null;
@@ -512,14 +564,20 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
                 final sheet = await ref
                     .read(goodsCostRepositoryProvider)
                     .detail(id);
-                if (mounted && _baselineId == id) {
+                if (current() &&
+                    _request == request &&
+                    widget.goodsId == goods &&
+                    _baselineId == id) {
                   setState(
                     () =>
                         _baseline = sheet.status == 'CONFIRMED' ? sheet : null,
                   );
                 }
               } catch (e) {
-                if (mounted && _baselineId == id) {
+                if (current() &&
+                    _request == request &&
+                    widget.goodsId == goods &&
+                    _baselineId == id) {
                   setState(
                     () =>
                         _error = e is ApiException ? e.message : _l.commonError,
@@ -735,6 +793,7 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
       ),
       body: MasterDataTableView<Map<String, dynamic>>(
         key: ValueKey('cost-actual-$_tab'),
+        expensiveRowMounts: false,
         tableKey: 'master.goods.cost.actual.$_tab',
         primary: true,
         onFullscreenChanged: (value) {
@@ -824,16 +883,30 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
                 label: format == 'xlsx'
                     ? _l.costDownloadExcel
                     : _l.costDownloadPdf,
-                prepareExport: () async => UtenExportSelection(
-                  extension: format,
-                  filename: 'actual_cost_${widget.goodsId}',
-                  bodyParams: {
-                    'goodsId': widget.goodsId,
-                    ...costMap(_snapshot?['filter']),
-                    'format': format,
-                    'expectedDigest': _snapshot?['contentDigest'],
-                  },
-                ),
+                prepareExport: () async {
+                  final snapshot = _snapshot,
+                      request = _request,
+                      goodsId = widget.goodsId,
+                      tab = _tab;
+                  final current = captureReadOwner(ref);
+                  return UtenExportSelection(
+                    stillCurrent: () =>
+                        current() &&
+                        !_loading &&
+                        request == _request &&
+                        goodsId == widget.goodsId &&
+                        tab == _tab &&
+                        identical(snapshot, _snapshot),
+                    extension: format,
+                    filename: 'actual_cost_${widget.goodsId}',
+                    bodyParams: {
+                      'goodsId': widget.goodsId,
+                      ...costMap(_snapshot?['filter']),
+                      'format': format,
+                      'expectedDigest': _snapshot?['contentDigest'],
+                    },
+                  );
+                },
               ),
         ],
         summaryBar: _actualSummary(summary),

@@ -82,7 +82,9 @@ class SubcontractOrderClosureLifecycleMatrixEndToEndTest {
     @Autowired JdbcTemplate db;
     @Autowired SubcontractApplicationService applications;
     @Autowired SubcontractOrderService orders;
+    @Autowired com.uten.imp.features.subcontract.report.SubcontractReportService orderReports;
     @Autowired ProcurementFinanceApprovalService finance;
+    @Autowired com.uten.imp.features.finance.procurement.ProcurementApprovalProjectionQuery approvalProjection;
     @Autowired ProcurementOrderClosureService closures;
     @Autowired TaskClaimService claims;
     @Autowired SubcontractDrawCommandService draws;
@@ -123,6 +125,9 @@ class SubcontractOrderClosureLifecycleMatrixEndToEndTest {
     @ParameterizedTest @ValueSource(strings={"0","4","10"})
     void closureRetiresOnlyFutureWorkAtUnstartedPartlyIssuedAndFullyIssuedStages(String issued) {
         Fixture f=fixture(true);BigDecimal amount=new BigDecimal(issued);
+        var beforeReport=orderReports.orderDetail(f.billNo(),null,null,null,null,null,java.util.Map.of(),1,50,null,null);
+        assertThat(beforeReport.rows()).hasSize(1);
+        assertThat(new BigDecimal(beforeReport.rows().getFirst().get("differenceQtyExact").toString())).isEqualByComparingTo("-10");
         if(amount.signum()>0) issue(f,amount);
         BigDecimal stockBefore=stock(f,f.material());
         BigDecimal custodyBefore=custody(f,"at_supplier_qty");
@@ -131,6 +136,11 @@ class SubcontractOrderClosureLifecycleMatrixEndToEndTest {
         long financialBefore=count("SELECT COUNT(*) FROM ar_ap_ledger WHERE source_doc_id=?",f.order());
 
         approveClosure(f,"CLOSE");
+
+        var afterReport=orderReports.export("ORDER/detail",java.util.Map.of("billNo",f.billNo()),null,null);
+        assertThat(afterReport.rows()).hasSize(1);
+        assertThat(afterReport.columns()).anyMatch(column->column.key().equals("differenceQty"));
+        assertThat(new BigDecimal(afterReport.rows().getFirst().get("differenceQtyExact").toString())).isEqualByComparingTo("-10");
 
         assertEndedWork(f);
         assertThat(stock(f,f.material())).isEqualByComparingTo(stockBefore);
@@ -180,7 +190,7 @@ class SubcontractOrderClosureLifecycleMatrixEndToEndTest {
         assertThat(custody(f,"at_supplier_qty")).isZero();
     }
 
-    @Test void pendingAndPartialQualityRemainVisibleUntilQualityFinishesThenFinanceReleasesHeldStockWithoutInventingLoss() {
+    @Test void pendingAndPartialQualityRemainVisibleUntilQualityFinishesThenBuyerReleasesHeldStockWithoutInventingLoss() {
         Fixture f=fixture(true);issue(f,BigDecimal.TEN);Arrival a=arrival(f,"4");
         String physicalBefore=db.queryForObject("SELECT to_jsonb(ri)::text FROM subcontract_receipt_items ri WHERE receipt_id=?",String.class,a.receipt());
         String payableBefore=db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(ledger) ORDER BY ledger.id),'[]'::jsonb)::text FROM ar_ap_ledger ledger WHERE source_doc_id=?",String.class,a.receipt());
@@ -210,7 +220,7 @@ class SubcontractOrderClosureLifecycleMatrixEndToEndTest {
         assertThat(number("SELECT ordered_qty FROM subcontract_application_items WHERE id=?",f.source())).isEqualByComparingTo("4");
     }
 
-    @Test void financeTerminationCancelsWaitingForAnotherBatchWithoutConvertingTheMissingSixIntoAcceptedLoss() {
+    @Test void buyerDirectTerminationCancelsWaitingForAnotherBatchWithoutConvertingTheMissingSixIntoAcceptedLoss() {
         Fixture f=fixture(true);issue(f,BigDecimal.TEN);Arrival a=arrival(f,"4");pass(f,a,null);
         harness.loginAs(f.buyer());
         var before=shortDelivery.detail(a.shortCase()).row();
@@ -228,7 +238,7 @@ class SubcontractOrderClosureLifecycleMatrixEndToEndTest {
         assertThat(number("SELECT qty FROM subcontract_order_items WHERE id=?",f.item())).isEqualByComparingTo("10");
     }
 
-    @Test void alreadyAcceptedFinishedProductLossAndItsRealMaterialResponsibilityStayImmutableDuringClosure() {
+    @Test void naturallyCompletedOrderWithAcceptedLossCannotAddAnotherCancellationOrReplacement() {
         Fixture f=fixture(true);issue(f,BigDecimal.TEN);Arrival a=arrival(f,"4");pass(f,a,null);
         harness.loginAs(f.buyer());
         var row=shortDelivery.detail(a.shortCase()).row();
@@ -236,24 +246,19 @@ class SubcontractOrderClosureLifecycleMatrixEndToEndTest {
         assertThat(number("SELECT fn_subcontract_settled_loss_qty(?)",f.item())).isEqualByComparingTo("6");
         String wasteBefore=wasteFacts(f);String liabilityBefore=lossCaseFacts(f);
         var preview=closures.preview("SUBCONTRACT",f.order());
+        assertThat(preview.canSubmit()).isFalse();
         assertThat(preview.canReorder()).isFalse();
         assertThat(preview.items()).singleElement().satisfies(line->assertThat(line.remainingQty()).isZero());
         assertThatThrownBy(()->closures.submit("SUBCONTRACT",f.order(),new ClosureRequest("CLOSE_AND_REORDER","不能把已结损耗再订一次",preview.fingerprint())))
                 .isInstanceOf(ApiException.class);
 
-        approveClosure(f,"CLOSE");
-        assertEndedWork(f);
+        assertThatThrownBy(()->closures.submit("SUBCONTRACT",f.order(),new ClosureRequest("CLOSE","没有余量不能再次取消",preview.fingerprint())))
+                .isInstanceOf(ApiException.class);
+        assertThat(db.queryForObject("SELECT termination_case_id FROM subcontract_orders WHERE id=?",UUID.class,f.order())).isNull();
         assertThat(wasteFacts(f)).isEqualTo(wasteBefore);assertThat(lossCaseFacts(f)).isEqualTo(liabilityBefore);
         assertThat(db.queryForObject("SELECT status FROM subcontract_short_delivery_cases WHERE id=?",String.class,a.shortCase())).isEqualTo("ACCEPTED_LOSS");
         assertThat(number("SELECT fn_subcontract_settled_loss_qty(?)",f.item())).isEqualByComparingTo("6");
         assertThat(number("SELECT ordered_qty FROM subcontract_application_items WHERE id=?",f.source())).isEqualByComparingTo("10");
-        UUID settlementWaste=db.queryForObject("SELECT waste_id FROM subcontract_short_delivery_cases WHERE id=?",UUID.class,a.shortCase());
-        assertThat(wastes.unapprovalEligibility(settlementWaste).eligible()).isFalse();
-        assertThatThrownBy(()->wastes.reverse(settlementWaste)).isInstanceOf(ApiException.class).hasMessageContaining("已计入");
-        assertThatThrownBy(()->db.update("UPDATE subcontract_wastes SET status=-1 WHERE id=?",settlementWaste))
-                .isInstanceOf(org.springframework.dao.DataAccessException.class);
-        assertThatThrownBy(()->db.update("UPDATE subcontract_short_delivery_cases SET status='CANCELED' WHERE id=?",a.shortCase()))
-                .isInstanceOf(org.springframework.dao.DataAccessException.class);
         assertThat(wasteFacts(f)).isEqualTo(wasteBefore);assertThat(lossCaseFacts(f)).isEqualTo(liabilityBefore);
         assertThat(number("SELECT fn_subcontract_settled_loss_qty(?)",f.item())).isEqualByComparingTo("6");
     }
@@ -363,6 +368,35 @@ class SubcontractOrderClosureLifecycleMatrixEndToEndTest {
         assertThat(db.queryForList("SELECT status FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",String.class,plan)).containsOnly("WAITING");
     }
 
+    @Test void buyerWithoutFinanceManageAuthorityCanRetireALegacyReviewClaimWhenDirectlyClosing() {
+        Fixture f=fixture(true);
+        var preview=closures.preview("SUBCONTRACT",f.order());
+        var legacy=LegacyProcurementClosureFixture.pending(db,preview,f.world(),"CLOSE");
+        harness.loginAs(f.reviewer());
+        assertThatThrownBy(()->claims.claim("PROCUREMENT_FINANCE_APPROVE",legacy.caseId().toString())).isInstanceOf(ApiException.class);
+        assertThat(approvalProjection.canCurrentActorReviewPending("SUBCONTRACT",f.order())).isFalse();
+        assertThat(approvalProjection.pendingOrderIds("SUBCONTRACT")).doesNotContain(f.order());
+        UUID claimId=UUID.randomUUID();
+        db.update("INSERT INTO task_claims(id,target_type,target_key,claimed_by,lease_until) SELECT ?,'PROCUREMENT_FINANCE_APPROVE',?,employee_id,now()+interval '30 minutes' FROM users WHERE id=?",
+                claimId,legacy.caseId().toString(),f.reviewer());
+        String billNo=f.billNo();
+        assertThat(finance.tasks(1,50,"SUBCONTRACT",billNo,null,null,null,"PENDING").getItems()).isEmpty();
+        assertThat(finance.tasks(1,50,"SUBCONTRACT",billNo,null,null,null,"CLOSURE_PENDING").getItems())
+                .singleElement().satisfies(task->assertThat(task.allowedActions()).isEmpty());
+        harness.loginAs(f.buyer());
+        approvalProjection.requireMutable("SUBCONTRACT",f.order());
+        var current=closures.preview("SUBCONTRACT",f.order());
+        assertThat(current.canSubmit()).as(current.blockReason()).isTrue();
+        var completed=closures.submit("SUBCONTRACT",f.order(),new ClosureRequest("CLOSE","Buyer rechecked the legacy request",current.fingerprint()));
+        assertThat(completed.status()).isEqualTo("APPROVED");
+        assertThat(db.queryForObject("SELECT status FROM procurement_order_approval_cases WHERE id=?",String.class,legacy.caseId())).isEqualTo("CANCELED");
+        assertThat(count("SELECT COUNT(*) FROM task_claims WHERE id=? AND released_at IS NULL",claimId)).isZero();
+        assertThat(db.queryForObject("SELECT release_reason FROM task_claims WHERE id=?",String.class,claimId)).isEqualTo("business_resolved");
+        assertThat(count("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_id=? AND status='PENDING'",f.order())).isZero();
+        drain();
+        assertEndedWork(f);
+    }
+
     private Fixture fixture(boolean approve) {
         var w=harness.seedWorld("matrix-sc-"+UUID.randomUUID());
         UUID material=harness.ensureSubcontractDirectMaterial(w,w.goodsE());harness.receiveSubcontractMaterial(w,material,"10");
@@ -422,8 +456,8 @@ class SubcontractOrderClosureLifecycleMatrixEndToEndTest {
     private FinanceApproval approveClosure(Fixture f,String mode) {
         harness.loginAs(f.buyer());var preview=closures.preview("SUBCONTRACT",f.order());assertThat(preview.canSubmit()).as(preview.blockReason()).isTrue();
         var pending=closures.submit("SUBCONTRACT",f.order(),new ClosureRequest(mode,"矩阵验证：加工商停止履约，保留实物和财务责任",preview.fingerprint()));
-        harness.loginAs(f.reviewer());var claim=claims.claim("PROCUREMENT_FINANCE_APPROVE",pending.caseId().toString());
-        finance.approveBatch(List.of(new BatchDecisionItem(pending.caseId(),pending.version(),claim.claimId())),null);
+        assertThat(pending.status()).isEqualTo("APPROVED");
+        assertThat(orders.detail(f.order()).getClosureRequest().executionMode()).isEqualTo("DIRECT");
         harness.loginAs(f.buyer());drain();return pending;
     }
     private void assertEndedWork(Fixture f) {

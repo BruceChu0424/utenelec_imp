@@ -230,7 +230,7 @@ public class SalesOrderFinanceConfirmService {
             pendingQuery.setParameter("bill_no", trimmedBillNo);
         }
         pendingQuery.setParameter("lim", sz);
-        pendingQuery.setParameter("off", (p - 1) * sz);
+        pendingQuery.setParameter("off", (long) (p - 1) * sz);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = pendingQuery.getResultList();
         // 本页用到的客户一次取余额(不 N+1), 每行按自己订单的币种派生「客户应收」。
@@ -331,7 +331,7 @@ public class SalesOrderFinanceConfirmService {
         String normalizedKeyword = KeywordSearch.phrase(keyword);
         String keywordFilter = normalizedKeyword.isEmpty() ? "" : " AND "
                 + TaskKeywordSearch.conditionParameter("keyword", SEARCH_FIELDS);
-        var query = em.createNativeQuery("""
+        var query = NativeFacets.query(em, "billNo", """
                         SELECT COALESCE(o.bill_no, ''), COUNT(*)
                         FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o
                         LEFT JOIN clients c ON c.id = o.client_id

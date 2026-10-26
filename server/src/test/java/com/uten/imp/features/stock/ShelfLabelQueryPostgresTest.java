@@ -41,7 +41,8 @@ class ShelfLabelQueryPostgresTest {
             new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
                     .withUsername("fixture_admin")
-                    .withPassword("uten");
+                    .withPassword("uten")
+                    .withCreateContainerCmdModifier(cmd->cmd.getHostConfig().withMemory(768L*1024*1024).withNanoCPUs(1_000_000_000L));
 
     @BeforeAll
     static void migrate() {
@@ -56,6 +57,46 @@ class ShelfLabelQueryPostgresTest {
     @AfterAll
     static void stopPostgres() {
         POSTGRES.stop();
+    }
+
+    @Test
+    void exportPagesReadBeyondTheInteractiveCeilingWithoutLosingOrRepeatingAnyPhysicalDimension() throws Exception {
+        try (Connection c = connection()) {
+            c.setAutoCommit(false);
+            try {
+                UUID unit = insertUnit(c, "B1-" + UUID.randomUUID().toString().substring(0, 8));
+                String prefix = "B1PAGE-" + UUID.randomUUID().toString().substring(0, 8) + "-";
+                try (PreparedStatement insert = c.prepareStatement("""
+                        INSERT INTO goods(id,code,name,stock_place,status,is_deleted,unit_id,code_sequence)
+                        SELECT gen_random_uuid(),?||lpad(n::text,5,'0'),'分页合成物料','B1PAGE-1-1','使用',false,?,base.maximum+n
+                        FROM generate_series(1,5001) n
+                        CROSS JOIN (SELECT COALESCE(MAX(code_sequence),0) AS maximum FROM goods) base
+                        """)) {
+                    insert.setString(1, prefix);insert.setObject(2, unit);assertEquals(5001, insert.executeUpdate());
+                }
+                assertEquals(5000, query(c, ShelfLabelSql.rows(false, false, false, true), Map.of("kw", prefix)).size());
+                List<UUID> ids = new java.util.ArrayList<>();
+                List<String> codes = new java.util.ArrayList<>();
+                for (int page = 0; page < 11; page++) {
+                    var rows = query(c, ShelfLabelSql.rowsPage(false, false, false, true),
+                            Map.of("kw", prefix, "__limit", 500, "__offset", page * 500));
+                    assertEquals(page < 10 ? 500 : 1, rows.size());
+                    for (var row : rows) {
+                        ids.add((UUID) row.get("goods_id"));codes.add((String) row.get("code"));
+                        assertNull(row.get("warehouse_id"));assertNull(row.get("color_id"));
+                        assertEquals(0, ((java.math.BigDecimal) row.get("qty")).signum());
+                    }
+                }
+                assertEquals(5001, new java.util.HashSet<>(ids).size());
+                assertEquals(java.util.stream.IntStream.rangeClosed(1,5001)
+                        .mapToObj(value -> prefix + String.format("%05d",value)).toList(),codes);
+                assertTrue(query(c,ShelfLabelSql.rowsPage(false,false,false,true),
+                        Map.of("kw",prefix,"__limit",500,"__offset",5500)).isEmpty());
+            } finally {
+                // This is an isolated test transaction; do not change the suite's other fixtures.
+                c.rollback();
+            }
+        }
     }
 
     @Test

@@ -45,6 +45,8 @@ const _documentedExempt = <String>{
   '/operations/recovery',
   // 工作台首页：全员可达，卡片逐个按权限过滤（设计决策，总设计 §三）。
   '/dashboard',
+  // 员工自助下载；仅已发布完整客户端可取，发布管理另需独立权限。
+  '/software-downloads',
   // 本人资料/设置：字段策略由后端 ProfileFieldPolicy 管。
   '/profile',
   '/profile/edit',
@@ -92,7 +94,7 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 原守卫基数 204，新增路径另由下方精确登记；当前 244 条守卫 / 19 条豁免。
+/// 原守卫基数 204，新增路径另由下方精确登记；当前 244 条守卫 / 20 条豁免。
 /// 2026-10-25 公司资料中心增加精确 company_file:view 守卫，文件夹范围和写动作由后端裁决。
 /// 独立救援入口 /operations/recovery 不依赖业务会话，控制面保留独立认证与恢复门禁。
 /// 2026-10-18 销售订单进度详情整页退役（履约时间线并入订货单详情页），
@@ -116,7 +118,7 @@ void _collect(RouteBase base, String parent, List<String> out) {
 /// 断言精确计数：新增路由必须同步改代码守卫 + 本处计数 + 文档数字，
 /// 防止「文档说 180、实际已 190」的静默漂移。
 const _legacyGuardedCount = 204;
-const _expectedExemptCount = 19;
+const _expectedExemptCount = 20;
 
 /// 2026-09-26 实际新增路径逐条核对，不能用总数 +5 代替路由身份/组合权限验证。
 const _reviewedNewGuardedRoutes = <String, List<String>>{

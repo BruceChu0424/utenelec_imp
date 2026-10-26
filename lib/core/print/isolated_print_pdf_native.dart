@@ -88,7 +88,12 @@ void _runPdf(_PdfJob job) => unawaited(_render(job));
 
 Future<void> _render(_PdfJob job) async {
   try {
-    final bytes = await renderPrintPdf(job.request);
+    final bytes = job.request.binaryRenderer == null
+        ? await renderPrintPdf(job.request)
+        : await job.request.binaryRenderer!(
+            job.request.binaryPayload!,
+            job.request.fontBytes,
+          );
     Isolate.exit(job.result, bytes);
   } catch (_) {
     Isolate.exit(job.result, false);

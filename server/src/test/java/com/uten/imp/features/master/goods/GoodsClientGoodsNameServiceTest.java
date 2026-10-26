@@ -148,7 +148,7 @@ class GoodsClientGoodsNameServiceTest {
         Goods value = existing();
         UUID owner = UUID.randomUUID();
         value.setOwnerEmployeeId(owner);
-        ReflectionTestUtils.setField(service, "goodsOwnerScopeEnabled", true);
+        ReflectionTestUtils.setField(ReflectionTestUtils.getField(service, "goodsReadScopePolicy"), "ownerScopeEnabled", true);
         when(visibility.evaluate("goods", "goods:view:all"))
                 .thenReturn(new OwnerVisibility.OwnerScope(false, Set.of(owner), Set.of()));
         assertThat(service.detail(value.getId()).getClientGoodsName()).isEqualTo("原客户名称");

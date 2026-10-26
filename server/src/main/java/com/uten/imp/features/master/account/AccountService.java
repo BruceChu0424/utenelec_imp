@@ -143,7 +143,7 @@ public class AccountService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "code"), ALLOWED_SORT));
         var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
-        Page<Account> p = repo.findAll(searchPage.specification(), searchPage.pageable());
+        Page<Account> p = com.uten.imp.common.export.MasterExportSource.page(repo, em, Account.class, searchPage.specification(), searchPage.pageable(), f);
         Map<UUID, CurrencyMeta> currencyMeta = currencyMetaFor(p.getContent());
         return new PageResponse<>(
                 p.getContent().stream()
@@ -161,14 +161,14 @@ public class AccountService {
     // ===== 加密 Excel 导出（服务端权威列定义） =====
 
     /**
-     * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
+     * 加密 Excel 导出：复用 list 的同一筛选/映射，后台以 100 行游标批次输出；同步仅保留有界小结果。
      * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（balanceCurrent）。
      * 2026-09-25 口径「表格显示啥导出啥」：列集/列序对齐前端表格（编号/账户名称/类型/
      * 币种/银行账号/当前余额[权限]/状态）——补「币种」，余额侧只留表格显示的「当前余额」
      * （期初/累计收款/累计付款/调整累计/警戒线表格不显示，导出不再多给）；无余额权限者
      * 整列不导出（与表格摘列同口径，不是空单元格）。accountType/币种按展示文字。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ExportPayload export(AccountQueryFilter f, String sort, String order, int maxRows) {
         boolean showBalance = hasAuthority("account:balance:view");
         List<ExportColumn> cols = new ArrayList<>();
@@ -182,7 +182,7 @@ public class AccountService {
         }
         cols.add(new ExportColumn("status", "状态", ExportColumn.TEXT));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
                 maxRows, (p, size) -> list(f, p, size, sort, order), a -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("_platformRecordId", a.getId());
@@ -200,7 +200,6 @@ public class AccountService {
                     row.put("status", a.getStatus());
                     return row;
                 });
-        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets（各字段 distinct + 空值计数） =====

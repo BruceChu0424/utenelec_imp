@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 生产领料任务中心 · 待领任务分段：仓库履约（备料/领取）任务队列。
 //
@@ -19,7 +21,6 @@ import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 值筛选走 f.docNo 精确匹配，与列表同一响应带回）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
@@ -37,6 +38,7 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/page_navigation_session.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
@@ -85,7 +87,28 @@ class WarehouseDrawTaskSegment extends ConsumerStatefulWidget {
 
 class _WarehouseDrawTaskSegmentState
     extends ConsumerState<WarehouseDrawTaskSegment>
-    with UtenRefreshParticipant<WarehouseDrawTaskSegment> {
+    with
+        UtenRefreshParticipant<WarehouseDrawTaskSegment>,
+        ScopedPagedReadViewMixin<WarehouseDrawTaskSegment> {
+  int get _refreshPage => _readingRows.visiblePage ?? (_result?.page ?? 1);
+
+  final _readingRows = MasterDataTableRowsController<WarehouseDrawTask>();
+  @override
+  void scopedPagedReadOwnerChanged() {
+    ++_requestVersion;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+      _selectedIds.clear();
+      _knownTasks.clear();
+      _visibleTaskSource = null;
+      _visibleTasksById = const {};
+      _readingRows.update(const []);
+    });
+  }
+
   PagedResult<WarehouseDrawTask>? _result;
   bool _loading = false;
   String? _error;
@@ -100,6 +123,7 @@ class _WarehouseDrawTaskSegmentState
       <String, WarehouseDrawTask>{};
   Map<String, int> _statusCounts = const {};
   bool _batchIssuing = false;
+  final _navigation = PageNavigationSession();
 
   /// 表头排序：列 key(见 [_kSortFields])；null = 服务端默认顺序。
   String? _sortColumn;
@@ -108,6 +132,18 @@ class _WarehouseDrawTaskSegmentState
   /// 领料单号表头值筛选（2026-09-25 单号列统一）：服务端 f.docNo 精确匹配；
   /// 桶随列表响应带回（_result.facets['docNo']，与列表同一过滤口径）。
   String? _drawBillNoFilter;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
+  void dispose() {
+    _navigation.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -139,10 +175,37 @@ class _WarehouseDrawTaskSegmentState
     for (final task in items) ...task.expandToGoodsRows(),
   ];
 
-  List<WarehouseDrawTask> _viewItemsOf(PagedResult<WarehouseDrawTask> result) =>
-      WarehouseDrawTask.mergeGoodsRows(_expandForView(result.items));
+  List<WarehouseDrawTask> _projectTaskRows(List<WarehouseDrawTask> items) =>
+      List<WarehouseDrawTask>.of(
+        WarehouseDrawTask.mergeGoodsRows(_expandForView(items)),
+        growable: false,
+      );
 
-  Future<void> _load(int page) async {
+  List<WarehouseDrawTask> _viewItemsOf(PagedResult<WarehouseDrawTask> result) {
+    final view = _projectTaskRows(result.items);
+    projectReadWindowBinding(
+      result.items,
+      view,
+      project: _projectTaskRows,
+      projectionKey: 'warehouse-draw-batch-goods-v1',
+    );
+    return view;
+  }
+
+  List<WarehouseDrawTask>? _visibleTaskSource;
+  Map<String, WarehouseDrawTask> _visibleTasksById = const {};
+
+  WarehouseDrawTask? _knownTask(String id) {
+    final rows = _readingRows.items;
+    if (!identical(rows, _visibleTaskSource)) {
+      _visibleTaskSource = rows;
+      _visibleTasksById = {for (final row in rows) row.taskId: row};
+    }
+    // Revalidated visible rows supersede retained outside-window snapshots.
+    return _visibleTasksById[id] ?? _knownTasks[id];
+  }
+
+  Future<void> _load(int page, {bool useCache = false}) async {
     final version = ++_requestVersion;
     setState(() {
       _loading = true;
@@ -150,17 +213,46 @@ class _WarehouseDrawTaskSegmentState
     });
     final keyword = widget.keyword.trim();
     try {
-      final result = await ref
-          .read(productionDrawTaskRepositoryProvider)
-          .tasks(
-            page: page,
-            keyword: keyword.isEmpty ? null : keyword,
-            status: _status,
-            sort: _kSortFields[_sortColumn],
-            ascending: _sortAscending,
-            drawBillNo: _drawBillNoFilter,
-            scope: WarehouseListScope.of(context),
-          );
+      final pageRepository = ref.read(productionDrawTaskRepositoryProvider);
+      final pageKeyword = keyword.isEmpty ? null : keyword;
+      final pageStatus = _status;
+      final pageSort = _kSortFields[_sortColumn];
+      final pageAscending = _sortAscending;
+      final pageDrawBillNo = _drawBillNoFilter;
+      final pageScope = WarehouseListScope.of(context);
+
+      final result = await readScopedPage(
+        page,
+        slot: '_load',
+        query: [
+          pageRepository,
+          pageKeyword,
+          pageStatus,
+          pageSort,
+          pageAscending,
+          pageDrawBillNo,
+          pageScope,
+        ],
+        currentQuery: () => [
+          ref.read(productionDrawTaskRepositoryProvider),
+          widget.keyword.trim().isEmpty ? null : widget.keyword.trim(),
+          _status,
+          _kSortFields[_sortColumn],
+          _sortAscending,
+          _drawBillNoFilter,
+          WarehouseListScope.of(context),
+        ],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.tasks(
+          page: target,
+          keyword: pageKeyword,
+          status: pageStatus,
+          sort: pageSort,
+          ascending: pageAscending,
+          drawBillNo: pageDrawBillNo,
+          scope: pageScope,
+        ),
+      );
       if (!mounted || version != _requestVersion) return;
       final viewItems = _viewItemsOf(result);
       setState(() {
@@ -227,7 +319,7 @@ class _WarehouseDrawTaskSegmentState
       for (final task in viewItems) task.taskId: task,
     };
     _selectedIds.removeWhere((id) {
-      final task = onPage[id] ?? _knownTasks[id];
+      final task = onPage[id] ?? _knownTask(id);
       if (task != null) return !task.canBatchIssue;
       return result.totalPages <= 1;
     });
@@ -252,7 +344,7 @@ class _WarehouseDrawTaskSegmentState
   /// 聚合/拆分行按 members 展开为底层单据。
   List<WarehouseDrawTask> get _issuableSelection => [
     for (final id in _selectedIds)
-      if (_knownTasks[id] case final task?)
+      if (_knownTask(id) case final task?)
         if (task.isBatchMerged)
           ...task.members!.where((d) => d.canBatchIssue)
         else if (task.canBatchIssue)
@@ -263,7 +355,7 @@ class _WarehouseDrawTaskSegmentState
   Future<void> _batchIssue() async {
     if (_batchIssuing || _selectedIds.isEmpty) return;
     final unsupported = _selectedIds.where((id) {
-      final task = _knownTasks[id];
+      final task = _knownTask(id);
       if (task == null) return false;
       // 聚合行按底层单判断；底层单 id（跨页勾选）自身判断。
       if (task.isBatchMerged) return task.members!.any((d) => !d.canBatchIssue);
@@ -287,10 +379,10 @@ class _WarehouseDrawTaskSegmentState
     }
     setState(() => _batchIssuing = true);
     try {
-      final changed = await context.push<bool>(_batchPath(tasks));
+      final changed = await _navigation.push<bool>(_batchPath(tasks));
       if (!mounted) return;
       if (changed == true) _selectedIds.clear();
-      await _load(_result?.page ?? 1);
+      await _load(_refreshPage);
     } finally {
       if (mounted) setState(() => _batchIssuing = false);
     }
@@ -323,8 +415,8 @@ class _WarehouseDrawTaskSegmentState
   Future<void> _openTask(WarehouseDrawTask task) async {
     final drafts = drawTaskDrafts(ref.read(formDraftsProvider), task);
     if (drafts.isNotEmpty) {
-      await resumeTaskFormDraft(context, ref, drafts);
-      if (mounted) await _load(_result?.page ?? 1);
+      await resumeTaskFormDraft(context, ref, drafts, navigation: _navigation);
+      if (mounted) await _load(_refreshPage);
       return;
     }
     // 聚合行（同批次同货品多张单）：进批量出库页一起核对；单成员行回落到底层单
@@ -333,8 +425,8 @@ class _WarehouseDrawTaskSegmentState
       final members = task.members!;
       if (members.length == 1) return _openTask(members.single);
       if (members.every((d) => d.canBatchIssue)) {
-        await context.push<bool>(_batchPath(members));
-        if (mounted) await _load(_result?.page ?? 1);
+        await _navigation.push<bool>(_batchPath(members));
+        if (mounted) await _load(_refreshPage);
         return;
       }
       context.appWarning('本批任务里有尚未确定材料或已失效的领料单，请先逐单处理');
@@ -342,8 +434,8 @@ class _WarehouseDrawTaskSegmentState
     }
     if (task.isMaterialDiscovery) {
       if (task.materialsDefined) {
-        await context.push<bool>(_batchPath([task]));
-        if (mounted) await _load(_result?.page ?? 1);
+        await _navigation.push<bool>(_batchPath([task]));
+        if (mounted) await _load(_refreshPage);
         return;
       }
       await _openMaterialDefinition(task);
@@ -354,18 +446,18 @@ class _WarehouseDrawTaskSegmentState
       // 服务端判定当前账号不可见对应领料单（对象范围裁剪）；只读行不提供入口。
       return;
     }
-    await context.push(path);
-    if (mounted) await _load(_result?.page ?? 1);
+    await _navigation.push(path);
+    if (mounted) await _load(_refreshPage);
   }
 
   Future<void> _openMaterialDefinition(WarehouseDrawTask task) async {
-    await context.push<bool>(
+    await _navigation.push<bool>(
       ProductionMaterialDiscoveryPage.route.replaceFirst(
         ':requestId',
         task.actionDocId!,
       ),
     );
-    if (mounted) await _load(_result?.page ?? 1);
+    if (mounted) await _load(_refreshPage);
   }
 
   List<Widget> _batchActions(
@@ -377,10 +469,10 @@ class _WarehouseDrawTaskSegmentState
     final draftsNeedApprove =
         !canApprove && issuable.any((task) => task.batchRequiresApproval);
     final hasUnknown = selectedIds.any(
-      (id) => _knownTasks[id]?.needsMaterialEntry == true,
+      (id) => _knownTask(id)?.needsMaterialEntry == true,
     );
     final hasUnavailable = selectedIds.any(
-      (id) => _knownTasks[id]?.canBatchIssue != true,
+      (id) => _knownTask(id)?.canBatchIssue != true,
     );
     final String? blocked = selectedIds.isEmpty
         ? '请先勾选要出库的领料单'
@@ -412,7 +504,7 @@ class _WarehouseDrawTaskSegmentState
     // 多货品单拆开一行一个货品；勾选/出库按底层单展开。
     final tasks = _result == null
         ? const <WarehouseDrawTask>[]
-        : WarehouseDrawTask.mergeGoodsRows(_expandForView(_result!.items));
+        : _viewItemsOf(_result!);
     final theme = Theme.of(context);
     // 批量出库按钮按会话权限门控：stock_doc:issue 才渲染；草稿单还需 approve
     //（出库即审核），无审核权限时按钮置灰并提示。
@@ -485,6 +577,8 @@ class _WarehouseDrawTaskSegmentState
         ],
       ),
       body: MasterDataTableView<WarehouseDrawTask>(
+        rowsController: _readingRows,
+        expensiveRowMounts: false,
         tableKey:
             'features.warehouse.widgets.warehouse_draw_task_segment.WarehouseDrawTaskSegmentState.build.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
@@ -545,7 +639,7 @@ class _WarehouseDrawTaskSegmentState
         isLoading: _loading && _result == null,
         loadingMore: _loading && _result != null,
         error: tasks.isEmpty ? _error : null,
-        onRetry: () => _load(_result?.page ?? 1),
+        onRetry: () => _load(_refreshPage),
         emptyMessage: widget.keyword.trim().isEmpty
             ? (_status == _kOpenAnyStatus ? '目前没有待领任务' : '当前状态下暂无任务')
             : '没有匹配的待领任务',
@@ -556,7 +650,7 @@ class _WarehouseDrawTaskSegmentState
           _status,
           WarehouseListScope.of(context),
         ),
-        onPageChange: _load,
+        onPageChange: (page) => _load(page, useCache: true),
       ),
     );
   }

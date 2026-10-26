@@ -3,6 +3,7 @@
 // 只记账号不记密码（安全铁律）。默认填上次登录账号（AccountHistoryStore.first）；
 // 聚焦或点右侧下拉箭头 → 输入框下方浮出历史账号列表：点选填入、每项可删、底部「清除全部」。
 // 点外部 / 失焦 / 选定后自动关闭。
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import '../../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -106,29 +107,31 @@ class _AccountFieldState extends ConsumerState<AccountField> {
     _hideDropdown();
     if (_history.isEmpty) return;
     final entry = OverlayEntry(
-      builder: (_) => _Dropdown(
-        layerLink: _layerLink,
-        menuFocus: _menuFocus,
-        tapRegionGroup: _tapRegionGroup,
-        width: _fieldWidth,
-        accounts: _history,
-        onPick: (a) {
-          widget.controller.text = a;
-          widget.controller.selection = TextSelection.fromPosition(
-            TextPosition(offset: a.length),
-          );
-          _hideDropdown();
-        },
-        onDelete: (a) async {
-          await ref.read(accountHistoryProvider).remove(a);
-          await _loadHistory();
-        },
-        onClear: () async {
-          await ref.read(accountHistoryProvider).clear();
-          await _loadHistory();
-          _hideDropdown();
-        },
-        onClose: _hideDropdown,
+      builder: (_) => UtenDropdownScrollScope(
+        child: _Dropdown(
+          layerLink: _layerLink,
+          menuFocus: _menuFocus,
+          tapRegionGroup: _tapRegionGroup,
+          width: _fieldWidth,
+          accounts: _history,
+          onPick: (a) {
+            widget.controller.text = a;
+            widget.controller.selection = TextSelection.fromPosition(
+              TextPosition(offset: a.length),
+            );
+            _hideDropdown();
+          },
+          onDelete: (a) async {
+            await ref.read(accountHistoryProvider).remove(a);
+            await _loadHistory();
+          },
+          onClear: () async {
+            await ref.read(accountHistoryProvider).clear();
+            await _loadHistory();
+            _hideDropdown();
+          },
+          onClose: _hideDropdown,
+        ),
       ),
     );
     Overlay.of(context).insert(entry);

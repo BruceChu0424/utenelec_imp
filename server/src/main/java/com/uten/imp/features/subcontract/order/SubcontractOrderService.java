@@ -862,7 +862,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         tx.bind();
         var mutationGuard=mutationLocks.order(orderType(),id);
         SubcontractOrder order = requireOrderForUpdate(id);
-        if (order.getTerminationCaseId()!=null) throw new ApiException(ErrorCode.CONFLICT,"订单已通过财务审批结束，不能改量");
+        if (order.getTerminationCaseId()!=null) throw new ApiException(ErrorCode.CONFLICT,"订单已取消剩余数量并结束，不能改量");
         if (!systemInitiated) {
             access.requireWritable(order.getMakerId(), "只能操作本人负责的委外订货单");
         }
@@ -1177,7 +1177,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     private void requireOrderReversalInputs(UUID id,List<SubcontractOrderItem> items) {
-        if (requireOrder(id).getTerminationCaseId()!=null) throw new ApiException(ErrorCode.CONFLICT,"订单已通过财务审批结束，不能反审或红冲");
+        if (requireOrder(id).getTerminationCaseId()!=null) throw new ApiException(ErrorCode.CONFLICT,"订单已取消剩余数量并结束，不能反审或红冲");
         if(items.stream().anyMatch(it->positive(it.getReceivedQty()) || positive(it.getReturnedQty())))
             throw new ApiException(ErrorCode.CONFLICT,"订货单已有收货或退货，请先撤销下游单据");
         if(hasApprovedMaterialActivity(items.stream().map(SubcontractOrderItem::getId).toList()))

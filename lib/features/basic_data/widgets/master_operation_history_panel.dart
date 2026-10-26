@@ -6,6 +6,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -352,14 +353,21 @@ class _MasterOperationHistoryPanelState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  masterEditText(
-                    context,
-                    '操作记录与撤回',
-                    'Operation history',
-                    '작업 기록',
-                  ),
-                  style: Theme.of(context).textTheme.titleLarge,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        masterEditText(
+                          context,
+                          '操作记录与撤回',
+                          'Operation history',
+                          '작업 기록',
+                        ),
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                    UtenFieldHintIcon(info: l10n.goodsHistoryHint, dense: true),
+                  ],
                 ),
                 const SizedBox(height: UtenSpacing.s8),
                 Wrap(
@@ -401,8 +409,6 @@ class _MasterOperationHistoryPanelState
                 : ListView(
                     padding: const EdgeInsets.all(UtenSpacing.s16),
                     children: [
-                      Text(l10n.goodsHistoryHint),
-                      const SizedBox(height: UtenSpacing.s12),
                       if (_error != null) ...[
                         UtenInlineNotice(
                           level: UtenInlineNoticeLevel.error,

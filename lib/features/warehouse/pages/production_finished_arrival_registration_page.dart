@@ -70,6 +70,7 @@ import '../repositories/warehouse_place_suggestion_repository.dart';
 import '../widgets/arrival_registration_reversal_dialog.dart';
 import '../widgets/batch_place_fill_dialog.dart';
 import '../widgets/inbound_registration_widgets.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class ProductionFinishedArrivalRegistrationPage extends ConsumerStatefulWidget {
   const ProductionFinishedArrivalRegistrationPage({
@@ -912,108 +913,114 @@ class _ProductionFinishedArrivalRegistrationPageState
       controller: _scrollController,
       // 滚动条贴屏幕右缘：包装在内容容器之外，不随限宽容器/列宽漂移。
       child: UtenContentContainer(
-        child: ListView(
-          controller: _scrollController,
+        child: UtenPageEdgePadding.scroll(
           padding: const EdgeInsets.all(UtenSpacing.s12),
-          children: [
-            _buildHeaderCard(reports, canRegister),
-            const SizedBox(height: UtenSpacing.s12),
-            InboundPlaceSuggestionStatus(
-              loader: _suggestions,
-              onRetry: () => _suggestions.reload(_editableRows),
-            ),
-            WeightParamsLoadNotice(cache: _weightCache),
-            InboundGridIntro(
-              sourceSummary:
-                  '来自 ${reports.length} 张报工单'
-                  '${registeredReports > 0 ? '(其中 $registeredReports 张已登记，只读)' : ''}',
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            UtenEditableGrid<_FinishedLotLine>(
-              tableKey:
-                  'features.warehouse.pages.production_finished_arrival_registration_page.ProductionFinishedArrivalRegistrationPageState._buildForm.1',
-              key: const Key('production-finished-arrival-grid'),
-              controller: _grid,
-              stickyHeaderPinned: _gridPinned,
-              columns: _columns(names, canRegister, weightUnits.entry, l10n),
-              createBlankRow: () => throw UnsupportedError('明细由所选报工单固定带入'),
-              showAddRow: false,
-              showRowDelete: false,
-              selectable: canRegister && !_submitted,
-              selectionEnabled: !_busy && !_submitted,
-              canSelectRow: (row) => !row.locked && !_submitted,
-              onRemoveRows: canRegister && !_submitted
-                  ? _removeFromThisRegistration
-                  : null,
-              removeRowsActionLabel: '移出本次登记',
-              removeRowsDialogTitle: '移出本次登记',
-              removeRowsConfirmLabel: '确认移出',
-              removeRowsMessageBuilder: (count) =>
-                  '确认从本次登记移出选中的 $count 行？'
-                  '报工事实不会删除，也不会产生 FQC、入库或库存事实；'
-                  '返回任务中心后仍保持待登记。',
-              showSelectAllToggle: false,
-              showRemoveRowsAction: false,
-              // 行末常驻 ⊖(已登记行与提交后 canSelectRow=false，自动只占位)。
-              showInlineRemoveAction: true,
-              rowMenuExtraBuilder: canRegister && !_busy && !_submitted
-                  ? (context, selected) => [
-                      UtenMenuItem(
-                        label: '批量设置入库仓库 (${selected.length})',
-                        icon: Icons.warehouse_outlined,
-                        enabled: selected.isNotEmpty,
-                        onTap: () => _pickWarehouseFor(selected),
-                      ),
-                      UtenMenuItem(
-                        label: '批量设置库位号 (${selected.length})',
-                        icon: Icons.edit_note_outlined,
-                        enabled: selected.isNotEmpty,
-                        onTap: () => _batchFillPlace(selected),
-                      ),
-                    ]
-                  : null,
-              emptyMessage: '所选报工单没有可登记明细，请返回任务中心刷新',
-              // 「称重单位: 千克▾」：录入单位是用户级偏好，表头与已填重量跟着换。
-              toolbarActions: const [WeightEntryUnitButton()],
-              footer: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // 重量逐行输入不触发整页重建：合计条自己听重量格与单重参数。
-                  // 原合计条下方的长提示行已删(2026-10-10 简洁口径)；「已移出 N 行」
-                  // 计数并进右下提交按钮 tooltip(_buildBottomBar)。
-                  ListenableBuilder(
-                    listenable: Listenable.merge([
-                      _weightCache,
-                      for (final row in _editableRows) row.weight,
-                    ]),
-                    builder: (context, _) => inboundTotalsBar<_FinishedLotLine>(
-                      key: const Key('production-finished-arrival-totals'),
-                      lines: _editableRows,
-                      qtyLabel: '报工数量',
-                      qtyOf: (row) => row.lot.reportedQty,
-                      unitIdOf: (row) => row.lot.unitId,
-                      unitNameOf: (row) =>
-                          row.lot.unitName ?? names.unit(row.lot.unitId),
-                      weight: warehouseWeightTotals<_FinishedLotLine>(
-                        _editableRows,
-                        weightOf: (row) => row.weight,
-                        exactKgOf: _exactKg,
-                        paramsOf: _paramsOf,
-                        qtyBaseOf: (row) => row.lot.reportedBaseQty,
-                      ),
-                      weightDisplay: weightUnits.display,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (batches.isNotEmpty) ...[
+          builder: (context, resolvedPagePadding) => ListView(
+            controller: _scrollController,
+            padding: resolvedPagePadding,
+            children: [
+              _buildHeaderCard(reports, canRegister),
               const SizedBox(height: UtenSpacing.s12),
-              _buildBatchesCard(theme, l10n, batches),
+              InboundPlaceSuggestionStatus(
+                loader: _suggestions,
+                onRetry: () => _suggestions.reload(_editableRows),
+              ),
+              WeightParamsLoadNotice(cache: _weightCache),
+              InboundGridIntro(
+                sourceSummary:
+                    '来自 ${reports.length} 张报工单'
+                    '${registeredReports > 0 ? '(其中 $registeredReports 张已登记，只读)' : ''}',
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              UtenEditableGrid<_FinishedLotLine>(
+                tableKey:
+                    'features.warehouse.pages.production_finished_arrival_registration_page.ProductionFinishedArrivalRegistrationPageState._buildForm.1',
+                key: const Key('production-finished-arrival-grid'),
+                controller: _grid,
+                stickyHeaderPinned: _gridPinned,
+                columns: _columns(names, canRegister, weightUnits.entry, l10n),
+                createBlankRow: () => throw UnsupportedError('明细由所选报工单固定带入'),
+                showAddRow: false,
+                showRowDelete: false,
+                selectable: canRegister && !_submitted,
+                selectionEnabled: !_busy && !_submitted,
+                canSelectRow: (row) => !row.locked && !_submitted,
+                onRemoveRows: canRegister && !_submitted
+                    ? _removeFromThisRegistration
+                    : null,
+                removeRowsActionLabel: '移出本次登记',
+                removeRowsDialogTitle: '移出本次登记',
+                removeRowsConfirmLabel: '确认移出',
+                removeRowsMessageBuilder: (count) =>
+                    '确认从本次登记移出选中的 $count 行？'
+                    '报工事实不会删除，也不会产生 FQC、入库或库存事实；'
+                    '返回任务中心后仍保持待登记。',
+                showSelectAllToggle: false,
+                showRemoveRowsAction: false,
+                // 行末常驻 ⊖(已登记行与提交后 canSelectRow=false，自动只占位)。
+                showInlineRemoveAction: true,
+                rowMenuExtraBuilder: canRegister && !_busy && !_submitted
+                    ? (context, selected) => [
+                        UtenMenuItem(
+                          label: '批量设置入库仓库 (${selected.length})',
+                          icon: Icons.warehouse_outlined,
+                          enabled: selected.isNotEmpty,
+                          onTap: () => _pickWarehouseFor(selected),
+                        ),
+                        UtenMenuItem(
+                          label: '批量设置库位号 (${selected.length})',
+                          icon: Icons.edit_note_outlined,
+                          enabled: selected.isNotEmpty,
+                          onTap: () => _batchFillPlace(selected),
+                        ),
+                      ]
+                    : null,
+                emptyMessage: '所选报工单没有可登记明细，请返回任务中心刷新',
+                // 「称重单位: 千克▾」：录入单位是用户级偏好，表头与已填重量跟着换。
+                toolbarActions: const [WeightEntryUnitButton()],
+                footer: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 重量逐行输入不触发整页重建：合计条自己听重量格与单重参数。
+                    // 原合计条下方的长提示行已删(2026-10-10 简洁口径)；「已移出 N 行」
+                    // 计数并进右下提交按钮 tooltip(_buildBottomBar)。
+                    ListenableBuilder(
+                      listenable: Listenable.merge([
+                        _weightCache,
+                        for (final row in _editableRows) row.weight,
+                      ]),
+                      builder: (context, _) =>
+                          inboundTotalsBar<_FinishedLotLine>(
+                            key: const Key(
+                              'production-finished-arrival-totals',
+                            ),
+                            lines: _editableRows,
+                            qtyLabel: '报工数量',
+                            qtyOf: (row) => row.lot.reportedQty,
+                            unitIdOf: (row) => row.lot.unitId,
+                            unitNameOf: (row) =>
+                                row.lot.unitName ?? names.unit(row.lot.unitId),
+                            weight: warehouseWeightTotals<_FinishedLotLine>(
+                              _editableRows,
+                              weightOf: (row) => row.weight,
+                              exactKgOf: _exactKg,
+                              paramsOf: _paramsOf,
+                              qtyBaseOf: (row) => row.lot.reportedBaseQty,
+                            ),
+                            weightDisplay: weightUnits.display,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              if (batches.isNotEmpty) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                _buildBatchesCard(theme, l10n, batches),
+              ],
+              const SizedBox(height: UtenFloatingActionGroup.scrollClearance),
             ],
-            const SizedBox(height: UtenFloatingActionGroup.scrollClearance),
-          ],
+          ),
         ),
       ),
     );

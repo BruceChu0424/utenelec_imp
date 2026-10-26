@@ -70,12 +70,11 @@ void main() {
       matching: find.byType(Scrollable),
     );
     expect(chooserScroll, findsOneWidget);
-    final scrollbar = find.ancestor(
-      of: chooser,
-      matching: find.byType(Scrollbar),
+    expect(
+      tester.state<ScrollableState>(chooserScroll).position.maxScrollExtent,
+      greaterThan(0),
+      reason: '菜单必须真实可滚；滚动条外观由下拉菜单主题独立控制',
     );
-    expect(scrollbar, findsOneWidget);
-    expect(tester.widget<Scrollbar>(scrollbar).thumbVisibility, isTrue);
 
     final weightOption = find.descendant(
       of: chooser,

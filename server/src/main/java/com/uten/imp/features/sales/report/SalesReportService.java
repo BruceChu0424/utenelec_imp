@@ -4,6 +4,8 @@ import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.report.ReportQueryKit;
+import com.uten.imp.common.report.ReportReadPlan;
+import com.uten.imp.common.report.ReportExportCursor;
 import com.uten.imp.common.report.ReportQueryKit.FacetSpec;
 import com.uten.imp.common.report.ReportQueryKit.WhereBuilder;
 import com.uten.imp.common.report.ReportSort;
@@ -103,6 +105,14 @@ public class SalesReportService {
                                        WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
                                        Map<String, String> activeFacets, int page, int size,
                                        String sort, String order) {
+        return executeRead(columns, dataSelect, fromJoin, mainWhere, orderBy, specs, activeFacets,
+                page, size, sort, order, java.util.Set.of());
+    }
+
+    private ReportTableResponse executeRead(List<ReportColumn> columns, String dataSelect, String fromJoin,
+                                             WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
+                                             Map<String,String> activeFacets, int page, int size,
+                                             String sort, String order, java.util.Set<String> protectedPriceKeys) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
@@ -111,7 +121,8 @@ public class SalesReportService {
         if (activeFacets != null) {
             for (Map.Entry<String, String> e : activeFacets.entrySet()) {
                 FacetSpec spec = specs.stream().filter(s -> s.key().equals(e.getKey())).findFirst().orElse(null);
-                if (spec != null && e.getValue() != null && !e.getValue().isBlank()) {
+                if (spec != null && !protectedPriceKeys.contains(spec.key())
+                        && e.getValue() != null && !e.getValue().isBlank()) {
                     facetClauses.add(facetClause(spec, e.getValue()));
                 }
             }
@@ -121,17 +132,17 @@ public class SalesReportService {
 
         // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
         var sortKeys = new java.util.HashSet<String>();
-        for (ReportColumn c : columns) sortKeys.add(c.key());
+        for (ReportColumn c : columns) if (!protectedPriceKeys.contains(c.key())) sortKeys.add(c.key());
         String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
 
-        var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
+        var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
         mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = dataQ.getResultList();
+        List<Object[]> rows = ReportExportCursor.rows(em, dataQ);
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -140,13 +151,17 @@ public class SalesReportService {
             items.add(m);
         }
 
-        var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
-        full.params().forEach(countQ::setParameter);
-        long total = ((Number) countQ.getSingleResult()).longValue();
-        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
+            full.params().forEach(countQ::setParameter);
+            total = ((Number) countQ.getSingleResult()).longValue();
+        }
+        int totalPages = ReportReadPlan.totalPages(total, safeSize);
 
         Map<String, List<ReportFacet>> facets = new LinkedHashMap<>();
-        for (FacetSpec spec : specs) {
+        for (FacetSpec spec : ReportReadPlan.current().includeFacets() ? specs : List.<FacetSpec>of()) {
+            if (protectedPriceKeys.contains(spec.key())) continue;
             var fq = em.createNativeQuery("SELECT " + spec.selectExpr() + ", COUNT(*) AS cnt " + fromJoin + " "
                     + baseB.sql() + " GROUP BY " + spec.groupExpr() + " ORDER BY cnt DESC LIMIT 50");
             baseB.params().forEach(fq::setParameter);
@@ -171,9 +186,9 @@ public class SalesReportService {
         // 表格下方合计：与列表用同一份 full（日期/facet/关键字 + 对象级授权谓词）在**整个结果集**
         // 上聚合，与翻到第几页无关；派生表不带 LIMIT/OFFSET，所以绝不会出现「只合计当前页」。
         List<com.uten.imp.common.report.ReportTotal> totals =
-                com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(
                         em, dataSelect, fromJoin, full.sql(), full.params(),
-                        reportTotalSpecs(columns, columns));
+                        reportTotalSpecs(columns.stream().filter(c -> !protectedPriceKeys.contains(c.key())).toList(), columns)) : List.<com.uten.imp.common.report.ReportTotal>of();
 
         totals = com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns);
         List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
@@ -230,7 +245,7 @@ public class SalesReportService {
         return switch (spec.filterType()) {
             case "uuid"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS uuid)", p, UUID.fromString(value));
             case "int", "style" -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS int)", p, ReportQueryKit.parseRequiredInt(value));
-            case "bool"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, Boolean.valueOf(value));
+            case "bool"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, ReportQueryKit.parseRequiredBoolean(value));
             default      -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS text)", p, value);
         };
     }
@@ -382,7 +397,9 @@ public class SalesReportService {
                 facetClient(),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"),
                 new FacetSpec("closed", "o.is_closed AS v, CASE WHEN o.is_closed THEN '已完成' ELSE '未完成' END AS lbl", "o.is_closed", "o.is_closed", "bool"));
-        ReportTableResponse r = execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        var protectedKeys = priceMasker.canView() ? java.util.Set.<String>of() : java.util.Set.copyOf(ORDER_PRICE_KEYS);
+        ReportTableResponse r = executeRead(cols, dataSelect, fromJoin, w,
+                "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order, protectedKeys);
         return maskOrderPricesIfNeeded(r); // Rows, decimal text and totals share the same price permission.
     }
 
@@ -429,7 +446,7 @@ public class SalesReportService {
                 facetClient(),
                 new FacetSpec("settlementStyle", "o.payment_style_id AS v, CAST(o.payment_style_id AS text) AS lbl", "o.payment_style_id", "o.payment_style_id", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
     }
 
     // ----- 销售退货明细 -----
@@ -479,7 +496,7 @@ public class SalesReportService {
                 new FacetSpec("billNo", "i.bill_no AS v, i.bill_no AS lbl", "i.bill_no", "i.bill_no", "text"),
                 facetClient(),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
     }
 
     // ----- 其它出货明细 -----
@@ -552,7 +569,7 @@ public class SalesReportService {
                 facetClient(), facetWarehouse("warehouseName"),
                 new FacetSpec("settlementStyle", "o.payment_style_id AS v, CAST(o.payment_style_id AS text) AS lbl", "o.payment_style_id", "o.payment_style_id", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== 汇总报表（按 docType 派发；一行一客户） ========================
@@ -656,8 +673,12 @@ public class SalesReportService {
         WhereBuilder outer = new WhereBuilder("WHERE 1=1");
         // 内层参数直接挂到外层（参数名同源，execute 统一 setParameter）。
         inner.params().forEach((k, v) -> outer.add("1=1", k, v));
-        ReportTableResponse r = execute(cols, dataSelect, fromJoin, outer, "\"totalAmount\" DESC, \"clientName\"",
-                List.of(facetClientSummary()), facets, page, size, sort, order);
+        var protectedKeys = priceMasker.canView() ? java.util.Set.<String>of() : java.util.Set.copyOf(ORDER_PRICE_KEYS);
+        String stableOrder = protectedKeys.isEmpty()
+                ? "\"totalAmount\" DESC, \"clientName\", t.\"__clientId\", t.\"__currencyId\""
+                : "\"clientName\", t.\"__clientId\", t.\"__currencyId\"";
+        ReportTableResponse r = executeRead(cols, dataSelect, fromJoin, outer, stableOrder,
+                List.of(facetClientSummary()), facets, page, size, sort, order, protectedKeys);
         return maskOrderPricesIfNeeded(r);
     }
 
@@ -707,7 +728,7 @@ public class SalesReportService {
                 """;
         WhereBuilder outer = new WhereBuilder("WHERE 1=1");
         inner.params().forEach((k, v) -> outer.add("1=1", k, v));
-        return execute(cols, dataSelect, fromJoin, outer, "\"dealAmount\" DESC, \"clientName\"",
+        return execute(cols, dataSelect, fromJoin, outer, "\"dealAmount\" DESC, \"clientName\", t.\"__clientId\"",
                 List.of(facetClientSummary()), facets, page, size, sort, order);
     }
 
@@ -755,7 +776,7 @@ public class SalesReportService {
                 """;
         WhereBuilder outer = new WhereBuilder("WHERE 1=1");
         inner.params().forEach((k, v) -> outer.add("1=1", k, v));
-        return execute(cols, dataSelect, fromJoin, outer, "\"totalAmount\" DESC, \"clientName\"",
+        return execute(cols, dataSelect, fromJoin, outer, "\"totalAmount\" DESC, \"clientName\", t.\"__clientId\"",
                 List.of(facetClientSummary()), facets, page, size, sort, order);
     }
 
@@ -804,7 +825,7 @@ public class SalesReportService {
                 """;
         WhereBuilder outer = new WhereBuilder("WHERE 1=1");
         inner.params().forEach((k, v) -> outer.add("1=1", k, v));
-        return execute(cols, dataSelect, fromJoin, outer, "\"actualAmount\" DESC, \"clientName\"",
+        return execute(cols, dataSelect, fromJoin, outer, "\"actualAmount\" DESC, \"clientName\", t.\"__clientId\"",
                 List.of(facetClientSummary()), facets, page, size, sort, order);
     }
 

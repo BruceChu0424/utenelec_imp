@@ -24,10 +24,12 @@ class _Api extends ApiClient {
     this.canSubmit = true,
     this.canReorder = true,
     this.unverifiedQuantity = false,
+    this.resultStatus = 'APPROVED',
   }) : super(Dio());
   final bool canSubmit;
   final bool canReorder;
   final bool unverifiedQuantity;
+  final String resultStatus;
   String? submittedPath;
   Map<String, dynamic>? submittedBody;
   Completer<void>? pending;
@@ -71,7 +73,7 @@ class _Api extends ApiClient {
     postCalls++;
     submittedBody = (body as Map).cast<String, dynamic>();
     await pending?.future;
-    return {};
+    return {'status': resultStatus};
   }
 }
 
@@ -128,6 +130,115 @@ Future<void> _open(
 }
 
 void main() {
+  testWidgets('a pending server result cannot be reported as completed', (
+    tester,
+  ) async {
+    final api = _Api(resultStatus: 'PENDING');
+    await _open(tester, api);
+    await tester.enterText(
+      find.byKey(const Key('procurement-order-closure-reason')),
+      '已满足生产要求',
+    );
+    await tester.tap(find.byKey(const Key('procurement-order-closure-submit')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('procurement-order-closure-dialog')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('尚未确认订单已结束'), findsOneWidget);
+    expect(api.postCalls, 1);
+    expect(
+      tester
+          .widget<UtenButton>(
+            find.byKey(const Key('procurement-order-closure-submit')),
+          )
+          .onPressed,
+      isNull,
+    );
+  });
+
+  for (final orderType in ['PURCHASE', 'SUBCONTRACT']) {
+    testWidgets(
+      '$orderType direct closure shows exact cancellation facts at narrow large text',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 1100);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        const captureUi = bool.fromEnvironment('UTEN_CAPTURE_UI');
+        final capture = GlobalKey();
+        if (captureUi) await loadAuditScreenshotFonts(tester);
+        final request = ProcurementOrderClosureRequest.fromJson({
+          'caseId': 'closure-1',
+          'status': 'APPROVED',
+          'mode': 'CLOSE',
+          'executionMode': 'DIRECT',
+          'reason': '已满足生产要求，供应商不再补交',
+          'closedByName': '张采购',
+          'closedAt': '2026-10-26T02:30:00Z',
+          'items': [
+            {
+              'orderItemId': 'item-1',
+              'lineNo': 1,
+              'goodsCode': 'G-001',
+              'goodsName': '电机支架',
+              'unitName': '件',
+              'orderedQty': '100.0001',
+              'receivedQty': '40',
+              'returnedQty': '5',
+              'settledLossQty': '2',
+              'remainingQty': '63.0001',
+              'remainingGiftQty': '1.0001',
+            },
+          ],
+        });
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            theme: buildLightTheme(),
+            builder: (_, child) => MediaQuery(
+              data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+              child: RepaintBoundary(key: capture, child: child!),
+            ),
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: ProcurementOrderClosureStatus(
+                  request: request,
+                  orderType: orderType,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(request.isDirect, isTrue);
+        expect(find.text('已直接结束'), findsOneWidget);
+        expect(
+          find.textContaining(orderType == 'PURCHASE' ? '采购已取消' : '委外已取消'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('取消未收数量: 63.0001 件'), findsOneWidget);
+        expect(find.textContaining('累计退货: 5 件'), findsOneWidget);
+        expect(find.textContaining('已结清损耗: 2 件'), findsOneWidget);
+        expect(find.textContaining('取消未收赠品: 1.0001 件'), findsOneWidget);
+        expect(find.textContaining('张采购'), findsOneWidget);
+        expect(find.textContaining('2026-10-26 10:30'), findsOneWidget);
+        expect(find.text('结束已批准'), findsNothing);
+        expect(find.text('提交财务审批'), findsNothing);
+        expect(tester.takeException(), isNull);
+        if (captureUi) {
+          await saveAuditScreenshot(
+            tester,
+            capture,
+            'direct-closure-$orderType',
+          );
+        }
+      },
+    );
+  }
+
   for (final orderType in ['PURCHASE', 'SUBCONTRACT']) {
     for (final canEdit in [true, false]) {
       testWidgets(
@@ -279,7 +390,10 @@ void main() {
     'closure request explains receipt and quality finality before submission',
     (tester) async {
       await _open(tester, _Api());
-      expect(find.text('结束前请办清收退货和质检处置；批准后不能直接更改原单已核定实收。'), findsOneWidget);
+      expect(find.text('结束前请办清收退货和质检处置；结束后不能直接更改原单已核定实收。'), findsOneWidget);
+      expect(find.textContaining('无需财务批准'), findsWidgets);
+      expect(find.text('确认结束订单'), findsOneWidget);
+      expect(find.text('提交财务审批'), findsNothing);
       expect(
         find.byKey(const Key('procurement-order-closure-submit')),
         findsOneWidget,

@@ -1,6 +1,7 @@
 // 收付款类别管理页（基础资料 · 邻接树 + 物化路径）。
 //
 // 大屏采用目录树 + 属性检查器，编辑模式复用共享表格批量维护；手机保留分类抽屉。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
 import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_record_history_panel.dart';
@@ -42,7 +43,6 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/sensitive_write.dart';
-import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/widgets/uten_location_field.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../../../shared/widgets/uten_hierarchy_detail_menu.dart';
@@ -347,7 +347,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
       return;
     }
     final request = _treeRequest.begin();
-    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final boundary = captureInlineRead();
     final category = _category;
     setState(() {
       _treeLoading = true;
@@ -562,7 +562,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
   /// 树行菜单动作要 Detail（编辑/停用启用的拦截口径都按 Detail 判），拉取失败
   /// 统一错误提示、返回 null 不再继续。
   Future<PaymentStyleDetail?> _loadDetailForMenu(PaymentStyleNode node) async {
-    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final boundary = captureInlineRead();
     try {
       final detail = await ref
           .read(paymentStyleRepositoryProvider)
@@ -973,7 +973,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
       context.appWarning('一次最多处理500个类别，请缩小选择范围');
       return;
     }
-    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final boundary = captureInlineRead();
     if (inlineEdit.dirty) {
       if (!await inlineEdit.confirmLeave(context) ||
           !mounted ||
@@ -1092,7 +1092,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
+        UtenPageEdgePadding(
           padding: const EdgeInsets.symmetric(
             horizontal: UtenSpacing.s12,
             vertical: UtenSpacing.s8,
@@ -1124,7 +1124,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
             ],
           ),
         ),
-        const Padding(
+        const UtenPageEdgePadding(
           padding: EdgeInsets.symmetric(
             horizontal: UtenSpacing.s12,
             vertical: UtenSpacing.s4,
@@ -1133,6 +1133,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
         ),
         Expanded(
           child: MasterDataTableView<_PaymentStyleWorkspaceRow>(
+            expensiveRowMounts: inlineEdit.active,
             appendRowsSource: inlineAppendRowsSource,
             key: const ValueKey('payment-style-inline-table'),
             tableKey: 'basicData.paymentStyle.workspace',
@@ -1315,11 +1316,13 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
           floatingActionButton: inlineEdit.active
               ? null
               : inlineFloatingActions(),
-          body: Stack(
-            children: [
-              SafeArea(child: body),
-              if (_batchBusy) const UtenBusyOverlay(title: '正在批量更新类别'),
-            ],
+          body: UtenPageEdgePadding(
+            child: Stack(
+              children: [
+                SafeArea(child: body),
+                if (_batchBusy) const UtenBusyOverlay(title: '正在批量更新类别'),
+              ],
+            ),
           ),
         ),
       ),
@@ -1428,43 +1431,47 @@ class _PaymentStyleInspectorState
 
     return Stack(
       children: [
-        SingleChildScrollView(
+        UtenPageEdgePadding.scroll(
           padding: EdgeInsets.fromLTRB(
             context.breakpoint.isCompact ? 0 : UtenSpacing.s24,
             UtenSpacing.s20,
             context.breakpoint.isCompact ? 0 : UtenSpacing.s24,
             UtenSpacing.s32,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _InspectorHeader(
-                detail: detail,
-                hasActiveDescendant: _hasActiveDescendant(widget.node),
-                onHistoryChanged: widget.onHistoryChanged,
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              _BasicInfoSection(detail: detail),
-              const SizedBox(height: UtenSpacing.s16),
-              _BusinessAttributesSection(detail: detail),
-              const SizedBox(height: UtenSpacing.s16),
-              _HierarchySection(detail: detail),
-              if (widget.node.children.isNotEmpty) ...[
-                const SizedBox(height: UtenSpacing.s16),
-                _ChildrenSection(
-                  children: widget.node.children,
-                  onSelect: widget.onSelectChild,
+          preserveStart: true,
+          builder: (context, pagePadding) => SingleChildScrollView(
+            padding: pagePadding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _InspectorHeader(
+                  detail: detail,
+                  hasActiveDescendant: _hasActiveDescendant(widget.node),
+                  onHistoryChanged: widget.onHistoryChanged,
                 ),
-              ],
-              if (detail.legacyId != null ||
-                  detail.linkedAccountLegacyId != null ||
-                  detail.initBalance != null) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                _BasicInfoSection(detail: detail),
                 const SizedBox(height: UtenSpacing.s16),
-                _MigrationSection(detail: detail),
+                _BusinessAttributesSection(detail: detail),
+                const SizedBox(height: UtenSpacing.s16),
+                _HierarchySection(detail: detail),
+                if (widget.node.children.isNotEmpty) ...[
+                  const SizedBox(height: UtenSpacing.s16),
+                  _ChildrenSection(
+                    children: widget.node.children,
+                    onSelect: widget.onSelectChild,
+                  ),
+                ],
+                if (detail.legacyId != null ||
+                    detail.linkedAccountLegacyId != null ||
+                    detail.initBalance != null) ...[
+                  const SizedBox(height: UtenSpacing.s16),
+                  _MigrationSection(detail: detail),
+                ],
+                const SizedBox(height: UtenSpacing.s24),
+                const _RetentionSection(),
               ],
-              const SizedBox(height: UtenSpacing.s24),
-              const _RetentionSection(),
-            ],
+            ),
           ),
         ),
         if (_loading)
@@ -2317,7 +2324,19 @@ class _PaymentStyleEditDialogState
     return UtenAlertDialog(
       maxWidth: 620,
       scrollable: false,
-      title: Text(_isEdit ? '编辑类别' : '新增${widget.category.label}类别'),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(_isEdit ? '编辑类别' : '新增${widget.category.label}类别'),
+          ),
+          UtenFieldHintIcon(
+            info: widget.category == PaymentStyleCategory.method
+                ? '结算方式分类目前为预留主档，不会自动绑定收款单或付款单的具体结算方式。'
+                : '实际能否选用还会看大类、启用状态和是否末级；这些开关不能替代业务检查。',
+            dense: true,
+          ),
+        ],
+      ),
       content: SizedBox(
         width: utenDialogWidth(context, 620),
         child: SingleChildScrollView(
@@ -2445,13 +2464,6 @@ class _PaymentStyleEditDialogState
                     },
                   ),
                 ],
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              _InlineNotice(
-                icon: Icons.info_outline_rounded,
-                text: widget.category == PaymentStyleCategory.method
-                    ? '结算方式分类目前为预留主档，不会自动绑定收款单或付款单的具体结算方式。'
-                    : '实际能否选用还会看大类、启用状态和是否末级；这些开关不能替代业务检查。',
               ),
               if (_formError != null) ...[
                 const SizedBox(height: UtenSpacing.s12),

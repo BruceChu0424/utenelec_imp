@@ -6,6 +6,7 @@ import '../../../shared/formatters/exact_decimal.dart';
 class PurchaseOrderPrintDocument {
   PurchaseOrderPrintDocument.fromJson(Map<String, dynamic> json)
     : id = json['id'] as String,
+      contentDigest = json['contentDigest'] as String?,
       billNo = _text(json['billNo']),
       billDate = _text(json['billDate']),
       deliverDate = _text(json['deliverDate']),
@@ -42,6 +43,7 @@ class PurchaseOrderPrintDocument {
           .toList(growable: false);
 
   final String id, billNo, billDate, deliverDate, companyName, companyPhone;
+  final String? contentDigest;
   final String supplierName, supplierContact, supplierPhone, deliveryPlace;
   final String currencyName, currencyCode, settlementMethod, remark;
   final String makerName, reviewerName, statusLabel;

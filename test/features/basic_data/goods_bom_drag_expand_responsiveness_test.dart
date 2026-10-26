@@ -13,6 +13,7 @@ import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.d
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/widgets/uten_tree_table_cell.dart';
 
 import '../../support/goods_bom_edit_test_api.dart';
 
@@ -151,12 +152,19 @@ Future<GoodsBomEditTestApi> _pumpTab(
 }
 
 Future<TestGesture> _pickUpSource(WidgetTester tester) async {
+  final tree = find.byKey(const ValueKey('goods-bom-tree-cell-source'));
+  final cell = tester.widget<UtenTreeTableCell>(tree);
+  final bounds = tester.getRect(tree);
+  final prefix = UtenTreeTableCell.prefixWidthOf(
+    tester.element(tree),
+    depth: cell.depth,
+    indent: cell.indent,
+    maxVisualDepth: cell.maxVisualDepth,
+    desktopToggleExtent: cell.desktopToggleExtent,
+  );
+  // Start in the tree's empty prefix/name gap, outside editor/button gestures.
   final gesture = await tester.startGesture(
-    tester.getCenter(
-      find
-          .descendant(of: _slot('source'), matching: find.textContaining('组件 '))
-          .first,
-    ),
+    Offset(bounds.left + prefix + 2, bounds.center.dy),
     pointer: 31,
     kind: PointerDeviceKind.mouse,
   );

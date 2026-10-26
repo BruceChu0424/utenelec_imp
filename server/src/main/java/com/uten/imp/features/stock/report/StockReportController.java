@@ -52,6 +52,7 @@ public class StockReportController {
     private final SecurityContextCurrentUser currentUser;
 
     /** 明细报表（7 单据类型参数化；docType 决定列集 + 标签）。departmentId 仅 DRAW 有意义（各车间领料统计）。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/{docType}/detail")
     @PreAuthorize("hasAuthority('stock_report:view')")
     public ReportTableResponse detail(
@@ -74,6 +75,7 @@ public class StockReportController {
     }
 
     /** 汇总报表（7 单据类型参数化；一行一单号）。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/{docType}/summary")
     @PreAuthorize("hasAuthority('stock_report:view')")
     public ReportTableResponse summary(

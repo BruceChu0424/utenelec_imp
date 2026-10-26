@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/brand_theme.dart';
+import '../inputs/uten_field_hint_icon.dart';
 
 class UtenSectionHeader extends StatelessWidget {
   const UtenSectionHeader({
@@ -24,11 +25,15 @@ class UtenSectionHeader extends StatelessWidget {
     this.icon,
     this.accentColor,
     this.trailing,
+    this.info,
     this.subdued = false,
   });
 
   /// 标题文字。
   final String title;
+
+  /// Pure guidance belongs beside the heading, without consuming a subtitle row.
+  final String? info;
 
   /// 可选前缀图标（简洁线性图标，青绿色，仅 [subdued]=false 时着色）。
   final IconData? icon;
@@ -94,6 +99,8 @@ class UtenSectionHeader extends StatelessWidget {
                         ),
                 ),
               ),
+              if (info?.trim().isNotEmpty ?? false)
+                UtenFieldHintIcon(info: info, dense: true),
             ],
           );
           if (stacked) {

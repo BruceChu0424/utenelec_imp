@@ -7,6 +7,7 @@
 // 右下悬浮组：新建=[存草稿/提交]、编辑=[保存]；纯网络段挂 UtenBusyOverlay。
 // 编辑 REJECTED 保存后仍在 REJECTED，重提在详情页（清驳回痕迹并重新通知审批人）。
 
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
 import '../../../core/performance/json_value_snapshot.dart';
 import 'package:uuid/uuid.dart';
@@ -568,7 +569,7 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
       return withFormDraft(
         Scaffold(
           appBar: UtenAppBar(title: l10n.expenseFlowNew, showBackButton: true),
-          body: Padding(
+          body: UtenPageEdgePadding(
             padding: const EdgeInsets.all(UtenSpacing.s16),
             child: AiGuidedFileBanner(
               plan: plan,

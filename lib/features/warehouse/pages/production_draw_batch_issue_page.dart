@@ -45,6 +45,7 @@ import '../repositories/production_draw_task_repository.dart';
 import '../repositories/stock_doc_repository.dart';
 import '../repositories/production_material_discovery_repository.dart';
 import '../widgets/production_draw_detail_table.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 /// 多单共用单张领料详情的逐行表格，进入页面只读取，确认后才整批出库。
 ///
@@ -1025,7 +1026,7 @@ class _ProductionDrawBatchIssuePageState
                           absorbing:
                               _saving || _uncertain || _confirmedResult != null,
                           child: UtenCollapsingHeaderScrollView(
-                            collapsingHeader: Padding(
+                            collapsingHeader: UtenPageEdgePadding(
                               padding: const EdgeInsets.all(UtenSpacing.s12),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1084,7 +1085,7 @@ class _ProductionDrawBatchIssuePageState
                                 ],
                               ),
                             ),
-                            body: Padding(
+                            body: UtenPageEdgePadding(
                               padding: const EdgeInsets.all(UtenSpacing.s12),
                               child: ProductionDrawDetailTable(
                                 documents: documents,

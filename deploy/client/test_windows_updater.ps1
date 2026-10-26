@@ -61,13 +61,39 @@ function Stop-OwnedClient([string]$Directory) {
     }
 }
 
-function Run-Case([string]$Name, [bool]$Crash, [bool]$AddTraversal = $false, [bool]$TamperHash = $false, [bool]$HoldImageReader = $false) {
+function Run-Case([string]$Name, [bool]$Crash, [bool]$AddTraversal = $false, [bool]$TamperHash = $false, [bool]$HoldImageReader = $false, [bool]$WithPreviousManifest = $false, [bool]$WithInstallerManifest = $false) {
     $install = Join-Path $testRoot "$Name\installed"
     $bundle = Join-Path $testRoot "$Name\bundle"
     $job = Join-Path $jobRoot $Name
     [IO.Directory]::CreateDirectory($job) | Out-Null
     Fixture $install 1 $false
     Fixture $bundle 2 $Crash
+    $obsoleteLibrary = Join-Path $install 'obsolete_runtime.dll'
+    $installedUpdater = Join-Path $install 'client_updater\client_updater.ps1'
+    $installedUpdaterHash = $null
+    if ($WithInstallerManifest) {
+        [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($installedUpdater)) | Out-Null
+        [IO.File]::Copy($updater, $installedUpdater)
+        $installedUpdaterHash = (Get-FileHash -LiteralPath $installedUpdater -Algorithm SHA256).Hash
+    }
+    if ($WithPreviousManifest -or $WithInstallerManifest) {
+        # Exercise a subsequent update: the old manifest owns a retired plugin,
+        # which must disappear on success and be restored on startup rollback.
+        [IO.File]::WriteAllText($obsoleteLibrary, 'obsolete-build-1')
+        $oldPackage = Join-Path $testRoot "$Name\previous-release.zip"
+        $oldKind = if ($WithInstallerManifest) { 'installer' } else { 'update' }
+        & $Python $packager --bundle $install --output $oldPackage --build-number 1 --architecture x64 --kind $oldKind | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Previous release fixture packaging failed.' }
+        Add-Type -AssemblyName System.IO.Compression
+        $oldStream = [IO.File]::OpenRead($oldPackage)
+        $oldArchive = [IO.Compression.ZipArchive]::new($oldStream, [IO.Compression.ZipArchiveMode]::Read)
+        try {
+            $manifestReader = [IO.StreamReader]::new($oldArchive.GetEntry('uten-client-manifest.json').Open())
+            try {
+                [IO.File]::WriteAllText((Join-Path $install 'uten-client-manifest.json'), $manifestReader.ReadToEnd())
+            } finally { $manifestReader.Dispose() }
+        } finally { $oldArchive.Dispose(); $oldStream.Dispose() }
+    }
     $settings = Join-Path $install 'existing-personal-settings.keep'
     [IO.File]::WriteAllText($settings, 'preserve-me')
     $package = Join-Path $job 'release.zip'
@@ -140,6 +166,22 @@ function Run-Case([string]$Name, [bool]$Crash, [bool]$AddTraversal = $false, [bo
             throw 'The expected version was not restarted.'
         }
         if ([IO.File]::ReadAllText($settings) -ne 'preserve-me') { throw 'Existing unrelated data was changed.' }
+        if ($WithPreviousManifest -or $WithInstallerManifest) {
+            if ($shouldFail) {
+                if (-not [IO.File]::Exists($obsoleteLibrary) -or
+                    [IO.File]::ReadAllText($obsoleteLibrary) -ne 'obsolete-build-1') {
+                    throw 'Rollback failed to restore a removed previous-release library.'
+                }
+            } elseif ([IO.File]::Exists($obsoleteLibrary)) {
+                throw 'A library owned only by the previous manifest was not removed.'
+            }
+            $activeManifest = Get-Content -LiteralPath (Join-Path $install 'uten-client-manifest.json') -Raw | ConvertFrom-Json
+            if ($activeManifest.buildNumber -ne $expectedBuild) { throw 'The active manifest does not match the restarted build.' }
+        }
+        if ($WithInstallerManifest -and
+            (Get-FileHash -LiteralPath $installedUpdater -Algorithm SHA256).Hash -cne $installedUpdaterHash) {
+            throw 'An application update modified the trusted first-install updater.'
+        }
         if ([IO.File]::Exists((Join-Path $job 'escape.txt'))) { throw 'ZIP traversal wrote outside extraction.' }
         if (-not $shouldFail -and ([IO.File]::Exists($package) -or [IO.Directory]::Exists((Join-Path $job 'extracted')))) {
             throw 'Successful update retained its downloaded ZIP or extracted runtime.'
@@ -158,6 +200,10 @@ try {
     Run-Case 'startup-failure-rollback' $true
     Run-Case 'zip-traversal-rejected' $false $true
     Run-Case 'package-hash-rejected' $false $false $true
+    Run-Case 'subsequent-update-removes-retired-library' $false -WithPreviousManifest $true
+    Run-Case 'subsequent-update-rollback-restores-retired-library' $true -WithPreviousManifest $true
+    Run-Case 'first-install-manifest-to-update' $false -WithInstallerManifest $true
+    Run-Case 'first-install-manifest-update-rollback' $true -WithInstallerManifest $true
 } finally {
     foreach ($process in $ownedProcesses) {
         try { if (-not $process.HasExited) { $process.Kill(); $process.WaitForExit(5000) | Out-Null } } catch { }
@@ -167,7 +213,14 @@ try {
         $path = Join-Path $stagingRoot $name
         if ($null -eq $priorUpdateState[$name]) { [IO.File]::Delete($path) }
         else { [IO.File]::WriteAllBytes($path, $priorUpdateState[$name]) }
+        if ($null -eq $priorUpdateState[$name]) {
+            if ([IO.File]::Exists($path)) { throw 'Fixture diagnostics were not removed after the test.' }
+        } elseif ([Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) -cne
+                  [Convert]::ToBase64String($priorUpdateState[$name])) {
+            throw 'Previous updater diagnostics were not restored exactly.'
+        }
     }
+    Write-Output 'PASS previous updater diagnostics restored exactly'
     # Verify absolute cleanup targets before recursively removing test fixtures.
     $temporaryParent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
     $resolvedTest = [IO.Path]::GetFullPath($testRoot)

@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 /// V452：供应商字典携带默认结算方式 id，供采购/委外订货开单预填。
@@ -28,6 +27,7 @@ void main() {
     );
 
     await service.ensureLoaded();
+    await service.loadSupplierNames(['s-monthly', 's-none', 's-empty']);
 
     expect(service.supplierDefaultSettlement('s-monthly'), 'm-monthly-60');
     expect(service.supplierDefaultSettlement('s-none'), isNull);
@@ -47,6 +47,10 @@ class _StubApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    return path == ApiEndpoints.suppliersDict ? suppliers : const [];
+    if (path == '/master/suppliers/lookup') {
+      final ids = (query!['ids'] as String).split(',').toSet();
+      return suppliers.where((row) => ids.contains(row['id'])).toList();
+    }
+    return const [];
   }
 }

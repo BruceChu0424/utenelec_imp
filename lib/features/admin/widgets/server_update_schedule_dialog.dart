@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,6 +6,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/server_operations.dart';
@@ -75,7 +77,15 @@ class _ScheduleState extends ConsumerState<ServerUpdateScheduleDialog> {
   Widget build(BuildContext context) => ServerUpdateDialogGuard(
     child: UtenAlertDialog(
       alignment: Alignment.center,
-      title: const Text('预约服务器更新'),
+      title: const Row(
+        children: [
+          Expanded(child: Text('预约服务器更新')),
+          UtenFieldHintIcon(
+            info: '预约保存后由服务器到点执行，关闭页面不影响任务。更新前仍会核对权限、发布源和目标版本。',
+            dense: true,
+          ),
+        ],
+      ),
       content: SizedBox(
         width: 480,
         child: Column(
@@ -107,35 +117,38 @@ class _ScheduleState extends ConsumerState<ServerUpdateScheduleDialog> {
                       });
                     },
             ),
-            DropdownButtonFormField<int>(
-              key: const ValueKey('server-schedule-hour'),
-              initialValue: _hour,
-              isExpanded: true,
-              decoration: const UtenInputDecoration(
-                InputDecoration(
-                  labelText: '服务器凌晨',
-                  border: OutlineInputBorder(),
+            UtenDropdownScrollScope(
+              nativeDropdown: true,
+              child: DropdownButtonFormField<int>(
+                key: const ValueKey('server-schedule-hour'),
+                initialValue: _hour,
+                isExpanded: true,
+                decoration: const UtenInputDecoration(
+                  InputDecoration(
+                    labelText: '服务器凌晨',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
+                selectedItemBuilder: (context) => const [
+                  Align(alignment: Alignment.centerLeft, child: Text('02:00')),
+                  Align(alignment: Alignment.centerLeft, child: Text('03:00')),
+                ],
+                items: const [
+                  DropdownMenuItem(value: 2, child: Text('凌晨 02:00')),
+                  DropdownMenuItem(value: 3, child: Text('凌晨 03:00')),
+                ],
+                onChanged: _loading
+                    ? null
+                    : (hour) {
+                        if (hour != null) {
+                          setState(() {
+                            _hour = hour;
+                            _preview = null;
+                            _error = null;
+                          });
+                        }
+                      },
               ),
-              selectedItemBuilder: (context) => const [
-                Align(alignment: Alignment.centerLeft, child: Text('02:00')),
-                Align(alignment: Alignment.centerLeft, child: Text('03:00')),
-              ],
-              items: const [
-                DropdownMenuItem(value: 2, child: Text('凌晨 02:00')),
-                DropdownMenuItem(value: 3, child: Text('凌晨 03:00')),
-              ],
-              onChanged: _loading
-                  ? null
-                  : (hour) {
-                      if (hour != null) {
-                        setState(() {
-                          _hour = hour;
-                          _preview = null;
-                          _error = null;
-                        });
-                      }
-                    },
             ),
             const SizedBox(height: UtenSpacing.s12),
             if (_preview != null)
@@ -149,7 +162,6 @@ class _ScheduleState extends ConsumerState<ServerUpdateScheduleDialog> {
                 level: UtenInlineNoticeLevel.error,
                 message: _error,
               ),
-            const Text('预约保存后由服务器到点执行，关闭页面不影响任务。更新前仍会核对权限、发布源和目标版本。'),
           ],
         ),
       ),

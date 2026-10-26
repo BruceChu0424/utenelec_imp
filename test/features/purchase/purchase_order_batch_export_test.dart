@@ -11,6 +11,8 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_order_batch_export.dart';
+import 'package:uten_imp/core/print/isolated_print_pdf.dart';
+import 'package:uten_imp/core/network/read_scope_revision.dart';
 
 Map<String, dynamic> _fixture({
   required String id,
@@ -18,6 +20,7 @@ Map<String, dynamic> _fixture({
   int lines = 1,
 }) => {
   'id': id,
+  'contentDigest': 'a' * 64,
   'billNo': billNo,
   'billDate': '2026-10-19',
   'deliverDate': '2026-11-01',
@@ -61,12 +64,29 @@ class _FakeApi extends ApiClient {
     this.failIds, {
     this.pendingIds = const {},
     this.rejectedIds = const {},
+    this.missingProof = false,
+    this.proofFailure = false,
   }) : super(Dio());
 
   final Set<String> failIds;
   final Set<String> pendingIds;
   final Set<String> rejectedIds;
+  final bool missingProof, proofFailure;
   final List<String> paths = [];
+  final List<Object?> authorizations = [];
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
+    expectSync(path, '/purchase/orders/print-authorization');
+    authorizations.add(body);
+    if (proofFailure) throw ApiException('CONFLICT', '采购单已修改，请重新导出');
+    return {};
+  }
 
   @override
   Future<Map<String, dynamic>> get(
@@ -79,10 +99,12 @@ class _FakeApi extends ApiClient {
     if (rejectedIds.contains(id)) {
       throw ApiException('FINANCE_APPROVAL_REQUIRED', '采购单须财务审核通过后才能导出或打印');
     }
-    return _fixture(
+    final fixture = _fixture(
       id: id,
       billNo: 'CD20261019${(id.split('-').last).padLeft(6, '0')}',
     )..['statusLabel'] = pendingIds.contains(id) ? '改量待财务复核' : '财务已通过';
+    if (missingProof) fixture.remove('contentDigest');
+    return fixture;
   }
 }
 
@@ -101,12 +123,14 @@ Future<void> _run(
   bool dismiss = false,
   bool Function()? stillCurrent,
   VoidCallback? beforeConfirm,
+  VoidCallback? duringGenerate,
   ThemeData? theme,
   double textScale = 1,
 }) async {
   late BuildContext captured;
   await tester.pumpWidget(
     ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
       child: MaterialApp(
         theme: theme,
         builder: (context, child) => MediaQuery(
@@ -135,6 +159,12 @@ Future<void> _run(
     onProgress: onProgress,
     saver: saver,
     stillCurrent: stillCurrent,
+    // Business/caller regressions use the pure worker handler; a separate test
+    // exercises the real isolate/worker lifecycle and responsiveness.
+    generate: (PrintPdfRequest request) {
+      duringGenerate?.call();
+      return request.binaryRenderer!(request.binaryPayload!, request.fontBytes);
+    },
   );
   await tester.pumpAndSettle();
   expect(find.text('确认导出采购单'), findsOneWidget);
@@ -174,6 +204,13 @@ void main() {
     expect(api.paths, ['/purchase/orders/order-1/print-data']);
     expect(saved.keys, ['采购单-CD20261019000001.pdf']);
     expect(_isPdf(saved.values.single), isTrue);
+    expect(api.authorizations, [
+      {
+        'documents': [
+          {'id': 'order-1', 'contentDigest': 'a' * 64},
+        ],
+      },
+    ]);
   });
 
   testWidgets('multiple orders are packed into one zip of PDFs', (
@@ -200,6 +237,7 @@ void main() {
       '/purchase/orders/order-2/print-data',
     });
     expect(progress, ['1/2', '2/2']);
+    expect((api.authorizations.single as Map)['documents'], hasLength(2));
     expect(saved.keys, ['采购单批量导出(2份).zip']);
     final entries = ZipDecoder().decodeBytes(saved.values.single).files;
     expect(entries.map((file) => file.name).toSet(), {
@@ -252,6 +290,59 @@ void main() {
     );
     expect(saves, 0);
   });
+
+  for (final missingProof in [true, false]) {
+    testWidgets(
+      'missing old-server proof or final changed document never saves ($missingProof)',
+      (tester) async {
+        final api = _FakeApi(
+          const {},
+          missingProof: missingProof,
+          proofFailure: !missingProof,
+        );
+        var saves = 0;
+        await _run(
+          tester,
+          api: api,
+          documents: const [(id: 'order-1', number: 'CD-1')],
+          saver: (bytes, name, {stillCurrent}) async {
+            saves++;
+            return name;
+          },
+        );
+        expect(saves, 0);
+        expect(api.authorizations, hasLength(missingProof ? 0 : 1));
+      },
+    );
+  }
+
+  testWidgets(
+    'scope ABA while formatting retires the original bundle and never authorizes or saves it',
+    (tester) async {
+      final api = _FakeApi(const {});
+      var saves = 0;
+      late ProviderContainer container;
+      await _run(
+        tester,
+        api: api,
+        documents: const [(id: 'order-1', number: 'CD-1')],
+        beforeConfirm: () => container = ProviderScope.containerOf(
+          tester.element(find.byType(Scaffold)),
+          listen: false,
+        ),
+        duringGenerate: () {
+          container.read(readScopeRevisionProvider.notifier).state++;
+          container.read(readScopeRevisionProvider.notifier).state++;
+        },
+        saver: (bytes, name, {stillCurrent}) async {
+          saves++;
+          return name;
+        },
+      );
+      expect(saves, 0);
+      expect(api.authorizations, isEmpty);
+    },
+  );
 
   for (final dismiss in [false, true]) {
     testWidgets(

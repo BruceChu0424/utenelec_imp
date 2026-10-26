@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 import '../../core/io/file_saver.dart';
+import '../../core/network/api_exception.dart';
 import '../../components/layout/uten_content_scrollbar.dart';
+import '../../components/layout/uten_scroll_gutter.dart';
 import '../../core/theme/uten_scroll_behavior.dart';
 import '../../core/theme/uten_tokens.dart';
 import 'attachment_archive_listing.dart';
@@ -41,7 +45,7 @@ class AttachmentPreviewDialog extends StatefulWidget {
   final String? contentType;
 
   /// 自定义「下载」动作；不传则直接把手上的字节存盘。
-  final VoidCallback? onDownload;
+  final FutureOr<void> Function()? onDownload;
 
   /// 行内「预览」能力矩阵的唯一入口（与列表图标、提示同源）。
   static bool canPreview(String name, String? contentType) =>
@@ -68,11 +72,14 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
   int _pageCount = 0;
   String? _downloadStatus;
   bool _downloading = false;
+  bool _downloadFailed = false;
+  late final bool _converted;
 
   @override
   void initState() {
     super.initState();
     final declared = attachmentPreviewKind(widget.name, widget.contentType);
+    _converted = declared == AttachmentPreviewKind.serverPdf;
     // serverPdf 走到这里时，手上的字节已经是服务端转好的 PDF。
     _kind = declared == AttachmentPreviewKind.serverPdf
         ? AttachmentPreviewKind.pdf
@@ -85,25 +92,37 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
   }
 
   void _close() {
+    if (_downloading) return;
     if (Navigator.of(context).canPop()) Navigator.of(context).pop();
   }
 
   Future<void> _download() async {
     if (_downloading) return;
     final custom = widget.onDownload;
-    if (custom != null) {
-      custom();
-      return;
-    }
     setState(() {
       _downloading = true;
       _downloadStatus = null;
+      _downloadFailed = false;
     });
     try {
-      final saved = await saveBytes(widget.bytes, widget.name);
-      if (mounted) setState(() => _downloadStatus = '已保存到 $saved');
+      if (custom != null) {
+        await custom();
+      } else {
+        if (_converted) {
+          throw StateError('转换后的预览不能作为原件下载');
+        }
+        final saved = await saveBytes(widget.bytes, widget.name);
+        if (mounted) setState(() => _downloadStatus = '已保存到 $saved');
+      }
     } catch (error) {
-      if (mounted) setState(() => _downloadStatus = '保存失败：$error');
+      if (mounted) {
+        setState(() {
+          _downloadFailed = true;
+          _downloadStatus = error is ApiException
+              ? error.message
+              : '保存失败，请重试或从文件列表下载原件';
+        });
+      }
     } finally {
       if (mounted) setState(() => _downloading = false);
     }
@@ -119,58 +138,61 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final kindIcon = AttachmentFileKind.of(widget.name, widget.contentType);
-    return UtenDialogFrame(
-      insetPadding: const EdgeInsets.all(UtenSpacing.s16),
-      backgroundColor: theme.colorScheme.surface,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(UtenRadius.xl),
-      ),
-      child: Semantics(
-        container: true,
-        label: '附件预览 ${widget.name}',
-        child: CallbackShortcuts(
-          bindings: {
-            const SingleActivator(LogicalKeyboardKey.escape): _close,
-            if (_kind == AttachmentPreviewKind.pdf) ...{
-              const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
-                  _turnPage(-1),
-              const SingleActivator(LogicalKeyboardKey.arrowUp): () =>
-                  _turnPage(-1),
-              const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
-                  _turnPage(1),
-              const SingleActivator(LogicalKeyboardKey.arrowDown): () =>
-                  _turnPage(1),
-            },
-          },
-          child: Focus(
-            autofocus: true,
-            child: FutureBuilder<AttachmentPreviewPayload>(
-              future: _payload,
-              builder: (context, snapshot) {
-                final payload = snapshot.data;
-                return Column(
-                  children: [
-                    _header(theme, kindIcon, payload),
-                    if (_downloadStatus != null)
-                      _statusLine(theme, _downloadStatus!),
-                    const Divider(height: 1),
-                    Expanded(
-                      child: payload == null
-                          ? const _PreviewLoading()
-                          : payload.error != null
-                          ? _PreviewMessage(
-                              icon: Icons.error_outline,
-                              title: payload.error!,
-                              hint: '可用「下载」保存原件后用本机应用打开',
-                            )
-                          : _body(theme, payload),
-                    ),
-                    if (_kind == AttachmentPreviewKind.pdf && _pageCount > 1)
-                      _pageBar(theme),
-                  ],
-                );
+    return PopScope(
+      canPop: !_downloading,
+      child: UtenDialogFrame(
+        insetPadding: const EdgeInsets.all(UtenSpacing.s16),
+        backgroundColor: theme.colorScheme.surface,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(UtenRadius.xl),
+        ),
+        child: Semantics(
+          container: true,
+          label: '附件预览 ${widget.name}',
+          child: CallbackShortcuts(
+            bindings: {
+              const SingleActivator(LogicalKeyboardKey.escape): _close,
+              if (_kind == AttachmentPreviewKind.pdf) ...{
+                const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+                    _turnPage(-1),
+                const SingleActivator(LogicalKeyboardKey.arrowUp): () =>
+                    _turnPage(-1),
+                const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
+                    _turnPage(1),
+                const SingleActivator(LogicalKeyboardKey.arrowDown): () =>
+                    _turnPage(1),
               },
+            },
+            child: Focus(
+              autofocus: true,
+              child: FutureBuilder<AttachmentPreviewPayload>(
+                future: _payload,
+                builder: (context, snapshot) {
+                  final payload = snapshot.data;
+                  return Column(
+                    children: [
+                      _header(theme, kindIcon, payload),
+                      if (_downloadStatus != null)
+                        _statusLine(theme, _downloadStatus!),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: payload == null
+                            ? const _PreviewLoading()
+                            : payload.error != null
+                            ? _PreviewMessage(
+                                icon: Icons.error_outline,
+                                title: payload.error!,
+                                hint: '可用「下载」保存原件后用本机应用打开',
+                              )
+                            : _body(theme, payload),
+                      ),
+                      if (_kind == AttachmentPreviewKind.pdf && _pageCount > 1)
+                        _pageBar(theme),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -232,12 +254,14 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.download_outlined, size: 20),
-            onPressed: _downloading ? null : _download,
+            onPressed: _downloading || _converted && widget.onDownload == null
+                ? null
+                : _download,
           ),
           IconButton(
             tooltip: '关闭',
             icon: const Icon(Icons.close_rounded, size: 20),
-            onPressed: _close,
+            onPressed: _downloading ? null : _close,
           ),
         ],
       ),
@@ -288,7 +312,7 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
     child: Row(
       children: [
         Icon(
-          Icons.check_circle_outline,
+          _downloadFailed ? Icons.error_outline : Icons.check_circle_outline,
           size: 14,
           color: theme.colorScheme.onSurfaceVariant,
         ),
@@ -574,71 +598,72 @@ class _CsvBodyState extends State<_CsvBody> {
     final header = table.rows.first;
     final widths = _columnWidths(columns, scale);
     final total = widths.fold<double>(0, (sum, width) => sum + width);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final tableView = Scrollbar(
-          key: const Key('attachment-preview-csv-horizontal-scrollbar'),
-          controller: _horizontal,
-          thumbVisibility: true,
-          interactive: true,
-          scrollbarOrientation: ScrollbarOrientation.bottom,
-          notificationPredicate: (notification) =>
-              notification.depth == 0 &&
-              notification.metrics.axis == Axis.horizontal,
-          child: SingleChildScrollView(
-            controller: _horizontal,
-            primary: false,
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: total < constraints.maxWidth
-                  ? constraints.maxWidth
-                  : total,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    child: _row(theme, header, widths, bold: true),
-                  ),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: ListView.builder(
-                      controller: _vertical,
-                      primary: false,
-                      itemCount: table.rows.length - 1,
-                      itemBuilder: (context, index) {
-                        final row = table.rows[index + 1];
-                        return Container(
-                          color: index.isOdd
-                              ? theme.colorScheme.surfaceContainerLowest
-                              : null,
-                          child: _row(theme, row, widths),
-                        );
-                      },
+    // The vertical thumb belongs to the visible viewport, rather than the
+    // far right edge of the horizontally scrolled CSV canvas.
+    return UtenScrollbarOwnerScope(
+      controller: _vertical,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: UtenScrollGutter(
+              child: LayoutBuilder(
+                builder: (context, constraints) => Scrollbar(
+                  key: const Key('attachment-preview-csv-horizontal-scrollbar'),
+                  controller: _horizontal,
+                  thumbVisibility: true,
+                  interactive: true,
+                  scrollbarOrientation: ScrollbarOrientation.bottom,
+                  notificationPredicate: (notification) =>
+                      notification.depth == 0 &&
+                      notification.metrics.axis == Axis.horizontal,
+                  child: SingleChildScrollView(
+                    controller: _horizontal,
+                    primary: false,
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: total < constraints.maxWidth
+                          ? constraints.maxWidth
+                          : total,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            child: _row(theme, header, widths, bold: true),
+                          ),
+                          const Divider(height: 1),
+                          Expanded(
+                            child: ListView.builder(
+                              controller: _vertical,
+                              primary: false,
+                              itemCount: table.rows.length - 1,
+                              itemBuilder: (context, index) {
+                                final row = table.rows[index + 1];
+                                return Container(
+                                  color: index.isOdd
+                                      ? theme.colorScheme.surfaceContainerLowest
+                                      : null,
+                                  child: _row(theme, row, widths),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           ),
-        );
-        // The vertical thumb belongs to the visible viewport, rather than the
-        // far right edge of the horizontally scrolled CSV canvas.
-        return UtenScrollbarOwnerScope(
-          controller: _vertical,
-          child: Stack(
-            children: [
-              Positioned.fill(child: tableView),
-              Positioned.fill(
-                child: UtenContentScrollbar(
-                  key: const Key('attachment-preview-csv-vertical-scrollbar'),
-                  controller: _vertical,
-                ),
-              ),
-            ],
+          Positioned.fill(
+            child: UtenContentScrollbar(
+              key: const Key('attachment-preview-csv-vertical-scrollbar'),
+              controller: _vertical,
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 

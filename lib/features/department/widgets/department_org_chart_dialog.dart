@@ -9,20 +9,23 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 
 import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../core/print/pdf_printer.dart';
+import '../../../core/print/isolated_print_pdf.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../employee/models/employee_api_models.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../employee/widgets/employee_leadership_badge.dart';
 import '../models/department_node.dart';
 import '../repositories/department_repository.dart';
+import '../repositories/department_roster_snapshot.dart';
 
 /// 弹出部门架构图弹层。
 Future<void> showDepartmentOrgChart({
@@ -53,31 +56,60 @@ class _DepartmentOrgChartDialogState
   bool _loading = true;
   bool _printing = false;
   String? _error;
+  int _version = 0;
+  final _pdfGenerator = IsolatedPrintPdfGenerator();
+  SensitiveReadBoundary? _boundary;
+  int? _epoch;
+  bool _retired = false;
+
+  bool _current(int version) {
+    if (!mounted || _retired || version != _version) return false;
+    if (_boundary != ref.read(sensitiveReadBoundaryProvider) ||
+        _epoch != ref.read(exportContextEpochProvider)) {
+      return false;
+    }
+    return true;
+  }
 
   @override
   void initState() {
     super.initState();
+    _boundary = ref.read(sensitiveReadBoundaryProvider);
+    _epoch = ref.read(exportContextEpochProvider);
     _load();
   }
 
   Future<void> _load() async {
+    final version = ++_version;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final tree = await ref
-          .read(departmentRepositoryProvider)
-          .subtree(widget.node.id);
-      final employees = await _loadAllEmployees();
-      if (!mounted) return;
+      final repository = ref.read(employeeRepositoryProvider);
+      final scope = await _boundary!.api.captureRequestScope(
+        isCurrent: () => _current(version),
+      );
+      final tree = await scope.run(
+        () => ref.read(departmentRepositoryProvider).subtree(widget.node.id),
+      );
+      if (!_current(version)) return;
+      final snapshot = await scope.run(
+        () => loadDepartmentRosterSnapshot(
+          repository: repository,
+          departmentId: widget.node.id,
+          isCurrent: () => _current(version) && scope.isCurrent,
+        ),
+      );
+      await scope.verify();
+      if (!_current(version)) return;
       setState(() {
         _root = tree.isEmpty ? widget.node : tree.first;
-        _byDept = _groupByDept(employees);
+        _byDept = snapshot.byDepartment;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!_current(version)) return;
       setState(() {
         _error = '加载架构图数据失败，请稍后重试';
         _loading = false;
@@ -85,34 +117,25 @@ class _DepartmentOrgChartDialogState
     }
   }
 
-  Future<List<EmployeeSummary>> _loadAllEmployees() async {
-    final repo = ref.read(employeeRepositoryProvider);
-    final all = <EmployeeSummary>[];
-    var page = 1;
-    while (true) {
-      final r = await repo.list(
-        page: page,
-        size: 100,
-        departmentId: widget.node.id,
-        includeSubtree: true,
-      );
-      all.addAll(r.items);
-      if (page >= r.totalPages || all.length >= 500) break;
-      page++;
-    }
-    return all;
+  void _retire() {
+    if (!mounted || _retired) return;
+    setState(() {
+      _retired = true;
+      _version++;
+      _byDept = const {};
+      _root = null;
+      _loading = false;
+      _printing = false;
+      _error = '账号、服务器或权限已变化，请关闭后重新打开';
+      _pdfGenerator.dispose();
+    });
   }
 
-  Map<String, List<EmployeeSummary>> _groupByDept(
-    List<EmployeeSummary> employees,
-  ) {
-    final map = <String, List<EmployeeSummary>>{};
-    for (final e in employees) {
-      final key = e.departmentId;
-      if (key == null) continue;
-      map.putIfAbsent(key, () => []).add(e);
-    }
-    return map;
+  @override
+  void dispose() {
+    _version++;
+    _pdfGenerator.dispose();
+    super.dispose();
   }
 
   /// 节点成员（负责人排最前；负责人非直属时不重复出现在成员里）。
@@ -136,6 +159,12 @@ class _DepartmentOrgChartDialogState
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(sensitiveReadBoundaryProvider, (_, next) {
+      if (next != _boundary) _retire();
+    });
+    ref.listen(exportContextEpochProvider, (_, next) {
+      if (next != _epoch) _retire();
+    });
     final theme = Theme.of(context);
     // 打印就是查看(permissions-06)：能看员工名册的人就能打印，不另设只在前端生效的码。
     final canExport = ref
@@ -470,121 +499,113 @@ class _DepartmentOrgChartDialogState
 
   Future<void> _printPdf() async {
     final root = _root;
-    if (root == null || _printing) return;
+    final version = _version;
+    if (root == null || _printing || !_current(version)) return;
     setState(() => _printing = true);
     try {
+      final outline = await buildDepartmentOrgChartPrintLines(
+        root,
+        _byDept,
+        budget: UiWorkBudget(isCurrent: () => _current(version)),
+      );
       final fontData = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
-      final font = pw.Font.ttf(fontData);
-      final doc = pw.Document();
-      doc.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(28),
-          build: (ctx) => [
-            pw.Center(
-              child: pw.Text(
-                '${widget.node.name} · 组织架构图',
-                style: pw.TextStyle(
-                  font: font,
-                  fontSize: 16,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-            ),
-            pw.SizedBox(height: 4),
-            pw.Center(
-              child: pw.Text(
-                '打印日期：${ChinaDateTime.formatDate(ChinaDateTime.today())}(北京)',
-                style: pw.TextStyle(font: font, fontSize: 9),
-              ),
-            ),
-            pw.SizedBox(height: 12),
-            ..._pdfDept(font, root, 0),
-          ],
+      if (!_current(version)) return;
+      final bytes = await _pdfGenerator.generate(
+        PrintPdfRequest.orgChart(
+          title: '${widget.node.name} · 组织架构图',
+          subtitle:
+              '打印日期：${ChinaDateTime.formatDate(ChinaDateTime.today())}(北京)',
+          lines: outline,
+          fontBytes: fontData.buffer.asUint8List(
+            fontData.offsetInBytes,
+            fontData.lengthInBytes,
+          ),
         ),
       );
-      await printPdfBytes(await doc.save(), '${widget.node.name}-组织架构图.pdf');
+      if (!_current(version)) return;
+      await printPdfBytes(bytes, '${widget.node.name}-组织架构图.pdf');
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_current(version)) return;
       context.appError('生成打印件失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _printing = false);
+      if (_current(version)) setState(() => _printing = false);
     }
   }
+}
 
-  String _pdfMemberLine(EmployeeSummary e) {
-    final label = employeeLeadershipLabel(
-      departmentManager: e.departmentManager,
-      positionLevel: e.positionLevel,
-      leaderRank: e.leaderRank,
-    );
-    return '${e.fullName} · ${e.positionName ?? ''}'
-        '${label == null ? '' : '($label)'}';
-  }
-
-  List<pw.Widget> _pdfDept(pw.Font font, DepartmentNode node, int depth) {
-    final members = _membersOf(node);
-    final widgets = <pw.Widget>[
-      pw.Padding(
-        padding: pw.EdgeInsets.only(left: depth * 18.0, bottom: 4),
-        child: pw.Container(
-          width: double.infinity,
-          color: depth == 0
-              ? const PdfColor.fromInt(0xFFDDE7F5)
-              : const PdfColor.fromInt(0xFFF1F1F1),
-          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text(
-                node.name,
-                style: pw.TextStyle(
-                  font: font,
-                  fontSize: 11,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.Text(
-                [
-                  if (node.managerName != null) '负责人：${node.managerName}',
-                  '${node.headcount ?? members.length} 人',
-                ].join(' · '),
-                style: pw.TextStyle(font: font, fontSize: 9),
-              ),
-            ],
-          ),
-        ),
+/// Preserves the original department/manager/member order and portrait layout.
+/// Only immutable display facts cross the shared PDF worker boundary.
+Future<List<OrgChartPrintLine>> buildDepartmentOrgChartPrintLines(
+  DepartmentNode root,
+  Map<String, List<EmployeeSummary>> byDepartment, {
+  UiWorkBudget? budget,
+}) async {
+  final work = budget ?? UiWorkBudget();
+  final result = <OrgChartPrintLine>[];
+  final pending = <({DepartmentNode node, int depth})>[(node: root, depth: 0)];
+  final visited = <String>{};
+  while (pending.isNotEmpty) {
+    work.ensureCurrent();
+    final entry = pending.removeLast();
+    final node = entry.node;
+    if (!visited.add(node.id)) throw const FormatException('部门层级存在重复或循环，请刷新核对');
+    final employees = byDepartment[node.id] ?? const <EmployeeSummary>[];
+    var memberCount = 0;
+    var managerDirect = false;
+    for (final employee in employees) {
+      if (employee.id == node.managerId) {
+        managerDirect = true;
+      } else {
+        memberCount++;
+      }
+      await work.checkpoint();
+    }
+    result.add(
+      OrgChartPrintLine(
+        kind: 'department',
+        depth: entry.depth,
+        text: node.name,
+        detail: [
+          if (node.managerName != null) '负责人：${node.managerName}',
+          '${node.headcount ?? memberCount} 人',
+        ].join(' · '),
       ),
-      // 负责人归入班组（首行；非直属标注挂职）
-      if (node.managerId != null && node.managerName != null)
-        pw.Padding(
-          padding: pw.EdgeInsets.only(left: depth * 18.0 + 14, bottom: 2),
-          child: pw.Text(
-            '★ ${node.managerName}(负责人'
-            '${_managerIsDirect(node) ? '' : '，非本部门直属(挂职)'})',
-            style: pw.TextStyle(
-              font: font,
-              fontSize: 9,
-              fontWeight: pw.FontWeight.bold,
-            ),
-          ),
+    );
+    if (node.managerId != null && node.managerName != null) {
+      result.add(
+        OrgChartPrintLine(
+          kind: 'manager',
+          depth: entry.depth,
+          text:
+              '★ ${node.managerName}(负责人${managerDirect ? '' : '，非本部门直属(挂职)'})',
+          bold: true,
         ),
-      for (final e in members)
-        pw.Padding(
-          padding: pw.EdgeInsets.only(left: depth * 18.0 + 14, bottom: 2),
-          child: pw.Text(
-            _pdfMemberLine(e),
-            style: pw.TextStyle(
-              font: font,
-              fontSize: 9,
-              fontWeight: e.departmentManager
-                  ? pw.FontWeight.bold
-                  : pw.FontWeight.normal,
-            ),
+      );
+    }
+    for (final employee in employees) {
+      if (employee.id != node.managerId) {
+        final label = employeeLeadershipLabel(
+          departmentManager: employee.departmentManager,
+          positionLevel: employee.positionLevel,
+          leaderRank: employee.leaderRank,
+        );
+        result.add(
+          OrgChartPrintLine(
+            kind: 'member',
+            depth: entry.depth,
+            text:
+                '${employee.fullName} · ${employee.positionName ?? ''}${label == null ? '' : '($label)'}',
+            bold: employee.departmentManager,
           ),
-        ),
-      for (final child in node.children) ..._pdfDept(font, child, depth + 1),
-    ];
-    return widgets;
+        );
+      }
+      await work.checkpoint();
+    }
+    for (final child in node.children.reversed) {
+      pending.add((node: child, depth: entry.depth + 1));
+      await work.checkpoint();
+    }
   }
+  work.ensureCurrent();
+  return List.unmodifiable(result);
 }

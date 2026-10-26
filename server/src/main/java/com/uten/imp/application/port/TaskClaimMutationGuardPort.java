@@ -10,4 +10,6 @@ public interface TaskClaimMutationGuardPort {
     void requireActiveClaimByMe(String targetType,String targetKey,UUID expectedClaimId);
     void requireActiveClaimsByMe(String targetType,List<ClaimExpectation> expectations);
     void release(String targetType,String targetKey);
+    /** Internal domain completion only: caller holds target locks and has atomically made the task terminal. */
+    void releaseAfterBusinessResolution(String targetType,String targetKey);
 }

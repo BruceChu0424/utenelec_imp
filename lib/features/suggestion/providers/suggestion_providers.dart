@@ -1,10 +1,13 @@
 // 建议 Provider
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read_provider.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../models/suggestion.dart';
 import '../repositories/suggestion_repository.dart';
 
@@ -44,41 +47,85 @@ final suggestionListProvider =
     AsyncNotifierProvider.autoDispose<
       SuggestionListNotifier,
       PagedResult<Suggestion>
-    >(SuggestionListNotifier.new);
+    >(
+      SuggestionListNotifier.new,
+      retry: pagedReadProviderRetry,
+      dependencies: [
+        _suggestionReads,
+        suggestionRepositoryProvider,
+        suggestionScopeProvider,
+        suggestionCategoryFilterProvider,
+        suggestionStatusFilterProvider,
+      ],
+    );
+
+final _suggestionReads = Provider.autoDispose
+    .family<ScopedPagedReadProviderLease<Suggestion>, Object>(
+      (ref, query) {
+        ref.watch(suggestionRepositoryProvider);
+        return ScopedPagedReadProviderLease(ref, query: query);
+      },
+      dependencies: [exportContextEpochProvider, suggestionRepositoryProvider],
+    );
 
 class SuggestionListNotifier extends AsyncNotifier<PagedResult<Suggestion>> {
   final Set<String> _likeRequests = {};
+  int _readGeneration = 0;
+  int _page = 1;
+  Object? _lastReadQuery;
+  int? Function()? _visiblePage;
+
+  Object get _readQuery => (
+    ref.read(suggestionScopeProvider),
+    ref.read(suggestionCategoryFilterProvider),
+    ref.read(suggestionStatusFilterProvider),
+  );
+  ScopedPagedReadProviderLease<Suggestion> get _reader =>
+      ref.read(_suggestionReads(_readQuery));
+  void bindReadView(BuildContext context, {int? Function()? visiblePage}) {
+    _visiblePage = visiblePage;
+    _reader.bindView(context, currentQuery: () => _readQuery);
+  }
 
   @override
   Future<PagedResult<Suggestion>> build() {
+    ++_readGeneration;
+    ref.onDispose(() => ++_readGeneration);
     // 换分段 / 换表头状态或类别筛选 → 重建即回第 1 页。
     ref.watch(suggestionScopeProvider);
     ref.watch(suggestionStatusFilterProvider);
     ref.watch(suggestionCategoryFilterProvider);
-    return _fetch(1);
+    ref.watch(_suggestionReads(_readQuery));
+    final query = _readQuery;
+    _page = _lastReadQuery == query ? (_visiblePage?.call() ?? _page) : 1;
+    _lastReadQuery = query;
+    return _fetch(_page);
   }
 
   Future<void> refresh() async {
-    await _goTo(state.value?.page ?? 1, keepPrevious: false);
+    _reader.invalidate();
+    await _goTo(_visiblePage?.call() ?? state.value?.page ?? _page, keepPrevious: false);
   }
 
   Future<void> previousPage() async {
     final current = state.value;
-    if (current == null || current.page <= 1) return;
-    await _goTo(current.page - 1);
+    final page = _visiblePage?.call() ?? current?.page ?? 1;
+    if (current == null || page <= 1) return;
+    await _goTo(page - 1);
   }
 
   Future<void> nextPage() async {
     final current = state.value;
-    if (current == null || current.page >= current.totalPages) return;
-    await _goTo(current.page + 1);
+    final page = _visiblePage?.call() ?? current?.page ?? 1;
+    if (current == null || page >= current.totalPages) return;
+    await _goTo(page + 1);
   }
 
   /// 直接拉目标页（2026-09-09 建议箱列表表格化：表格内置翻页条含跳页输入）。
   Future<void> goToPage(int page) async {
     final current = state.value;
     if (current == null) return;
-    if (page < 1 || page == current.page || page > current.totalPages) return;
+    if (page < 1 || page == (_visiblePage?.call() ?? current.page) || page > current.totalPages) return;
     await _goTo(page);
   }
 
@@ -98,6 +145,7 @@ class SuggestionListNotifier extends AsyncNotifier<PagedResult<Suggestion>> {
 
   /// 回复等详情页写操作完成后，把服务端回执同步到当前页并保留页码。
   void replaceIfPresent(Suggestion updated) {
+    _reader.invalidate();
     final current = state.value;
     if (current == null ||
         !current.items.any((item) => item.id == updated.id)) {
@@ -120,22 +168,36 @@ class SuggestionListNotifier extends AsyncNotifier<PagedResult<Suggestion>> {
 
   Future<void> _goTo(int page, {bool keepPrevious = true}) async {
     if (state.isLoading) return;
+    final generation = _readGeneration;
     state = keepPrevious
         ? const AsyncLoading<PagedResult<Suggestion>>().copyWithPrevious(state)
         : const AsyncLoading<PagedResult<Suggestion>>();
-    state = await AsyncValue.guard(() => _fetch(page));
+    final next = keepPrevious
+        ? await _reader.paginate(
+            page,
+            () => AsyncValue.guard(() => _fetch(page)),
+          )
+        : await AsyncValue.guard(() => _fetch(page));
+    if (generation == _readGeneration) {
+      if (next.hasValue) _page = next.requireValue.page;
+      state = next;
+    }
   }
 
   Future<PagedResult<Suggestion>> _fetch(int page) {
     final scope = ref.read(suggestionScopeProvider);
-    return ref
-        .read(suggestionRepositoryProvider)
-        .list(
-          mine: scope == SuggestionScope.mine,
-          category: ref.read(suggestionCategoryFilterProvider),
-          status: ref.read(suggestionStatusFilterProvider),
-          page: page,
-        );
+    final repository = ref.read(suggestionRepositoryProvider);
+    final category = ref.read(suggestionCategoryFilterProvider);
+    final status = ref.read(suggestionStatusFilterProvider);
+    return _reader.read(
+      page,
+      fetchPage: (page) => repository.list(
+        mine: scope == SuggestionScope.mine,
+        category: category,
+        status: status,
+        page: page,
+      ),
+    );
   }
 }
 

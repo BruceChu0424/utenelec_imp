@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/l10n/gen/app_localizations.dart';
-import '../../shared/auth/permissions.dart';
-import '../../shared/providers/session_provider.dart';
+import 'client_release_access.dart';
 import 'client_release_publish_dialog.dart';
 import 'client_update_controller.dart';
 import 'client_update_page.dart';
@@ -47,12 +46,7 @@ class ClientReleasePublishTile extends ConsumerWidget {
   const ClientReleasePublishTile({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final session = ref.watch(sessionProvider);
-    if (session.isImpersonating ||
-        !ref.watch(isSuperAdminProvider) ||
-        !ref
-            .watch(currentPermissionsProvider)
-            .contains(Perm.authorizationManage)) {
+    if (ref.watch(clientReleasePublisherProvider) == null) {
       return const SizedBox.shrink();
     }
     final l10n = AppLocalizations.of(context);
@@ -62,11 +56,14 @@ class ClientReleasePublishTile extends ConsumerWidget {
       title: Text(l10n.clientUpdatePublishTitle),
       subtitle: Text(l10n.clientUpdatePublishHint),
       trailing: const Icon(Icons.chevron_right_rounded),
-      onTap: () => showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const ClientReleasePublishDialog(),
-      ),
+      onTap: () {
+        if (ref.read(clientReleasePublisherProvider) == null) return;
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const ClientReleasePublishDialog(),
+        );
+      },
     );
   }
 }

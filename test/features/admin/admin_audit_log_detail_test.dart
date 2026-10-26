@@ -1,5 +1,6 @@
 import '../../support/audit_screenshot_support.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/components/layout/uten_scroll_prefetch_policy.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'dart:async';
@@ -25,6 +26,10 @@ import 'package:uten_imp/features/admin/widgets/audit_query_scope.dart';
 import 'package:uten_imp/components/data_display/uten_status_badge.dart';
 import 'package:uten_imp/core/audit/device_audit_store.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/core/router/page_resume_provider.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/admin/models/audit_log_entry.dart';
 import 'package:uten_imp/features/admin/models/audit_session.dart';
@@ -34,6 +39,8 @@ import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/employee/providers/employee_picker_department_tree_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+part 'admin_audit_cache_cases.dart';
 
 final _auditDepartmentTree = [
   DepartmentNode(
@@ -55,6 +62,7 @@ final _auditDepartmentTree = [
 ];
 
 void main() {
+  auditCacheCases();
   TestWidgetsFlutterBinding.ensureInitialized();
 
   if (const bool.fromEnvironment('UTEN_CAPTURE_UI')) {
@@ -382,23 +390,38 @@ void main() {
     },
   );
 
-  for (final (sessions, zoom) in [
-    (false, 1.0),
-    (true, 1.0),
-    (false, 1.5),
-    (true, 1.5),
+  for (final (sessions, zoom, thumbStyle, rowsPerPage) in [
+    (false, 1.0, false, 1),
+    (true, 1.0, false, 1),
+    (false, 1.5, false, 1),
+    (true, 1.5, false, 1),
+    (false, 1.0, true, 1),
+    (true, 1.0, true, 1),
+    (false, 1.5, true, 1),
+    (true, 1.5, true, 1),
+    (false, 1.5, true, 20),
+    (true, 1.5, true, 20),
   ]) {
     testWidgets(
-      '${sessions ? 'session' : 'event'} table scrolls upward to prepend and preserves its row at $zoom x',
+      '${sessions ? 'session' : 'event'} table ${thumbStyle ? 'thumb-style position' : 'wheel'} scrolls upward to prepend and preserves its row at $zoom x ($rowsPerPage rows)',
       (tester) async {
-        tester.view.physicalSize = const Size(1200, 900);
+        // One short session fits the 900px viewport at 1x, so there is no thumb
+        // movement to test there. Use a genuinely scrollable viewport instead
+        // of jumpTo(-1), which is an out-of-range overscroll that springs back.
+        tester.view.physicalSize = Size(
+          1200,
+          sessions && zoom == 1 && thumbStyle ? 500 : 900,
+        );
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
         final repository = _AuditRepository(
           totalPages: 3,
           sessionTotalPages: 3,
+          rowsPerPage: rowsPerPage,
         );
+        final foreground = ValueNotifier(true);
+        addTearDown(foreground.dispose);
         SharedPreferences.setMockInitialValues({});
         final preferences = await SharedPreferences.getInstance();
         await tester.pumpWidget(
@@ -414,8 +437,15 @@ void main() {
               sharedPreferencesProvider.overrideWithValue(preferences),
             ],
             child: MaterialApp(
-              builder: (context, child) =>
-                  UtenDisplayZoomBox(fontFactor: zoom, child: child!),
+              builder: (context, child) => UtenDisplayZoomBox(
+                fontFactor: zoom,
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: foreground,
+                  child: child!,
+                  builder: (context, active, child) =>
+                      TickerMode(enabled: active, child: child!),
+                ),
+              ),
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,
               locale: const Locale('zh'),
@@ -432,7 +462,6 @@ void main() {
         final calls = sessions ? repository.sessionCalls : repository.listCalls;
         // The scope helper may pull to refresh while locating lazy slivers on
         // a zoomed screen. Freeze setup calls before checking page navigation.
-        final expectedPages = [...calls.map((call) => call['page']), 3];
         if (sessions) {
           await tester
               .widget<MasterDataTableView<AuditSessionSummary>>(tableFinder)
@@ -443,19 +472,46 @@ void main() {
               .onPageChange!(3);
         }
         await tester.pumpAndSettle();
+        await Future<void>.sync(
+          () => tester
+              .widget<MasterDataTableView<dynamic>>(tableFinder)
+              .onRetry!(),
+        );
+        await tester.pumpAndSettle();
+        final expectedPages = [...calls.map((call) => call['page'])];
         final rowFinder = find.byKey(
           ValueKey(
             sessions
-                ? 'audit-session-${_AuditRepository.sessionId}-3'
-                : 'row:44',
+                ? 'audit-session-${_AuditRepository.sessionId}-3${rowsPerPage > 1 ? '-0' : ''}'
+                : 'row:${rowsPerPage > 1 ? 300 : 44}',
           ),
         );
-        await _scrollAuditPageUntilBuilt(tester, rowFinder);
         final scrollFinder = find.byType(CustomScrollView).first;
         final scroll = tester
             .widget<CustomScrollView>(scrollFinder)
             .controller!;
+        // The virtual table must admit its rows in the foreground. Rewind
+        // only the retained viewport while inactive, then build the last
+        // page by moving forward (it has no next page to prefetch).
+        foreground.value = false;
+        await tester.pumpAndSettle();
+        scroll.jumpTo(0);
+        await tester.pumpAndSettle();
+        foreground.value = true;
+        await tester.pumpAndSettle();
+        for (var step = 0; step < 30 && rowFinder.evaluate().isEmpty; step++) {
+          scroll.jumpTo(
+            (scroll.offset + 160).clamp(
+              scroll.position.minScrollExtent,
+              scroll.position.maxScrollExtent,
+            ),
+          );
+          await tester.pumpAndSettle();
+        }
+        expect(rowFinder, findsOneWidget);
         final viewport = _auditGlobalRect(tester, scrollFinder);
+        foreground.value = false;
+        await tester.pumpAndSettle();
         scroll.jumpTo(
           (scroll.offset +
                   (tester.getTopLeft(rowFinder).dy - viewport.top - 150) / zoom)
@@ -468,8 +524,11 @@ void main() {
         expect(
           calls.map((call) => call['page']),
           expectedPages,
-          reason: 'Programmatic positioning cannot fetch an earlier page',
+          reason: 'Inactive page positioning cannot fetch an earlier page',
         );
+        foreground.value = true;
+        await tester.pumpAndSettle();
+        expect(calls.map((call) => call['page']), expectedPages);
         final anchorTop = tester.getTopLeft(rowFinder).dy;
         final pointer = _auditGlobalRect(
           tester,
@@ -487,16 +546,34 @@ void main() {
         await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
         expect(calls.map((call) => call['page']), expectedPages);
 
-        await tester.sendEventToBinding(
-          PointerScrollEvent(
-            position: pointer,
-            scrollDelta: const Offset(0, -1),
-          ),
-        );
+        final beforeMovement = scroll.offset;
+        if (thumbStyle) {
+          scroll.jumpTo(
+            (scroll.offset - 1).clamp(
+              scroll.position.minScrollExtent,
+              scroll.position.maxScrollExtent,
+            ),
+          );
+          expect(beforeMovement - scroll.offset, closeTo(1, .001));
+        } else {
+          await tester.sendEventToBinding(
+            PointerScrollEvent(
+              position: pointer,
+              scrollDelta: const Offset(0, -1),
+            ),
+          );
+        }
+        final expectedAnchorTop =
+            anchorTop - (scroll.offset - beforeMovement) * zoom;
         await tester.pumpAndSettle();
         expect(calls.map((call) => call['page']), [...expectedPages, 2]);
-        expect(calls.last[sessions ? 'snapshotAuditId' : 'snapshotId'], 9001);
-        expect(tester.getTopLeft(rowFinder).dy, closeTo(anchorTop + zoom, 3));
+        expect(
+          calls.where((call) => call['page'] == 2).last[sessions
+              ? 'snapshotAuditId'
+              : 'snapshotId'],
+          9001,
+        );
+        expect(tester.getTopLeft(rowFinder).dy, closeTo(expectedAnchorTop, .5));
         if (sessions) {
           expect(
             tester
@@ -505,8 +582,9 @@ void main() {
                 .items
                 .map((row) => row.sessionId),
             [
-              '${_AuditRepository.sessionId}-2',
-              '${_AuditRepository.sessionId}-3',
+              for (final page in [2, 3])
+                for (var index = 0; index < rowsPerPage; index++)
+                  '${_AuditRepository.sessionId}-$page${rowsPerPage > 1 ? '-$index' : ''}',
             ],
           );
         } else {
@@ -516,7 +594,11 @@ void main() {
                 .rowsController!
                 .items
                 .map((row) => row.id),
-            [43, 44],
+            [
+              for (final page in [2, 3])
+                for (var index = 0; index < rowsPerPage; index++)
+                  rowsPerPage > 1 ? page * 100 + index : 41 + page,
+            ],
           );
         }
         expect(tester.takeException(), isNull);
@@ -539,6 +621,8 @@ void main() {
           sessionTotalPages: 2,
           rowsPerPage: 12,
         );
+        final foreground = ValueNotifier(true);
+        addTearDown(foreground.dispose);
         SharedPreferences.setMockInitialValues({});
         final preferences = await SharedPreferences.getInstance();
         await tester.pumpWidget(
@@ -554,8 +638,15 @@ void main() {
               sharedPreferencesProvider.overrideWithValue(preferences),
             ],
             child: MaterialApp(
-              builder: (_, child) =>
-                  UtenDisplayZoomBox(fontFactor: zoom, child: child!),
+              builder: (_, child) => UtenDisplayZoomBox(
+                fontFactor: zoom,
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: foreground,
+                  child: child!,
+                  builder: (context, active, child) =>
+                      TickerMode(enabled: active, child: child!),
+                ),
+              ),
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,
               locale: const Locale('zh'),
@@ -569,8 +660,11 @@ void main() {
           Key(sessions ? 'audit-session-table' : 'audit-event-table'),
         );
         final calls = sessions ? repository.sessionCalls : repository.listCalls;
+
+        foreground.value = false;
+        await tester.pumpAndSettle();
         // Build the lazy table without a drag-to-refresh gesture in the query
-        // header. Programmatic positioning must not issue extra page reads.
+        // header. Inactive retained-page positioning cannot prefetch.
         final setupScroll = tester
             .widget<CustomScrollView>(find.byType(CustomScrollView).first)
             .controller!;
@@ -592,7 +686,9 @@ void main() {
         expect(tableFinder, findsOneWidget);
         await tester.ensureVisible(tableFinder);
         await tester.pumpAndSettle();
-        expect(calls.map((call) => call['page']), [1]);
+        expect(calls.map((call) => call['page']), [1, 2]);
+        foreground.value = true;
+        await tester.pumpAndSettle();
         Future<void> append() => sessions
             ? tester
                   .widget<MasterDataTableView<AuditSessionSummary>>(tableFinder)
@@ -675,10 +771,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final repository = _AuditRepository(
-      sessionTotalPages: 3,
-      failSessionPageTwoOnce: true,
-    );
+    final repository = _AuditRepository(sessionTotalPages: 3);
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
     await tester.pumpWidget(
@@ -706,11 +799,21 @@ void main() {
         .widget<MasterDataTableView<AuditSessionSummary>>(tableFinder)
         .onPageChange!(3);
     await tester.pumpAndSettle();
+    // A fresh explicit retry clears pages prepared from the old read.
+    await Future<void>.sync(
+      () => tester
+          .widget<MasterDataTableView<AuditSessionSummary>>(tableFinder)
+          .onRetry!(),
+    );
+    await tester.pumpAndSettle();
     final rowFinder = find.byKey(
       const ValueKey('audit-session-${_AuditRepository.sessionId}-3'),
     );
     await _scrollAuditPageUntilBuilt(tester, rowFinder);
     final viewport = tester.getRect(find.byType(CustomScrollView).first);
+    repository.nextSessionError = StateError(
+      'controlled previous-page failure',
+    );
     await tester.sendEventToBinding(
       PointerScrollEvent(
         position: tester.getRect(rowFinder).intersect(viewport).center,
@@ -718,13 +821,26 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(repository.sessionCalls.map((call) => call['page']), [1, 3, 2]);
+    expect(repository.sessionCalls.map((call) => call['page']), [
+      1,
+      2,
+      3,
+      3,
+      2,
+    ]);
     final retry = find.descendant(of: tableFinder, matching: find.text('重试'));
     expect(retry, findsOneWidget);
     final beforeRetry = tester.getTopLeft(rowFinder).dy;
     await tester.tap(retry);
     await tester.pumpAndSettle();
-    expect(repository.sessionCalls.map((call) => call['page']), [1, 3, 2, 2]);
+    expect(repository.sessionCalls.map((call) => call['page']), [
+      1,
+      2,
+      3,
+      3,
+      2,
+      2,
+    ]);
     expect(tester.getTopLeft(rowFinder).dy, closeTo(beforeRetry, 1));
     expect(
       tester
@@ -738,48 +854,60 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('session list pagination reuses its audit high-water', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1200, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'session entry prepares the next page before scrolling and near-edge appends reuse it',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    final repository = _AuditRepository(sessionTotalPages: 2);
-    SharedPreferences.setMockInitialValues({});
-    final preferences = await SharedPreferences.getInstance();
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          employeePickerDepartmentTreeProvider.overrideWith(
-            (ref) async => _auditDepartmentTree,
+      final repository = _AuditRepository(
+        sessionTotalPages: 2,
+        rowsPerPage: 40,
+      );
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            employeePickerDepartmentTreeProvider.overrideWith(
+              (ref) async => _auditDepartmentTree,
+            ),
+            auditLogRepositoryProvider.overrideWithValue(repository),
+            currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+          ],
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: Locale('zh'),
+            home: AdminAuditLogPage(),
           ),
-          auditLogRepositoryProvider.overrideWithValue(repository),
-          currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
-          sharedPreferencesProvider.overrideWithValue(preferences),
-        ],
-        child: const MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: Locale('zh'),
-          home: AdminAuditLogPage(),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await _selectDefaultAuditScope(tester, eventView: false);
+      );
+      await tester.pumpAndSettle();
+      await _selectDefaultAuditScope(tester, eventView: false);
 
-    final table = tester.widget<MasterDataTableView<AuditSessionSummary>>(
-      find.byKey(const Key('audit-session-table')),
-    );
-    await table.rowsController!.loadNextPage();
-    await tester.pumpAndSettle();
+      final scroll = tester
+          .widget<CustomScrollView>(find.byType(CustomScrollView).first)
+          .controller!;
+      expect(repository.sessionCalls.map((call) => call['page']), [1, 2]);
+      final table = tester.widget<MasterDataTableView<AuditSessionSummary>>(
+        find.byKey(const Key('audit-session-table')),
+      );
+      expect(table.currentPage, 1);
+      expect(table.rowsController!.items, hasLength(40));
+      final distance = UtenScrollPrefetchPolicy.distanceOf(scroll.position);
+      scroll.jumpTo(scroll.position.maxScrollExtent - distance / 2);
+      expect(scroll.position.extentAfter, greaterThan(0));
+      await tester.pumpAndSettle();
 
-    expect(repository.sessionCalls, hasLength(2));
-    expect(repository.sessionCalls.last['page'], 2);
-    expect(repository.sessionCalls.last['snapshotAuditId'], 9001);
-  });
+      expect(repository.sessionCalls, hasLength(2));
+      expect(repository.sessionCalls.last['page'], 2);
+      expect(repository.sessionCalls.last['snapshotAuditId'], 9001);
+    },
+  );
 
   testWidgets('empty sessions explain legacy logs and switch to event view', (
     tester,
@@ -1606,7 +1734,11 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    final repository = _AuditRepository(totalPages: 120);
+    final leadingPage = Completer<AuditLogPage>();
+    final repository = _AuditRepository(
+      totalPages: 120,
+      eventPageGates: {78: leadingPage},
+    );
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
     await tester.pumpWidget(
@@ -1629,7 +1761,12 @@ void main() {
     );
     await tester.pumpAndSettle();
     await _selectDefaultAuditScope(tester);
+    await _scrollAuditPageUntilBuilt(
+      tester,
+      find.byKey(const ValueKey('row:42')),
+    );
     final summaryCallCount = repository.summaryCalls.length;
+    final callsBeforeJump = repository.listCalls.length;
 
     final jumpField = find.descendant(
       of: find.byKey(const Key('audit-event-table')),
@@ -1640,10 +1777,68 @@ void main() {
       matching: find.byType(EditableText),
     );
     tester.widget<EditableText>(editor).onSubmitted!('79');
+    for (
+      var frame = 0;
+      frame < 12 &&
+          !repository.listCalls
+              .skip(callsBeforeJump)
+              .any((call) => call['page'] == 78);
+      frame++
+    ) {
+      await tester.pump();
+    }
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(
+      repository.listCalls.skip(callsBeforeJump).map((call) => call['page']),
+      [79, 78, 80],
+    );
+    expect(
+      repository.listCalls
+          .skip(callsBeforeJump)
+          .map((call) => call['snapshotId']),
+      [9001, 9001, 9001],
+    );
+    final row79 = find.byKey(const ValueKey('row:120'));
+    expect(row79, findsOneWidget);
+    final anchorTop = tester.getTopLeft(row79).dy;
+    leadingPage.complete(
+      const AuditLogPage(
+        items: [
+          AuditLogEntry(
+            id: 119,
+            action: 'update',
+            summary: '上一页缓冲',
+            result: 'success',
+          ),
+        ],
+        page: 78,
+        size: 20,
+        total: 120,
+        totalPages: 120,
+        snapshotId: 9001,
+      ),
+    );
     await tester.pumpAndSettle();
 
-    expect(repository.listCalls.last['page'], 79);
-    expect(repository.listCalls.last['snapshotId'], 9001);
+    expect(
+      repository.listCalls.skip(callsBeforeJump).map((call) => call['page']),
+      [79, 78, 80],
+    );
+    expect(
+      repository.listCalls
+          .skip(callsBeforeJump)
+          .map((call) => call['snapshotId']),
+      [9001, 9001, 9001],
+    );
+    expect(tester.widget<TextFormField>(jumpField).controller!.text, '79');
+    expect(find.byKey(const ValueKey('row:121')), findsNothing);
+    expect(
+      repository.listCalls
+          .skip(callsBeforeJump)
+          .any((call) => call['page'] == 77),
+      isFalse,
+    );
+    expect(tester.getTopLeft(row79).dy, closeTo(anchorTop, .5));
     expect(repository.summaryCalls, hasLength(summaryCallCount));
   });
 
@@ -2025,6 +2220,7 @@ class _AuditRepository implements AuditLogRepository {
     this.sessionTotalPages = 1,
     this.rowsPerPage = 1,
     this.failSessionPageTwoOnce = false,
+    this.eventPageGates = const {},
   });
 
   final bool earlyAttempt;
@@ -2040,7 +2236,11 @@ class _AuditRepository implements AuditLogRepository {
   final int sessionTotalPages;
   final int rowsPerPage;
   final bool failSessionPageTwoOnce;
+  final Map<int, Completer<AuditLogPage>> eventPageGates;
   bool _sessionPageTwoFailed = false;
+  Object? nextEventError;
+  Object? nextSessionError;
+  String? readScopeVersion;
   int detailCalls = 0;
   int actorCalls = 0;
   String? lastRiskLevel;
@@ -2070,6 +2270,10 @@ class _AuditRepository implements AuditLogRepository {
       'size': size,
       'snapshotAuditId': snapshotAuditId,
     });
+    if (nextSessionError case final failure?) {
+      nextSessionError = null;
+      throw failure;
+    }
     if (page == 2 && failSessionPageTwoOnce && !_sessionPageTwoFailed) {
       _sessionPageTwoFailed = true;
       throw StateError('temporary page failure');
@@ -2120,6 +2324,7 @@ class _AuditRepository implements AuditLogRepository {
       total: emptySessions ? 0 : sessionTotalPages * rowsPerPage,
       totalPages: emptySessions ? 0 : sessionTotalPages,
       snapshotAuditId: snapshotAuditId ?? 9001,
+      readScopeVersion: readScopeVersion,
     );
   }
 
@@ -2269,6 +2474,11 @@ class _AuditRepository implements AuditLogRepository {
       'dateFrom': dateFrom,
       'dateTo': dateTo,
     });
+    if (nextEventError case final failure?) {
+      nextEventError = null;
+      throw failure;
+    }
+    if (eventPageGates[page] case final gate?) return gate.future;
     final defaultEntry = AuditLogEntry(
       id: 41 + page,
       actorId: _AuditRepository.actorId,
@@ -2334,6 +2544,7 @@ class _AuditRepository implements AuditLogRepository {
       total: actorScope == 'system' ? 0 : totalPages * rowsPerPage,
       totalPages: actorScope == 'system' ? 0 : totalPages,
       snapshotId: snapshotId ?? 9001,
+      readScopeVersion: readScopeVersion,
     );
   }
 

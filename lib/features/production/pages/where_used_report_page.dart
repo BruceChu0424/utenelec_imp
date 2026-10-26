@@ -1,3 +1,4 @@
+import '../../../core/router/page_navigation_session.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 // 物料反查产成品（production_where_used:view，只读 CQRS 报表）。
 //
@@ -32,6 +33,9 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/paging/paged_query_identity.dart';
+import '../../../shared/paging/scoped_paged_read.dart'
+    show pagedReadAccessDenied;
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/stock_ledger/material_trace_models.dart';
 import '../../../shared/stock_ledger/material_trace_repository.dart';
@@ -41,6 +45,8 @@ import '../../basic_data/models/goods_node.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
+import '../../report/shared/report_metadata_reuse.dart';
+import '../../report/shared/report_paged_read.dart';
 import '../../report/shared/report_date_range.dart';
 import '../../report/shared/report_sort.dart';
 import '../widgets/where_used_material_picker.dart';
@@ -113,6 +119,14 @@ class WhereUsedReportPage extends ConsumerStatefulWidget {
 }
 
 class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
+  final _navigation = PageNavigationSession();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
   final _subjectController = TextEditingController();
   bool _queryDirty = false;
   GoodsListItem? _material;
@@ -133,6 +147,10 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   String? _sortKey;
   bool _sortAscending = true;
   ReportData? _data;
+  final _reportMetadata = ReportMetadataReuse();
+  late final _reportRead = ReportPagedRead(_reportMetadata);
+  final _tableRows = MasterDataTableRowsController<Map<String, dynamic>>();
+  Object? _acceptedPageReadQuery;
   _WhereUsedQuerySnapshot? _loadedQuery;
   int _loadGeneration = 0;
   bool _loading = false;
@@ -234,6 +252,8 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
 
   @override
   void dispose() {
+    _reportRead.dispose();
+    _navigation.dispose();
     _refreshController.dispose();
     ++_loadGeneration;
     _closeReadRoute(_filterRoute);
@@ -255,7 +275,9 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
 
   void _invalidateLoadedResults() {
     _loadGeneration += 1;
+    _reportRead.invalidate();
     _data = null;
+    _acceptedPageReadQuery = null;
     _loadedQuery = null;
     _loadError = null;
     _loading = false;
@@ -390,7 +412,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     }
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool reuseMetadata = false, int? page}) async {
     final material = _material;
     if (material == null) {
       context.appError('请先选择要反查的物料');
@@ -406,7 +428,12 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       source: _source,
       from: _limitHistoryDates ? _from : null,
       to: _limitHistoryDates ? _to : null,
-      page: _page,
+      page:
+          page ??
+          (_data != null &&
+                  samePagedReadQuery(_acceptedPageReadQuery, _pageReadQuery)
+              ? _tableRows.visiblePage ?? _page
+              : _page),
       sortKey: _sortKey,
       sortAscending: _sortAscending,
     );
@@ -427,22 +454,40 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         'source': snapshot.source.apiValue,
         if (snapshot.from != null) 'dateFrom': _formatDate(snapshot.from!),
         if (snapshot.to != null) 'dateTo': _formatDate(snapshot.to!),
-        'page': snapshot.page,
         'size': _size,
         ...sortQueryParams(snapshot.sortKey, snapshot.sortAscending),
       };
-      final json = await ref
-          .read(apiClientProvider)
-          .get('/production/reports/where-used', query: query);
-      if (!mounted || !current()) return;
-      final decodedReport = await parseReportResponseResponsive(
-        json,
-        snapshot.page,
-        isCurrent: current,
+      final api = ref.read(apiClientProvider);
+      bool queryCurrent() =>
+          mounted &&
+          readEpoch == ref.read(exportContextEpochProvider) &&
+          identical(api, ref.read(apiClientProvider)) &&
+          samePagedReadQuery(query, _pageReadQuery);
+      final read = _reportRead.begin(
+        endpoint: '/production/reports/where-used',
+        query: query,
+        readerEpoch: readEpoch,
+        reusePages: reuseMetadata,
+        fetch: (parameters) =>
+            api.get('/production/reports/where-used', query: parameters),
+        isCurrent: queryCurrent,
+        canPrefetch: () =>
+            mounted &&
+            TickerMode.valuesOf(context).enabled &&
+            (ModalRoute.of(context)?.isCurrent ?? true),
+        onPrefetchError: (error) {
+          if (!queryCurrent() || !pagedReadAccessDenied(error)) return;
+          setState(() {
+            _invalidateLoadedResults();
+            _loadError = (error as ApiException).message;
+          });
+        },
       );
-      if (!mounted || !current()) return;
+      final cached = await read.read(snapshot.page) as ReportPageSnapshot;
+      if (!mounted || !current() || !_reportRead.accept(cached)) return;
       setState(() {
-        _data = decodedReport;
+        _acceptedPageReadQuery = freezePagedReadQuery(query);
+        _data = cached.snapshot;
         _loadedQuery = snapshot;
         _page = snapshot.page;
         _loading = false;
@@ -469,6 +514,15 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       });
     }
   }
+
+  Map<String, dynamic> get _pageReadQuery => {
+    'materialGoodsId': _material?.id,
+    'source': _source.apiValue,
+    if (_limitHistoryDates) 'dateFrom': _formatDate(_from),
+    if (_limitHistoryDates) 'dateTo': _formatDate(_to),
+    'size': _size,
+    ...sortQueryParams(_sortKey, _sortAscending),
+  };
 
   Future<void> _openProductDetail(Map<String, dynamic> row) async {
     if (_openingDetail) return;
@@ -507,7 +561,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       if (detail == null) return;
       // 货品详情整页 (tab=bom 组装信息直达 BOM)；「出入库流水」按钮
       // 由详情页按 stock:view 权限自行决定是否显示。
-      await context.push(
+      await _navigation.push(
         RoutePath.basicinfoGoodsDetail(
           detail.id,
           tab: result.link == WhereUsedProductLink.bom ? 'bom' : 'basic',
@@ -591,7 +645,9 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
                         unattributed > 0)
                       _UnattributedNotice(
                         count: unattributed,
-                        quantity: _data?.meta['unattributedDemandQty'],
+                        quantity:
+                            _data?.meta['unattributedDemandQtyExact'] ??
+                            _data?.meta['unattributedDemandQty'],
                       ),
                   ],
                 ),
@@ -1147,12 +1203,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       );
     }
     if (_loading && _data == null) {
-      return const _StatePanel(
-        loading: true,
-        icon: Icons.account_tree_outlined,
-        title: '正在汇总已知关系',
-        message: '正在核对当前 BOM、生产需求与委外历史…',
-      );
+      return _buildTable(_reportMetadata.loadingData);
     }
     if (_loadError != null && _data == null) {
       return _StatePanel(
@@ -1355,6 +1406,8 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         ? '当前条件'
         : _historyRangeLabel(_loadedQuery!);
     return MasterDataTableView<Map<String, dynamic>>(
+      rowsController: _tableRows,
+      expensiveRowMounts: false,
       tableKey:
           'features.production.pages.where_used_report_page.WhereUsedReportPageState._buildTable.1',
       // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
@@ -1397,7 +1450,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
             prepareExport: _selectExportFormat,
           ),
         Text(
-          '共 ${data.total} 个成品/半成品',
+          _data == null && _loading ? '正在加载已知关系' : '共 ${data.total} 个成品/半成品',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         if (_limitHistoryDates)
@@ -1418,11 +1471,20 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
           '可切换到“全部已知关系”或“全部历史”；当前仍可能受 BOM 拒绝行影响。',
       currentPage: data.page,
       totalPages: data.totalPages,
-      paginationScope: (_material?.id, _source, _limitHistoryDates, _from, _to),
-      onPageChange: (page) {
+      paginationScope: (
+        _reportRead.snapshotRevision,
+        _material?.id,
+        _source,
+        _limitHistoryDates,
+        _from,
+        _to,
+        _sortKey,
+        _sortAscending,
+      ),
+      onPageChange: (page) async {
         if (_loading) return;
         _page = page;
-        _load();
+        await _load(page: page, reuseMetadata: true);
       },
     );
   }
@@ -1575,7 +1637,6 @@ class _StatePanel extends StatelessWidget {
     required this.message,
     this.actionLabel,
     this.onAction,
-    this.loading = false,
   });
 
   final IconData icon;
@@ -1583,7 +1644,6 @@ class _StatePanel extends StatelessWidget {
   final String message;
   final String? actionLabel;
   final VoidCallback? onAction;
-  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -1600,14 +1660,11 @@ class _StatePanel extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (loading)
-                    const CircularProgressIndicator(strokeWidth: 2.5)
-                  else
-                    Icon(
-                      icon,
-                      size: 42,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                  Icon(
+                    icon,
+                    size: 42,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                   const SizedBox(height: UtenSpacing.s12),
                   Text(
                     title,

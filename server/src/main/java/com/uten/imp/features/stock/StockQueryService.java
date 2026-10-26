@@ -365,8 +365,8 @@ public class StockQueryService {
     }
 
     /**
-     * 导出/打印用：与页面同一口径的一页行(列表 + 计数)，**不跑合计与 facet**——导出按页循环时
-     * 每页只多一条计数查询，不会把整套合计/筛选桶重跑 N 遍。
+     * 导出/打印用：与页面同一口径的一页行，不跑合计与 facet。计数遵守 ReportReadPlan；
+     * 后台 ROWS_ONLY 不再逐页统计，ReportExportCursor 复用同一快照内的一次数据读取。
      */
     @Transactional(readOnly = true)
     public PageResponse<InstantInventoryRow> instantInventoryRows(InstantInventoryFilter filter, int page, int size,
@@ -419,16 +419,14 @@ public class StockQueryService {
         // 同名货品/多个颜色必须有稳定次序，避免行动清单翻页时重复或遗漏。
         orderBy += ", goods_id ASC, color_id ASC NULLS FIRST";
         if (!KeywordSearch.terms(sql.filter().keyword()).isEmpty()) orderBy = "search_rank ASC, " + orderBy;
-        var dataQ = em.createNativeQuery(
+        var dataQ = com.uten.imp.common.report.ReportExportCursor.query(em,
                 sql.core() + " ORDER BY " + orderBy + " LIMIT :__limit OFFSET :__offset");
-        var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + sql.core() + ") t");
         sql.bindAll(dataQ);
-        sql.bindAll(countQ);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
 
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = dataQ.getResultList();
+        List<Object[]> rows = com.uten.imp.common.report.ReportExportCursor.rows(em, dataQ);
         boolean canViewCost = sql.canViewCost();
         List<InstantInventoryRow> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
@@ -462,8 +460,13 @@ public class StockQueryService {
             }
             items.add(item);
         }
-        long total = ((Number) countQ.getSingleResult()).longValue();
-        int totalPages = (int) ((total + safeSize - 1) / safeSize);
+        long total = com.uten.imp.common.report.ReportReadPlan.UNKNOWN_TOTAL;
+        if (com.uten.imp.common.report.ReportReadPlan.current().includeCount()) {
+            var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + sql.core() + ") t");
+            sql.bindAll(countQ);
+            total = ((Number) countQ.getSingleResult()).longValue();
+        }
+        int totalPages = com.uten.imp.common.report.ReportReadPlan.totalPages(total, safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
     }
 
@@ -864,15 +867,33 @@ public class StockQueryService {
     @Transactional(readOnly = true)
     public List<com.uten.imp.features.stock.dto.ShelfLabelRow> shelfLabelRows(
             String rack, String keyword, UUID warehouseId, boolean includeDisabled) {
+        return readShelfLabelRows(rack, keyword, warehouseId, includeDisabled, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<com.uten.imp.features.stock.dto.ShelfLabelRow> shelfLabelRowsPage(
+            String rack, String keyword, UUID warehouseId, boolean includeDisabled, int page, int size) {
+        return readShelfLabelRows(rack, keyword, warehouseId, includeDisabled,
+                Math.max(1, page), Math.max(1, Math.min(500, size)));
+    }
+
+    private List<com.uten.imp.features.stock.dto.ShelfLabelRow> readShelfLabelRows(
+            String rack, String keyword, UUID warehouseId, boolean includeDisabled, Integer page, Integer size) {
         boolean hasRack = rack != null && !rack.isBlank();
         boolean hasKw = keyword != null && !keyword.isBlank();
-        var q = em.createNativeQuery(
-                ShelfLabelSql.rows(warehouseId != null, includeDisabled, hasRack, hasKw));
+        var q = com.uten.imp.common.report.ReportExportCursor.query(em, page == null
+                ? ShelfLabelSql.rows(warehouseId != null, includeDisabled, hasRack, hasKw)
+                : ShelfLabelSql.rowsPage(warehouseId != null, includeDisabled, hasRack, hasKw));
+        if (page != null) {
+            q.setParameter("__limit", size);
+            q.setParameter("__offset", (long) (page - 1) * size);
+        }
         if (warehouseId != null) q.setParameter("warehouseId", warehouseId);
         if (hasRack) q.setParameter("rack", rack.trim());
         if (hasKw) q.setParameter("kw", KeywordSearch.phrase(keyword));
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = q.getResultList();
+        List<Object[]> rows = page == null ? q.getResultList()
+                : com.uten.imp.common.report.ReportExportCursor.rows(em, q);
         List<com.uten.imp.features.stock.dto.ShelfLabelRow> out = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             String place = (String) r[1];

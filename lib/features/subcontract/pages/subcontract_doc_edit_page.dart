@@ -1,3 +1,4 @@
+import '../../../shared/providers/master_party_options.dart';
 import '../../../shared/pricing/procurement_price_check.dart';
 import '../../../shared/models/procurement_source_terms.dart';
 // 委外单据编辑页（新建/编辑，全页路由）：主表头表单 + 明细可编辑 Excel 表（UtenEditableGrid）+ 保存。
@@ -86,6 +87,7 @@ import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../warehouse/repositories/warehouse_place_suggestion_repository.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class SubcontractDocEditPage extends ConsumerStatefulWidget {
   const SubcontractDocEditPage({super.key, required this.docType, this.id});
@@ -222,6 +224,9 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
     restoreDraftEmployees(_empCache, data['employees']);
     restoreDraftGrid(_grid, data['rows'], SubcontractGridRow.fromDraft);
     _draftCreatedId = data['createdDocId'] as String?;
+    await ref
+        .read(mn.masterNameServiceProvider)
+        .loadSupplierNames(partyReferenceIds([_supplierId]));
   }
 
   String? _draftCreatedId;
@@ -285,6 +290,10 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       try {
         final repo = ref.read(subcontractRepositoryProvider(widget.docType));
         final d = await repo.detail(widget.id!);
+        if (!accepts()) return;
+        await ref
+            .read(mn.masterNameServiceProvider)
+            .loadSupplierNames(partyReferenceIds([d.supplierId]));
         if (!accepts()) return;
         if (d.legacyImported) {
           if (!mounted) return;
@@ -478,11 +487,22 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
     if (!_cfg.hasSettlement || _commercialTermsInheritedFromSource) return;
     if (_settlementMethodId != null) return;
     if (supplierId == null || supplierId.isEmpty) return;
+    final names = ref.read(mn.masterNameServiceProvider);
+    await names.loadSupplierNames([supplierId]);
+    if (!mounted ||
+        !formDraftIdentityIsCurrent ||
+        !_settlementPrefills.isCurrent(generation) ||
+        _supplierId != supplierId) {
+      return;
+    }
+    // An upstream snapshot remains the authority even when the current master reference is unavailable.
+    if (!(upstreamSettlementId?.isNotEmpty ?? false) &&
+        !names.supplierReferenceKnown(supplierId)) {
+      return;
+    }
     final candidate = (upstreamSettlementId?.isNotEmpty ?? false)
         ? upstreamSettlementId
-        : ref
-              .read(mn.masterNameServiceProvider)
-              .supplierDefaultSettlement(supplierId);
+        : names.supplierDefaultSettlement(supplierId);
     if (candidate == null || candidate.isEmpty) return;
     try {
       final methods = await ref.read(settlementMethodOptionsProvider.future);
@@ -996,81 +1016,84 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                     // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
                     // 恒在屏幕最右，不随限宽容器/列宽漂移。
                     child: UtenContentContainer(
-                      child: ListView(
-                        controller: _scrollCtl,
-                        // 底部多留一个悬浮动作组的高度，否则明细表最后一行被「取消/保存」压住。
+                      child: UtenPageEdgePadding.scroll(
                         padding: const EdgeInsets.fromLTRB(
                           UtenSpacing.s12,
                           UtenSpacing.s12,
                           UtenSpacing.s12,
                           UtenFloatingActionGroup.scrollClearance,
                         ),
-                        children: [
-                          if (_cfg.approvalBlockedReason != null) ...[
-                            _materialIssueSafetyBanner(theme),
-                            const SizedBox(height: UtenSpacing.s12),
-                          ],
-                          _headerCard(theme),
-                          const SizedBox(height: UtenSpacing.s12),
-                          // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：只留右对齐引入入口。
-                          Row(
-                            children: [
-                              const Spacer(),
-                              if (_cfg.hasUpstreamLink)
-                                UtenImportButton(
-                                  label: '从上游引入',
-                                  onPressed: _importFromUpstream,
-                                ),
+                        builder: (context, resolvedPagePadding) => ListView(
+                          controller: _scrollCtl,
+                          // 底部多留一个悬浮动作组的高度，否则明细表最后一行被「取消/保存」压住。
+                          padding: resolvedPagePadding,
+                          children: [
+                            if (_cfg.approvalBlockedReason != null) ...[
+                              _materialIssueSafetyBanner(theme),
+                              const SizedBox(height: UtenSpacing.s12),
                             ],
-                          ),
-                          // 列显隐/排序按单据模式分桶持久化（账号级，跨设备生效）。
-                          Builder(
-                            builder: (_) {
-                              final columnPrefs = ref.watch(
-                                subcontractApplicationGridColumnPrefsProvider,
-                              )[widget.docType.name];
-                              return UtenEditableGrid<SubcontractGridRow>(
-                                columnEditingEnabled:
-                                    !_loading &&
-                                    !_saving &&
-                                    _draftCreatedId == null &&
-                                    (widget.id == null || _existingEditable),
-                                tableKey:
-                                    'subcontract.${widget.docType.name}.items',
-                                controller: _grid,
-                                stickyHeaderPinned: _gridPinned,
-                                initialColumnOrder: columnPrefs?.order,
-                                initialHiddenColumnKeys: columnPrefs?.hidden,
-                                initialPinnedColumnKeys: columnPrefs?.pinned,
-                                onColumnSettingsChanged:
-                                    (order, hidden, pinned) => ref
-                                        .read(
-                                          subcontractApplicationGridColumnPrefsProvider
-                                              .notifier,
-                                        )
-                                        .updateFor(
-                                          widget.docType.name,
-                                          order,
-                                          hidden,
-                                          pinned,
-                                        ),
-                                columns: subcontractGridColumns(
-                                  _pickGoods,
-                                  _cfg,
-                                  context: context,
-                                  unitEntries: ref
-                                      .watch(mn.masterNameServiceProvider)
-                                      .unitEntries,
-                                  // 每行末尾备注列（随行提交 remark）。
-                                  showRemark: true,
-                                ),
-                                createBlankRow: () => SubcontractGridRow(),
-                                cloneRow: (r) => r.clone(),
-                                footer: _gridFooter(theme),
-                              );
-                            },
-                          ),
-                        ],
+                            _headerCard(theme),
+                            const SizedBox(height: UtenSpacing.s12),
+                            // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：只留右对齐引入入口。
+                            Row(
+                              children: [
+                                const Spacer(),
+                                if (_cfg.hasUpstreamLink)
+                                  UtenImportButton(
+                                    label: '从上游引入',
+                                    onPressed: _importFromUpstream,
+                                  ),
+                              ],
+                            ),
+                            // 列显隐/排序按单据模式分桶持久化（账号级，跨设备生效）。
+                            Builder(
+                              builder: (_) {
+                                final columnPrefs = ref.watch(
+                                  subcontractApplicationGridColumnPrefsProvider,
+                                )[widget.docType.name];
+                                return UtenEditableGrid<SubcontractGridRow>(
+                                  columnEditingEnabled:
+                                      !_loading &&
+                                      !_saving &&
+                                      _draftCreatedId == null &&
+                                      (widget.id == null || _existingEditable),
+                                  tableKey:
+                                      'subcontract.${widget.docType.name}.items',
+                                  controller: _grid,
+                                  stickyHeaderPinned: _gridPinned,
+                                  initialColumnOrder: columnPrefs?.order,
+                                  initialHiddenColumnKeys: columnPrefs?.hidden,
+                                  initialPinnedColumnKeys: columnPrefs?.pinned,
+                                  onColumnSettingsChanged:
+                                      (order, hidden, pinned) => ref
+                                          .read(
+                                            subcontractApplicationGridColumnPrefsProvider
+                                                .notifier,
+                                          )
+                                          .updateFor(
+                                            widget.docType.name,
+                                            order,
+                                            hidden,
+                                            pinned,
+                                          ),
+                                  columns: subcontractGridColumns(
+                                    _pickGoods,
+                                    _cfg,
+                                    context: context,
+                                    unitEntries: ref
+                                        .watch(mn.masterNameServiceProvider)
+                                        .unitEntries,
+                                    // 每行末尾备注列（随行提交 remark）。
+                                    showRemark: true,
+                                  ),
+                                  createBlankRow: () => SubcontractGridRow(),
+                                  cloneRow: (r) => r.clone(),
+                                  footer: _gridFooter(theme),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -1275,8 +1298,15 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                       setState(() => _supplierId = v);
                       unawaited(_prefillSettlementForSupplier(v, null));
                     },
-                    onPick: () =>
-                        showUtenSupplierPicker(context, ref, title: '选择委外商'),
+                    onPick: () => resolvePickedParty(
+                      ref,
+                      () =>
+                          showUtenSupplierPicker(context, ref, title: '选择委外商'),
+                      idOf: (party) => party.id,
+                      loadNames: names.loadSupplierNames,
+                      isResolved: (id) => names.supplierReferenceSelectable(id),
+                      isCurrent: () => formDraftIdentityIsCurrent,
+                    ),
                   ),
                 if (_cfg.hasWarehouse)
                   // 回厂新建已经迁到仓库独立登记页；这里仅服务其余单据或既有草稿编辑。

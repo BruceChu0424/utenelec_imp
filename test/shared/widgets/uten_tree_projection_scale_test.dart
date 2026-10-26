@@ -18,7 +18,9 @@ void main() {
       for (var index = 0; index < depths.length; index++) {
         var end = index + 1;
         var children = 0;
-        while (end < depths.length && depths[end] > depths[index]) {
+        while (end < depths.length &&
+            keys[end] == keys[index] &&
+            depths[end] > depths[index]) {
           if (depths[end] == depths[index] + 1) children++;
           end++;
         }
@@ -29,6 +31,7 @@ void main() {
         expect(actual[index].subtreeEnd, end);
         expect(actual[index].childCount, children);
         expect(actual[index].isLastChild, !sibling);
+        if (index > 0 && keys[index] != keys[index - 1]) ancestors.clear();
         final parent = ancestors[depths[index] - 1];
         final expected = depths[index] <= 0
             ? <bool>[]

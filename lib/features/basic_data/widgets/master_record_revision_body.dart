@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_content_scrollbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../components/layout/uten_scroll_gutter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -380,172 +382,184 @@ class MasterRecordRevisionBodyState
           ], _keyword),
         )
         .toList(growable: false);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Both columns need readable values at large text sizes. The compact
-        // layout retains the complete values instead of truncating snapshots.
-        final sideBySide =
-            constraints.maxWidth >=
-            640 * (MediaQuery.textScalerOf(context).scale(14) / 14);
-        return Stack(
-          children: [
-            ScrollConfiguration(
-              behavior: ScrollConfiguration.of(
-                context,
-              ).copyWith(scrollbars: false),
-              child: CustomScrollView(
-                key: const Key('master-revision-scroll'),
-                controller: _scroll,
-                primary: false,
-                slivers: [
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(
-                      UtenSpacing.s16,
-                      UtenSpacing.s12,
-                      UtenSpacing.s24,
-                      UtenSpacing.s12,
-                    ),
-                    sliver: SliverToBoxAdapter(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (_error != null) ...[
-                            UtenInlineNotice(
-                              level: UtenInlineNoticeLevel.error,
-                              message: _error,
-                            ),
-                            const SizedBox(height: UtenSpacing.s12),
-                          ],
-                          if (_message != null) ...[
-                            UtenInlineNotice(message: _message),
-                            const SizedBox(height: UtenSpacing.s12),
-                          ],
-                          if (revision != null) ...[
-                            Wrap(
-                              spacing: UtenSpacing.s12,
-                              runSpacing: UtenSpacing.s8,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              children: [
-                                SelectableText(
-                                  revision.recordLabel,
-                                  style: theme.textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+    return Stack(
+      children: [
+        UtenScrollGutter(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // Decide from the actual content width after the shared
+              // margin, so large text keeps both complete values readable.
+              final sideBySide =
+                  constraints.maxWidth >=
+                  640 * (MediaQuery.textScalerOf(context).scale(14) / 14);
+              return ScrollConfiguration(
+                behavior: ScrollConfiguration.of(
+                  context,
+                ).copyWith(scrollbars: false),
+                child: CustomScrollView(
+                  key: const Key('master-revision-scroll'),
+                  controller: _scroll,
+                  primary: false,
+                  slivers: [
+                    UtenPageEdgePadding.scroll(
+                      padding: const EdgeInsets.fromLTRB(
+                        UtenSpacing.s16,
+                        UtenSpacing.s12,
+                        UtenSpacing.s16,
+                        UtenSpacing.s12,
+                      ),
+                      builder: (context, pagePadding) => SliverPadding(
+                        padding: pagePadding,
+                        sliver: SliverToBoxAdapter(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (_error != null) ...[
+                                UtenInlineNotice(
+                                  level: UtenInlineNoticeLevel.error,
+                                  message: _error,
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: UtenSpacing.s8,
-                                    vertical: UtenSpacing.s4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: theme.colorScheme.primaryContainer,
-                                    borderRadius: UtenRadius.smAll,
-                                  ),
-                                  child: Text(
-                                    masterHistoryActionLabel(
-                                      context,
-                                      revision.action,
+                                const SizedBox(height: UtenSpacing.s12),
+                              ],
+                              if (_message != null) ...[
+                                UtenInlineNotice(message: _message),
+                                const SizedBox(height: UtenSpacing.s12),
+                              ],
+                              if (revision != null) ...[
+                                Wrap(
+                                  spacing: UtenSpacing.s12,
+                                  runSpacing: UtenSpacing.s8,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    SelectableText(
+                                      revision.recordLabel,
+                                      style: theme.textTheme.titleLarge
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                     ),
-                                    style: theme.textTheme.labelMedium
-                                        ?.copyWith(
-                                          color: theme
-                                              .colorScheme
-                                              .onPrimaryContainer,
-                                        ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (revision.summary.isNotEmpty) ...[
-                              const SizedBox(height: UtenSpacing.s8),
-                              SelectableText(
-                                revision.summary,
-                                style: theme.textTheme.bodyMedium,
-                              ),
-                            ],
-                            const SizedBox(height: UtenSpacing.s12),
-                            UtenFormGrid(
-                              columns: 3,
-                              maxColumns: 3,
-                              minFieldWidth: 200,
-                              runSpacing: UtenSpacing.s8,
-                              children: [
-                                _metadata(
-                                  _text('编号', 'Code', '번호'),
-                                  revision.recordCode,
-                                ),
-                                _metadata(
-                                  _text('操作人', 'Operator', '작업자'),
-                                  revision.actorName,
-                                ),
-                                _metadata(
-                                  _text('操作时间', 'Time', '시간'),
-                                  ChinaDateTime.formatIsoInstant(
-                                    revision.recordedAt,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (revision.blockedReason != null) ...[
-                              const SizedBox(height: UtenSpacing.s12),
-                              UtenInlineNotice(
-                                key: const Key(
-                                  'master-revision-blocked-reason',
-                                ),
-                                message: revision.blockedReason,
-                              ),
-                            ],
-                            const SizedBox(height: UtenSpacing.s20),
-                            _comparisonToolbar(revision, changes!.length),
-                            const SizedBox(height: UtenSpacing.s12),
-                            if (changes.isEmpty)
-                              UtenInlineNotice(
-                                key: const Key('master-revision-empty-changes'),
-                                message: revision.changes.isEmpty
-                                    ? _text(
-                                        '此版本没有当前可见的字段差异。',
-                                        'There are no visible field differences in this revision.',
-                                        '이 버전에서 볼 수 있는 필드 차이가 없습니다.',
-                                      )
-                                    : _text(
-                                        '没有匹配的变更，请更换关键词或清除搜索。',
-                                        'No matching changes. Try another keyword or clear the search.',
-                                        '일치하는 변경 사항이 없습니다. 검색어를 바꾸거나 지우세요.',
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: UtenSpacing.s8,
+                                        vertical: UtenSpacing.s4,
                                       ),
-                              ),
-                            if (changes.isNotEmpty && sideBySide)
-                              _comparisonHeader(),
-                          ],
-                        ],
+                                      decoration: BoxDecoration(
+                                        color:
+                                            theme.colorScheme.primaryContainer,
+                                        borderRadius: UtenRadius.smAll,
+                                      ),
+                                      child: Text(
+                                        masterHistoryActionLabel(
+                                          context,
+                                          revision.action,
+                                        ),
+                                        style: theme.textTheme.labelMedium
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onPrimaryContainer,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (revision.summary.isNotEmpty) ...[
+                                  const SizedBox(height: UtenSpacing.s8),
+                                  SelectableText(
+                                    revision.summary,
+                                    style: theme.textTheme.bodyMedium,
+                                  ),
+                                ],
+                                const SizedBox(height: UtenSpacing.s12),
+                                UtenFormGrid(
+                                  columns: 3,
+                                  maxColumns: 3,
+                                  minFieldWidth: 200,
+                                  runSpacing: UtenSpacing.s8,
+                                  children: [
+                                    _metadata(
+                                      _text('编号', 'Code', '번호'),
+                                      revision.recordCode,
+                                    ),
+                                    _metadata(
+                                      _text('操作人', 'Operator', '작업자'),
+                                      revision.actorName,
+                                    ),
+                                    _metadata(
+                                      _text('操作时间', 'Time', '시간'),
+                                      ChinaDateTime.formatIsoInstant(
+                                        revision.recordedAt,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (revision.blockedReason != null) ...[
+                                  const SizedBox(height: UtenSpacing.s12),
+                                  UtenInlineNotice(
+                                    key: const Key(
+                                      'master-revision-blocked-reason',
+                                    ),
+                                    message: revision.blockedReason,
+                                  ),
+                                ],
+                                const SizedBox(height: UtenSpacing.s20),
+                                _comparisonToolbar(revision, changes!.length),
+                                const SizedBox(height: UtenSpacing.s12),
+                                if (changes.isEmpty)
+                                  UtenInlineNotice(
+                                    key: const Key(
+                                      'master-revision-empty-changes',
+                                    ),
+                                    message: revision.changes.isEmpty
+                                        ? _text(
+                                            '此版本没有当前可见的字段差异。',
+                                            'There are no visible field differences in this revision.',
+                                            '이 버전에서 볼 수 있는 필드 차이가 없습니다.',
+                                          )
+                                        : _text(
+                                            '没有匹配的变更，请更换关键词或清除搜索。',
+                                            'No matching changes. Try another keyword or clear the search.',
+                                            '일치하는 변경 사항이 없습니다. 검색어를 바꾸거나 지우세요.',
+                                          ),
+                                  ),
+                                if (changes.isNotEmpty && sideBySide)
+                                  _comparisonHeader(),
+                              ],
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                  if (changes != null)
-                    SliverPadding(
-                      padding: const EdgeInsets.only(
-                        left: UtenSpacing.s16,
-                        right: UtenSpacing.s24,
+                    if (changes != null)
+                      UtenPageEdgePadding.scroll(
+                        padding: const EdgeInsets.only(
+                          left: UtenSpacing.s16,
+                          right: UtenSpacing.s16,
+                        ),
+                        builder: (context, pagePadding) => SliverPadding(
+                          padding: pagePadding,
+                          sliver: SliverList.builder(
+                            itemCount: changes.length,
+                            itemBuilder: (_, index) =>
+                                _change(changes[index], sideBySide),
+                          ),
+                        ),
                       ),
-                      sliver: SliverList.builder(
-                        itemCount: changes.length,
-                        itemBuilder: (_, index) =>
-                            _change(changes[index], sideBySide),
-                      ),
-                    ),
-                  SliverToBoxAdapter(child: SizedBox(height: clearance)),
-                ],
-              ),
-            ),
-            Positioned.fill(
-              child: UtenContentScrollbar(
-                key: const Key('master-revision-scrollbar'),
-                controller: _scroll,
-                bottomInset: clearance,
-              ),
-            ),
-          ],
-        );
-      },
+                    SliverToBoxAdapter(child: SizedBox(height: clearance)),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        Positioned.fill(
+          child: UtenContentScrollbar(
+            key: const Key('master-revision-scrollbar'),
+            controller: _scroll,
+            bottomInset: clearance,
+          ),
+        ),
+      ],
     );
   }
 

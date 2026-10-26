@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/attachments/attachment_section.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -28,6 +29,9 @@ void main() {
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
         child: MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: AttachmentSection(
               ownerType: 'EMPLOYEE',

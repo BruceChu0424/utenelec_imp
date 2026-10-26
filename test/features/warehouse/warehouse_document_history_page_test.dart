@@ -77,7 +77,8 @@ void main() {
     expect(find.text('RETURN-3'), findsNothing);
     await tester.pumpAndSettle();
     expect(find.text('WASTE-1'), findsOneWidget);
-    expect(wastes.lastPage, 1);
+    expect(table(type.value).currentPage, 1);
+    expect(wastes.lastPage, 2, reason: 'the successor is prepared offscreen');
     expect(wastes.lastStatus, isNull);
     expect(wastes.lastBillNo, isNull);
     expect(wastes.lastSourceDocNo, isNull);

@@ -16,6 +16,7 @@ import '../../../shared/business_columns/business_columns_table.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/presentation/procurement_delivery_difference_l10n.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
 import '../../../shared/widgets/historical_receipt_totals.dart';
@@ -66,6 +67,7 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../repositories/purchase_repository.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_navigation_session.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../widgets/purchase_status_badge.dart';
@@ -73,6 +75,7 @@ import '../widgets/purchase_order_print_preview.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
 import '../../../shared/widgets/procurement_order_closure_dialog.dart';
 import '../../../shared/widgets/procurement_order_closure_status.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class PurchaseDocDetailPage extends ConsumerStatefulWidget {
   const PurchaseDocDetailPage({
@@ -99,6 +102,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
   // 处理中遮罩标题（跟随动作，如「正在审核…」「正在删除…」）。
   String _busyTitle = '正在处理，请稍候';
   bool _openingOrder = false;
+  final _navigation = PageNavigationSession();
   bool _openingPrint = false;
   final Set<String> _selectedRequestItemIds = {};
   String? _myLocation;
@@ -203,7 +207,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     if (ids.isEmpty) return;
     setState(() => _openingOrder = true);
     try {
-      await context.push(
+      await _navigation.push(
         '/purchase/orders/new?requestItemIds=${ids.join(',')}',
       );
       if (mounted && ownsNative()) {
@@ -497,6 +501,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
 
   @override
   void dispose() {
+    _navigation.dispose();
     for (final controller in _qtyControllers.values) {
       controller.dispose();
     }
@@ -557,6 +562,12 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     } finally {
       if (mounted && ownsNative()) setState(() => _openingPrint = false);
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
   }
 
   @override
@@ -627,8 +638,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
         _detail?.closureRequest?.isApproved == true) {
       return l10n.orderClosureAlreadyEnded;
     }
-    if (_detail?.financeApproval?.isPending == true ||
-        _detail?.closureRequest?.isPending == true) {
+    if (_detail?.financeApproval?.isPending == true) {
       return l10n.orderClosureAlreadyPending;
     }
     if (_detail?.status != kPurchaseStatusApproved) {
@@ -749,6 +759,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     try {
       await Future.wait([
         dictionaries,
+        names.loadSupplierNames([d.supplierId].whereType<String>()),
         names.loadGoodsDetails(
           d.items.map((e) => e.goodsId).whereType<String>(),
         ),
@@ -1193,7 +1204,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                   // 2026-09-09 折叠头+表内滚（与货品资料页统一）：上滑先收头部
                   // （表头卡/横幅/附件），表头顶到页面顶部后再滚明细表内部。
                   : UtenCollapsingHeaderScrollView(
-                      collapsingHeader: Padding(
+                      collapsingHeader: UtenPageEdgePadding(
                         padding: const EdgeInsets.fromLTRB(
                           UtenSpacing.s12,
                           UtenSpacing.s12,
@@ -1288,7 +1299,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                         ),
                       ),
                       // body：明细标题行（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
-                      body: Padding(
+                      body: UtenPageEdgePadding(
                         // 底部让位右下悬浮操作组：末行可滚出按钮区。
                         padding: const EdgeInsets.fromLTRB(
                           UtenSpacing.s12,
@@ -1635,6 +1646,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
         // primary:true → 表体占满 body 并参与「头部折叠 → 表格内滚」联动。
         Expanded(
           child: MasterDataTableView<PurchaseDocItem>(
+            expensiveRowMounts: false,
             tableKey: 'purchase.${widget.docType.name}.items',
             primary: true,
             selectable: _canGenerateRequestOrder,
@@ -2024,6 +2036,17 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     type: 'number',
                     value: (it) =>
                         '${financeExactTrimmed(it.returnedQtyText ?? it.returnedQty?.toString()) ?? '—'} ${names.unit(it.unitId)}',
+                  ),
+                if (widget.docType == PurchaseDocType.order)
+                  MasterColumnDef(
+                    key: 'differenceQty',
+                    label: procurementDeliveryDifferenceL10n(context).label,
+                    width: 130,
+                    type: 'number',
+                    info: procurementDeliveryDifferenceL10n(context).hint,
+                    value: (it) => it.differenceQtyText == null
+                        ? '—'
+                        : '${it.differenceQtyText} ${names.unit(it.unitId)}',
                   ),
                 MasterColumnDef(
                   key: 'remark',

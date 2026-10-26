@@ -144,7 +144,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 .setParameter("goodsId", source.goodsId())
                 .setParameter("colorId", source.colorId())
                 .setParameter("unitId", source.unitId())
-                .setFirstResult((safePage - 1) * safeSize)
+                .setFirstResult(com.uten.imp.common.web.Pageables.checkedOffset(safePage, safeSize))
                 .setMaxResults(safeSize);
         bindScopeAndKeyword(rowsQuery, scope, normalized);
         TaskKeywordSearch.bind(rowsQuery, normalized, true);
@@ -239,7 +239,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                          item.delivery_date DESC NULLS LAST, analysis.updated_at,
                          analysis.id, material.id
                 """)
-                .setFirstResult((safePage - 1) * safeSize).setMaxResults(safeSize);
+                .setFirstResult(com.uten.imp.common.web.Pageables.checkedOffset(safePage, safeSize)).setMaxResults(safeSize);
         bindSourceCandidateQuery(rowsQuery, target, scope, normalized);
         TaskKeywordSearch.bind(rowsQuery, normalized, true);
         List<CrossReallocationSourceCandidate> items = NativeQueryResults.objectArrayRows(rowsQuery)

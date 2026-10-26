@@ -27,6 +27,7 @@ class UtenPagedPickerList<T> extends StatelessWidget {
     this.padding = EdgeInsets.zero,
     this.rowsController,
     this.showPaginationControls = true,
+    this.expensiveRowMounts,
   });
 
   final List<T> items;
@@ -45,10 +46,12 @@ class UtenPagedPickerList<T> extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final MasterDataTableRowsController<T>? rowsController;
   final bool showPaginationControls;
+  final bool? expensiveRowMounts;
 
   @override
   Widget build(BuildContext context) => MasterDataTableView<T>(
     columns: const [],
+    expensiveRowMounts: expensiveRowMounts,
     items: items,
     facets: const {},
     nullCounts: const {},

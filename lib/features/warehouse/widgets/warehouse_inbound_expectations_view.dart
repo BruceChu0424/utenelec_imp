@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import '../../../shared/providers/master_party_options.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 预计到货工作台（可嵌入）：与财务「订货审批任务中心」同款表格工作台——列表只放
 // 单据级概要（单号/供应商/数量/预计到货日/步骤），双击行按当前步骤直达对应办理
@@ -18,9 +20,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
-import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../shared/drafts/form_draft_store.dart';
@@ -40,6 +40,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/auth/native_read_view_scope_mixin.dart'
+    show nativeReadAccessDenied;
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -89,8 +91,26 @@ class WarehouseInboundExpectationsView extends ConsumerStatefulWidget {
 
 class _WarehouseInboundExpectationsViewState
     extends ConsumerState<WarehouseInboundExpectationsView>
-    with UtenRefreshParticipant<WarehouseInboundExpectationsView> {
+    with
+        UtenRefreshParticipant<WarehouseInboundExpectationsView>,
+        ScopedPagedReadViewMixin<WarehouseInboundExpectationsView> {
+  int get _refreshPage => _tableRows.visiblePage ?? (_result?.page ?? 1);
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    ++_requestVersion;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+      _selectedIds = {};
+      _tableRows.update(const []);
+    });
+  }
+
   PagedResult<InboundExpectation>? _result;
+  Object? _acceptedQuery;
   bool _loading = false;
   String? _error;
   int _requestVersion = 0;
@@ -343,7 +363,7 @@ class _WarehouseInboundExpectationsViewState
     setState(() => _selectedIds = <String>{});
     _batchSelectionFingerprint = null;
     _batchIdempotencyKey = null;
-    await _load(_result?.page ?? 1);
+    await _load(_refreshPage);
   }
 
   /// 多选「先入库后质检」（2026-09-17 用户口径：不必双击进单张登记页才能选
@@ -386,7 +406,7 @@ class _WarehouseInboundExpectationsViewState
     if (!mounted) return;
     if (batch != null) _announceRegistration(batch);
     setState(() => _selectedIds = <String>{});
-    await _load(_result?.page ?? 1);
+    await _load(_refreshPage);
   }
 
   /// 多选两颗路线按钮：与产成品入库任务同一组件(同名同义)，点哪颗就带着路线
@@ -425,38 +445,98 @@ class _WarehouseInboundExpectationsViewState
     };
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     final version = ++_requestVersion;
     final session = ref.read(sessionProvider);
+    final query = (
+      _keyword,
+      _orderType,
+      _supplierIdFilter,
+      _columnFilters.sortColumn,
+      _columnFilters.sortAscending,
+      _columnFilters['billNo'],
+      WarehouseListScope.of(context),
+    );
     bool current() =>
         mounted &&
         version == _requestVersion &&
         ref.read(sessionProvider).isSameIdentity(session);
     setState(() {
+      if (_acceptedQuery != query) {
+        _result = null;
+        _selectedIds = const {};
+      }
       _loading = true;
       _error = null;
     });
     try {
       final repo = ref.read(procurementInboundRepositoryProvider);
       final scope = WarehouseListScope.of(context);
-      final result = await repo.expectations(
-        page: page,
-        orderType: _orderType,
-        keyword: _keyword.isEmpty ? null : _keyword,
-        supplierId: _supplierIdFilter,
-        scope: scope,
-        sort: _kSortFields[_columnFilters.sortColumn],
-        order: _columnFilters.sortColumn == null
-            ? null
-            : (_columnFilters.sortAscending ? 'asc' : 'desc'),
-        billNo: _columnFilters['billNo'],
+      final pageRepository = repo;
+      final pageOrderType = _orderType;
+      final pageKeyword = _keyword.isEmpty ? null : _keyword;
+      final pageSupplierId = _supplierIdFilter;
+      final pageScope = scope;
+      final pageSort = _kSortFields[_columnFilters.sortColumn];
+      final pageOrder = _columnFilters.sortColumn == null
+          ? null
+          : (_columnFilters.sortAscending ? 'asc' : 'desc');
+      final pageBillNo = _columnFilters['billNo'];
+
+      final result = await readScopedPage(
+        page,
+        slot: '_load',
+        query: [
+          pageRepository,
+          pageOrderType,
+          pageKeyword,
+          pageSupplierId,
+          pageScope,
+          pageSort,
+          pageOrder,
+          pageBillNo,
+        ],
+        currentQuery: () => [
+          repo,
+          _orderType,
+          _keyword.isEmpty ? null : _keyword,
+          _supplierIdFilter,
+          scope,
+          _kSortFields[_columnFilters.sortColumn],
+          _columnFilters.sortColumn == null
+              ? null
+              : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+          _columnFilters['billNo'],
+        ],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.expectations(
+          page: target,
+          orderType: pageOrderType,
+          keyword: pageKeyword,
+          supplierId: pageSupplierId,
+          scope: pageScope,
+          sort: pageSort,
+          order: pageOrder,
+          billNo: pageBillNo,
+        ),
       );
       if (!current()) return;
+      // Rows already carry their supplier snapshots. Only the selected filter
+      // label needs reference enrichment, which must not delay accepted rows.
+      unawaited(
+        ref
+            .read(masterNameServiceProvider)
+            .loadSupplierNames(partyReferenceIds([_supplierIdFilter]))
+            .then<void>((_) {
+              if (current()) setState(() {});
+            }, onError: (Object _, StackTrace _) {}),
+      );
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
       unawaited(_loadBillNoFacets(scope));
       if (!current()) return;
       setState(() {
         _result = result;
+        _acceptedQuery = query;
         _loading = false;
       });
       // Reconcile after the table has combined any appended pages.
@@ -473,8 +553,14 @@ class _WarehouseInboundExpectationsViewState
         }
       });
     } on ApiException catch (error) {
+      if (!mounted) return;
       if (!current()) return;
       setState(() {
+        if (nativeReadAccessDenied(error)) {
+          _result = null;
+          _acceptedQuery = null;
+          _selectedIds = const {};
+        }
         _error = error.message;
         _loading = false;
       });
@@ -543,7 +629,7 @@ class _WarehouseInboundExpectationsViewState
     );
     if (drafts.isNotEmpty) {
       await resumeTaskFormDraft(context, ref, drafts);
-      if (mounted) await _load(_result?.page ?? 1);
+      if (mounted) await _load(_refreshPage);
       return;
     }
     switch (expectation.arrivalStep) {
@@ -559,7 +645,7 @@ class _WarehouseInboundExpectationsViewState
         context.appWarning('该任务数据或授权不完整，暂不能办理；请刷新后重试');
     }
     if (!mounted) return;
-    await _load(_result?.page ?? 1);
+    await _load(_refreshPage);
   }
 
   Future<void> _createReceipt(InboundExpectation expectation) async {
@@ -577,7 +663,7 @@ class _WarehouseInboundExpectationsViewState
       RoutePath.warehouseArrivalRegistration([expectation.id]),
     );
     if (batch == null || !mounted) return;
-    await _load(_result?.page ?? 1);
+    await _load(_refreshPage);
     if (mounted) _announceRegistration(batch);
   }
 
@@ -602,7 +688,7 @@ class _WarehouseInboundExpectationsViewState
           .read(procurementInboundRepositoryProvider)
           .completeArrival(expectation.draftReceiptIds.first);
       if (!mounted) return;
-      await _load(_result?.page ?? 1);
+      await _load(_refreshPage);
       if (mounted) {
         _announceRegistration(
           WarehouseArrivalRegistrationBatch(registrations: [registration]),
@@ -657,37 +743,7 @@ class _WarehouseInboundExpectationsViewState
     ref.watch(authenticatedScopeProvider);
     ref.watch(formDraftsProvider);
     final result = _result;
-    // 骨架/错误态也钉住宿主分类栏（2026-10-01 用户口径：点击子分类的瞬间
-    // 整条分类栏不得消失），数据到位后照常走联动折叠容器。
-    final Widget fallback;
-    if (_loading && result == null) {
-      fallback = const UtenSkeletonList();
-    } else if (_error != null && result == null) {
-      fallback = UtenEmpty.error(
-        message: _error,
-        actionLabel: '重新加载',
-        onAction: () => _load(1),
-      );
-    } else {
-      return _buildList(result);
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (!widget.embedded)
-          const TaskDraftRecoveryNotice(
-            scope: FormDraftCategoryScope(
-              module: BadgeModule.warehouse,
-              routePath: RouteName.warehouseArrivalRegistration,
-            ),
-          ),
-        if (widget.externalHeader != null) ...[
-          widget.externalHeader!,
-          const SizedBox(height: UtenSpacing.s8),
-        ],
-        Expanded(child: fallback),
-      ],
-    );
+    return _buildList(result);
   }
 
   Widget _buildList(PagedResult<InboundExpectation>? value) {
@@ -720,12 +776,13 @@ class _WarehouseInboundExpectationsViewState
           if (!widget.embedded) ..._buildToolbar(result),
           if (_error != null) ...[
             const SizedBox(height: UtenSpacing.s12),
-            _InlineError(message: _error!, onRetry: () => _load(result.page)),
+            _InlineError(message: _error!, onRetry: () => _load(_refreshPage)),
           ],
           const SizedBox(height: UtenSpacing.s8),
         ],
       ),
       body: MasterDataTableView<InboundExpectation>(
+        expensiveRowMounts: false,
         requiredLeadingColumnKeys: const ['status'],
         rowsController: _tableRows,
         paginationRevision: _result,
@@ -756,12 +813,18 @@ class _WarehouseInboundExpectationsViewState
             ),
           ],
           // 供应商表头筛选（2026-09-16）：主档 dict 桶（不强调计数）。
-          'supplierName': masterDictionaryFacets(
-            ref.watch(masterNameServiceProvider).supplierEntries,
+          'supplierName': selectedPartyFacet(
+            _supplierIdFilter,
+            ref.watch(masterNameServiceProvider).supplier,
           ),
           // 订货单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
           'billNo': _columnFilters.bucketOf('billNo'),
         },
+        facetPageLoaders: {'supplierName': supplierPartyFacetLoader(ref)},
+        facetSearchScope: partyFacetSearchScope(
+          ref,
+          'warehouse_inbound_expectations_view-party',
+        ),
         nullCounts: const {},
         filters: {
           'orderType': _orderType?.name.toUpperCase(),
@@ -840,13 +903,13 @@ class _WarehouseInboundExpectationsViewState
         isLoading: _loading,
         loadingMore: _loading && _result != null,
         error: result.items.isEmpty ? _error : null,
-        onRetry: () => _load(result.page),
+        onRetry: () => _load(_refreshPage),
         emptyMessage: _keyword.isNotEmpty || _orderType != null
             ? '没有匹配的预计到货'
             : '目前没有预计到货',
         currentPage: result.page,
         totalPages: result.totalPages,
-        onPageChange: _load,
+        onPageChange: (page) => _load(page, useCache: true),
       ),
     );
   }

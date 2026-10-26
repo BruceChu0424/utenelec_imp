@@ -94,6 +94,7 @@ import '../widgets/warehouse_autofill_text_field.dart';
 import '../widgets/warehouse_arrival_source_field.dart';
 import '../repositories/procurement_inbound_repository.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class InboundArrivalRegistrationPage extends ConsumerStatefulWidget {
   const InboundArrivalRegistrationPage({
@@ -1311,173 +1312,176 @@ class _InboundArrivalRegistrationPageState
       // 滚动条贴屏幕右缘(2026-09-15)：包装在内容容器之外，右缘窄条
       // 恒在屏幕最右，不随限宽容器/列宽漂移。
       child: UtenContentContainer(
-        child: ListView(
-          controller: _scrollCtl,
-          // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+        child: UtenPageEdgePadding.scroll(
           padding: EdgeInsets.fromLTRB(
             UtenSpacing.s12,
             UtenSpacing.s12,
             UtenSpacing.s12,
             math.max(UtenSpacing.s12, UtenCapsuleNavScope.occlusionOf(context)),
           ),
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    UtenFormGrid(
-                      children: [
-                        UtenDateField(
-                          label: '单据日期',
-                          required: true,
-                          value: _billDate,
-                          onChanged: (d) => setState(() => _billDate = d),
-                        ),
-                        _employeePicker(
-                          label: '收货人',
-                          currentId: _receiverId,
-                          onChanged: (id) => setState(() => _receiverId = id),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    TextField(
-                      controller: _remark,
-                      decoration: const UtenInputDecoration(
-                        InputDecoration(labelText: '备注'),
+          builder: (context, resolvedPagePadding) => ListView(
+            controller: _scrollCtl,
+            // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+            padding: resolvedPagePadding,
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      UtenFormGrid(
+                        children: [
+                          UtenDateField(
+                            label: '单据日期',
+                            required: true,
+                            value: _billDate,
+                            onChanged: (d) => setState(() => _billDate = d),
+                          ),
+                          _employeePicker(
+                            label: '收货人',
+                            currentId: _receiverId,
+                            onChanged: (id) => setState(() => _receiverId = id),
+                          ),
+                        ],
                       ),
-                      maxLines: 2,
+                      const SizedBox(height: UtenSpacing.s12),
+                      TextField(
+                        controller: _remark,
+                        decoration: const UtenInputDecoration(
+                          InputDecoration(labelText: '备注'),
+                        ),
+                        maxLines: 2,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+              InboundPlaceSuggestionStatus(
+                loader: _suggestions,
+                onRetry: () => _suggestions.reload(_lines),
+              ),
+              WeightParamsLoadNotice(cache: _weightCache),
+              ..._warehouseNotices(theme),
+              const SizedBox(height: UtenSpacing.s8),
+              UtenEditableGrid<_BatchArrivalLine>(
+                tableKey:
+                    'features.warehouse.pages.inbound_arrival_registration_page.InboundArrivalRegistrationPageState._buildForm.1',
+                key: const Key('warehouse-arrival-lines-grid'),
+                controller: _lineGrid,
+                stickyHeaderPinned: _gridPinned,
+                columns: _lineColumns(canRegister, weightUnits.entry),
+                createBlankRow: () => throw UnsupportedError('明细由所选预计到货任务固定带入'),
+                showAddRow: false,
+                showRowDelete: false,
+                selectable: canRegister,
+                selectionEnabled:
+                    canRegister && !_saving && !_preparingSubmission,
+                onRemoveRows: canRegister ? _removeFromThisRegistration : null,
+                removeRowsActionLabel: '移出本次登记',
+                removeRowsDialogTitle: '移出本次登记',
+                removeRowsConfirmLabel: '确认移出',
+                removeRowsMessageBuilder: (count) =>
+                    '确认从本次登记移出选中的 $count 行？'
+                    '该操作不删除订货明细、不改变库存或历史；返回任务中心后仍保持待登记送检。',
+                // 2026-09-11 表头上方四个常驻按钮全撤：「全选/取消全选」由表头
+                // 复选框承担，「移出本次登记」搬进行右键菜单，「批量设置入库仓库 /
+                // 批量填写库位」改成「勾选多行后在任意一行改仓/写库位即批量落值」。
+                // 2026-09-12 再补右键菜单显式批量入口(与产成品登记页统一口径)。
+                showSelectAllToggle: false,
+                showRemoveRowsAction: false,
+                // 2026-09-14：行末常驻 ⊖(走同一条「移出本次登记」确认与回调)。
+                showInlineRemoveAction: true,
+                rowMenuExtraBuilder:
+                    canRegister && !_saving && !_preparingSubmission
+                    ? (context, selected) => [
+                        UtenMenuItem(
+                          label: '批量设置入库仓库 (${selected.length})',
+                          icon: Icons.warehouse_outlined,
+                          enabled: selected.isNotEmpty,
+                          onTap: () => _pickWarehouseFor(selected),
+                        ),
+                        UtenMenuItem(
+                          label: '批量设置库位号 (${selected.length})',
+                          icon: Icons.edit_note_outlined,
+                          enabled: selected.isNotEmpty,
+                          onTap: () => _batchFillStockPlace(selected),
+                        ),
+                      ]
+                    : null,
+                emptyMessage: '没有可登记明细，请返回任务中心刷新',
+                // 「称重单位: 千克▾」：录入单位是用户级偏好，表头与已填重量跟着换。
+                toolbarActions: const [WeightEntryUnitButton()],
+                footer: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 单重参数到达后「称重偏差 N 行」随之刷新。原合计条下方的长提示行
+                    // 已删(2026-10-10 简洁口径)；「已移出 N 行」计数并进右下提交按钮
+                    // tooltip(_buildBottomBar)。
+                    ListenableBuilder(
+                      listenable: _weightCache,
+                      builder: (context, _) => UtenTotalsSummaryBar(
+                        key: const Key('warehouse-arrival-totals'),
+                        density: true,
+                        rowCount: _lines.length,
+                        entries: [
+                          UtenTotalEntry(
+                            '收费量',
+                            exactMeasurementTotalsText(
+                              _lines.map(
+                                (line) => ExactMeasuredAmount(
+                                  value: line.qty.text,
+                                  unitId: line.item.unitId,
+                                  unitName: line.item.unitName,
+                                ),
+                              ),
+                            ),
+                          ),
+                          UtenTotalEntry(
+                            '赠品量',
+                            exactMeasurementTotalsText(
+                              _lines.map(
+                                (line) => ExactMeasuredAmount(
+                                  value: line.giftQty.text,
+                                  unitId: line.item.unitId,
+                                  unitName: line.item.unitName,
+                                ),
+                              ),
+                            ),
+                          ),
+                          UtenTotalEntry(
+                            '实物量',
+                            exactMeasurementTotalsText(
+                              _lines.map(
+                                (line) => ExactMeasuredAmount(
+                                  value: line.physicalQtyText,
+                                  unitId: line.item.unitId,
+                                  unitName: line.item.unitName,
+                                ),
+                              ),
+                            ),
+                          ),
+                          ...weightTotalEntries(
+                            warehouseWeightTotals<_BatchArrivalLine>(
+                              _lines,
+                              weightOf: (line) => line.weight,
+                              exactKgOf: _exactKg,
+                              paramsOf: _paramsOf,
+                              qtyBaseOf: (line) => line.qtyBase,
+                            ),
+                            display: weightUnits.display,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            InboundPlaceSuggestionStatus(
-              loader: _suggestions,
-              onRetry: () => _suggestions.reload(_lines),
-            ),
-            WeightParamsLoadNotice(cache: _weightCache),
-            ..._warehouseNotices(theme),
-            const SizedBox(height: UtenSpacing.s8),
-            UtenEditableGrid<_BatchArrivalLine>(
-              tableKey:
-                  'features.warehouse.pages.inbound_arrival_registration_page.InboundArrivalRegistrationPageState._buildForm.1',
-              key: const Key('warehouse-arrival-lines-grid'),
-              controller: _lineGrid,
-              stickyHeaderPinned: _gridPinned,
-              columns: _lineColumns(canRegister, weightUnits.entry),
-              createBlankRow: () => throw UnsupportedError('明细由所选预计到货任务固定带入'),
-              showAddRow: false,
-              showRowDelete: false,
-              selectable: canRegister,
-              selectionEnabled:
-                  canRegister && !_saving && !_preparingSubmission,
-              onRemoveRows: canRegister ? _removeFromThisRegistration : null,
-              removeRowsActionLabel: '移出本次登记',
-              removeRowsDialogTitle: '移出本次登记',
-              removeRowsConfirmLabel: '确认移出',
-              removeRowsMessageBuilder: (count) =>
-                  '确认从本次登记移出选中的 $count 行？'
-                  '该操作不删除订货明细、不改变库存或历史；返回任务中心后仍保持待登记送检。',
-              // 2026-09-11 表头上方四个常驻按钮全撤：「全选/取消全选」由表头
-              // 复选框承担，「移出本次登记」搬进行右键菜单，「批量设置入库仓库 /
-              // 批量填写库位」改成「勾选多行后在任意一行改仓/写库位即批量落值」。
-              // 2026-09-12 再补右键菜单显式批量入口(与产成品登记页统一口径)。
-              showSelectAllToggle: false,
-              showRemoveRowsAction: false,
-              // 2026-09-14：行末常驻 ⊖(走同一条「移出本次登记」确认与回调)。
-              showInlineRemoveAction: true,
-              rowMenuExtraBuilder:
-                  canRegister && !_saving && !_preparingSubmission
-                  ? (context, selected) => [
-                      UtenMenuItem(
-                        label: '批量设置入库仓库 (${selected.length})',
-                        icon: Icons.warehouse_outlined,
-                        enabled: selected.isNotEmpty,
-                        onTap: () => _pickWarehouseFor(selected),
-                      ),
-                      UtenMenuItem(
-                        label: '批量设置库位号 (${selected.length})',
-                        icon: Icons.edit_note_outlined,
-                        enabled: selected.isNotEmpty,
-                        onTap: () => _batchFillStockPlace(selected),
-                      ),
-                    ]
-                  : null,
-              emptyMessage: '没有可登记明细，请返回任务中心刷新',
-              // 「称重单位: 千克▾」：录入单位是用户级偏好，表头与已填重量跟着换。
-              toolbarActions: const [WeightEntryUnitButton()],
-              footer: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // 单重参数到达后「称重偏差 N 行」随之刷新。原合计条下方的长提示行
-                  // 已删(2026-10-10 简洁口径)；「已移出 N 行」计数并进右下提交按钮
-                  // tooltip(_buildBottomBar)。
-                  ListenableBuilder(
-                    listenable: _weightCache,
-                    builder: (context, _) => UtenTotalsSummaryBar(
-                      key: const Key('warehouse-arrival-totals'),
-                      density: true,
-                      rowCount: _lines.length,
-                      entries: [
-                        UtenTotalEntry(
-                          '收费量',
-                          exactMeasurementTotalsText(
-                            _lines.map(
-                              (line) => ExactMeasuredAmount(
-                                value: line.qty.text,
-                                unitId: line.item.unitId,
-                                unitName: line.item.unitName,
-                              ),
-                            ),
-                          ),
-                        ),
-                        UtenTotalEntry(
-                          '赠品量',
-                          exactMeasurementTotalsText(
-                            _lines.map(
-                              (line) => ExactMeasuredAmount(
-                                value: line.giftQty.text,
-                                unitId: line.item.unitId,
-                                unitName: line.item.unitName,
-                              ),
-                            ),
-                          ),
-                        ),
-                        UtenTotalEntry(
-                          '实物量',
-                          exactMeasurementTotalsText(
-                            _lines.map(
-                              (line) => ExactMeasuredAmount(
-                                value: line.physicalQtyText,
-                                unitId: line.item.unitId,
-                                unitName: line.item.unitName,
-                              ),
-                            ),
-                          ),
-                        ),
-                        ...weightTotalEntries(
-                          warehouseWeightTotals<_BatchArrivalLine>(
-                            _lines,
-                            weightOf: (line) => line.weight,
-                            exactKgOf: _exactKg,
-                            paramsOf: _paramsOf,
-                            qtyBaseOf: (line) => line.qtyBase,
-                          ),
-                          display: weightUnits.display,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s24),
-          ],
+              const SizedBox(height: UtenSpacing.s24),
+            ],
+          ),
         ),
       ),
     );

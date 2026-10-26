@@ -9,6 +9,7 @@
 // - canEdit 按 goods:edit 权限（或超管）自算，不再由调用方传入；
 // - 删除：确认 → 删 → 返回来源页（popOrBackTo，深链兜底回货品资料）。
 // 「出入库流水」按钮 (stock:view) 由主体直接切到「库存与出入库」页签的流水分段。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +26,7 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/goods_node.dart';
+import '../models/goods_field_edit_policy.dart';
 import '../repositories/goods_repository.dart';
 import '../repositories/master_status_repository.dart';
 import '../widgets/goods_detail_body.dart';
@@ -82,6 +84,10 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
   @override
   void initState() {
     super.initState();
+    // Existing goods must show their read placeholder on the very first frame.
+    // A null detail otherwise mounts the new-goods form (and its draft setup),
+    // only to remove it when the post-frame read starts.
+    _loading = !_isCreate;
     ref.listenManual(sensitiveReadBoundaryProvider, (previous, next) {
       if (previous == next) return;
       _loadEpoch++;
@@ -348,7 +354,8 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
     bool can(String permission) => isAdmin || permissions.contains(permission);
     final canCreate = can(Perm.goodsCreate);
     final writable = _isCreate || _detail?.writable == true;
-    final canEdit = can(Perm.goodsEdit) && writable;
+    final canEdit =
+        (isAdmin || GoodsFieldEditPolicy.canEditAny(permissions)) && writable;
     final canDelete = can(Perm.goodsDelete) && writable && !_loading;
     final canStatus = can(Perm.goodsStatus) && writable && !_loading;
     final canBomCreate = can(Perm.goodsBomCreate);
@@ -380,39 +387,41 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
     }
     return Scaffold(
       // 局部 SelectionArea：货品详情文字可框选复制（准则 §3.4）。
-      body: Stack(
-        children: [
-          SelectionArea(
-            child: GoodsDetailBody(
-              readBoundary: ref.watch(sensitiveReadBoundaryProvider),
-              busy: _changing,
-              // 详情拉到后再挂主体；新增态直接进 create。
-              key: ValueKey(
-                'goods-detail-${_detail?.id ?? 'new-${widget.categoryId}'}',
+      body: UtenPageEdgePadding(
+        child: Stack(
+          children: [
+            SelectionArea(
+              child: GoodsDetailBody(
+                readBoundary: ref.watch(sensitiveReadBoundaryProvider),
+                busy: _changing,
+                // 详情拉到后再挂主体；新增态直接进 create。
+                key: ValueKey(
+                  'goods-detail-${_detail?.id ?? 'new-${widget.categoryId}'}',
+                ),
+                initialDetail: _detail,
+                initialCategoryId: widget.categoryId,
+                initialTab: GoodsDetailTab.parse(widget.initialTab),
+                canCreate: canCreate,
+                canEdit: canEdit,
+                canStatus: canStatus,
+                canBomCreate: canBomCreate,
+                canBomEdit: canBomEdit,
+                canBomDelete: canBomDelete,
+                onToggleStatus: canStatus && !_isCreate ? _toggleStatus : null,
+                onDelete: canDelete && !_isCreate ? _delete : null,
+                // 本页按钮也要拿到最新版本与可写范围；返回来源页仍由入口重载。
+                onDataChanged: _isCreate ? null : _load,
+                onSaved: () =>
+                    popOrBackTo(context, defaultPath: RouteName.basicinfoGoods),
               ),
-              initialDetail: _detail,
-              initialCategoryId: widget.categoryId,
-              initialTab: GoodsDetailTab.parse(widget.initialTab),
-              canCreate: canCreate,
-              canEdit: canEdit,
-              canStatus: canStatus,
-              canBomCreate: canBomCreate,
-              canBomEdit: canBomEdit,
-              canBomDelete: canBomDelete,
-              onToggleStatus: canStatus && !_isCreate ? _toggleStatus : null,
-              onDelete: canDelete && !_isCreate ? _delete : null,
-              // 本页按钮也要拿到最新版本与可写范围；返回来源页仍由入口重载。
-              onDataChanged: _isCreate ? null : _load,
-              onSaved: () =>
-                  popOrBackTo(context, defaultPath: RouteName.basicinfoGoods),
             ),
-          ),
-          if (_changeWriting)
-            const UtenBusyOverlay(
-              title: '正在处理货品资料',
-              semanticsKey: Key('goods-detail-lifecycle-writing'),
-            ),
-        ],
+            if (_changeWriting)
+              const UtenBusyOverlay(
+                title: '正在处理货品资料',
+                semanticsKey: Key('goods-detail-lifecycle-writing'),
+              ),
+          ],
+        ),
       ),
     );
   }

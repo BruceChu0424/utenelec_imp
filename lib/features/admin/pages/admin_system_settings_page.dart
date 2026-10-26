@@ -10,6 +10,7 @@
 //     被盗也无法改安全策略）；
 //   * 改设置全过审计（action=update_system_setting，审计页可查谁改了哪项 旧→新值）；
 //   * 后端类型/非负校验（前端也提示），防恶意值。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
@@ -24,6 +25,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -295,7 +297,7 @@ class _AdminSystemSettingsPageState
   static Widget _withAiEntry(Widget child) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      const Padding(
+      const UtenPageEdgePadding(
         padding: EdgeInsets.fromLTRB(
           UtenSpacing.s16,
           UtenSpacing.s16,
@@ -337,93 +339,97 @@ class _AdminSystemSettingsPageState
                     onRefresh: _refresh,
                     child: Form(
                       key: _formKey,
-                      child: ListView(
+                      child: UtenPageEdgePadding.scroll(
                         padding: const EdgeInsets.all(UtenSpacing.s16),
-                        children: [
-                          const PlatformSettingsEntryCard(),
-                          const RemoteAccessEntryCard(),
-                          _warningBanner(theme),
-                          // 分组卡片自适应瀑布流(UtenResponsiveGrid): 按容器宽度
-                          // <500 一列 / 500-800 两列 / 800-1100 三列 / ≥1100 四列
-                          // (maxColumns 封顶)——超宽屏一行多卡, 窄窗自动降列;
-                          // 再多的列会让表单输入框挤成一团。
-                          // AI 服务入口(ADR-133)是网格首格, 顺序与阅读动线一致。
-                          _SettingGroupGrid(
-                            cards: [
-                              for (final g in _groups)
-                                if (_all!.any((e) => e.category == g.$1))
-                                  _SettingGroupCard(
-                                    group: g,
-                                    items: _all!
-                                        .where((e) => e.category == g.$1)
-                                        .toList(),
-                                    controllers: _controllers,
-                                    isDirty: (k) => _dirty.contains(k),
-                                    onChanged: _markDirty,
-                                    enabled: !_saving && !_loading,
-                                    footer: g.$1 == 'material_market'
-                                        ? MaterialForecastRuntimeStatusCard(
-                                            savedSettings: {
-                                              for (final entry in _all!)
-                                                if (entry.category ==
-                                                    'material_market')
-                                                  entry.key: entry.value,
-                                            },
-                                          )
-                                        : g.$1 == 'updates'
-                                        ? Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.stretch,
-                                            children: [
-                                              if (_all!.any(
-                                                (entry) =>
-                                                    entry.category ==
-                                                        'updates' &&
-                                                    entry.editable,
-                                              ))
-                                                SystemUpdaterStatusCard(
-                                                  status: _updaterStatus,
-                                                  loading: _updaterLoading,
-                                                  error: _updaterError,
-                                                  onRefresh:
-                                                      !_saving && !_loading
-                                                      ? _loadUpdaterStatus
-                                                      : null,
+                        builder: (context, pagePadding) => ListView(
+                          padding: pagePadding,
+                          children: [
+                            const PlatformSettingsEntryCard(),
+                            const RemoteAccessEntryCard(),
+                            _warningBanner(theme),
+                            // 分组卡片自适应瀑布流(UtenResponsiveGrid): 按容器宽度
+                            // <500 一列 / 500-800 两列 / 800-1100 三列 / ≥1100 四列
+                            // (maxColumns 封顶)——超宽屏一行多卡, 窄窗自动降列;
+                            // 再多的列会让表单输入框挤成一团。
+                            // AI 服务入口(ADR-133)是网格首格, 顺序与阅读动线一致。
+                            _SettingGroupGrid(
+                              cards: [
+                                for (final g in _groups)
+                                  if (_all!.any((e) => e.category == g.$1))
+                                    _SettingGroupCard(
+                                      group: g,
+                                      items: _all!
+                                          .where((e) => e.category == g.$1)
+                                          .toList(),
+                                      controllers: _controllers,
+                                      isDirty: (k) => _dirty.contains(k),
+                                      onChanged: _markDirty,
+                                      enabled: !_saving && !_loading,
+                                      footer: g.$1 == 'material_market'
+                                          ? MaterialForecastRuntimeStatusCard(
+                                              savedSettings: {
+                                                for (final entry in _all!)
+                                                  if (entry.category ==
+                                                      'material_market')
+                                                    entry.key: entry.value,
+                                              },
+                                            )
+                                          : g.$1 == 'updates'
+                                          ? Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.stretch,
+                                              children: [
+                                                if (_all!.any(
+                                                  (entry) =>
+                                                      entry.category ==
+                                                          'updates' &&
+                                                      entry.editable,
+                                                ))
+                                                  SystemUpdaterStatusCard(
+                                                    status: _updaterStatus,
+                                                    loading: _updaterLoading,
+                                                    error: _updaterError,
+                                                    onRefresh:
+                                                        !_saving && !_loading
+                                                        ? _loadUpdaterStatus
+                                                        : null,
+                                                  ),
+                                                const SizedBox(
+                                                  height: UtenSpacing.s12,
                                                 ),
-                                              const SizedBox(
-                                                height: UtenSpacing.s12,
+                                                UtenButton(
+                                                  type:
+                                                      UtenButtonType.secondary,
+                                                  icon: Icons
+                                                      .system_update_alt_rounded,
+                                                  onPressed: () => context.push(
+                                                    RouteName
+                                                        .adminServerOperations,
+                                                  ),
+                                                  child: const Text(
+                                                    '打开服务器更新与发布源配置',
+                                                  ),
+                                                ),
+                                              ],
+                                            )
+                                          : g.$1 == 'sms'
+                                          ? UtenButton(
+                                              type: UtenButtonType.secondary,
+                                              icon: Icons.sms_outlined,
+                                              onPressed: () => context.push(
+                                                RouteName.adminSmsSettings,
                                               ),
-                                              UtenButton(
-                                                type: UtenButtonType.secondary,
-                                                icon: Icons
-                                                    .system_update_alt_rounded,
-                                                onPressed: () => context.push(
-                                                  RouteName
-                                                      .adminServerOperations,
-                                                ),
-                                                child: const Text(
-                                                  '打开服务器更新与发布源配置',
-                                                ),
-                                              ),
-                                            ],
-                                          )
-                                        : g.$1 == 'sms'
-                                        ? UtenButton(
-                                            type: UtenButtonType.secondary,
-                                            icon: Icons.sms_outlined,
-                                            onPressed: () => context.push(
-                                              RouteName.adminSmsSettings,
-                                            ),
-                                            child: const Text('短信网关与凭据'),
-                                          )
-                                        : null,
-                                  ),
-                            ],
-                          ),
-                          const SizedBox(
-                            height: UtenFloatingActionGroup.scrollClearance,
-                          ),
-                        ],
+                                              child: const Text('短信网关与凭据'),
+                                            )
+                                          : null,
+                                    ),
+                              ],
+                            ),
+                            const SizedBox(
+                              height: UtenFloatingActionGroup.scrollClearance,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -551,6 +557,13 @@ class _SettingGroupCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (group.$1 == 'updates')
+                  UtenFieldHintIcon(
+                    info: items.any((entry) => entry.editable)
+                        ? '填 0 为仅手动更新，填 7 为每周日 05:00；其他天数从设置修改当天起计算，每隔相应天数在 05:00 检查（服务器当地时间）。'
+                        : '旧自动检查周期仅保留为升级记录。实际更新方式与运行状态请在服务器更新中查看。',
+                    dense: true,
+                  ),
               ],
             ),
             const Divider(height: 20),
@@ -572,12 +585,6 @@ class _SettingGroupCard extends StatelessWidget {
                 onChanged: () => onChanged(e.key),
                 enabled: enabled,
               ),
-            if (group.$1 == 'updates' && items.any((entry) => entry.editable))
-              const Text(
-                '填 0 为仅手动更新，填 7 为每周日 05:00；其他天数从设置修改当天起计算，每隔相应天数在 05:00 检查（服务器当地时间）。',
-              ),
-            if (group.$1 == 'updates' && !items.any((entry) => entry.editable))
-              const Text('旧自动检查周期仅保留为升级记录。实际更新方式与运行状态请在服务器更新中查看。'),
             ?footer,
           ],
         ),

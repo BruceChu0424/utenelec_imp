@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 
 import '../../../core/theme/uten_tokens.dart';
 
@@ -45,6 +46,7 @@ class WhereUsedSourceBreakdown extends StatelessWidget {
           icon: Icons.badge_outlined,
           title: '产成品与来源',
           subtitle: '名称、规格、分类和状态来自查询时货品主档',
+          explanatorySubtitle: true,
           metrics: [
             _Metric('关系来源', _display(row['sources'] ?? '旧生产快照')),
             _Metric('规格', _display(row['spec'])),
@@ -59,6 +61,7 @@ class WhereUsedSourceBreakdown extends StatelessWidget {
             icon: Icons.account_tree_outlined,
             title: '当前理论 BOM',
             subtitle: '查询时仍有效；日期筛选不影响本区',
+            explanatorySubtitle: true,
             metrics: [
               _Metric('关系', _display(row['bomRelation'])),
               _Metric(
@@ -215,12 +218,14 @@ class _SourceSection extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.metrics,
+    this.explanatorySubtitle = false,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final List<_Metric> metrics;
+  final bool explanatorySubtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -240,19 +245,29 @@ class _SourceSection extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        if (explanatorySubtitle)
+                          UtenFieldHintIcon(info: subtitle, dense: true),
+                      ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                    if (!explanatorySubtitle) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -315,7 +330,14 @@ Widget _metricLabel(ThemeData theme, _Metric metric) {
     ),
   );
   final tooltip = metric.tooltip;
-  return tooltip == null ? label : Tooltip(message: tooltip, child: label);
+  return tooltip == null
+      ? label
+      : Row(
+          children: [
+            Flexible(child: label),
+            UtenFieldHintIcon(info: tooltip, dense: true),
+          ],
+        );
 }
 
 class _QualityNotice extends StatelessWidget {

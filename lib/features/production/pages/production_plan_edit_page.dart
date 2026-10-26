@@ -73,6 +73,7 @@ import '../widgets/production_grid_columns.dart';
 import '../widgets/production_overproduction_rate_field.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class ProductionPlanEditPage extends ConsumerStatefulWidget {
   const ProductionPlanEditPage({super.key, this.id});
@@ -770,262 +771,269 @@ class _ProductionPlanEditPageState
                     // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
                     // 恒在屏幕最右，不随限宽容器/列宽漂移。
                     child: UtenContentContainer(
-                      child: ListView(
-                        controller: _scrollCtl,
-                        // 底部多留一段：右下角悬浮的「取消/保存」会盖住最后一行。
+                      child: UtenPageEdgePadding.scroll(
                         padding: const EdgeInsets.fromLTRB(
                           UtenSpacing.s12,
                           UtenSpacing.s12,
                           UtenSpacing.s12,
                           UtenFloatingActionGroup.scrollClearance,
                         ),
-                        children: [
-                          Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(UtenSpacing.s12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  UtenFormGrid(
-                                    children: [
-                                      // 单据号：系统自动生成，只读显示。
-                                      TextFormField(
-                                        errorBuilder: utenTextFieldErrorBuilder,
-                                        readOnly: true,
-                                        controller: _billNo,
-                                        decoration: UtenInputDecoration(
-                                          InputDecoration(
-                                            labelText: '单据号',
-                                            hintText: _billNo.text.isEmpty
-                                                ? '保存后自动生成'
-                                                : null,
-                                            filled: _billNo.text.isEmpty,
-                                            suffixIcon: _billNo.text.isEmpty
-                                                ? const Icon(
-                                                    Icons.autorenew_outlined,
-                                                    size: 18,
-                                                  )
-                                                : const Icon(
-                                                    Icons.lock_outline,
-                                                    size: 16,
+                        builder: (context, resolvedPagePadding) => ListView(
+                          controller: _scrollCtl,
+                          // 底部多留一段：右下角悬浮的「取消/保存」会盖住最后一行。
+                          padding: resolvedPagePadding,
+                          children: [
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(UtenSpacing.s12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    UtenFormGrid(
+                                      children: [
+                                        // 单据号：系统自动生成，只读显示。
+                                        TextFormField(
+                                          errorBuilder:
+                                              utenTextFieldErrorBuilder,
+                                          readOnly: true,
+                                          controller: _billNo,
+                                          decoration: UtenInputDecoration(
+                                            InputDecoration(
+                                              labelText: '单据号',
+                                              hintText: _billNo.text.isEmpty
+                                                  ? '保存后自动生成'
+                                                  : null,
+                                              filled: _billNo.text.isEmpty,
+                                              suffixIcon: _billNo.text.isEmpty
+                                                  ? const Icon(
+                                                      Icons.autorenew_outlined,
+                                                      size: 18,
+                                                    )
+                                                  : const Icon(
+                                                      Icons.lock_outline,
+                                                      size: 16,
+                                                    ),
+                                            ),
+                                          ),
+                                        ),
+                                        // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                                        ...utenMakerAuditCells(
+                                          ref,
+                                          makerName: _makerName,
+                                          createdAt: _createdAt,
+                                        ),
+                                        UtenDateField(
+                                          label: '单据日期',
+                                          required: true,
+                                          value: _billDate,
+                                          onChanged: (d) =>
+                                              setState(() => _billDate = d),
+                                        ),
+                                        UtenDateField(
+                                          label: '交货日',
+                                          value: _deliveryDate,
+                                          onChanged: (d) =>
+                                              setState(() => _deliveryDate = d),
+                                        ),
+                                        // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
+                                        UtenDepartmentPicker(
+                                          mode: UtenDepartmentPickerMode.single,
+                                          label: '车间',
+                                          hint: '选择生产车间(部门)',
+                                          selectablePredicate:
+                                              isBusinessDepartmentNode,
+                                          treeOverride: workshopTree,
+                                          initialSelection:
+                                              _departmentId == null
+                                              ? const []
+                                              : [
+                                                  DeptSelection(
+                                                    id: _departmentId!,
+                                                    name: _workshopName ?? '',
+                                                    fullPath: '',
+                                                    level: '',
                                                   ),
-                                          ),
+                                                ],
+                                          onChanged: (sel) {
+                                            final s = sel.isEmpty
+                                                ? null
+                                                : sel.first;
+                                            setState(() {
+                                              _departmentId = s?.id;
+                                              _workshopName = s?.name; // 部门名冗余
+                                            });
+                                          },
                                         ),
-                                      ),
-                                      // 制单员/制单时间：服务端权威，只读展示（责任制）。
-                                      ...utenMakerAuditCells(
-                                        ref,
-                                        makerName: _makerName,
-                                        createdAt: _createdAt,
-                                      ),
-                                      UtenDateField(
-                                        label: '单据日期',
-                                        required: true,
-                                        value: _billDate,
-                                        onChanged: (d) =>
-                                            setState(() => _billDate = d),
-                                      ),
-                                      UtenDateField(
-                                        label: '交货日',
-                                        value: _deliveryDate,
-                                        onChanged: (d) =>
-                                            setState(() => _deliveryDate = d),
-                                      ),
-                                      // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
-                                      UtenDepartmentPicker(
-                                        mode: UtenDepartmentPickerMode.single,
-                                        label: '车间',
-                                        hint: '选择生产车间(部门)',
-                                        selectablePredicate:
-                                            isBusinessDepartmentNode,
-                                        treeOverride: workshopTree,
-                                        initialSelection: _departmentId == null
-                                            ? const []
-                                            : [
-                                                DeptSelection(
-                                                  id: _departmentId!,
-                                                  name: _workshopName ?? '',
-                                                  fullPath: '',
-                                                  level: '',
+                                        _employeePicker(
+                                          label: '跟单员',
+                                          currentId: _sellerId,
+                                          defaultDeptCode: kDeptCodeMarketing,
+                                          onChanged: (id) => setState(() {
+                                            _sellerId = id;
+                                            _sellerAutoFilled =
+                                                false; // 手选：不自动清除
+                                          }),
+                                        ),
+                                        _employeePicker(
+                                          label: '生产工',
+                                          currentId: _workerId,
+                                          defaultDeptCode: kDeptCodeProduction,
+                                          onChanged: (id) =>
+                                              setState(() => _workerId = id),
+                                        ),
+                                        _sourceDocField(theme),
+                                        if (widget.id == null)
+                                          UtenDropdownField(
+                                            key: const Key(
+                                              'production-manual-source-type',
+                                            ),
+                                            label: '手工计划来源',
+                                            info: '仅手工添加的货品行必填',
+                                            value: _manualSourceType,
+                                            enabled: !_saving,
+                                            items: [
+                                              for (final entry
+                                                  in _manualSourceOptions
+                                                      .entries)
+                                                UtenDropdownItem(
+                                                  value: entry.key,
+                                                  label: entry.value,
                                                 ),
-                                              ],
-                                        onChanged: (sel) {
-                                          final s = sel.isEmpty
-                                              ? null
-                                              : sel.first;
-                                          setState(() {
-                                            _departmentId = s?.id;
-                                            _workshopName = s?.name; // 部门名冗余
-                                          });
-                                        },
-                                      ),
-                                      _employeePicker(
-                                        label: '跟单员',
-                                        currentId: _sellerId,
-                                        defaultDeptCode: kDeptCodeMarketing,
-                                        onChanged: (id) => setState(() {
-                                          _sellerId = id;
-                                          _sellerAutoFilled = false; // 手选：不自动清除
-                                        }),
-                                      ),
-                                      _employeePicker(
-                                        label: '生产工',
-                                        currentId: _workerId,
-                                        defaultDeptCode: kDeptCodeProduction,
-                                        onChanged: (id) =>
-                                            setState(() => _workerId = id),
-                                      ),
-                                      _sourceDocField(theme),
-                                      if (widget.id == null)
-                                        UtenDropdownField(
-                                          key: const Key(
-                                            'production-manual-source-type',
-                                          ),
-                                          label: '手工计划来源',
-                                          info: '仅手工添加的货品行必填',
-                                          value: _manualSourceType,
-                                          enabled: !_saving,
-                                          items: [
-                                            for (final entry
-                                                in _manualSourceOptions.entries)
-                                              UtenDropdownItem(
-                                                value: entry.key,
-                                                label: entry.value,
-                                              ),
-                                          ],
-                                          onChanged: (value) => setState(
-                                            () => _manualSourceType = value,
-                                          ),
-                                        ),
-                                      if (widget.id == null)
-                                        TextFormField(
-                                          errorBuilder:
-                                              utenTextFieldErrorBuilder,
-                                          key: const Key(
-                                            'production-manual-source-ref',
-                                          ),
-                                          controller: _manualSourceRef,
-                                          maxLength: 200,
-                                          decoration: UtenInputDecoration(
-                                            InputDecoration(
-                                              label: fieldLabel(
-                                                '手工计划需求编号',
-                                                theme,
-                                                info: '同一需求后续处理必须沿用同一个编号',
-                                              ),
-                                              counterText: '',
+                                            ],
+                                            onChanged: (value) => setState(
+                                              () => _manualSourceType = value,
                                             ),
                                           ),
-                                        ),
-                                      if (widget.id == null)
-                                        TextFormField(
-                                          errorBuilder:
-                                              utenTextFieldErrorBuilder,
-                                          key: const Key(
-                                            'production-manual-source-reason',
-                                          ),
-                                          controller: _manualSourceReason,
-                                          decoration: UtenInputDecoration(
-                                            InputDecoration(
-                                              label: fieldLabel(
-                                                '手工计划原因',
-                                                theme,
-                                                info:
-                                                    '返工、试制、样品、备库或其他计划不得绕过物料分析',
+                                        if (widget.id == null)
+                                          TextFormField(
+                                            errorBuilder:
+                                                utenTextFieldErrorBuilder,
+                                            key: const Key(
+                                              'production-manual-source-ref',
+                                            ),
+                                            controller: _manualSourceRef,
+                                            maxLength: 200,
+                                            decoration: UtenInputDecoration(
+                                              InputDecoration(
+                                                label: fieldLabel(
+                                                  '手工计划需求编号',
+                                                  theme,
+                                                  info: '同一需求后续处理必须沿用同一个编号',
+                                                ),
+                                                counterText: '',
                                               ),
                                             ),
                                           ),
-                                          minLines: 1,
-                                          maxLines: 2,
-                                        ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: UtenSpacing.s12),
-                                  TextField(
-                                    controller: _remark,
-                                    decoration: const UtenInputDecoration(
-                                      InputDecoration(labelText: '备注'),
+                                        if (widget.id == null)
+                                          TextFormField(
+                                            errorBuilder:
+                                                utenTextFieldErrorBuilder,
+                                            key: const Key(
+                                              'production-manual-source-reason',
+                                            ),
+                                            controller: _manualSourceReason,
+                                            decoration: UtenInputDecoration(
+                                              InputDecoration(
+                                                label: fieldLabel(
+                                                  '手工计划原因',
+                                                  theme,
+                                                  info:
+                                                      '返工、试制、样品、备库或其他计划不得绕过物料分析',
+                                                ),
+                                              ),
+                                            ),
+                                            minLines: 1,
+                                            maxLines: 2,
+                                          ),
+                                      ],
                                     ),
-                                    maxLines: 2,
+                                    const SizedBox(height: UtenSpacing.s12),
+                                    TextField(
+                                      controller: _remark,
+                                      decoration: const UtenInputDecoration(
+                                        InputDecoration(labelText: '备注'),
+                                      ),
+                                      maxLines: 2,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            // 生产计划附件（图纸/样品图/排产确认）挂 PRODUCTION_PLAN。
+                            // 附件只挂已保存单据（ADR-074）：新建态还没有 UUID，
+                            // 创建成功进详情/编辑页后再添加。
+                            if (widget.id != null) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              BusinessAttachmentSection(
+                                ownerType: 'PRODUCTION_PLAN',
+                                ownerId: widget.id!,
+                                canView: ref
+                                    .watch(currentPermissionsProvider)
+                                    .contains(Perm.attachmentView),
+                                // 进入编辑页即已确认可写；草稿状态与归属由服务端附件策略再校验。
+                                canManage: !_saving,
+                                title: '附件（图纸/样品图/排产确认）',
+                                categories: const ['图纸', '样品图', '确认件', '其他'],
+                              ),
+                            ],
+                            // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）。
+                            const SizedBox(height: UtenSpacing.s12),
+                            UtenEditableGrid<ProductionGridRow>(
+                              columnEditingEnabled:
+                                  !_loading &&
+                                  !_saving &&
+                                  _initializationError == null,
+                              tableKey: 'production.plan.items',
+                              controller: _grid,
+                              stickyHeaderPinned: _gridPinned,
+                              columns: productionGridColumns(
+                                onPickGoods: _pickGoods,
+                                onPickSalesOrder: _pickRowSalesOrder,
+                                colorEntries: names.colorEntries,
+                                unitEntries: names.unitEntries,
+                              ),
+                              createBlankRow: () {
+                                final r = ProductionGridRow();
+                                _wireRow(r);
+                                return r;
+                              },
+                              // 复制行沿用原行的预填记录：没人改过的默认比例仍按默认提交。
+                              cloneRow: (r) {
+                                final copy = r.clone();
+                                _prefilledRates.copy(
+                                  r.overproductionPercent,
+                                  copy.overproductionPercent,
+                                );
+                                return copy;
+                              },
+                              // 排产量合计回到表尾：原先只挂在页面底部操作条里，底部条
+                              // 改右下角悬浮后本页就没有合计了（本页此前从不传 footer）。
+                              // 本页无金额，只报数量，且按 unitId 分组绝不跨单位相加。
+                              footer: EditableGridTotalsBar<ProductionGridRow>(
+                                key: const Key('production-plan-edit-totals'),
+                                controller: _grid,
+                                watchOf: (row) => [row.qty],
+                                entriesBuilder: (rows) => [
+                                  UtenTotalEntry(
+                                    '排产量合计',
+                                    exactMeasurementTotalsText(
+                                      rows
+                                          .where((row) => row.goods != null)
+                                          .map(
+                                            (row) => ExactMeasuredAmount(
+                                              value: row.qty.text,
+                                              unitId: row.unitId,
+                                              unitName:
+                                                  names.unitEntries[row.unitId],
+                                            ),
+                                          ),
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
-                          ),
-                          // 生产计划附件（图纸/样品图/排产确认）挂 PRODUCTION_PLAN。
-                          // 附件只挂已保存单据（ADR-074）：新建态还没有 UUID，
-                          // 创建成功进详情/编辑页后再添加。
-                          if (widget.id != null) ...[
-                            const SizedBox(height: UtenSpacing.s12),
-                            BusinessAttachmentSection(
-                              ownerType: 'PRODUCTION_PLAN',
-                              ownerId: widget.id!,
-                              canView: ref
-                                  .watch(currentPermissionsProvider)
-                                  .contains(Perm.attachmentView),
-                              // 进入编辑页即已确认可写；草稿状态与归属由服务端附件策略再校验。
-                              canManage: !_saving,
-                              title: '附件（图纸/样品图/排产确认）',
-                              categories: const ['图纸', '样品图', '确认件', '其他'],
-                            ),
                           ],
-                          // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）。
-                          const SizedBox(height: UtenSpacing.s12),
-                          UtenEditableGrid<ProductionGridRow>(
-                            columnEditingEnabled:
-                                !_loading &&
-                                !_saving &&
-                                _initializationError == null,
-                            tableKey: 'production.plan.items',
-                            controller: _grid,
-                            stickyHeaderPinned: _gridPinned,
-                            columns: productionGridColumns(
-                              onPickGoods: _pickGoods,
-                              onPickSalesOrder: _pickRowSalesOrder,
-                              colorEntries: names.colorEntries,
-                              unitEntries: names.unitEntries,
-                            ),
-                            createBlankRow: () {
-                              final r = ProductionGridRow();
-                              _wireRow(r);
-                              return r;
-                            },
-                            // 复制行沿用原行的预填记录：没人改过的默认比例仍按默认提交。
-                            cloneRow: (r) {
-                              final copy = r.clone();
-                              _prefilledRates.copy(
-                                r.overproductionPercent,
-                                copy.overproductionPercent,
-                              );
-                              return copy;
-                            },
-                            // 排产量合计回到表尾：原先只挂在页面底部操作条里，底部条
-                            // 改右下角悬浮后本页就没有合计了（本页此前从不传 footer）。
-                            // 本页无金额，只报数量，且按 unitId 分组绝不跨单位相加。
-                            footer: EditableGridTotalsBar<ProductionGridRow>(
-                              key: const Key('production-plan-edit-totals'),
-                              controller: _grid,
-                              watchOf: (row) => [row.qty],
-                              entriesBuilder: (rows) => [
-                                UtenTotalEntry(
-                                  '排产量合计',
-                                  exactMeasurementTotalsText(
-                                    rows
-                                        .where((row) => row.goods != null)
-                                        .map(
-                                          (row) => ExactMeasuredAmount(
-                                            value: row.qty.text,
-                                            unitId: row.unitId,
-                                            unitName:
-                                                names.unitEntries[row.unitId],
-                                          ),
-                                        ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),

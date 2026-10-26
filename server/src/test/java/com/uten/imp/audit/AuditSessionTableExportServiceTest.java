@@ -16,18 +16,18 @@ class AuditSessionTableExportServiceTest {
     @Test void exportUsesVisibleSessionSchemaAndFreezesOneSnapshotAcrossAllPages() {
         var row=mock(AuditSessionRow.class);
         when(row.actorDisplay()).thenReturn("员工");when(row.operationCount()).thenReturn(4L);
-        when(query.sessions(actor,from,to,1,20,null)).thenReturn(new AuditSessionPageResponse(Collections.nCopies(20,row),1,20,21,2,99));
-        when(query.sessions(actor,from,to,2,20,99L)).thenReturn(new AuditSessionPageResponse(List.of(row),2,20,21,2,99));
-        var result=service.export(actor,from,to,null,100);
+        when(query.sessionsForExport(actor,from,to,1,100,99L,null)).thenReturn(new AuditSessionPageResponse(Collections.nCopies(100,row),1,100,101,2,99));
+        when(query.sessionsForExport(actor,from,to,2,100,99L,101L)).thenReturn(new AuditSessionPageResponse(List.of(row),2,100,101,2,99));
+        var result=service.export(actor,from,to,99L,1000);
         assertThat(result.columns()).extracting(ExportColumn::key).containsExactly("actor","login","status","device","operations","failures","postLogout","logout","credential");
-        assertThat(result.rows()).hasSize(21);
+        assertThat(result.rows()).hasSize(101);
         assertThat(result.rows().getFirst()).containsEntry("operations",4L).containsEntry("actor","员工");
-        verify(query).sessions(actor,from,to,2,20,99L);
+        verify(query).sessionsForExport(actor,from,to,2,100,99L,101L);
     }
     @Test void exceedsConfiguredLimitOrDriftingSnapshotNeverSilentlyTruncates() {
-        when(query.sessions(actor,from,to,1,20,99L)).thenReturn(new AuditSessionPageResponse(List.of(),1,20,21,2,99));
+        when(query.sessionsForExport(actor,from,to,1,100,99L,null)).thenReturn(new AuditSessionPageResponse(List.of(),1,100,21,2,99));
         assertThatThrownBy(()->service.export(actor,from,to,99L,10)).isInstanceOf(ApiException.class);
-        when(query.sessions(actor,from,to,2,20,99L)).thenReturn(new AuditSessionPageResponse(List.of(),2,20,21,2,100));
+        when(query.sessionsForExport(actor,from,to,2,100,99L,21L)).thenReturn(new AuditSessionPageResponse(List.of(),2,100,21,2,100));
         assertThatThrownBy(()->service.export(actor,from,to,99L,100)).isInstanceOf(ApiException.class);
     }
 }

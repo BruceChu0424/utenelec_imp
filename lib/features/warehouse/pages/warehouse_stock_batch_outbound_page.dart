@@ -31,6 +31,7 @@ import '../providers/warehouse_count_refresh.dart';
 import '../repositories/stock_doc_repository.dart';
 import '../widgets/warehouse_stock_outbound_detail_table.dart';
 import '../widgets/warehouse_task_session_guard.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class WarehouseStockBatchOutboundPage extends ConsumerStatefulWidget {
   const WarehouseStockBatchOutboundPage({
@@ -493,7 +494,7 @@ class _WarehouseStockBatchOutboundPageState
               AbsorbPointer(
                 absorbing: _saving,
                 child: UtenContentContainer.wide(
-                  child: Padding(
+                  child: UtenPageEdgePadding(
                     padding: const EdgeInsets.all(UtenSpacing.s12),
                     child: _loading
                         ? const Center(child: CircularProgressIndicator())

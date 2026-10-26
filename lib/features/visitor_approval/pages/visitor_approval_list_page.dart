@@ -15,10 +15,9 @@
 // 内层水平 padding 相应让位）；窄屏表格横向滚动即可。
 // 2026-09-18 UI 统一收口：错误态改 ApiException 提取 message、分段行间距
 // 对齐报销审批队列口径（top 12 / bottom 8）。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import '../../../shared/models/retained_async_page.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../shared/providers/master_name_provider.dart'
-    show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -26,10 +25,8 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_batch_reject_dialog.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
-import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -268,6 +265,7 @@ class _VisitorApprovalListPageState
     if (failures.isNotEmpty) {
       context.appError(l10n.visitorBatchIncomplete(verb, failures.first));
     }
+    setState(() => _page = _tableRows.visiblePage ?? _page);
     // 刷新当前分段队列、筛选桶与徽章计数（forward 会推给接待人，两个徽章都变）。
     ref.invalidate(visitorApprovalListProvider(_query));
     ref.invalidate(visitorApprovalFacetsProvider(_tabStatus));
@@ -346,11 +344,25 @@ class _VisitorApprovalListPageState
       _tab,
       _statusFilter,
       _hostDepartmentId,
-      ref.watch(masterDataSessionKeyProvider),
+      retainedReaderEpoch(ref),
     );
-    final list = _retainedPage.resolve(
+    final readLease =
+        ref.watch(
+          visitorApprovalReadProvider((
+            status: _query.status,
+            hostDepartmentId: _query.hostDepartmentId,
+          )),
+        )..bindView(
+          context,
+          currentQuery: () => (
+            status: _query.status,
+            hostDepartmentId: _query.hostDepartmentId,
+          ),
+        );
+    final list = _retainedPage.resolveFor(
+      ref,
       paginationScope,
-      ref.watch(visitorApprovalListProvider(_query)),
+      visitorApprovalListProvider(_query),
     );
     final facets = ref.watch(visitorApprovalFacetsProvider(_tabStatus));
     final isCompact = context.breakpoint.isCompact;
@@ -400,81 +412,96 @@ class _VisitorApprovalListPageState
           ),
         ),
         Expanded(
-          child: list.when(
-            skipLoadingOnReload: true,
-            skipError: true,
-            loading: () => const UtenSkeletonList(itemCount: 6),
-            error: (e, _) => UtenEmpty.error(
-              // 与信息变更审核/通知列表同款：ApiException 提取 message，兜底通用文案。
-              message: e is ApiException ? e.message : l10n.commonError,
-              actionLabel: l10n.commonRetry,
-              onAction: () =>
-                  ref.invalidate(visitorApprovalListProvider(_query)),
-            ),
-            data: (page) => RefreshIndicator(
-              onRefresh: () async {
-                ref.invalidate(visitorApprovalListProvider(_query));
-                ref.invalidate(visitorApprovalFacetsProvider(_tabStatus));
-              },
-              child: MasterDataTableView<VisitorApplication>(
-                tableKey:
-                    'features.visitor_approval.pages.visitor_approval_list_page.VisitorApprovalListPageState.build.1',
-                key: const Key('visitor-approval-table'),
-                paginationScope: paginationScope,
-                loadingMore: list.isLoading,
-                error: list.hasError ? '${list.error}' : null,
-                onRetry: () =>
-                    ref.invalidate(visitorApprovalListProvider(_query)),
-                columns: _columns(l10n),
-                items: page.items,
-                rowsController: _tableRows,
-                facets: {
-                  'status': _statusBuckets(
-                    facets.value?['status'] ?? const [],
-                    l10n,
-                  ),
-                  'hostDepartment': facets.value?['hostDepartment'] ?? const [],
-                },
-                nullCounts: const {},
-                filters: {
-                  'status':
-                      _statusFilter ??
-                      (_tab == ApprovalTab.history ? null : _tabStatus),
-                  'hostDepartment': _hostDepartmentId,
-                },
-                onFilterChanged: _onFilterChanged,
-                // 待审批段开多选 + 悬浮批量动作；已批准/已拒绝段只读浏览。
-                selectable: _isPendingTab,
-                idOf: (app) => app.id,
-                selectedIds: _selectedIds,
-                onSelectedIdsChanged: (next) =>
-                    setState(() => _selectedIds = next),
-                batchActionsBuilder: _isPendingTab
-                    ? (context, ids) =>
-                          _batchActions(context, ids, _tableRows.items)
-                    : null,
-                // 双击行进入审批详情：push（2026-09-24 起，原来 go 会抹掉列表实例，
-                // 详情返回只能落 default；push 后详情 pop 回本页，数据由
-                // autoDispose family 失效自动换新）。
-                onRowTap: (app) => context.push('/visitor-approval/${app.id}'),
-                emptyMessage: l10n.visitorApprovalEmpty,
-                currentPage: page.page,
-                totalPages: page.totalPages,
-                onPageChange: (p) async {
-                  setState(() => _page = p);
-                  await _retainedPage.waitFor(
-                    ref,
-                    visitorApprovalListProvider(_query),
-                    () => ref.read(visitorApprovalListProvider(_query).future),
+          child: Builder(
+            builder: (context) {
+              final page =
+                  list.value ??
+                  const PagedResult<VisitorApplication>(
+                    items: [],
+                    page: 1,
+                    size: 20,
+                    total: 0,
+                    totalPages: 0,
                   );
+              return RefreshIndicator(
+                onRefresh: () async {
+                  setState(() => _page = _tableRows.visiblePage ?? _page);
+                  readLease.invalidate();
+                  ref.invalidate(visitorApprovalListProvider(_query));
+                  ref.invalidate(visitorApprovalFacetsProvider(_tabStatus));
                 },
-              ),
-            ),
+                child: MasterDataTableView<VisitorApplication>(
+                  expensiveRowMounts: false,
+                  tableKey:
+                      'features.visitor_approval.pages.visitor_approval_list_page.VisitorApprovalListPageState.build.1',
+                  key: const Key('visitor-approval-table'),
+                  paginationScope: paginationScope,
+                  isLoading: list.isLoading && !list.hasValue,
+                  loadingMore: list.isLoading && list.hasValue,
+                  error: list.hasError ? '${list.error}' : null,
+                  onRetry: () {
+                    readLease.invalidate();
+                    ref.invalidate(visitorApprovalListProvider(_query));
+                  },
+                  columns: _columns(l10n),
+                  items: page.items,
+                  rowsController: _tableRows,
+                  facets: {
+                    'status': _statusBuckets(
+                      facets.value?['status'] ?? const [],
+                      l10n,
+                    ),
+                    'hostDepartment':
+                        facets.value?['hostDepartment'] ?? const [],
+                  },
+                  nullCounts: const {},
+                  filters: {
+                    'status':
+                        _statusFilter ??
+                        (_tab == ApprovalTab.history ? null : _tabStatus),
+                    'hostDepartment': _hostDepartmentId,
+                  },
+                  onFilterChanged: _onFilterChanged,
+                  // 待审批段开多选 + 悬浮批量动作；已批准/已拒绝段只读浏览。
+                  selectable: _isPendingTab,
+                  idOf: (app) => app.id,
+                  selectedIds: _selectedIds,
+                  onSelectedIdsChanged: (next) =>
+                      setState(() => _selectedIds = next),
+                  batchActionsBuilder: _isPendingTab
+                      ? (context, ids) =>
+                            _batchActions(context, ids, _tableRows.items)
+                      : null,
+                  // 双击行进入审批详情：push（2026-09-24 起，原来 go 会抹掉列表实例，
+                  // 详情返回只能落 default；push 后详情 pop 回本页，数据由
+                  // autoDispose family 失效自动换新）。
+                  onRowTap: (app) =>
+                      context.push('/visitor-approval/${app.id}'),
+                  emptyMessage: l10n.visitorApprovalEmpty,
+                  currentPage: page.page,
+                  totalPages: page.totalPages,
+                  onPageChange: (p) => readLease.paginate(p, () async {
+                    setState(() => _page = p);
+                    ref.invalidate(visitorApprovalListProvider(_query));
+                    await _retainedPage.waitFor(
+                      ref,
+                      visitorApprovalListProvider(_query),
+                      () =>
+                          ref.read(visitorApprovalListProvider(_query).future),
+                    );
+                  }),
+                ),
+              );
+            },
           ),
         ),
       ],
     );
-    if (isCompact) body = UtenContentContainer(child: body);
+    if (isCompact) {
+      body = UtenContentContainer(child: body);
+    } else {
+      body = UtenPageEdgePadding(child: body);
+    }
 
     return Scaffold(
       appBar: UtenAppBar(

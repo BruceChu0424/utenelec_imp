@@ -1,3 +1,4 @@
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // 基本单位资料管理页（基础资料 · 扁平主档，无分类树）。
 //
 // 与货品/模具/客户/供应商/颜色同级，扁平字典（编号/名称/状态 3 字段）：
@@ -5,6 +6,7 @@
 // showMasterEditDialog + showMasterDetailSheet，CRUD/详情/并发防护流程与货品 _DetailPane 一致。
 // 查看全员可见（路由不设守卫），编辑按 unit:edit 权限显隐。
 // 文档：见 docs/03-页面/基础资料页.md。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:async';
 
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
@@ -20,6 +22,9 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
+import 'package:collection/collection.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../components/print/complete_print_snapshot.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -56,17 +61,34 @@ class UnitPage extends ConsumerStatefulWidget {
 }
 
 class _UnitPageState extends ConsumerState<UnitPage>
-    with MasterInlinePageMixin<UnitPage, UnitListItem> {
+    with
+        MasterInlinePageMixin<UnitPage, UnitListItem>,
+        ScopedPagedReadViewMixin<UnitPage> {
+  final _readViewportRows = MasterDataTableRowsController<UnitListItem>();
+  int get _visibleReadPage => _page == null
+      ? (_pageNum)
+      : (_readViewportRows.visiblePage ?? (_pageNum));
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    if (mounted) {
+      setState(() {
+        inlineClearView();
+        _error = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   @override
   String get inlineEntityType => 'units';
   @override
   bool get inlineCanEdit => _canEdit;
   @override
-  bool get inlineReadReady => !_loading && _error == null;
+  bool get inlineReadReady => _page != null && !_loading && _error == null;
   @override
   String inlineIdOf(UnitListItem row) => row.id;
   @override
-  Future<void> inlineReload() => _loadUnits(_pageNum);
+  Future<void> inlineReload() => _loadUnits(_visibleReadPage);
   @override
   Future<void> inlineReloadAfterBoundary() => _refresh();
   @override
@@ -195,23 +217,32 @@ class _UnitPageState extends ConsumerState<UnitPage>
 
   // ---- 分页 -------------------------------------------------------------
 
-  Future<void> _loadUnits(int page) async {
+  Future<void> _loadUnits(int page, {bool useCache = false}) async {
     if (page != _pageNum) _invalidateOperations();
-    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
+    final inlineReadBoundary = captureInlineRead();
     final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
       _pageNum = page;
     });
+    final repository = ref.read(unitRepositoryProvider);
+    final keyword = _keyword.trim().isEmpty ? null : _keyword;
+    final filters = Map<String, String?>.unmodifiable(_filters);
+    Object pagingQuery() => [
+      ref.read(unitRepositoryProvider),
+      _keyword,
+      _filters,
+    ];
     try {
-      final result = await ref
-          .read(unitRepositoryProvider)
-          .list(
-            page: page,
-            keyword: _keyword.trim().isEmpty ? null : _keyword,
-            filters: _filters,
-          );
+      final result = await readScopedPage<UnitListItem>(
+        page,
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        fetchPage: (target) =>
+            repository.list(page: target, keyword: keyword, filters: filters),
+      );
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_loadRequests.isCurrent(generation)) {
@@ -246,7 +277,7 @@ class _UnitPageState extends ConsumerState<UnitPage>
 
   /// 拉字段 facet（筛选栏下拉选项）。失败静默降级为空下拉，不阻塞列表。
   Future<void> _loadFacets() async {
-    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
+    final inlineReadBoundary = captureInlineRead();
     try {
       final f = await ref.read(unitRepositoryProvider).facets();
       if (!mounted || !inlineAcceptsRead(inlineReadBoundary)) return;
@@ -343,7 +374,7 @@ class _UnitPageState extends ConsumerState<UnitPage>
         onAccepted: () {
           if (!owner.isCurrent) return;
           context.appSuccess('单位已创建');
-          unawaited(_loadUnits(_pageNum));
+          unawaited(_loadUnits(_visibleReadPage));
         },
       );
     } finally {
@@ -375,7 +406,7 @@ class _UnitPageState extends ConsumerState<UnitPage>
         onAccepted: () {
           if (!owner.isCurrent) return;
           context.appSuccess('单位已更新');
-          unawaited(_loadUnits(_pageNum));
+          unawaited(_loadUnits(_visibleReadPage));
         },
       );
     } finally {
@@ -430,7 +461,7 @@ class _UnitPageState extends ConsumerState<UnitPage>
         rows: _detailRows(detail),
         historyEntityType: 'units',
         historyRecordId: detail.id,
-        onHistoryChanged: () => _loadUnits(_pageNum),
+        onHistoryChanged: () => _loadUnits(_visibleReadPage),
         dialogScopeBuilder: owner.ownDialog,
         isCurrent: () => owner.isCurrent,
         canEdit: _canEdit,
@@ -686,7 +717,7 @@ class _UnitPageState extends ConsumerState<UnitPage>
         dialogScopeBuilder: owner.ownDialog,
       );
       if (!owner.isCurrent) return;
-      await Future.wait([_loadUnits(_pageNum), _loadFacets()]);
+      await Future.wait([_loadUnits(_visibleReadPage), _loadFacets()]);
       if (owner.isCurrent && _page?.items.isEmpty == true && _page!.page > 1) {
         await _loadUnits(_page!.page - 1);
       }
@@ -751,24 +782,47 @@ class _UnitPageState extends ConsumerState<UnitPage>
     ...masterFilterQueryParams(_filters),
   };
 
-  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  /// 打印预览数据：按当前筛选口径完整分页读取，列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
-    final result = await ref
-        .read(unitRepositoryProvider)
-        .list(
-          size: 2000,
-          keyword: _keyword.trim().isEmpty ? null : _keyword,
-          filters: _filters,
-        );
-    return UtenPrintTable(
-      columnKeys: [for (final c in _columns) c.key],
-      rowIds: [for (final item in result.items) item.id],
-      headers: [for (final c in _columns) c.label],
-      rows: [
-        for (final item in result.items)
-          [for (final c in _columns) c.value(item) ?? ''],
-      ],
+    final repository = ref.read(unitRepositoryProvider);
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final epoch = ref.read(exportContextEpochProvider);
+    final version = _queryEpoch;
+    final query = Map<String, dynamic>.of(_exportQuery);
+    final filters = Map<String, String?>.unmodifiable(_filters);
+    final keyword = _keyword.trim().isEmpty ? null : _keyword;
+    final columns = List.of(_columns);
+    var retired = false;
+    bool current() {
+      if (retired || !mounted) return false;
+      retired =
+          version != _queryEpoch ||
+          epoch != ref.read(exportContextEpochProvider) ||
+          boundary != ref.read(sensitiveReadBoundaryProvider) ||
+          !const DeepCollectionEquality().equals(query, _exportQuery);
+      return !retired;
+    }
+
+    final scope = await boundary.api.captureRequestScope(isCurrent: current);
+    final table = await scope.run(
+      () => loadCompletePrintSnapshot(
+        loadPage: (page, size) => repository.list(
+          page: page,
+          size: size,
+          keyword: keyword,
+          filters: filters,
+        ),
+        idOf: (row) => row.id,
+        headers: [for (final column in columns) column.label],
+        columnKeys: [for (final column in columns) column.key],
+        cellsOf: (row) => [
+          for (final column in columns) column.value(row) ?? '',
+        ],
+        isCurrent: () => current() && scope.isCurrent,
+      ),
     );
+    await scope.verify();
+    return table;
   }
 
   static final _columns = <MasterColumnDef<UnitListItem>>[
@@ -787,9 +841,9 @@ class _UnitPageState extends ConsumerState<UnitPage>
     ),
   ];
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({int? page}) async {
     _invalidateOperations();
-    await Future.wait([_loadUnits(1), _loadFacets()]);
+    await Future.wait([_loadUnits(page ?? 1), _loadFacets()]);
   }
 
   @override
@@ -817,7 +871,8 @@ class _UnitPageState extends ConsumerState<UnitPage>
             ),
             UtenRefreshButton(
               busy: _loading,
-              onRefresh: () => inlineNavigate(_refresh),
+              onRefresh: () =>
+                  inlineNavigate(() => _refresh(page: _visibleReadPage)),
             ),
           ],
         ),
@@ -829,7 +884,7 @@ class _UnitPageState extends ConsumerState<UnitPage>
                   padding: const EdgeInsets.only(top: UtenSpacing.s8),
                   child: Column(
                     children: [
-                      Padding(
+                      UtenPageEdgePadding(
                         padding: const EdgeInsets.only(
                           bottom: UtenSpacing.s8,
                           left: UtenSpacing.s4,
@@ -844,6 +899,8 @@ class _UnitPageState extends ConsumerState<UnitPage>
                       ),
                       Expanded(
                         child: MasterDataTableView<UnitListItem>(
+                          rowsController: _readViewportRows,
+                          expensiveRowMounts: inlineEdit.active,
                           appendRowsSource: inlineAppendRowsSource,
                           bottomContentPadding: (_canCreate || _canEdit)
                               ? UtenFloatingActionGroup.scrollClearance
@@ -877,7 +934,7 @@ class _UnitPageState extends ConsumerState<UnitPage>
                           toolbarLeadingActions: [
                             UtenPrintPreviewButton(
                               title: '单位资料', // TODO(l10n): 补 arb
-                              subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
+                              subtitle: '当前筛选的完整结果', // TODO(l10n): 补 arb
                               loader: _printLoader,
                               exportEndpoint: '/master/units/export',
                               exportPermission: Perm.unitExport,
@@ -912,13 +969,14 @@ class _UnitPageState extends ConsumerState<UnitPage>
                           isLoading: _loading && _page == null,
                           loadingMore: _loading && _page != null,
                           error: _error,
-                          onRetry: () => _loadUnits(_pageNum),
+                          onRetry: () => _loadUnits(_visibleReadPage),
                           emptyMessage: '暂无单位', // TODO(l10n): 补 arb
                           currentPage: _page?.page ?? 1,
                           totalPages: _page?.totalPages ?? 1,
                           paginationScope: _keyword,
-                          onPageChange: (p) =>
-                              inlineNavigate(() => _loadUnits(p)),
+                          onPageChange: (p) => inlineNavigate(
+                            () => _loadUnits(p, useCache: true),
+                          ),
                         ),
                       ),
                     ],

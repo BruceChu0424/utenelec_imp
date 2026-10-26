@@ -1,4 +1,6 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -8,9 +10,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
-import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -23,6 +23,9 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/auth/native_read_view_scope_mixin.dart'
+    show nativeReadAccessDenied;
 import '../../../shared/search/keyword_search.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_fqc_inspection.dart';
@@ -46,8 +49,25 @@ class ProductionFqcInspectionsPage extends ConsumerStatefulWidget {
 }
 
 class _ProductionFqcInspectionsPageState
-    extends ConsumerState<ProductionFqcInspectionsPage> {
+    extends ConsumerState<ProductionFqcInspectionsPage>
+    with ScopedPagedReadViewMixin<ProductionFqcInspectionsPage> {
+  int get _refreshPage => _tableRows.visiblePage ?? (_result?.page ?? 1);
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    ++_requestVersion;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+      _selectedIds.clear();
+      _tableRows.update(const []);
+    });
+  }
+
   PagedResult<ProductionFqcInspection>? _result;
+  Object? _acceptedQuery;
   bool _loading = false;
   String? _error;
   String _status = 'ACTIVE';
@@ -62,33 +82,52 @@ class _ProductionFqcInspectionsPageState
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  Future<void> _load({int? page}) async {
-    if (_result != null) {
+  Future<void> _load({int? page, bool useCache = false}) async {
+    if (_result != null && !useCache) {
       ref.invalidate(productionFqcDecisionCapabilityProvider);
     }
     final requestVersion = ++_requestVersion;
-    final requestedPage = page ?? _result?.page ?? 1;
+    final ownerCurrent = captureReadOwner(ref);
+    bool current() =>
+        mounted && requestVersion == _requestVersion && ownerCurrent();
+    final requestedPage = page ?? _refreshPage;
     final requestedStatus = _status;
     final requestedKeyword = _keyword;
     setState(() {
+      if (_acceptedQuery != (requestedStatus, requestedKeyword)) {
+        _result = null;
+        _selectedIds.clear();
+      }
       _loading = true;
       _error = null;
     });
     try {
       final repository = ref.read(productionFqcRepositoryProvider);
-      final result = await repository.list(
-        status: requestedStatus,
-        keyword: requestedKeyword,
-        page: requestedPage,
+      final pageRepository = repository;
+      final pageStatus = requestedStatus;
+      final pageKeyword = requestedKeyword;
+
+      final result = await readScopedPage(
+        requestedPage,
+        slot: '_load',
+        query: [pageRepository, pageStatus, pageKeyword],
+        currentQuery: () => [repository, requestedStatus, requestedKeyword],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.list(
+          status: pageStatus,
+          keyword: pageKeyword,
+          page: target,
+        ),
       );
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!current()) return;
       setState(() {
         _result = result;
+        _acceptedQuery = (requestedStatus, requestedKeyword);
         _loading = false;
       });
       // Reconcile after the table has combined any appended pages.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || requestVersion != _requestVersion) return;
+        if (!current()) return;
         final visibleIds = _tableRows.items.map((item) => item.id).toSet();
         if (_selectedIds.any((id) => !visibleIds.contains(id))) {
           setState(
@@ -97,13 +136,19 @@ class _ProductionFqcInspectionsPageState
         }
       });
     } on ApiException catch (error) {
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!mounted) return;
+      if (!current()) return;
       setState(() {
+        if (nativeReadAccessDenied(error)) {
+          _result = null;
+          _acceptedQuery = null;
+          _selectedIds.clear();
+        }
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!current()) return;
       setState(() {
         _error = '生产成品质检任务加载失败，请检查网络后重试';
         _loading = false;
@@ -284,17 +329,7 @@ class _ProductionFqcInspectionsPageState
           ),
         ],
       ),
-      body: SafeArea(
-        child: _loading && result == null
-            ? const UtenSkeletonList()
-            : _error != null && result == null
-            ? UtenEmpty.error(
-                message: _error,
-                actionLabel: '重新加载',
-                onAction: _load,
-              )
-            : _buildTable(canApprove),
-      ),
+      body: SafeArea(child: _buildTable(canApprove)),
     );
   }
 
@@ -321,8 +356,6 @@ class _ProductionFqcInspectionsPageState
                 scope: FormDraftCategoryScope(module: BadgeModule.quality),
               ),
             _buildToolbar(result, canBatchPass: canBatchPass),
-            const SizedBox(height: UtenSpacing.s8),
-            const _FqcProcessHint(),
             if (_error != null && value != null) ...[
               const SizedBox(height: UtenSpacing.s8),
               Semantics(
@@ -336,6 +369,7 @@ class _ProductionFqcInspectionsPageState
             const SizedBox(height: UtenSpacing.s12),
             Expanded(
               child: MasterDataTableView<ProductionFqcInspection>(
+                expensiveRowMounts: false,
                 rowsController: _tableRows,
                 paginationRevision: _result,
                 paginationScope: (_keyword, _status),
@@ -370,13 +404,13 @@ class _ProductionFqcInspectionsPageState
                 isLoading: _loading,
                 loadingMore: _loading && value != null,
                 error: value == null ? _error : null,
-                onRetry: () => _load(page: result.page),
+                onRetry: () => _load(page: _refreshPage),
                 emptyMessage: _keyword.trim().isEmpty
                     ? '当前筛选下没有生产质检任务'
                     : '没有匹配的生产质检任务',
                 currentPage: result.page,
                 totalPages: result.totalPages,
-                onPageChange: (page) => _load(page: page),
+                onPageChange: (page) => _load(page: page, useCache: true),
               ),
             ),
           ],
@@ -415,13 +449,22 @@ class _ProductionFqcInspectionsPageState
         initialSearchValue: _keyword,
         onSearchInputChanged: _onSearchInput,
         onSearchChanged: _applySearch,
-        trailing: Text(
-          canBatchPass
-              ? '共 ${result.total} 条 · 单击多选，双击详情'
-              : '共 ${result.total} 条 · 双击详情',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '共 ${result.total} 条',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            UtenFieldHintIcon(
+              dense: true,
+              info:
+                  '${canBatchPass ? '单击多选，双击详情' : '双击详情'}\n\n'
+                  '任务来自仓库已登记送检；FQC 只记录质量决定，不直接写库存或 iqty。'
+                  '双击进入办理页逐项登记；多选后点右下角「批量审批」汇总到一页，'
+                  '默认全部合格、一次提交办结。',
+            ),
+          ],
         ),
       ),
     );
@@ -570,28 +613,4 @@ class _ProductionFqcInspectionsPageState
       value: (inspection) => ChinaDateTime.formatInstant(inspection.updatedAt),
     ),
   ];
-}
-
-class _FqcProcessHint extends StatelessWidget {
-  const _FqcProcessHint();
-
-  @override
-  Widget build(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Icon(
-        Icons.info_outline_rounded,
-        size: 18,
-        color: Theme.of(context).colorScheme.primary,
-      ),
-      const SizedBox(width: UtenSpacing.s8),
-      const Expanded(
-        child: Text(
-          '任务来自仓库已登记送检；FQC 只记录质量决定，不直接写库存或 iqty。'
-          '双击进入办理页逐项登记；多选后点右下角「批量审批」汇总到一页，'
-          '默认全部合格、一次提交办结。',
-        ),
-      ),
-    ],
-  );
 }

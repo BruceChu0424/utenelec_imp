@@ -22,11 +22,13 @@ Future<SupplierListItem?> showUtenSupplierPicker(
   BuildContext context,
   WidgetRef ref, {
   String title = '选择供应商',
+  bool selectableOnly = true,
+  bool allowQuickCreate = true,
 }) {
   final suppliers = ref.read(supplierRepositoryProvider);
-  final canAdd = ref
-      .read(currentPermissionsProvider)
-      .contains(Perm.supplierCreate);
+  final canAdd =
+      allowQuickCreate &&
+      ref.read(currentPermissionsProvider).contains(Perm.supplierCreate);
   return showUtenMasterPicker<SupplierListItem>(
     context,
     UtenMasterPickerSpec<SupplierListItem>(
@@ -37,10 +39,19 @@ Future<SupplierListItem?> showUtenSupplierPicker(
         categoryId,
         page: page,
         keyword: keyword,
-        selectableOnly: true,
+        selectableOnly: selectableOnly,
       ),
-      search: (query, page) =>
-          suppliers.search(query, page: page, size: 100, selectableOnly: true),
+      search: (query, page) => suppliers.search(
+        query,
+        page: page,
+        size: 100,
+        selectableOnly: selectableOnly,
+      ),
+      searchContext: (query, page) => suppliers.searchContext(
+        query,
+        page: page,
+        selectableOnly: selectableOnly,
+      ),
       idOf: (s) => s.id,
       categoryIdOf: (s) => s.categoryId,
       labelOf: _supplierLabel,
@@ -118,6 +129,7 @@ class SupplierPickerField extends StatelessWidget {
     this.label = '供应商',
     this.required = false,
     this.enabled = true,
+    this.allowClear = true,
     this.errorMessage,
   });
 
@@ -133,6 +145,7 @@ class SupplierPickerField extends StatelessWidget {
   final String label;
   final bool required;
   final bool enabled;
+  final bool allowClear;
   final String? errorMessage;
 
   @override
@@ -147,6 +160,7 @@ class SupplierPickerField extends StatelessWidget {
     icon: Icons.local_shipping_outlined,
     required: required,
     enabled: enabled,
+    allowClear: allowClear,
     errorMessage: errorMessage,
   );
 }

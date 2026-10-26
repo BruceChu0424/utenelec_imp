@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:collection/collection.dart';
 
 import '../../core/io/file_saver.dart';
+import '../../shared/export/master_export_job.dart';
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/network/api_client.dart';
@@ -15,8 +16,12 @@ import '../../core/network/api_exception.dart';
 import '../../core/network/authenticated_request_scope.dart';
 import '../../core/ui/app_notification.dart';
 import '../../shared/auth/permissions.dart';
+import '../../shared/export/report_export_job_dialog.dart';
+import '../../shared/export/report_export_jobs.dart';
+import '../../shared/export/supplemental_export_job.dart';
 import '../../shared/platform_tables/table_column_projection.dart';
 import '../../shared/providers/export_context_epoch_provider.dart';
+import '../../shared/providers/shared_providers.dart';
 import 'uten_button.dart';
 import '../feedback/uten_dialog.dart';
 
@@ -212,6 +217,98 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
                 .where((column) => column.exportable)
                 .toList(growable: false),
           );
+    final domain = reportExportJobDomain(widget.endpoint);
+    final taskReport =
+        masterExportJobReport(widget.endpoint) ??
+        (domain == 'audit' || domain == 'goods_actual_cost'
+            ? supplementalExportJobReport(domain!, exportProjection?.tableKey)
+            : widget.report);
+    final documentBody = {...widget.bodyParams, ...selection.bodyParams};
+    final supportsTask = domain == 'goods_actual_cost'
+        ? {'xlsx', 'pdf'}.contains(selection.extension)
+        : domain == 'master'
+        ? selection.extension == 'xlsx' &&
+              documentBody.keys.every(
+                (key) => key == 'format' || key == 'sensitiveFilter',
+              )
+        : domain == 'where_used'
+        ? {'xlsx', 'pdf'}.contains(selection.extension) &&
+              documentBody.keys.every((key) => key == 'format')
+        : selection.extension == 'xlsx' && documentBody.isEmpty;
+    if (domain != null && supportsTask) {
+      final jobs = ReportExportJobsClient(api, scope);
+      final available = await jobs.available();
+      if (!mounted || !current() || !actionContext.mounted) return;
+      if (available) {
+        final request = ReportExportJobRequest.create(
+          domain: domain,
+          report: taskReport,
+          format: selection.extension,
+          parameters: domain == 'audit' || domain == 'goods_actual_cost'
+              ? supplementalExportJobParameters(
+                  domain,
+                  widget.queryParams,
+                  documentBody,
+                )
+              : domain == 'master'
+              ? masterExportJobParameters(
+                  taskReport,
+                  widget.queryParams,
+                  documentBody,
+                )
+              : widget.queryParams,
+          columnProjection:
+              domain != 'where_used' &&
+                  exportProjection != null &&
+                  exportProjection.columns.isNotEmpty
+              ? exportProjection.toJson()
+              : null,
+        );
+        // The task dialog owns progress now; keep the underlying action gated
+        // by _preparing without spinning an obscured button indefinitely.
+        setState(() => _loading = false);
+        await showDialog<void>(
+          context: actionContext,
+          barrierDismissible: false,
+          builder: (_) => ReportExportJobDialog(
+            client: jobs,
+            request: request,
+            store: ReportExportPendingStore(
+              ref.read(sharedPreferencesProvider),
+              scope.identity,
+              domain,
+              taskReport,
+              format: selection.extension,
+            ),
+            stillCurrent: current,
+            onDownload: (job) async {
+              final filename = _exportFilename(selection);
+              final saved = await jobs.downloadToFile(
+                job.id,
+                password,
+                filename,
+                stillCurrent: current,
+              );
+              if (!mounted || !current()) return;
+              if (saved != null) {
+                _announceSaved(saved, filename);
+                return;
+              }
+              if (job.bytes > 32 * 1024 * 1024) {
+                throw ApiException(
+                  'STREAMING_UNAVAILABLE',
+                  '当前浏览器不支持大文件保存，请使用桌面版下载原任务',
+                );
+              }
+              final bytes = await jobs.download(job.id, password);
+              if (!mounted || !current()) return;
+              await _saveExport(bytes, selection, current);
+            },
+          ),
+        );
+        return;
+      }
+    }
     final Uint8List bytes = await scope.run(
       () => api.downloadBytes(
         widget.endpoint,
@@ -227,15 +324,30 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
     );
     await scope.verify();
     if (!mounted || !current()) return;
+    await _saveExport(bytes, selection, current);
+  }
+
+  Future<void> _saveExport(
+    Uint8List bytes,
+    UtenExportSelection selection,
+    bool Function() current,
+  ) async {
+    final name = _exportFilename(selection);
+    final saved = await saveBytes(bytes, name, stillCurrent: current);
+    if (!mounted || !current()) return;
+    _announceSaved(saved, name);
+  }
+
+  String _exportFilename(UtenExportSelection selection) {
     final extension = switch (selection.extension) {
       'zip' => 'zip',
       'pdf' => 'pdf',
       _ => 'xlsx',
     };
-    final name =
-        '${selection.filename ?? widget.filename ?? 'export_${widget.report}'}.$extension';
-    final saved = await saveBytes(bytes, name, stillCurrent: current);
-    if (!mounted || !current()) return;
+    return '${selection.filename ?? widget.filename ?? 'export_${widget.report}'}.$extension';
+  }
+
+  void _announceSaved(String saved, String name) {
     final l10n = AppLocalizations.of(context);
     context.appSuccess(
       kIsWeb

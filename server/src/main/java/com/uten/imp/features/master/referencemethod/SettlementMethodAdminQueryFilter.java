@@ -13,5 +13,9 @@ public record SettlementMethodAdminQueryFilter(
         String systemRole,
         String termsBase,
         String dueRule,
-        Set<String> nullFields) {
+        Set<String> nullFields,
+        @jakarta.validation.constraints.Size(max = 200) String keyword) {
+    public SettlementMethodAdminQueryFilter(String status,String systemRole,String termsBase,String dueRule,Set<String> nullFields) {
+        this(status,systemRole,termsBase,dueRule,nullFields,null);
+    }
 }

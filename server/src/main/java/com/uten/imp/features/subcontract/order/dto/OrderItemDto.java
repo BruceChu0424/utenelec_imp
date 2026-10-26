@@ -17,6 +17,8 @@ import java.util.UUID;
 @Getter
 @AllArgsConstructor
 public class OrderItemDto extends com.uten.imp.common.finance.OrderAmountInputResponse {
+    public BigDecimal getDifferenceQty(){return com.uten.imp.common.finance.ProcurementDeliveryDifference.of(qty,receivedQty,returnedQty);}
+    public String getDifferenceQtyExact(){return com.uten.imp.common.util.DecimalText.of(getDifferenceQty());}
     private UUID id;
     private Integer lineNo;
     private UUID goodsId;

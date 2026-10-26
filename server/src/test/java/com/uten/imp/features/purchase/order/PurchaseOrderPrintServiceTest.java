@@ -91,7 +91,7 @@ class PurchaseOrderPrintServiceTest {
 
         var document=service.read(id);
 
-        assertThat(document.statusLabel()).isEqualTo("已结束(财务批准)");
+        assertThat(document.statusLabel()).isEqualTo("已结束(历史财务批准)");
         assertThat(document.financeApproved()).isTrue();
         assertThat(document.reviewerName()).isEqualTo("实际复核员");
         assertThat(document.totalOriginal()).isEqualTo("90071992547409.91");
@@ -184,6 +184,16 @@ class PurchaseOrderPrintServiceTest {
                         assertThat(failure.getCode()).isEqualTo(ErrorCode.BUSINESS));
 
         verifyNoInteractions(recorder, em, branding, names);
+    }
+
+    @Test void directClosurePrintStatusDoesNotPresentTheBusinessDecisionAsAFinanceApproval() {
+        var closure=mock(com.uten.imp.application.port.ProcurementOrderClosureReadPort.ClosureRequestView.class);
+        when(closure.status()).thenReturn("APPROVED");
+        when(closure.executionMode()).thenReturn("DIRECT");
+        when(detail.getClosureRequest()).thenReturn(closure);
+        assertThat(PurchaseOrderPrintService.status(detail)).isEqualTo("已结束(采购取消剩余)");
+        when(closure.executionMode()).thenReturn(null);
+        assertThat(PurchaseOrderPrintService.status(detail)).isEqualTo("已结束(历史财务批准)");
     }
 
     private void assertFinanceApprovalRequired() {

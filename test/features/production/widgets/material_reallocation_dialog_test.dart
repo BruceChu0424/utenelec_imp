@@ -10,6 +10,41 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
   testWidgets(
+    'candidate entry prepares a hidden page and scroll adopts it without replacing raw input',
+    (tester) async {
+      final repository = _PagedCandidatesRepository();
+      await _pumpLauncher(tester, repository, size: const Size(1200, 900));
+      await tester.tap(find.byKey(const Key('open-cross-reallocation')));
+      await tester.pumpAndSettle();
+      final finder = find.byKey(
+        const Key('cross-reallocation-candidates-list'),
+      );
+      ListView list() => tester.widget<ListView>(finder);
+      expect(repository.pages, [1, 2]);
+      expect(list().childrenDelegate.estimatedChildCount, 41);
+      await tester.enterText(
+        find.byKey(const Key('cross-reallocation-qty')),
+        '1.2345',
+      );
+      await tester.enterText(
+        find.byKey(const Key('cross-reallocation-reason')),
+        '精确调拨草稿',
+      );
+      list().controller!.jumpTo(list().controller!.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      expect(repository.pages, [1, 2, 3]);
+      expect(list().childrenDelegate.estimatedChildCount, 81);
+      expect(_fieldText(tester, const Key('cross-reallocation-qty')), '1.2345');
+      expect(
+        _fieldText(tester, const Key('cross-reallocation-reason')),
+        '精确调拨草稿',
+      );
+      expect(repository.createCalls, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'exact large candidate capacity and typed fractional quantities avoid doubles',
     (tester) async {
       const maximum = '99999999999999.9999';
@@ -531,5 +566,42 @@ class _FakeRepository extends ProductionPlanRepository {
   ) async {
     detailCalls++;
     return _latestSource();
+  }
+}
+
+class _PagedCandidatesRepository extends _FakeRepository {
+  final pages = <int>[];
+  @override
+  Future<PagedResult<MaterialCrossReallocationCandidate>>
+  materialCrossReallocationCandidates({
+    required String sourceAnalysisId,
+    required String sourceMaterialLineId,
+    int page = 1,
+    int size = 20,
+    String keyword = '',
+  }) async {
+    pages.add(page);
+    return PagedResult(
+      items: [
+        for (var i = 0; i < 20; i++)
+          MaterialCrossReallocationCandidate(
+            targetAnalysisId: 'target-$page-$i',
+            targetVersion: 3,
+            targetFingerprint: 'c' * 64,
+            targetMaterialLineId: 'material-$page-$i',
+            analysisLabel: '订单 $page/$i',
+            productLabel: '加急产品',
+            pathLabel: '材料',
+            warehouseId: 'warehouse-1',
+            warehouseName: '主仓',
+            shortageQty: 5,
+            sourceLendableQty: 4,
+          ),
+      ],
+      page: page,
+      size: size,
+      total: 60,
+      totalPages: 3,
+    );
   }
 }

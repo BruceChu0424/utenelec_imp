@@ -5,8 +5,10 @@
 // 已有显式滚动条的区域声明所有权，避免同一视口重复绘制。
 
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart' show CupertinoScrollbar;
 import 'package:flutter/services.dart';
+import '../../components/layout/uten_scroll_gutter.dart';
+import '../../components/layout/uten_vertical_scrollbar.dart';
+import '../../components/layout/uten_page_scrollbar_host.dart';
 
 /// 各平台统一提供可发现、可拖动的竖向滚动条。
 class UtenScrollBehavior extends MaterialScrollBehavior {
@@ -44,14 +46,18 @@ class UtenScrollBehavior extends MaterialScrollBehavior {
     if (state is ScrollableState) {
       return _UtenPositionScrollbar(position: state.position, child: child);
     }
-    return Scrollbar(
-      controller: details.controller,
-      thumbVisibility: true,
-      interactive: true,
-      // 只接受本视口的竖向通知，横滚/嵌套列表不得改变滑块长度。
-      notificationPredicate: (notification) =>
-          notification.depth == 0 && notification.metrics.axis == Axis.vertical,
-      child: child,
+    return UtenPageScrollbarSource(
+      controller: details.controller!,
+      debugLabel: 'automatic-vertical-viewport',
+      builder: (context, localVisible) => UtenVerticalScrollbar(
+        controller: details.controller!,
+        visible: localVisible,
+        // 只接受本视口的竖向通知，横滚/嵌套列表不得改变滑块长度。
+        notificationPredicate: (notification) =>
+            notification.depth == 0 &&
+            notification.metrics.axis == Axis.vertical,
+        child: UtenScrollGutter(child: child),
+      ),
     );
   }
 }
@@ -122,55 +128,52 @@ class _UtenPositionScrollbarState extends State<_UtenPositionScrollbar> {
     final interactive = !_axisModifierPressed;
     bool accepts(ScrollNotification notification) =>
         notification.depth == 0 && notification.metrics.axis == Axis.vertical;
-    if (Theme.of(context).platform == TargetPlatform.iOS) {
-      // Material Scrollbar's Cupertino adaptation discards `interactive`.
-      // Keep a stable standard RawScrollbar on iOS so modifier changes never
-      // replace the business subtree or lose an editor's focus.
-      final theme = ScrollbarTheme.of(context);
-      return RawScrollbar(
-        controller: _controller,
-        thumbVisibility: true,
-        interactive: interactive,
-        thumbColor:
-            theme.thumbColor?.resolve(const {}) ??
-            Theme.of(
-              context,
-            ).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-        thickness:
-            theme.thickness?.resolve(const {}) ??
-            CupertinoScrollbar.defaultThickness,
-        radius: theme.radius ?? CupertinoScrollbar.defaultRadius,
-        notificationPredicate: accepts,
-        child: widget.child,
-      );
-    }
-    return Scrollbar(
+    return UtenPageScrollbarSource(
       controller: _controller,
-      thumbVisibility: true,
-      interactive: interactive,
-      notificationPredicate: accepts,
-      child: widget.child,
+      debugLabel: 'automatic-position-viewport',
+      builder: (context, localVisible) => UtenVerticalScrollbar(
+        controller: _controller,
+        visible: localVisible,
+        interactive: interactive,
+        notificationPredicate: accepts,
+        child: UtenScrollGutter(child: widget.child),
+      ),
     );
   }
 }
 
 /// 显式覆盖层拥有的控制器。只跳过该控制器，保留内部独立列表的自动滚动条。
-class UtenScrollbarOwnerScope extends InheritedWidget {
+class UtenScrollbarOwnerScope extends StatelessWidget {
   const UtenScrollbarOwnerScope({
     super.key,
     required this.controller,
-    required super.child,
+    required this.child,
   });
 
   final ScrollController controller;
+  final Widget child;
 
   static bool owns(BuildContext context, ScrollController controller) {
     final scope = context
-        .dependOnInheritedWidgetOfExactType<UtenScrollbarOwnerScope>();
+        .dependOnInheritedWidgetOfExactType<_UtenScrollbarOwner>();
     return scope != null && identical(scope.controller, controller);
   }
 
   @override
-  bool updateShouldNotify(UtenScrollbarOwnerScope oldWidget) =>
+  Widget build(BuildContext context) => _UtenScrollbarOwner(
+    controller: controller,
+    // This observer bridges both ScrollNotification and ScrollMetricsNotification
+    // to listeners. Custom overlay bars live beside, not inside, the viewport.
+    child: ScrollNotificationObserver(child: child),
+  );
+}
+
+class _UtenScrollbarOwner extends InheritedWidget {
+  const _UtenScrollbarOwner({required this.controller, required super.child});
+
+  final ScrollController controller;
+
+  @override
+  bool updateShouldNotify(_UtenScrollbarOwner oldWidget) =>
       !identical(oldWidget.controller, controller);
 }

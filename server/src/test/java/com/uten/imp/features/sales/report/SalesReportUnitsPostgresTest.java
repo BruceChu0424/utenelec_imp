@@ -32,7 +32,8 @@ import static org.mockito.Mockito.*;
 /** Executes the generated detail, summary, facets and totals SQL against real catalog shapes. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class SalesReportUnitsPostgresTest {
-    private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
+    private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine")
+            .withCreateContainerCmdModifier(cmd->cmd.getHostConfig().withMemory(768L*1024*1024).withNanoCPUs(1_000_000_000L));
     private static final UUID CLIENT=UUID.randomUUID(),GOODS=UUID.randomUUID(),COLOR=UUID.randomUUID(),
             EACH=UUID.randomUUID(),BOX=UUID.randomUUID(),USD=UUID.randomUUID(),OWNER=UUID.randomUUID();
     private static final LocalDate DATE=LocalDate.of(2026,10,12);
@@ -43,6 +44,7 @@ class SalesReportUnitsPostgresTest {
     private static StockReportService stock;
     private static SalesPriceMasker prices;
     private static List<String> dataColumns=List.of();
+    private static final List<String> executedSql=new java.util.ArrayList<>();
 
     @BeforeAll static void start(){
         PG.start();var source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
@@ -69,16 +71,17 @@ class SalesReportUnitsPostgresTest {
         db.execute("TRUNCATE sales_orders,sales_order_items,sales_shipments,sales_shipment_items,sales_returns,sales_return_items,sales_other_shipments,sales_other_shipment_items,production_plans,production_plan_items,stock_documents,stock_document_items");
         when(prices.canView()).thenReturn(true);
         dataColumns=List.of();
+        executedSql.clear();
     }
     private static Query query(String sql){
         Query query=mock(Query.class);Map<String,Object> parameters=new LinkedHashMap<>();
         when(query.setParameter(anyString(),any())).thenAnswer(call->{parameters.put(call.getArgument(0),call.getArgument(1));return query;});
-        when(query.getResultList()).thenAnswer(call->named.query(sql,parameters,(rs,index)->{
+        when(query.getResultList()).thenAnswer(call->{executedSql.add(sql);return named.query(sql,parameters,(rs,index)->{
             Object[] row=new Object[rs.getMetaData().getColumnCount()];var aliases=new java.util.ArrayList<String>();
             for(int i=0;i<row.length;i++){row[i]=rs.getObject(i+1);aliases.add(rs.getMetaData().getColumnLabel(i+1));}
             if(sql.contains("LIMIT :__limit OFFSET :__offset")){ dataColumns=List.copyOf(aliases); }return row;
-        }));
-        when(query.getSingleResult()).thenAnswer(call->named.queryForObject(sql,parameters,Long.class));return query;
+        });});
+        when(query.getSingleResult()).thenAnswer(call->{executedSql.add(sql);return named.queryForObject(sql,parameters,Long.class);});return query;
     }
     private record Doc(UUID id,String head,String items,String foreignKey,String bill){}
     private static Doc create(String type,UUID unit){
@@ -140,6 +143,95 @@ class SalesReportUnitsPostgresTest {
             assertThat(row.get(key)).isNull();assertThat(row.get(key+"Exact")).isNull();
         }
         assertThat(result.totals()).noneMatch(total->total.type().equals("money"));
+    }
+
+    @Test void hiddenOrderPricesCannotDetermineRequestedOrDefaultRowOrderOrMetadata(){
+        Doc cheap=create("ORDER",EACH),expensive=create("ORDER",EACH);
+        UUID alpha=UUID.randomUUID(),zeta=UUID.randomUUID();
+        db.update("INSERT INTO clients(id,name) VALUES (?,'AA-公开客户'),(?,'ZZ-公开客户')",alpha,zeta);
+        db.update("UPDATE sales_orders SET client_id=?,bill_no='ORDER-A' WHERE id=?",alpha,cheap.id());
+        db.update("UPDATE sales_orders SET client_id=?,bill_no='ORDER-Z' WHERE id=?",zeta,expensive.id());
+        db.update("UPDATE sales_order_items SET bill_no='ORDER-A',price=1,amount_original=1 WHERE order_id=?",cheap.id());
+        db.update("UPDATE sales_order_items SET bill_no='ORDER-Z',price=9,amount_original=9 WHERE order_id=?",expensive.id());
+        var permitted=sales.orderDetail(null,null,(Short)null,DATE,DATE,null,Map.of(),1,50,"price","desc");
+        assertThat(permitted.rows()).extracting(row->row.get("billNo")).containsExactly("ORDER-Z","ORDER-A");
+        var permittedSummary=sales.orderSummary(null,null,null,DATE,DATE,null,Map.of(),1,50,null,null);
+        assertThat(permittedSummary.rows()).extracting(row->row.get("clientName")).containsExactly("ZZ-公开客户","AA-公开客户");
+        when(prices.canView()).thenReturn(false);executedSql.clear();
+        var hidden=sales.orderDetail(null,null,(Short)null,DATE,DATE,null,Map.of(),1,50,"price","desc");
+        assertThat(hidden.rows()).extracting(row->row.get("billNo")).containsExactly("ORDER-A","ORDER-Z");
+        assertThat(hidden.total()).isEqualTo(2);assertThat(hidden.totals()).noneMatch(total->total.type().equals("money"));
+        var hiddenSummary=sales.orderSummary(null,null,null,DATE,DATE,null,Map.of(),1,50,"totalAmount","desc");
+        assertThat(hiddenSummary.rows()).extracting(row->row.get("clientName")).containsExactly("AA-公开客户","ZZ-公开客户");
+        assertThat(hiddenSummary.total()).isEqualTo(2);assertThat(hiddenSummary.totals()).noneMatch(total->total.type().equals("money"));
+        assertThat(sales.orderSummary(null,null,null,DATE,DATE,null,Map.of(),1,50,"clientName","desc").rows())
+                .extracting(row->row.get("clientName")).containsExactly("ZZ-公开客户","AA-公开客户");
+        assertThat(executedSql).noneMatch(sql->sql.startsWith("SELECT ")
+                && (sql.contains("SUM(t.\"amount\")")||sql.contains("SUM(t.\"totalAmount\")")
+                    ||sql.contains("SUM(t.\"billedLocalAmount\")")));
+        assertThat(hidden.facets().keySet()).doesNotContain("price","amount","totalAmount","discount");
+        assertThat(executedSql.stream().filter(sql->sql.contains("LIMIT :__limit OFFSET :__offset")))
+                .noneMatch(sql->sql.contains("ORDER BY \"price\"")||sql.contains("ORDER BY \"totalAmount\""));
+        assertThat(hiddenSummary.rows()).allSatisfy(row->{assertThat(row.get("totalAmount")).isNull();assertThat(row.get("totalAmountExact")).isNull();});
+    }
+
+    @Test void actualHibernateCursorRetainsEveryFrozenRowAndAppliesOwnerAndPriceMaskAfterEachBatch() throws Exception {
+        Doc doc=create("ORDER",EACH);
+        db.update("UPDATE sales_order_items SET goods_name_snapshot='同名冻结名称',goods_code_snapshot='CUR-0000' WHERE order_id=?",doc.id());
+        db.update("""
+                INSERT INTO sales_order_items(id,order_id,bill_no,bill_date,line_no,goods_id,goods_code_snapshot,
+                    goods_name_snapshot,color_id,unit_id,qty,price,amount_original,amount_local,discount)
+                SELECT gen_random_uuid(),?,?,?,n+1,?,'CUR-'||lpad(n::text,4,'0'),'同名冻结名称',?,?,1,7,21,147,1
+                FROM generate_series(1,1000) n
+                """,doc.id(),doc.bill(),DATE,GOODS,COLOR,EACH);
+        UUID hidden=UUID.randomUUID();
+        db.update("INSERT INTO sales_orders(id,bill_no,bill_date,status,client_id,currency_id,owner_employee_id) VALUES (?,'CUR-HIDDEN',?,1,?,?,?)",hidden,DATE,CLIENT,USD,UUID.randomUUID());
+        db.update("INSERT INTO sales_order_items(id,order_id,bill_no,bill_date,goods_code_snapshot,amount_original,unit_id,qty) VALUES (gen_random_uuid(),?,'CUR-HIDDEN',?,'SECRET',9999,?,9999)",hidden,DATE,EACH);
+        when(prices.canView()).thenReturn(false);
+        try(var connection=java.sql.DriverManager.getConnection(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword())){
+            connection.setTransactionIsolation(java.sql.Connection.TRANSACTION_REPEATABLE_READ);
+            connection.setReadOnly(true);connection.setAutoCommit(false);
+            var configuration=new org.hibernate.cfg.Configuration().setProperty("hibernate.hbm2ddl.auto","none")
+                    .setProperty("hibernate.show_sql","false").setProperty("hibernate.connection.provider_disables_autocommit","true");
+            configuration.getProperties().put("hibernate.connection.datasource",new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true));
+            var count=new java.util.concurrent.atomic.AtomicInteger();
+            configuration.setStatementInspector(sql->{count.incrementAndGet();return sql;});
+            try(var factory=configuration.buildSessionFactory();var session=factory.openSession()){
+                session.setDefaultReadOnly(true);var transaction=session.beginTransaction();
+                session.doWork(active->{
+                    assertThat(active.getAutoCommit()).isFalse();assertThat(active.isReadOnly()).isTrue();
+                    assertThat(active.getTransactionIsolation()).isEqualTo(java.sql.Connection.TRANSACTION_REPEATABLE_READ);
+                });
+                var access=mock(SalesDocumentAccessPolicy.class);
+                when(access.nativeReadScope(anyString(),anyString())).thenReturn(new SalesDocumentAccessPolicy.NativeReadScope(
+                        "o.owner_employee_id IN (:salesOwners)","salesOwners",Set.of(OWNER)));
+                var settings=mock(SystemSettingsService.class);
+                when(settings.readInt(com.uten.imp.features.admin.systemsetting.SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(100_000);
+                var service=new SalesReportService(session,settings,prices,access);
+                org.springframework.transaction.support.TransactionSynchronizationManager.setActualTransactionActive(true);
+                org.springframework.transaction.support.TransactionSynchronizationManager.setCurrentTransactionReadOnly(true);
+                org.springframework.transaction.support.TransactionSynchronizationManager.setCurrentTransactionIsolationLevel(java.sql.Connection.TRANSACTION_REPEATABLE_READ);
+                List<com.uten.imp.common.export.ExportPayload> pages=new java.util.ArrayList<>();
+                try(var cursor=com.uten.imp.common.report.ReportExportCursor.open();
+                    var sink=com.uten.imp.common.export.ExportPageSink.open(pages::add)){
+                    var result=service.export("ORDER/detail",Map.of(),"goodsName","asc");
+                    assertThat(result.total()).isEqualTo(1001);assertThat(result.rows()).isEmpty();
+                }finally{
+                    org.springframework.transaction.support.TransactionSynchronizationManager.clear();transaction.rollback();
+                }
+                assertThat(count).hasValue(1);
+                assertThat(pages).extracting(page->page.rows().size()).containsExactly(500,500,1);
+                var rows=pages.stream().flatMap(page->page.rows().stream()).toList();
+                assertThat(rows).extracting(row->row.get("goodsCode")).containsExactlyElementsOf(
+                        java.util.stream.IntStream.rangeClosed(0,1000).mapToObj(value->String.format("CUR-%04d",value)).toList());
+                assertThat(rows).allSatisfy(row->{
+                    assertThat(row).containsEntry("__srcId",doc.id().toString()).containsEntry("__unitName","个");
+                    for(String key:List.of("price","amount","billedLocalAmount","billedLocalTotal","totalAmount")){
+                        assertThat(row.get(key)).isNull();assertThat(row.get(key+"Exact")).isNull();
+                    }
+                });
+            }
+        }
     }
     @Test void legacyMissingOriginalAmountsAndCurrencyNamesStayUnknown(){
         Doc doc=create("ORDER",EACH);UUID unknown=UUID.randomUUID();

@@ -237,6 +237,13 @@ Future<void> _bottom(WidgetTester tester) async {
   await tester.pump();
 }
 
+Future<void> _pumpUntil(WidgetTester tester, bool Function() ready) async {
+  for (var frame = 0; frame < 120 && !ready(); frame++) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  expect(ready(), isTrue, reason: 'the requested viewport state must appear');
+}
+
 Finder _anchor(int page, [int index = 0]) =>
     find.byKey(ValueKey('anchor-A-page-$page-row-$index'));
 
@@ -291,11 +298,18 @@ void main() {
           expect(_vertical(tester).position.pixels, greaterThan(0));
 
           await _top(tester);
-          await tester.pumpAndSettle();
+          await _pumpUntil(
+            tester,
+            () =>
+                host.requests.length == 2 &&
+                _anchor(2).evaluate().isNotEmpty &&
+                find.widgetWithText(TextFormField, '2').evaluate().isNotEmpty,
+          );
           expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
           expect(host.requests, [
             2,
-          ], reason: 'programmatic motion does not load');
+            1,
+          ], reason: 'scrollbar-style jumps prefetch');
           expect(_anchor(2), findsOneWidget);
           final secondPageTop = tester.getTopLeft(_anchor(2)).dy;
           await _wheel(tester, -150);
@@ -340,15 +354,31 @@ void main() {
       host.responses.last.complete(_pageRows('A', 4));
       await tester.pumpAndSettle();
       expect(host.rows.items.map(_rowId), _idsForPages([2, 3, 4]));
+      expect(host.rows.items.map(_rowId).toSet(), hasLength(60));
       expect(find.widgetWithText(TextFormField, '3'), findsOneWidget);
       await _bottom(tester);
-      await tester.pumpAndSettle();
+      await _pumpUntil(
+        tester,
+        () =>
+            host.requests.length == 3 &&
+            find.widgetWithText(TextFormField, '4').evaluate().isNotEmpty,
+      );
       expect(find.widgetWithText(TextFormField, '4'), findsOneWidget);
       expect(host.requests, [
         2,
         4,
-      ], reason: 'visible page changes do not fetch');
-      expect(host.rows.items.map(_rowId).toSet(), hasLength(60));
+        5,
+      ], reason: 'scrollbar-style jumps prepare the following page');
+      await _wheel(tester, 150);
+      expect(host.requests, [
+        2,
+        4,
+        5,
+      ], reason: 'the pending page is not repeated');
+      host.responses.last.complete(_pageRows('A', 5));
+      await tester.pumpAndSettle();
+      expect(host.rows.items.map(_rowId), _idsForPages([2, 3, 4, 5]));
+      expect(host.rows.items.map(_rowId).toSet(), hasLength(80));
     },
   );
 
@@ -540,9 +570,23 @@ void main() {
     expect(tester.getTopLeft(_anchor(3)).dy, closeTo(oldRowTop, 1));
     expect(find.widgetWithText(TextFormField, '3'), findsOneWidget);
     await _top(tester);
-    await tester.pumpAndSettle();
+    await _pumpUntil(
+      tester,
+      () =>
+          host.requests.length == 2 &&
+          _anchor(2).evaluate().isNotEmpty &&
+          find.widgetWithText(TextFormField, '2').evaluate().isNotEmpty,
+    );
     expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
-    expect(host.requests, [2]);
+    expect(host.requests, [
+      2,
+      1,
+    ], reason: 'fullscreen shares scrollbar prefetch');
+    final secondPageTop = tester.getTopLeft(_anchor(2)).dy;
+    host.responses.last.complete(_pageRows('A', 1));
+    await tester.pumpAndSettle();
+    expect(host.rows.items.map(_rowId), _idsForPages([1, 2, 3]));
+    expect(tester.getTopLeft(_anchor(2)).dy, closeTo(secondPageTop, 1));
     expect(tester.takeException(), isNull);
   });
 

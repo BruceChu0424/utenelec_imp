@@ -19,8 +19,10 @@
 // 单份存 PDF、多份自动打包 zip；能力由 app_router 注入，仅财务已通过的
 // 订货单可勾选，导出前由采购侧统一二次确认。「申请待分解」段的批量下单不变。
 import 'dart:async';
+import '../../../shared/export/document_batch_limits.dart';
 
 import 'package:flutter/material.dart';
+import '../../../shared/presentation/procurement_delivery_difference_l10n.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter/foundation.dart' show mapEquals, setEquals;
@@ -54,6 +56,8 @@ import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -127,7 +131,9 @@ class OperationsWorkbenchPage extends ConsumerStatefulWidget {
 
 class _OperationsWorkbenchPageState
     extends ConsumerState<OperationsWorkbenchPage>
-    with UtenRefreshParticipant<OperationsWorkbenchPage> {
+    with
+        UtenRefreshParticipant<OperationsWorkbenchPage>,
+        ScopedPagedReadViewMixin<OperationsWorkbenchPage> {
   OperationsWorkbenchData? _data;
   Map<String, Object?>? _acceptedQuery;
   Map<String, int>? _categoryCounts;
@@ -142,6 +148,25 @@ class _OperationsWorkbenchPageState
   List<int> _retainedPages = const [];
   Map<int, List<OperationsWorkbenchTask>> _refreshedPages = const {};
   String _keyword = '';
+
+  @override
+  void scopedPagedReadOwnerChanged() => setState(() {
+    _readerGeneration++;
+    _tableRows.update(const []);
+    _requestId++;
+    _paginationRevision++;
+    _data = null;
+    _acceptedQuery = null;
+    _categoryCounts = null;
+    _acceptedCategoryScope = null;
+    _masterNames = null;
+    _selectedIds.clear();
+    _retainedPages = const [];
+    _refreshedPages = const {};
+    _loading = false;
+    _backgroundRefresh = false;
+    _error = scopedPagedReadRejection?.message;
+  });
 
   /// 当前选中阶段分段；null = 未选择引导态（内容不加载）。
   _WorkbenchSeg? _seg;
@@ -171,7 +196,7 @@ class _OperationsWorkbenchPageState
 
   /// 批量导出单据一次的上限：print-data 逐单请求 + 前端 PDF 生成都是串行
   /// 重操作，不设上限时一次勾选过百会让按钮长时间转圈且无从 cancel。
-  static const _maxExportDocs = 100;
+  static const _maxExportDocs = maxWorkbenchDocumentExport;
 
   OperationsWorkbenchGateway get _repository =>
       widget.repository ?? ref.read(operationsWorkbenchRepositoryProvider);
@@ -323,7 +348,7 @@ class _OperationsWorkbenchPageState
     'FINANCE_REJECTED' => '财务驳回',
     'FINANCE_REVIEW_PENDING' => '改量待财务复核',
     'FINANCE_REVIEW_REJECTED' => '改量财务退回',
-    'ORDER_CLOSE_PENDING' => '结束待财务审批',
+    'ORDER_CLOSE_PENDING' => '历史结束申请待业务确认',
     'ORDER_CLOSE_REJECTED' => '结束申请已退回',
     'ORDER_CLOSED' => '已提前结束',
     _ => null,
@@ -455,16 +480,26 @@ class _OperationsWorkbenchPageState
     'exception': _exception,
   };
 
-  Future<void> _load({int? page, int size = 50, bool background = false}) =>
-      trackRefresh(
-        _loadRows(page: page, size: size, background: background),
-        replaceKey: 'rows',
-      );
+  Future<void> _load({
+    int? page,
+    int size = 50,
+    bool background = false,
+    bool useCache = false,
+  }) => trackRefresh(
+    _loadRows(
+      page: page,
+      size: size,
+      background: background,
+      useCache: useCache,
+    ),
+    replaceKey: 'rows',
+  );
 
   Future<void> _loadRows({
     int? page,
     int size = 50,
     bool background = false,
+    bool useCache = false,
   }) async {
     if (!mounted) return;
     final requestId = ++_requestId;
@@ -473,6 +508,14 @@ class _OperationsWorkbenchPageState
     final seg = _seg;
     final draft = seg?.code == _draftStage;
     final range = seg?.history == true ? _historyTime.range : null;
+    final department = widget.department;
+    final keyword = _keyword;
+    final exception = _exception;
+    final sort = _sortColumn;
+    final ascending = _sortAscending;
+    final filters = Map<String, String?>.of(_columnFilters);
+    final listing = _shouldLoad && !draft;
+    if (background) invalidateScopedPageReads();
     bool current() =>
         mounted && requestId == _requestId && mapEquals(query, _queryIdentity);
     setState(() {
@@ -494,38 +537,54 @@ class _OperationsWorkbenchPageState
       _error = null;
     });
     try {
-      // 仓库列的「主仓 - 子仓」组合名来自主档字典（2026-10-10，与采购单据列表
-      // 同源）：与任务数据并行预热（字典自带缓存，重复加载不重复请求）。预热
-      // 在自己的 Future 里吞掉一切错误——拉不到（离线/测试环境未注入 api）只是
-      // 仓库列回退行内叶仓名，绝不能把任务列表拖成加载失败。
-      if (_shouldLoad && !draft) unawaited(_warmWarehouseNames());
       final repository = _repository;
-      Future<OperationsWorkbenchData> fetchPage(int requestedPage) {
-        if ((!_shouldLoad || draft) &&
-            repository is OperationsWorkbenchOverviewGateway) {
+      Future<OperationsWorkbenchData> fetchNetwork(int requestedPage) {
+        if (!listing && repository is OperationsWorkbenchOverviewGateway) {
           return (repository as OperationsWorkbenchOverviewGateway)
-              .loadOverview(department: widget.department, keyword: _keyword);
+              .loadOverview(department: department, keyword: keyword);
         }
         return repository.load(
-          department: widget.department,
+          department: department,
           page: requestedPage,
           // 未选阶段时只拉 1 条：仅为取 summary 阶段/异常计数，内容区仍显示引导占位。
-          size: _shouldLoad && !draft ? size : 1,
-          keyword: _keyword,
+          size: listing ? size : 1,
+          keyword: keyword,
           status: seg == null || seg.history || draft ? null : seg.code,
-          exception: seg == null || seg.history ? null : _exception,
+          exception: seg == null || seg.history ? null : exception,
           dateFrom: range == null
               ? null
               : ChinaDateTime.formatDate(range.start),
           dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
           // 排序键走服务端白名单名(本页列 key 与 facet key 不同名, 见 _serverKeyByColumn)。
-          sort: _sortColumn == null ? null : _serverKeyByColumn[_sortColumn],
-          order: _sortAscending ? 'asc' : 'desc',
-          columnFilters: _columnFilters,
+          sort: sort == 'differenceQty'
+              ? 'differenceQty'
+              : sort == null
+              ? null
+              : _serverKeyByColumn[sort],
+          order: ascending ? 'asc' : 'desc',
+          columnFilters: filters,
         );
       }
 
-      final requestedPage = page ?? _page;
+      Future<OperationsWorkbenchData> fetchPage(int page) async {
+        if (background || !listing) return fetchNetwork(page);
+        final cached = await readScopedPage<OperationsWorkbenchTask>(
+          page,
+          query: [repository, query, size],
+          currentQuery: () => [_repository, _queryIdentity, size],
+          useCache: useCache,
+          fetchPage: (page) async =>
+              (await fetchNetwork(page)).toPagedReadSnapshot(),
+        );
+        return (cached
+                as PagedReadSnapshot<
+                  OperationsWorkbenchTask,
+                  OperationsWorkbenchData
+                >)
+            .snapshot;
+      }
+
+      final requestedPage = page ?? _tableRows.visiblePage ?? _page;
       final pages = _backgroundRefresh && _retainedPages.isNotEmpty
           ? _retainedPages.toList()
           : [requestedPage];
@@ -573,6 +632,13 @@ class _OperationsWorkbenchPageState
         _loading = false;
         _backgroundRefresh = false;
       });
+      // Empty tasks need no warehouse dictionary. Publish the authoritative
+      // rows first, then fill hierarchical labels only when an actual row uses
+      // a warehouse identity; the response already supplies fallback names.
+      if (!draft &&
+          next.items.any((item) => item.warehouseId?.isNotEmpty == true)) {
+        unawaited(_warmWarehouseNames());
+      }
       // Reconcile after the table has combined any appended pages.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || requestId != _requestId) return;
@@ -797,7 +863,9 @@ class _OperationsWorkbenchPageState
         'dateTo': ChinaDateTime.formatDate(range.end),
       },
       if (_sortColumn != null) ...{
-        'sort': _serverKeyByColumn[_sortColumn],
+        'sort': _sortColumn == 'differenceQty'
+            ? 'differenceQty'
+            : _serverKeyByColumn[_sortColumn],
         'order': _sortAscending ? 'asc' : 'desc',
       },
       for (final entry in _columnFilters.entries)
@@ -1007,7 +1075,6 @@ class _OperationsWorkbenchPageState
         document?.canView != true ||
         document?.status != '1' ||
         task.progressStatus == 'ORDER_CLOSED' ||
-        task.progressStatus == 'ORDER_CLOSE_PENDING' ||
         !const {
           'ORDER',
           'PURCHASE_ORDER',
@@ -1187,6 +1254,7 @@ class _OperationsWorkbenchPageState
   Widget _buildStageToolbar(Map<String, int> statusCounts) {
     final seg = _seg;
     return UtenFilterToolbar<_WorkbenchSeg>(
+      key: ValueKey((widget.department, _readerGeneration)),
       segmentsKey: Key(
         'operations-workbench-stages-${widget.department.apiValue}',
       ),
@@ -1237,17 +1305,7 @@ class _OperationsWorkbenchPageState
         externalHeader: _buildStageToolbar(_categoryCounts ?? const {}),
       );
     }
-    if (_data == null && _loading) {
-      return _withInitialStages(
-        Center(
-          child: Semantics(
-            label: '正在加载任务工作台',
-            child: const CircularProgressIndicator(),
-          ),
-        ),
-      );
-    }
-    if (_error != null && _data == null) {
+    if (_error != null && _data == null && _seg == null) {
       return _withInitialStages(
         UtenEmpty.error(
           message: '无法加载${widget.department.label}',
@@ -1257,12 +1315,11 @@ class _OperationsWorkbenchPageState
         ),
       );
     }
-    final data = _data;
-    if (data == null) {
-      return _withInitialStages(
-        UtenEmpty.error(actionLabel: '重试', onAction: () => _load()),
-      );
-    }
+    // Keep category/time controls and column headers mounted during every
+    // query. The shared table owns loading/error/empty feedback in its row
+    // area; a different query still clears all previously accepted task rows.
+    final data =
+        _data ?? OperationsWorkbenchData.loading(department: widget.department);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1347,7 +1404,7 @@ class _OperationsWorkbenchPageState
                       onRequestClosure: _requestClosure,
                       onPageChanged: (page) {
                         setState(() => _page = page);
-                        _load(page: page);
+                        return _load(page: page, useCache: true);
                       },
                       facets: _facetsByColumn(data),
                       nullCounts: _nullCountsByColumn(data),
@@ -1480,7 +1537,7 @@ class _DesktopTaskTable extends StatelessWidget {
   final ValueChanged<OperationsWorkbenchTask> onOpenTask;
   final bool Function(OperationsWorkbenchTask)? canRequestClosure;
   final ValueChanged<OperationsWorkbenchTask>? onRequestClosure;
-  final ValueChanged<int> onPageChanged;
+  final Future<void> Function(int) onPageChanged;
   final Map<String, List<MasterFacetBucket>> facets;
   final Map<String, int> nullCounts;
   final Map<String, String?> filters;
@@ -1506,6 +1563,7 @@ class _DesktopTaskTable extends StatelessWidget {
     // primary:true → 表体参与「概览卡折叠 → 表格内滚」联动（拾取外层
     // UtenCollapsingHeaderScrollView 注入的 PrimaryScrollController）。
     return MasterDataTableView<OperationsWorkbenchTask>(
+      expensiveRowMounts: false,
       rowsController: rowsController,
       paginationRevision: paginationRevision,
       refreshedPages: refreshedPages,
@@ -1631,6 +1689,18 @@ class _DesktopTaskTable extends StatelessWidget {
               ? '—'
               : _quantity(item.fulfilledQty, item.unitName),
         ),
+        if (mergedStageColumn)
+          MasterColumnDef(
+            key: 'differenceQty',
+            label: procurementDeliveryDifferenceL10n(context).label,
+            width: 130,
+            type: 'number',
+            sortable: true,
+            info: procurementDeliveryDifferenceL10n(context).hint,
+            value: (item) => item.differenceQtyText == null
+                ? '—'
+                : '${item.differenceQtyText} ${item.unitName}'.trim(),
+          ),
         MasterColumnDef(
           key: 'openQty',
           label: '未完成',
@@ -1759,7 +1829,8 @@ class _DesktopTaskTable extends StatelessWidget {
       },
       isLoading: loading && !refreshing,
       isRefreshing: refreshing,
-      refreshError: refreshError,
+      error: items.isEmpty ? refreshError : null,
+      refreshError: items.isEmpty ? null : refreshError,
       onRetry: onRetry,
       emptyMessage: '当前筛选下没有任务',
       currentPage: data.page,

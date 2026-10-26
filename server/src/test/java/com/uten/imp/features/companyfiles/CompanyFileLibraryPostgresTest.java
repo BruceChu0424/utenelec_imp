@@ -90,6 +90,65 @@ class CompanyFileLibraryPostgresTest {
         return run(()->service.complete(pending.id(),new Complete(attachment,pending.version())));
     }
 
+    @Test void trashRootsAcrossManyPastDirectoriesRemainPagedAndRespectCurrentAcl() {
+        String prefix="trash-capacity-"+UUID.randomUUID()+"-";
+        update("""
+                INSERT INTO company_file_nodes(id,kind,name,created_by,updated_by,deleted,deleted_at,deleted_by,deletion_batch)
+                SELECT gen_random_uuid(),'FOLDER',?||lpad(i::text,4,'0'),?,?,true,now(),?,gen_random_uuid()
+                FROM generate_series(1,501) i
+                """,prefix,actor,actor,actor);
+        UUID hidden=db.queryForObject("SELECT id FROM company_file_nodes WHERE name=?",UUID.class,prefix+"0002");
+        update("INSERT INTO company_file_acl(node_id,subject_type,subject_id,effect,actions) VALUES(?,'USER',?,'DENY',ARRAY['view'])",hidden,actor);
+        Listing first=run(()->service.list(null,prefix,"name","asc",true,0,200));
+        assertThat(first.total()).isEqualTo(500);
+        assertThat(first.entries()).hasSize(200).noneMatch(e->e.id().equals(hidden));
+        assertThat(first.entries().getFirst().name()).isEqualTo(prefix+"0001");
+        assertThat(first.entries().getLast().name()).isEqualTo(prefix+"0201");
+        Listing last=run(()->service.list(null,prefix,"name","asc",true,2,200));
+        assertThat(last.total()).isEqualTo(500);
+        assertThat(last.entries()).hasSize(100);
+        assertThat(last.entries().getFirst().name()).isEqualTo(prefix+"0402");
+        assertThat(last.entries().getLast().name()).isEqualTo(prefix+"0501");
+        assertThat(last.canReorder()).isFalse();
+        Listing descending=run(()->service.list(null,prefix,"name","desc",true,0,1));
+        assertThat(descending.entries()).singleElement().satisfies(e->assertThat(e.name()).isEqualTo(prefix+"0501"));
+        UUID archived=folder(null,"archived-directory-"+UUID.randomUUID());
+        update("UPDATE company_file_nodes SET deleted=true,deleted_at=now(),deleted_by=?,deletion_batch=gen_random_uuid() WHERE id=?",actor,archived);
+        update("""
+                INSERT INTO company_file_nodes(id,parent_id,kind,name,created_by,updated_by,deleted,deleted_at,deleted_by,deletion_batch)
+                SELECT gen_random_uuid(),?,'FOLDER',?||lpad(i::text,4,'0'),?,?,true,now(),?,gen_random_uuid()
+                FROM generate_series(1,501) i
+                """,archived,prefix,actor,actor,actor);
+        Listing archivedPage=run(()->service.list(archived,prefix,"name","asc",true,2,200));
+        assertThat(archivedPage.folder().id()).isEqualTo(archived);
+        assertThat(archivedPage.total()).isEqualTo(501);
+        assertThat(archivedPage.entries()).hasSize(101);
+    }
+
+    @Test void costlyPasswordHashDoesNotHoldTheGlobalTreeWriteLock() throws Exception {
+        Entry protectedEntry=create(null,"hash-concurrency-"+UUID.randomUUID());
+        CountDownLatch hashingStarted=new CountDownLatch(1),releaseHashing=new CountDownLatch(1);
+        CompanyFileUnlocks hashing=new CompanyFileUnlocks() {
+            @Override String hash(String password) {
+                hashingStarted.countDown();
+                try {
+                    if(!releaseHashing.await(10,TimeUnit.SECONDS))throw new IllegalStateException("hash latch timed out");
+                } catch(InterruptedException e) {Thread.currentThread().interrupt();throw new IllegalStateException(e);}
+                return super.hash(password);
+            }
+        };
+        CompanyFileService changing=new CompanyFileService(db,current,attachments,mock(AuditService.class),hashing);
+        try(ExecutorService pool=Executors.newFixedThreadPool(2)) {
+            Future<Entry> password=pool.submit(()->run(()->changing.setPassword(protectedEntry.id(),new Password("password-123",protectedEntry.version()))));
+            try {
+                assertThat(hashingStarted.await(5,TimeUnit.SECONDS)).isTrue();
+                Future<Entry> reading=pool.submit(()->run(()->service.detail(protectedEntry.id())));
+                assertThat(reading.get(5,TimeUnit.SECONDS).id()).isEqualTo(protectedEntry.id());
+            } finally {releaseHashing.countDown();}
+            assertThat(password.get(10,TimeUnit.SECONDS).passwordProtected()).isTrue();
+        }
+    }
+
     @Test void detailMetadataNeedsOnlyViewAndAuditsTheViewerRatherThanTheCreator() {
         Entry parent=create(null,"detail-parent-"+UUID.randomUUID());
         Entry original=file(parent.id(),"私密客户报价及工资.txt");

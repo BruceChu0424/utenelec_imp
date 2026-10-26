@@ -20,6 +20,7 @@ void main() {
               as Map<String, dynamic>;
       expect(receipt['sourceTextNormalization'], 'LF');
       expect(receipt['flags'], contains('--csp'));
+      expect(receipt['supportedProtocolVersions'],[1,2,3]);
       final sources = Map<String, String>.from(receipt['sources'] as Map);
       expect(
         sources.keys,
@@ -27,6 +28,8 @@ void main() {
           'tool/pdf_worker.dart',
           'lib/core/print/print_pdf_document.dart',
           'lib/core/performance/ui_work_budget.dart',
+          'lib/features/purchase/models/purchase_order_pdf_bundle.dart',
+          'lib/features/purchase/models/purchase_order_pdf.dart',
           'pubspec.lock',
         ]),
       );

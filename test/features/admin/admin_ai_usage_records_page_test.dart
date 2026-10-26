@@ -19,6 +19,8 @@ import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/admin/models/ai_provider_models.dart';
+import 'package:uten_imp/features/admin/models/ai_usage_audit_models.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/admin/pages/admin_ai_usage_records_page.dart';
 import 'package:uten_imp/features/admin/repositories/ai_provider_repository.dart';
 import 'package:uten_imp/features/admin/repositories/ai_usage_audit_repository.dart';
@@ -31,6 +33,125 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import '../ai_visual/ai_visual_support.dart';
 
 void main() {
+  testWidgets(
+    'record pages prepare ahead, reuse both directions and preserve exact event fields',
+    (tester) async {
+      final repository = _Repository()
+        ..pages = {
+          for (var page = 0; page < 3; page++)
+            page: {
+              ..._data(question: '第$page页问题', total: 41),
+              'records': [
+                {
+                  'id': 'event-$page',
+                  'userId': 'employee-$page',
+                  'name': '员工$page',
+                  'code': 'E$page',
+                  'question': '第$page页问题',
+                  'intent': 'inventory_lookup',
+                  'kind': 'ERP_CHAT',
+                  'status': 'SUCCEEDED',
+                  'createdAt': '2026-10-26T01:02:03.123456Z',
+                  'inputTokens': 9007199254740991,
+                  'outputTokens': null,
+                  'calls': 2,
+                  'providerNames': ['服务$page'],
+                  'models': ['模型$page'],
+                  'costs': [
+                    {
+                      'basis': 'ACTUAL',
+                      'currency': 'EUR',
+                      'amount': '999999999999.000000001',
+                    },
+                  ],
+                },
+              ],
+            },
+        };
+      await _pump(tester, repository);
+      MasterDataTableView<AiUsageAuditRecord> table() =>
+          tester.widget(find.byKey(const Key('ai-records-table')));
+      expect(repository.reads.map((query) => query['page']), [0, 1]);
+      expect(table().currentPage, 1);
+      await table().onPageChange!(2);
+      await tester.pumpAndSettle();
+      expect(table().currentPage, 2);
+      expect(repository.reads.map((query) => query['page']), [0, 1, 2]);
+      final second = table().items.single;
+      expect(second.id, 'event-1');
+      expect(second.inputTokens, 9007199254740991);
+      expect(second.outputTokens, isNull);
+      expect(second.createdAt, '2026-10-26T01:02:03.123456Z');
+      expect(second.metrics.costs.single.amount, '999999999999.000000001');
+      expect(second.providerNames, ['服务1']);
+      await table().onPageChange!(1);
+      await tester.pumpAndSettle();
+      expect(table().items.single.id, 'event-0');
+      expect(repository.reads.map((query) => query['page']), [0, 1, 2]);
+      await tester.tap(find.byTooltip('刷新记录'));
+      await tester.pumpAndSettle();
+      expect(
+        repository.reads.where((query) => query['page'] == 0),
+        hasLength(2),
+      );
+    },
+  );
+
+  testWidgets(
+    'record foreground adopts prefetch while retaining the accepted page indicator',
+    (tester) async {
+      final second = Completer<Map<String, dynamic>>();
+      final repository = _Repository()
+        ..pendingReads.add(Future.value(_data(question: '第一页', total: 21)))
+        ..pendingReads.add(second.future);
+      addTearDown(() {
+        if (!second.isCompleted) second.complete(_data(total: 21));
+      });
+      await _pump(tester, repository);
+      MasterDataTableView<AiUsageAuditRecord> table() =>
+          tester.widget(find.byKey(const Key('ai-records-table')));
+      expect(repository.reads.map((query) => query['page']), [0, 1]);
+      expect(table().currentPage, 1);
+      expect(table().loadingMore, isFalse);
+      final navigation = table().onPageChange!(2);
+      await tester.pump();
+      expect(table().currentPage, 1);
+      expect(table().loadingMore, isTrue);
+      expect(repository.reads, hasLength(2));
+      second.complete(_data(question: '第二页', total: 21));
+      await navigation;
+      await tester.pumpAndSettle();
+      expect(table().currentPage, 2);
+      expect(table().items.single.question, '第二页');
+      expect(repository.reads, hasLength(2));
+    },
+  );
+
+  testWidgets(
+    'record prefetch rejection clears records, users and billing providers without reread',
+    (tester) async {
+      final rejected = Completer<Map<String, dynamic>>();
+      final repository = _Repository()
+        ..pendingReads.add(Future.value(_data(total: 21)))
+        ..pendingReads.add(rejected.future);
+      await _pump(tester, repository);
+      rejected.completeError(ApiException('FORBIDDEN', '记录读取权限已撤销', httpStatus: 403));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('ai-records-denied')), findsOneWidget);
+      expect(find.text('原账号问题内容'), findsNothing);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const ValueKey('ai-records-billing-open')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(repository.reads, hasLength(2));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test('route inherits the system-administration guard', () {
     expect(requiredAnyPermFor(RouteName.adminAiUsageRecords), const [
       Perm.authorizationManage,
@@ -283,19 +404,36 @@ void main() {
   testWidgets(
     'paging and filter changes use the selected scope and reset to page zero',
     (tester) async {
-      final repository = _Repository()..data = _data(total: 41);
+      final repository = _Repository()
+        ..data = _data(total: 41)
+        ..pages = {
+          for (var page = 0; page < 3; page++)
+            page: {
+              ..._data(total: 41),
+              'records': [
+                {
+                  ...((_data()['records'] as List).single as Map<String, dynamic>),
+                  'id': 'paging-job-$page',
+                },
+              ],
+            },
+        };
       await _pump(tester, repository);
       final next = find.byKey(const ValueKey('master-table-page-next'));
       await tester.ensureVisible(next);
       await tester.tap(next);
       await tester.pumpAndSettle();
-      expect(repository.reads.last['page'], 1);
+      final table = tester.widget<MasterDataTableView<AiUsageAuditRecord>>(
+        find.byKey(const Key('ai-records-table')),
+      );
+      expect(table.rowsController!.pagination.value?.currentPage, 2);
+      expect(repository.reads.where((query) => query['page'] == 1), hasLength(1));
       await _select(tester, '时间', '近 7 天');
       expect(repository.reads.last['days'], 7);
-      expect(repository.reads.last['page'], 0);
+      expect(repository.reads.lastWhere((query) => query['page'] == 0)['days'], 7);
       await _select(tester, '使用人', '示例员工（E001）');
       expect(repository.reads.last['userId'], 'employee-1');
-      expect(repository.reads.last['page'], 0);
+      expect(repository.reads.lastWhere((query) => query['page'] == 0)['userId'], 'employee-1');
       await _select(tester, 'AI 服务', '测试 AI 服务');
       expect(repository.reads.last['providerId'], _providerId);
       expect(repository.reads.last['userId'], 'employee-1');
@@ -903,6 +1041,7 @@ Map<String, dynamic> _data({
 
 class _Repository implements AiUsageAuditRepository {
   Map<String, dynamic> data = _data();
+  Map<int, Map<String, dynamic>>? pages;
   final reads = <Map<String, dynamic>>[];
   final pendingReads = Queue<Future<Map<String, dynamic>>>();
   final saved = <(String, Map<String, dynamic>)>[];
@@ -935,7 +1074,7 @@ class _Repository implements AiUsageAuditRepository {
       'providerId': providerId,
     });
     return pendingReads.isEmpty
-        ? Future.value(data)
+        ? Future.value(pages?[page] ?? data)
         : pendingReads.removeFirst();
   }
 

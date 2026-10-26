@@ -88,6 +88,19 @@ List<UtenTreeRowProjection> utenTreeProjection<T>(
       debugTreeProjectionBoundaryVisits++;
       return true;
     }());
+    // A filtered forest may start its next tree below depth zero. Close the
+    // previous tree regardless of depth; it cannot own that next tree's rows.
+    if (treeKeys != null &&
+        index > 0 &&
+        treeKeys[index] != treeKeys[index - 1]) {
+      while (open.isNotEmpty) {
+        subtreeEnds[open.removeLast()] = index;
+        assert(() {
+          debugTreeProjectionBoundaryVisits++;
+          return true;
+        }());
+      }
+    }
     while (open.isNotEmpty && depths[open.last] >= depths[index]) {
       final previous = open.removeLast();
       subtreeEnds[previous] = index;
@@ -117,6 +130,12 @@ List<UtenTreeRowProjection> utenTreeProjection<T>(
   final ancestorDepths = <int>[];
   for (var index = 0; index < count; index++) {
     final depth = depths[index];
+    if (treeKeys != null &&
+        index > 0 &&
+        treeKeys[index] != treeKeys[index - 1]) {
+      ancestorAtDepth.clear();
+      ancestorDepths.clear();
+    }
     List<bool> continuations;
     if (depth <= 0) {
       continuations = const [];

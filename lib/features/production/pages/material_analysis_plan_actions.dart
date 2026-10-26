@@ -15,10 +15,11 @@ abstract class _MaterialAnalysisPlanActionsState
 
   /// 打开可深链恢复的备料计划汇总单；当前视图只作为首帧快照，
   /// 硬刷新时汇总页按 analysisId 重新读取权威详情。
-  Future<void> _openSummarySheet() async {
+  void _openSummarySheet() {
     final analysis = _analysis;
     if (analysis == null) return;
-    await context.push(
+    pushPage(
+      context,
       RoutePath.productionMaterialAnalysisSummary(analysis.analysisId),
       extra: analysis,
     );

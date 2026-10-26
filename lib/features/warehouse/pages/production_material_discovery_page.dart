@@ -31,6 +31,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/models/goods_node.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/production_material_discovery_repository.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class DiscoveryMaterialRow extends EditableGridRow {
   DiscoveryMaterialRow({Map<String, dynamic>? initial}) {
@@ -534,7 +535,7 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
   Widget _header(
     AppLocalizations l10n,
     ProductionMaterialDiscoveryDetail? detail,
-  ) => Padding(
+  ) => UtenPageEdgePadding(
     padding: const EdgeInsets.all(UtenSpacing.s16),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

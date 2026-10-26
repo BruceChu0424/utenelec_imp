@@ -298,8 +298,10 @@ class _WorkshopMaterialOverviewState
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    int count(String status) =>
-        widget.settings.where((s) => s.status == status).length;
+    final pendingSettings = widget.loading && widget.settings.isEmpty;
+    int? count(String status) => pendingSettings
+        ? null
+        : widget.settings.where((s) => s.status == status).length;
     final rows = rankedKeywordMatches(
       widget.settings.where(
         (setting) => _status == _all || setting.status == _status,
@@ -326,7 +328,7 @@ class _WorkshopMaterialOverviewState
                 UtenFilterSegment(
                   value: _all,
                   label: l10n.wmBinSegmentAll,
-                  count: widget.settings.length,
+                  count: pendingSettings ? null : widget.settings.length,
                 ),
                 UtenFilterSegment(
                   value: WmBinStatus.notOpen,

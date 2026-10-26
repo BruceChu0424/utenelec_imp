@@ -17,6 +17,7 @@ import '../../../shared/business_columns/business_columns_table.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/presentation/procurement_delivery_difference_l10n.dart';
 import '../../../shared/widgets/legacy_continuation_notice.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -73,6 +74,7 @@ import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../../shared/auth/session_snapshot_provider.dart';
 import '../../../shared/widgets/procurement_order_closure_dialog.dart';
 import '../../../shared/widgets/procurement_order_closure_status.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class SubcontractDocDetailPage extends ConsumerStatefulWidget {
   const SubcontractDocDetailPage({
@@ -184,8 +186,7 @@ class _SubcontractDocDetailPageState
         _detail?.closureRequest?.isApproved == true) {
       return l10n.orderClosureAlreadyEnded;
     }
-    if (_detail?.financeApproval?.isPending == true ||
-        _detail?.closureRequest?.isPending == true) {
+    if (_detail?.financeApproval?.isPending == true) {
       return l10n.orderClosureAlreadyPending;
     }
     if (_detail?.status != kSubcontractStatusApproved) {
@@ -291,6 +292,7 @@ class _SubcontractDocDetailPageState
     try {
       await Future.wait([
         dictionaries,
+        names.loadSupplierNames([d.supplierId].whereType<String>()),
         names.loadGoodsDetails(
           d.items.map((e) => e.goodsId).whereType<String>(),
         ),
@@ -711,7 +713,7 @@ class _SubcontractDocDetailPageState
                   // 2026-09-11 折叠头+表内滚：头部（只读提示/表头卡/横幅/进度/附件）
                   // 随上滚收起，明细标题吸顶后表格内部继续滚。
                   : UtenCollapsingHeaderScrollView(
-                      collapsingHeader: Padding(
+                      collapsingHeader: UtenPageEdgePadding(
                         padding: const EdgeInsets.fromLTRB(
                           UtenSpacing.s12,
                           UtenSpacing.s12,
@@ -833,7 +835,7 @@ class _SubcontractDocDetailPageState
                         ),
                       ),
                       // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
-                      body: Padding(
+                      body: UtenPageEdgePadding(
                         // 底部让位右下悬浮操作组：末行可滚出按钮区。
                         padding: const EdgeInsets.fromLTRB(
                           UtenSpacing.s12,
@@ -1144,6 +1146,7 @@ class _SubcontractDocDetailPageState
       children: [
         Expanded(
           child: MasterDataTableView<SubcontractDocItem>(
+            expensiveRowMounts: false,
             tableKey: 'subcontract.${widget.docType.name}.items',
             primary: true,
             columns:
@@ -1359,6 +1362,17 @@ class _SubcontractDocDetailPageState
                         width: 100,
                         type: 'number',
                         value: (it) => qtyWithUnit(it, it.returnedQty),
+                      ),
+                    if (widget.docType == SubcontractDocType.order)
+                      MasterColumnDef(
+                        key: 'differenceQty',
+                        label: procurementDeliveryDifferenceL10n(context).label,
+                        width: 130,
+                        type: 'number',
+                        info: procurementDeliveryDifferenceL10n(context).hint,
+                        value: (it) => it.differenceQtyText == null
+                            ? '—'
+                            : '${it.differenceQtyText} ${names.unit(it.unitId)}',
                       ),
                     if (_cfg.showWasted)
                       MasterColumnDef(

@@ -1,3 +1,6 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -35,9 +38,11 @@ class SupplierSettlementPanel extends ConsumerStatefulWidget {
 }
 
 class _SupplierSettlementPanelState
-    extends ConsumerState<SupplierSettlementPanel> {
+    extends ConsumerState<SupplierSettlementPanel>
+    with ScopedPagedReadViewMixin<SupplierSettlementPanel> {
   final _requests = LatestRequestGuard();
   SupplierSettlementPageResult? _result;
+  final _tableRows = MasterDataTableRowsController<SupplierSettlementSummary>();
   bool _loading = false;
   bool _writing = false;
   String? _error;
@@ -59,22 +64,76 @@ class _SupplierSettlementPanelState
   void didUpdateWidget(SupplierSettlementPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.refreshTick != oldWidget.refreshTick) {
-      _load(_page);
+      _load(_tableRows.visiblePage ?? _page);
     }
   }
 
-  Future<void> _load([int? requestedPage]) async {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _requests.begin();
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+    });
+  }
+
+  Map<String, dynamic> get _cacheQuery => {
+    'repository': ref.read(supplierSettlementRepositoryProvider),
+    'keyword': _keyword,
+    'status': _status,
+  };
+
+  Future<void> _navigatePage(int page) => _load(page, true);
+
+  Future<void> _load([int? requestedPage, bool useCache = false]) async {
+    final cacheQuery = _cacheQuery;
+    final repo = ref.read(supplierSettlementRepositoryProvider);
+    final status = _status;
+    final keyword = _keyword;
+
     final generation = _requests.begin();
-    final page = requestedPage ?? _page;
+    final page = requestedPage ?? _tableRows.visiblePage ?? _page;
     setState(() {
       _page = page;
       _loading = true;
       _error = null;
     });
     try {
-      final result = await ref
-          .read(supplierSettlementRepositoryProvider)
-          .list(status: _status, keyword: _keyword, page: page);
+      final cachedPage = await readScopedPage<SupplierSettlementSummary>(
+        page,
+        query: cacheQuery,
+        currentQuery: () => _cacheQuery,
+        useCache: useCache,
+        fetchPage: (target) async {
+          final response = await repo.list(
+            status: status,
+            keyword: keyword,
+            page: target,
+          );
+          return PagedReadSnapshot<
+            SupplierSettlementSummary,
+            SupplierSettlementPageResult
+          >(
+            page: PagedResult(
+              items: response.items,
+              page: response.page,
+              size: response.size,
+              total: response.total,
+              totalPages: response.totalPages,
+            ),
+            snapshot: response,
+          );
+        },
+      );
+      final result =
+          (cachedPage
+                  as PagedReadSnapshot<
+                    SupplierSettlementSummary,
+                    SupplierSettlementPageResult
+                  >)
+              .snapshot;
       if (!mounted || !_requests.isCurrent(generation)) return;
       setState(() {
         _result = result;
@@ -293,6 +352,8 @@ class _SupplierSettlementPanelState
             const SizedBox(height: UtenSpacing.s8),
             Expanded(
               child: MasterDataTableView<SupplierSettlementSummary>(
+                rowsController: _tableRows,
+                expensiveRowMounts: false,
                 tableKey:
                     'features.finance.payables.widgets.supplier_settlement_panel.SupplierSettlementPanelState.build.1',
                 primary: true,
@@ -311,7 +372,7 @@ class _SupplierSettlementPanelState
                 currentPage: _result?.page ?? 1,
                 totalPages: _result?.totalPages ?? 1,
                 paginationScope: (_keyword, _status),
-                onPageChange: (page) => _load(page),
+                onPageChange: _navigatePage,
               ),
             ),
           ],
@@ -534,6 +595,7 @@ class _SupplierSettlementDetailPanelState
           ),
           const SizedBox(height: UtenSpacing.s12),
           MasterDataTableView<SupplierSettlementLine>(
+            expensiveRowMounts: false,
             tableKey: 'finance.supplierSettlement.snapshot',
             embedded: true,
             platformBinding: PlatformTableBinding(

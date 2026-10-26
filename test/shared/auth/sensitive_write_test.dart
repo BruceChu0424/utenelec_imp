@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/network/interceptors/auth_interceptor.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -174,6 +175,8 @@ void main() {
     'A-B-A',
     'permission',
     'read-only',
+    'read-scope',
+    'read-scope-A-B-A',
     'unchanged',
   ]) {
     testWidgets('real auth queue retains original patch authority: $change', (
@@ -287,6 +290,13 @@ void main() {
           readOnly: true,
         );
         await tester.pump();
+      } else if (change == 'read-scope' || change == 'read-scope-A-B-A') {
+        container.read(readScopeRevisionProvider.notifier).state = 1;
+        await tester.pump();
+        if (change == 'read-scope-A-B-A') {
+          container.read(readScopeRevisionProvider.notifier).state = 0;
+          await tester.pump();
+        }
       }
       gate.complete();
       await tester.pumpAndSettle();

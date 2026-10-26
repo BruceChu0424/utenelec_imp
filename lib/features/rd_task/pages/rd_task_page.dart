@@ -20,6 +20,7 @@
 // 路由：/rd/tasks → RouteName.rdTaskCenter。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -34,7 +35,6 @@ import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -46,7 +46,6 @@ import '../../../core/network/server_config.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/session_provider.dart';
-import 'package:flutter/foundation.dart' show setEquals;
 import '../../../core/network/connection_recovery.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -54,6 +53,12 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import '../../../shared/auth/native_read_view_scope_mixin.dart'
+    show nativeReadAccessDenied;
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/rd_task.dart';
@@ -233,7 +238,8 @@ class _RdTaskListPanel extends ConsumerStatefulWidget {
   ConsumerState<_RdTaskListPanel> createState() => _RdTaskListPanelState();
 }
 
-class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
+class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
+    with ScopedPagedReadViewMixin<_RdTaskListPanel> {
   int _unitOperationRevision = 0;
   bool _openingUnit = false;
   Object? _unitOpeningToken;
@@ -265,7 +271,10 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
     });
   }
 
+  final _tableRows = MasterDataTableRowsController<RdTaskRow>();
+
   RdTaskData? _data;
+  Object? _acceptedQuery;
   String? _error;
   bool _loading = true;
   int _page = 1;
@@ -476,32 +485,98 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
     await _load();
   }
 
-  Future<void> _load() async {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _invalidateUnitOperation();
+    final rejection = scopedPagedReadRejection;
+    final version = ++_requestId;
+    setState(() {
+      _tableRows.update(const []);
+      _data = null;
+      _acceptedQuery = null;
+      _selectedTaskId = null;
+      _page = 1;
+      _error = rejection?.message;
+      _loading = false;
+    });
+    if (rejection == null && ref.read(authenticatedScopeProvider) != null) {
+      Future<void>.microtask(() {
+        if (mounted && version == _requestId) _load();
+      });
+    }
+  }
+
+  Future<void> _load({bool useCache = false}) async {
     if (!mounted) return;
     _invalidateUnitOperation();
     final requestId = ++_requestId;
+    final query = (
+      ref.read(exportContextEpochProvider),
+      widget.seg,
+      _keyword,
+      _category,
+    );
+    final requestedPage = !useCache && _acceptedQuery == query
+        ? _tableRows.visiblePage ?? _page
+        : _page;
+    final repository = ref.read(rdTaskRepositoryProvider);
+    final segment = widget.seg;
+    final keyword = _keyword;
+    final category = _category;
     setState(() {
+      if (_acceptedQuery != query) _data = null;
       _loading = true;
       _error = null;
     });
     try {
-      final next = await ref
-          .read(rdTaskRepositoryProvider)
-          .load(
-            status: widget.seg.apiStatus,
-            category: _category.isEmpty ? null : _category,
-            keyword: _keyword.isEmpty ? null : _keyword,
-            page: _page,
+      final cached = await readScopedPage<RdTaskRow>(
+        requestedPage,
+        query: (repository, segment, keyword, category),
+        currentQuery: () => (
+          ref.read(rdTaskRepositoryProvider),
+          widget.seg,
+          _keyword,
+          _category,
+        ),
+        useCache: useCache,
+        fetchPage: (page) async {
+          final data = await repository.load(
+            status: segment.apiStatus,
+            category: category.isEmpty ? null : category,
+            keyword: keyword.isEmpty ? null : keyword,
+            page: page,
           );
+          return PagedReadSnapshot(
+            page: PagedResult(
+              items: data.items,
+              page: data.page,
+              size: data.size,
+              total: data.total,
+              totalPages: data.totalPages,
+            ),
+            snapshot: data,
+          );
+        },
+      );
+      final next =
+          (cached as PagedReadSnapshot<RdTaskRow, RdTaskData>).snapshot;
       if (!mounted || requestId != _requestId) return;
       setState(() {
         _data = next;
+        _acceptedQuery = query;
         _page = next.page;
         _loading = false;
       });
     } catch (error) {
       if (!mounted || requestId != _requestId) return;
       final message = error is ApiException ? error.message : '研发任务加载失败，请稍后重试';
+      if (nativeReadAccessDenied(error)) {
+        setState(() {
+          _data = null;
+          _acceptedQuery = null;
+          _selectedTaskId = null;
+        });
+      }
       if (_data == null) {
         // 首次加载失败：整页错误占位。
         setState(() {
@@ -575,14 +650,6 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(
-      authenticatedScopeProvider,
-      (_, _) => _invalidateUnitOperation(),
-    );
-    ref.listen(apiBaseUrlProvider, (_, _) => _invalidateUnitOperation());
-    ref.listen<Set<String>>(currentPermissionsProvider, (before, next) {
-      if (!setEquals(before, next)) _invalidateUnitOperation();
-    });
     // 网络恢复后，不打扰老人、自动重载当前可见 Tab（同 operations_workbench）。
     ref.listen<int>(
       connectionRecoveryProvider.select((state) => state.recoveryEpoch),
@@ -609,21 +676,9 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
   }
 
   Widget _buildBody(BuildContext context) {
-    if (_data == null && _loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null) {
-      return UtenEmpty.error(
-        message: '无法加载${widget.seg.label}任务',
-        description: _error,
-        actionLabel: '重试',
-        onAction: _load,
-      );
-    }
-    final data = _data;
-    if (data == null) {
-      return UtenEmpty.error(actionLabel: '重试', onAction: _load);
-    }
+    final data =
+        _data ??
+        const RdTaskData(items: [], page: 1, size: 20, total: 0, totalPages: 0);
 
     // 大小屏共用一张表：统一用 MasterDataTableView，窄屏横向滚动（卡片形态已退役）。
     // 2026-10-01 用户口径：删除列表上方的「待处理/进行中/已完成任务」总数
@@ -640,10 +695,13 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
       children: [
         _DesktopTaskTable(
           key: const Key('rd-task-desktop-table'),
+          rowsController: _tableRows,
           data: data,
           items: data.items,
           paginationScope: (widget.seg, _keyword, _category),
           loading: _loading,
+          error: _error,
+          onRetry: _load,
           filters: {'category': _category.isEmpty ? null : _category},
           onFilterChanged: (key, value) {
             if (key != 'category') return;
@@ -655,7 +713,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
           onResolve: _onResolve,
           onPageChanged: (page) {
             setState(() => _page = page);
-            _load();
+            return _load(useCache: true);
           },
         ),
         if (canAct)
@@ -693,19 +751,25 @@ class _DesktopTaskTable extends StatelessWidget {
     required this.data,
     required this.items,
     required this.loading,
+    this.error,
+    this.onRetry,
     required this.filters,
     required this.onFilterChanged,
     required this.onOpenGoods,
     required this.onSelectionChanged,
     required this.onPageChanged,
     required this.paginationScope,
+    required this.rowsController,
     this.canResolve,
     this.onResolve,
   });
 
+  final MasterDataTableRowsController<RdTaskRow> rowsController;
   final RdTaskData data;
   final List<RdTaskRow> items;
   final bool loading;
+  final String? error;
+  final VoidCallback? onRetry;
 
   /// 类别的服务端表头筛选状态（页面持有；null=清除）。
   final Map<String, String?> filters;
@@ -716,7 +780,7 @@ class _DesktopTaskTable extends StatelessWidget {
 
   /// 行被点选时回调（驱动悬浮办理条，不改变表格布局）。
   final ValueChanged<RdTaskRow> onSelectionChanged;
-  final ValueChanged<int> onPageChanged;
+  final Future<void> Function(int) onPageChanged;
   final Object paginationScope;
 
   /// 「标记完成」可做判定与执行（行右键/长按菜单；窄屏卡片上完成动作也走这里）。
@@ -746,6 +810,8 @@ class _DesktopTaskTable extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return MasterDataTableView<RdTaskRow>(
+      rowsController: rowsController,
+      expensiveRowMounts: false,
       tableKey: 'features.rd_task.pages.rd_task_page.DesktopTaskTable.build.1',
       // 大小屏共用一张表：同一份列定义驱动，窄屏横向滚动（卡片形态已退役）。
       bottomContentPadding:
@@ -876,6 +942,8 @@ class _DesktopTaskTable extends StatelessWidget {
           ? theme.colorScheme.error.withValues(alpha: 0.06)
           : null,
       isLoading: loading,
+      error: error,
+      onRetry: onRetry,
       emptyMessage: '当前筛选下没有研发任务',
       currentPage: data.page,
       totalPages: data.totalPages,

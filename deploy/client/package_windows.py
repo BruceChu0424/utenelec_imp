@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Create an in-app Windows update ZIP from a Flutter release bundle.
+"""Create a Windows update or complete first-install ZIP from a release bundle.
 
 The bootstrap distribution must contain client_updater/client_updater.ps1.
 Update ZIPs deliberately exclude that trusted installed updater and all files
-outside the Flutter runtime. No signing secrets or user settings are included.
+outside the Flutter runtime. Installer ZIPs include that fixed updater and mark
+their manifest with packageKind=installer. No secrets or user settings are shipped.
 """
 from __future__ import annotations
 
@@ -23,10 +24,74 @@ MAX_FILES = 20_000
 MAX_FILE_BYTES = 512 * 1024 * 1024
 MAX_EXPANDED_BYTES = 2 * 1024 * 1024 * 1024
 REQUIRED_FILES = {"uten_imp.exe", "flutter_windows.dll", "data/app.so", "data/icudtl.dat"}
+UPDATER_PATH = "client_updater/client_updater.ps1"
+PACKAGE_KINDS = {"update", "installer"}
 
 
-def inspect_executable(path: Path) -> tuple[str, int]:
-    """Read actual PE machine and RT_VERSION, without trusting release metadata."""
+def required_files(kind: str) -> set[str]:
+    if kind not in PACKAGE_KINDS:
+        raise ValueError("Unsupported Windows package kind")
+    return REQUIRED_FILES | ({UPDATER_PATH} if kind == "installer" else set())
+
+
+def _version_block(data: bytes, offset: int, limit: int) -> tuple[str, bytes, int, int]:
+    if offset < 0 or offset + 6 > limit:
+        raise ValueError("Executable version block is truncated")
+    length, value_length, kind = struct.unpack_from("<HHH", data, offset)
+    end = offset + length
+    if length < 8 or end > limit or kind not in {0, 1}:
+        raise ValueError("Executable version block range is invalid")
+    cursor = offset + 6
+    key_start = cursor
+    while cursor + 2 <= end and data[cursor:cursor + 2] != b"\0\0":
+        cursor += 2
+    if cursor + 2 > end:
+        raise ValueError("Executable version block key is unterminated")
+    key = data[key_start:cursor].decode("utf-16le")
+    value_start = (cursor + 5) & ~3
+    value_end = value_start + value_length * (2 if kind == 1 else 1)
+    if value_end > end:
+        raise ValueError("Executable version block value leaves its range")
+    return key, data[value_start:value_end], (value_end + 3) & ~3, end
+
+
+def _version_children(data: bytes, start: int, end: int):
+    count = 0
+    while start + 6 <= end:
+        if not any(data[start:end]):
+            break
+        count += 1
+        if count > 4096:
+            raise ValueError("Executable version tree is too large")
+        child = _version_block(data, start, end)
+        yield child
+        start = (child[3] + 3) & ~3
+
+
+def _version_strings(value: bytes) -> dict[str, str]:
+    root_key, _, children, root_end = _version_block(value, 0, len(value))
+    if root_key != "VS_VERSION_INFO":
+        raise ValueError("Executable version root is invalid")
+    result: dict[str, str] = {}
+    for key, _, tables, info_end in _version_children(value, children, root_end):
+        if key != "StringFileInfo":
+            continue
+        for _, _, strings, table_end in _version_children(value, tables, info_end):
+            table_keys: set[str] = set()
+            for key, raw, _, _ in _version_children(value, strings, table_end):
+                key = key.casefold()
+                if key in table_keys:
+                    raise ValueError("Executable has duplicate version string keys")
+                table_keys.add(key)
+                text = raw.decode("utf-16le").rstrip("\0")
+                if key in result and result[key] != text:
+                    raise ValueError("Executable has conflicting localized product resources")
+                result[key] = text
+    return result
+
+
+def inspect_executable_info(path: Path) -> dict:
+    """Read bounded PE/version resources, without executing the executable."""
     size = path.stat().st_size
     with path.open("rb") as stream:
         def read_at(offset: int, length: int) -> bytes:
@@ -97,13 +162,23 @@ def inspect_executable(path: Path) -> tuple[str, int]:
                     fixed = struct.unpack_from("<13I", value, fixed_offset)
                     if fixed[:2] != (0xFEEF04BD, 0x00010000):
                         raise ValueError("Executable VS_FIXEDFILEINFO is invalid")
-                    versions.append(fixed[3] & 0xFFFF)
-        if not versions or len(set(versions)) != 1:
+                    file_version = (fixed[2] >> 16, fixed[2] & 0xFFFF, fixed[3] >> 16, fixed[3] & 0xFFFF)
+                    product_version = (fixed[4] >> 16, fixed[4] & 0xFFFF, fixed[5] >> 16, fixed[5] & 0xFFFF)
+                    versions.append({"fileVersion": file_version, "productVersion": product_version,
+                                     "strings": _version_strings(value)})
+        if not versions or any(version != versions[0] for version in versions[1:]):
             raise ValueError("Executable version resources are absent or inconsistent")
-        return architecture, versions[0]
+        return {"architecture": architecture, "peMagic": magic, **versions[0]}
 
 
-def validate_release_path(relative: str) -> None:
+def inspect_executable(path: Path) -> tuple[str, int]:
+    """Compatibility entry for runtime/update package target validation."""
+    info = inspect_executable_info(path)
+    return info["architecture"], info["fileVersion"][3]
+
+
+def validate_release_path(relative: str, *, kind: str = "update") -> None:
+    required_files(kind)
     if not relative or len(relative) > 230 or "\\" in relative or relative.startswith("/"):
         raise ValueError("Unsafe release file path")
     if re.search(r'[\x00-\x1f<>:"|?*]', relative):
@@ -113,11 +188,15 @@ def validate_release_path(relative: str) -> None:
             raise ValueError("Unsafe release path segment")
         if re.match(r"^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)", segment, re.I):
             raise ValueError("Reserved Windows path")
+    if kind == "installer" and relative == UPDATER_PATH:
+        return
     if relative != "uten_imp.exe" and not relative.startswith("data/") and not re.fullmatch(r"[^/]+\.dll", relative):
         raise ValueError("File is outside the Flutter runtime")
 
 
-def package_release(bundle: Path, output: Path, *, build_number: int, architecture: str) -> dict:
+def package_release(bundle: Path, output: Path, *, build_number: int, architecture: str,
+                    kind: str = "update") -> dict:
+    required = required_files(kind)
     bundle = bundle.resolve(strict=True)
     output = output.resolve()
     if build_number <= 0 or build_number > 65535:
@@ -132,19 +211,19 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
     sources: list[tuple[str, Path]] = []
     for source in sorted(bundle.rglob("*")):
         relative = source.relative_to(bundle).as_posix()
-        # Never ship credentials, debug symbols, the executing updater or any
-        # unknown root file as an application update.
+        # Both kinds use the same runtime allowlist. Only a complete first-install
+        # archive may include the fixed updater, never arbitrary installer scripts.
         if source.is_symlink() or source.is_junction():
             raise ValueError(f"Links are forbidden: {relative}")
         if not source.is_file():
             continue
-        if relative == MANIFEST_NAME or relative.startswith("client_updater/"):
+        if relative == MANIFEST_NAME or kind == "update" and relative.startswith("client_updater/"):
             continue
         if relative.endswith(".pdb"):
             continue
-        validate_release_path(relative)
+        validate_release_path(relative, kind=kind)
         sources.append((relative, source))
-    if not REQUIRED_FILES.issubset({relative for relative, _ in sources}):
+    if not required.issubset({relative for relative, _ in sources}):
         raise ValueError("Bundle is missing a required Flutter release file")
     if not any(relative.startswith("data/flutter_assets/") for relative, _ in sources):
         raise ValueError("Bundle is missing Flutter assets")
@@ -159,6 +238,8 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
             raise ValueError("Case-insensitive duplicate release path")
         seen.add(key)
         size = source.stat().st_size
+        if relative == UPDATER_PATH and size == 0:
+            raise ValueError("The fixed first-install updater cannot be empty")
         if size > MAX_FILE_BYTES:
             raise ValueError("A runtime file exceeds 512 MiB")
         expanded_bytes += size
@@ -169,6 +250,8 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
         files.append({"path": relative, "size": size, "sha256": digest})
     manifest = {"schemaVersion": 1, "platform": "windows", "architecture": architecture,
                 "buildNumber": build_number, "executable": "uten_imp.exe", "files": files}
+    if kind == "installer":
+        manifest["packageKind"] = "installer"
     output.parent.mkdir(parents=True, exist_ok=True)
     # Exclusive temporary output and atomic replace leave an existing package
     # intact if reading/compression fails.
@@ -180,18 +263,21 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
             for relative, source in sources:
                 archive.write(source, relative)
             archive.writestr(MANIFEST_NAME, json.dumps(manifest, ensure_ascii=False, separators=(",", ":")))
-        validate_package(temporary, build_number=build_number, architecture=architecture)
+        validate_package(temporary, build_number=build_number, architecture=architecture, kind=kind)
         temporary.replace(output)
     finally:
         temporary.unlink(missing_ok=True)
     with output.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     return {"package": str(output), "sha256": digest, "sizeBytes": output.stat().st_size,
-            "buildNumber": build_number, "architecture": architecture, "mode": "windows_archive"}
+            "buildNumber": build_number, "architecture": architecture,
+            "mode": "windows_archive" if kind == "update" else "windows_bundle"}
 
 
-def validate_package(path: Path, *, build_number: int, architecture: str) -> dict:
+def validate_package(path: Path, *, build_number: int, architecture: str,
+                     kind: str = "update") -> dict:
     """Independently re-read the finished ZIP before making it publishable."""
+    required = required_files(kind)
     with zipfile.ZipFile(path) as archive:
         entries = archive.infolist()
         if len(entries) > MAX_FILES + 1:
@@ -200,12 +286,14 @@ def validate_package(path: Path, *, build_number: int, architecture: str) -> dic
         if len(manifests) != 1 or manifests[0].file_size > 8 * 1024 * 1024:
             raise ValueError("Missing or oversized manifest")
         manifest = json.loads(archive.read(manifests[0]))
+        if manifest.get("packageKind", "update") != kind:
+            raise ValueError("Manifest package kind does not match")
         if (manifest.get("schemaVersion"), manifest.get("platform"), manifest.get("architecture"),
             manifest.get("buildNumber"), manifest.get("executable")) != (1, "windows", architecture, build_number, "uten_imp.exe"):
             raise ValueError("Manifest target does not match")
         records = manifest["files"]
         expected = {record["path"]: record for record in records}
-        if len(expected) != len(records) or not REQUIRED_FILES.issubset(expected):
+        if len(expected) != len(records) or not required.issubset(expected):
             raise ValueError("Missing or duplicate runtime records")
         seen: set[str] = set()
         total = 0
@@ -216,10 +304,12 @@ def validate_package(path: Path, *, build_number: int, architecture: str) -> dic
             seen.add(key)
             if entry.filename == MANIFEST_NAME:
                 continue
-            validate_release_path(entry.filename)
+            validate_release_path(entry.filename, kind=kind)
             record = expected.get(entry.filename)
             if record is None or entry.file_size != record["size"] or entry.file_size > MAX_FILE_BYTES:
                 raise ValueError("Archive does not match manifest")
+            if entry.filename == UPDATER_PATH and entry.file_size == 0:
+                raise ValueError("The fixed first-install updater cannot be empty")
             total += entry.file_size
             if total > MAX_EXPANDED_BYTES:
                 raise ValueError("Expanded archive too large")
@@ -237,9 +327,11 @@ def main() -> None:
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--build-number", required=True, type=int)
     parser.add_argument("--architecture", choices=("x64", "arm64", "x86"), default="x64")
+    parser.add_argument("--kind", choices=("update", "installer"), default="update",
+                        help="installer includes the fixed updater for a complete first installation")
     args = parser.parse_args()
     print(json.dumps(package_release(args.bundle, args.output, build_number=args.build_number,
-                                     architecture=args.architecture), ensure_ascii=False, indent=2))
+                                     architecture=args.architecture, kind=args.kind), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

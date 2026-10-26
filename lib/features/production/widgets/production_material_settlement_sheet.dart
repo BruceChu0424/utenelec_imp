@@ -1,6 +1,7 @@
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -1098,8 +1099,12 @@ class _MaterialSettlementSheetState
   Widget _ledger(ThemeData theme) => ExpansionTile(
     key: const ValueKey('material-clearance-ledger'),
     tilePadding: EdgeInsets.zero,
-    title: const Text('材料数量台账'),
-    subtitle: const Text('每项：已领 = 实耗 + 已退 + 损耗 + 在制 + 待登记'),
+    title: const Row(
+      children: [
+        Flexible(child: Text('材料数量台账')),
+        UtenFieldHintIcon(dense: true, info: '每项：已领 = 实耗 + 已退 + 损耗 + 在制 + 待登记'),
+      ],
+    ),
     children: [
       if (_clearance.isEmpty) const ListTile(title: Text('尚未生成物料需求台账')),
       for (final row in _clearance)
@@ -1146,13 +1151,19 @@ class _MaterialSettlementSheetState
   Widget _history(ThemeData theme) {
     return ExpansionTile(
       tilePadding: EdgeInsets.zero,
-      title: Text(
-        '有效登记与冲销（${_sources.length} 条）',
-        style: theme.textTheme.titleSmall?.copyWith(
-          fontWeight: FontWeight.w700,
-        ),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              '有效登记与冲销（${_sources.length} 条）',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const UtenFieldHintIcon(dense: true, info: '错误记录只能按原记录冲销，不能直接删除或覆盖'),
+        ],
       ),
-      subtitle: const Text('错误记录只能按原记录冲销，不能直接删除或覆盖'),
       children: [
         if (_sources.isEmpty)
           const ListTile(title: Text('暂无材料结清记录'))
@@ -1196,10 +1207,19 @@ class _MaterialSettlementSheetState
     key: const ValueKey('material-return-history'),
     tilePadding: EdgeInsets.zero,
     initiallyExpanded: _returns.any((document) => document.pending),
-    title: Text(
-      '退仓申请（待仓库收料 ${_returns.where((document) => document.pending).length} 单）',
+    title: Row(
+      children: [
+        Flexible(
+          child: Text(
+            '退仓申请（待仓库收料 ${_returns.where((document) => document.pending).length} 单）',
+          ),
+        ),
+        const UtenFieldHintIcon(
+          dense: true,
+          info: '仓库核对后整单确认收料；数量不符时撤回申请，核对后重新提交。',
+        ),
+      ],
     ),
-    subtitle: const Text('仓库核对后整单确认收料；数量不符时撤回申请，核对后重新提交。'),
     children: [
       for (final document in _returns)
         ListTile(

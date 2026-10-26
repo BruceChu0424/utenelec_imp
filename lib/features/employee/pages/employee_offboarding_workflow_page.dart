@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -481,34 +482,37 @@ class _EmployeeOffboardingWorkflowPageState
 
   Widget _identityCard() {
     final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(
+    return UtenPageEdgePadding(
+      padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s16,
         UtenSpacing.s12,
         UtenSpacing.s16,
         0,
       ),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: UtenRadius.mdAll,
-      ),
-      child: Wrap(
-        spacing: UtenSpacing.s16,
-        runSpacing: UtenSpacing.s4,
-        children: [
-          Text(
-            _employee!.fullName ?? '未命名员工',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
+      child: Container(
+        width: double.infinity,
+
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHigh,
+          borderRadius: UtenRadius.mdAll,
+        ),
+        child: Wrap(
+          spacing: UtenSpacing.s16,
+          runSpacing: UtenSpacing.s4,
+          children: [
+            Text(
+              _employee!.fullName ?? '未命名员工',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-          Text('工号 ${_employee!.code}'),
-          Text(_employee!.departmentName ?? '未分配部门'),
-          if (_employee!.positionName?.isNotEmpty == true)
-            Text(_employee!.positionName!),
-        ],
+            Text('工号 ${_employee!.code}'),
+            Text(_employee!.departmentName ?? '未分配部门'),
+            if (_employee!.positionName?.isNotEmpty == true)
+              Text(_employee!.positionName!),
+          ],
+        ),
       ),
     );
   }

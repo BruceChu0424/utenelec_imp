@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/layout/uten_page_layout.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -63,10 +64,17 @@ class AiChatOverlay extends ConsumerWidget {
     super.key,
     required this.child,
     required this.currentRoute,
+    this.launcherRailWidth,
   });
 
   final Widget child;
   final String currentRoute;
+
+  /// Optional desktop navigation slot, in the shell's logical canvas pixels.
+  /// An untouched launcher rests at its center; an explicit user drag/dock
+  /// position continues to take precedence. Standalone and compact layouts
+  /// retain the trailing-edge default.
+  final double? launcherRailWidth;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -77,10 +85,13 @@ class AiChatOverlay extends ConsumerWidget {
         child,
         if (identity != null)
           Positioned.fill(
-            child: _ChatSession(
-              key: ValueKey(identity),
-              identity: identity,
-              currentRoute: currentRoute,
+            child: UtenPageScrollRoleScope.local(
+              child: _ChatSession(
+                key: ValueKey(identity),
+                identity: identity,
+                currentRoute: currentRoute,
+                launcherRailWidth: launcherRailWidth,
+              ),
             ),
           ),
       ],
@@ -195,9 +206,11 @@ class _ChatSession extends ConsumerStatefulWidget {
     super.key,
     required this.identity,
     required this.currentRoute,
+    this.launcherRailWidth,
   });
   final AiChatIdentity identity;
   final String currentRoute;
+  final double? launcherRailWidth;
 
   @override
   ConsumerState<_ChatSession> createState() => _ChatSessionState();
@@ -1652,6 +1665,16 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     final colors = Theme.of(context).colorScheme;
     return LayoutBuilder(
       builder: (context, constraints) {
+        const launcherSize = 48.0;
+        // Retained/offstage shells can briefly receive a zero or narrow box.
+        // Keep this session and its draft controllers alive while withholding
+        // geometry that cannot contain even the launcher's single hit target.
+        if (!constraints.maxWidth.isFinite ||
+            !constraints.maxHeight.isFinite ||
+            constraints.maxWidth < launcherSize ||
+            constraints.maxHeight < launcherSize) {
+          return const SizedBox.shrink();
+        }
         final compact = constraints.maxWidth < 600;
         final inset = math.max(media.viewInsets.bottom, media.padding.bottom);
         final minimumBottom =
@@ -1683,19 +1706,27 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         // docks half-out at reduced opacity. The visual circle is 48 and, being
         // already at the minimum tap-target size, its hit box is 48 too —
         // position math uses that box.
-        const launcherSize = 48.0;
         const launcherHalf = launcherSize / 2;
-        const launcherMargin = 16.0;
+        const launcherMargin = 24.0;
         // Release this close to a side edge (center within 20px of it) docks;
-        // the resting margin keeps the center 36px away, so plain vertical
+        // the resting margin keeps the center outside that threshold, so vertical
         // drags never dock by accident.
         const launcherDockRange = 20.0;
         final launcherTopLimit =
             constraints.maxHeight - maximumBottom - launcherHalf;
         final launcherBottomLimit =
             constraints.maxHeight - minimumBottom - launcherHalf;
+        final railWidth = widget.launcherRailWidth;
+        final useLauncherRail =
+            !compact &&
+            railWidth != null &&
+            railWidth.isFinite &&
+            railWidth >= launcherSize &&
+            media.padding.left + railWidth <= constraints.maxWidth;
         final defaultLauncherCenter = Offset(
-          constraints.maxWidth - launcherMargin - launcherHalf,
+          useLauncherRail
+              ? media.padding.left + railWidth / 2
+              : constraints.maxWidth - launcherMargin - launcherHalf,
           (constraints.maxHeight - minimumBottom - 72 - launcherHalf).clamp(
             launcherTopLimit,
             launcherBottomLimit,
@@ -1734,7 +1765,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                 duration: _launcherDragging
                     ? Duration.zero
                     : const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
+                // Match NavigationRail's extension animation while the user
+                // has not positioned the launcher, including intermediate
+                // frames where the content edge is also moving.
+                curve: useLauncherRail && _launcherCenter == null
+                    ? Curves.easeInOut
+                    : Curves.easeOutCubic,
                 left: launcherCenter.dx - launcherHalf,
                 top: launcherCenter.dy - launcherHalf,
                 // The draggable launcher is one control. Keep its native FAB

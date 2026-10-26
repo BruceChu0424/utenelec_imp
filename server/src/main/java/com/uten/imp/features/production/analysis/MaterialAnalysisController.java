@@ -99,7 +99,7 @@ public class MaterialAnalysisController {
      * 销售单号列 facets（2026-09-25 单号列统一）：{orderNo:[…]}，与候选列表
      * 同一过滤参数（keyword；不含单号自身的值筛选）。
      */
-    @GetMapping("/sales-candidates/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/sales-candidates/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('production_material_analysis:view')")
     public java.util.Map<String, List<java.util.Map<String, Object>>> salesCandidateFacets(
             @RequestParam(required = false) String keyword) {

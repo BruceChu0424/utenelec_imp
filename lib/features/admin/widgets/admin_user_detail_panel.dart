@@ -19,6 +19,7 @@ import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_toast.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_page_layout.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -38,6 +39,7 @@ import '../../employee/widgets/employee_credential_dialog.dart';
 import 'admin_data_scope_section.dart';
 import 'admin_permission_transfer_actions.dart';
 import 'admin_permission_templates.dart';
+import 'admin_permission_export_button.dart';
 import 'permission_catalog_browser.dart';
 import 'permission_action_badge.dart';
 import 'set_temporary_password_dialog.dart';
@@ -200,7 +202,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             description: '正在保存个人权限设置，请勿重复提交或离开本页。',
           ),
         Expanded(
-          child: ListView(
+          child: UtenPageEdgePadding.scroll(
             // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
             padding: EdgeInsets.fromLTRB(
               UtenSpacing.s16,
@@ -211,98 +213,102 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                 UtenCapsuleNavScope.occlusionOf(context),
               ),
             ),
-            children: [
-              if (widget.showBack)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: widget.onBack,
-                    icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                    label: const Text('返回列表'),
+            preserveStart: !widget.showBack,
+            builder: (context, pagePadding) => ListView(
+              padding: pagePadding,
+              children: [
+                if (widget.showBack)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: widget.onBack,
+                      icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                      label: const Text('返回列表'),
+                    ),
                   ),
-                ),
-              _userSummary(data),
-              if (!widget.user.currentEmployee) ...[
-                const SizedBox(height: UtenSpacing.s12),
-                _employmentRestrictionNotice(),
-              ],
-              if (widget.canManageAuthorization) ...[
-                const SizedBox(height: UtenSpacing.s12),
-                // 云端访问授权置于最顶部（用户要求「权限设置最顶部」），与超管身份并排一行；
-                // 窄屏自动回退竖排。
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    if (constraints.maxWidth >= 640) {
-                      // ListView 子项高度无界，stretch 须先经 IntrinsicHeight 定高。
-                      return IntrinsicHeight(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Expanded(
-                              child: _remoteAccessTile(
-                                widget.user.remoteAccess,
+                _userSummary(data),
+                if (!widget.user.currentEmployee) ...[
+                  const SizedBox(height: UtenSpacing.s12),
+                  _employmentRestrictionNotice(),
+                ],
+                if (widget.canManageAuthorization) ...[
+                  const SizedBox(height: UtenSpacing.s12),
+                  // 云端访问授权置于最顶部（用户要求「权限设置最顶部」），与超管身份并排一行；
+                  // 窄屏自动回退竖排。
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      if (constraints.maxWidth >= 640) {
+                        // ListView 子项高度无界，stretch 须先经 IntrinsicHeight 定高。
+                        return IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: _remoteAccessTile(
+                                  widget.user.remoteAccess,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: UtenSpacing.s12),
-                            Expanded(child: _superAdminTile(data)),
-                          ],
-                        ),
+                              const SizedBox(width: UtenSpacing.s12),
+                              Expanded(child: _superAdminTile(data)),
+                            ],
+                          ),
+                        );
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _remoteAccessTile(widget.user.remoteAccess),
+                          const SizedBox(height: UtenSpacing.s12),
+                          _superAdminTile(data),
+                        ],
                       );
-                    }
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _remoteAccessTile(widget.user.remoteAccess),
-                        const SizedBox(height: UtenSpacing.s12),
-                        _superAdminTile(data),
+                    },
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: UtenSegmentedFilter<_UserDetailSection>(
+                      segments: const [
+                        UtenSegment(
+                          value: _UserDetailSection.permissions,
+                          label: '操作权限',
+                        ),
+                        UtenSegment(
+                          value: _UserDetailSection.dataScope,
+                          label: '可查看数据',
+                        ),
+                        UtenSegment(
+                          value: _UserDetailSection.account,
+                          label: '账号安全',
+                        ),
                       ],
-                    );
+                      selected: _section,
+                      onChanged: _changeSection,
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                ],
+                if (!widget.canManageAuthorization)
+                  _accountSection()
+                else
+                  switch (_section) {
+                    _UserDetailSection.permissions => _permSection(
+                      effectiveAsync!,
+                      ref.watch(permissionCatalogProvider),
+                    ),
+                    _UserDetailSection.dataScope => AdminDataScopeSection(
+                      key: ValueKey((
+                        widget.user.id,
+                        ref.watch(permissionConfigurationRevisionProvider),
+                      )),
+                      user: widget.user,
+                      effectiveAsync: effectiveAsync!,
+                      onAccountChanged: widget.onAccountChanged,
+                    ),
+                    _UserDetailSection.account => _accountSection(),
                   },
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: UtenSegmentedFilter<_UserDetailSection>(
-                    segments: const [
-                      UtenSegment(
-                        value: _UserDetailSection.permissions,
-                        label: '操作权限',
-                      ),
-                      UtenSegment(
-                        value: _UserDetailSection.dataScope,
-                        label: '可查看数据',
-                      ),
-                      UtenSegment(
-                        value: _UserDetailSection.account,
-                        label: '账号安全',
-                      ),
-                    ],
-                    selected: _section,
-                    onChanged: _changeSection,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
               ],
-              if (!widget.canManageAuthorization)
-                _accountSection()
-              else
-                switch (_section) {
-                  _UserDetailSection.permissions => _permSection(
-                    effectiveAsync!,
-                    ref.watch(permissionCatalogProvider),
-                  ),
-                  _UserDetailSection.dataScope => AdminDataScopeSection(
-                    key: ValueKey((
-                      widget.user.id,
-                      ref.watch(permissionConfigurationRevisionProvider),
-                    )),
-                    user: widget.user,
-                    effectiveAsync: effectiveAsync!,
-                    onAccountChanged: widget.onAccountChanged,
-                  ),
-                  _UserDetailSection.account => _accountSection(),
-                },
-            ],
+            ),
           ),
         ),
         if (showSaveBar)
@@ -671,6 +677,20 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         !_savingOverrides &&
         !_acting;
     final actions = <Widget>[
+      AdminPermissionExportButton(
+        scope: PermissionExportScope.employee,
+        sourceId: widget.user.id,
+        sourceName: widget.user.employeeName ?? widget.user.loginAccount,
+        disabledReason: data?.superAdmin == true
+            ? '超级管理员默认拥有全部权限，不能导出为普通员工的可恢复权限文件'
+            : null,
+        enabled:
+            data != null &&
+            !data.superAdmin &&
+            _dirtyCount(data) == 0 &&
+            !_savingOverrides &&
+            !_acting,
+      ),
       AdminPermissionTemplateActions(
         user: widget.user,
         enabled: bulkEnabled && _dirtyCount(data) == 0,

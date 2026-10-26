@@ -1,13 +1,16 @@
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../components/print/complete_print_snapshot.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_navigation_session.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
@@ -51,12 +54,29 @@ class WarehouseInventoryPanel extends ConsumerStatefulWidget {
 }
 
 class _WarehouseInventoryPanelState
-    extends ConsumerState<WarehouseInventoryPanel> {
+    extends ConsumerState<WarehouseInventoryPanel>
+    with ScopedPagedReadViewMixin<WarehouseInventoryPanel> {
+  final _readViewportRows = MasterDataTableRowsController<InstantInventoryRow>();
+  int get _visibleReadPage => _result == null ? (_page) : (_readViewportRows.visiblePage ?? (_page));
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _clear();
+    if (mounted && scopedPagedReadRejection != null) {
+      setState(() {
+        _failed = true;
+        _failureMessage = scopedPagedReadRejection!.message;
+      });
+    }
+  }
+
   PagedResult<InstantInventoryRow>? _result;
   String _keyword = '';
   bool _loading = false;
   bool _failed = false;
+  String? _failureMessage;
   bool _openingLedger = false;
+  final _navigation = PageNavigationSession();
   int _page = 1;
   int _size = 30;
   Map<String, String?> _filters = {};
@@ -67,6 +87,18 @@ class _WarehouseInventoryPanelState
 
   bool _canRead(SensitiveReadBoundary boundary) =>
       boundary.permissions.contains(Perm.stockView) || boundary.superAdmin;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
+  void dispose() {
+    _navigation.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -145,25 +177,6 @@ class _WarehouseInventoryPanelState
     if (_sortKey != null) 'order': _sortAscending ? 'asc' : 'desc',
   };
 
-  Future<PagedResult<InstantInventoryRow>> _fetch(int page, int size) => ref
-      .read(instantInventoryRepositoryProvider)
-      .instantInventory(
-        page: page,
-        size: size,
-        warehouseId: widget.warehouse.id,
-        includeDefective: true,
-        includeLineSide: true,
-        warehouseRelatedOnly: true,
-        keyword: _keyword.isEmpty ? null : _keyword,
-        owningWarehouse: _filter('owningWarehouse'),
-        owningWarehouseNull:
-            _filters['owningWarehouse'] == kMasterFilterNullValue,
-        colorId: _filter('color'),
-        series: _filter('series'),
-        sort: _sortKey,
-        order: _sortKey == null ? null : (_sortAscending ? 'asc' : 'desc'),
-      );
-
   void _changeFilter(String key, String? value) {
     // 仅开放端点实际支持的筛选，不能把当前页文本筛选冒充全范围筛选。
     if (!const {'owningWarehouse', 'color', 'series'}.contains(key)) return;
@@ -199,47 +212,64 @@ class _WarehouseInventoryPanelState
 
   Future<UtenPrintTable> _printLoader() async {
     final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final epoch = ref.read(exportContextEpochProvider);
     final version = _requestVersion;
-    if (!_resultsReady || !_isCurrent(version, boundary)) {
-      throw StateError('库存查询已变化，请重新预览');
-    }
-    // 端点每次最多 500 行。分批读取前 2000 行，不能把请求 size=2000
-    // 但服务端实际返回的 500 行冒充完整预览。
-    final rows = <InstantInventoryRow>[];
-    for (var page = 1; rows.length < 2000; page++) {
-      final result = await _fetch(page, 500);
-      if (!_resultsReady || !_isCurrent(version, boundary)) {
-        throw StateError('库存查询已变化，请重新预览');
-      }
-      rows.addAll(result.items.take(2000 - rows.length));
-      if (page >= result.totalPages || result.items.isEmpty) break;
-    }
-    if (!mounted) throw StateError('库存页面已关闭');
+    final repository = ref.read(instantInventoryRepositoryProvider);
+    final warehouseId = widget.warehouse.id;
+    final keyword = _keyword.isEmpty ? null : _keyword;
+    final owningWarehouse = _filter('owningWarehouse');
+    final owningNull = _filters['owningWarehouse'] == kMasterFilterNullValue;
+    final colorId = _filter('color'), series = _filter('series');
+    final sort = _sortKey;
+    final order = sort == null ? null : (_sortAscending ? 'asc' : 'desc');
     final columns = instantInventoryColumns(
       context,
       weightDisplay: ref.read(warehouseWeightUnitsPrefsProvider).display,
     );
-    return UtenPrintTable(
-      columnKeys: [for (final column in columns) column.key],
-      headers: [for (final column in columns) column.label],
-      rows: [
-        for (final row in rows)
-          [for (final column in columns) column.value(row) ?? ''],
-      ],
-      factValues: [
-        for (final row in rows)
-          {
-            'qty': row.qty?.toString(),
-            'weight': row.weight?.toString(),
-            'moreQty': row.moreQty?.toString(),
-            'pendingQty': row.pendingQty?.toString(),
-            'pendingStockInQty': row.pendingStockInQty?.toString(),
-          },
-      ],
+    bool current() =>
+        _resultsReady &&
+        _isCurrent(version, boundary) &&
+        epoch == ref.read(exportContextEpochProvider);
+    final scope = await boundary.api.captureRequestScope(isCurrent: current);
+    final table = await scope.run(
+      () => loadCompletePrintSnapshot<InstantInventoryRow>(
+        loadPage: (page, size) => repository.instantInventory(
+          page: page,
+          size: size,
+          warehouseId: warehouseId,
+          includeDefective: true,
+          includeLineSide: true,
+          warehouseRelatedOnly: true,
+          keyword: keyword,
+          owningWarehouse: owningWarehouse,
+          owningWarehouseNull: owningNull,
+          colorId: colorId,
+          series: series,
+          sort: sort,
+          order: order,
+        ),
+        idOf: (row) => '${row.goodsId}|${row.colorId}',
+        includeRowIds: false,
+        headers: [for (final column in columns) column.label],
+        columnKeys: [for (final column in columns) column.key],
+        cellsOf: (row) => [
+          for (final column in columns) column.value(row) ?? '',
+        ],
+        factsOf: (row) => {
+          'qty': row.qty?.toString(),
+          'weight': row.weight?.toString(),
+          'moreQty': row.moreQty?.toString(),
+          'pendingQty': row.pendingQty?.toString(),
+          'pendingStockInQty': row.pendingStockInQty?.toString(),
+        },
+        isCurrent: () => current() && scope.isCurrent,
+      ),
     );
+    await scope.verify();
+    return table;
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     if (!_canRead(boundary)) return;
     final version = ++_requestVersion;
@@ -248,8 +278,46 @@ class _WarehouseInventoryPanelState
       _loading = true;
       _failed = false;
     });
+    final repository = ref.read(instantInventoryRepositoryProvider);
+    final warehouseId = widget.warehouse.id;
+    final keyword = _keyword.isEmpty ? null : _keyword;
+    final owning = _filter('owningWarehouse'),
+        owningNull = _filters['owningWarehouse'] == kMasterFilterNullValue;
+    final color = _filter('color'), series = _filter('series'), sort = _sortKey;
+    final size = _size;
+    final order = sort == null ? null : (_sortAscending ? 'asc' : 'desc');
+    Object pagingQuery() => [
+      ref.read(instantInventoryRepositoryProvider),
+      widget.warehouse.id,
+      widget.refreshTick,
+      _keyword,
+      _size,
+      _filters,
+      _sortKey,
+      _sortAscending,
+    ];
     try {
-      final result = await _fetch(page, _size);
+      final result = await readScopedPage<InstantInventoryRow>(
+        page,
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        fetchPage: (target) => repository.instantInventory(
+          page: target,
+          size: size,
+          warehouseId: warehouseId,
+          includeDefective: true,
+          includeLineSide: true,
+          warehouseRelatedOnly: true,
+          keyword: keyword,
+          owningWarehouse: owning,
+          owningWarehouseNull: owningNull,
+          colorId: color,
+          series: series,
+          sort: sort,
+          order: order,
+        ),
+      );
       if (!_isCurrent(version, boundary)) return;
       setState(() {
         _result = result;
@@ -288,7 +356,7 @@ class _WarehouseInventoryPanelState
     final warehouseId = widget.warehouse.id;
     setState(() => _openingLedger = true);
     try {
-      await context.push(
+      await _navigation.push(
         RouteName.stockItemDetail(
           id,
           tab: 'ledger',
@@ -364,6 +432,8 @@ class _WarehouseInventoryPanelState
         ),
         Expanded(
           child: MasterDataTableView<InstantInventoryRow>(
+                rowsController: _readViewportRows,
+            expensiveRowMounts: false,
             key: const Key('warehouse-inventory-table'),
             tableKey: 'master.warehouse.inventory',
             primary: widget.primary,
@@ -380,7 +450,7 @@ class _WarehouseInventoryPanelState
                 enabled: _resultsReady,
                 title:
                     '${widget.warehouse.name ?? widget.warehouse.code ?? ''}即时库存',
-                subtitle: '最多前 2000 行',
+                subtitle: '当前筛选的完整结果',
                 loader: _printLoader,
                 type: UtenButtonType.primary,
                 size: UtenButtonSize.large,
@@ -445,12 +515,14 @@ class _WarehouseInventoryPanelState
             onSortChange: _changeSort,
             isLoading: _loading && _result == null,
             loadingMore: _loading && _result != null,
-            error: _failed ? l10n.warehouseInventoryLoadFailed : null,
-            onRetry: () => _load(_page),
+            error: _failed
+                ? (_failureMessage ?? l10n.warehouseInventoryLoadFailed)
+                : null,
+            onRetry: () => _load(_visibleReadPage),
             emptyMessage: l10n.warehouseInventoryEmpty,
             currentPage: _result?.page ?? _page,
             totalPages: _result?.totalPages ?? 1,
-            onPageChange: _load,
+            onPageChange: (page) => _load(page, useCache: true),
             paginationScope: (
               widget.warehouse.id,
               _keyword,

@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 // 销售报价财务核价队列(/finance/quote-review，ADR-134)。
 //
 // 报价不再由销售自审：销售「提交财务核价」后进本页「待核价」；财务认领后逐行定价格和
@@ -12,6 +13,7 @@
 // 确认由详情里服务端下发的 financeActions 决定。待核价行说明里带「谁正在核价」(服务端认领)。
 import 'dart:async';
 
+import '../../../shared/paging/paged_query_identity.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -22,9 +24,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
-import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -41,6 +41,9 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../shared/auth/native_read_view_scope_mixin.dart'
+    show nativeReadAccessDenied;
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/sales_quote_finance_review.dart';
 import '../repositories/sales_quote_finance_review_repository.dart';
@@ -61,13 +64,18 @@ class FinanceQuoteReviewListPage extends ConsumerStatefulWidget {
 }
 
 class _FinanceQuoteReviewListPageState
-    extends ConsumerState<FinanceQuoteReviewListPage> {
+    extends ConsumerState<FinanceQuoteReviewListPage>
+    with ScopedPagedReadViewMixin<FinanceQuoteReviewListPage> {
   late SalesQuoteFinanceState _state;
   PagedResult<SalesQuoteFinanceListItem>? _result;
+  final _tableRows = MasterDataTableRowsController<SalesQuoteFinanceListItem>();
   bool _loading = false;
   String? _error;
   String _keyword = '';
   int _requestVersion = 0;
+  int _countVersion = 0;
+  int? _readerEpoch;
+  Map<String, dynamic>? _acceptedQuery;
   SalesQuoteFinanceListItem? _activeItem;
 
   /// 「已退回」段全量张数(黄色进行中)；null = 尚未取到，不渲染。
@@ -77,11 +85,14 @@ class _FinanceQuoteReviewListPageState
   @override
   void initState() {
     super.initState();
+    _readerEpoch = ref.read(exportContextEpochProvider);
     _state = SalesQuoteFinanceState.values.firstWhere(
       (state) => state.query == widget.initialState,
       orElse: () => SalesQuoteFinanceState.pending,
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load(1);
+    });
   }
 
   @override
@@ -93,24 +104,71 @@ class _FinanceQuoteReviewListPageState
   SalesQuoteFinanceReviewRepository get _repo =>
       ref.read(salesQuoteFinanceReviewRepositoryProvider);
 
-  Future<void> _load(int page) async {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    final epoch = ref.read(exportContextEpochProvider);
+    final changedOwner = _readerEpoch != epoch;
+    _readerEpoch = epoch;
+    ++_requestVersion;
+    ++_countVersion;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _acceptedQuery = null;
+      _returnedCount = null;
+      _activeItem = null;
+      _loading = false;
+      _error =
+          scopedPagedReadRejection?.message ??
+          (changedOwner ? null : '读取权限已变化，请重新加载');
+    });
+    if (changedOwner) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && epoch == ref.read(exportContextEpochProvider)) _load(1);
+      });
+    }
+  }
+
+  Map<String, dynamic> get _cacheQuery => {
+    'owner': ref.read(exportContextEpochProvider),
+    'repository': ref.read(salesQuoteFinanceReviewRepositoryProvider),
+    'keyword': _keyword,
+    'state': _state,
+  };
+
+  Future<void> _navigatePage(int page) => _load(page, useCache: true);
+
+  Future<void> _load(int page, {bool useCache = false}) async {
+    final cacheQuery = _cacheQuery;
+    final repo = ref.read(salesQuoteFinanceReviewRepositoryProvider);
+    final state = _state;
+    final keyword = _keyword.isEmpty ? null : _keyword;
+
     final version = ++_requestVersion;
     setState(() {
+      if (!samePagedReadQuery(_acceptedQuery, cacheQuery)) {
+        _result = null;
+        _activeItem = null;
+      }
       _loading = true;
       _error = null;
     });
     if (_state != SalesQuoteFinanceState.returned || _keyword.isNotEmpty) {
-      unawaited(_loadReturnedCount());
+      unawaited(_loadReturnedCount(version));
     }
     try {
-      final result = await _repo.list(
-        state: _state,
-        page: page,
-        keyword: _keyword.isEmpty ? null : _keyword,
+      final result = await readScopedPage<SalesQuoteFinanceListItem>(
+        page,
+        query: cacheQuery,
+        currentQuery: () => _cacheQuery,
+        useCache: useCache,
+        fetchPage: (target) =>
+            repo.list(state: state, page: target, keyword: keyword),
       );
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _result = result;
+        _acceptedQuery = cacheQuery;
         _loading = false;
         if (_activeItem != null &&
             !result.items.any((item) => item.quoteId == _activeItem!.quoteId)) {
@@ -121,7 +179,13 @@ class _FinanceQuoteReviewListPageState
         }
       });
     } on ApiException catch (error) {
-      if (!mounted || version != _requestVersion) return;
+      if (!mounted || version != _requestVersion) {
+        return;
+      }
+      if (nativeReadAccessDenied(error)) {
+        _retireDeniedRead(error);
+        return;
+      }
       setState(() {
         _error = error.message;
         _loading = false;
@@ -136,16 +200,41 @@ class _FinanceQuoteReviewListPageState
   }
 
   /// 「已退回」段全量张数(size=1 只取 total；失败保持旧值，不把未知说成 0)。
-  Future<void> _loadReturnedCount() async {
+  Future<void> _loadReturnedCount(int requestVersion) async {
+    final epoch = ref.read(exportContextEpochProvider);
+    final generation = ++_countVersion;
+    final repo = _repo;
+    bool current() =>
+        mounted &&
+        requestVersion == _requestVersion &&
+        generation == _countVersion &&
+        epoch == ref.read(exportContextEpochProvider);
     try {
-      final page = await _repo.list(
+      final page = await repo.list(
         state: SalesQuoteFinanceState.returned,
         size: 1,
       );
-      if (mounted) setState(() => _returnedCount = page.total);
-    } catch (_) {
+      if (current()) setState(() => _returnedCount = page.total);
+    } catch (error) {
+      if (current() && error is ApiException && nativeReadAccessDenied(error)) {
+        _retireDeniedRead(error);
+      }
       // 计数失败静默：分段不显示数字，不影响列表。
     }
+  }
+
+  void _retireDeniedRead(ApiException error) {
+    invalidateScopedPageReads();
+    ++_requestVersion;
+    ++_countVersion;
+    setState(() {
+      _result = null;
+      _acceptedQuery = null;
+      _activeItem = null;
+      _returnedCount = null;
+      _loading = false;
+      _error = error.message;
+    });
   }
 
   void _switchState(SalesQuoteFinanceState next) {
@@ -173,7 +262,7 @@ class _FinanceQuoteReviewListPageState
 
   Future<void> _refresh() async {
     refreshBadges(ref);
-    await _load(_result?.page ?? 1);
+    await _load(_tableRows.visiblePage ?? _result?.page ?? 1);
   }
 
   /// 打开核价详情；确认/退回后返回 true → 重拉当前页与徽章。
@@ -203,36 +292,26 @@ class _FinanceQuoteReviewListPageState
       if (mounted) _refresh();
     });
     final body = SafeArea(
-      child: _loading && _result == null
-          ? const UtenSkeletonList()
-          : _error != null && _result == null
-          ? UtenEmpty.error(
-              message: _error,
-              actionLabel: l10n.quoteFinanceRetry,
-              onAction: () => _load(1),
-            )
-          : LayoutBuilder(
-              builder: (context, constraints) {
-                final result =
-                    _result ??
-                    const PagedResult<SalesQuoteFinanceListItem>(
-                      items: [],
-                      page: 1,
-                      size: 20,
-                      total: 0,
-                      totalPages: 1,
-                    );
-                return UtenContentContainer.wide(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: UtenSpacing.s16,
-                    ),
-                    // 大小屏共用一张表：窄屏同样横向滚动（2026-10-09 卡片形态退役）。
-                    child: _desktop(context, l10n, result),
-                  ),
-                );
-              },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final result =
+              _result ??
+              const PagedResult<SalesQuoteFinanceListItem>(
+                items: [],
+                page: 1,
+                size: 20,
+                total: 0,
+                totalPages: 1,
+              );
+          return UtenContentContainer.wide(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+              // 大小屏共用一张表：窄屏同样横向滚动（2026-10-09 卡片形态退役）。
+              child: _desktop(context, l10n, result),
             ),
+          );
+        },
+      ),
     );
     return Scaffold(
       appBar: UtenAppBar(
@@ -312,18 +391,20 @@ class _FinanceQuoteReviewListPageState
               routePrefix: '/finance/quote-review/',
             ),
           ),
-          if (_error != null) ...[
+          if (_error != null && result.items.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),
             _InlineError(
               message: _error!,
               retryLabel: l10n.quoteFinanceRetry,
-              onRetry: () => _load(result.page),
+              onRetry: () => _load(_tableRows.visiblePage ?? result.page),
             ),
           ],
           const SizedBox(height: UtenSpacing.s12),
         ],
       ),
       body: MasterDataTableView<SalesQuoteFinanceListItem>(
+        rowsController: _tableRows,
+        expensiveRowMounts: false,
         tableKey:
             'features.finance.pages.finance_quote_review_list_page.FinanceQuoteReviewListPageState._desktop.1',
         key: const Key('quote-finance-desktop-table'),
@@ -347,11 +428,13 @@ class _FinanceQuoteReviewListPageState
         ],
         rowColor: (item) => _rowColor(theme, item),
         isLoading: _loading,
+        error: result.items.isEmpty ? _error : null,
+        onRetry: () => _load(_tableRows.visiblePage ?? result.page),
         emptyMessage: _emptyMessage(l10n),
         currentPage: result.page,
         totalPages: result.totalPages,
         paginationScope: (_state, _keyword),
-        onPageChange: _load,
+        onPageChange: _navigatePage,
         toolbarActions: [
           UtenButton(
             key: const Key('quote-finance-open-selected'),

@@ -43,6 +43,7 @@ void main() {
     );
 
     await service.ensureLoaded();
+    await service.loadClientNames(['active', 'disabled', 'old-active', 'stub']);
 
     expect(service.clientEntries, hasLength(4));
     expect(service.client('disabled'), 'Historical client');
@@ -70,6 +71,10 @@ class _StubApiClient extends ApiClient {
       currencyReads++;
       return currencies;
     }
-    return path == ApiEndpoints.clientsDict ? clients : const [];
+    if (path == '/master/clients/lookup') {
+      final ids = (query!['ids'] as String).split(',').toSet();
+      return clients.where((row) => ids.contains(row['id'])).toList();
+    }
+    return const [];
   }
 }

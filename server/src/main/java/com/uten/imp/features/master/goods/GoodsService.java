@@ -80,7 +80,7 @@ import java.util.stream.Collectors;
  * 也不按名称猜测。
  */
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
 public class GoodsService {
 
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。 */
@@ -134,22 +134,22 @@ public class GoodsService {
 
     private final GoodsCostMasker costMasker;            // goods:cost:view 成本可见性
 
-    /**
-     * 货品归属隔离总开关（uten.features.goods-owner-scope-enabled，默认 false）。
-     * 2026-07-31 决策：货品暂不按外贸归属人隔离，全员可见全部货品；代码保留，置 true 即恢复。
-     */
-    @org.springframework.beans.factory.annotation.Value("${uten.features.goods-owner-scope-enabled:false}")
-    private boolean goodsOwnerScopeEnabled;
-
     // ===== 归属可见性（外贸系列按员工授权；判定逻辑统一在 OwnerVisibility） =====
 
     private final GoodsMasterRelationshipResolver relationships;
+    private final com.uten.imp.security.GoodsReadScopePolicy goodsReadScopePolicy;
+
+    /** Compatibility for existing explicitly constructed services; Spring injects the shared policy. */
+    public GoodsService(GoodsRepository repo, MaterialCategoryRepository categoryRepo, ColorRepository colorRepo,
+            UnitRepository unitRepo, MouldRepository mouldRepo, TxSessionVars tx, EntityManager em,
+            CategoryDrivenCodeService categoryCodes, com.uten.imp.security.OwnerVisibility ownerVisibility,
+            SecurityContextCurrentUser currentUser, GoodsCostMasker costMasker, GoodsMasterRelationshipResolver relationships) {
+        this(repo, categoryRepo, colorRepo, unitRepo, mouldRepo, tx, em, categoryCodes, ownerVisibility,
+                currentUser, costMasker, relationships, new com.uten.imp.security.GoodsReadScopePolicy(ownerVisibility));
+    }
     /** 货品归属可见性判定唯一入口：开关关闭时直接放行（seeAll），开启时走 OwnerVisibility 三态。 */
     private com.uten.imp.security.OwnerVisibility.OwnerScope goodsScope() {
-        if (!goodsOwnerScopeEnabled) {
-            return new com.uten.imp.security.OwnerVisibility.OwnerScope(true, java.util.Set.of());
-        }
-        return ownerVisibility.evaluate("goods", "goods:view:all");
+        return goodsReadScopePolicy.evaluate();
     }
 
     // ===== 列表（Specification 动态筛选） =====
@@ -166,6 +166,13 @@ public class GoodsService {
                 .and(Sort.by(Sort.Direction.ASC, "id"));
         Sort requestedSort = TableSort.resolve(sort, order, defaultSort, ALLOWED_SORT);
         Specification<Goods> spec = (root, q, cb) -> {
+            // The DTO reads these to-one names for every row. Resolve them in
+            // this same data query, while keeping the count predicate unchanged.
+            if (q != null && q.getResultType() != Long.class && q.getResultType() != long.class) {
+                root.fetch("color", jakarta.persistence.criteria.JoinType.LEFT);
+                root.fetch("unit", jakarta.persistence.criteria.JoinType.LEFT);
+                root.fetch("mould", jakarta.persistence.criteria.JoinType.LEFT);
+            }
             Predicate predicate = goodsPredicate(f, subtreeIds, scope, root, cb, keyword);
             predicate = cb.and(predicate, com.uten.imp.features.master.search.MasterColumnSearch.predicate(
                     cb, root.get("id"), com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, f.columnSearch()));
@@ -177,7 +184,7 @@ public class GoodsService {
             return predicate;
         };
         Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
-        Page<Goods> p = repo.findAll(spec, pageable);
+        Page<Goods> p = com.uten.imp.common.export.MasterExportSource.page(repo, em, Goods.class, spec, pageable, f);
         List<Goods> content = p.getContent();
         Set<UUID> goodsWithBom = content.isEmpty() ? Set.of() : new java.util.HashSet<>(
                 em.createQuery("""
@@ -206,7 +213,7 @@ public class GoodsService {
         List<GoodsListItem> items = content.stream()
                 .map(g -> {
                     var item = toList(g, colorNames, unitNames, mouldsByLegacy, stockByGoods,
-                            owningWarehouseNames, owningWorkshopNames);
+                            owningWarehouseNames, owningWorkshopNames, scope);
                     item.setHasBom(goodsWithBom.contains(g.getId()));
                     if (keyword.active()) {
                         UUID category = g.getCategory() == null ? null : g.getCategory().getId();
@@ -667,7 +674,7 @@ public class GoodsService {
     // ===== 加密 Excel 导出（服务端权威列定义） =====
 
     /**
-     * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
+     * 加密 Excel 导出：复用 list 的同一筛选/映射，后台以 100 行游标批次输出；同步仅保留有界小结果。
      * 列定义服务端权威（不信任前端传列）；过滤/排序走 TableSort 白名单（list 已接 sort/order）。
      * 2026-09-25 口径「表格显示啥导出啥，权限列看不到导出也不给」：列集/列序对齐前端
      * 货品表格——「价格」「折扣」按权限**整列增减**（无 goods:price:view|edit 者没有价格列、
@@ -675,7 +682,7 @@ public class GoodsService {
      * 「状态」（导出口径本就排除禁用品，该列恒「使用」）。例外保留「类别」：表格里分类由
      * 左侧树表达，平铺导出需要它携带树上下文，且货品导入必填类别列（导出改完可直接导回）。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ExportPayload export(GoodsQueryFilter f, String sort, String order, int maxRows) {
         Map<UUID, String> categoryPath = categoryPathMap();
         boolean showPrice = canViewPrice();
@@ -709,7 +716,7 @@ public class GoodsService {
         cols.add(new ExportColumn("minOrderQty", "最小起订量", ExportColumn.NUMBER));
         cols.add(new ExportColumn("orderMultipleQty", "订货倍数", ExportColumn.NUMBER));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
                 maxRows, (p, size) -> list(f, p, size, sort, order), g -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("name", g.getName());
@@ -740,7 +747,6 @@ public class GoodsService {
                     row.put("orderMultipleQty", g.getOrderMultipleQty());
                     return row;
                 });
-        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets: the same authorized search/filter predicate as the list =====
@@ -798,7 +804,7 @@ public class GoodsService {
         query.orderBy(reference
                 ? List.of(cb.desc(count), cb.asc(label), cb.asc(value))
                 : List.of(cb.desc(count), cb.asc(value)));
-        List<Object[]> rows = em.createQuery(query).setFirstResult((page - 1) * size).setMaxResults(size + 1).getResultList();
+        List<Object[]> rows = em.createQuery(query).setFirstResult(Pageables.checkedOffset(page, size)).setMaxResults(size + 1).getResultList();
         boolean hasMore = rows.size() > size;
         List<FacetBucket> result = rows.stream().limit(size).map(row -> {
             String raw = String.valueOf(row[0]);
@@ -962,7 +968,10 @@ public class GoodsService {
     }
 
     boolean canWrite(Goods g) {
-        var scope = goodsScope();
+        return canWrite(g, goodsScope());
+    }
+
+    private static boolean canWrite(Goods g, com.uten.imp.security.OwnerVisibility.OwnerScope scope) {
         return scope.seeAll() || g.getOwnerEmployeeId() == null
                 || scope.writableOwners().contains(g.getOwnerEmployeeId());
     }
@@ -992,6 +1001,7 @@ public class GoodsService {
     @Transactional
     public GoodsDetail create(GoodsSaveRequest req) {
         tx.bind();
+        GoodsFieldEditPolicy.validateStatus(req);
         if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:status");
         }
@@ -1015,6 +1025,7 @@ public class GoodsService {
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public UUID saveImported(GoodsSaveRequest req) {
+        GoodsFieldEditPolicy.validateStatus(req);
         GoodsCostValuePolicy.validateRequest(req);
         Goods g = new Goods();
         apply(req, g, true, false);
@@ -1033,34 +1044,46 @@ public class GoodsService {
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public UUID restoreImported(UUID id, GoodsSaveRequest req) {
+        Goods g = requireWritableDeletedImportGoods(id);
         if (repo.isReleasedGoodsIdentity(id)) {
             throw new ApiException(ErrorCode.CONFLICT, "原编号已回用于新 UUID 的货品，不能恢复旧货品；请重新导出并核对当前货品");
         }
-        Goods g = repo.findById(id)
-                .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "编号对应的已删除货品不存在，请重新检测文件"));
-        if (!g.isDeleted()) {
-            throw new ApiException(ErrorCode.CONFLICT, "编号对应的货品已恢复，请重新检测文件");
-        }
+        GoodsFieldEditPolicy.requireChanged(g, req, false);
         GoodsCostValuePolicy.validateRequest(req);
         GoodsQuantityUnitPolicy.requireUnchangedIfUsed(g, req, repo.quantityUnitInUse(g.getId()));
-        apply(req, g, true, repo.quantityUnitInUse(g.getId()));
+        apply(req, g, false, repo.quantityUnitInUse(g.getId()));
         g.setDeleted(false);
         g.setDeletedAt(null);
         repo.save(g);
         return g.getId();
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY, readOnly = true)
+    public void requireRestoreImportedWriteAccess(UUID id) {
+        requireWritableDeletedImportGoods(id);
+    }
+
+    private Goods requireWritableDeletedImportGoods(UUID id) {
+        Goods goods=repo.findById(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND,"货品不存在"));
+        requireVisible(goods);
+        requireWritable(goods);
+        if(!goods.isDeleted()) throw new ApiException(ErrorCode.CONFLICT,"编号对应的货品已恢复，请重新检测文件");
+        return goods;
+    }
+
     /** Import merge: the caller preserves omitted cells and supplies the detected version. */
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import') and hasAuthority('goods:edit')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public UUID updateImported(UUID id, GoodsSaveRequest req) {
         tx.bind();
         Goods g = requireGoods(id);
         requireWritable(g);
+        GoodsFieldEditPolicy.requireChanged(g, req, true);
         OptimisticLocks.requireUpToDate(g.getVersion(), req.getVersion());
         boolean quantityUnitInUse = repo.quantityUnitInUse(id);
         GoodsQuantityUnitPolicy.requireUnchangedIfUsed(g, req, quantityUnitInUse);
-        if (req.getStatus() != null && !Objects.equals(g.getStatus(), req.getStatus())) {
+        if (req.hasStatus() && !Objects.equals(g.getStatus(), req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:status");
         }
         ensurePriceEditIfTouched(g, req);
@@ -1076,19 +1099,19 @@ public class GoodsService {
         return id;
     }
 
-    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('goods:edit', 'goods:status')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('goods:edit', 'goods:purchase:edit', 'goods:sales:edit', 'goods:price:edit', 'goods:name_en:edit', 'goods:status')")
     @Transactional
     public GoodsDetail update(UUID id, GoodsSaveRequest req) {
         tx.bind();
-        com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:edit");
         Goods g = requireGoods(id);
         requireWritable(g);
+        GoodsFieldEditPolicy.requireChanged(g, req);
         // 基本单位是否已被数量引用：按需现查一次(V675)，拦截、写入与回显共用。
         boolean quantityUnitInUse = repo.quantityUnitInUse(g.getId());
         GoodsQuantityUnitPolicy.requireUnchangedIfUsed(g, req, quantityUnitInUse);
         // 乐观锁：编辑回传版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
         OptimisticLocks.requireUpToDate(g.getVersion(), req.getVersion());
-        if (req.getStatus() != null && !Objects.equals(g.getStatus(), req.getStatus())) {
+        if (req.hasStatus() && !Objects.equals(g.getStatus(), req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:status");
         }
         ensurePriceEditIfTouched(g, req);      // 编辑：与既有值比对，未改价/折扣则放行
@@ -1110,28 +1133,7 @@ public class GoodsService {
      * 新建 oldGoods=null：提交了非空价/折扣即视为触碰；编辑则与既有值比对。未触碰（含原样回传）放行。
      */
     private void ensurePriceEditIfTouched(Goods oldGoods, GoodsSaveRequest req) {
-        if (hasPriceEdit()) return;
-        BigDecimal oldPrice = oldGoods == null ? null : oldGoods.getPrice();
-        BigDecimal oldDiscount = oldGoods == null ? null : oldGoods.getDiscount();
-        // 售价触碰仅可查看者（goods:price:view，或持有 goods:price:edit）参与判定——
-        // 不可查看者前端隐藏价格字段、不提交价格（req.price=null 是脱敏产物而非改价意图），
-        // 若恒判触碰会把他们改名字等正常编辑一并 403。apply 同步对不可查看者保留原价（见 apply）。
-        if (canViewPrice() && bigDecimalChanged(oldPrice, req.getPrice())) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "修改售价或折扣需要「编辑货品售价/折扣」权限，请联系权限管理员开通");
-        }
-        // 折扣仅可查看者（goods:discount:view）才参与触碰判定——不可查看者前端隐藏折扣字段、
-        // 不提交折扣（req.discount=null 是脱敏产物而非改价意图），若仍判触碰会把他们改名字等
-        // 正常编辑一并 403。apply 同步对不可查看者保留原折扣（见 apply）。
-        if (canViewDiscount() && bigDecimalChanged(oldDiscount, req.getDiscount())) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "修改售价或折扣需要「编辑货品售价/折扣」权限，请联系权限管理员开通");
-        }
-    }
-
-    private boolean hasPriceEdit() {
-        return currentUser.get()
-                .map(AuthUser::getPermissions)
-                .map(p -> p.contains("goods:price:edit"))
-                .orElse(false);
+        GoodsFieldEditPolicy.requirePriceIfTouched(oldGoods,req,canViewPrice(),canViewDiscount());
     }
 
     /** 售价可见性（goods:price:view，V570）：未授权者后端价格置 null、前端隐藏字段/列；持有 goods:price:edit 视为可见。 */
@@ -1207,7 +1209,7 @@ public class GoodsService {
      * 清空时来源一并清空。旧值由 goods 行级审计保留。
      */
     @org.springframework.security.access.prepost.PreAuthorize(
-            "hasAnyAuthority('goods:name_en:edit', 'goods:edit')")
+            "hasAnyAuthority('goods:name_en:edit', 'goods:sales:edit')")
     @Transactional
     public GoodsDetail updateNameEn(UUID id, String nameEn, Long version) {
         tx.bind();
@@ -1259,8 +1261,14 @@ public class GoodsService {
      * 整单保存里的英文名称: 请求带了 nameEn 键才处理(没带 = 保持, 老客户端不误清)。
      * 值有变化才写, 来源记 MANUAL; 清空时来源一并清空。
      */
+    private static String trimChangedText(String current,String incoming,boolean blankToNull) {
+        if(Objects.equals(current,incoming)) return current;
+        if(incoming==null || blankToNull && incoming.isBlank()) return null;
+        return incoming.trim();
+    }
+
     private static void applyNameEn(GoodsSaveRequest req, Goods g) {
-        if (!req.hasNameEn()) return;
+        if (!req.hasNameEn() || Objects.equals(req.getNameEn(),g.getNameEn())) return;
         String value = GoodsNameEn.normalizeForWrite(req.getNameEn());
         if (Objects.equals(value, g.getNameEn())) return;
         g.setNameEn(value);
@@ -1399,28 +1407,26 @@ public class GoodsService {
         g.setCategory(requireCategory(req.getCategoryId()));
         g.setName(req.getName());
         if (req.hasClientGoodsName()) {
-            g.setClientGoodsName(req.getClientGoodsName() == null || req.getClientGoodsName().isBlank()
-                    ? null : req.getClientGoodsName().trim());
+            g.setClientGoodsName(trimChangedText(g.getClientGoodsName(),req.getClientGoodsName(),true));
         }
         g.setShortName(req.getShortName());
         g.setModel(req.getModel());
         if (req.hasCNumber()) {
-            g.setCNumber(req.getCNumber() == null || req.getCNumber().isBlank()
-                    ? null : req.getCNumber().trim());
+            g.setCNumber(trimChangedText(g.getCNumber(),req.getCNumber(),true));
         }
         g.setSpec(req.getSpec());
         applyNameEn(req, g);
-        g.setSeries(req.getSeries() == null ? null : req.getSeries().trim());
-        g.setStockPlace(req.getStockPlace() == null ? null : req.getStockPlace().trim());
+        g.setSeries(trimChangedText(g.getSeries(),req.getSeries(),false));
+        g.setStockPlace(trimChangedText(g.getStockPlace(),req.getStockPlace(),false));
         // 售价：仅可查看者（goods:price:view，含 price:edit）提交的价格才落库。
         // 不可查看者前端隐藏价格字段不提交（null=脱敏产物）——保留原值，避免误清。
-        if (canViewPrice()) {
+        if (canViewPrice() && req.hasPrice()) {
             g.setPrice(req.getPrice());
         }
         // 折扣（goods.zk）：仅可查看折扣者（goods:discount:view）提交的折扣才落库。
         // 不可查看者前端隐藏折扣字段不提交——保留原值，避免误清；亦防遗漏 setDiscount
         // 导致折扣任何人都存不进。
-        if (canViewDiscount()) {
+        if (canViewDiscount() && req.hasDiscount()) {
             g.setDiscount(req.getDiscount());
         }
         g.setMaterial(req.getMaterial());
@@ -1437,12 +1443,12 @@ public class GoodsService {
         if (req.hasSubcontractAllowedLossPct()) {
             g.setSubcontractAllowedLossPct(req.getSubcontractAllowedLossPct());
         }
-        g.setMinOrderQty(req.getMinOrderQty());
-        g.setOrderMultipleQty(
+        if (req.hasMinOrderQty()) g.setMinOrderQty(req.getMinOrderQty());
+        if (req.hasOrderMultipleQty()) g.setOrderMultipleQty(
                 req.getOrderMultipleQty() == null
                         || req.getOrderMultipleQty().signum() == 0
                         ? null : req.getOrderMultipleQty());
-        g.setStatus(req.getStatus());
+        if (req.hasStatus()) g.setStatus(req.getStatus());
         applyColorReference(req, g);
         applyOwningWarehouseReference(req, g);
         // Used units were checked before apply. Preserve their exact UUID and
@@ -1468,11 +1474,9 @@ public class GoodsService {
             }
         }
         // 后模镶件编号（V457）：与备注同界面的短码；空白归一为 NULL。
-        g.setRearInsertCode(
-                req.getRearInsertCode() == null || req.getRearInsertCode().isBlank()
-                        ? null : req.getRearInsertCode().trim());
+        g.setRearInsertCode(trimChangedText(g.getRearInsertCode(),req.getRearInsertCode(),true));
         // 备注（老库 Paper 真身）：原样落库，仅 trim。
-        g.setPaper(req.getPaper() == null ? null : req.getPaper().trim());
+        g.setPaper(trimChangedText(g.getPaper(),req.getPaper(),false));
         if (req.hasClientReference()) {
             if (clearsReference(req.getClientId(), req.getClientLegacyId())) {
                 g.setClient(null);
@@ -1503,7 +1507,7 @@ public class GoodsService {
                 g.setVend2LegacyId(target.getLegacyId());
             }
         }
-        g.setSourceType(req.getSourceType());
+        if (req.hasSourceType()) g.setSourceType(req.getSourceType());
         // 成本预算：无 goods:cost:view 的普通编辑保留实体原值，避免脱敏 null 覆盖历史成本。
         // 导入是独立特权入口，显式传 writeCosts=true 保持批量导入能力。
         if (writeCosts) {
@@ -1630,7 +1634,8 @@ public class GoodsService {
     private GoodsListItem toList(Goods g, Map<Integer, String> colorNames, Map<Integer, String> unitNames,
                                  Map<Integer, Mould> mouldsByLegacy, Map<UUID, BigDecimal> stockByGoods,
                                  Map<UUID, String> owningWarehouseNames,
-                                 Map<UUID, String> owningWorkshopNames) {
+                                 Map<UUID, String> owningWorkshopNames,
+                                 com.uten.imp.security.OwnerVisibility.OwnerScope scope) {
         UUID owningWarehouseId = owningWarehouseIdOf(g);
         UUID owningWorkshopId = owningWorkshopIdOf(g);
         GoodsListItem item = new GoodsListItem(
@@ -1668,7 +1673,7 @@ public class GoodsService {
                 g.getNameEn(), g.getNameEnSource());
         item.setMouldId(g.getMould() == null ? null : g.getMould().getId());
         item.setClientGoodsName(g.getClientGoodsName());
-        item.setWritable(canWrite(g));
+        item.setWritable(canWrite(g, scope));
         return item;
     }
 

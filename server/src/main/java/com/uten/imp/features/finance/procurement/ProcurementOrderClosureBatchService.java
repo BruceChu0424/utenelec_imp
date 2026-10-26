@@ -23,7 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
 
-/** Explicit whole-order batch requests. Every case is submitted, or the entire transaction rolls back. */
+/** Explicit whole-order batch requests. Every order completes, or the entire transaction rolls back. */
 @Service
 @RequiredArgsConstructor
 public class ProcurementOrderClosureBatchService {
@@ -75,10 +75,11 @@ public class ProcurementOrderClosureBatchService {
             if(previous!=null&&!previous.expectedFingerprint().equals(item.expectedFingerprint()))
                 throw invalid("同一订单出现不同的核对版本，请刷新后重新选择");
         }
-        var guard=locks.orders(distinct.keySet().stream().map(target->new OrderRef(target.orderType(),target.orderId())).toList());
+        var guard=locks.ordersWithHeldPreStock(distinct.keySet().stream().map(target->new OrderRef(target.orderType(),target.orderId())).toList());
         guard.verifyUnchanged();
         // Recheck ALL rows before the first case, event or notification is inserted.
         for(SubmissionItem item:distinct.values()) {
+            if(closures.completedMatchingRequest(item.orderType(),item.orderId(),request.mode(),reason,item.expectedFingerprint())!=null) continue;
             ClosurePreview preview=closures.preview(item.orderType(),item.orderId());
             if(!preview.canSubmit())throw conflict(preview.billNo()+"："+preview.blockReason());
             if(!preview.fingerprint().equals(item.expectedFingerprint()))

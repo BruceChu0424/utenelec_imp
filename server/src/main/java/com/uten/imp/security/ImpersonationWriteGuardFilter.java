@@ -58,7 +58,8 @@ public class ImpersonationWriteGuardFilter extends OncePerRequestFilter {
             if (WRITE_METHODS.contains(method) && !WRITABLE_WHITELIST.contains(path)
                     && !readOnlyIqcReportReceipt(method, path)
                     && !readOnlyDailyCreateReceipt(method, path)
-                    && !readOnlyCostBootstrap(method, path)) {
+                    && !readOnlyCostBootstrap(method, path)
+                    && !readOnlyB1Query(method, path) && !readOnlyFacetCandidate(request,method,path)) {
                 blockWrite(request, response, user.getImpersonatedBy());
                 return;
             }
@@ -82,6 +83,20 @@ public class ImpersonationWriteGuardFilter extends OncePerRequestFilter {
     static boolean readOnlyCostBootstrap(String method, String path) {
         return "POST".equals(method)
                 && "/api/master/goods/cost-sheets/bootstrap".equals(path);
+    }
+
+    /** Exact read contracts only; exports, saves and other selection routes remain blocked. */
+    static boolean readOnlyB1Query(String method, String path) {
+        return "POST".equals(method) && Set.of("/api/master/clients/search-context",
+                "/api/master/suppliers/search-context", "/api/sales/orders/shippable-lines/selection",
+                "/api/purchase/orders/print-authorization").contains(path);
+    }
+    static boolean readOnlyFacetCandidate(HttpServletRequest request,String method,String path) {
+        var route=com.uten.imp.common.report.NativeFacetRoutes.find(path);
+        if(!"POST".equals(method)||route==null||request.getContentType()==null
+                ||!request.getContentType().toLowerCase(java.util.Locale.ROOT).startsWith("application/x-www-form-urlencoded")
+                ||request.getContentLengthLong()>65536)return false;
+        return route.fields().contains(request.getParameter("__facetField"));
     }
 
     private void blockWrite(HttpServletRequest request, HttpServletResponse response, UUID adminId)

@@ -1,3 +1,4 @@
+import '../../support/native_facet_fake_transport.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -238,7 +239,10 @@ void main() {
             tester.widget(
               find.byKey(Key('warehouse-history-table-${type.value.segment}')),
             );
-        expect(table().facets['billNo']!.single.value, 'A-BUCKET');
+        final firstCandidates = await tester.runAsync(
+          () => table().facetPageLoaders['billNo']!('', 1),
+        );
+        expect(firstCandidates!.items.single.value, 'A-BUCKET');
         table().onFilterChanged('status', '1');
         await tester.pumpAndSettle();
         table().onFilterChanged('billNo', 'OLD-NO');
@@ -253,8 +257,8 @@ void main() {
 
         final oldFacets = Completer<Map<String, dynamic>>();
         api.facetsGate = oldFacets;
-        table().onRetry!();
-        await tester.pumpAndSettle();
+        final oldCandidateRead = table().facetPageLoaders['billNo']!('', 1);
+        await tester.pump();
         expect(api.facetsGate, isNull);
         final oldRows = Completer<Map<String, dynamic>>();
         api.listGate = oldRows;
@@ -297,6 +301,7 @@ void main() {
 
         oldRows.complete(_listJson(oldType, 'LATE-OLD', 3));
         oldFacets.complete(_facetJson('LATE-OLD'));
+        await oldCandidateRead;
         await tester.pump();
         expect(table().items, isEmpty);
         expect(table().facets['billNo'], isEmpty);
@@ -305,7 +310,11 @@ void main() {
         await tester.pumpAndSettle();
         expect(table().items.single.billNo, '$scope-${type.value.segment}-1');
         expect(table().items.single.type, type.value);
-        expect(table().facets['billNo']!.single.value, '$scope-BUCKET');
+        final currentCandidates = await tester.runAsync(
+          () => table().facetPageLoaders['billNo']!('', 1),
+        );
+        expect(currentCandidates!.items.single.value, '$scope-BUCKET');
+        expect(find.text('LATE-OLD'), findsNothing);
         expect(table().currentPage, 1);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
@@ -470,7 +479,7 @@ class _Call {
   final Map<String, dynamic> query;
 }
 
-class _HistoryApi extends ApiClient {
+class _HistoryApi extends ApiClient with NativeFacetFakeTransport {
   _HistoryApi() : super(Dio());
   final calls = <_Call>[];
   Completer<Map<String, dynamic>>? listGate;

@@ -82,6 +82,19 @@ class ClientUpdateControllerTest {
         mvc.perform(get("/api/client-updates/{id}/download", id)).andExpect(status().isNotFound());
     }
 
+    @Test void downloadCatalogReturnsRawInstallerReleaseListAndDisablesCaching() throws Exception {
+        var installer = new ClientReleaseDto.Release(id, "windows", "x64", "2.5.32", 2532, "完整客户端", false,
+                "UtenIMPSetup.exe", "a".repeat(64), "a".repeat(64), 4, "windows_setup", null,
+                "/api/client-updates/" + id + "/download", "PUBLISHED", Instant.now(), Instant.now(), "installer");
+        when(service.downloads()).thenReturn(List.of(installer));
+        mvc.perform(get("/api/client-updates/downloads")).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "private, no-store"))
+                .andExpect(jsonPath("$[0].id").value(id.toString()))
+                .andExpect(jsonPath("$[0].packageKind").value("installer"))
+                .andExpect(jsonPath("$[0].installMode").value("windows_setup"))
+                .andExpect(jsonPath("$[0].platform").value("windows"));
+    }
+
     private ClientReleaseDto.Release release(String state) {
         return new ClientReleaseDto.Release(id, "android", "arm64", "2.5.28", 28, "", false, "uten.apk",
                 "a".repeat(64), "a".repeat(64), 4, "android_package", null, "/api/client-updates/" + id + "/download",

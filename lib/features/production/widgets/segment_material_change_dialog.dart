@@ -9,6 +9,7 @@
 // 提交期间的全屏遮罩由本对话框持有; 关闭前先撤遮罩并等一帧。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -237,7 +238,17 @@ class _SegmentMaterialChangeDialogState
       child: UtenAlertDialog(
         scrollable: false,
         key: ValueKey('segment-material-change-${task.segmentId}'),
-        title: Text(l10n.wmChangeMaterial),
+        title: Row(
+          children: [
+            Flexible(child: Text(l10n.wmChangeMaterial)),
+            const UtenFieldHintIcon(
+              dense: true,
+              info:
+                  '只改这一张工单，从选定的那天起报工的产量按新料算用量；'
+                  '以后新开工的工单不受影响 (要一直换，请改产品的用料)。',
+            ),
+          ],
+        ),
         content: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: 480,
@@ -299,14 +310,6 @@ class _SegmentMaterialChangeDialogState
           '工单 ${task.segmentCode} · ${task.productName ?? '产品'}',
           style: theme.textTheme.titleSmall,
         ),
-        const SizedBox(height: UtenSpacing.s4),
-        Text(
-          '只改这一张工单，从选定的那天起报工的产量按新料算用量；'
-          '以后新开工的工单不受影响 (要一直换，请改产品的用料)。',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
         const SizedBox(height: UtenSpacing.s12),
         UtenDropdownField(
           key: const Key('segment-material-change-from'),
@@ -339,6 +342,7 @@ class _SegmentMaterialChangeDialogState
         const SizedBox(height: UtenSpacing.s12),
         UtenDropdownField(
           key: const Key('segment-material-change-to'),
+          info: _adding ? '加一种料时，新料按它在 BOM 里填的单个重量算用量。' : null,
           label: '改用的料',
           required: true,
           allowClear: false,
@@ -383,9 +387,7 @@ class _SegmentMaterialChangeDialogState
           }),
         ),
         const SizedBox(height: UtenSpacing.s12),
-        if (_adding)
-          Text('加一种料时，新料按它在 BOM 里填的单个重量算用量。', style: theme.textTheme.bodySmall)
-        else ...[
+        if (!_adding) ...[
           Text('单个重量按哪个算', style: theme.textTheme.labelLarge),
           RadioGroup<String>(
             groupValue: _weightBasis,

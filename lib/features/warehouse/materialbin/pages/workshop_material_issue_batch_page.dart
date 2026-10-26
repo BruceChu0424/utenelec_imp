@@ -44,6 +44,7 @@ import '../repositories/workshop_material_repository.dart';
 import '../widgets/workshop_material_first_use_card.dart';
 import '../widgets/workshop_material_labels.dart';
 import '../widgets/workshop_material_line_grid.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class _BatchSupplement {
   _BatchSupplement(this.periods);
@@ -1121,7 +1122,7 @@ class _WorkshopMaterialIssueBatchPageState
                         onAction: _load,
                       )
                     : UtenCollapsingHeaderScrollView(
-                        collapsingHeader: Padding(
+                        collapsingHeader: UtenPageEdgePadding(
                           padding: const EdgeInsets.all(UtenSpacing.s12),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,

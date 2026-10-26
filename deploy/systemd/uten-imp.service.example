@@ -21,6 +21,10 @@ ExecStartPre=/bin/sh -c 'if [ "$${UTEN_ATTACHMENT_SCANNER_PROVIDER:-disabled}" =
 # /opt/uten-imp/releases/<version> directory. Never overwrite files through it.
 WorkingDirectory=/opt/uten-imp/current
 EnvironmentFile=/etc/uten-imp/server.env
+# Independent persistent catalog for update and first-install packages. Its
+# private media parent is already covered by ReadWritePaths; never use current/web.
+Environment=UTEN_CLIENT_RELEASES_DIR=/var/lib/uten-imp-media/attachments/client-releases
+Environment=UTEN_CLIENT_UPDATE_MIN_FREE_BYTES=10737418240
 ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/activation-failed.json
 ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/boot-enablement-in-progress.json
 ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/recovery-ingress-pending.json

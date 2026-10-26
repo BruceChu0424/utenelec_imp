@@ -1,16 +1,16 @@
-import '../../../shared/search/keyword_search.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // 结算方式管理页（基础资料 · 扁平字典 + 账期策略维护，V453）。
 //
 // 结算方式是销售/采购/委外结账条件与应付到期日的 UUID 权威字典（ADR-035/047）。
-// 本页只做两件事：看全量（含禁用行、系统角色、账期口径）和维护账期策略与
+// 本页只做两件事：分页查看（含禁用行、系统角色、账期口径）和维护账期策略与
 // 可选改名（settlement_method:edit）；系统角色（CASH/MONTHLY）口径由迁移锁定，
 // 页面置灰并提示。新增仍走 settlement_method:create（可随带账期）。
 // 停用/删除不在此页开放：活动客户/供应商默认与单据引用受 DB 守卫保护。
 //
 // 2026-09-16 列表表格化：卡片列表改为 MasterDataTableView（横排 autofilter 列头），
 // 状态/系统角色/到期基准/到期规则四列接后端 facets（settlement-admin/facets），
-// 表头筛选落到服务端查询；编号/名称等自由文本列不筛选；全量小字典仍不分页，
-// 关键词保持本地过滤。范式同 color_page（V4xx 批次）。
+// 表头筛选和名称/编号关键词在同一服务端谓词下分页；导出保留完整筛选条件。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,8 +20,11 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
+import 'package:collection/collection.dart';
+import '../../../components/print/complete_print_snapshot.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -34,7 +37,10 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/sensitive_write.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../shared/models/paged_result.dart';
 import '../models/master_facet.dart';
 import '../models/settlement_method_admin.dart';
 import '../repositories/reference_method_repository.dart';
@@ -55,13 +61,30 @@ class SettlementMethodPage extends ConsumerStatefulWidget {
 
 class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
     with
-        MasterInlinePageMixin<SettlementMethodPage, SettlementMethodAdminItem> {
+        MasterInlinePageMixin<SettlementMethodPage, SettlementMethodAdminItem>,
+        ScopedPagedReadViewMixin<SettlementMethodPage> {
+  final _readViewportRows =
+      MasterDataTableRowsController<SettlementMethodAdminItem>();
+  int get _visibleReadPage => _page == null
+      ? (_pageNum)
+      : (_readViewportRows.visiblePage ?? (_pageNum));
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    if (mounted) {
+      setState(() {
+        inlineClearView();
+        _error = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   @override
   String get inlineEntityType => 'reference-methods';
   @override
   bool get inlineCanEdit => _canEdit;
   @override
-  bool get inlineReadReady => !_loading && _error == null;
+  bool get inlineReadReady => _page != null && !_loading && _error == null;
   @override
   String inlineIdOf(SettlementMethodAdminItem row) => row.id;
   @override
@@ -71,6 +94,8 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
   @override
   void inlineClearView() {
     _items = null;
+    _page = null;
+    _pageNum = 1;
     _facets = null;
     _error = null;
     _selectedMethodIds = {};
@@ -129,6 +154,8 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
         ),
       };
   List<SettlementMethodAdminItem>? _items;
+  PagedResult<SettlementMethodAdminItem>? _page;
+  int _pageNum = 1;
   Set<String> _selectedMethodIds = {};
   bool _loading = false;
   String? _error;
@@ -155,40 +182,73 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
     });
   }
 
-  Future<void> _load() async {
-    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
+  Future<void> _load([int? requestedPage, bool useCache = false]) async {
+    final targetPage = requestedPage ?? _visibleReadPage;
+    final inlineReadBoundary = captureInlineRead();
+    final epoch = ref.read(exportContextEpochProvider);
     final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
+      if (targetPage != _pageNum) _selectedMethodIds = {};
+      _pageNum = targetPage;
     });
+    final page = targetPage;
+    final repository = ref.read(referenceMethodRepositoryProvider);
+    final keyword = _keyword;
+    final filters = Map<String, String?>.unmodifiable(_filters);
+    Object pagingQuery() => [
+      ref.read(referenceMethodRepositoryProvider),
+      _keyword,
+      _filters,
+    ];
     try {
-      final items = await ref
-          .read(referenceMethodRepositoryProvider)
-          .settlementAdminList(filters: _filters);
+      final result = await readScopedPage<SettlementMethodAdminItem>(
+        page,
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        fetchPage: (target) => repository.settlementAdminPage(
+          page: target,
+          keyword: keyword,
+          filters: filters,
+        ),
+      );
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
-          !_loadRequests.isCurrent(generation)) {
+          !_loadRequests.isCurrent(generation) ||
+          epoch != ref.read(exportContextEpochProvider)) {
         return;
       }
       setState(() {
-        _items = items;
+        _page = result;
+        _pageNum = result.page;
+        _items = result.items;
         _loading = false;
       });
     } on ApiException catch (e) {
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
-          !_loadRequests.isCurrent(generation)) {
+          !_loadRequests.isCurrent(generation) ||
+          epoch != ref.read(exportContextEpochProvider)) {
         return;
       }
       setState(() {
+        if (e.httpStatus == 401 ||
+            e.httpStatus == 403 ||
+            e.code == 'READ_SCOPE_CHANGED') {
+          _items = null;
+          _page = null;
+          _selectedMethodIds = {};
+        }
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
-          !_loadRequests.isCurrent(generation)) {
+          !_loadRequests.isCurrent(generation) ||
+          epoch != ref.read(exportContextEpochProvider)) {
         return;
       }
       setState(() {
@@ -200,7 +260,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
 
   /// 拉字段 facet（表头筛选下拉选项）。失败静默降级为空下拉，不阻塞列表。
   Future<void> _loadFacets() async {
-    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
+    final inlineReadBoundary = captureInlineRead();
     try {
       final f = await ref
           .read(referenceMethodRepositoryProvider)
@@ -222,31 +282,16 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
         next[key] = value;
       }
       _filters = next;
+      _pageNum = 1;
     });
     _load();
   }
 
-  Future<void> _refresh() async {
-    await Future.wait([_load(), _loadFacets()]);
+  Future<void> _refresh({int? page}) async {
+    await Future.wait([_load(page ?? 1), _loadFacets()]);
   }
 
-  List<SettlementMethodAdminItem> get _filtered {
-    final items = _items ?? const <SettlementMethodAdminItem>[];
-    if (_keyword.trim().isEmpty) return items;
-    final result = items
-        .where((item) => matchesKeywordSearch([item.name, item.code], _keyword))
-        .toList();
-    final order = {
-      for (var index = 0; index < items.length; index++) items[index].id: index,
-    };
-    result.sort((a, b) {
-      final rankA = keywordSearchRank([a.name, a.code], _keyword)!;
-      final rankB = keywordSearchRank([b.name, b.code], _keyword)!;
-      final rank = rankA.compareTo(rankB);
-      return rank != 0 ? rank : order[a.id]!.compareTo(order[b.id]!);
-    });
-    return result;
-  }
+  List<SettlementMethodAdminItem> get _filtered => _items ?? const [];
 
   // ---- 新增（可随带账期） ------------------------------------------------
 
@@ -303,9 +348,12 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
   // ---- 账期维护 ----------------------------------------------------------
 
   void _showEditTerms(SettlementMethodAdminItem m) {
+    if (_page == null || _error != null) return;
+    final readToken = captureInlineRead();
     final fields = _termsFields(hintName: m.name, includePresentation: true);
     final body = _SettlementTermsDialog(
       item: m,
+      isCurrent: () => inlineAcceptsRead(readToken),
       fields: fields,
       initialValues: {
         'code': m.code ?? '',
@@ -320,7 +368,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
         'termsSummary': settlementTermsSummary(m),
         'remark': m.remark ?? '',
       },
-      onSubmit: (body) => _doUpdateTerms(m, body),
+      onSubmit: (body) => _doUpdateTerms(m, body, readToken),
       onHistoryChanged: _refresh,
     );
     if (context.breakpoint.isCompact) {
@@ -364,21 +412,27 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
   Future<bool> _doUpdateTerms(
     SettlementMethodAdminItem m,
     Map<String, dynamic> body,
+    MasterInlineReadToken token,
   ) async {
+    if (!mounted || !inlineAcceptsRead(token)) return false;
     if (m.lockedBySystemRole || !_canEdit) {
       context.appInfo('当前结算方式不可编辑');
       return false;
     }
     final ok = await context.guardRun(
       () async {
-        await ref
-            .read(referenceMethodRepositoryProvider)
-            .updateSettlementTerms(m.id, body);
+        await runSensitiveWrite(
+          ref,
+          isCurrent: () => mounted && inlineAcceptsRead(token) && _canEdit,
+          write: () => ref
+              .read(referenceMethodRepositoryProvider)
+              .updateSettlementTerms(m.id, body),
+        );
       },
       success: '账期已更新', // TODO(l10n): 补 arb
       errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
     );
-    if (!ok) return false;
+    if (!ok || !mounted || !inlineAcceptsRead(token)) return false;
     await _refresh();
     return true;
   }
@@ -494,23 +548,52 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
 
   // ---- 导出 / 打印（V717 settlement_method:export） --------------------------
 
-  /// 导出查询参数（与 _load 一致；字典不分页无 page/size）。
-  Map<String, dynamic> get _exportQuery => masterFilterQueryParams(_filters);
+  /// Export describes the complete server query, independent of the viewed page.
+  Map<String, dynamic> get _exportQuery => {
+    ...masterFilterQueryParams(_filters),
+    if (_keyword.trim().isNotEmpty) 'keyword': _keyword,
+  };
 
   /// 打印预览数据：按当前筛选口径拉全量，列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
-    final items = await ref
-        .read(referenceMethodRepositoryProvider)
-        .settlementAdminList(filters: _filters);
-    return UtenPrintTable(
-      columnKeys: [for (final c in _columns) c.key],
-      rowIds: [for (final item in items) item.id],
-      headers: [for (final c in _columns) c.label],
-      rows: [
-        for (final item in items)
-          [for (final c in _columns) c.value(item) ?? ''],
-      ],
+    final read = captureInlineRead();
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final epoch = ref.read(exportContextEpochProvider);
+    final repository = ref.read(referenceMethodRepositoryProvider);
+    final query = Map<String, dynamic>.of(_exportQuery);
+    final filters = Map<String, String?>.unmodifiable(_filters);
+    final keyword = query['keyword'] as String?;
+    final columns = List.of(_columns);
+    var retired = false;
+    bool current() {
+      if (retired || !mounted) return false;
+      retired =
+          !inlineAcceptsRead(read) ||
+          epoch != ref.read(exportContextEpochProvider) ||
+          !const DeepCollectionEquality().equals(query, _exportQuery);
+      return !retired;
+    }
+
+    final scope = await boundary.api.captureRequestScope(isCurrent: current);
+    final table = await scope.run(
+      () => loadCompletePrintSnapshot<SettlementMethodAdminItem>(
+        loadPage: (page, size) => repository.settlementAdminPage(
+          page: page,
+          size: size,
+          keyword: keyword,
+          filters: filters,
+        ),
+        idOf: (row) => row.id,
+        headers: [for (final column in columns) column.label],
+        columnKeys: [for (final column in columns) column.key],
+        cellsOf: (row) => [
+          for (final column in columns) column.value(row) ?? '',
+        ],
+        isCurrent: () => current() && scope.isCurrent,
+      ),
     );
+    await scope.verify();
+    return table;
   }
 
   // ---- 列定义 -----------------------------------------------------------
@@ -640,7 +723,8 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
             ),
             UtenRefreshButton(
               busy: _loading,
-              onRefresh: () => inlineNavigate(_refresh),
+              onRefresh: () =>
+                  inlineNavigate(() => _refresh(page: _visibleReadPage)),
             ),
           ],
         ),
@@ -650,7 +734,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
               padding: const EdgeInsets.only(top: UtenSpacing.s8),
               child: Column(
                 children: [
-                  Padding(
+                  UtenPageEdgePadding(
                     padding: const EdgeInsets.only(
                       bottom: UtenSpacing.s8,
                       left: UtenSpacing.s4,
@@ -659,16 +743,30 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
                     child: UtenSearchBar(
                       hint: '搜索结算方式(名称/编号)',
                       initialValue: _keyword,
-                      onChanged: (kw) => inlineNavigate(
-                        () => setState(() {
+                      onInputChanged: (kw) {
+                        if (inlineEdit.active) return;
+                        _loadRequests.begin();
+                        setState(() {
+                          _keyword = kw;
+                          _pageNum = 1;
+                          _selectedMethodIds = {};
+                          _loading = true;
+                        });
+                      },
+                      onChanged: (kw) => inlineNavigate(() async {
+                        setState(() {
                           _keyword = kw;
                           _selectedMethodIds = {};
-                        }),
-                      ), // 本地过滤，小字典
+                          _pageNum = 1;
+                        });
+                        await _load(1);
+                      }),
                     ),
                   ),
                   Expanded(
                     child: MasterDataTableView<SettlementMethodAdminItem>(
+                      rowsController: _readViewportRows,
+                      expensiveRowMounts: inlineEdit.active,
                       appendRowsSource: inlineAppendRowsSource,
                       bottomContentPadding: (_canCreate || _canEdit)
                           ? UtenFloatingActionGroup.scrollClearance
@@ -738,6 +836,11 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
                       loadingMore: _loading && _items != null,
                       error: _error,
                       onRetry: _load,
+                      currentPage: _page?.page ?? 1,
+                      totalPages: _page?.totalPages ?? 1,
+                      paginationScope: _keyword,
+                      onPageChange: (page) =>
+                          inlineNavigate(() => _load(page, true)),
                       emptyMessage: _keyword.trim().isEmpty
                           ? '暂无结算方式'
                           : '没有匹配的结算方式', // TODO(l10n): 补 arb
@@ -756,6 +859,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
 class _SettlementTermsDialog extends ConsumerStatefulWidget {
   const _SettlementTermsDialog({
     required this.item,
+    required this.isCurrent,
     required this.fields,
     required this.initialValues,
     required this.onSubmit,
@@ -763,6 +867,7 @@ class _SettlementTermsDialog extends ConsumerStatefulWidget {
   });
 
   final SettlementMethodAdminItem item;
+  final bool Function() isCurrent;
   final List<MasterFieldDef> fields;
   final Map<String, String> initialValues;
   final MasterSubmit onSubmit;
@@ -779,6 +884,7 @@ class _SettlementTermsDialogState
   bool _saving = false;
 
   bool get _canEdit =>
+      widget.isCurrent() &&
       !widget.item.lockedBySystemRole &&
       ref.read(currentPermissionsProvider).contains(Perm.settlementMethodEdit);
 
@@ -789,7 +895,7 @@ class _SettlementTermsDialogState
     setState(() => _saving = true);
     try {
       final saved = await widget.onSubmit(body);
-      if (saved && mounted) Navigator.of(context).pop();
+      if (saved && mounted && widget.isCurrent()) Navigator.of(context).pop();
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -798,6 +904,8 @@ class _SettlementTermsDialogState
   @override
   Widget build(BuildContext context) {
     ref.watch(currentPermissionsProvider);
+    ref.watch(exportContextEpochProvider);
+    final current = widget.isCurrent();
     final canEdit = _canEdit;
     return PopScope(
       canPop: !_saving,
@@ -811,7 +919,11 @@ class _SettlementTermsDialogState
                 children: [
                   Expanded(
                     child: Text(
-                      canEdit ? '维护账期 · ${widget.item.name}' : widget.item.name,
+                      !current
+                          ? '读取范围已更新'
+                          : canEdit
+                          ? '维护账期 · ${widget.item.name}'
+                          : widget.item.name,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -820,7 +932,7 @@ class _SettlementTermsDialogState
                   MasterRecordHistoryAction(
                     entityType: 'reference-methods',
                     recordId: widget.item.id,
-                    enabled: !_saving,
+                    enabled: current && !_saving,
                     onChanged: () {
                       final route = ModalRoute.of(context);
                       if (route != null && route.isActive) {
@@ -839,14 +951,24 @@ class _SettlementTermsDialogState
               ),
             ),
             const Divider(height: 1),
+            if (!current)
+              const UtenInlineNotice(
+                level: UtenInlineNoticeLevel.warning,
+                title: '原输入已保留，此窗口不会提交',
+                message: '请关闭窗口，核对当前信息后重新操作。',
+              ),
             Flexible(
-              child: MasterEditForm(
-                key: _formKey,
-                fields: widget.fields,
-                initialValues: widget.initialValues,
-                readOnlyKeys: canEdit && !_saving
-                    ? null
-                    : {for (final field in widget.fields) field.key},
+              child: Visibility(
+                visible: current,
+                maintainState: true,
+                child: MasterEditForm(
+                  key: _formKey,
+                  fields: widget.fields,
+                  initialValues: widget.initialValues,
+                  readOnlyKeys: canEdit && !_saving
+                      ? null
+                      : {for (final field in widget.fields) field.key},
+                ),
               ),
             ),
             const Divider(height: 1),

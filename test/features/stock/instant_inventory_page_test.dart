@@ -441,11 +441,19 @@ void main() {
               .height,
           greaterThan(0),
         );
-        await tapInventoryHeader(
-          tester,
-          const Key('instant-inventory-open-categories'),
-        );
-        await tester.tap(_categoryText('成品'));
+        final categoryOpener = find
+            .byKey(const Key('instant-inventory-open-categories'))
+            .hitTestable();
+        if (categoryOpener.evaluate().isNotEmpty) {
+          await tapInventoryHeader(
+            tester,
+            const Key('instant-inventory-open-categories'),
+          );
+        } else {
+          // Landscape exposes the permanent category tree instead of a drawer.
+          expect(_categoryText('成品').hitTestable(), findsOneWidget);
+        }
+        await tester.tap(_categoryText('成品').hitTestable());
         await tester.pumpAndSettle();
         expect(stock.lastCategoryId, 'finished');
         expect(

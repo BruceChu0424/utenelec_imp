@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/data_display/uten_cell_revision_table.dart';
@@ -154,22 +155,25 @@ class _SalesQuoteRevisionComparisonState
       title: const Text('逐项修改对照'),
       subtitle: const Text('仅修改格划去旧值，右侧红字显示新值；删除明细才整行划去'),
       children: [
-        DropdownButton<int>(
-          value: index,
-          isExpanded: true,
-          items: [
-            for (var i = 1; i < snapshots.length; i++)
-              DropdownMenuItem(
-                value: i,
-                child: Text(
-                  '第 ${snapshots[i].revision ?? i} 版 · ${snapshots[i].actorName ?? '—'} · ${snapshots[i].actionLabel ?? snapshots[i].action}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+        UtenDropdownScrollScope(
+          nativeDropdown: true,
+          child: DropdownButton<int>(
+            value: index,
+            isExpanded: true,
+            items: [
+              for (var i = 1; i < snapshots.length; i++)
+                DropdownMenuItem(
+                  value: i,
+                  child: Text(
+                    '第 ${snapshots[i].revision ?? i} 版 · ${snapshots[i].actorName ?? '—'} · ${snapshots[i].actionLabel ?? snapshots[i].action}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-          ],
-          onChanged: (value) => setState(
-            () => _selectedSnapshot = _snapshotKey(snapshots[value!]),
+            ],
+            onChanged: (value) => setState(
+              () => _selectedSnapshot = _snapshotKey(snapshots[value!]),
+            ),
           ),
         ),
         for (final key in _headerLabels.keys)

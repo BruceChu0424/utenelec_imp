@@ -1,3 +1,5 @@
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import '../widgets/goods_subcontract_supplier_table.dart';
 import '../widgets/goods_price_facet_picker.dart';
 import '../models/master_facet.dart';
@@ -10,6 +12,8 @@ import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_scroll_gutter.dart';
+import '../../../components/layout/uten_vertical_scrollbar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../widgets/goods_price_history_chart.dart';
 import '../widgets/goods_material_market_panel.dart';
@@ -43,7 +47,25 @@ class GoodsPriceAnalysisPage extends ConsumerStatefulWidget {
 }
 
 class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
-    with NativeReadViewScopeMixin<GoodsPriceAnalysisPage> {
+    with
+        NativeReadViewScopeMixin<GoodsPriceAnalysisPage>,
+        ScopedPagedReadViewMixin<GoodsPriceAnalysisPage> {
+  final _readViewportRows = MasterDataTableRowsController<PriceObservation>();
+  int get _visibleReadPage => _historyPage == null
+      ? (_historyPage?.page ?? 1)
+      : (_readViewportRows.visiblePage ?? (_historyPage?.page ?? 1));
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _clear();
+    if (mounted) {
+      setState(() {
+        _error = scopedPagedReadRejection?.message;
+        _historyError = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   String _kind = 'PURCHASE';
   int _days = 90;
   bool _advanced = false;
@@ -508,7 +530,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
     'ascending': _tableAscending,
     'filters': jsonEncode(_tableFilters),
   };
-  Future<void> _loadHistoryTable(int page) async {
+  Future<void> _loadHistoryTable(int page, {bool useCache = false}) async {
     if (!mounted || !_allowed || !nativeReadAccessConfirmed) return;
     final owns = captureNativeOwnership();
     final identity = _identity;
@@ -519,10 +541,26 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
       _historyError = null;
       _selectedRow = null;
     });
+    final repository = ref.read(priceAnalysisRepositoryProvider);
+    final goodsId = widget.goodsId;
+    final parameters = Map<String, dynamic>.unmodifiable(
+      _tableParameters(1)..remove('page'),
+    );
+    Object pagingQuery() => [
+      ref.read(priceAnalysisRepositoryProvider),
+      widget.goodsId,
+      _identity,
+      _tableParameters(1)..remove('page'),
+    ];
     try {
-      final result = await ref
-          .read(priceAnalysisRepositoryProvider)
-          .historyTable(widget.goodsId, _tableParameters(page));
+      final result = await readScopedPage<PriceObservation>(
+        page,
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        fetchPage: (target) =>
+            repository.historyTable(goodsId, {...parameters, 'page': target}),
+      );
       if (!mounted ||
           !owns() ||
           !_allowed ||
@@ -684,7 +722,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
                 return Stack(
                   children: [
                     UtenCollapsingHeaderScrollView(
-                      collapsingHeader: Padding(
+                      collapsingHeader: UtenPageEdgePadding(
                         padding: EdgeInsets.all(spacing),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -822,7 +860,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
                           ],
                         ),
                       ),
-                      body: Padding(
+                      body: UtenPageEdgePadding(
                         padding: EdgeInsets.fromLTRB(
                           spacing,
                           0,
@@ -1196,6 +1234,8 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
         ),
         Expanded(
           child: MasterDataTableView<PriceObservation>(
+            rowsController: _readViewportRows,
+            expensiveRowMounts: false,
             key: const Key('goods-price-history-table'),
             tableKey:
                 'goods.price-history.$_kind.${_historyTableMode ? 'history' : 'window'}',
@@ -1210,7 +1250,9 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
             onFilterChanged: _tableFilterChanged,
             currentPage: _historyPage?.page ?? 1,
             totalPages: _historyPage?.totalPages ?? 1,
-            onPageChange: _historyTableMode ? _loadHistoryTable : null,
+            onPageChange: _historyTableMode
+                ? (page) => _loadHistoryTable(page, useCache: true)
+                : null,
             sortColumn: _historyTableMode ? _tableSort : null,
             sortAscending: _tableAscending,
             onSortChange: _historyTableMode ? _tableSortChanged : null,
@@ -1225,7 +1267,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
             error: _historyError,
             onRetry: _historyError == null
                 ? null
-                : () => _loadHistoryTable(_historyPage?.page ?? 1),
+                : () => _loadHistoryTable(_visibleReadPage),
             emptyMessage: priceText(context, 'noData'),
             columns: [
               column('businessDate', 'date', 112),
@@ -1304,75 +1346,76 @@ class _PriceBasisPanelState extends State<_PriceBasisPanel> {
   @override
   Widget build(BuildContext context) {
     final data = widget.data;
-    return Scrollbar(
+    return UtenVerticalScrollbar(
       controller: _scroll,
-      thumbVisibility: true,
-      child: SingleChildScrollView(
-        key: const ValueKey('price-basis-scroll'),
-        controller: _scroll,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      priceText(context, 'explain'),
-                      style: Theme.of(context).textTheme.titleMedium,
+      child: UtenScrollGutter(
+        child: SingleChildScrollView(
+          key: const ValueKey('price-basis-scroll'),
+          controller: _scroll,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(UtenSpacing.s16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        priceText(context, 'explain'),
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    key: const ValueKey('price-basis-close'),
-                    onPressed: widget.onClose,
-                    tooltip: priceText(context, 'close'),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
+                    IconButton(
+                      key: const ValueKey('price-basis-close'),
+                      onPressed: widget.onClose,
+                      tooltip: priceText(context, 'close'),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(data.text('explanation')),
-                  const SizedBox(height: UtenSpacing.s16),
-                  Text(
-                    '${priceText(context, 'asOf')}: ${utenFmtIsoTime(data.text('dataAsOf'))}',
-                  ),
-                  Text(
-                    '${priceText(context, 'samples')}: ${data.text('sampleCount')} / ${data.text('independentOrderCount')}',
-                  ),
-                  if (data.reasons.isNotEmpty)
-                    Text(
-                      data.reasons
-                          .map((reason) => priceText(context, reason))
-                          .toSet()
-                          .join(' · '),
-                      key: const ValueKey('price-basis-reasons'),
-                    ),
-                  if (data.cost.isNotEmpty) ...[
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.all(UtenSpacing.s16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(data.text('explanation')),
                     const SizedBox(height: UtenSpacing.s16),
                     Text(
-                      data.cost['explanation']?.toString() ??
-                          priceText(context, 'quoteBasis'),
-                      key: const ValueKey('price-basis-cost-explanation'),
+                      '${priceText(context, 'asOf')}: ${utenFmtIsoTime(data.text('dataAsOf'))}',
                     ),
-                    Text(priceText(context, 'estimateOnly')),
+                    Text(
+                      '${priceText(context, 'samples')}: ${data.text('sampleCount')} / ${data.text('independentOrderCount')}',
+                    ),
+                    if (data.reasons.isNotEmpty)
+                      Text(
+                        data.reasons
+                            .map((reason) => priceText(context, reason))
+                            .toSet()
+                            .join(' · '),
+                        key: const ValueKey('price-basis-reasons'),
+                      ),
+                    if (data.cost.isNotEmpty) ...[
+                      const SizedBox(height: UtenSpacing.s16),
+                      Text(
+                        data.cost['explanation']?.toString() ??
+                            priceText(context, 'quoteBasis'),
+                        key: const ValueKey('price-basis-cost-explanation'),
+                      ),
+                      Text(priceText(context, 'estimateOnly')),
+                    ],
+                    const SizedBox(height: UtenSpacing.s16),
+                    Text(
+                      priceText(context, 'chartHint'),
+                      key: const ValueKey('price-basis-chart-hint'),
+                    ),
                   ],
-                  const SizedBox(height: UtenSpacing.s16),
-                  Text(
-                    priceText(context, 'chartHint'),
-                    key: const ValueKey('price-basis-chart-hint'),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

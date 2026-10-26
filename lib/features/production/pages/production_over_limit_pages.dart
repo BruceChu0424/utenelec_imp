@@ -20,12 +20,14 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_over_limit_repository.dart';
 import '../widgets/production_review_reason_dialog.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 String _quantity(String? value) => value ?? '—';
 
@@ -49,12 +51,26 @@ class ProductionOverLimitListPage extends ConsumerStatefulWidget {
       _OverLimitListState();
 }
 
-class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage> {
+class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
+    with ScopedPagedReadViewMixin<ProductionOverLimitListPage> {
   PagedResult<ProductionOverLimitDisposition>? _data;
+  final _tableRows =
+      MasterDataTableRowsController<ProductionOverLimitDisposition>();
+  Object? _acceptedReadQuery;
   String _status = 'PENDING';
   String? _error;
   bool _loading = true;
   int _request = 0;
+
+  @override
+  void scopedPagedReadOwnerChanged() => setState(() {
+    _request++;
+    _tableRows.update(const []);
+    _acceptedReadQuery = null;
+    _data = null;
+    _error = scopedPagedReadRejection?.message;
+    _loading = false;
+  });
 
   @override
   void initState() {
@@ -71,11 +87,16 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage> {
     Future.microtask(_load);
   }
 
-  Future<void> _load([int page = 1]) async {
+  Future<void> _load([int? page, bool useCache = false]) async {
     if (!mounted) return;
     final request = ++_request;
     final scope = ref.read(authenticatedScopeProvider);
     final server = ref.read(apiBaseUrlProvider);
+    final repository = ref.read(productionOverLimitRepositoryProvider);
+    final status = _status;
+    page ??= _acceptedReadQuery == status
+        ? _tableRows.visiblePage ?? _data?.page ?? 1
+        : 1;
     bool current() =>
         mounted &&
         request == _request &&
@@ -86,10 +107,20 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage> {
       _error = null;
     });
     try {
-      final data = await ref
-          .read(productionOverLimitRepositoryProvider)
-          .list(status: _status, page: page);
-      if (current()) setState(() => _data = data);
+      final data = await readScopedPage<ProductionOverLimitDisposition>(
+        page,
+        query: (repository, status),
+        currentQuery: () =>
+            (ref.read(productionOverLimitRepositoryProvider), _status),
+        useCache: useCache,
+        fetchPage: (target) => repository.list(status: status, page: target),
+      );
+      if (current()) {
+        setState(() {
+          _data = data;
+          _acceptedReadQuery = status;
+        });
+      }
     } on ApiException catch (error) {
       if (current()) setState(() => _error = error.message);
     } catch (_) {
@@ -105,7 +136,7 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage> {
     ref.listen(apiBaseUrlProvider, (_, _) => _identityChanged());
     ref.onPageResume(
       RouteName.productionOverLimitDispositions,
-      () => _load(_data?.page ?? 1),
+      () => _load(),
       refreshKeys: [productionOverLimitRefreshKey],
     );
     return Scaffold(
@@ -119,7 +150,7 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage> {
           UtenRefreshButton(
             enabled: !(_loading),
             busy: _loading,
-            onRefresh: () => _load(_data?.page ?? 1),
+            onRefresh: () => _load(),
           ),
         ],
       ),
@@ -143,12 +174,14 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage> {
                   _load();
                 },
               ),
-              const Padding(
+              const UtenPageEdgePadding(
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Text('额度内产出继续原流程。这里处理同批超出有效额度的实物，批准不代表品质合格或已入库。'),
               ),
               Expanded(
                 child: MasterDataTableView<ProductionOverLimitDisposition>(
+                  rowsController: _tableRows,
+                  expensiveRowMounts: false,
                   tableKey: 'production.over-limit-dispositions',
                   facets: const {},
                   filters: const {},
@@ -253,14 +286,14 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage> {
                   items: _data?.items ?? const [],
                   isLoading: _loading,
                   error: _error,
-                  onRetry: () => _load(_data?.page ?? 1),
+                  onRetry: () => _load(),
                   onRowTap: (row) => context.push(
                     RoutePath.productionOverLimitDisposition(row.id),
                   ),
                   currentPage: _data?.page ?? 1,
                   totalPages: _data?.totalPages ?? 0,
                   paginationScope: _status,
-                  onPageChange: _load,
+                  onPageChange: (page) => _load(page, true),
                   emptyMessage: '没有符合条件的超限产出',
                 ),
               ),
@@ -467,117 +500,120 @@ class _OverLimitDetailState
                           child: Text('${_error ?? '记录未读取'} · 重试'),
                         ),
                 )
-              : SingleChildScrollView(
+              : UtenPageEdgePadding.scroll(
                   padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (_loading || _busy) const LinearProgressIndicator(),
-                      Text(
-                        '${detail.goodsName ?? '产出'} · ${productionOverLimitStatus(detail.status)}',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '编号 ${detail.goodsCode ?? '—'} · 颜色 ${detail.colorName ?? '—'}',
-                      ),
-                      Text(
-                        '日报 ${detail.reportNo ?? '—'} · 计划 ${detail.planNo ?? '—'} · 工单 ${detail.segmentCode ?? '—'}',
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '原计划 ${_quantity(detail.quantity('plannedQty'))} · 报工时允许超产比例 ${detail.allowedRatePercent == null ? '—' : '${detail.allowedRatePercent}%'}',
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '本批实际 ${_quantity(detail.actualBatchQty)} · 额度内 ${_quantity(detail.withinAuthorizationQty)} · 本次超限 ${_quantity(detail.overLimitQty)} ${detail.unitName ?? ''}',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      Text('超限原因：${detail.overLimitReason ?? '—'}'),
-                      if (detail.text('decisionReason')?.isNotEmpty ==
-                          true) ...[
+                  builder: (context, resolvedPagePadding) => SingleChildScrollView(
+                    padding: resolvedPagePadding,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_loading || _busy) const LinearProgressIndicator(),
+                        Text(
+                          '${detail.goodsName ?? '产出'} · ${productionOverLimitStatus(detail.status)}',
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
                         const SizedBox(height: 12),
-                        Text('最新处理：${detail.text('decisionReason')}'),
                         Text(
-                          '处理人：${detail.text('decidedByName') ?? '—'} · ${_decisionTime(detail.text('decidedAt'))}',
+                          '编号 ${detail.goodsCode ?? '—'} · 颜色 ${detail.colorName ?? '—'}',
                         ),
-                      ],
-                      const SizedBox(height: 12),
-                      const Text(
-                        '额度内产出继续原品质和交接流程。超限部分在批准前保持待处理；批准后仍以品质结果与仓库实收形成库存。',
-                      ),
-                      if (detail.blockingReason?.isNotEmpty == true)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 12),
-                          child: Text(detail.blockingReason!),
-                        ),
-                      if (_error != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 12),
-                          child: Text(
-                            _error!,
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.error,
-                            ),
-                          ),
-                        ),
-                      const SizedBox(height: 24),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          if (detail.reportId != null &&
-                              locationAllowedFor(
-                                permissions,
-                                admin,
-                                '/production/daily-reports/${detail.reportId}',
-                              ))
-                            OutlinedButton(
-                              onPressed: _busy
-                                  ? null
-                                  : () => context.push(
-                                      '/production/daily-reports/${detail.reportId}',
-                                    ),
-                              child: const Text('查看原日报'),
-                            ),
-                          if (canDecide) ...[
-                            FilledButton(
-                              onPressed: _busy || _loading
-                                  ? null
-                                  : () => _decide('ACCEPT_PUBLIC'),
-                              child: const Text('接收为公共产出'),
-                            ),
-                            OutlinedButton(
-                              onPressed: _busy || _loading
-                                  ? null
-                                  : () => _decide('HOLD'),
-                              child: const Text('继续待处理'),
-                            ),
-                            OutlinedButton(
-                              onPressed: _busy || _loading
-                                  ? null
-                                  : () => _decide('RETURN_FOR_REVIEW'),
-                              child: const Text('要求核实（保持待处理）'),
-                            ),
-                          ],
-                        ],
-                      ),
-                      if (detail.decisionHistory.isNotEmpty) ...[
-                        const SizedBox(height: 24),
                         Text(
-                          '处理记录',
+                          '日报 ${detail.reportNo ?? '—'} · 计划 ${detail.planNo ?? '—'} · 工单 ${detail.segmentCode ?? '—'}',
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          '原计划 ${_quantity(detail.quantity('plannedQty'))} · 报工时允许超产比例 ${detail.allowedRatePercent == null ? '—' : '${detail.allowedRatePercent}%'}',
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '本批实际 ${_quantity(detail.actualBatchQty)} · 额度内 ${_quantity(detail.withinAuthorizationQty)} · 本次超限 ${_quantity(detail.overLimitQty)} ${detail.unitName ?? ''}',
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
-                        for (final decision in detail.decisionHistory)
+                        const SizedBox(height: 12),
+                        Text('超限原因：${detail.overLimitReason ?? '—'}'),
+                        if (detail.text('decisionReason')?.isNotEmpty ==
+                            true) ...[
+                          const SizedBox(height: 12),
+                          Text('最新处理：${detail.text('decisionReason')}'),
+                          Text(
+                            '处理人：${detail.text('decidedByName') ?? '—'} · ${_decisionTime(detail.text('decidedAt'))}',
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        const Text(
+                          '额度内产出继续原品质和交接流程。超限部分在批准前保持待处理；批准后仍以品质结果与仓库实收形成库存。',
+                        ),
+                        if (detail.blockingReason?.isNotEmpty == true)
                           Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Text(detail.blockingReason!),
+                          ),
+                        if (_error != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
                             child: Text(
-                              '${productionOverLimitAction(decision['action'] as String? ?? '')} · ${decision['decidedByName'] ?? '—'} · ${_decisionTime(decision['decidedAt'] as String?)}\n${decision['reason'] ?? ''}',
+                              _error!,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
                             ),
                           ),
+                        const SizedBox(height: 24),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            if (detail.reportId != null &&
+                                locationAllowedFor(
+                                  permissions,
+                                  admin,
+                                  '/production/daily-reports/${detail.reportId}',
+                                ))
+                              OutlinedButton(
+                                onPressed: _busy
+                                    ? null
+                                    : () => context.push(
+                                        '/production/daily-reports/${detail.reportId}',
+                                      ),
+                                child: const Text('查看原日报'),
+                              ),
+                            if (canDecide) ...[
+                              FilledButton(
+                                onPressed: _busy || _loading
+                                    ? null
+                                    : () => _decide('ACCEPT_PUBLIC'),
+                                child: const Text('接收为公共产出'),
+                              ),
+                              OutlinedButton(
+                                onPressed: _busy || _loading
+                                    ? null
+                                    : () => _decide('HOLD'),
+                                child: const Text('继续待处理'),
+                              ),
+                              OutlinedButton(
+                                onPressed: _busy || _loading
+                                    ? null
+                                    : () => _decide('RETURN_FOR_REVIEW'),
+                                child: const Text('要求核实（保持待处理）'),
+                              ),
+                            ],
+                          ],
+                        ),
+                        if (detail.decisionHistory.isNotEmpty) ...[
+                          const SizedBox(height: 24),
+                          Text(
+                            '处理记录',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          for (final decision in detail.decisionHistory)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Text(
+                                '${productionOverLimitAction(decision['action'] as String? ?? '')} · ${decision['decidedByName'] ?? '—'} · ${_decisionTime(decision['decidedAt'] as String?)}\n${decision['reason'] ?? ''}',
+                              ),
+                            ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
         ),

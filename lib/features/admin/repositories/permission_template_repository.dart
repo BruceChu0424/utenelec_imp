@@ -10,7 +10,7 @@ class PermissionTemplateRepository {
   static const path = '/admin/permission-templates';
   Future<List<PermissionTemplate>> list() async =>
       (await api.getList(path)).map(PermissionTemplate.fromJson).toList();
-  Future<void> save({
+  Future<PermissionTemplate> save({
     PermissionTemplate? template,
     required String name,
     required String description,
@@ -22,11 +22,10 @@ class PermissionTemplateRepository {
       'permissions': permissions.toList()..sort(),
       'expectedVersion': template?.version ?? 0,
     };
-    if (template == null) {
-      await api.post(path, body: body);
-    } else {
-      await api.put('$path/${template.id}', body: body);
-    }
+    final saved = template == null
+        ? await api.post(path, body: body)
+        : await api.put('$path/${template.id}', body: body);
+    return PermissionTemplate.fromJson(saved);
   }
 
   Future<void> delete(PermissionTemplate template) async {

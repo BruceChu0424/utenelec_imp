@@ -1,9 +1,10 @@
+import '../../../core/router/page_navigation_session.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
@@ -89,6 +90,7 @@ class ProductionExecutionSegmentsCard extends ConsumerStatefulWidget {
     required this.canStart,
     this.initialSegmentId,
     this.onChanged,
+    this.refreshAfterNavigation = true,
   });
 
   final String planId;
@@ -99,6 +101,10 @@ class ProductionExecutionSegmentsCard extends ConsumerStatefulWidget {
   final String? initialSegmentId;
   final Future<void> Function()? onChanged;
 
+  /// Standalone cards refresh on return. A host that rebuilds this card from
+  /// its own page-resume refresh owns that read and disables the local path.
+  final bool refreshAfterNavigation;
+
   @override
   ConsumerState<ProductionExecutionSegmentsCard> createState() =>
       _ProductionExecutionSegmentsCardState();
@@ -106,6 +112,20 @@ class ProductionExecutionSegmentsCard extends ConsumerStatefulWidget {
 
 class _ProductionExecutionSegmentsCardState
     extends ConsumerState<ProductionExecutionSegmentsCard> {
+  final _navigation = PageNavigationSession();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
+  void dispose() {
+    _navigation.dispose();
+    super.dispose();
+  }
+
   List<ProductionExecutionSegmentView>? _segments;
   String? _selectedId;
   String? _handledInitialSegmentId;
@@ -240,8 +260,8 @@ class _ProductionExecutionSegmentsCardState
   ) async {
     switch (action) {
       case _SegmentAction.route:
-        await context.push(RouteName.productionWorkshopTasks);
-        if (mounted) await _load();
+        await _navigation.push(RouteName.productionWorkshopTasks);
+        if (mounted && widget.refreshAfterNavigation) await _load();
         break;
       case _SegmentAction.assign:
         await _assign(segment);
@@ -275,7 +295,7 @@ class _ProductionExecutionSegmentsCardState
     }
     setState(() => _busy = true);
     try {
-      await context.push(
+      await _navigation.push(
         Uri(
           path: split
               ? RouteName.productionBatchDraw
@@ -288,9 +308,7 @@ class _ProductionExecutionSegmentsCardState
                 },
         ).toString(),
       );
-      if (!mounted) return;
-      await _load();
-      await widget.onChanged?.call();
+      await _refreshAfterNavigation();
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -343,15 +361,13 @@ class _ProductionExecutionSegmentsCardState
     }
     setState(() => _busy = true);
     try {
-      await context.push(
+      await _navigation.push(
         Uri(
           path: RoutePath.productionDailyReportNew(),
           queryParameters: {'executionSegmentId': segment.id},
         ).toString(),
       );
-      if (!mounted) return;
-      await _load();
-      await widget.onChanged?.call();
+      await _refreshAfterNavigation();
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -683,13 +699,16 @@ class _ProductionExecutionSegmentsCardState
     }
   }
 
-  /// 报工/领料子页保存后用 replace / go 收尾时，go_router 不会完成本卡原 push 的
-  /// Future——上面各处 `await context.push` 后面的 finally 走不到，_busy 卡在 true：
-  /// 刷新按钮灰、行点不动、动作提示「正在处理」，只有整页重建才好(2026-09-20 用户
-  /// 反馈同款)。回到宿主页面时由「返回即刷新」复位并重拉，与 push 正常返回的收尾一致。
+  /// 返回时核对执行状态。导航等待由公共 session 收尾；真实开工/暂缓请求仍由
+  /// 自己的 finally 释放，返回事件不能提前解开在途写操作。
   Future<void> _resumeAfterChildFlow() async {
-    if (!mounted) return;
-    if (_busy) setState(() => _busy = false);
+    if (!mounted || _commanding || !widget.refreshAfterNavigation) return;
+    if (_navigation.consumeReturnedVisit()) return;
+    await _refreshAfterNavigation();
+  }
+
+  Future<void> _refreshAfterNavigation() async {
+    if (!mounted || !widget.refreshAfterNavigation) return;
     await _load();
     if (!mounted) return;
     await widget.onChanged?.call();
@@ -969,23 +988,22 @@ class _ProductionExecutionSegmentsCardState
             Icon(Icons.move_to_inbox_rounded, color: color),
             const SizedBox(width: UtenSpacing.s8),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text(
-                    '去领料：$count 个执行段有物料待领',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: color,
-                      fontWeight: FontWeight.w800,
+                  Flexible(
+                    child: Text(
+                      '去领料：$count 个执行段有物料待领',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: color,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '打开执行段详情，点击「去领料」核对本次物料和数量；'
-                    '提交后仓库收到本次领料任务；齐套路线须领齐，持续路线按各项物料共同支持的产量开工。',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                  const UtenFieldHintIcon(
+                    dense: true,
+                    info:
+                        '打开执行段详情，点击「去领料」核对本次物料和数量；'
+                        '提交后仓库收到本次领料任务；齐套路线须领齐，持续路线按各项物料共同支持的产量开工。',
                   ),
                 ],
               ),

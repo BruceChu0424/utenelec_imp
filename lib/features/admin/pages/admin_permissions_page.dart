@@ -8,6 +8,7 @@
 // 全员基础包：每个在职员工默认拥有的码(见 widgets/admin_baseline_perm_view.dart)。
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 // 路由守卫与工作台显隐共用 permission_by_path.dart。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -20,6 +21,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_load_more_boundary.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -57,6 +59,7 @@ class AdminPermissionsPage extends ConsumerStatefulWidget {
 class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
   /// 0=按员工，1=按部门，2=全员基础包，3=权限模板。
   int _segment = 0;
+  bool _templatesVisited = false;
   String _employeeSearch = '';
   final _pendingPermissionChanges = <int, bool>{};
   final _workspaceKey = GlobalKey();
@@ -113,7 +116,10 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
                 ),
               ],
               selected: segment,
-              onChanged: (value) => setState(() => _segment = value),
+              onChanged: (value) => setState(() {
+                _segment = value;
+                if (value == 3) _templatesVisited = true;
+              }),
             ),
           )
         : const SizedBox.shrink();
@@ -173,8 +179,12 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
                     _permissionPendingChanged(2, pending),
               ),
             if (canManageAuthorization)
-              segment == 3
-                  ? AdminPermissionTemplatesView(navigation: categoryNavigation)
+              _templatesVisited
+                  ? AdminPermissionTemplatesView(
+                      navigation: categoryNavigation,
+                      onPermissionDirtyChanged: (pending) =>
+                          _permissionPendingChanged(3, pending),
+                    )
                   : const SizedBox.shrink(),
           ],
         ),
@@ -183,6 +193,8 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
     // compact 下页面自带宽度收敛；medium+ 由 MainShell 的容器统一处理
     if (context.breakpoint.isCompact) {
       body = UtenContentContainer(child: body);
+    } else {
+      body = UtenPageEdgePadding(child: body);
     }
 
     // 统一顶栏：左上角全局返回键（UtenBackButton），AppBar 自带顶部安全区
@@ -236,6 +248,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
   int _totalPages = 1;
   bool _loading = true;
   bool _loadingMore = false;
+  bool _automaticLoadFailed = false;
   String? _error;
   int _requestEpoch = 0;
 
@@ -294,6 +307,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
     setState(() {
       _loading = true;
       _loadingMore = false;
+      _automaticLoadFailed = false;
       _error = null;
     });
     _page = 1;
@@ -373,12 +387,20 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
     }
   }
 
-  Future<void> _loadMore() async {
-    if (_loadingMore || _page >= _totalPages) return;
+  Future<void> _loadMore({bool automatic = false}) async {
+    if (_loading ||
+        _loadingMore ||
+        _page >= _totalPages ||
+        (automatic && _automaticLoadFailed)) {
+      return;
+    }
     final requestEpoch = _requestEpoch;
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     final nextPage = _page + 1;
-    setState(() => _loadingMore = true);
+    setState(() {
+      _loadingMore = true;
+      _automaticLoadFailed = false;
+    });
     try {
       final r = await ref
           .read(adminRepositoryProvider)
@@ -404,7 +426,12 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
           ref.read(sensitiveReadBoundaryProvider) != boundary) {
         return;
       }
-      setState(() => _loadingMore = false);
+      setState(() {
+        _loadingMore = false;
+        // Preserve the visible manual action as the retry surface; repeated
+        // near-edge movement must not spin on the same failed page.
+        _automaticLoadFailed = true;
+      });
     }
   }
 
@@ -628,85 +655,104 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         message: '暂无匹配的员工账号',
       );
     }
-    final list = ListView.builder(
-      // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
-      padding: EdgeInsets.only(
-        bottom: UtenCapsuleNavScope.occlusionOf(context),
+    final list = UtenLoadMoreBoundary(
+      enabled:
+          !_loading &&
+          !_loadingMore &&
+          _error == null &&
+          !_automaticLoadFailed &&
+          _page < _totalPages,
+      scope: (
+        ref.watch(sensitiveReadBoundaryProvider),
+        _search,
+        _statusFilter,
+        _requestEpoch,
       ),
-      itemCount: visible.length + 1,
-      itemBuilder: (context, i) {
-        if (i == visible.length) {
-          if (_page < _totalPages) {
-            return Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: Center(
-                child: _loadingMore
-                    ? const CircularProgressIndicator()
-                    : FilledButton.tonal(
-                        onPressed: _loadMore,
-                        child: const Text('加载更多'),
-                      ),
-              ),
-            );
+      onLoadMore: () => _loadMore(automatic: true),
+      child: ListView.builder(
+        key: const ValueKey('admin-account-list-scroll'),
+        // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+        padding: EdgeInsets.only(
+          bottom: UtenCapsuleNavScope.occlusionOf(context),
+        ),
+        itemCount: visible.length + 1,
+        itemBuilder: (context, i) {
+          if (i == visible.length) {
+            if (_page < _totalPages) {
+              return Padding(
+                padding: const EdgeInsets.all(UtenSpacing.s16),
+                child: Center(
+                  child: _loadingMore
+                      ? const CircularProgressIndicator()
+                      : FilledButton.tonal(
+                          onPressed: _loadMore,
+                          child: const Text('加载更多'),
+                        ),
+                ),
+              );
+            }
+            return const SizedBox(height: UtenSpacing.s24);
           }
-          return const SizedBox(height: UtenSpacing.s24);
-        }
-        final u = visible[i];
-        return UtenCard(
-          margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
-          padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s12,
-            vertical: UtenSpacing.s12,
-          ),
-          onTap: () => _onUserTap(u),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 18,
-                child: Text(
-                  (u.employeeName ?? u.loginAccount)
-                      .substring(0, 1)
-                      .toUpperCase(),
-                  style: const TextStyle(fontSize: 14),
+          final u = visible[i];
+          return UtenCard(
+            margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s12,
+              vertical: UtenSpacing.s12,
+            ),
+            onTap: () => _onUserTap(u),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  child: Text(
+                    (u.employeeName ?? u.loginAccount)
+                        .substring(0, 1)
+                        .toUpperCase(),
+                    style: const TextStyle(fontSize: 14),
+                  ),
                 ),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      formatEmployeeDisplayName(
-                        u.employeeName ?? u.loginAccount,
-                        u.employeeCode,
+                const SizedBox(width: UtenSpacing.s12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        formatEmployeeDisplayName(
+                          u.employeeName ?? u.loginAccount,
+                          u.employeeCode,
+                        ),
+                        style: Theme.of(context).textTheme.titleMedium,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      style: Theme.of(context).textTheme.titleMedium,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: UtenSpacing.s4),
-                    Text(
-                      [
-                        if (u.departmentName?.trim().isNotEmpty == true)
-                          u.departmentName!.trim(),
-                        u.loginAccount,
-                      ].join(' · '),
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        fontWeight: FontWeight.w400,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      const SizedBox(height: UtenSpacing.s4),
+                      Text(
+                        [
+                          if (u.departmentName?.trim().isNotEmpty == true)
+                            u.departmentName!.trim(),
+                          u.loginAccount,
+                        ].join(' · '),
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.w400,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              AccountStatusBadge(status: u.status),
-            ],
-          ),
-        );
-      },
+                const SizedBox(width: UtenSpacing.s8),
+                AccountStatusBadge(status: u.status),
+              ],
+            ),
+          );
+        },
+      ),
     );
     if (!_loading && _error == null) return list;
     return Column(

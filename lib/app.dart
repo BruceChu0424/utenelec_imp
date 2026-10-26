@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'components/layout/uten_page_scrollbar_host.dart';
 
 import 'components/feedback/uten_context_menu_policy.dart';
 import 'core/l10n/gen/app_localizations.dart';
@@ -181,7 +182,7 @@ class UtenApp extends ConsumerWidget {
                                 : mediaQuery,
                             child: Stack(
                               children: [
-                                settingsChild,
+                                UtenPageScrollbarHost(child: settingsChild),
                                 const Positioned(
                                   top: 0,
                                   left: 0,

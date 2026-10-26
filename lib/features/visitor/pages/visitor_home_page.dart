@@ -17,8 +17,6 @@ import '../../../components/buttons/uten_app_bar_action_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -47,6 +45,7 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
   bool _loggingOut = false;
   VisitorFilter _filter = VisitorFilter.pending;
   int _page = 1;
+  final _tableRows = MasterDataTableRowsController<VisitorApplication>();
   final _retainedPage = RetainedAsyncPage<PagedResult<VisitorApplication>>();
 
   String? get _status => switch (_filter) {
@@ -73,11 +72,15 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final visitor = ref.watch(visitorSessionProvider).visitor;
-    final paginationScope = (_filter, visitor?.id);
-    final apps = _retainedPage.resolve(
+    final visitorSession = ref.watch(visitorSessionProvider);
+    final visitor = visitorSession.visitor;
+    final paginationScope = (_filter, visitorSession, retainedReaderEpoch(ref));
+    final readLease = ref.watch(visitorApplicationsReadProvider(_status))
+      ..bindView(context, currentQuery: () => (_status,));
+    final apps = _retainedPage.resolveFor(
+      ref,
       paginationScope,
-      ref.watch(visitorApplicationsProvider(_query)),
+      visitorApplicationsProvider(_query),
     );
 
     return Scaffold(
@@ -143,55 +146,66 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
               ),
             ),
             Expanded(
-              child: apps.when(
-                skipLoadingOnReload: true,
-                skipError: true,
-                loading: () => const UtenSkeletonList(itemCount: 6),
-                error: (e, _) => UtenEmpty.error(
-                  message: '$e',
-                  actionLabel: l10n.commonRetry,
-                  onAction: () =>
-                      ref.invalidate(visitorApplicationsProvider(_query)),
-                ),
-                data: (page) => RefreshIndicator(
-                  onRefresh: () async =>
-                      ref.invalidate(visitorApplicationsProvider(_query)),
-                  child: MasterDataTableView<VisitorApplication>(
-                    tableKey:
-                        'features.visitor.pages.visitor_home_page.VisitorHomePageState.build.1',
-                    bottomContentPadding:
-                        UtenFloatingActionGroup.scrollClearance,
-                    key: const Key('visitor-home-table'),
-                    paginationScope: paginationScope,
-                    loadingMore: apps.isLoading,
-                    error: apps.hasError ? '${apps.error}' : null,
-                    onRetry: () =>
-                        ref.invalidate(visitorApplicationsProvider(_query)),
-                    columns: _columns(l10n),
-                    items: page.items,
-                    facets: const {},
-                    nullCounts: const {},
-                    filters: const {},
-                    onFilterChanged: (_, _) {},
-                    // 双击行进入预约详情（保留现有路由与 go 语义）。
-                    onRowTap: (app) => context.go('/visitor/apply/${app.id}'),
-                    emptyMessage: l10n.commonNoData,
-                    // 个人视角（仅当前访客自己的预约），天然几十以内，仍保留
-                    // 后端分页的翻页条（页多时可用）。
-                    currentPage: page.page,
-                    totalPages: page.totalPages,
-                    onPageChange: (p) async {
-                      setState(() => _page = p);
-                      await _retainedPage.waitFor(
-                        ref,
-                        visitorApplicationsProvider(_query),
-                        () => ref.read(
-                          visitorApplicationsProvider(_query).future,
-                        ),
+              child: Builder(
+                builder: (context) {
+                  final page =
+                      apps.value ??
+                      const PagedResult<VisitorApplication>(
+                        items: [],
+                        page: 1,
+                        size: 20,
+                        total: 0,
+                        totalPages: 0,
                       );
+                  return RefreshIndicator(
+                    onRefresh: () async {
+                      setState(() => _page = _tableRows.visiblePage ?? _page);
+                      readLease.invalidate();
+                      ref.invalidate(visitorApplicationsProvider(_query));
                     },
-                  ),
-                ),
+                    child: MasterDataTableView<VisitorApplication>(
+                      rowsController: _tableRows,
+                      expensiveRowMounts: false,
+                      tableKey:
+                          'features.visitor.pages.visitor_home_page.VisitorHomePageState.build.1',
+                      bottomContentPadding:
+                          UtenFloatingActionGroup.scrollClearance,
+                      key: const Key('visitor-home-table'),
+                      paginationScope: paginationScope,
+                      isLoading: apps.isLoading && !apps.hasValue,
+                      loadingMore: apps.isLoading && apps.hasValue,
+                      error: apps.hasError ? '${apps.error}' : null,
+                      onRetry: () {
+                        readLease.invalidate();
+                        ref.invalidate(visitorApplicationsProvider(_query));
+                      },
+                      columns: _columns(l10n),
+                      items: page.items,
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: const {},
+                      onFilterChanged: (_, _) {},
+                      // 双击行进入预约详情（保留现有路由与 go 语义）。
+                      onRowTap: (app) => context.go('/visitor/apply/${app.id}'),
+                      emptyMessage: l10n.commonNoData,
+                      // 个人视角（仅当前访客自己的预约），天然几十以内，仍保留
+                      // 后端分页的翻页条（页多时可用）。
+                      currentPage: page.page,
+                      totalPages: page.totalPages,
+                      onPageChange: (p) => readLease.paginate(p, () async {
+                        setState(() => _page = p);
+                        ref.invalidate(visitorApplicationsProvider(_query));
+                        await _retainedPage.waitFor(
+                          ref,
+                          visitorApplicationsProvider(_query),
+                          () => ref.read(
+                            visitorApplicationsProvider(_query).future,
+                          ),
+                        );
+                      }),
+                    ),
+                  );
+                },
               ),
             ),
           ],

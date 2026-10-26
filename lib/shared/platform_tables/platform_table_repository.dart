@@ -8,14 +8,21 @@ class PlatformTableRepository {
   PlatformTableRepository(this.api);
   final ApiClient api;
   Future<List<PlatformTableCapabilities>>? _scopes;
-  Future<List<PlatformTableCapabilities>> scopes() => _scopes ??= _loadScopes();
-  Future<List<PlatformTableCapabilities>> _loadScopes() async {
+  int _scopesGeneration = 0;
+  void invalidateScopes() {
+    _scopesGeneration++;
+    _scopes = null;
+  }
+
+  Future<List<PlatformTableCapabilities>> scopes() =>
+      _scopes ??= _loadScopes(_scopesGeneration);
+  Future<List<PlatformTableCapabilities>> _loadScopes(int generation) async {
     try {
       return (await api.getList(
         '/platform-columns/scopes',
       )).map(PlatformTableCapabilities.fromJson).toList(growable: false);
     } catch (_) {
-      _scopes = null;
+      if (generation == _scopesGeneration) _scopes = null;
       rethrow;
     }
   }

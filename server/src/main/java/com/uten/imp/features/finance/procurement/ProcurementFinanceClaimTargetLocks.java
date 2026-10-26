@@ -54,7 +54,7 @@ public class ProcurementFinanceClaimTargetLocks implements ReviewTaskTargetLockP
         var rows=em.createNativeQuery("""
                 SELECT id FROM procurement_order_approval_cases
                 WHERE id=:id AND order_type=:type AND order_id=:orderId
-                """+(requireReviewable ? " AND status='PENDING'" : "")+" FOR UPDATE")
+                """+(requireReviewable ? " AND status='PENDING' AND request_type='ORDER'" : "")+" FOR UPDATE")
                 .setParameter("id",target.targetId()).setParameter("type",target.aggregateType())
                 .setParameter("orderId",target.aggregateId()).getResultList();
         if (requireReviewable && rows.isEmpty()) throw unavailable();

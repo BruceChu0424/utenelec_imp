@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/foundation.dart' show setEquals;
@@ -18,6 +20,7 @@ import '../../../core/network/server_config.dart';
 import '../../../core/security/secure_storage.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/page_navigation_session.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -68,7 +71,25 @@ class WarehouseTaskRecordsView extends ConsumerStatefulWidget {
 
 class _WarehouseTaskRecordsViewState
     extends ConsumerState<WarehouseTaskRecordsView>
-    with UtenRefreshParticipant<WarehouseTaskRecordsView> {
+    with
+        UtenRefreshParticipant<WarehouseTaskRecordsView>,
+        ScopedPagedReadViewMixin<WarehouseTaskRecordsView> {
+  int get _refreshPage => _rows.visiblePage ?? (_result?.page ?? 1);
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    ++_requestVersion;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+      _selected = <String>{};
+      _selectedRows.clear();
+      _rows.update(const []);
+    });
+  }
+
   WarehouseTaskCenterPageResult? _result;
   String? _status;
   String? _billNo;
@@ -78,6 +99,7 @@ class _WarehouseTaskRecordsViewState
   String? _error;
   bool _loading = false;
   bool _busy = false;
+  final _navigation = PageNavigationSession();
 
   /// 批量确认弹窗/批量办理页打开中：拦截重复触发，但不进入 [_busy]（busy 语义
   /// =网络进行中）。此前弹窗一开就置 busy，接上按钮转圈后用户阅读确认框的整段
@@ -91,6 +113,18 @@ class _WarehouseTaskRecordsViewState
   String? _decisionKey;
 
   bool get _history => widget.view == WarehouseTaskView.history;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
+  void dispose() {
+    _navigation.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -159,10 +193,10 @@ class _WarehouseTaskRecordsViewState
   String? get _effectiveStatus =>
       _status?.startsWith('source:') == true ? null : _status;
 
-  Future<void> _load(int page) =>
-      trackRefresh(_loadPage(page), replaceKey: 'rows');
+  Future<void> _load(int page, {bool useCache = false}) =>
+      trackRefresh(_loadPage(page, useCache: useCache), replaceKey: 'rows');
 
-  Future<void> _loadPage(int page) async {
+  Future<void> _loadPage(int page, {bool useCache = false}) async {
     if (!mounted) return;
     final version = ++_requestVersion;
     setState(() {
@@ -170,26 +204,83 @@ class _WarehouseTaskRecordsViewState
       _error = null;
     });
     try {
-      final result = await ref
-          .read(warehouseTaskCenterRepositoryProvider)
-          .list(
-            direction: widget.direction,
-            source: _effectiveSource,
-            view: widget.view,
-            status: _effectiveStatus,
-            keyword: widget.keyword,
-            billNo: _billNo,
-            dateFrom: _dates == null
-                ? null
-                : ChinaDateTime.formatDate(_dates!.start),
-            dateTo: _dates == null
-                ? null
-                : ChinaDateTime.formatDate(_dates!.end),
-            warehouseScope: WarehouseListScope.of(context),
-            page: page,
-            sort: _sort,
-            order: _sort == null ? null : (_ascending ? 'asc' : 'desc'),
+      final pageRepository = ref.read(warehouseTaskCenterRepositoryProvider);
+      final pageDirection = widget.direction;
+      final pageSource = _effectiveSource;
+      final pageView = widget.view;
+      final pageStatus = _effectiveStatus;
+      final pageKeyword = widget.keyword;
+      final pageBillNo = _billNo;
+      final pageDateFrom = _dates == null
+          ? null
+          : ChinaDateTime.formatDate(_dates!.start);
+      final pageDateTo = _dates == null
+          ? null
+          : ChinaDateTime.formatDate(_dates!.end);
+      final pageWarehouseScope = WarehouseListScope.of(context);
+      final pageSort = _sort;
+      final pageOrder = _sort == null ? null : (_ascending ? 'asc' : 'desc');
+
+      final cached = await readScopedPage<WarehouseTaskCenterRecord>(
+        page,
+        slot: '_loadPage',
+        query: [
+          pageRepository,
+          pageDirection,
+          pageSource,
+          pageView,
+          pageStatus,
+          pageKeyword,
+          pageBillNo,
+          pageDateFrom,
+          pageDateTo,
+          pageWarehouseScope,
+          pageSort,
+          pageOrder,
+        ],
+        currentQuery: () => [
+          ref.read(warehouseTaskCenterRepositoryProvider),
+          widget.direction,
+          _effectiveSource,
+          widget.view,
+          _effectiveStatus,
+          widget.keyword,
+          _billNo,
+          _dates == null ? null : ChinaDateTime.formatDate(_dates!.start),
+          _dates == null ? null : ChinaDateTime.formatDate(_dates!.end),
+          WarehouseListScope.of(context),
+          _sort,
+          _sort == null ? null : (_ascending ? 'asc' : 'desc'),
+        ],
+        useCache: useCache,
+        fetchPage: (target) async {
+          final snapshot = await pageRepository.list(
+            direction: pageDirection,
+            source: pageSource,
+            view: pageView,
+            status: pageStatus,
+            keyword: pageKeyword,
+            billNo: pageBillNo,
+            dateFrom: pageDateFrom,
+            dateTo: pageDateTo,
+            warehouseScope: pageWarehouseScope,
+            page: target,
+            sort: pageSort,
+            order: pageOrder,
           );
+          return PagedReadSnapshot<
+            WarehouseTaskCenterRecord,
+            WarehouseTaskCenterPageResult
+          >(page: snapshot, snapshot: snapshot);
+        },
+      );
+      final result =
+          (cached
+                  as PagedReadSnapshot<
+                    WarehouseTaskCenterRecord,
+                    WarehouseTaskCenterPageResult
+                  >)
+              .snapshot;
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _result = result;
@@ -199,7 +290,10 @@ class _WarehouseTaskRecordsViewState
         }
       });
     } catch (error) {
-      if (!mounted || version != _requestVersion) return;
+      if (!mounted) return;
+      if (version != _requestVersion) {
+        return;
+      }
       setState(() {
         _loading = false;
         _error = error is ApiException ? error.message : '仓库单据加载失败，请重试';
@@ -420,12 +514,22 @@ class _WarehouseTaskRecordsViewState
     try {
       if (drafts.isNotEmpty) {
         if (row.recordType == 'LOCAL_FORM_DRAFT') {
-          await context.push<void>(drafts.single.resumeLocation);
+          await _navigation.push<void>(drafts.single.resumeLocation);
         } else {
-          await resumeTaskFormDraft(context, ref, drafts);
+          await resumeTaskFormDraft(
+            context,
+            ref,
+            drafts,
+            navigation: _navigation,
+          );
         }
       } else {
-        await openWarehouseTaskRecord(context, ref, row);
+        await openWarehouseTaskRecord(
+          context,
+          ref,
+          row,
+          navigation: _navigation,
+        );
       }
       // Returning also clears the host search after this frame. Let that state
       // reach the next build before scheduling the one current list request.
@@ -664,6 +768,7 @@ class _WarehouseTaskRecordsViewState
           context,
           ref,
           rows,
+          navigation: _navigation,
           preStock: preStock,
         );
       }
@@ -859,6 +964,7 @@ class _WarehouseTaskRecordsViewState
         ],
       ),
       body: MasterDataTableView<WarehouseTaskCenterRecord>(
+        expensiveRowMounts: false,
         key: ValueKey('warehouse-task-records-${widget.direction.name}'),
         tableKey:
             'warehouse.task-center.${widget.direction.name}.${widget.source}${_history ? '.history' : ''}',
@@ -975,11 +1081,11 @@ class _WarehouseTaskRecordsViewState
         isLoading: _loading,
         loadingMore: _loading && result != null,
         error: _error,
-        onRetry: () => _load(result?.page ?? 1),
+        onRetry: () => _load(_refreshPage),
         emptyMessage: '当前范围与筛选下没有单据',
         currentPage: result?.page ?? 1,
         totalPages: result?.totalPages ?? 0,
-        onPageChange: _load,
+        onPageChange: (page) => _load(page, useCache: true),
       ),
     );
   }

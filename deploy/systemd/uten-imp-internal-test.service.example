@@ -17,6 +17,9 @@ User=uten-imp
 Group=uten-imp
 WorkingDirectory=/opt/uten-imp/current
 EnvironmentFile=/etc/uten-imp/server.env
+# Kept with the local media backup namespace, outside signed application releases.
+Environment=UTEN_CLIENT_RELEASES_DIR=/data/uten-imp/attachments/client-releases
+Environment=UTEN_CLIENT_UPDATE_MIN_FREE_BYTES=10737418240
 # EnvironmentFile is parsed as data by the root preflight, but these variables
 # could otherwise influence a loader/interpreter before that preflight starts.
 UnsetEnvironment=LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT LD_DEBUG GCONV_PATH BASH_ENV ENV SHELLOPTS BASHOPTS PS4 BASH_XTRACEFD PYTHONHOME PYTHONPATH PYTHONSTARTUP PYTHONUSERBASE JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS SPRING_APPLICATION_JSON SPRING_CONFIG_LOCATION SPRING_CONFIG_ADDITIONAL_LOCATION SPRING_MAIN_LAZY_INITIALIZATION

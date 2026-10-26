@@ -13,6 +13,7 @@ import '../../../shared/auth/read_owner_fence.dart';
 // 其余（折叠头+表格吸顶内滚、列表刷新 tick、返回即刷新、PagedListController
 // 竞态状态机）保持原实现。
 import 'dart:async';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../shared/drafts/form_draft_category.dart';
@@ -276,10 +277,40 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
     );
   }
 
-  Future<void> _reload([int? page, bool silent = false]) =>
-      trackRefresh(_reloadRows(page, silent), replaceKey: 'rows');
+  List<Object?> get _pageQueryScope => [
+    _list.normalizedKeyword,
+    _list.sortKey,
+    _list.sortAsc,
+    widget.docType,
+    _seg,
+    _issueStatus,
+    _historyTime,
+    _historyTime.range?.start,
+    _historyTime.range?.end,
+    _warehouseIdFilter,
+    _departmentIdFilter,
+    _toWarehouseIdFilter,
+    Map.of(_columnFilters.values),
+  ];
 
-  Future<void> _reloadRows([int? page, bool silent = false]) async {
+  Future<void> _navigatePage(int page) => _reload(page, false, true);
+
+  Future<void> _reload([
+    int? page,
+    bool silent = false,
+    bool useCachedPage = false,
+  ]) => trackRefresh(
+    _reloadRows(page, silent, useCachedPage),
+    replaceKey: 'rows',
+  );
+
+  Future<void> _reloadRows([
+    int? page,
+    bool silent = false,
+    bool useCachedPage = false,
+  ]) async {
+    final cacheQuery = _pageQueryScope;
+    final ownerCurrent = captureReadOwner(ref);
     final generation = ++_reloadGeneration;
     if (!_shouldLoad) {
       // Deselecting a query also supersedes pending data and errors.
@@ -297,7 +328,16 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
       silent: silent,
       fetch: _fetch,
       fetchPage: _fetch,
-      isCurrent: captureReadOwner(ref),
+      useCachedPage: useCachedPage,
+      canPrefetch: () =>
+          mounted &&
+          TickerMode.valuesOf(context).enabled &&
+          (ModalRoute.of(context)?.isCurrent ?? true),
+      queryScope: cacheQuery,
+      isCurrent: () =>
+          mounted &&
+          ownerCurrent() &&
+          const DeepCollectionEquality().equals(cacheQuery, _pageQueryScope),
     );
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
       return;
@@ -714,7 +754,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                               _issueStatus,
                               _historyTime,
                             ),
-                            onPageChange: (p) => _reload(p),
+                            onPageChange: _navigatePage,
                           ),
                         ),
                 );

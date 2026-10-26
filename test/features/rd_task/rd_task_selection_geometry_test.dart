@@ -202,6 +202,9 @@ void main() {
       userId: 'A',
     );
     await tester.pumpAndSettle();
+    expect(find.text('核对基本单位'), findsNothing);
+    await tester.tap(find.text('RD-UNIT-1'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('核对基本单位'));
     await tester.pumpAndSettle();
     expect(find.byType(RdInitialBasicUnitDialog), findsOneWidget);

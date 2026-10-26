@@ -3,9 +3,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../components/buttons/uten_button.dart';
 import '../../components/data_display/uten_status_badge.dart';
+import '../../components/forms/maker_audit_fields.dart' show utenFmtIsoTime;
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../models/procurement_order_closure.dart';
+import 'procurement_order_closure_quantities.dart';
 
 class ProcurementOrderClosureStatus extends StatelessWidget {
   const ProcurementOrderClosureStatus({
@@ -36,17 +38,23 @@ class ProcurementOrderClosureStatus extends StatelessWidget {
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: UtenStatusBadge(
-                label: request.isPending
+                label: request.isDirect && request.isApproved
+                    ? l10n.orderClosureDirectEnded
+                    : request.isPending
                     ? l10n.orderClosurePending
                     : request.isApproved
                     ? l10n.orderClosureApproved
                     : request.isRejected
                     ? l10n.orderClosureRejected
+                    : request.isCanceled
+                    ? l10n.orderClosureRequestCanceled
                     : l10n.orderClosureReviewTitle,
                 type: request.isPending
                     ? UtenStatusBadgeType.warning
                     : request.isRejected
                     ? UtenStatusBadgeType.danger
+                    : request.isCanceled
+                    ? UtenStatusBadgeType.neutral
                     : UtenStatusBadgeType.success,
               ),
             ),
@@ -57,12 +65,37 @@ class ProcurementOrderClosureStatus extends StatelessWidget {
                   : l10n.orderClosureAction,
             ),
             Text('${l10n.orderClosureReason}: ${request.reason ?? '—'}'),
+            if (request.isApproved) ...[
+              Text(
+                orderType == 'PURCHASE'
+                    ? l10n.orderClosureCancelledByPurchase
+                    : l10n.orderClosureCancelledBySubcontract,
+              ),
+              if (request.closedByName?.isNotEmpty == true)
+                Text('${l10n.orderClosureOperator}: ${request.closedByName}'),
+              if (request.closedAt?.isNotEmpty == true)
+                Text(
+                  '${l10n.orderClosureClosedAt}: ${utenFmtIsoTime(request.closedAt)}',
+                ),
+              if (request.unverifiedQuantity)
+                Text(l10n.orderClosureUnverifiedQuantity),
+              if (request.items.isNotEmpty)
+                Text(l10n.orderClosureQuantityBasisHint),
+              for (final line in request.items)
+                Padding(
+                  padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                  child: ProcurementOrderClosureQuantities(
+                    line: line,
+                    cancelled: true,
+                  ),
+                ),
+            ],
             if (request.rejectionReason?.isNotEmpty == true)
               Text(
                 request.rejectionReason!,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
-            if (request.isPending) Text(l10n.orderClosureApprovalHint),
+            if (request.isPending) Text(l10n.orderClosureLegacyPendingHint),
             Wrap(
               spacing: UtenSpacing.s8,
               runSpacing: UtenSpacing.s8,
@@ -73,7 +106,11 @@ class ProcurementOrderClosureStatus extends StatelessWidget {
                     onPressed: () => context.push(
                       '/finance/procurement-approvals/${Uri.encodeComponent(request.caseId)}',
                     ),
-                    child: Text(l10n.orderClosureReviewTitle),
+                    child: Text(
+                      request.isDirect
+                          ? l10n.orderClosureRecordTitle
+                          : l10n.orderClosureReviewTitle,
+                    ),
                   ),
                 if (canOpenReplacement &&
                     request.replacementOrderId?.isNotEmpty == true)

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -226,7 +227,7 @@ class _WhereUsedProductDetailBodyState
           const _SectionTitle(
             icon: Icons.inventory_2_outlined,
             title: '当前产成品资料',
-            subtitle: '来自货品主档；与上方各来源关系和数量分开显示',
+            info: '来自货品主档；与上方各来源关系和数量分开显示',
           ),
           const SizedBox(height: UtenSpacing.s12),
           if (_loading)
@@ -400,12 +401,14 @@ class _SectionTitle extends StatelessWidget {
   const _SectionTitle({
     required this.icon,
     required this.title,
-    required this.subtitle,
+    this.subtitle,
+    this.info,
   });
 
   final IconData icon;
   final String title;
-  final String subtitle;
+  final String? subtitle;
+  final String? info;
 
   @override
   Widget build(BuildContext context) {
@@ -419,19 +422,28 @@ class _SectionTitle extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      title,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  if (info != null) UtenFieldHintIcon(info: info, dense: true),
+                ],
               ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle!,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

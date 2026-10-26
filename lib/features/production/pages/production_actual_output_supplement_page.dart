@@ -19,6 +19,7 @@ import '../widgets/production_review_reason_dialog.dart';
 import '../repositories/production_actual_output_supplement_repository.dart';
 import '../repositories/production_material_increment_repository.dart';
 import '../repositories/production_repository.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class ProductionActualOutputSupplementPage extends ConsumerStatefulWidget {
   const ProductionActualOutputSupplementPage({
@@ -214,7 +215,7 @@ class _SupplementState
                           child: Text('$_error · 重试'),
                         ),
                 )
-              : Padding(
+              : UtenPageEdgePadding(
                   padding: const EdgeInsets.all(24),
                   child: SingleChildScrollView(
                     // compact 悬浮胶囊避让：滚到底末行要能越过胶囊

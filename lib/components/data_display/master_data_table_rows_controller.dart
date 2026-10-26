@@ -28,6 +28,8 @@ class MasterDataTableRowsController<T> {
     required int currentPage,
     required int totalPages,
     void Function(int)? goToPage,
+    VoidCallback? onScrollIntent,
+    Future<void> Function()? settlePresentation,
   })?
   _onBind;
   void Function(Object)? _onDetach;
@@ -41,9 +43,22 @@ class MasterDataTableRowsController<T> {
   MasterDataPagination? _pendingPagination;
   bool _paginationScheduled = false;
   void Function(int)? _goToPage;
+  VoidCallback? _onScrollIntent;
+  Future<void> Function()? _settlePresentation;
 
   ValueListenable<MasterDataPagination?> get pagination => _pagination;
+  /// The latest reading position, including a change not yet notified this
+  /// frame. A fetched/prepared page is deliberately not the reading position.
+  int? get visiblePage =>
+      _pendingPagination?.currentPage ?? _pagination.value?.currentPage;
   void goToPage(int page) => _goToPage?.call(page);
+
+  /// Ancestor-scrolled tables report actual user movement separately from
+  /// measuring a viewport or applying their own anchor correction.
+  void noteScrollIntent() => _onScrollIntent?.call();
+
+  /// Completes after the owning table's current rows have real layout.
+  Future<void> get settled async => await _settlePresentation?.call();
 
   void _publishPagination(MasterDataPagination? next) {
     if (_pendingPagination?.currentPage == next?.currentPage &&
@@ -88,6 +103,8 @@ class MasterDataTableRowsController<T> {
     int currentPage = 1,
     int totalPages = 1,
     void Function(int)? goToPage,
+    VoidCallback? onScrollIntent,
+    Future<void> Function()? settlePresentation,
   }) {
     _owner = owner;
     _loadNextPage = load;
@@ -95,6 +112,8 @@ class MasterDataTableRowsController<T> {
     _updateVisiblePage = updateVisiblePage;
     _isAppending = busy;
     _goToPage = goToPage;
+    _onScrollIntent = onScrollIntent;
+    _settlePresentation = settlePresentation;
     _publishPagination(MasterDataPagination(currentPage, totalPages, busy));
     _onBind?.call(
       owner,
@@ -105,6 +124,8 @@ class MasterDataTableRowsController<T> {
       currentPage: currentPage,
       totalPages: totalPages,
       goToPage: goToPage,
+      onScrollIntent: onScrollIntent,
+      settlePresentation: settlePresentation,
     );
   }
 
@@ -116,6 +137,8 @@ class MasterDataTableRowsController<T> {
     _updateVisiblePage = null;
     _isAppending = false;
     _goToPage = null;
+    _onScrollIntent = null;
+    _settlePresentation = null;
     _publishPagination(null);
     _onDetach?.call(owner);
   }

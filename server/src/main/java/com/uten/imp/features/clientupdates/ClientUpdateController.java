@@ -1,6 +1,7 @@
 package com.uten.imp.features.clientupdates;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.InputStreamResource;
@@ -23,6 +24,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class ClientUpdateController {
     private final ClientReleaseService service;
+
+    @GetMapping("/downloads")
+    @PreAuthorize(ClientReleaseService.DOWNLOADS_EXPRESSION)
+    public ResponseEntity<List<ClientReleaseDto.Release>> downloads() {
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "private, no-store").body(service.downloads());
+    }
 
     @GetMapping("/check")
     public ResponseEntity<ClientReleaseDto.Check> check(@RequestParam("platform") String platform,

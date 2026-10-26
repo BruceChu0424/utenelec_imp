@@ -42,7 +42,7 @@ public class ProductionExecutionWorkbenchController {
      * 「进行中」根列表单号列 facets（2026-09-25 单号列统一）：{orders:[…]}，
      * 与列表同一过滤参数（不含 salesOrder 自身）。
      */
-    @GetMapping("/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('production_execution:overview')")
     public Map<String, List<Map<String, Object>>> facets(
             @RequestParam(required = false) String keyword,

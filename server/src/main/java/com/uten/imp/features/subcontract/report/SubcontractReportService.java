@@ -4,6 +4,8 @@ import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.report.ReportQueryKit;
+import com.uten.imp.common.report.ReportReadPlan;
+import com.uten.imp.common.report.ReportExportCursor;
 import com.uten.imp.common.report.ReportQueryKit.FacetSpec;
 import com.uten.imp.common.report.ReportQueryKit.WhereBuilder;
 import com.uten.imp.common.report.ReportSort;
@@ -99,26 +101,29 @@ public class SubcontractReportService {
         for (ReportColumn c : safeColumns) sortKeys.add(c.key());
         String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
 
-        var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
+        var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
         mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = dataQ.getResultList();
+        List<Object[]> rows = ReportExportCursor.rows(em, dataQ);
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             items.add(responseRow(columns, r, priceMasked));
         }
 
-        var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
-        full.params().forEach(countQ::setParameter);
-        long total = ((Number) countQ.getSingleResult()).longValue();
-        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
+            full.params().forEach(countQ::setParameter);
+            total = ((Number) countQ.getSingleResult()).longValue();
+        }
+        int totalPages = ReportReadPlan.totalPages(total, safeSize);
 
         Map<String, List<ReportFacet>> facets = new LinkedHashMap<>();
-        for (FacetSpec spec : specs) {
+        for (FacetSpec spec : ReportReadPlan.current().includeFacets() ? specs : List.<FacetSpec>of()) {
             if (priceMasked && isCommercialKey(spec.key())) continue;
             var fq = em.createNativeQuery("SELECT " + spec.selectExpr() + ", COUNT(*) AS cnt " + fromJoin + " "
                     + baseB.sql() + " GROUP BY " + spec.groupExpr() + " ORDER BY cnt DESC LIMIT 50");
@@ -144,9 +149,9 @@ public class SubcontractReportService {
         // 表格下方合计：与列表用同一份 full（日期/facet/关键字 + 对象级授权谓词）在**整个结果集**
         // 上聚合，与翻到第几页无关；派生表不带 LIMIT/OFFSET，所以绝不会出现「只合计当前页」。
         List<com.uten.imp.common.report.ReportTotal> totals =
-                com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(
                         em, dataSelect, fromJoin, full.sql(), full.params(),
-                        reportTotalSpecs(safeColumns, columns));
+                        reportTotalSpecs(safeColumns, columns)) : List.<com.uten.imp.common.report.ReportTotal>of();
         totals=com.uten.imp.common.report.ReportTotal.withColumnUnits(totals,columns);
 
         List<ReportColumn> visible = safeColumns.stream().filter(c -> !c.key().startsWith("__")).toList();
@@ -260,7 +265,7 @@ public class SubcontractReportService {
         return switch (spec.filterType()) {
             case "uuid"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS uuid)", p, UUID.fromString(value));
             case "int", "style" -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS int)", p, ReportQueryKit.parseRequiredInt(value));
-            case "bool"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, Boolean.valueOf(value));
+            case "bool"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, ReportQueryKit.parseRequiredBoolean(value));
             default      -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS text)", p, value);
         };
     }
@@ -268,6 +273,40 @@ public class SubcontractReportService {
     // ======================== 主过滤构造（公共） ========================
     // addApprovedByDefault / addCommonDocFilters / addSummaryKw 2026-09-16 收敛到
     // com.uten.imp.common.report.ReportQueryKit（与 purchase 两份逐字一致），调用点见各报表方法。
+
+    /** Current order delivery facts, including imported archive orders; no inventory mutation. */
+    @Transactional(readOnly = true)
+    public ReportTableResponse orderDetail(String billNo, UUID supplierId, Short status,
+            LocalDate dateFrom, LocalDate dateTo, String kw, Map<String,String> facets,
+            int page, int size, String sort, String order) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
+                ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.date("deliverDate", "交货日期"),
+                ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("goodsCode", "编号", 110),
+                ReportColumn.text("colorName", "颜色", 80), ReportColumn.text("spec", "规格", 140),
+                ReportColumn.number("qty", "订货数量").withUnitKey("__unitName"),
+                ReportColumn.number("receivedQty", "收货数量").withUnitKey("__unitName"),
+                ReportColumn.number("returnedQty", "退货数量").withUnitKey("__unitName"),
+                ReportColumn.number("differenceQty", "差异数").withUnitKey("__unitName"),
+                ReportColumn.bool("closed", "是否结束"), ReportColumn.text("remark", "摘要", 200),
+                ReportColumn.text("__srcId", ""));
+        String select = """
+                SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName",
+                       COALESCE(i.deliver_date,o.deliver_date) AS "deliverDate",
+                       i.goods_name_snapshot AS "goodsName", i.goods_code_snapshot AS "goodsCode",
+                       col.name AS "colorName", g.spec AS "spec", i.qty AS "qty",
+                       i.received_qty AS "receivedQty", i.returned_qty AS "returnedQty",
+                       %s AS "differenceQty", o.is_closed AS "closed", i.remark AS "remark", o.id AS "__srcId"
+                """.formatted(com.uten.imp.common.finance.ProcurementDeliveryDifference.sql("i.qty", "i.received_qty", "i.returned_qty"));
+        String from = """
+                FROM subcontract_order_items i JOIN subcontract_orders o ON o.id=i.order_id
+                LEFT JOIN suppliers sup ON sup.id=o.supplier_id
+                LEFT JOIN goods g ON g.id=i.goods_id LEFT JOIN colors col ON col.id=i.color_id
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE NOT COALESCE(i.is_deleted,false) AND NOT COALESCE(o.is_deleted,false)");
+        ReportQueryKit.addCommonDocFilters(w,billNo,supplierId,null,status,dateFrom,dateTo,kw,"o.bill_no","i.bill_date");
+        return execute(cols,select,from,w,"o.bill_date DESC,o.bill_no,i.line_no",List.of(facetBillNo(),facetSupplier()),facets,page,size,sort,order);
+    }
 
     // ======================== ① 委外进仓明细 ========================
 
@@ -339,7 +378,7 @@ public class SubcontractReportService {
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ② 委外进仓汇总 ========================
@@ -380,7 +419,7 @@ public class SubcontractReportService {
         List<FacetSpec> specs = List.of(
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, o.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ③ 委外退货明细 ========================
@@ -438,7 +477,7 @@ public class SubcontractReportService {
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ④ 委外退货汇总 ========================
@@ -478,7 +517,7 @@ public class SubcontractReportService {
         List<FacetSpec> specs = List.of(
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, o.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ⑤ 委外材料出仓明细 ========================
@@ -530,7 +569,7 @@ public class SubcontractReportService {
                 facetBillNo(),
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ⑥ 委外材料出仓汇总 ========================
@@ -567,7 +606,7 @@ public class SubcontractReportService {
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
         ReportQueryKit.addSummaryKw(w, kw, "o.bill_no");
         List<FacetSpec> specs = List.of(facetSupplier(), facetWarehouse());
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, o.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ⑦ 委外材料退货明细 ========================
@@ -617,7 +656,7 @@ public class SubcontractReportService {
                 facetBillNo(),
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ⑧ 委外材料退货汇总 ========================
@@ -654,7 +693,7 @@ public class SubcontractReportService {
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
         ReportQueryKit.addSummaryKw(w, kw, "o.bill_no");
         List<FacetSpec> specs = List.of(facetSupplier(), facetWarehouse());
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, o.id", specs, facets, page, size, sort, order);
     }
 
     // ======================== ⑨ 委外出入状况表（综合 · 按 委外商×货品×颜色 聚合） ========================
@@ -778,7 +817,7 @@ public class SubcontractReportService {
                 + search.orderBy("sup.name NULLS LAST, a.goods_name_snapshot, a.goods_code_snapshot, a.supplier_id, a.goods_id, a.color_id NULLS FIRST") + "\n" + """
                 LIMIT :__limit OFFSET :__offset
                 """;
-        var q = em.createNativeQuery(sql);
+        var q = ReportExportCursor.query(em, sql);
         q.setParameter("supplierId", supplierId);
         q.setParameter("from", dateFrom);
         q.setParameter("to", dateTo);
@@ -787,7 +826,7 @@ public class SubcontractReportService {
         q.setParameter("__limit", safeSize);
         q.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = q.getResultList();
+        List<Object[]> rows = ReportExportCursor.rows(em, q);
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             items.add(responseRow(cols, r, priceMasked));
@@ -831,11 +870,14 @@ public class SubcontractReportService {
                 LEFT JOIN suppliers sup ON sup.id = a.supplier_id
                 LEFT JOIN colors col ON col.id = a.color_id
                 """ + searchFilter.sql();
-        var cq = em.createNativeQuery(countSql);
-        cq.setParameter("supplierId", supplierId);
-        searchFilter.params().forEach(cq::setParameter);
-        long total = ((Number) cq.getSingleResult()).longValue();
-        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var cq = em.createNativeQuery(countSql);
+            cq.setParameter("supplierId", supplierId);
+            searchFilter.params().forEach(cq::setParameter);
+            total = ((Number) cq.getSingleResult()).longValue();
+        }
+        int totalPages = ReportReadPlan.totalPages(total, safeSize);
 
         return new ReportTableResponse(safeCols, items, Map.of(), safePage, safeSize, total, totalPages);
     }
@@ -873,6 +915,7 @@ public class SubcontractReportService {
         String kw = p == null ? null : p.get("keyword");
         Map<String, String> facets = ReportQueryKit.facetsOf(p);
         BiFunction<Integer, Integer, ReportTableResponse> loader = switch (report) {
+            case "ORDER/detail"           -> (pg, sz) -> orderDetail(billNo, supplierId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             case "RECEIPT/detail"         -> (pg, sz) -> receiptDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             case "RECEIPT/summary"        -> (pg, sz) -> receiptSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             case "RETURN/detail"          -> (pg, sz) -> returnDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);

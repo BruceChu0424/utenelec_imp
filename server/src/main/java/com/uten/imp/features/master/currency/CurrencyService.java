@@ -100,7 +100,7 @@ public class CurrencyService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "code"), ALLOWED_SORT));
         var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
-        Page<Currency> p = repo.findAll(searchPage.specification(), searchPage.pageable());
+        Page<Currency> p = com.uten.imp.common.export.MasterExportSource.page(repo, em, Currency.class, searchPage.specification(), searchPage.pageable(), f);
         return new PageResponse<>(
                 p.map(this::toList).getContent(), p);
     }
@@ -113,10 +113,10 @@ public class CurrencyService {
     // ===== 加密 Excel 导出（服务端权威列定义） =====
 
     /**
-     * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
+     * 加密 Excel 导出：复用 list 的同一筛选/映射，后台以 100 行游标批次输出；同步仅保留有界小结果。
      * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（exchangeRate）。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ExportPayload export(CurrencyQueryFilter f, String sort, String order, int maxRows) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "编号", ExportColumn.TEXT),
@@ -124,7 +124,7 @@ public class CurrencyService {
                 new ExportColumn("exchangeRate", "参考汇率", ExportColumn.NUMBER),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
                 maxRows, (p, size) -> list(f, p, size, sort, order), c -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("_platformRecordId", c.getId());
@@ -134,7 +134,6 @@ public class CurrencyService {
                     row.put("status", c.getStatus());
                     return row;
                 });
-        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets（各字段 distinct + 空值计数） =====

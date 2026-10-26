@@ -11,6 +11,7 @@ public enum ErrorCode {
     ACCOUNT_DISABLED(401, "账号已停用"),
     UNAUTHORIZED(401, "未登录或会话已过期"),
     FORBIDDEN(403, "当前账号无权执行此操作，请联系管理员核对操作权限和数据范围"),
+    READ_SCOPE_CHANGED(403, "数据访问范围已变化，请重新打开页面后核对"),
     PASSWORD_CHANGE_REQUIRED(403, "首次登录必须修改密码后才能继续"),
     REMOTE_ACCESS_DENIED(403, "该账号未授权外网(云端)访问"),
     MFA_REQUIRED(403, "外网访问需要验证动态验证码，请验证后自行继续原操作"),

@@ -13,13 +13,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/page_navigation_session.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -29,6 +29,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/goods_node.dart';
+import '../models/goods_field_edit_policy.dart';
 import '../models/goods_bom_item.dart';
 import '../models/product_category_node.dart';
 import '../providers/goods_clipboard.dart';
@@ -424,6 +425,18 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     WidgetsBinding.instance.addPostFrameCallback((_) => shellReload());
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
+  void dispose() {
+    _navigation.dispose();
+    super.dispose();
+  }
+
   /// 分类创建/编辑保存后：除了树（shellReload 已做），还要重挂右栏详情面板——
   /// 否则分类卡片仍显示旧名称/前缀，需要手动刷新才能看到最新值。
   @override
@@ -559,7 +572,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   MasterEntityPaneConfig<GoodsListItem, GoodsDetail> _paneConfig() {
     final goods = ref.watch(goodsRepositoryProvider);
     final facetRepository = ref.watch(goodsFacetRepositoryProvider);
-    final canInlineEdit = _perms.contains(shellReadStableWritePermission);
+    final canInlineEdit = GoodsFieldEditPolicy.canEditAny(_perms);
     final includeRelated = _includeRelated;
     final categoryBrowsing = shellCanViewCategories;
     return MasterEntityPaneConfig<GoodsListItem, GoodsDetail>(
@@ -791,7 +804,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       onCreate: (pane) async {
         final categoryId = pane.categoryId;
         if (categoryId == null) return;
-        await context.push(RoutePath.basicinfoGoodsNew(categoryId));
+        await _navigation.push<void>(RoutePath.basicinfoGoodsNew(categoryId));
         // 新建货品编号最大，按编号正序落在列表最下面——跳到最后一页能看到它。
         if (mounted) await _reloadToLastPage(pane);
       },
@@ -1511,8 +1524,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     ];
   }
 
-  /// 双击货品行：进货品详情整页；[_detailOpening] 防快速双击压两个详情页。
-  /// 详情页内的编辑/删除/组装/成本变动统一在返回本页后重载当前页列表。
+  final _navigation = PageNavigationSession();
   bool _detailOpening = false;
 
   Future<void> _showGoodsDetail(
@@ -1522,7 +1534,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     if (_detailOpening) return;
     _detailOpening = true;
     try {
-      await context.push(RoutePath.basicinfoGoodsDetail(g.id));
+      await _navigation.push<void>(RoutePath.basicinfoGoodsDetail(g.id));
     } finally {
       _detailOpening = false;
     }

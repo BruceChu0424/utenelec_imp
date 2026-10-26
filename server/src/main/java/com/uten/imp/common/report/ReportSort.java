@@ -24,7 +24,9 @@ public final class ReportSort {
         }
         for (String key : allowedKeys) {
             if (sort.equals(key)) {
-                return "\"" + key + "\"" + ("desc".equalsIgnoreCase(order) ? " DESC" : " ASC");
+                String primary = "\"" + key + "\"" + ("desc".equalsIgnoreCase(order) ? " DESC" : " ASC");
+                return defaultOrderBy == null || defaultOrderBy.isBlank()
+                        ? primary : primary + ", " + defaultOrderBy;
             }
         }
         return defaultOrderBy;

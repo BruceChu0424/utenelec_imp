@@ -40,7 +40,7 @@ public class GoodsPurchaseReceiptPolicyController {
             @NotNull Long version) {}
 
     @PutMapping("/api/master/goods/{id}/purchase-receipt-policy")
-    @PreAuthorize("hasAuthority('goods:edit')")
+    @PreAuthorize("hasAuthority('goods:purchase:edit')")
     @Transactional
     public GoodsDetail update(@PathVariable UUID id, @Valid @RequestBody Policy policy) {
         tx.bind();

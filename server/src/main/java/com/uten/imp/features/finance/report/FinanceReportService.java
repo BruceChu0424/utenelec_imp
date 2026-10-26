@@ -3,6 +3,8 @@ package com.uten.imp.features.finance.report;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.report.ReportQueryKit;
+import com.uten.imp.common.report.ReportReadPlan;
+import com.uten.imp.common.report.ReportExportCursor;
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.util.CategoryKeywordSearch;
@@ -101,14 +103,14 @@ public class FinanceReportService {
         for (ReportColumn c : columns) sortKeys.add(c.key());
         String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
 
-        var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
+        var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
         mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = dataQ.getResultList();
+        List<Object[]> rows = ReportExportCursor.rows(em, dataQ);
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -117,13 +119,16 @@ public class FinanceReportService {
             items.add(m);
         }
 
-        var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
-        full.params().forEach(countQ::setParameter);
-        long total = ((Number) countQ.getSingleResult()).longValue();
-        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
+            full.params().forEach(countQ::setParameter);
+            total = ((Number) countQ.getSingleResult()).longValue();
+        }
+        int totalPages = ReportReadPlan.totalPages(total, safeSize);
 
         Map<String, List<ReportFacet>> facets = new LinkedHashMap<>();
-        for (FacetSpec spec : specs) {
+        for (FacetSpec spec : ReportReadPlan.current().includeFacets() ? specs : List.<FacetSpec>of()) {
             var fq = em.createNativeQuery("SELECT " + spec.selectExpr() + ", COUNT(*) AS cnt " + fromJoin + " "
                     + baseB.sql() + " GROUP BY " + spec.groupExpr() + " ORDER BY cnt DESC LIMIT 50");
             baseB.params().forEach(fq::setParameter);
@@ -144,9 +149,9 @@ public class FinanceReportService {
         // 表格下方合计：与列表用同一份 full（日期/facet/关键字 + 对象级授权谓词）在**整个结果集**
         // 上聚合，与翻到第几页无关；派生表不带 LIMIT/OFFSET，所以绝不会出现「只合计当前页」。
         List<com.uten.imp.common.report.ReportTotal> totals =
-                com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(
                         em, dataSelect, fromJoin, full.sql(), full.params(),
-                        reportTotalSpecs(columns, columns));
+                        reportTotalSpecs(columns, columns)) : List.<com.uten.imp.common.report.ReportTotal>of();
 
         totals = com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns);
         List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
@@ -198,7 +203,7 @@ public class FinanceReportService {
         return switch (spec.filterType()) {
             case "uuid"  -> new FinanceWhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS uuid)", p, UUID.fromString(value));
             case "int"   -> new FinanceWhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS int)", p, ReportQueryKit.parseRequiredInt(value));
-            case "bool"  -> new FinanceWhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, Boolean.valueOf(value));
+            case "bool"  -> new FinanceWhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, ReportQueryKit.parseRequiredBoolean(value));
             default      -> new FinanceWhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS text)", p, value);
         };
     }
@@ -249,7 +254,7 @@ public class FinanceReportService {
         StringBuilder union = new StringBuilder();
         if (showClient) {
             union.append("SELECT c.name AS partyName, COALESCE(c.code,'') AS partyCode, '客户' AS partyType, COALESCE(ar.bal,0) AS receivable, 0 AS payable, "
-                    + "COALESCE(c.phone,'') AS phone, COALESCE(c.address,'') AS address, c.category_id AS partyCategoryId FROM clients c "
+                    + "COALESCE(c.phone,'') AS phone, COALESCE(c.address,'') AS address, c.category_id AS partyCategoryId, c.id AS partyId FROM clients c "
                     + "LEFT JOIN (SELECT client_id, SUM(amount_balance) AS bal FROM ar_ap_ledger "
                     + "WHERE direction='AR' AND is_deleted=false AND status=1"
                     + dateClause("bill_date") + " GROUP BY client_id) ar ON ar.client_id=c.id "
@@ -258,7 +263,7 @@ public class FinanceReportService {
         }
         if (showSupplier) {
             union.append("SELECT s.name AS partyName, COALESCE(s.code,'') AS partyCode, '供应商' AS partyType, 0 AS receivable, COALESCE(ap.bal,0) AS payable, "
-                    + "COALESCE(s.phone,'') AS phone, COALESCE(s.address,'') AS address, s.category_id AS partyCategoryId FROM suppliers s "
+                    + "COALESCE(s.phone,'') AS phone, COALESCE(s.address,'') AS address, s.category_id AS partyCategoryId, s.id AS partyId FROM suppliers s "
                     + "LEFT JOIN (SELECT supplier_id, SUM(amount_balance) AS bal FROM ar_ap_ledger "
                     + "WHERE direction='AP' AND is_deleted=false AND status=1"
                     + dateClause("bill_date") + " GROUP BY supplier_id) ap ON ap.supplier_id=s.id "
@@ -285,7 +290,7 @@ public class FinanceReportService {
         // 包成一个子查询，便于 count + 分页
         // partyCode 只用于搜索，放在内部投影最后；executeOverview 仍只映射前 6 列，
         // 因此对外 ReportTableResponse 列契约不变。
-        String dataSelect = "SELECT partyName, partyType, receivable, payable, phone, address, partyCode, partyCategoryId FROM ("
+        String dataSelect = "SELECT partyName, partyType, receivable, payable, phone, address, partyCode, partyCategoryId, partyId FROM ("
                 + union + ") z";
         String fromJoin = "";
         // arApOverview 用独立查询（带 category 递归 CTE 参数），不走通用 execute 的 facet；这里手写计数+分页
@@ -367,8 +372,8 @@ public class FinanceReportService {
                         "partyCategoryId", "partyCode", "partyName", "partyCode", "partyName")
                 + " ELSE " + CategoryKeywordSearch.nativeRank(keyword, "kw", "supplier_categories",
                         "partyCategoryId", "partyCode", "partyName", "partyCode", "partyName") + " END, ";
-        var dataQ = em.createNativeQuery(dataSelect + " " + full.sql()
-                + " ORDER BY " + relevance + "partyType, partyName LIMIT :__limit OFFSET :__offset");
+        var dataQ = ReportExportCursor.query(em, dataSelect + " " + full.sql()
+                + " ORDER BY " + relevance + "partyType, partyName, partyId LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
         CategoryKeywordSearch.bindRank(dataQ, keyword, "kw");
         dataQ.setParameter("fromDate", dateFrom);
@@ -377,7 +382,7 @@ public class FinanceReportService {
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = dataQ.getResultList();
+        List<Object[]> rows = ReportExportCursor.rows(em, dataQ);
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -387,16 +392,19 @@ public class FinanceReportService {
             com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(m);
             items.add(m);
         }
-        var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + dataSelect + ") z " + full.sql());
-        full.params().forEach(countQ::setParameter);
-        countQ.setParameter("fromDate", dateFrom);
-        countQ.setParameter("toDate", dateTo);
-        if (catParam != null) countQ.setParameter("catId", catParam);
-        long total = ((Number) countQ.getSingleResult()).longValue();
-        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + dataSelect + ") z " + full.sql());
+            full.params().forEach(countQ::setParameter);
+            countQ.setParameter("fromDate", dateFrom);
+            countQ.setParameter("toDate", dateTo);
+            if (catParam != null) countQ.setParameter("catId", catParam);
+            total = ((Number) countQ.getSingleResult()).longValue();
+        }
+        int totalPages = ReportReadPlan.totalPages(total, safeSize);
         // 合计：与列表同一段 dataSelect + 同一份 where（日期/显示方式/关键字/分类下溯），
         // 派生表不带 LIMIT/OFFSET，所以覆盖整个结果集而不是当前这一页。
-        List<com.uten.imp.common.report.ReportTotal> totals = com.uten.imp.common.report.ReportTotalsCalculator.compute(
+        List<com.uten.imp.common.report.ReportTotal> totals = ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(
                 em, dataSelect, fromJoin, full.sql(),
                 q -> {
                     full.params().forEach(q::setParameter);
@@ -404,7 +412,7 @@ public class FinanceReportService {
                     q.setParameter("toDate", dateTo);
                     if (catParam != null) q.setParameter("catId", catParam);
                 },
-                reportTotalSpecs(cols, cols));
+                reportTotalSpecs(cols, cols)) : List.<com.uten.imp.common.report.ReportTotal>of();
         return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages, com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, cols));
     }
 
@@ -500,7 +508,7 @@ public class FinanceReportService {
                 new FacetSpec("billNo", "l.bill_no AS v, l.bill_no AS lbl", "l.bill_no", "l.bill_no", "text"),
                 new FacetSpec("sourceDocNo", "l.source_doc_no AS v, l.source_doc_no AS lbl", "l.source_doc_no", "l.source_doc_no", "text"),
                 new FacetSpec("settled", "l.is_settled AS v, CASE WHEN l.is_settled THEN '已收/付' ELSE '未收/付' END AS lbl", "l.is_settled", "l.is_settled", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "l.bill_date DESC, l.bill_no", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "l.bill_date DESC, l.bill_no, l.id", specs, facets, page, size, sort, order);
     }
 
     /**
@@ -590,7 +598,7 @@ public class FinanceReportService {
         if (keyword != null && !keyword.isBlank()) {
             w.search(keyword, "sales_order.bill_no", "client.name", "client.full_name");
         }
-        return execute(cols, dataSelect, fromJoin, w, "sales_order.bill_date DESC,sales_order.bill_no",
+        return execute(cols, dataSelect, fromJoin, w, "sales_order.bill_date DESC,sales_order.bill_no,sales_order.id",
                 List.of(), Map.of(), page, size, sort, order);
     }
 
@@ -746,7 +754,7 @@ public class FinanceReportService {
                               WHEN BTRIM(COALESCE(c.emp_id,'')) ~ '^[0-9]{1,9}$'
                               THEN BTRIM(c.emp_id)::int ELSE NULL END))
                 """;
-        return executeRawPaged(cols, core, "c.name", keyword, from, to, page, size, "c", documentScope);
+        return executeRawPaged(cols, core, "c.name,c.id", keyword, from, to, page, size, "c", documentScope);
     }
 
     /** D 应付款汇总（按供应商；附件 3 口径，2026-07-29 重做）：
@@ -948,7 +956,7 @@ public class FinanceReportService {
                 LEFT JOIN paid pa ON pa.supplier_id=s.id
                 LEFT JOIN offsets o ON o.supplier_id=s.id
                 """;
-        return executeRawPaged(cols, core, "s.name", keyword, from, to, page, size, "s", documentScope);
+        return executeRawPaged(cols, core, "s.name,s.id", keyword, from, to, page, size, "s", documentScope);
     }
 
     private void assertOpeningWindowReplayable(String direction, String keyword, LocalDate from, LocalDate to) {
@@ -997,14 +1005,14 @@ public class FinanceReportService {
         var search = new FinanceWhereBuilder("WHERE TRUE");
         search.search(keyword, partyAlias + ".name", partyAlias + ".code");
         String where = search.build(null).sql();
-        var dq = em.createNativeQuery(coreSql + " " + where + " ORDER BY " + search.orderBy(orderBy) + " LIMIT :__l OFFSET :__o");
+        var dq = ReportExportCursor.query(em, coreSql + " " + where + " ORDER BY " + search.orderBy(orderBy) + " LIMIT :__l OFFSET :__o");
         bindRaw(dq, keyword, from, to);
         search.searchOrderParameters().forEach(dq::setParameter);
         documentScope.bind(dq);
         dq.setParameter("__l", safeSize);
         dq.setParameter("__o", offset);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = dq.getResultList();
+        List<Object[]> rows = ReportExportCursor.rows(em, dq);
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -1012,17 +1020,20 @@ public class FinanceReportService {
             com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(m);
             items.add(m);
         }
-        var cq = em.createNativeQuery("SELECT COUNT(*) FROM (" + coreSql + " " + where + ") zz");
-        bindRaw(cq, keyword, from, to);
-        documentScope.bind(cq);
-        long total = ((Number) cq.getSingleResult()).longValue();
-        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var cq = em.createNativeQuery("SELECT COUNT(*) FROM (" + coreSql + " " + where + ") zz");
+            bindRaw(cq, keyword, from, to);
+            documentScope.bind(cq);
+            total = ((Number) cq.getSingleResult()).longValue();
+        }
+        int totalPages = ReportReadPlan.totalPages(total, safeSize);
         // 合计：把整段 CTE 原样包成派生表再聚合（Postgres 允许子查询里带 WITH），
         // 用的是同一份 where 与同一套绑定（:from/:to/:kw + 对象级授权谓词），覆盖整个结果集。
-        List<com.uten.imp.common.report.ReportTotal> totals = com.uten.imp.common.report.ReportTotalsCalculator.compute(
+        List<com.uten.imp.common.report.ReportTotal> totals = ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(
                 em, coreSql, "", where,
                 q -> { bindRaw(q, keyword, from, to); documentScope.bind(q); },
-                reportTotalSpecs(cols, cols));
+                reportTotalSpecs(cols, cols)) : List.<com.uten.imp.common.report.ReportTotal>of();
         return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages, com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, cols));
     }
 
@@ -1131,7 +1142,7 @@ public class FinanceReportService {
                 "t.client_id", "t.bill_no", "t.bill_date",
                 "CONCAT_WS(' ',c.name,i.applied_bill_no,orders.sales_order_nos)");
         return execute(cols, dataSelect, fromJoin, w,
-                "t.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(facetBillNo()), facets, page, size, sort, order);
+                "t.bill_date DESC, t.bill_no, i.line_no NULLS LAST, i.id", List.of(facetBillNo()), facets, page, size, sort, order);
     }
 
     /** F 销售收款汇总（按客户 + 币别；原币金额禁止跨币种直接相加）。 */
@@ -1193,7 +1204,7 @@ public class FinanceReportService {
                 "WHERE COALESCE(t.is_deleted,false)=false", "t.maker_id", readScope);
         addFinanceDocFilters(w, billNo, clientId, null, status, dateFrom, dateTo, keyword,
                 "t.client_id", "t.bill_no", "t.bill_date", "c.name");
-        return executeGrouped(cols, dataSelect, fromJoin, w, "c.name,currency.code",
+        return executeGrouped(cols, dataSelect, fromJoin, w, "c.name,currency.code,c.id,currency.id",
                 "c.id,c.code,c.name,c.full_name,c.address,c.place_id,currency.id,currency.code", page, size);
     }
 
@@ -1250,7 +1261,7 @@ public class FinanceReportService {
                 "WHERE COALESCE(t.is_deleted,false)=false", "t.maker_id", readScope);
         addFinanceDocFilters(w, billNo, supplierId, accountId, status, dateFrom, dateTo, keyword,
                 "t.supplier_id", "t.bill_no", "t.bill_date", "s.name");
-        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(facetBillNo()), facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no, t.id", List.of(facetBillNo()), facets, page, size, sort, order);
     }
 
     /** H 采购付款汇总（一行一付款单 + 关联 AP 立帐单/已付/未付/本次付款/本次余额）。 */
@@ -1318,7 +1329,7 @@ public class FinanceReportService {
                 "WHERE COALESCE(t.is_deleted,false)=false", "t.maker_id", readScope);
         addFinanceDocFilters(w, billNo, supplierId, null, status, dateFrom, dateTo, keyword,
                 "t.supplier_id", "t.bill_no", "t.bill_date", "s.name");
-        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no, t.id", List.of(), facets, page, size, sort, order);
     }
 
     // ======================== ③ 费用/收入明细/汇总 M·N / O·P + V ========================
@@ -1382,7 +1393,7 @@ public class FinanceReportService {
                 "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",
                 "t.maker_id", readScope);
         addFinanceItemFilters(w, billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(facetBillNo()), facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST, i.id", List.of(facetBillNo()), facets, page, size, sort, order);
     }
 
     /** N 一般费用汇总（按 单号×部门×费用项目 GROUP BY items）。 */
@@ -1437,7 +1448,7 @@ public class FinanceReportService {
                 "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",
                 "t.maker_id", readScope);
         addFinanceItemFilters(w, billNo, null, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST, i.id", List.of(), facets, page, size, sort, order);
     }
 
     /** O 其它收入明细。 */
@@ -1488,7 +1499,7 @@ public class FinanceReportService {
                 "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",
                 "t.maker_id", readScope);
         addFinanceItemFilters(w, billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(facetBillNo()), facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST, i.id", List.of(facetBillNo()), facets, page, size, sort, order);
     }
 
     /** P 其它收入汇总。 */
@@ -1543,7 +1554,7 @@ public class FinanceReportService {
                 "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",
                 "t.maker_id", readScope);
         addFinanceItemFilters(w, billNo, null, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST, i.id", List.of(), facets, page, size, sort, order);
     }
 
     /** V 费用冲销明细：费用是应收冲减而非账户现金，按收款引用行展示。 */
@@ -1637,7 +1648,7 @@ public class FinanceReportService {
                 "t.client_id", "t.bill_no", "t.bill_date",
                 "CONCAT_WS(' ',c.name,i.applied_bill_no,orders.sales_order_nos)");
         return execute(cols, dataSelect, fromJoin, w,
-                "t.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(facetBillNo()), facets, page, size, sort, order);
+                "t.bill_date DESC, t.bill_no, i.line_no NULLS LAST, i.id", List.of(facetBillNo()), facets, page, size, sort, order);
     }
 
     // ======================== ④ 往来对帐单 I·J·K·L / X（滚动余额，源=头表+台账） ========================
@@ -1790,7 +1801,7 @@ public class FinanceReportService {
         java.time.OffsetDateTime toExclusive = dateTo == null ? null : BusinessTime.startOfDay(dateTo.plusDays(1));
         String normalizedKeyword = keyword == null || keyword.isBlank()
                 ? null : KeywordSearch.phrase(keyword);
-        var query = em.createNativeQuery("""
+        var query = NativeFacets.query(em, "billNo", """
                         SELECT COALESCE(flow.bill_no, ''), COUNT(*)
                         FROM finance_reconciliations flow
                         WHERE flow.account_id = :aid AND COALESCE(flow.is_deleted, FALSE) = FALSE
@@ -1918,7 +1929,15 @@ public class FinanceReportService {
                 ORDER BY sort_bill_date,sort_posting_seq
                 LIMIT :limit OFFSET :offset
                 """;
-        var query=em.createNativeQuery(sql)
+        // The running balance is a row fact and must remain even when optional metadata is omitted.
+        if (!ReportReadPlan.current().includeCount()) {
+            sql = sql.replace("COUNT(*) OVER() AS total_count", "NULL::bigint AS total_count");
+        }
+        if (!ReportReadPlan.current().includeTotals()) {
+            sql = sql.replace("SUM(in_amount) OVER() AS total_in", "NULL::numeric AS total_in")
+                    .replace("SUM(out_amount) OVER() AS total_out", "NULL::numeric AS total_out");
+        }
+        var query=ReportExportCursor.query(em, sql)
                 .setParameter("aid",accountId)
                 .setParameter("fromAt",fromAt)
                 .setParameter("fromMonth",fromMonth)
@@ -1929,9 +1948,33 @@ public class FinanceReportService {
                 .setParameter("limit",safeSize)
                 .setParameter("offset",offset);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows=query.getResultList();
+        List<Object[]> rows=ReportExportCursor.rows(em, query);
+        Object[] emptyPageMetadata = null;
+        if (safePage > 1 && rows.isEmpty()
+                && (ReportReadPlan.current().includeCount() || ReportReadPlan.current().includeTotals())) {
+            // Window metadata cannot travel on a page beyond the last row. Read only the requested
+            // aggregate values from the same filtered relation, rather than reporting a false zero.
+            String countExpr = ReportReadPlan.current().includeCount() ? "COUNT(*)" : "NULL::bigint";
+            String inExpr = ReportReadPlan.current().includeTotals() ? "SUM(in_amount)" : "NULL::numeric";
+            String outExpr = ReportReadPlan.current().includeTotals() ? "SUM(out_amount)" : "NULL::numeric";
+            var metadata = em.createNativeQuery(sql.substring(0, sql.indexOf("SELECT bill_date,bill_no"))
+                    + "SELECT " + countExpr + "," + inExpr + "," + outExpr
+                    + ",(SELECT " + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")
+                    + " FROM accounts account LEFT JOIN currencies currency ON currency.id=account.currency_id"
+                    + " WHERE account.id=:aid) FROM filtered")
+                    .setParameter("aid", accountId)
+                    .setParameter("fromAt", fromAt).setParameter("fromMonth", fromMonth)
+                    .setParameter("fromMonthAt", fromMonthAt).setParameter("toExclusive", toExclusive)
+                    .setParameter("keyword", normalizedKeyword)
+                    .setParameter("billNoFilter", billNo == null || billNo.isBlank() ? null : billNo.trim());
+            @SuppressWarnings("unchecked") List<Object[]> metadataRows = metadata.getResultList();
+            if (!metadataRows.isEmpty()) emptyPageMetadata = metadataRows.getFirst();
+        }
         List<Map<String,Object>> items=new ArrayList<>(rows.size());
-        long total=rows.isEmpty()?0:((Number)rows.getFirst()[16]).longValue();
+        long total = ReportReadPlan.current().includeCount()
+                ? rows.isEmpty() ? emptyPageMetadata == null ? 0 : ((Number) emptyPageMetadata[0]).longValue()
+                    : ((Number) rows.getFirst()[16]).longValue()
+                : ReportReadPlan.UNKNOWN_TOTAL;
         for(Object[] row:rows){
             Map<String,Object> item=new LinkedHashMap<>();
             item.put("billDate",norm(row[0]));
@@ -1957,14 +2000,19 @@ public class FinanceReportService {
             com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(item);
             items.add(item);
         }
-        int totalPages=(int)((total+safeSize-1)/safeSize);
+        int totalPages=ReportReadPlan.totalPages(total, safeSize);
         List<com.uten.imp.common.report.ReportTotal> totals=new ArrayList<>();
-        if(!rows.isEmpty()){
+        if(ReportReadPlan.current().includeTotals() && !rows.isEmpty()){
             addScalarTotal(totals,cols,"inAmount",rows.getFirst()[17]);
             addScalarTotal(totals,cols,"outAmount",rows.getFirst()[18]);
+        } else if (ReportReadPlan.current().includeTotals() && emptyPageMetadata != null) {
+            addScalarTotal(totals, cols, "inAmount", emptyPageMetadata[1]);
+            addScalarTotal(totals, cols, "outAmount", emptyPageMetadata[2]);
         }
-        if (!items.isEmpty()) {
-            String unit = java.util.Objects.toString(items.getFirst().get("__accountCurrencyName"), null);
+        if (!items.isEmpty() || emptyPageMetadata != null) {
+            String unit = !items.isEmpty()
+                    ? java.util.Objects.toString(items.getFirst().get("__accountCurrencyName"), null)
+                    : emptyPageMetadata.length > 3 ? java.util.Objects.toString(emptyPageMetadata[3], null) : null;
             totals = totals.stream().map(t -> new com.uten.imp.common.report.ReportTotal(
                     t.key(), t.label(), t.type(), t.groupKey(), t.groups(), unit)).toList();
         }
@@ -2092,12 +2140,16 @@ public class FinanceReportService {
                 JOIN currencies currency ON currency.id=event.currency_id
                 WHERE 1=1
                 """ + filter + " ORDER BY event.event_date,event.event_order,event.event_no";
-        var query = em.createNativeQuery(sql);
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(500, Math.max(1, size));
+        var query = ReportExportCursor.query(em, sql + " LIMIT :__limit OFFSET :__offset")
+                .setParameter("__limit", safeSize)
+                .setParameter("__offset", (long) (safePage - 1) * safeSize);
         if (clientId != null) query.setParameter("clientId", clientId);
         if (dateFrom != null) query.setParameter("dateFrom", dateFrom);
         if (dateTo != null) query.setParameter("dateTo", dateTo);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = query.getResultList();
+        List<Object[]> rows = ReportExportCursor.rows(em, query);
         List<Map<String,Object>> mapped = new ArrayList<>(rows.size());
         for (Object[] row : rows) {
             Map<String,Object> item = new LinkedHashMap<>();
@@ -2117,7 +2169,28 @@ public class FinanceReportService {
             com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(item);
             mapped.add(item);
         }
-        return paginate(columns, mapped, page, size);
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var count = em.createNativeQuery("SELECT COUNT(*) FROM (" + sql + ") events");
+            if (clientId != null) count.setParameter("clientId", clientId);
+            if (dateFrom != null) count.setParameter("dateFrom", dateFrom);
+            if (dateTo != null) count.setParameter("dateTo", dateTo);
+            total = ((Number) count.getSingleResult()).longValue();
+        }
+        // The aliases describe the existing authority projection, including hidden identities.
+        String source = "SELECT * FROM (" + sql + ") events(\"eventDate\",\"eventNo\",\"eventType\","
+                + "\"eventTypeLabel\",\"salesOrderNos\",\"salesOrderIds\",\"clientCode\",\"clientName\","
+                + "\"currencyCode\",\"prepaymentCashOriginal\",\"prepaymentCashLocal\",\"appliedOriginal\","
+                + "\"sourceBookLocal\",\"targetBookLocal\",\"exchangeDifferenceLocal\",\"reason\",\"__currencyId\")";
+        List<com.uten.imp.common.report.ReportTotal> totals = ReportReadPlan.current().includeTotals()
+                ? com.uten.imp.common.report.ReportTotalsCalculator.compute(em, source, "", "", q -> {
+                    if (clientId != null) q.setParameter("clientId", clientId);
+                    if (dateFrom != null) q.setParameter("dateFrom", dateFrom);
+                    if (dateTo != null) q.setParameter("dateTo", dateTo);
+                }, reportTotalSpecs(columns, columns)) : List.of();
+        return new ReportTableResponse(columns, mapped, Map.of(), safePage, safeSize,
+                total, ReportReadPlan.totalPages(total, safeSize),
+                com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns));
     }
 
     // ======================== 通用辅助 ========================
@@ -2217,7 +2290,9 @@ public class FinanceReportService {
     }
 
     private ReportTableResponse empty(List<ReportColumn> cols) {
-        return new ReportTableResponse(cols, List.of(), new LinkedHashMap<>(), 1, 50, 0, 0);
+        long total = ReportReadPlan.current().includeCount() ? 0 : ReportReadPlan.UNKNOWN_TOTAL;
+        return new ReportTableResponse(cols, List.of(), new LinkedHashMap<>(), 1, 50,
+                total, ReportReadPlan.totalPages(total, 50));
     }
 
     /** PostgreSQL computes balance before filtering/paging; only one page crosses JDBC. */
@@ -2226,12 +2301,12 @@ public class FinanceReportService {
         int safePage=Math.max(1,page),safeSize=Math.min(500,Math.max(1,size));
         String selected=columns.stream().map(column->"\""+column.key()+"\"")
                 .collect(java.util.stream.Collectors.joining(","));
-        var data=em.createNativeQuery("SELECT "+selected+" FROM ("+core+") report"
+        var data=ReportExportCursor.query(em, "SELECT "+selected+" FROM ("+core+") report"
                 +" ORDER BY \"billDate\",\"eventOrder\",\"refNo\",\"eventId\" LIMIT :__limit OFFSET :__offset")
                 .setParameter("pid",party).setParameter("from",from).setParameter("to",to)
                 .setParameter("__limit",safeSize).setParameter("__offset",(long)(safePage-1)*safeSize);
         scope.bind(data);
-        @SuppressWarnings("unchecked") List<Object[]> records=data.getResultList();
+        @SuppressWarnings("unchecked") List<Object[]> records=ReportExportCursor.rows(em, data);
         List<Map<String,Object>> items=new ArrayList<>(records.size());
         for (Object[] row:records) {
             Map<String,Object> item=new LinkedHashMap<>();
@@ -2239,10 +2314,13 @@ public class FinanceReportService {
             com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(item);
             items.add(item);
         }
-        var count=em.createNativeQuery("SELECT count(*) FROM ("+core+") report")
-                .setParameter("pid",party).setParameter("from",from).setParameter("to",to);
-        scope.bind(count);
-        long total=((Number)count.getSingleResult()).longValue();
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var count=em.createNativeQuery("SELECT count(*) FROM ("+core+") report")
+                    .setParameter("pid",party).setParameter("from",from).setParameter("to",to);
+            scope.bind(count);
+            total = ((Number)count.getSingleResult()).longValue();
+        }
         // A missing original amount makes that currency's original total unknown;
         // known local amounts and period cash remain fully reportable.
         String totalSource="""
@@ -2253,22 +2331,11 @@ public class FinanceReportService {
                             THEN NULL ELSE "receiptOriginal" END AS "receiptOriginal"
                 FROM (
                 """+core+") report";
-        var totals=com.uten.imp.common.report.ReportTotalsCalculator.compute(em,totalSource,"","",
+        var totals=ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(em,totalSource,"","",
                 query->{query.setParameter("pid",party).setParameter("from",from).setParameter("to",to);scope.bind(query);},
-                reportTotalSpecs(columns,columns));
+                reportTotalSpecs(columns,columns)) : List.<com.uten.imp.common.report.ReportTotal>of();
         return new ReportTableResponse(columns.stream().filter(c -> !c.key().startsWith("__")).toList(),items,new LinkedHashMap<>(),safePage,safeSize,total,
-                (int)((total+safeSize-1)/safeSize),com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns));
-    }
-
-    private static LocalDate asLocalDate(Object value) {
-        if (value == null) return null;
-        if (value instanceof LocalDate date) return date;
-        if (value instanceof java.sql.Date date) return date.toLocalDate();
-        if (value instanceof java.sql.Timestamp timestamp) return timestamp.toLocalDateTime().toLocalDate();
-        if (value instanceof java.time.LocalDateTime dateTime) return dateTime.toLocalDate();
-        if (value instanceof java.time.OffsetDateTime dateTime) return dateTime.toLocalDate();
-        String text = value.toString();
-        return LocalDate.parse(text.length() > 10 ? text.substring(0, 10) : text);
+                ReportReadPlan.totalPages(total, safeSize),com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns));
     }
 
     /** 安全 BigDecimal：null→0，BigDecimal/Number→BigDecimal，否则解析字符串。 */
@@ -2314,56 +2381,6 @@ public class FinanceReportService {
         return v == null ? null : num(v);
     }
 
-    /** S 帐户流水滚动余额。 */
-    private ReportTableResponse buildAccountRunning(List<ReportColumn> cols, String sql, UUID aid,
-                                                    LocalDate dateFrom, LocalDate dateTo, String kw, int page, int size) {
-        String keyword = (kw == null || kw.isBlank()) ? null : KeywordSearch.phrase(kw);
-        var q = em.createNativeQuery(sql)
-                .setParameter("aid", aid)
-                .setParameter("to", dateTo);
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = q.getResultList();
-        // 从期初额开始遍历截止日以前的全部流水；日期/关键字只裁返回行，不能裁滚动余额事实。
-        BigDecimal running = num(em.createNativeQuery(
-                        "SELECT COALESCE(init_balance,0) FROM accounts WHERE id=:aid")
-                .setParameter("aid", aid)
-                .getSingleResult());
-        List<Map<String, Object>> all = new ArrayList<>(rows.size());
-        for (Object[] r : rows) {
-            BigDecimal inAmt = num(r[7]);
-            BigDecimal outAmt = num(r[8]);
-            running = running.add(inAmt).subtract(outAmt);
-            LocalDate billDate = asLocalDate(r[0]);
-            if (dateFrom != null && billDate != null && billDate.isBefore(dateFrom)) {
-                continue;
-            }
-            if (keyword != null) {
-                String searchable = (Objects.toString(r[1], "") + " "
-                        + Objects.toString(r[2], "") + " "
-                        + Objects.toString(r[4], "") + " "
-                        + Objects.toString(r[3], "") + " "
-                        + Objects.toString(r[5], "") + " "
-                        + Objects.toString(r[9], "")).toLowerCase(Locale.ROOT);
-                if (!KeywordSearch.terms(keyword).stream().allMatch(searchable::contains)) {
-                    continue;
-                }
-            }
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("billDate", norm(r[0])); m.put("billNo", norm(r[1])); m.put("checkNo", norm(r[2]));
-            m.put("summary", norm(r[3])); m.put("counterpartName", norm(r[4])); m.put("source", norm(r[5]));
-            m.put("settledDate", norm(r[6])); m.put("inAmount", norm(inAmt)); m.put("outAmount", norm(outAmt));
-            m.put("balance", norm(running));
-            m.put("sourceDocType", norm(r[9]));
-            m.put("sourceDocId", norm(r[10]));
-            m.put("inAmountText", inAmt.toPlainString());
-            m.put("outAmountText", outAmt.toPlainString());
-            m.put("balanceText", running.toPlainString());
-            com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(m);
-            all.add(m);
-        }
-        return paginate(cols, all, page, size);
-    }
-
     /** X 年度对帐（GROUP BY 月，无滚动；直接分页）。 */
     private ReportTableResponse executeRawGrouped(List<ReportColumn> cols, String sql, UUID pid,
                                                   LocalDate yearStart, LocalDate yearEnd, int page, int size,
@@ -2371,12 +2388,12 @@ public class FinanceReportService {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
-        var dataQ = em.createNativeQuery(sql + " LIMIT :__limit OFFSET :__offset")
+        var dataQ = ReportExportCursor.query(em, sql + " LIMIT :__limit OFFSET :__offset")
                 .setParameter("pid", pid).setParameter("ys", yearStart).setParameter("ye", yearEnd)
                 .setParameter("__limit", safeSize).setParameter("__offset", offset);
         documentScope.bind(dataQ);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = dataQ.getResultList();
+        List<Object[]> rows = ReportExportCursor.rows(em, dataQ);
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -2384,36 +2401,24 @@ public class FinanceReportService {
             com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(m);
             items.add(m);
         }
-        var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + sql + ") zz")
-                .setParameter("pid", pid).setParameter("ys", yearStart).setParameter("ye", yearEnd);
-        documentScope.bind(countQ);
-        long total = ((Number) countQ.getSingleResult()).longValue();
-        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + sql + ") zz")
+                    .setParameter("pid", pid).setParameter("ys", yearStart).setParameter("ye", yearEnd);
+            documentScope.bind(countQ);
+            total = ((Number) countQ.getSingleResult()).longValue();
+        }
+        int totalPages = ReportReadPlan.totalPages(total, safeSize);
         // 合计：整段按月 CTE 包成派生表再聚合（不带 LIMIT/OFFSET），所以是整年 12 个月的合计，
         // 而不是当前这一页的几个月。
-        List<com.uten.imp.common.report.ReportTotal> totals = com.uten.imp.common.report.ReportTotalsCalculator.compute(
+        List<com.uten.imp.common.report.ReportTotal> totals = ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(
                 em, sql, "", "",
                 q -> {
                     q.setParameter("pid", pid).setParameter("ys", yearStart).setParameter("ye", yearEnd);
                     documentScope.bind(q);
                 },
-                reportTotalSpecs(cols, cols));
+                reportTotalSpecs(cols, cols)) : List.<com.uten.imp.common.report.ReportTotal>of();
         return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages, com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, cols));
-    }
-
-    private static ReportTableResponse paginate(List<ReportColumn> cols, List<Map<String, Object>> all, int page, int size) {
-        all.forEach(com.uten.imp.common.report.ReportQueryKit::includeDecimalTexts);
-        int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 500);
-        long total = all.size();
-        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
-        int from = (int) Math.min((long) (safePage - 1) * safeSize, total);
-        int to = (int) Math.min((long) from + safeSize, total);
-        // 合计在**切页之前**对 all（整个结果集）求和，不是对 subList 求和 ——
-        // 这些报表本就必须先全量取回内存才能算滚动余额/事件序，所以直接复用同一份全量行：
-        // 既不多跑一次查询，也不可能只合计当前页。
-        List<com.uten.imp.common.report.ReportTotal> totals = com.uten.imp.common.report.ReportTotalsCalculator.computeFromRows(all, reportTotalSpecs(cols, cols));
-        return new ReportTableResponse(cols, new ArrayList<>(all.subList(from, to)), new LinkedHashMap<>(), safePage, safeSize, total, totalPages, com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, cols));
     }
 
     /** 按 GROUP BY 的聚合报表（如 F 销售收款汇总按客户）。 */
@@ -2424,14 +2429,14 @@ public class FinanceReportService {
         long offset = (long) (safePage - 1) * safeSize;
         FinanceWhereBuilder.Built full = w.build(null);
         String groupBy = " GROUP BY " + groupExpr;
-        var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql() + groupBy
+        var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql() + groupBy
                 + " ORDER BY " + w.groupedOrderBy(orderBy) + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
         w.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = dataQ.getResultList();
+        List<Object[]> rows = ReportExportCursor.rows(em, dataQ);
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -2439,15 +2444,18 @@ public class FinanceReportService {
             com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(m);
             items.add(m);
         }
-        var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + dataSelect + " " + fromJoin + " " + full.sql() + groupBy + ") zz");
-        full.params().forEach(countQ::setParameter);
-        long total = ((Number) countQ.getSingleResult()).longValue();
-        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + dataSelect + " " + fromJoin + " " + full.sql() + groupBy + ") zz");
+            full.params().forEach(countQ::setParameter);
+            total = ((Number) countQ.getSingleResult()).longValue();
+        }
+        int totalPages = ReportReadPlan.totalPages(total, safeSize);
         // 合计：派生表里必须连 GROUP BY 一起包进去（每行是一个分组的小计），
         // 外层再对全部分组求和 —— 即「全部客户×币别」的总计，与当前页无关。
-        List<com.uten.imp.common.report.ReportTotal> totals = com.uten.imp.common.report.ReportTotalsCalculator.compute(
+        List<com.uten.imp.common.report.ReportTotal> totals = ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(
                 em, dataSelect, fromJoin, full.sql() + groupBy,
-                full.params(), reportTotalSpecs(cols, cols));
+                full.params(), reportTotalSpecs(cols, cols)) : List.<com.uten.imp.common.report.ReportTotal>of();
         return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages, com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, cols));
     }
 
@@ -2505,6 +2513,13 @@ public class FinanceReportService {
         Boolean settled = parseBool(p == null ? null : p.get("settled"));
         int year = parseIntOrZero(p == null ? null : p.get("year"));
         Map<String, String> facets = ReportQueryKit.facetsOf(p);
+        if ("gl/operating-pl".equals(report) && com.uten.imp.common.export.ExportPageSink.current() != null) {
+            var result = glReportService.exportInCurrentSnapshot(report, dateTo, yearOf(p, dateTo), monthOf(p, dateTo),
+                    settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS));
+            return new ExportPayload(result.columns().stream().map(c ->
+                    new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),
+                    List.of(), Math.toIntExact(result.total()));
+        }
         BiFunction<Integer, Integer, ReportTableResponse> loader = switch (report) {
             case "ar-ap/overview"    -> (pg, sz) -> arApOverviewAuthorized(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, pg, sz);
             case "ar-ap/detail"      -> (pg, sz) -> arApDetailAuthorized(direction, billNo, partyId, settled, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
@@ -2539,16 +2554,16 @@ public class FinanceReportService {
                     p == null ? null : p.get("kind"), keyword, dateFrom, dateTo, pg, sz);
             // C3 总账（GlReportService；year/month 缺省取 dateTo 年/月）
             case "gl/trial-balance" -> (pg, sz) -> glReportService.trialBalance(dateFrom, dateTo, pg, sz);
-            case "gl/balance-sheet" -> (pg, sz) -> glReportService.balanceSheet(dateTo);
-            case "gl/profit-annual" -> (pg, sz) -> glReportService.profitAnnual(yearOf(p, dateTo));
-            case "gl/profit-monthly" -> (pg, sz) -> glReportService.profitMonthly(yearOf(p, dateTo), monthOf(p, dateTo));
-            case "gl/manufacturing-expense" -> (pg, sz) -> glReportService.manufacturingExpense(yearOf(p, dateTo));
-            case "gl/admin-expense" -> (pg, sz) -> glReportService.adminExpense(yearOf(p, dateTo));
-            case "gl/sales-expense" -> (pg, sz) -> glReportService.salesExpense(yearOf(p, dateTo));
-            case "gl/operating-pl" -> (pg, sz) -> glReportService.operatingPl(yearOf(p, dateTo), monthOf(p, dateTo));
+            case "gl/balance-sheet" -> (pg, sz) -> glSnapshotReport(report, dateTo, 0, 1, () -> glReportService.balanceSheet(dateTo));
+            case "gl/profit-annual" -> (pg, sz) -> glSnapshotReport(report, dateTo, yearOf(p, dateTo), 1, () -> glReportService.profitAnnual(yearOf(p, dateTo)));
+            case "gl/profit-monthly" -> (pg, sz) -> glSnapshotReport(report, dateTo, yearOf(p, dateTo), monthOf(p, dateTo), () -> glReportService.profitMonthly(yearOf(p, dateTo), monthOf(p, dateTo)));
+            case "gl/manufacturing-expense" -> (pg, sz) -> glSnapshotReport(report, dateTo, yearOf(p, dateTo), 1, () -> glReportService.manufacturingExpense(yearOf(p, dateTo)));
+            case "gl/admin-expense" -> (pg, sz) -> glSnapshotReport(report, dateTo, yearOf(p, dateTo), 1, () -> glReportService.adminExpense(yearOf(p, dateTo)));
+            case "gl/sales-expense" -> (pg, sz) -> glSnapshotReport(report, dateTo, yearOf(p, dateTo), 1, () -> glReportService.salesExpense(yearOf(p, dateTo)));
+            case "gl/operating-pl" -> (pg, sz) -> glSnapshotReport(report, dateTo, yearOf(p, dateTo), monthOf(p, dateTo), () -> glReportService.operatingPlPage(yearOf(p, dateTo), monthOf(p, dateTo), pg, sz));
             // C5 固定资产/长期待摊清单
-            case "fa/depreciation-schedule" -> (pg, sz) -> fixedAssetService.depreciationSchedule();
-            case "fa/amortization-schedule" -> (pg, sz) -> fixedAssetService.amortizationSchedule();
+            case "fa/depreciation-schedule" -> (pg, sz) -> fixedAssetService.depreciationSchedule(pg, sz);
+            case "fa/amortization-schedule" -> (pg, sz) -> fixedAssetService.amortizationSchedule(pg, sz);
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
         };
         return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
@@ -2556,6 +2571,12 @@ public class FinanceReportService {
                 r -> r.columns() == null ? null : r.columns().stream()
                         .map(c -> new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),
                 ReportTableResponse::rows);
+    }
+
+    private ReportTableResponse glSnapshotReport(String report, LocalDate dateTo, int year, int month,
+                                                 java.util.function.Supplier<ReportTableResponse> synchronous) {
+        return com.uten.imp.common.export.ExportPageSink.current() == null ? synchronous.get()
+                : glReportService.exportInCurrentSnapshot(report, dateTo, year, month);
     }
 
     /**
@@ -2577,7 +2598,7 @@ public class FinanceReportService {
     /** 循环分页累积导出全量（size=500，硬上限 2000 页）2026-09-16 收敛到
      *  {@code ReportQueryKit.paginateAll}（本包 ReportTableResponse 的取数适配在 export 调用点）。 */
 
-    private static Boolean parseBool(String s) { return (s == null || s.isBlank()) ? null : Boolean.valueOf(s); }
+    private static Boolean parseBool(String s) { return (s == null || s.isBlank()) ? null : ReportQueryKit.parseRequiredBoolean(s); }
     private static BigDecimal parseBigDecimal(String s) {
         if (s == null || s.isBlank()) return null;
         try {

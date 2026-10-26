@@ -1,3 +1,4 @@
+import '../../../shared/providers/master_party_options.dart';
 import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 // 钱流单据列表页（按 docType 参数化，5 单据通用）。
@@ -6,6 +7,7 @@ import '../../../shared/auth/read_owner_fence.dart';
 // 名称解析（客户/供应商/账户）通过 FinanceNameService。
 import 'dart:async';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -251,14 +253,32 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
   );
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
-  Future<PagedResult<FinanceDocListItem>> _fetch([int? requestedPage]) => ref
-      .read(financeRepositoryProvider(widget.docType))
-      .list(
-        page: requestedPage ?? _list.pageNum,
-        filter: _docFilter(),
-        sort: _list.sortKey,
-        order: _list.sortOrder,
-      );
+  Future<PagedResult<FinanceDocListItem>> _fetch([int? requestedPage]) async {
+    final names = ref.read(financeNameServiceProvider);
+    final isClient = _cfg.isClient;
+    final selectedParty = _partyIdFilter;
+    final current = captureReadOwner(ref);
+    final result = await ref
+        .read(financeRepositoryProvider(widget.docType))
+        .list(
+          page: requestedPage ?? _list.pageNum,
+          filter: _docFilter(),
+          sort: _list.sortKey,
+          order: _list.sortOrder,
+        );
+
+    if (!current()) throw StateError('读取作用域已变化');
+    final ids = partyReferenceIds([
+      ...result.items.map((item) => item.partyId),
+      selectedParty,
+    ]);
+    if (isClient) {
+      unawaited(names.loadClientNames(ids));
+    } else {
+      unawaited(names.loadSupplierNames(ids));
+    }
+    return result;
+  }
 
   /// 单据号值筛选桶随过滤上下文重取（失败静默保持旧桶，不阻断列表）。
   Future<void> _loadBillNoFacets() => _columnFilters.loadFacets(
@@ -276,10 +296,41 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
   /// 分段计数范围(2026-09-21 用户口径: 父分类 hub 卡有草稿红徽章, 子分类也要有数)。
   DocumentStatusScope get _statusScope => DocumentStatusScope(_cfg.draftKind);
 
-  Future<void> _reload([int? page, bool silent = false]) =>
-      trackRefresh(_reloadRows(page, silent), replaceKey: 'rows');
+  List<Object?> get _pageQueryScope => [
+    _list.normalizedKeyword,
+    _list.sortKey,
+    _list.sortAsc,
+    widget.docType,
+    _statusFilter,
+    _historyMode,
+    _historyTime,
+    _historyTime.range?.start,
+    _historyTime.range?.end,
+    _recordOriginFilter,
+    _partyIdFilter,
+    _accountIdFilter,
+    _receiptKindFilter,
+    Map.of(_columnFilters.values),
+  ];
 
-  Future<void> _reloadRows([int? page, bool silent = false]) async {
+  Future<void> _navigatePage(int page) => _reload(page, false, true);
+
+  Future<void> _reload([
+    int? page,
+    bool silent = false,
+    bool useCachedPage = false,
+  ]) => trackRefresh(
+    _reloadRows(page, silent, useCachedPage),
+    replaceKey: 'rows',
+  );
+
+  Future<void> _reloadRows([
+    int? page,
+    bool silent = false,
+    bool useCachedPage = false,
+  ]) async {
+    final cacheQuery = _pageQueryScope;
+    final ownerCurrent = captureReadOwner(ref);
     final generation = ++_reloadGeneration;
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
     ref.invalidate(documentStatusCountsProvider(_statusScope));
@@ -300,7 +351,16 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         silent: silent,
         fetch: _fetch,
         fetchPage: _fetch,
-        isCurrent: captureReadOwner(ref),
+        useCachedPage: useCachedPage,
+        canPrefetch: () =>
+            mounted &&
+            TickerMode.valuesOf(context).enabled &&
+            (ModalRoute.of(context)?.isCurrent ?? true),
+        queryScope: cacheQuery,
+        isCurrent: () =>
+            mounted &&
+            ownerCurrent() &&
+            const DeepCollectionEquality().equals(cacheQuery, _pageQueryScope),
       ),
     ]);
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
@@ -520,6 +580,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
       !_historyMode && _statusFilter == kFinanceStatusDraft
       ? FormDraftCategoryTable<FinanceDocListItem>(
           scope: _formDraftScope,
+          localReadRevision: _reloadGeneration,
           table: table,
           search: _list.keyword,
           formalId: (item) => item.id,
@@ -620,10 +681,9 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                         if (_cfg.hasParty)
                           _cfg.isClient
                               ? 'clientId'
-                              : 'supplierId': financeDictionaryFacets(
-                            _cfg.isClient
-                                ? names.clientEntries
-                                : names.supplierEntries,
+                              : 'supplierId': selectedPartyFacet(
+                            _partyIdFilter,
+                            _cfg.isClient ? names.client : names.supplier,
                           ),
                         'accountId': financeDictionaryFacets(
                           names.accountEntries,
@@ -662,6 +722,18 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                               ]
                             : financeDocumentStatusFacets,
                       },
+                      facetPageLoaders: {
+                        if (_cfg.hasParty)
+                          _cfg.isClient
+                              ? 'clientId'
+                              : 'supplierId': _cfg.isClient
+                              ? clientPartyFacetLoader(ref)
+                              : supplierPartyFacetLoader(ref),
+                      },
+                      facetSearchScope: partyFacetSearchScope(ref, (
+                        'finance-doc-party',
+                        _cfg.type,
+                      )),
                       nullCounts: const {},
                       filters: {
                         'billNo': _columnFilters['billNo'],
@@ -701,7 +773,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                         _historyTime,
                         _recordOriginFilter,
                       ),
-                      onPageChange: (p) => _reload(p),
+                      onPageChange: _navigatePage,
                     ),
                   ),
                 );

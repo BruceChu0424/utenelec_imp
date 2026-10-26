@@ -20,6 +20,7 @@ import '../../../components/inputs/uten_month_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -374,7 +375,17 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
             label: '套数',
             type: MasterFieldType.money,
           ),
-          const MasterFieldDef(key: 'manufacturer', label: '制造厂家'),
+          MasterFieldDef(
+            key: 'manufacturer',
+            label: '制造厂家',
+            type: MasterFieldType.custom,
+            customBuilder: (field) => MouldManufacturerField(
+              value: field.initialValue,
+              dense: true,
+              writePermission: Perm.mouldCreate,
+              onChanged: field.onChanged,
+            ),
+          ),
           MasterFieldDef(
             key: 'mstatus',
             label: '制造年月',
@@ -492,6 +503,12 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     'manufacturer': MasterInlineField(
       key: 'manufacturer',
       read: (row) => row.manufacturer,
+      customBuilder: (field) => MouldManufacturerField(
+        value: field.initialValue,
+        dense: true,
+        writePermission: Perm.mouldEdit,
+        onChanged: field.onChanged,
+      ),
     ),
     'remark': MasterInlineField(key: 'remark', read: (row) => row.remark),
     'mstatus': MasterInlineField(
@@ -579,6 +596,9 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
         type: MasterFieldType.custom,
         customBuilder: (ctx) => MouldManufacturerField(
           value: ctx.initialValue,
+          writePermission: iv['_entityId'] == null
+              ? Perm.mouldCreate
+              : Perm.mouldEdit,
           onChanged: ctx.onChanged,
         ),
       ),
@@ -858,7 +878,13 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
     MasterDetailRow('模数', d.qty), // TODO(l10n): 补 arb
     MasterDetailRow('套数', goodsQtyText(d.tqty)), // TODO(l10n): 补 arb
-    MasterDetailRow('模具制造商', d.manufacturer),
+    MasterDetailRow(
+      '模具制造商',
+      mouldManufacturerDisplayText(
+        d.manufacturer,
+        missingLabel: AppLocalizations.of(context).mouldManufacturerMissing,
+      ),
+    ),
     MasterDetailRow('制造年月', d.mstatus), // TODO(l10n): 补 arb
     MasterDetailRow(
       '车间',
@@ -925,6 +951,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       label: '制造商',
       width: 140,
       value: (m) => m.manufacturer,
+      cellBuilder: (_, m) => MouldManufacturerValue(value: m.manufacturer),
     ),
     MasterColumnDef(
       key: 'mstatus',

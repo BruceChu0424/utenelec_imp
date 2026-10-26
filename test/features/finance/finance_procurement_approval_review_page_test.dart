@@ -321,55 +321,155 @@ Future<GoRouter> _pumpReviewPage(
 
 void main() {
   for (final orderType in ['PURCHASE', 'SUBCONTRACT']) {
-    testWidgets('$orderType 结束财审展示理由与剩余量且不重新核税汇', (tester) async {
-      final json = _pendingReviewJson();
-      json['orderType'] = orderType;
-      json['taxRate'] = null;
-      json['headerSnapshot'] = {
-        'closureRequest': {
-          'mode': 'CLOSE_AND_REORDER',
-          'reason': '供应商停止供货',
-          'fingerprint': 'facts-reviewed',
-          'items': [
+    for (final legacyStatus in ['PENDING', 'APPROVED', 'REJECTED']) {
+      testWidgets('$orderType $legacyStatus 历史结束申请只读展示且不再允许财务审批', (
+        tester,
+      ) async {
+        final json = _pendingReviewJson(status: legacyStatus);
+        json['orderType'] = orderType;
+        json['taxRate'] = null;
+        json['headerSnapshot'] = {
+          'closureRequest': {
+            'mode': 'CLOSE_AND_REORDER',
+            'reason': '供应商停止供货',
+            'fingerprint': 'facts-reviewed',
+            'items': [
+              {
+                'orderItemId': 'order-item-1',
+                'goodsCode': 'G001',
+                'goodsName': '铜线',
+                'remainingQty': '60.0001',
+                'remainingGiftQty': '2',
+                'unitName': '公斤',
+              },
+            ],
+          },
+        };
+        final repository = _FakeWorkflowRepo(
+          FinanceProcurementApprovalReview.fromJson(json),
+        );
+        final claims = FinanceClaimFixture()..failClaim = true;
+        await _pumpReviewPage(tester, repository, claims: claims);
+        expect(
+          find.byKey(const Key('finance-order-closure-request')),
+          findsOneWidget,
+        );
+        expect(find.textContaining('供应商停止供货'), findsOneWidget);
+        expect(find.textContaining('60.0001'), findsOneWidget);
+        expect(
+          find.textContaining(
+            legacyStatus == 'APPROVED' ? '取消未收数量: 60.0001' : '剩余订货量: 60.0001',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('finance-order-review-tax-field')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('finance-order-review-rate-field')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('finance-order-review-approve')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('finance-order-review-reject')),
+          findsNothing,
+        );
+        expect(repository.approved, isEmpty);
+        expect(claims.acquired, isEmpty);
+      });
+    }
+
+    for (final originalOrder in [true, false]) {
+      testWidgets(
+        '$orderType ${originalOrder ? '原订单' : '直接结束记录'}财务详情显示逐行取消事实且无财务决定',
+        (tester) async {
+          final closure = <String, dynamic>{
+            'caseId': 'close-direct-1',
+            'status': 'APPROVED',
+            'executionMode': 'DIRECT',
+            'mode': 'CLOSE',
+            'reason': '生产用量已满足，供应商停止供货',
+            'closedByName': '采购员张三',
+            'closedAt': '2026-10-26T10:15:00Z',
+            'items': [
+              {
+                'orderItemId': 'order-item-1',
+                'goodsCode': 'G001',
+                'goodsName': '铜线',
+                'orderedQty': '9007199254740993.0001',
+                'receivedQty': '9007199254740933',
+                'remainingQty': '60.0001',
+                'remainingGiftQty': '2',
+                'unitName': '公斤',
+              },
+            ],
+          };
+          final json = _pendingReviewJson(
+            status: 'APPROVED',
+            allowedActions: {'APPROVE', 'REJECT', 'UNAPPROVE'},
+          );
+          json['orderType'] = orderType;
+          json['headerSnapshot'] = {
+            originalOrder ? 'orderClosure' : 'closureRequest': closure,
+            // The latest closure case also carries the current order summary.
+            // It must render one cancellation card, not duplicate its facts.
+            if (!originalOrder) 'orderClosure': closure,
+          };
+          json['history'] = [
             {
-              'orderItemId': 'order-item-1',
-              'goodsCode': 'G001',
-              'goodsName': '铜线',
-              'remainingQty': '60.0001',
-              'remainingGiftQty': '2',
-              'unitName': '公斤',
+              'attempt': 1,
+              'eventType': 'CLOSED',
+              'actorName': '采购员张三',
+              'occurredAt': '2026-10-26T10:15:00Z',
             },
-          ],
+          ];
+          final review = FinanceProcurementApprovalReview.fromJson(json);
+          expect(review.isClosureRequest, !originalOrder);
+          final repository = _FakeWorkflowRepo(review);
+          final claims = FinanceClaimFixture()..failClaim = true;
+          await _pumpReviewPage(
+            tester,
+            repository,
+            claims: claims,
+            size: originalOrder
+                ? const Size(1400, 1000)
+                : const Size(430, 1000),
+            textScale: originalOrder ? null : 1.4,
+          );
+          expect(
+            find.byKey(const Key('procurement-order-closure-status')),
+            findsOneWidget,
+          );
+          expect(find.textContaining('9007199254740993.0001'), findsOneWidget);
+          expect(find.textContaining('60.0001'), findsOneWidget);
+          expect(find.textContaining('采购员张三'), findsWidgets);
+          expect(find.textContaining('2026-10-26'), findsWidgets);
+          expect(
+            find.textContaining(orderType == 'PURCHASE' ? '采购已取消' : '委外已取消'),
+            findsOneWidget,
+          );
+          expect(find.textContaining('取消剩余并结束'), findsOneWidget);
+          expect(
+            find.byKey(const Key('finance-order-review-approve')),
+            findsNothing,
+          );
+          expect(
+            find.byKey(const Key('finance-order-review-reject')),
+            findsNothing,
+          );
+          expect(
+            find.byKey(const Key('finance-procurement-order-unapprove')),
+            findsNothing,
+          );
+          expect(claims.acquired, isEmpty);
+          expect(tester.takeException(), isNull);
         },
-      };
-      final repository = _FakeWorkflowRepo(
-        FinanceProcurementApprovalReview.fromJson(json),
       );
-      await _pumpReviewPage(tester, repository);
-      expect(
-        find.byKey(const Key('finance-order-closure-request')),
-        findsOneWidget,
-      );
-      expect(find.textContaining('供应商停止供货'), findsOneWidget);
-      expect(find.textContaining('60.0001'), findsOneWidget);
-      expect(
-        find.byKey(const Key('finance-order-review-tax-field')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('finance-order-review-rate-field')),
-        findsNothing,
-      );
-      await tester.tap(find.byKey(const Key('finance-order-review-approve')));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('批准后结束原单剩余履约'), findsWidgets);
-      await tester.tap(
-        find.byKey(const Key('finance-order-review-approve-submit')),
-      );
-      await tester.pumpAndSettle();
-      expect(repository.approved, hasLength(1));
-      expect(repository.approved.single.exchangeRate, isNull);
-    });
+    }
   }
 
   testWidgets('订货财审实时授权与撤权刷新动作及认领，汇率税率和意见原样保留', (tester) async {

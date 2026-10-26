@@ -1,138 +1,185 @@
-"""Real POSIX exec probes for the permanent, fixed-target preview launcher."""
+"""Real POSIX socket/client probes; no system converter or production socket is used."""
 from __future__ import annotations
-
+import hashlib
 import json
 import os
 from pathlib import Path
-import shutil
+import socket
+import struct
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
-
 
 LAUNCHER = Path(__file__).resolve().parents[1] / "simple/host/uten-preview-soffice.py"
 
-
-class LauncherSourceTest(unittest.TestCase):
-    def test_direct_execution_uses_isolated_python_and_a_fixed_system_converter(self):
-        source = LAUNCHER.read_text(encoding="utf-8")
-        self.assertEqual("#!/usr/bin/python3 -I", source.splitlines()[0])
-        self.assertIn('SOFFICE_EXECUTABLE = "/usr/bin/soffice"', source)
-        self.assertNotIn("subprocess", source)
-
-
-@unittest.skipUnless(os.name == "posix", "Linux/POSIX private-directory and exec checks")
+@unittest.skipUnless(os.name == "posix", "Linux/POSIX socket and private-directory probes")
 class PosixLauncherTest(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix="uten-preview-launcher-")
+        self.temporary = tempfile.TemporaryDirectory(prefix="upc-")
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.work = self.root / "private conversion work"
         self.work.mkdir(mode=0o700)
-        self.fake = self.root / "fake-soffice"
-        self.fake.write_text('''#!/usr/bin/python3 -I
-import json,os,sys
-print(json.dumps({"names":sorted(os.environ),"argv":sys.argv[1:],
-    "fixedPath":os.environ.get("PATH")=="/usr/bin:/bin",
-    "privateDirectories":all(os.environ.get(k)==os.getcwd() for k in ("HOME","TMPDIR","TMP","TEMP")),
-    "localePreserved":os.environ.get("LANG")=="zh_CN.UTF-8" and os.environ.get("LC_ALL")=="C.UTF-8" and os.environ.get("TZ")=="UTC"}))
-''', encoding="utf-8")
-        self.fake.chmod(0o700)
+        self.original = b"synthetic private document\n" * 100
+        self.source = self.work / "source.docx"
+        self.source.write_bytes(self.original)
+        self.socket_path = str(self.root / "worker.sock")
+        self.recorded = {}
+        self.errors = []
         self.harness = '''import importlib.util,sys
 spec=importlib.util.spec_from_file_location("launcher",sys.argv[1])
 module=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-module.SOFFICE_EXECUTABLE=sys.argv[2]
-sys.argv=[sys.argv[1],*sys.argv[3:]]
+module.WORKER_SOCKET=sys.argv[2]
+module.REQUEST_SECONDS=float(sys.argv[3])
+sys.argv=[sys.argv[1],*sys.argv[4:]]
 raise SystemExit(module.main())
 '''
 
-    def run_launcher(self, args=(), environment=None, isolated=True):
-        command = [sys.executable]
-        if isolated:
-            command.append("-I")
-        command += ["-c", self.harness, str(LAUNCHER), str(self.fake), *args]
-        return subprocess.run(command, cwd=self.work, env=environment,
+    def args(self):
+        return ["--headless", "--norestore", "--nologo", "--nolockcheck",
+                "-env:UserInstallation=" + (self.work / "profile").as_uri() + "/",
+                "--convert-to", "pdf", "--outdir", str(self.work), str(self.source)]
+
+    def run_launcher(self, args=None, isolated=True, seconds=3):
+        command = [sys.executable, *(["-I"] if isolated else []), "-c", self.harness,
+                   str(LAUNCHER), self.socket_path, str(seconds), *(self.args() if args is None else args)]
+        return subprocess.run(command, cwd=self.work,
+                              env=dict(os.environ, UTEN_DB_PASSWORD="synthetic-never-send-secret"),
                               capture_output=True, text=True, timeout=10)
 
-    def test_real_exec_drops_credentials_agent_loader_and_future_environment_names(self):
-        credentials = ("UTEN_DB_PASSWORD", "UTEN_JWT_SECRET", "UTEN_PGP_MASTER_KEY", "UTEN_HMAC_KEY",
-                       "UTEN_SECRET_CIPHER_KEY", "AWS_SECRET_ACCESS_KEY", "SSH_AUTH_SOCK",
-                       "LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONPATH", "PYTHONHOME", "FUTURE_PROVIDER_SECRET")
-        environment = dict(os.environ)
-        environment.update({name: "synthetic-regression-sentinel" for name in credentials})
-        environment.update(LANG="zh_CN.UTF-8", LC_ALL="C.UTF-8", TZ="UTC",
-                           HOME="/synthetic-inherited-home", TMPDIR="/synthetic-inherited-tmp")
-        argv = ["--headless", "--norestore", "--nologo", "--nolockcheck",
-                "-env:UserInstallation=" + (self.root / "profile").as_uri(),
-                "--convert-to", "pdf", "--outdir", str(self.work),
-                str(self.work / "source ; $(not-a-shell).docx")]
-        result = self.run_launcher(argv, environment)
-        self.assertEqual(0, result.returncode)
-        report = json.loads(result.stdout)
-        self.assertEqual(argv, report["argv"])
-        self.assertTrue(report["fixedPath"])
-        self.assertTrue(report["privateDirectories"])
-        self.assertTrue(report["localePreserved"])
-        self.assertEqual({"PATH", "LANG", "LC_ALL", "TZ", "HOME", "TMPDIR", "TMP", "TEMP"}, set(report["names"]))
-        self.assertTrue(set(credentials).isdisjoint(report["names"]))
-        self.assertNotIn("synthetic-regression-sentinel", result.stdout)
+    @staticmethod
+    def read_exact(connection, length):
+        data = bytearray()
+        while len(data) < length:
+            chunk = connection.recv(length - len(data))
+            if not chunk:
+                raise ValueError("fixture unexpected EOF")
+            data.extend(chunk)
+        return bytes(data)
 
-    def test_writable_directory_is_refused_before_the_converter_runs(self):
-        for mode in (0o770, 0o707, 0o777):
-            with self.subTest(mode=mode):
-                self.work.chmod(mode)
-                result = self.run_launcher()
-                self.assertEqual(78, result.returncode)
-                self.assertEqual("", result.stdout)
-                self.assertEqual("UTEN_PREVIEW_PRIVATE_DIRECTORY_REQUIRED\n", result.stderr)
-        self.work.chmod(0o700)
+    def serve(self, responder):
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        listener.bind(self.socket_path)
+        listener.listen(1)
+        listener.settimeout(5)
+        def run():
+            try:
+                with listener, listener.accept()[0] as connection:
+                    connection.settimeout(5)
+                    length = struct.unpack("!I", self.read_exact(connection, 4))[0]
+                    self.recorded["header"] = json.loads(self.read_exact(connection, length))
+                    self.recorded["body"] = self.read_exact(connection, self.recorded["header"]["sourceBytes"])
+                    responder(connection)
+            except Exception as error:
+                self.errors.append(error)
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join, 6)
+        return thread
 
-    def test_group_or_world_read_or_traverse_permissions_are_refused(self):
-        for mode in (0o755, 0o750, 0o705, 0o740, 0o704):
-            with self.subTest(mode=mode):
-                self.work.chmod(mode)
-                result = self.run_launcher()
-                self.assertEqual(78, result.returncode)
-                self.assertEqual("", result.stdout)
-                self.assertEqual("UTEN_PREVIEW_PRIVATE_DIRECTORY_REQUIRED\n", result.stderr)
-        self.work.chmod(0o700)
+    @staticmethod
+    def response(connection, pdf=b"%PDF-1.7\nsynthetic regression PDF\n%%EOF\n", **changes):
+        header = {"version": 1, "ok": True, "sizeBytes": len(pdf),
+                  "sha256": hashlib.sha256(pdf).hexdigest()}
+        header.update(changes)
+        encoded = json.dumps(header).encode()
+        connection.sendall(struct.pack("!I", len(encoded)) + encoded + pdf)
 
-    @unittest.skipUnless(hasattr(os, "geteuid") and os.geteuid() == 0, "ownership mismatch requires root in an isolated test environment")
-    def test_another_users_directory_is_refused(self):
-        os.chown(self.work, 65534, -1)
-        result = self.run_launcher()
-        self.assertEqual(78, result.returncode)
+    def assert_refused(self, result):
+        self.assertEqual(69, result.returncode, result.stderr)
         self.assertEqual("", result.stdout)
-        self.assertEqual("UTEN_PREVIEW_PRIVATE_DIRECTORY_REQUIRED\n", result.stderr)
+        self.assertEqual("UTEN_PREVIEW_ISOLATED_WORKER_UNAVAILABLE\n", result.stderr)
+        self.assertFalse((self.work / "source.pdf").exists())
+        self.assertEqual([], list(self.work.glob(".preview-response-*")))
 
-    def test_nonisolated_python_is_refused_without_echoing_inputs(self):
+    def test_real_socket_transfers_only_source_and_fixed_contract_then_publishes_exact_pdf(self):
+        pdf = b"%PDF-1.7\nsynthetic verified output\n%%EOF\n"
+        thread = self.serve(lambda connection: self.response(connection, pdf))
+        result = self.run_launcher()
+        thread.join(5)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual([], self.errors)
+        self.assertEqual(self.original, self.recorded["body"])
+        self.assertEqual({"version": 1, "extension": "docx", "sourceBytes": len(self.original),
+                          "sha256": hashlib.sha256(self.original).hexdigest(), "timeoutSeconds": 60,
+                          "maxOutputBytes": 64 * 1024 * 1024}, self.recorded["header"])
+        self.assertNotIn(str(self.work), json.dumps(self.recorded["header"]))
+        self.assertNotIn("synthetic-never-send-secret", repr(self.recorded))
+        self.assertEqual(pdf, (self.work / "source.pdf").read_bytes())
+        self.assertEqual(0o600, (self.work / "source.pdf").stat().st_mode & 0o777)
+
+    def test_hash_signature_size_and_version_failures_never_publish_partial_output(self):
+        cases = [(b"%PDF-1.7\nwrong hash", {"sha256": "a" * 64}),
+                 (b"not-a-pdf", {}), (b"%PDF-1.7\ntruncated", {"sizeBytes": 999}),
+                 (b"", {"sizeBytes": 64 * 1024 * 1024 + 1}),
+                 (b"%PDF-1.7\nwrong version", {"version": True})]
+        for pdf, changes in cases:
+            with self.subTest(changes=changes):
+                Path(self.socket_path).unlink(missing_ok=True)
+                thread = self.serve(lambda connection, p=pdf, c=changes: self.response(connection, p, **c))
+                self.assert_refused(self.run_launcher())
+                thread.join(5)
+
+    def test_duplicate_or_oversized_headers_are_rejected_before_output_creation(self):
+        for encoded in (b'{"version":1,"version":1,"ok":true}', b'x' * 4097):
+            with self.subTest(size=len(encoded)):
+                Path(self.socket_path).unlink(missing_ok=True)
+                thread = self.serve(lambda connection, data=encoded:
+                                    connection.sendall(struct.pack("!I", len(data)) + data))
+                self.assert_refused(self.run_launcher())
+                thread.join(5)
+
+    def test_one_deadline_covers_waiting_for_a_slow_worker(self):
+        thread = self.serve(lambda connection: time.sleep(0.5))
+        start = time.monotonic()
+        self.assert_refused(self.run_launcher(seconds=0.1))
+        self.assertLess(time.monotonic() - start, 2)
+        thread.join(5)
+
+    def test_missing_worker_does_not_fall_back_to_a_local_converter(self):
+        self.assert_refused(self.run_launcher())
+
+    def test_unexpected_arguments_and_paths_are_refused(self):
+        for index, value in ((0, "--accept=socket"), (6, "html"), (8, str(self.root)),
+                             (9, str(self.root / "source.docx")), (9, str(self.work / "source.exe")),
+                             (4, "-env:UserInstallation=file:///etc/uten-imp")):
+            with self.subTest(index=index, value=value):
+                args = self.args()
+                args[index] = value
+                self.assert_refused(self.run_launcher(args))
+
+    def test_source_symlink_is_not_followed(self):
+        outside = self.root / "private outside input"
+        outside.write_bytes(b"outside")
+        self.source.unlink()
+        self.source.symlink_to(outside)
+        self.assert_refused(self.run_launcher())
+
+    def test_nonprivate_work_directory_is_refused(self):
+        for mode in (0o755, 0o750, 0o770, 0o777):
+            with self.subTest(mode=mode):
+                self.work.chmod(mode)
+                self.assert_refused(self.run_launcher())
+        self.work.chmod(0o700)
+
+    def test_existing_output_symlink_is_never_replaced(self):
+        outside = self.root / "do-not-overwrite"
+        outside.write_bytes(b"preserve")
+        (self.work / "source.pdf").symlink_to(outside)
+        result = self.run_launcher()
+        self.assertEqual(69, result.returncode)
+        self.assertEqual(b"preserve", outside.read_bytes())
+        self.assertTrue((self.work / "source.pdf").is_symlink())
+
+    def test_nonisolated_python_is_refused_without_echoing_arguments(self):
         result = self.run_launcher(["PRIVATE_ARG_SENTINEL"], isolated=False)
         self.assertEqual(78, result.returncode)
         self.assertEqual("", result.stdout)
         self.assertEqual("UTEN_PREVIEW_ISOLATED_PYTHON_REQUIRED\n", result.stderr)
-
-    def test_missing_fixed_converter_reports_only_a_safe_error_code(self):
-        self.fake.unlink()
-        result = self.run_launcher(["PRIVATE_ARG_SENTINEL"])
-        self.assertEqual(127, result.returncode)
-        self.assertEqual("", result.stdout)
-        self.assertEqual("UTEN_PREVIEW_SYSTEM_CONVERTER_UNAVAILABLE\n", result.stderr)
-
-    def test_production_shebang_ignores_python_environment_before_directory_checks(self):
-        executable = self.root / "launcher"
-        shutil.copyfile(LAUNCHER, executable)
-        executable.chmod(0o700)
-        self.work.chmod(0o777)
-        environment = dict(os.environ, PYTHONPATH="/invalid-synthetic-pythonpath",
-                           PYTHONHOME="/invalid-synthetic-pythonhome")
-        result = subprocess.run([str(executable)], cwd=self.work, env=environment,
-                                capture_output=True, text=True, timeout=10)
-        self.assertEqual(78, result.returncode)
-        self.assertEqual("", result.stdout)
-        self.assertEqual("UTEN_PREVIEW_PRIVATE_DIRECTORY_REQUIRED\n", result.stderr)
-
 
 if __name__ == "__main__":
     unittest.main()

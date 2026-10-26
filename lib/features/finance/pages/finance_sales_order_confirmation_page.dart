@@ -1,9 +1,16 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
+import '../../../shared/auth/native_read_view_scope_mixin.dart'
+    show nativeReadAccessDenied;
+import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../shared/paging/paged_query_identity.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show setEquals;
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -20,7 +27,6 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
-import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -35,8 +41,6 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/providers/authenticated_scope_provider.dart';
-import '../../../core/network/server_config.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/models/party_open_balance.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
@@ -89,7 +93,8 @@ class FinanceSalesOrderConfirmationPage extends ConsumerStatefulWidget {
 }
 
 class _FinanceSalesOrderConfirmationPageState
-    extends ConsumerState<FinanceSalesOrderConfirmationPage> {
+    extends ConsumerState<FinanceSalesOrderConfirmationPage>
+    with ScopedPagedReadViewMixin<FinanceSalesOrderConfirmationPage> {
   /// 宿主页路径(创建时捕获), 精准刷新信号只在它就在栈顶时立即重拉。
   String? _hostLocation;
 
@@ -101,6 +106,9 @@ class _FinanceSalesOrderConfirmationPageState
   String? _error;
   String _keyword = '';
   int _requestVersion = 0;
+  int _countVersion = 0;
+  int? _readerEpoch;
+  Map<String, dynamic>? _acceptedQuery;
   final _tableRows =
       MasterDataTableRowsController<SalesOrderFinancePendingItem>();
   final Set<String> _selectedIds = <String>{};
@@ -159,17 +167,9 @@ class _FinanceSalesOrderConfirmationPageState
   @override
   void initState() {
     super.initState();
+    _readerEpoch = ref.read(exportContextEpochProvider);
     _state = _initialSelection.state;
     _confirmationKind = _initialSelection.kind;
-    ref.listenManual(authenticatedScopeProvider, (previous, next) {
-      if (previous != next) _invalidateScope();
-    });
-    ref.listenManual(apiBaseUrlProvider, (previous, next) {
-      if (previous != next) _invalidateScope();
-    });
-    ref.listenManual(currentPermissionsProvider, (previous, next) {
-      if (!setEquals(previous, next)) _invalidateScope();
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       // 客户应收列前缀要显示本位币名(币种字典 baseCurrency 标记)。
@@ -180,21 +180,6 @@ class _FinanceSalesOrderConfirmationPageState
           completion.complete();
         }
       });
-    });
-  }
-
-  void _invalidateScope() {
-    ++_requestVersion;
-    ++_columnFilters.generation;
-    if (!mounted) return;
-    setState(() {
-      _result = null;
-      _rejectedCount = null;
-      _columnFilters.reset();
-      _clearSelectionState();
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _load(1);
     });
   }
 
@@ -218,10 +203,71 @@ class _FinanceSalesOrderConfirmationPageState
     }
   }
 
-  Future<void> _load(int page) async {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    final epoch = ref.read(exportContextEpochProvider);
+    final changedOwner = _readerEpoch != epoch;
+    _readerEpoch = epoch;
+    ++_requestVersion;
+    ++_countVersion;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _acceptedQuery = null;
+      _rejectedCount = null;
+      _columnFilters.reset();
+      _clearSelectionState();
+      _loading = false;
+      _error =
+          scopedPagedReadRejection?.message ??
+          (changedOwner ? null : '读取权限已变化，请重新加载');
+    });
+    if (changedOwner) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            _canView &&
+            epoch == ref.read(exportContextEpochProvider)) {
+          _load(1);
+        }
+      });
+    }
+  }
+
+  Map<String, dynamic> get _cacheQuery => {
+    'owner': ref.read(exportContextEpochProvider),
+    'repository': ref.read(salesOrderFinanceConfirmationRepositoryProvider),
+    'keyword': _keyword,
+    'state': _state,
+    'confirmationKind': _confirmationKind,
+    'columns': Map.of(_columnFilters.values),
+    'sort': _columnFilters.sortColumn,
+    'ascending': _columnFilters.sortAscending,
+  };
+
+  Future<void> _navigatePage(int page) => _load(page, useCache: true);
+
+  Future<void> _load(int page, {bool useCache = false}) async {
+    final cacheQuery = _cacheQuery;
+    final repo = ref.read(salesOrderFinanceConfirmationRepositoryProvider);
+    final rejected = _showRejected;
+    final confirmed = _showConfirmed;
+    final changesOnly = _changesFilter;
+    final keyword = _keyword.isEmpty ? null : _keyword;
+    final sort = _kSortFields[_columnFilters.sortColumn];
+    final order = _columnFilters.sortColumn == null
+        ? null
+        : (_columnFilters.sortAscending ? 'asc' : 'desc');
+    final billNo = _columnFilters['billNo'];
+
     if (!_canView) return;
     final requestVersion = ++_requestVersion;
     setState(() {
+      if (!samePagedReadQuery(_acceptedQuery, cacheQuery)) {
+        _result = null;
+        _columnFilters.generation++;
+        _columnFilters.buckets = const {};
+        _clearSelectionState();
+      }
       _loading = true;
       _error = null;
     });
@@ -229,25 +275,50 @@ class _FinanceSalesOrderConfirmationPageState
     // 已驳回段下且未搜索时本页 total 就是全量驳回数, 不另发。
     unawaited(_loadHistoryCounts(requestVersion));
     try {
-      final result = await ref
-          .read(salesOrderFinanceConfirmationRepositoryProvider)
-          .pending(
-            page: page,
-            rejected: _showRejected,
-            keyword: _keyword.isEmpty ? null : _keyword,
-            changesOnly: _changesFilter,
-            confirmed: _showConfirmed,
-            sort: _kSortFields[_columnFilters.sortColumn],
-            order: _columnFilters.sortColumn == null
-                ? null
-                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
-            billNo: _columnFilters['billNo'],
+      final cachedPage = await readScopedPage<SalesOrderFinancePendingItem>(
+        page,
+        query: cacheQuery,
+        currentQuery: () => _cacheQuery,
+        useCache: useCache,
+        fetchPage: (target) async {
+          final response = await repo.pending(
+            page: target,
+            rejected: rejected,
+            keyword: keyword,
+            changesOnly: changesOnly,
+            confirmed: confirmed,
+            sort: sort,
+            order: order,
+            billNo: billNo,
           );
+          return PagedReadSnapshot<
+            SalesOrderFinancePendingItem,
+            SalesOrderFinancePendingPage
+          >(
+            page: PagedResult(
+              items: response.items,
+              page: response.page,
+              size: response.size,
+              total: response.total,
+              totalPages: response.totalPages,
+            ),
+            snapshot: response,
+          );
+        },
+      );
+      final result =
+          (cachedPage
+                  as PagedReadSnapshot<
+                    SalesOrderFinancePendingItem,
+                    SalesOrderFinancePendingPage
+                  >)
+              .snapshot;
       if (!mounted || requestVersion != _requestVersion) return;
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
-      unawaited(_loadBillNoFacets());
+
       setState(() {
         _result = result;
+        _acceptedQuery = cacheQuery;
         _loading = false;
         for (final item in result.items) {
           if (_selectedIds.contains(item.orderId)) {
@@ -268,7 +339,13 @@ class _FinanceSalesOrderConfirmationPageState
       // 分段计数与列表同源, 随列表加载一并失效(页内专用, 不连带整份徽章汇总)。
       ref.invalidate(salesOrderFinanceQueueCountProvider);
     } on ApiException catch (error) {
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!mounted || requestVersion != _requestVersion) {
+        return;
+      }
+      if (nativeReadAccessDenied(error)) {
+        _retireDeniedRead(error);
+        return;
+      }
       setState(() {
         _error = error.message;
         _loading = false;
@@ -284,16 +361,41 @@ class _FinanceSalesOrderConfirmationPageState
 
   /// 财务退回仍是未完成的修订工作；仅取其全量计数，不给已完成历史挂计数。
   Future<void> _loadHistoryCounts(int requestVersion) async {
+    final epoch = ref.read(exportContextEpochProvider);
+    final generation = ++_countVersion;
+    final repo = ref.read(salesOrderFinanceConfirmationRepositoryProvider);
+    bool current() =>
+        mounted &&
+        requestVersion == _requestVersion &&
+        generation == _countVersion &&
+        epoch == ref.read(exportContextEpochProvider);
     try {
-      final repo = ref.read(salesOrderFinanceConfirmationRepositoryProvider);
       final rejected = await repo.pending(size: 1, rejected: true);
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!current()) return;
       setState(() {
         _rejectedCount = rejected.total;
       });
-    } catch (_) {
+    } catch (error) {
+      if (current() && error is ApiException && nativeReadAccessDenied(error)) {
+        _retireDeniedRead(error);
+      }
       // 计数失败静默: 分段不显示数字, 不影响列表。
     }
+  }
+
+  void _retireDeniedRead(ApiException error) {
+    invalidateScopedPageReads();
+    ++_requestVersion;
+    ++_countVersion;
+    setState(() {
+      _result = null;
+      _acceptedQuery = null;
+      _rejectedCount = null;
+      _columnFilters.reset();
+      _clearSelectionState();
+      _loading = false;
+      _error = error.message;
+    });
   }
 
   /// 表头排序键 → 服务端 sort 参数（2026-09-25 单号列统一；未列出的列不可排序）。
@@ -320,21 +422,6 @@ class _FinanceSalesOrderConfirmationPageState
 
   /// 销售单号 facets（2026-09-25 单号列统一）：与列表同过滤口径
   /// （不含单号列自身值筛选）。
-  Future<void> _loadBillNoFacets() => _columnFilters.loadFacets(
-    () async => {
-      'billNo': await ref
-          .read(salesOrderFinanceConfirmationRepositoryProvider)
-          .billNoFacets(
-            rejected: _showRejected,
-            keyword: _keyword.isEmpty ? null : _keyword,
-            changesOnly: _changesFilter,
-            confirmed: _showConfirmed,
-          ),
-    },
-    onLoaded: () {
-      if (mounted) setState(() {});
-    },
-  );
 
   ({String state, String? kind}) get _initialSelection {
     final requested =
@@ -384,7 +471,7 @@ class _FinanceSalesOrderConfirmationPageState
 
   Future<void> _refreshCurrent() async {
     setState(_clearSelectionState);
-    await _load(_result?.page ?? 1);
+    await _load(_tableRows.visiblePage ?? _result?.page ?? 1);
   }
 
   void _invalidateSearchRequest(String _) {
@@ -439,7 +526,7 @@ class _FinanceSalesOrderConfirmationPageState
         _selectedIds.remove(item.orderId);
         _selectedItems.remove(item.orderId);
       });
-      _load(_result?.page ?? 1);
+      _load(_tableRows.visiblePage ?? _result?.page ?? 1);
     }
   }
 
@@ -707,16 +794,6 @@ class _FinanceSalesOrderConfirmationPageState
           ).financeSalesReviewAccessHint,
         ),
       );
-    } else if (_loading && _result == null) {
-      main = _pinHostHeader(const UtenSkeletonList());
-    } else if (_error != null && _result == null) {
-      main = _pinHostHeader(
-        UtenEmpty.error(
-          message: _error,
-          actionLabel: '重新加载',
-          onAction: () => _load(1),
-        ),
-      );
     } else {
       main = _buildBody(context, canConfirm: canConfirm);
     }
@@ -887,14 +964,18 @@ class _FinanceSalesOrderConfirmationPageState
                 routePrefix: '/finance/sales-order-confirmations/',
               ),
             ),
-          if (_error != null) ...[
+          if (_error != null && result.items.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),
-            _InlineError(message: _error!, onRetry: () => _load(result.page)),
+            _InlineError(
+              message: _error!,
+              onRetry: () => _load(_tableRows.visiblePage ?? result.page),
+            ),
           ],
           const SizedBox(height: UtenSpacing.s8),
         ],
       ),
       body: MasterDataTableView<SalesOrderFinancePendingItem>(
+        expensiveRowMounts: false,
         rowsController: _tableRows,
         paginationRevision: _result,
         paginationScope: (_keyword, _state, _confirmationKind),
@@ -929,6 +1010,28 @@ class _FinanceSalesOrderConfirmationPageState
           'billNo': _columnFilters.bucketOf('billNo'),
         },
         nullCounts: const <String, int>{},
+        facetPageLoaders: nativeFacetLoaders(
+          ref,
+          path: '/sales/orders/finance-confirmation/pending/facets',
+          fields: const ['billNo'],
+          filters: {
+            'rejected': _showRejected,
+            'keyword': _keyword,
+            'changesOnly': _changesFilter,
+            'confirmed': _showConfirmed,
+          },
+        ),
+        facetSearchScope: nativeFacetSearchScope(
+          ref,
+          '/sales/orders/finance-confirmation/pending/facets',
+          {
+            'rejected': _showRejected,
+            'keyword': _keyword,
+            'changesOnly': _changesFilter,
+            'confirmed': _showConfirmed,
+          },
+        ),
+
         filters: <String, String?>{
           'status': _confirmationKind,
           'billNo': _columnFilters['billNo'],
@@ -969,10 +1072,12 @@ class _FinanceSalesOrderConfirmationPageState
         ],
         rowColor: (item) => _rowColor(theme, item),
         isLoading: _loading,
+        error: result.items.isEmpty ? _error : null,
+        onRetry: () => _load(_tableRows.visiblePage ?? result.page),
         emptyMessage: _emptyMessage,
         currentPage: result.page,
         totalPages: result.totalPages,
-        onPageChange: _load,
+        onPageChange: _navigatePage,
         toolbarActions: canConfirm && _canBatchDecide
             ? null
             : [

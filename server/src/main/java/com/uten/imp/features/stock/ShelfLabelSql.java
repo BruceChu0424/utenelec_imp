@@ -106,6 +106,15 @@ final class ShelfLabelSql {
      * 命名参数：{@code :warehouseId}（warehouse=true）、{@code :rack}（hasRack）、{@code :kw}（hasKw）。
      */
     static String rows(boolean warehouse, boolean includeDisabled, boolean hasRack, boolean hasKw) {
+        return rows(warehouse, includeDisabled, hasRack, hasKw, false);
+    }
+
+    /** The same row authority for complete exports, without the interactive 5,000-row ceiling. */
+    static String rowsPage(boolean warehouse, boolean includeDisabled, boolean hasRack, boolean hasKw) {
+        return rows(warehouse, includeDisabled, hasRack, hasKw, true);
+    }
+
+    private static String rows(boolean warehouse, boolean includeDisabled, boolean hasRack, boolean hasKw, boolean paged) {
         StringBuilder sql = new StringBuilder(shelfCte(warehouse, includeDisabled));
         sql.append("SELECT r.goods_id, r.place, r.code, r.series, r.name,\n")
            .append("       r.color_name, r.unit_name, r.qty, r.disabled, r.parsed,\n")
@@ -122,8 +131,8 @@ final class ShelfLabelSql {
            .append("          split_part(r.place, '-', 1),\n")
            .append("          CASE WHEN r.parsed THEN split_part(r.place, '-', 2)::int END,\n")
            .append("          CASE WHEN r.parsed THEN split_part(r.place, '-', 3)::int END,\n")
-           .append("          r.place, r.code, r.warehouse_id NULLS LAST, r.color_id NULLS FIRST\n")
-           .append(" LIMIT ").append(ROW_LIMIT).append('\n');
+           .append("          r.place, r.code, r.warehouse_id NULLS LAST, r.color_id NULLS FIRST, r.goods_id\n")
+           .append(paged ? " LIMIT :__limit OFFSET :__offset\n" : " LIMIT " + ROW_LIMIT + "\n");
         return sql.toString();
     }
 

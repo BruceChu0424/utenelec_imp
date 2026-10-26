@@ -36,7 +36,7 @@
 | `smartd.conf.example` | 替换 `/etc/smartd.conf` 的 DEVICESCAN 行 | root 0644 | 随时; 告警脚本接入前 smartd 只发本机邮件 |
 | `uten-host-alert.py` | `/usr/local/libexec/uten-host-alert.py` | root 0755 | 平台告警候选验收后, 与下行同时安装 |
 | `start-server.py` | `/usr/local/lib/uten-imp/start-server.py` | root 0755 | 先装脚本, 再更新 `../units/uten-imp.service`; 随应用维护窗口重启生效 |
-| `uten-preview-soffice.py` | `/usr/local/libexec/uten-preview-soffice` | root 0755 | 设置 `UTEN_ATTACHMENT_PREVIEW_SOFFICE_PATH` 后重启应用；仅隔离转换环境，cwd 必须仅属主可访问，完整隔离仍需独立 worker |
+| `uten-preview-soffice.py` | `/usr/local/libexec/uten-preview-soffice-isolated` | root 0755 | 仅为独立转换 worker 的 Unix socket 客户端，不在 ERP 身份下执行转换器；先按[worker 验收](../../company-files/PREVIEW_WORKER.zh-CN.md)安装并验证，失败不回退本地转换 |
 | `uten-alert.sh` | `/usr/local/sbin/uten-alert` | root 0755 | 同时装 `../units/uten-alert@.service` |
 | `uten-host-check.sh` | `/usr/local/sbin/uten-host-check` | root 0755 | 同时装 `../units/uten-host-check.{service,timer}` |
 | `uten-alert-smart.sh` | `/usr/local/sbin/uten-alert-smart` | root 0755 | 与主机告警一同安装 |

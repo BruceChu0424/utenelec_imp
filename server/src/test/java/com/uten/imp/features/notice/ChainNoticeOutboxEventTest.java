@@ -39,6 +39,59 @@ import static org.mockito.Mockito.when;
 class ChainNoticeOutboxEventTest {
 
     @Test
+    void directClosureCompletionNotifiesTheBusinessOwnerWithoutFinanceApprovalLanguage() {
+        for(String type:List.of("PURCHASE","SUBCONTRACT")) {
+            UUID caseId=UUID.randomUUID(),order=UUID.randomUUID(),buyer=UUID.randomUUID();
+            JdbcTemplate jdbc=mock(JdbcTemplate.class);NoticeService notice=mock(NoticeService.class);
+            UserAccountRepository users=mock(UserAccountRepository.class);
+            when(users.findById(buyer)).thenReturn(Optional.of(activeUser(buyer)));
+            when(jdbc.queryForList(contains("FROM procurement_order_approval_cases approval_case"),eq(caseId)))
+                    .thenReturn(List.of(Map.of("bill_no_snapshot","CLOSE-1","order_type",type,"order_id",order,
+                            "request_type","CLOSE","approval_status","APPROVED","closure_execution_mode","DIRECT",
+                            "submitted_by_user_id",buyer)));
+            var service=service(notice,users,jdbc,mock(BusinessEventPublisher.class));
+            service.deliverOutboxEvent("PROCUREMENT_ORDER_CLOSED",caseId,new ObjectMapper().createObjectNode());
+            org.mockito.ArgumentCaptor<String> content=org.mockito.ArgumentCaptor.forClass(String.class);
+            verify(notice).publishForUser(eq(buyer),eq("订单已结束：CLOSE-1"),content.capture(),
+                    eq(ChainNoticeService.TYPE_WORKFLOW),anyString(),
+                    eq((type.equals("PURCHASE")?"/purchase/orders/":"/subcontract/orders/")+order),eq("PROCUREMENT_ORDER_CLOSED"));
+            assertTrue(content.getValue().contains("取消剩余数量并直接结束"));
+            org.junit.jupiter.api.Assertions.assertFalse(content.getValue().contains("已获财务批准"));
+            verify(users,never()).findAll();
+        }
+    }
+
+    @Test
+    void replayedHistoricalPendingClosureSubmissionReturnsToItsOwnerWithoutAFinanceTask() {
+        UUID caseId=UUID.randomUUID(),order=UUID.randomUUID(),buyer=UUID.randomUUID();
+        JdbcTemplate jdbc=mock(JdbcTemplate.class);NoticeService notice=mock(NoticeService.class);
+        UserAccountRepository users=mock(UserAccountRepository.class);
+        when(users.findById(buyer)).thenReturn(Optional.of(activeUser(buyer)));
+        when(jdbc.queryForList(contains("FROM procurement_order_approval_cases approval_case"),eq(caseId)))
+                .thenReturn(List.of(Map.of("bill_no_snapshot","CLOSE-OLD","order_type","PURCHASE","order_id",order,
+                        "request_type","CLOSE","approval_status","PENDING","submitted_by_user_id",buyer)));
+        var service=service(notice,users,jdbc,mock(BusinessEventPublisher.class));
+        service.deliverOutboxEvent(ChainNoticeService.EVENT_PROCUREMENT_FINANCE_SUBMITTED,caseId,new ObjectMapper().createObjectNode());
+        verify(notice).publishForUser(eq(buyer),eq("请重新核对并结束订单：CLOSE-OLD"),contains("无需财务批准"),
+                eq(ChainNoticeService.TYPE_WORKFLOW),anyString(),eq("/purchase/orders/"+order),
+                eq(ChainNoticeService.EVENT_PROCUREMENT_FINANCE_SUBMITTED));
+        verify(users,never()).findAll();
+        verifyNoMoreInteractions(notice);
+    }
+
+    @Test
+    void supersededHistoricalClosureSubmissionReplayIsSilent() {
+        UUID caseId=UUID.randomUUID();JdbcTemplate jdbc=mock(JdbcTemplate.class);
+        NoticeService notice=mock(NoticeService.class);UserAccountRepository users=mock(UserAccountRepository.class);
+        when(jdbc.queryForList(contains("FROM procurement_order_approval_cases approval_case"),eq(caseId)))
+                .thenReturn(List.of(Map.of("bill_no_snapshot","CLOSE-OLD","order_type","PURCHASE","order_id",UUID.randomUUID(),
+                        "request_type","CLOSE","approval_status","CANCELED","submitted_by_user_id",UUID.randomUUID())));
+        service(notice,users,jdbc,mock(BusinessEventPublisher.class)).deliverOutboxEvent(
+                ChainNoticeService.EVENT_PROCUREMENT_FINANCE_SUBMITTED,caseId,new ObjectMapper().createObjectNode());
+        verifyNoInteractions(notice,users);
+    }
+
+    @Test
     void customerShipmentRejectDeliveryCannotReuseAnOlderRevisionReason() {
         UUID shipment=UUID.randomUUID();JdbcTemplate jdbc=mock(JdbcTemplate.class);
         NoticeService notice=mock(NoticeService.class);UserAccountRepository users=mock(UserAccountRepository.class);

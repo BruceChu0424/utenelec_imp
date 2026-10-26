@@ -31,6 +31,37 @@ final _reader = StateProvider<AuthenticatedScope?>(
 
 void main() {
   for (final subcontract in [false, true]) {
+    for (final freshStatus in [null, '禁用']) {
+      testWidgets(
+        '${subcontract ? 'subcontract' : 'purchase'} rejects ${freshStatus ?? 'missing'} supplier proof after an active candidate was offered',
+        (tester) async {
+          final api = _Api(subcontract)
+            ..replacementDraft = true
+            ..supplierStatus = freshStatus;
+          await _mount(tester, api, subcontract);
+          await tester.pumpAndSettle();
+          final supplier = find.byType(ProcurementSupplierCell).first;
+          await tester.ensureVisible(supplier);
+          await tester.tap(supplier);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('新供应商'));
+          await tester.pump();
+          await tester.tap(find.text('确定'));
+          await tester.pumpAndSettle();
+          expect(
+            tester
+                .widget<ProcurementSupplierCell>(
+                  find.byType(ProcurementSupplierCell).first,
+                )
+                .value,
+            isNull,
+          );
+          expect(api.supplierLookupCalls, greaterThan(0));
+          expect(api.writes, isEmpty);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
     testWidgets(
       '${subcontract ? 'subcontract' : 'purchase'} replacement draft opens with blank supplier and accepts a new supplier',
       (tester) async {
@@ -381,6 +412,8 @@ class _Api extends ApiClient {
   final writes = <String>[];
   int detailCalls = 0;
   bool replacementDraft = false;
+  String? supplierStatus = '使用';
+  int supplierLookupCalls = 0;
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -437,13 +470,15 @@ class _Api extends ApiClient {
         },
       ];
     }
-    if (replacementDraft && path == '/master/suppliers/dict') {
+    if (replacementDraft && path == '/master/suppliers/lookup') {
+      supplierLookupCalls++;
+      if (supplierStatus == null) return [];
       return [
         {
           'id': 'new-supplier',
           'code': 'SUP-NEW',
           'name': '新供应商',
-          'status': '使用',
+          'status': supplierStatus,
         },
       ];
     }

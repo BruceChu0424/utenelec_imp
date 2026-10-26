@@ -18,6 +18,7 @@ class PagedResult<T> {
     this.totals = const [],
     this.facets = const {},
     this.facetNullCounts = const {},
+    this.readScopeVersion,
   });
 
   final List<T> items;
@@ -25,6 +26,9 @@ class PagedResult<T> {
   final int size;
   final int total;
   final int totalPages;
+
+  /// Trusted response authorization proof; absent versions permit no metadata reuse.
+  final String? readScopeVersion;
 
   /// 服务端下发的合计项（按单位/币种分组，前端不做任何加法）；端点没声明时为空。
   final List<ReportTotal> totals;
@@ -87,6 +91,7 @@ class PagedResult<T> {
       totals: totals,
       facets: facets,
       facetNullCounts: nullCounts,
+      readScopeVersion: json['readScopeVersion'] as String?,
     );
   }
 
@@ -124,6 +129,7 @@ class PagedResult<T> {
           .toList(),
       facets: facets,
       facetNullCounts: nullCounts,
+      readScopeVersion: json['readScopeVersion'] as String?,
     );
   }
 }

@@ -9,6 +9,7 @@
 // - 已盘点: 可"更正盘点" (出新版本, 写原因); 盘点中可"撤回盘点"。
 // 按钮只看服务端下发的 allowedActions。
 import 'package:flutter/material.dart';
+import '../../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import '../../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,6 +40,7 @@ import '../widgets/machine_count_card.dart';
 import '../widgets/workshop_material_close_poller.dart';
 import '../widgets/workshop_material_close_status_banner.dart';
 import '../widgets/workshop_material_labels.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class WorkshopMaterialCountPage extends ConsumerStatefulWidget {
   const WorkshopMaterialCountPage({super.key, required this.periodId});
@@ -855,15 +857,18 @@ class _WorkshopMaterialCountPageState
     } else {
       children.addAll(_countContent(l10n, theme, period, count));
     }
-    return ListView(
-      key: const Key('wm-count-list'),
+    return UtenPageEdgePadding.scroll(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s4,
         UtenSpacing.s12,
         UtenSpacing.s4,
         UtenFloatingActionGroup.scrollClearance,
       ),
-      children: children,
+      builder: (context, resolvedPagePadding) => ListView(
+        key: const Key('wm-count-list'),
+        padding: resolvedPagePadding,
+        children: children,
+      ),
     );
   }
 
@@ -932,16 +937,10 @@ class _WorkshopMaterialCountPageState
             '${wmPeriodLabel(period)} · ${wmPeriodStatusLabel(period.status)}',
             style: theme.textTheme.titleMedium,
           ),
-          IconButton(
+          UtenFieldHintIcon(
             key: const Key('wm-count-help'),
-            tooltip: '录入说明',
-            icon: const Icon(Icons.help_outline_rounded),
-            onPressed: () => UtenDialog.show(
-              context,
-              title: '录入说明',
-              content: Text(l10n.wmFillGuide),
-              confirmLabel: '知道了',
-            ),
+            dense: true,
+            info: l10n.wmFillGuide,
           ),
           UtenPrintPreviewButton(
             applyTableProjection:

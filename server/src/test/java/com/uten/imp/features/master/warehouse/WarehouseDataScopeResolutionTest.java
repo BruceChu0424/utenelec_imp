@@ -87,6 +87,19 @@ class WarehouseDataScopeResolutionTest {
         verify(jdbc, times(4)).sql(contains(ACCESS_SQL));
     }
 
+    @Test void publicationRefreshBypassesOldWindowAndRetiresItsSelectedWarehouseDerivative() {
+        database.set(keeper(warehouse));
+        service.withScopeCache(()->{
+            assertThat(service.current(warehouse).warehouseIds()).containsExactly(warehouse);
+            database.set(keeper(other));
+            assertThat(service.freshAccess(userA,false).defaultScope().warehouseIds()).containsExactly(other);
+            assertThat(service.access().defaultScope().warehouseIds()).containsExactly(other);
+            assertThatThrownBy(()->service.current(warehouse)).isInstanceOf(ApiException.class);
+            return null;
+        });
+        verify(jdbc,times(2)).sql(contains(ACCESS_SQL));
+    }
+
     @Test
     void administrativeBrowseAndPersonalTaskScopeNeverShareACachedWarehouseExpansion() {
         database.set(supervisor());

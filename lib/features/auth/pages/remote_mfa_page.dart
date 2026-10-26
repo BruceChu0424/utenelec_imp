@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -188,186 +189,192 @@ class _MfaSessionState extends ConsumerState<_MfaSession> {
     return Scaffold(
       appBar: UtenAppBar(title: t('personal'), leading: const UtenBackButton()),
       body: UtenContentContainer.narrow(
-        child: ListView(
+        child: UtenPageEdgePadding.scroll(
           padding: const EdgeInsets.all(UtenSpacing.s16),
-          children: [
-            Text(t('mfaIntro'), style: theme.textTheme.bodyMedium),
-            const SizedBox(height: UtenSpacing.s16),
-            if (!_self)
-              Text(t('selfOnly'))
-            else ...[
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    _error!,
-                    key: const Key('mfa-error'),
-                    style: TextStyle(color: theme.colorScheme.error),
-                  ),
-                ),
-              if (status == null)
-                Center(
-                  child: _busy
-                      ? const CircularProgressIndicator()
-                      : UtenButton(onPressed: _load, child: Text(t('retry'))),
-                ),
-              if (status != null)
-                SettingsSection(
-                  title: t('personal'),
-                  children: [
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        status.enabled
-                            ? Icons.verified_user_outlined
-                            : Icons.security_outlined,
-                      ),
-                      title: Text(
-                        t(status.enabled ? 'mfaBound' : 'mfaMissing'),
-                      ),
-                      subtitle: Text(
-                        t(status.sessionVerified ? 'verified' : 'notVerified'),
-                      ),
+          builder: (context, pagePadding) => ListView(
+            padding: pagePadding,
+            children: [
+              Text(t('mfaIntro'), style: theme.textTheme.bodyMedium),
+              const SizedBox(height: UtenSpacing.s16),
+              if (!_self)
+                Text(t('selfOnly'))
+              else ...[
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      _error!,
+                      key: const Key('mfa-error'),
+                      style: TextStyle(color: theme.colorScheme.error),
                     ),
-                    if (!status.enrollmentAllowed)
+                  ),
+                if (status == null)
+                  Center(
+                    child: _busy
+                        ? const CircularProgressIndicator()
+                        : UtenButton(onPressed: _load, child: Text(t('retry'))),
+                  ),
+                if (status != null)
+                  SettingsSection(
+                    title: t('personal'),
+                    children: [
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          status.enabled
+                              ? Icons.verified_user_outlined
+                              : Icons.security_outlined,
+                        ),
+                        title: Text(
+                          t(status.enabled ? 'mfaBound' : 'mfaMissing'),
+                        ),
+                        subtitle: Text(
+                          t(
+                            status.sessionVerified ? 'verified' : 'notVerified',
+                          ),
+                        ),
+                      ),
+                      if (!status.enrollmentAllowed)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Text(t('officeOnly')),
+                        ),
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Text(t('officeOnly')),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Wrap(
-                        spacing: 12,
-                        runSpacing: 8,
-                        children: [
-                          if (!status.enabled &&
-                              status.enrollmentAllowed &&
-                              enrollment == null)
+                        child: Wrap(
+                          spacing: 12,
+                          runSpacing: 8,
+                          children: [
+                            if (!status.enabled &&
+                                status.enrollmentAllowed &&
+                                enrollment == null)
+                              UtenButton(
+                                key: const Key('mfa-enroll'),
+                                isLoading: _busy,
+                                onPressed: _busy ? null : _enroll,
+                                child: Text(t('enroll')),
+                              ),
+                            if (status.enabled)
+                              UtenButton(
+                                key: const Key('mfa-verify'),
+                                isLoading: _busy,
+                                onPressed: _busy ? null : _verify,
+                                child: Text(t('verify')),
+                              ),
+                            if (status.enabled && status.enrollmentAllowed)
+                              UtenButton(
+                                key: const Key('mfa-disable'),
+                                type: UtenButtonType.ghost,
+                                isLoading: _busy,
+                                onPressed: _busy ? null : _disable,
+                                child: Text(t('disable')),
+                              ),
                             UtenButton(
-                              key: const Key('mfa-enroll'),
-                              isLoading: _busy,
-                              onPressed: _busy ? null : _enroll,
-                              child: Text(t('enroll')),
-                            ),
-                          if (status.enabled)
-                            UtenButton(
-                              key: const Key('mfa-verify'),
-                              isLoading: _busy,
-                              onPressed: _busy ? null : _verify,
-                              child: Text(t('verify')),
-                            ),
-                          if (status.enabled && status.enrollmentAllowed)
-                            UtenButton(
-                              key: const Key('mfa-disable'),
                               type: UtenButtonType.ghost,
                               isLoading: _busy,
-                              onPressed: _busy ? null : _disable,
-                              child: Text(t('disable')),
+                              onPressed: _busy ? null : _load,
+                              child: Text(t('refresh')),
                             ),
-                          UtenButton(
-                            type: UtenButtonType.ghost,
-                            isLoading: _busy,
-                            onPressed: _busy ? null : _load,
-                            child: Text(t('refresh')),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              if (enrollment != null) ...[
-                const SizedBox(height: 20),
-                SettingsSection(
-                  title: t('enroll'),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(t('scan')),
-                          const SizedBox(height: 12),
-                          Center(
-                            child: Container(
-                              color: Colors.white,
-                              padding: const EdgeInsets.all(8),
-                              child: QrImageView(
-                                data: enrollment.otpauthUri,
-                                size: 200,
+                    ],
+                  ),
+                if (enrollment != null) ...[
+                  const SizedBox(height: 20),
+                  SettingsSection(
+                    title: t('enroll'),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(t('scan')),
+                            const SizedBox(height: 12),
+                            Center(
+                              child: Container(
+                                color: Colors.white,
+                                padding: const EdgeInsets.all(8),
+                                child: QrImageView(
+                                  data: enrollment.otpauthUri,
+                                  size: 200,
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            t('setupKey'),
-                            style: theme.textTheme.labelLarge,
-                          ),
-                          SelectableText(
-                            enrollment.secret,
-                            key: const Key('mfa-secret'),
-                          ),
-                          TextButton.icon(
-                            onPressed: () async {
-                              await Clipboard.setData(
-                                ClipboardData(text: enrollment.secret),
-                              );
-                              if (context.mounted && _current) {
-                                context.appSuccess(t('copied'));
-                              }
-                            },
-                            icon: const Icon(Icons.copy_outlined),
-                            label: Text(t('copy')),
-                          ),
-                          Text(
-                            t('secretHint'),
-                            style: theme.textTheme.bodySmall,
-                          ),
-                          Text(
-                            '${t('expires')}: ${DisplayDateTime.beijing(enrollment.expiresAt.toIso8601String())}',
-                          ),
-                          const SizedBox(height: 16),
-                          UtenInput(
-                            key: const Key('mfa-setup-otp'),
-                            controller: _otp,
-                            label: t('otp'),
-                            hint: t('otpHint'),
-                            aiSensitive: true,
-                            keyboardType: TextInputType.number,
-                            enabled: !_busy,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(6),
-                            ],
-                            autofillHints: const [AutofillHints.oneTimeCode],
-                            onFieldSubmitted: (_) => _busy ? null : _confirm(),
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 12,
-                            runSpacing: 8,
-                            children: [
-                              UtenButton(
-                                key: const Key('mfa-confirm'),
-                                onPressed: _busy ? null : _confirm,
-                                child: Text(t('confirmSetup')),
-                              ),
-                              UtenButton(
-                                type: UtenButtonType.ghost,
-                                onPressed: _busy
-                                    ? null
-                                    : () => setState(_clearEnrollment),
-                                child: Text(t('cancel')),
-                              ),
-                            ],
-                          ),
-                        ],
+                            const SizedBox(height: 12),
+                            Text(
+                              t('setupKey'),
+                              style: theme.textTheme.labelLarge,
+                            ),
+                            SelectableText(
+                              enrollment.secret,
+                              key: const Key('mfa-secret'),
+                            ),
+                            TextButton.icon(
+                              onPressed: () async {
+                                await Clipboard.setData(
+                                  ClipboardData(text: enrollment.secret),
+                                );
+                                if (context.mounted && _current) {
+                                  context.appSuccess(t('copied'));
+                                }
+                              },
+                              icon: const Icon(Icons.copy_outlined),
+                              label: Text(t('copy')),
+                            ),
+                            Text(
+                              t('secretHint'),
+                              style: theme.textTheme.bodySmall,
+                            ),
+                            Text(
+                              '${t('expires')}: ${DisplayDateTime.beijing(enrollment.expiresAt.toIso8601String())}',
+                            ),
+                            const SizedBox(height: 16),
+                            UtenInput(
+                              key: const Key('mfa-setup-otp'),
+                              controller: _otp,
+                              label: t('otp'),
+                              hint: t('otpHint'),
+                              aiSensitive: true,
+                              keyboardType: TextInputType.number,
+                              enabled: !_busy,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(6),
+                              ],
+                              autofillHints: const [AutofillHints.oneTimeCode],
+                              onFieldSubmitted: (_) =>
+                                  _busy ? null : _confirm(),
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 8,
+                              children: [
+                                UtenButton(
+                                  key: const Key('mfa-confirm'),
+                                  onPressed: _busy ? null : _confirm,
+                                  child: Text(t('confirmSetup')),
+                                ),
+                                UtenButton(
+                                  type: UtenButtonType.ghost,
+                                  onPressed: _busy
+                                      ? null
+                                      : () => setState(_clearEnrollment),
+                                  child: Text(t('cancel')),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+                ],
               ],
             ],
-          ],
+          ),
         ),
       ),
     );

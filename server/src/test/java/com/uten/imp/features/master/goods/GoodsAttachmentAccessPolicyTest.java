@@ -39,7 +39,7 @@ class GoodsAttachmentAccessPolicyTest {
 
     @Test void scopedMasterKeepsReadOnlyDelegationAndHidesUnrelatedGoods() {
         var h = new Harness();
-        ReflectionTestUtils.setField(h.goods, "goodsOwnerScopeEnabled", true);
+        ReflectionTestUtils.setField(ReflectionTestUtils.getField(h.goods, "goodsReadScopePolicy"), "ownerScopeEnabled", true);
         when(h.owners.evaluate("goods", "goods:view:all"))
                 .thenReturn(new OwnerVisibility.OwnerScope(false, Set.of(h.owner), Set.of()));
         assertDoesNotThrow(() -> h.policy.requireCanView(h.id, h.user()));
@@ -68,7 +68,7 @@ class GoodsAttachmentAccessPolicyTest {
 
     @Test void detailCapabilityUsesTheSameWritableScopeWithoutGrantingFunctionalActions() {
         var h = new Harness();
-        ReflectionTestUtils.setField(h.goods, "goodsOwnerScopeEnabled", true);
+        ReflectionTestUtils.setField(ReflectionTestUtils.getField(h.goods, "goodsReadScopePolicy"), "ownerScopeEnabled", true);
         when(h.owners.evaluate("goods", "goods:view:all"))
                 .thenReturn(new OwnerVisibility.OwnerScope(false, Set.of(h.owner), Set.of()));
         var delegated = h.goods.detail(h.id);

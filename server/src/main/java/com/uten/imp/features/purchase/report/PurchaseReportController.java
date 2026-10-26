@@ -56,6 +56,7 @@ public class PurchaseReportController {
 
     // ---------- 9 张报表 ----------
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/expediting")
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse expediting(
@@ -72,6 +73,7 @@ public class PurchaseReportController {
         return service.expediting(billNo, supplierId, dateFrom, dateTo, keyword, ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/request/detail")
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse requestDetail(
@@ -88,6 +90,7 @@ public class PurchaseReportController {
         return service.requestDetail(billNo, status, dateFrom, dateTo, keyword, ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/request/summary")
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse requestSummary(
@@ -104,6 +107,7 @@ public class PurchaseReportController {
         return service.requestSummary(billNo, status, dateFrom, dateTo, keyword, ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/order/detail")
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse orderDetail(
@@ -121,6 +125,7 @@ public class PurchaseReportController {
         return service.orderDetail(billNo, supplierId, status, dateFrom, dateTo, keyword, ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/order/summary")
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse orderSummary(
@@ -138,6 +143,7 @@ public class PurchaseReportController {
         return service.orderSummary(billNo, supplierId, status, dateFrom, dateTo, keyword, ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/receipt/detail")
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse receiptDetail(
@@ -156,6 +162,7 @@ public class PurchaseReportController {
         return service.receiptDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/receipt/summary")
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse receiptSummary(
@@ -174,6 +181,7 @@ public class PurchaseReportController {
         return service.receiptSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/return/detail")
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse returnDetail(
@@ -192,6 +200,7 @@ public class PurchaseReportController {
         return service.returnDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/return/summary")
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse returnSummary(
@@ -237,6 +246,7 @@ public class PurchaseReportController {
 
     // ---------- 保留 ----------
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/monthly")
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public List<MonthlySummaryRow> monthly(
@@ -247,6 +257,7 @@ public class PurchaseReportController {
         return service.monthly(docType, dateFrom, dateTo, limit);
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/pending")
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public List<PendingRow> pending(@RequestParam(defaultValue = "200") int limit) {

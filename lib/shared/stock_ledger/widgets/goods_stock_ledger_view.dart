@@ -1,3 +1,6 @@
+import '../../models/paged_result.dart';
+import '../../paging/scoped_paged_read.dart';
+import '../../paging/scoped_paged_read_view_mixin.dart';
 // 库存面板「出入库流水」分段: 按中式存货明细账排版 (ADR-135 §6.3)。
 //
 // 列: 日期 | 类型 | 单号(可点回源单) | 往来方 | 仓库 | 颜色 | 收入数量 | 发出数量 | 结存数量 | 单位 |
@@ -68,7 +71,29 @@ class GoodsStockLedgerView extends ConsumerStatefulWidget {
 }
 
 class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
-    with UtenRefreshParticipant<GoodsStockLedgerView> {
+    with
+        UtenRefreshParticipant<GoodsStockLedgerView>,
+        ScopedPagedReadViewMixin<GoodsStockLedgerView> {
+  final _readViewportRows = MasterDataTableRowsController<StockLedgerRow>();
+  int get _visibleReadPage => _data == null ? (_data?.page ?? 1) : (_readViewportRows.visiblePage ?? (_data?.page ?? 1));
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _version++;
+    if (mounted) {
+      setState(() {
+        _data = null;
+        _loading = false;
+        _error = null;
+      });
+    }
+    if (mounted) {
+      setState(() {
+        _error = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   /// 默认近90天 (含今天); 每页 50 行 (StockLedgerQuery 默认)。
   static const _defaultDays = 90;
 
@@ -107,7 +132,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
       _applyScope(widget.scope);
       trackRefresh(_load(1));
     } else if (oldWidget.reloadTick != widget.reloadTick) {
-      trackRefresh(_load(_data?.page ?? 1));
+      trackRefresh(_load(_visibleReadPage));
     }
   }
 
@@ -138,16 +163,58 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
     );
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     final version = ++_version;
     setState(() {
       _loading = true;
       _error = null;
     });
+    final repository = ref.read(goodsStockLedgerRepositoryProvider);
+    final goodsId = widget.goodsId;
+    final frozen = _query(1);
+    Object pagingQuery() => [
+      ref.read(goodsStockLedgerRepositoryProvider),
+      widget.goodsId,
+      widget.reloadTick,
+      _query(1).toQueryParameters(),
+    ];
     try {
-      final data = await ref
-          .read(goodsStockLedgerRepositoryProvider)
-          .ledger(widget.goodsId, _query(page));
+      final cached = await readScopedPage<StockLedgerRow>(
+        page,
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        fetchPage: (target) async {
+          final data = await repository.ledger(
+            goodsId,
+            StockLedgerQuery(
+              warehouseId: frozen.warehouseId,
+              colorId: frozen.colorId,
+              colorNull: frozen.colorNull,
+              scope: frozen.scope,
+              dateFrom: frozen.dateFrom,
+              dateTo: frozen.dateTo,
+              movementTypes: frozen.movementTypes,
+              includeWeightAdjustments: frozen.includeWeightAdjustments,
+              page: target,
+              size: frozen.size,
+            ),
+          );
+          return PagedReadSnapshot<StockLedgerRow, StockLedgerPage>(
+            page: PagedResult(
+              items: data.items,
+              page: data.page,
+              size: data.size,
+              total: data.total,
+              totalPages: data.totalPages,
+            ),
+            snapshot: data,
+          );
+        },
+      );
+      final data =
+          (cached as PagedReadSnapshot<StockLedgerRow, StockLedgerPage>)
+              .snapshot;
       if (!mounted || version != _version) return;
       setState(() {
         _data = data;
@@ -233,6 +300,8 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
             .map((r) => r.unitName)
             .firstWhere((u) => u != null && u.isNotEmpty, orElse: () => null);
     return MasterDataTableView<StockLedgerRow>(
+                rowsController: _readViewportRows,
+      expensiveRowMounts: false,
       tableKey:
           'shared.stock_ledger.widgets.goods_stock_ledger_view.GoodsStockLedgerViewState.build.1',
       key: const Key('stock-item-ledger-table'),
@@ -288,7 +357,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
       isLoading: _loading && data == null,
       loadingMore: _loading && data != null,
       error: _error,
-      onRetry: () => _load(1),
+      onRetry: () => _load(_visibleReadPage),
       emptyMessage: '所选范围内没有出入库流水',
       summaryBar: data == null
           ? null
@@ -313,7 +382,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
         _to,
         _includeAdjustments,
       ),
-      onPageChange: _load,
+      onPageChange: (page) => _load(page, useCache: true),
     );
   }
 

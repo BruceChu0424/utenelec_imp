@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -13,12 +12,13 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/widgets/sensitive_content_boundary.dart';
 import '../models/company_file.dart';
 import '../models/company_file_access_draft.dart';
 import '../repositories/company_file_repository.dart';
 
 /// An overlay must never re-adopt old private content after A -> B -> A.
-class CompanyFileScopeBoundary extends ConsumerStatefulWidget {
+class CompanyFileScopeBoundary extends StatelessWidget {
   const CompanyFileScopeBoundary({
     super.key,
     required this.boundary,
@@ -33,44 +33,23 @@ class CompanyFileScopeBoundary extends ConsumerStatefulWidget {
   final bool Function()? isCurrent;
 
   @override
-  ConsumerState<CompanyFileScopeBoundary> createState() =>
-      _CompanyFileScopeBoundaryState();
-}
-
-class _CompanyFileScopeBoundaryState
-    extends ConsumerState<CompanyFileScopeBoundary> {
-  bool _invalidated = false;
-
-  @override
-  void initState() {
-    super.initState();
-    ref.listenManual(sensitiveReadBoundaryProvider, (_, next) {
-      if (next != widget.boundary && !_invalidated && mounted) {
-        setState(() => _invalidated = true);
-      }
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final current =
-        !_invalidated &&
-        ref.watch(sensitiveReadBoundaryProvider) == widget.boundary &&
-        (widget.scope?.isCurrent ?? true) &&
-        (widget.isCurrent?.call() ?? true);
-    if (!current) _invalidated = true;
-    return current
-        ? widget.child
-        : UtenAlertDialog(
-            title: Text(l.companyFilesPermissionDenied),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(l.companyFilesClose),
-              ),
-            ],
-          );
+    return SensitiveContentBoundary(
+      boundary: boundary,
+      scope: scope,
+      isCurrent: isCurrent,
+      child: child,
+      invalidatedBuilder: (context) => UtenAlertDialog(
+        title: Text(l.companyFilesPermissionDenied),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(l.companyFilesClose),
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -104,7 +104,7 @@ public class SalesOrderController {
     }
 
     /** 订单进度订单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
-    @GetMapping("/progress/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/progress/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('sales_order:view')")
     public java.util.Map<String, List<java.util.Map<String, Object>>> progressFacets(
             @RequestParam(defaultValue = "") String stage,
@@ -126,6 +126,23 @@ public class SalesOrderController {
     @PreAuthorize("hasAuthority('sales_order:view')")
     public List<com.uten.imp.features.sales.order.dto.OrderShippableLine> shippableLines() {
         return service.shippableLines();
+    }
+
+    @GetMapping("/shippable-lines/page")
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public PageResponse<com.uten.imp.features.sales.order.dto.OrderShippableLine> shippableLinesPage(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) UUID clientId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "100") int size) {
+        return service.shippableLinesPage(new com.uten.imp.features.sales.order.dto.ShippableLineFilter(keyword, clientId), page, size);
+    }
+
+    @PostMapping("/shippable-lines/selection")
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public PageResponse<com.uten.imp.features.sales.order.dto.OrderShippableLine> shippableLinesSelection(
+            @Valid @RequestBody(required = false) com.uten.imp.features.sales.order.dto.ShippableLineFilter filter) {
+        return service.shippableLinesSelection(filter);
     }
 
     /**

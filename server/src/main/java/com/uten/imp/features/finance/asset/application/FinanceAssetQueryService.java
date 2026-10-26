@@ -250,7 +250,7 @@ public class FinanceAssetQueryService {
         Query data = bind(em.createNativeQuery(sql), filter);
         Query count = bind(em.createNativeQuery(countSql), filter);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = data.setFirstResult((int) pageable.getOffset())
+        List<Object[]> rows = data.setFirstResult(Pageables.checkedOffset(pageable.getPageNumber() + 1L, pageable.getPageSize()))
                 .setMaxResults(pageable.getPageSize()).getResultList();
         long total = number(count.getSingleResult()).longValue();
         List<AssetWorkbenchResponses.Summary> items = rows.stream()

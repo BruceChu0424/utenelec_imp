@@ -77,6 +77,7 @@ class _WhereUsedApi extends ApiClient {
     this.reportError,
     this.unattributedDemandCount = 0,
     this.unattributedDemandQty = 0,
+    this.unattributedDemandQtyExact,
     this.traceError,
     this.richActual = false,
     this.includeAlternativeMaterial = false,
@@ -94,6 +95,7 @@ class _WhereUsedApi extends ApiClient {
   final materialGates = <String, Completer<void>>{};
   final int unattributedDemandCount;
   final num unattributedDemandQty;
+  final String? unattributedDemandQtyExact;
 
   int materialCalls = 0;
   int reportCalls = 0;
@@ -103,6 +105,7 @@ class _WhereUsedApi extends ApiClient {
   final materialQueries = <Map<String, dynamic>>[];
   Map<String, dynamic>? lastMaterialQuery;
   Map<String, dynamic>? lastQuery;
+  final reportQueries = <Map<String, dynamic>>[];
 
   @override
   Future<Uint8List> downloadBytes(
@@ -325,6 +328,7 @@ class _WhereUsedApi extends ApiClient {
     }
     reportCalls += 1;
     lastQuery = Map<String, dynamic>.of(query ?? const {});
+    reportQueries.add(lastQuery!);
     final alternateMaterial = query?['materialGoodsId'] == _alternateMaterialId;
     final error = reportError;
     if (error != null) throw error;
@@ -391,11 +395,33 @@ class _WhereUsedApi extends ApiClient {
         'historyDateFiltered': false,
         'unattributedDemandCount': unattributedDemandCount,
         'unattributedDemandQty': unattributedDemandQty,
+        if (unattributedDemandQtyExact != null)
+          'unattributedDemandQtyExact': unattributedDemandQtyExact,
       },
       'page': 1,
       'size': 50,
       'total': 1,
       'totalPages': 1,
+    };
+  }
+}
+
+class _MetadataWhereUsedApi extends _WhereUsedApi {
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    final result = await super.get(path, query: query);
+    if (path != '/production/reports/where-used') return result;
+    final omitted = query?['includeCount'] == false;
+    return {
+      ...result,
+      'readScopeVersion': 'where-used-fixture-v1',
+      'statisticsGeneratedAt': omitted ? null : '2026-10-25T00:00:00Z',
+      'page': query?['page'] ?? 1,
+      'total': omitted ? -1 : 51,
+      'totalPages': omitted ? -1 : 2,
     };
   }
 }
@@ -665,6 +691,62 @@ Finder _suggestion(String type, String id) =>
     find.byKey(ValueKey(('where-used-suggestion', type, id)));
 
 void main() {
+  for (final exact in ['99999999999999.9999', '0.00000001']) {
+    testWidgets('unattributed demand keeps server exact quantity $exact', (
+      tester,
+    ) async {
+      final api = _WhereUsedApi(
+        unattributedDemandCount: 1,
+        unattributedDemandQty: 100000000000000,
+        unattributedDemandQtyExact: exact,
+      );
+      await _pumpSimplePage(tester, api, size: const Size(1400, 900));
+      await _selectMaterial(tester);
+      expect(find.textContaining('需求量 $exact'), findsOneWidget);
+      expect(find.textContaining('需求量 100000000000000'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+  testWidgets(
+    'relationship pagination reuses metadata but sorting reloads it',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final api = _MetadataWhereUsedApi();
+      await _pumpSimplePage(tester, api, size: const Size(1440, 900));
+      await _selectMaterial(tester);
+      final finder = find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<Map<String, dynamic>>,
+      );
+      MasterDataTableView<Map<String, dynamic>> table() =>
+          tester.widget(finder);
+      expect(table().totalPages, 2);
+      await table().onPageChange!(2);
+      await tester.pumpAndSettle();
+      expect(api.lastQuery, containsPair('includeCount', false));
+      expect(api.lastQuery, containsPair('includeFacets', false));
+      expect(api.lastQuery, containsPair('includeTotals', false));
+      expect(api.lastQuery, containsPair('metadataReuse', true));
+      expect(
+        api.lastQuery,
+        containsPair('readScopeVersion', 'where-used-fixture-v1'),
+      );
+      expect(table().currentPage, 2);
+      expect(table().totalPages, 2);
+      table().onSortChange!('goodsCode', false);
+      await tester.pumpAndSettle();
+      final sorted = api.reportQueries
+          .where((q) => q['sort'] == 'goodsCode' && q['order'] == 'desc')
+          .toList();
+      expect(sorted.map((q) => q['page']), [1, 2]);
+      expect(sorted.first['includeCount'], isNull);
+      expect(sorted.first['includeFacets'], isNull);
+      expect(sorted.first['includeTotals'], isNull);
+      expect(sorted.last['metadataReuse'], isTrue);
+      expect(table().currentPage, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'lost replacement commit response retries the same token without another preview',
     (tester) async {

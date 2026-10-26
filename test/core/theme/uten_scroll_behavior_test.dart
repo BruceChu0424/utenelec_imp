@@ -20,7 +20,7 @@ Widget _app(Widget child, {TargetPlatform platform = TargetPlatform.windows}) =>
 Future<void> _dragThumb(WidgetTester tester, Finder view) async {
   final rect = tester.getRect(view);
   final gesture = await tester.startGesture(
-    Offset(rect.right - 5, rect.top + 14),
+    Offset(rect.right - 5, rect.top + 32),
     kind: PointerDeviceKind.mouse,
   );
   await gesture.moveBy(const Offset(0, 20));
@@ -64,6 +64,18 @@ void main() {
       expect(
         find.byWidgetPredicate((widget) => widget is RawScrollbar),
         findsOneWidget,
+      );
+      final viewport = tester.getRect(
+        find.byKey(const ValueKey('page-scroll')),
+      );
+      final paintedBar = tester.getRect(
+        find.byWidgetPredicate((widget) => widget is RawScrollbar),
+      );
+      expect(
+        paintedBar,
+        viewport,
+        reason:
+            'The SDK painter must retain the full tight viewport, even when the single child has no intrinsic width',
       );
       await _dragThumb(tester, find.byKey(const ValueKey('page-scroll')));
       expect(controller.offset, greaterThan(600));

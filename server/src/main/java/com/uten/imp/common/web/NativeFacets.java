@@ -1,6 +1,7 @@
 package com.uten.imp.common.web;
 
 import jakarta.persistence.Query;
+import jakarta.persistence.EntityManager;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -20,6 +21,9 @@ public final class NativeFacets {
 
     private NativeFacets() {}
 
+    /** Keep the original named SQL: Hibernate's query string may already be positional. */
+    public static Query query(EntityManager em,String field,String sql){return NativeFacetCandidates.query(em,field,sql);}
+
     /** 单桶：{value, count, label=value}。 */
     public static Map<String, Object> bucket(String value, long count) {
         Map<String, Object> bucket = new LinkedHashMap<>();
@@ -30,7 +34,7 @@ public final class NativeFacets {
     }
 
     /** 原生查询行(value, count) → 桶列表；value null 归空串。 */
-    public static List<Map<String, Object>> rows(List<Object[]> rows) {
+    private static List<Map<String, Object>> rows(List<Object[]> rows) {
         List<Map<String, Object>> buckets = new ArrayList<>(rows.size());
         for (Object[] row : rows) {
             String value = row[0] == null ? "" : row[0].toString();
@@ -39,9 +43,11 @@ public final class NativeFacets {
         return buckets;
     }
 
-    /** 便捷：执行查询并转换。 */
+    /** Execute only bounded buckets, preserving a caller's stricter limit (including zero). */
     @SuppressWarnings("unchecked")
     public static List<Map<String, Object>> rowsOf(Query query) {
+        if(NativeFacetCandidates.active())return NativeFacetCandidates.rows(query);
+        query.setMaxResults(Math.min(query.getMaxResults(), TableFacets.DEFAULT_LIMIT));
         return rows((List<Object[]>) query.getResultList());
     }
 }

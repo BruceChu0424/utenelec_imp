@@ -107,7 +107,9 @@ void main() {
     tester,
   ) async {
     final repo = await _pumpPage(tester);
-    expect(repo.slipCalls.last, {'status': 'UNVIEWED', 'page': 1});
+    expect(repo.slipCalls.first, {'status': 'UNVIEWED', 'page': 1});
+    expect(_table(tester).currentPage, 1);
+    expect(repo.slipCalls.map((call) => call['page']), [1, 2]);
     expect(_categories(tester).segments.map((segment) => segment.label), [
       '未查看',
       '已查看',
@@ -116,11 +118,20 @@ void main() {
 
     _table(tester).onPageChange!(2);
     await tester.pumpAndSettle();
-    expect(repo.slipCalls.last['page'], 2);
+    expect(_table(tester).currentPage, 2);
+    expect(
+      repo.slipCalls.where((call) => call['page'] == 2),
+      hasLength(1),
+      reason: 'the prepared page is adopted without another read',
+    );
 
     _categories(tester).onSelectionChanged!(PayrollFilter.viewed);
     await tester.pumpAndSettle();
-    expect(repo.slipCalls.last, {'status': 'VIEWED', 'page': 1});
+    expect(repo.slipCalls.where((call) => call['status'] == 'VIEWED').first, {
+      'status': 'VIEWED',
+      'page': 1,
+    });
+    expect(_table(tester).currentPage, 1);
     expect(_table(tester).items.map((slip) => slip.status), [
       PayrollSlipStatus.viewed,
       PayrollSlipStatus.downloaded,

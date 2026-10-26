@@ -360,15 +360,18 @@ class MasterEditFormController extends ChangeNotifier {
 
   /// 校验全部字段并构造提交 body（含 [fixedValues]）；
   /// 校验失败返 null 并置 [error] / [errorFieldKey]。
-  Map<String, dynamic>? buildBody() {
+  Map<String, dynamic>? buildBody({Set<String> skipKeys = const {}}) {
     final codeField = fieldOf('code');
-    if (codeField != null && !codeField.readOnly) {
+    if (codeField != null &&
+        !codeField.readOnly &&
+        !skipKeys.contains('code')) {
       if (identifierChecking) return _fail(codeField, '正在检查编号，请稍后保存');
       if (identifierError != null) return _fail(codeField, identifierError!);
     }
     final body = Map<String, dynamic>.from(fixedValues);
+    body.removeWhere((key, _) => skipKeys.contains(key));
     for (final f in fields) {
-      if (f.readOnly) continue; // 只读字段（编号）不上送：新建服务端生成、编辑保留
+      if (f.readOnly || skipKeys.contains(f.key)) continue;
       switch (f.type) {
         case MasterFieldType.select:
           final sv = selectValues[f.key];
@@ -587,7 +590,8 @@ class MasterEditFormState extends State<MasterEditForm> {
 
   /// 校验并构造提交 body（含 fixedValues）；校验失败返 null 并在表单内显错文案。
 
-  Map<String, dynamic>? buildBody() => _controller.buildBody();
+  Map<String, dynamic>? buildBody({Set<String> skipKeys = const {}}) =>
+      _controller.buildBody(skipKeys: skipKeys);
 
   @override
   Widget build(BuildContext context) {

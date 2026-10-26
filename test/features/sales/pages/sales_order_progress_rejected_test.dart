@@ -1,3 +1,4 @@
+import '../../../support/native_facet_fake_transport.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -80,6 +81,13 @@ void main() {
       );
       expect(api.progressQueries.last['stage'], 'IN_PROGRESS');
       expect(api.progressQueries.last['originScope'], 'CURRENT');
+      await tester.runAsync(
+        () => tester
+            .widget<MasterDataTableView<SalesOrderProgressRow>>(
+              find.byType(MasterDataTableView<SalesOrderProgressRow>),
+            )
+            .facetPageLoaders['billNo']!('', 1),
+      );
       expect(api.facetQueries.last['originScope'], 'CURRENT');
       final table = tester.widget<MasterDataTableView<SalesOrderProgressRow>>(
         find.byType(MasterDataTableView<SalesOrderProgressRow>),
@@ -279,6 +287,13 @@ void main() {
       // 历史记录不带 stage 参数（repo 空串省略）= 后端默认全部订单。
       expect(api.progressQueries.last.containsKey('stage'), isFalse);
       expect(api.progressQueries.last['originScope'], 'ALL');
+      await tester.runAsync(
+        () => tester
+            .widget<MasterDataTableView<SalesOrderProgressRow>>(
+              find.byType(MasterDataTableView<SalesOrderProgressRow>),
+            )
+            .facetPageLoaders['billNo']!('', 1),
+      );
       expect(api.facetQueries.last['originScope'], 'ALL');
       final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
       expect(
@@ -431,6 +446,13 @@ void main() {
     await tester.tap(find.text('历史记录'));
     await tester.pumpAndSettle();
     expect(api.progressQueries.last['originScope'], 'ALL');
+    await tester.runAsync(
+      () => tester
+          .widget<MasterDataTableView<SalesOrderProgressRow>>(
+            find.byType(MasterDataTableView<SalesOrderProgressRow>),
+          )
+          .facetPageLoaders['billNo']!('', 1),
+    );
     expect(api.facetQueries.last['originScope'], 'ALL');
     final table = tester.widget<MasterDataTableView<SalesOrderProgressRow>>(
       find.byType(MasterDataTableView<SalesOrderProgressRow>),
@@ -468,7 +490,7 @@ void main() {
   });
 }
 
-class _ProgressApi extends ApiClient {
+class _ProgressApi extends ApiClient with NativeFacetFakeTransport {
   _ProgressApi({this.includeLegacy = false}) : super(Dio());
 
   final bool includeLegacy;

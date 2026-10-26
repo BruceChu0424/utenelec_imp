@@ -16,7 +16,7 @@ import java.util.UUID;
  */
 public record SupplierQueryFilter(
         UUID categoryId,
-        String keyword,
+        @jakarta.validation.constraints.Size(max = 200) String keyword,
         Set<String> nullFields,
         String name,
         String description,
@@ -39,7 +39,9 @@ public record SupplierQueryFilter(
         String shipVia,
         String shipAddress,
         boolean selectableOnly,
-        java.util.Map<String, String> columnSearch) {
+        @jakarta.validation.constraints.Size(max = 160)
+        java.util.Map<@jakarta.validation.constraints.Size(max = 100) String,
+                @jakarta.validation.constraints.Size(max = 200) String> columnSearch) {
 
     public SupplierQueryFilter(UUID categoryId, String keyword, Set<String> nullFields, String name,
             String description, Integer tday, String place, String empId, UUID ownerEmployeeId,

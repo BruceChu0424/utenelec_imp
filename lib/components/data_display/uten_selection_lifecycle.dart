@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 
 /// A local selection region whose registrations follow render attachment.
 ///
@@ -152,7 +153,12 @@ class _SelectionAreaState extends State<UtenSelectionArea> {
       focusNode: _focus,
       onSelectionChanged: _selectionChanged,
       contextMenuBuilder: widget.contextMenuBuilder,
-      child: UtenSelectionLifecycleScope(child: widget.child),
+      child: ScrollConfiguration(
+        behavior: _SelectionScrollBehavior.wrap(
+          ScrollConfiguration.of(context),
+        ),
+        child: UtenSelectionLifecycleScope(child: widget.child),
+      ),
     ),
   );
 }
@@ -195,15 +201,17 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
   final _registered = LinkedHashSet<Selectable>.identity();
   final _selectionListeners = HashMap<Selectable, VoidCallback>.identity();
   final _selectedMembers = HashSet<Selectable>.identity();
+  final _paintOwners = HashMap<Selectable, RenderObject>.identity();
   bool _hasSelection = false;
   SelectionRegistrar? _parent;
   bool _attached = false;
   bool _active = true;
+  bool _visible = true;
   bool _flushScheduled = false;
   bool _awaitingLayout = false;
 
   bool get _registrationReady {
-    if (!_attached || !_active || _parent == null) return false;
+    if (!_attached || !_active || !_visible || _parent == null) return false;
     final render = context.findRenderObject();
     if (render is! _AttachmentRenderBox || !render.hasSize) return false;
     if (render.hasKeptAliveAncestor) {
@@ -264,9 +272,14 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final parent = SelectionContainer.maybeOf(context);
-    if (identical(parent, _parent)) return;
-    _unregister();
+    final visible = TickerMode.valuesOf(context).enabled;
+    if (!identical(parent, _parent) || visible != _visible) _unregister();
     _parent = parent;
+    _visible = visible;
+    _SelectionFrameFence.update(
+      this,
+      _active && _visible && parent != null && parent is! _LifecycleState,
+    );
     _scheduleFlush();
   }
 
@@ -275,19 +288,93 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
     assert(!_members.contains(selectable), 'Duplicate selection registration');
     _members.add(selectable);
     _watchSelection(selectable);
-    if (_registrationReady) {
+    // Queue our attachment sweep before the SDK queues a screen-order merge.
+    _scheduleFlush();
+    if (_registrationReady && _selectableReady(selectable)) {
       // The SDK already batches ordinary additions until post-frame layout.
       // An extra deferred layer would leave empty native scroll containers
       // registered when table selection is cleared at the end of that frame.
       _registered.add(selectable);
+      _rememberPaintOwner(selectable);
       _parent!.add(selectable);
     } else {
       _scheduleFlush();
     }
   }
 
+  bool _selectableReady(Selectable selectable) {
+    final RenderObject? render;
+    if (selectable is State) {
+      final state = selectable as State;
+      if (!state.mounted) return false;
+      // Element.renderObject is valid for an inactive retained element too;
+      // BuildContext.findRenderObject requires an active element.
+      final memberContext = state.context;
+      render = memberContext is Element ? memberContext.renderObject : null;
+    } else if (selectable is RenderObject) {
+      render = selectable as RenderObject;
+    } else {
+      // Raw fragment registrations remain bounded by their explicit observer.
+      return true;
+    }
+    if (render == null || !render.attached) return false;
+    return render is! RenderBox || render.hasSize;
+  }
+
+  void _rememberPaintOwner(Selectable selectable) {
+    RenderObject? render;
+    if (selectable is State) {
+      final state = selectable as State;
+      if (!state.mounted) return;
+      final memberContext = state.context;
+      if (memberContext is Element) render = memberContext.renderObject;
+    } else if (selectable is RenderObject) {
+      render = selectable as RenderObject;
+    }
+    while (render != null && !render.isRepaintBoundary) {
+      render = render.parent;
+    }
+    if (render != null) _paintOwners[selectable] = render;
+  }
+
+  void _retireDetachedMembers() {
+    for (final selectable in _registered.toList(growable: false)) {
+      if (_selectableReady(selectable)) continue;
+      _registered.remove(selectable);
+      _parent!.remove(selectable);
+      if (selectable is State && (selectable as State).mounted) {
+        // RenderParagraph ignores handle updates after detach. Retire the
+        // detached leaf's own text geometry, while its State is still alive,
+        // so reattachment cannot paint the former parent's stale links.
+        selectable.dispatchSelectionEvent(const ClearSelectionEvent());
+      }
+      selectable.pushHandleLayers(null, null);
+      final paintOwner = _paintOwners.remove(selectable);
+      if (paintOwner?.attached == true) {
+        // A retained sliver boundary can still cache the detached paragraph's
+        // old handle LeaderLayer. Repaint its former owner before reattachment
+        // creates a new leader for the same edge link.
+        paintOwner!.markNeedsPaint();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          WidgetsBinding.instance.ensureVisualUpdate();
+        });
+      }
+    }
+  }
+
+  void _afterFrameLayout() {
+    if (!mounted || !_attached || !_active || !_visible || _parent == null) {
+      return;
+    }
+    _retireDetachedMembers();
+    if (_members.length != _registered.length && _registrationReady) {
+      _scheduleFlush();
+    }
+  }
+
   @override
   void remove(Selectable selectable) {
+    _paintOwners.remove(selectable);
     _members.remove(selectable);
     final listener = _selectionListeners.remove(selectable);
     if (listener != null) selectable.removeListener(listener);
@@ -299,6 +386,7 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
   void _unregister() {
     final previous = _registered.toList(growable: false);
     _registered.clear();
+    _paintOwners.clear();
     for (final selectable in previous) {
       // Retained paragraphs also retain their handle LeaderLayers. Release the
       // old parent's links before detach so reattachment cannot paint two
@@ -309,16 +397,29 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
   }
 
   void _scheduleFlush() {
-    if (!_attached || !_active || _parent == null || _flushScheduled) return;
+    if (!_attached ||
+        !_active ||
+        !_visible ||
+        _parent == null ||
+        _flushScheduled) {
+      return;
+    }
     _flushScheduled = true;
     void flush([Duration? _]) {
       _flushScheduled = false;
-      if (!mounted || !_attached || !_active || _parent == null) return;
+      if (!mounted || !_attached || !_active || !_visible || _parent == null) {
+        return;
+      }
+      _retireDetachedMembers();
       if (!_registrationReady) return;
       // One pass per frame, including additions from nested selection delegates.
       // Native delegates subsequently merge/sort only the attached additions.
       for (final selectable in _members.toList(growable: false)) {
-        if (_registered.add(selectable)) _parent!.add(selectable);
+        if (!_selectableReady(selectable)) continue;
+        if (_registered.add(selectable)) {
+          _rememberPaintOwner(selectable);
+          _parent!.add(selectable);
+        }
       }
     }
 
@@ -352,6 +453,7 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
   @override
   void deactivate() {
     _active = false;
+    _SelectionFrameFence.update(this, false);
     _unregister();
     super.deactivate();
   }
@@ -360,11 +462,16 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
   void activate() {
     super.activate();
     _active = true;
+    _SelectionFrameFence.update(
+      this,
+      _visible && _parent != null && _parent is! _LifecycleState,
+    );
     _scheduleFlush();
   }
 
   @override
   void dispose() {
+    _SelectionFrameFence.update(this, false);
     _unregister();
     for (final entry in _selectionListeners.entries) {
       entry.key.removeListener(entry.value);
@@ -386,6 +493,105 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
         ? widget.child
         : SelectionRegistrarScope(registrar: this, child: widget.child),
   );
+}
+
+/// Runs after the normal rendering/layout callback and before post-frame SDK
+/// selection merges. It requests no recurring frame. Only bridges to native
+/// registrars participate; nested Uten row scopes feed those same bridges.
+abstract final class _SelectionFrameFence {
+  static final _bridges = HashSet<_LifecycleState>.identity();
+  static bool _installed = false;
+
+  static void update(_LifecycleState scope, bool enabled) {
+    enabled ? _bridges.add(scope) : _bridges.remove(scope);
+    if (_installed || _bridges.isEmpty) return;
+    _installed = true;
+    SchedulerBinding.instance.addPersistentFrameCallback((_) {
+      for (final bridge in _bridges.toList(growable: false)) {
+        bridge._afterFrameLayout();
+      }
+    });
+  }
+}
+
+/// Scrollable inserts its own SelectionContainer above its chrome. Add the
+/// attachment bridge inside that container, where native Text registrations
+/// actually arrive. Every platform's existing scroll and input policy remains
+/// delegated, including explicit/automatic scrollbar ownership.
+class _SelectionScrollBehavior extends ScrollBehavior {
+  const _SelectionScrollBehavior(this.delegate);
+  final ScrollBehavior delegate;
+
+  static ScrollBehavior wrap(ScrollBehavior behavior) =>
+      behavior is _SelectionScrollBehavior
+      ? behavior
+      : _SelectionScrollBehavior(behavior);
+
+  @override
+  ScrollBehavior copyWith({
+    bool? scrollbars,
+    bool? overscroll,
+    Set<PointerDeviceKind>? dragDevices,
+    MultitouchDragStrategy? multitouchDragStrategy,
+    Set<LogicalKeyboardKey>? pointerAxisModifiers,
+    ScrollPhysics? physics,
+    TargetPlatform? platform,
+    ScrollViewKeyboardDismissBehavior? keyboardDismissBehavior,
+  }) => _SelectionScrollBehavior(
+    delegate.copyWith(
+      scrollbars: scrollbars,
+      overscroll: overscroll,
+      dragDevices: dragDevices,
+      multitouchDragStrategy: multitouchDragStrategy,
+      pointerAxisModifiers: pointerAxisModifiers,
+      physics: physics,
+      platform: platform,
+      keyboardDismissBehavior: keyboardDismissBehavior,
+    ),
+  );
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => delegate.dragDevices;
+  @override
+  Set<LogicalKeyboardKey> get pointerAxisModifiers =>
+      delegate.pointerAxisModifiers;
+  @override
+  TargetPlatform getPlatform(BuildContext context) =>
+      delegate.getPlatform(context);
+  @override
+  MultitouchDragStrategy getMultitouchDragStrategy(BuildContext context) =>
+      delegate.getMultitouchDragStrategy(context);
+  @override
+  GestureVelocityTrackerBuilder velocityTrackerBuilder(BuildContext context) =>
+      delegate.velocityTrackerBuilder(context);
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) =>
+      delegate.getScrollPhysics(context);
+  @override
+  ScrollViewKeyboardDismissBehavior getKeyboardDismissBehavior(
+    BuildContext context,
+  ) => delegate.getKeyboardDismissBehavior(context);
+  @override
+  Widget buildScrollbar(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) => delegate.buildScrollbar(context, child, details);
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) => delegate.buildOverscrollIndicator(
+    context,
+    SelectionContainer.maybeOf(context) == null
+        ? child
+        : UtenSelectionLifecycleScope(child: child),
+    details,
+  );
+  @override
+  bool shouldNotify(_SelectionScrollBehavior oldDelegate) =>
+      !identical(delegate, oldDelegate.delegate);
 }
 
 class _AttachmentObserver extends SingleChildRenderObjectWidget {

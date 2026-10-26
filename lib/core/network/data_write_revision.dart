@@ -7,6 +7,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'native_facet_routes.dart';
 
 /// 单调递增的本端写修订号。
 final dataWriteRevisionProvider = StateProvider<int>((ref) => 0);
@@ -28,6 +29,19 @@ final _scannedReadPostPaths = [
     '^/(?:api/)?sales/(quotes|orders)/$_uuidPathSegment'
     '/input-originals/$_uuidPathSegment/download\$',
   ),
+];
+
+// Export tasks write reproducible queue/cache state, and selection snapshots
+// only read business facts. Keep these exact POST contracts separate from saves.
+final _businessReadPostPaths = [
+  RegExp(r'^/(?:api/)?purchase/orders/print-authorization$'),
+  RegExp(r'^/(?:api/)?sales/orders/shippable-lines/selection$'),
+  RegExp(r'^/(?:api/)?master/(clients|suppliers)/search-context$'),
+  RegExp(
+    r'^/(?:api/)?(sales|purchase|subcontract|production|stock|finance)/reports/export$',
+  ),
+  RegExp(r'^/(?:api/)?report-export-jobs$'),
+  RegExp('^/(?:api/)?report-export-jobs/$_uuidPathSegment/(cancel|download)\$'),
 ];
 
 /// 不代表业务数据变化的自动写请求(心跳、自动已读、偏好保存、令牌刷新、只算不存的预览)。
@@ -67,13 +81,15 @@ bool isBusinessWrite(RequestOptions options) {
   final method = options.method.toUpperCase();
   if (method == 'GET' || method == 'HEAD' || method == 'OPTIONS') return false;
   final path = options.uri.path;
+  if (method == 'POST' && isNativeFacetPath(path)) return false;
   if (method == 'POST' &&
       (path == '/production/daily-reports/create-receipt' ||
           path == '/api/production/daily-reports/create-receipt')) {
     return false;
   }
   if (method == 'POST' &&
-      _scannedReadPostPaths.any((pattern) => pattern.hasMatch(path))) {
+      (_scannedReadPostPaths.any((pattern) => pattern.hasMatch(path)) ||
+          _businessReadPostPaths.any((pattern) => pattern.hasMatch(path)))) {
     return false;
   }
   return !_automaticWritePaths.any((pattern) => pattern.hasMatch(path));

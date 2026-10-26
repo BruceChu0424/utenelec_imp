@@ -64,6 +64,8 @@ import '../../basic_data/models/client_node.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/widgets/uten_client_picker.dart';
+import '../../basic_data/widgets/uten_supplier_picker.dart';
+import '../../../shared/providers/master_party_options.dart';
 import '../widgets/finance_account_picker_panel.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
@@ -93,6 +95,7 @@ import '../../../core/ui/human_error_message.dart';
 import '../widgets/finance_receipt_totals.dart';
 import '../widgets/finance_entry_file_picker.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 const _receiptKindArSettlement = 'AR_SETTLEMENT';
 const _receiptKindCustomerPrepayment = 'CUSTOMER_PREPAYMENT';
@@ -400,6 +403,16 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       publish: _grid.replaceAll,
     );
     if (!_rowPreparationOwner(prepareEpoch)()) return;
+    await ref
+        .read(financeNameServiceProvider)
+        .loadPartyNames(
+          clientIds: partyReferenceIds([if (_cfg.isClient) _partyId]),
+          supplierIds: partyReferenceIds([
+            if (!_cfg.isClient) _partyId,
+            _settlementAgentSupplierId,
+          ]),
+        );
+    if (!_rowPreparationOwner(prepareEpoch)()) return;
     _syncReceiptRateToRows();
     restoreDraftGridSelection(_grid, data['selected']);
     if (mounted) setState(() {});
@@ -467,6 +480,15 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       if (widget.id != null) {
         final repo = ref.read(financeRepositoryProvider(widget.docType));
         final d = await repo.detail(widget.id!);
+        if (!mounted || !isCurrent()) return;
+        await names.loadPartyNames(
+          clientIds: partyReferenceIds([if (_cfg.isClient) d.clientId]),
+          supplierIds: partyReferenceIds([
+            if (!_cfg.isClient) d.supplierId,
+            d.settlementAgentSupplierId,
+          ]),
+        );
+        if (!mounted || !isCurrent()) return;
         final writable =
             !d.legacyImported &&
             d.status == kFinanceStatusDraft &&
@@ -884,12 +906,36 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     return confirmed == true;
   }
 
+  void _onOtherPartyChanged(String? value) {
+    if (!formDraftIdentityIsCurrent) return;
+    setState(() {
+      _partyId = value;
+      // Keep the existing party-change contract for imported settlement rows.
+      _grid.clear();
+    });
+  }
+
   Future<ClientListItem?> _pickReceiptClient() async {
-    final selected = await showUtenClientPicker(context, ref);
-    if (!mounted || selected == null || selected.id == _partyId) {
+    final selected = await resolvePickedParty(
+      ref,
+      () => showUtenClientPicker(context, ref),
+      idOf: (party) => party.id,
+      loadNames: ref.read(financeNameServiceProvider).loadClientNames,
+      isResolved: (id) =>
+          ref.read(financeNameServiceProvider).clientReferenceSelectable(id),
+      isCurrent: () => formDraftIdentityIsCurrent,
+    );
+    if (!mounted ||
+        !formDraftIdentityIsCurrent ||
+        selected == null ||
+        selected.id == _partyId) {
       return selected;
     }
-    if (!await _confirmReceiptClientChange()) return null;
+    if (!await _confirmReceiptClientChange() ||
+        !mounted ||
+        !formDraftIdentityIsCurrent) {
+      return null;
+    }
     _grid.clear();
     return selected;
   }
@@ -904,7 +950,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       }
       _grid.clear();
     }
-    if (mounted) setState(() => _partyId = nextId);
+    if (mounted && formDraftIdentityIsCurrent) {
+      setState(() => _partyId = nextId);
+    }
   }
 
   void _onReceiptKindChanged(String? next) {
@@ -1766,11 +1814,24 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                       required: true,
                     ),
                     if (_settlementChannel == _settlementChannelAgent)
-                      _dropdown(
-                        '外贸代理公司',
-                        _settlementAgentSupplierId,
-                        names.supplierEntries,
-                        (value) =>
+                      SupplierPickerField(
+                        label: '外贸代理公司',
+                        initialId: _settlementAgentSupplierId,
+                        initialName: names.supplier(_settlementAgentSupplierId),
+                        onPick: () => resolvePickedParty(
+                          ref,
+                          () => showUtenSupplierPicker(
+                            context,
+                            ref,
+                            selectableOnly: false,
+                            allowQuickCreate: false,
+                          ),
+                          idOf: (party) => party.id,
+                          loadNames: names.loadSupplierNames,
+                          isResolved: (id) => names.supplierReferenceKnown(id),
+                          isCurrent: () => formDraftIdentityIsCurrent,
+                        ),
+                        onChanged: (value) =>
                             setState(() => _settlementAgentSupplierId = value),
                         required: true,
                       ),
@@ -2373,368 +2434,419 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                       pinned: _gridPinned,
                       controller: _scrollCtl,
                       child: UtenContentContainer(
-                        child: ListView(
-                          controller: _scrollCtl,
+                        child: UtenPageEdgePadding.scroll(
                           padding: const EdgeInsets.fromLTRB(
                             UtenSpacing.s12,
                             UtenSpacing.s12,
                             UtenSpacing.s12,
                             UtenFloatingActionGroup.scrollClearance,
                           ),
-                          children: [
-                            _entryCard(
-                              key: const ValueKey('finance-entry-basics'),
-                              child: _savedFields(
-                                UtenFormGrid(
-                                  children: [
-                                    UtenDateField(
-                                      label: '单据日期',
-                                      required: true,
-                                      value: _billDate,
-                                      onChanged: (d) =>
-                                          setState(() => _billDate = d),
-                                    ),
-                                    if (isReceipt)
-                                      UtenDropdownField(
-                                        key: const ValueKey(
-                                          'finance-receipt-kind',
-                                        ),
-                                        label: '收款类型',
-                                        value: _receiptKind,
-                                        allowClear: false,
-                                        enabled: canRegisterCustomerPrepayment,
-                                        searchable: false,
-                                        items: [
-                                          const UtenDropdownItem(
-                                            value: _receiptKindArSettlement,
-                                            label: '货款收款(核销已发货的应收)',
+                          builder: (context, resolvedPagePadding) => ListView(
+                            controller: _scrollCtl,
+                            padding: resolvedPagePadding,
+                            children: [
+                              _entryCard(
+                                key: const ValueKey('finance-entry-basics'),
+                                child: _savedFields(
+                                  UtenFormGrid(
+                                    children: [
+                                      UtenDateField(
+                                        label: '单据日期',
+                                        required: true,
+                                        value: _billDate,
+                                        onChanged: (d) =>
+                                            setState(() => _billDate = d),
+                                      ),
+                                      if (isReceipt)
+                                        UtenDropdownField(
+                                          key: const ValueKey(
+                                            'finance-receipt-kind',
                                           ),
-                                          if (canRegisterCustomerPrepayment ||
-                                              _isCustomerPrepayment)
+                                          label: '收款类型',
+                                          value: _receiptKind,
+                                          allowClear: false,
+                                          enabled:
+                                              canRegisterCustomerPrepayment,
+                                          searchable: false,
+                                          items: [
                                             const UtenDropdownItem(
-                                              value:
-                                                  _receiptKindCustomerPrepayment,
-                                              label: '登记订单预收(订单未发货的定金/预付款)',
+                                              value: _receiptKindArSettlement,
+                                              label: '货款收款(核销已发货的应收)',
                                             ),
-                                        ],
-                                        onChanged: _onReceiptKindChanged,
-                                      ),
-                                    if (isReceipt && !_isCustomerPrepayment)
-                                      ClientPickerField(
-                                        key: ValueKey(
-                                          'receipt-client-${_partyId ?? 'empty'}-$_clientPickerRevision',
+                                            if (canRegisterCustomerPrepayment ||
+                                                _isCustomerPrepayment)
+                                              const UtenDropdownItem(
+                                                value:
+                                                    _receiptKindCustomerPrepayment,
+                                                label: '登记订单预收(订单未发货的定金/预付款)',
+                                              ),
+                                          ],
+                                          onChanged: _onReceiptKindChanged,
                                         ),
-                                        initialId: _partyId,
-                                        initialName: _partyId == null
-                                            ? null
-                                            : names.client(_partyId),
-                                        required: true,
-                                        onPick: _pickReceiptClient,
-                                        onChanged: _onReceiptClientChanged,
-                                      )
-                                    else if (_cfg.hasParty &&
-                                        !_isCustomerPrepayment)
-                                      _dropdown(
-                                        _cfg.partyLabel,
-                                        _partyId,
+                                      if (isReceipt && !_isCustomerPrepayment)
+                                        ClientPickerField(
+                                          key: ValueKey(
+                                            'receipt-client-${_partyId ?? 'empty'}-$_clientPickerRevision',
+                                          ),
+                                          initialId: _partyId,
+                                          initialName: _partyId == null
+                                              ? null
+                                              : names.client(_partyId),
+                                          required: true,
+                                          onPick: _pickReceiptClient,
+                                          onChanged: _onReceiptClientChanged,
+                                        )
+                                      else if (_cfg.hasParty &&
+                                          !_isCustomerPrepayment)
                                         _cfg.isClient
-                                            ? names.clientEntries
-                                            : names.supplierEntries,
-                                        (v) => setState(() {
-                                          _partyId = v;
-                                          // 切换往来方后清空已引入的核销行（避免错配）。
-                                          _grid.clear();
-                                        }),
-                                        required: true,
-                                      ),
-                                    if (!isReceipt)
-                                      _dropdown(
-                                        _cfg.accountLabel,
-                                        _accountId,
-                                        names.accountEntries,
-                                        (v) => setState(() => _accountId = v),
-                                        required: true,
-                                      ),
-                                    if (_cfg.type !=
-                                        FinanceDocType.bankTransfer)
-                                      _dropdown(
-                                        _cfg.type == FinanceDocType.receipt ||
-                                                _cfg.type ==
-                                                    FinanceDocType.otherIncome
-                                            ? '收款方式'
-                                            : '付款方式',
-                                        _financePaymentMethodId,
-                                        {
-                                          for (final method in financeMethods)
-                                            method.id:
-                                                '${method.code} · ${method.name}',
-                                        },
-                                        (value) => setState(
-                                          () => _financePaymentMethodId = value,
+                                            ? ClientPickerField(
+                                                label: _cfg.partyLabel,
+                                                initialId: _partyId,
+                                                initialName: names.client(
+                                                  _partyId,
+                                                ),
+                                                required: true,
+                                                onPick: () => resolvePickedParty(
+                                                  ref,
+                                                  () => showUtenClientPicker(
+                                                    context,
+                                                    ref,
+                                                    selectableOnly: false,
+                                                  ),
+                                                  idOf: (party) => party.id,
+                                                  loadNames:
+                                                      names.loadClientNames,
+                                                  isResolved: (id) => names
+                                                      .clientReferenceKnown(id),
+                                                  isCurrent: () =>
+                                                      formDraftIdentityIsCurrent,
+                                                ),
+                                                onChanged: _onOtherPartyChanged,
+                                              )
+                                            : SupplierPickerField(
+                                                label: _cfg.partyLabel,
+                                                initialId: _partyId,
+                                                initialName: names.supplier(
+                                                  _partyId,
+                                                ),
+                                                required: true,
+                                                onPick: () => resolvePickedParty(
+                                                  ref,
+                                                  () => showUtenSupplierPicker(
+                                                    context,
+                                                    ref,
+                                                    selectableOnly: false,
+                                                    allowQuickCreate: false,
+                                                  ),
+                                                  idOf: (party) => party.id,
+                                                  loadNames:
+                                                      names.loadSupplierNames,
+                                                  isResolved: (id) => names
+                                                      .supplierReferenceKnown(
+                                                        id,
+                                                      ),
+                                                  isCurrent: () =>
+                                                      formDraftIdentityIsCurrent,
+                                                ),
+                                                onChanged: _onOtherPartyChanged,
+                                              ),
+                                      if (!isReceipt)
+                                        _dropdown(
+                                          _cfg.accountLabel,
+                                          _accountId,
+                                          names.accountEntries,
+                                          (v) => setState(() => _accountId = v),
+                                          required: true,
                                         ),
-                                        // V632：字典为空(旧库方式名称未同步且标准方式未播种)时不必填，
-                                        // 并说明去处，避免「点开没得选还必填」把单据卡死。
-                                        required: financeMethods.isNotEmpty,
-                                        info: financeMethods.isEmpty
-                                            ? '暂无可选的收付款方式：系统里还没有维护收付款方式。可先保存，请管理员补齐后再补选。'
-                                            : null,
-                                      ),
-                                    if (isReceipt)
-                                      _receiptAccountPickerField(theme, names),
+                                      if (_cfg.type !=
+                                          FinanceDocType.bankTransfer)
+                                        _dropdown(
+                                          _cfg.type == FinanceDocType.receipt ||
+                                                  _cfg.type ==
+                                                      FinanceDocType.otherIncome
+                                              ? '收款方式'
+                                              : '付款方式',
+                                          _financePaymentMethodId,
+                                          {
+                                            for (final method in financeMethods)
+                                              method.id:
+                                                  '${method.code} · ${method.name}',
+                                          },
+                                          (value) => setState(
+                                            () =>
+                                                _financePaymentMethodId = value,
+                                          ),
+                                          // V632：字典为空(旧库方式名称未同步且标准方式未播种)时不必填，
+                                          // 并说明去处，避免「点开没得选还必填」把单据卡死。
+                                          required: financeMethods.isNotEmpty,
+                                          info: financeMethods.isEmpty
+                                              ? '暂无可选的收付款方式：系统里还没有维护收付款方式。可先保存，请管理员补齐后再补选。'
+                                              : null,
+                                        ),
+                                      if (isReceipt)
+                                        _receiptAccountPickerField(
+                                          theme,
+                                          names,
+                                        ),
 
-                                    if (isReceipt) _receiptExchangeRateField(),
-                                    if (!_cfg.isSettle)
-                                      ..._currencyFields(names),
-                                  ],
+                                      if (isReceipt)
+                                        _receiptExchangeRateField(),
+                                      if (!_cfg.isSettle)
+                                        ..._currencyFields(names),
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
-                            if (_isCustomerPrepayment) ...[
-                              _sectionHeading(
-                                theme,
-                                title: '订单预收',
-                                icon: Icons.savings_outlined,
-                                description: '先选销售订单，客户和币种会自动带出。',
-                              ),
-                              CustomerPrepaymentReceiptFields(
-                                salesOrderId: _receiptSalesOrderId,
-                                salesOrderBillNo: _receiptSalesOrderBillNo,
-                                clientLabel: _partyId == null
-                                    ? '随销售订单锁定'
-                                    : names.client(_partyId),
-                                currencyLabel: _currencyId == null
-                                    ? '随销售订单锁定'
-                                    : names.currency(_currencyId),
-                                exchangeRateController: _rate,
-                                amountController: _amountOriginal,
-                                showSettlementFields: false,
-                                enabled: !_saving && _createdDocId == null,
-                                onOrderSelected: _onPrepaymentOrderSelected,
-                              ),
-                              const SizedBox(height: UtenSpacing.s8),
-                              _savedFields(
-                                UtenFormGrid(
+                              if (_isCustomerPrepayment) ...[
+                                _sectionHeading(
+                                  theme,
+                                  title: '订单预收',
+                                  icon: Icons.savings_outlined,
+                                  description: '先选销售订单，客户和币种会自动带出。',
+                                ),
+                                CustomerPrepaymentReceiptFields(
+                                  salesOrderId: _receiptSalesOrderId,
+                                  salesOrderBillNo: _receiptSalesOrderBillNo,
+                                  clientLabel: _partyId == null
+                                      ? '随销售订单锁定'
+                                      : names.client(_partyId),
+                                  currencyLabel: _currencyId == null
+                                      ? '随销售订单锁定'
+                                      : names.currency(_currencyId),
+                                  exchangeRateController: _rate,
+                                  amountController: _amountOriginal,
+                                  showSettlementFields: false,
+                                  enabled: !_saving && _createdDocId == null,
+                                  onOrderSelected: _onPrepaymentOrderSelected,
+                                ),
+                                const SizedBox(height: UtenSpacing.s8),
+                                _savedFields(
+                                  UtenFormGrid(
+                                    children: [
+                                      _requiredPositiveNumberField(
+                                        key: const ValueKey(
+                                          'customer-prepayment-receipt-amount',
+                                        ),
+                                        label: '本批预收原币金额',
+                                        controller: _amountOriginal,
+                                        info: workflowFieldText(
+                                          context,
+                                        ).workflowPrepaymentAmountHint,
+                                        onChanged: (_) {},
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+
+                              if (!_isCustomerPrepayment) ...[
+                                const SizedBox(height: UtenSpacing.s12),
+                                Wrap(
+                                  spacing: UtenSpacing.s8,
+                                  runSpacing: UtenSpacing.s8,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
-                                    _requiredPositiveNumberField(
-                                      key: const ValueKey(
-                                        'customer-prepayment-receipt-amount',
-                                      ),
-                                      label: '本批预收原币金额',
-                                      controller: _amountOriginal,
-                                      info: workflowFieldText(
-                                        context,
-                                      ).workflowPrepaymentAmountHint,
-                                      onChanged: (_) {},
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-
-                            if (!_isCustomerPrepayment) ...[
-                              const SizedBox(height: UtenSpacing.s12),
-                              Wrap(
-                                spacing: UtenSpacing.s8,
-                                runSpacing: UtenSpacing.s8,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
-                                  // 2026-09-14 口径：引用入口放表格上面（原在 AppBar）。
-                                  if (isReceipt) ...[
-                                    if (canApplyCustomerPrepayment)
-                                      UtenButton(
-                                        key: const ValueKey(
-                                          'receipt-apply-prepayment',
+                                    // 2026-09-14 口径：引用入口放表格上面（原在 AppBar）。
+                                    if (isReceipt) ...[
+                                      if (canApplyCustomerPrepayment)
+                                        UtenButton(
+                                          key: const ValueKey(
+                                            'receipt-apply-prepayment',
+                                          ),
+                                          type: UtenButtonType.tonal,
+                                          icon: Icons.savings_outlined,
+                                          onPressed:
+                                              _saving || _createdDocId != null
+                                              ? null
+                                              : _applyCustomerPrepayment,
+                                          child: const Text('预收抵扣'),
                                         ),
-                                        type: UtenButtonType.tonal,
-                                        icon: Icons.savings_outlined,
-                                        onPressed:
-                                            _saving || _createdDocId != null
-                                            ? null
-                                            : _applyCustomerPrepayment,
-                                        child: const Text('预收抵扣'),
+                                    ],
+                                    if (_cfg.type == FinanceDocType.payment)
+                                      ListenableBuilder(
+                                        listenable: _grid,
+                                        builder: (context, _) => Text(
+                                          _grid.isEmpty
+                                              ? '请先引用已入账的应付；暂不支持给供应商预付'
+                                              : '由服务端按应付核销明细汇总',
+                                          style: theme.textTheme.bodySmall,
+                                        ),
                                       ),
-                                  ],
-                                  if (_cfg.type == FinanceDocType.payment)
-                                    ListenableBuilder(
-                                      listenable: _grid,
-                                      builder: (context, _) => Text(
-                                        _grid.isEmpty
-                                            ? '请先引用已入账的应付；暂不支持给供应商预付'
-                                            : '由服务端按应付核销明细汇总',
-                                        style: theme.textTheme.bodySmall,
-                                      ),
-                                    ),
-                                  if (_cfg.hasArApLink && !isReceipt)
-                                    UtenImportButton(
-                                      label: _cfg.type == FinanceDocType.payment
-                                          ? '引用应付'
-                                          : '从应收应付引入',
-                                      onPressed:
-                                          _saving || _createdDocId != null
-                                          ? null
-                                          : _importFromArAp,
-                                    ),
-                                ],
-                              ),
-                              _savedFields(
-                                UtenEditableGrid<FinanceGridRow>(
-                                  columnEditingEnabled:
-                                      !_loading &&
-                                      !_saving &&
-                                      _initializationError == null &&
-                                      _createdDocId == null,
-                                  forceVisibleColumnKeys: isReceipt
-                                      ? const {'amountLocal', 'bankReference'}
-                                      : const {},
-                                  tableKey:
-                                      'finance.${widget.docType.name}.items',
-                                  toolbarActions: [
-                                    if (isReceipt)
+                                    if (_cfg.hasArApLink && !isReceipt)
                                       UtenImportButton(
-                                        key: const ValueKey(
-                                          'receipt-import-ar',
-                                        ),
-                                        label: '引用应收',
+                                        label:
+                                            _cfg.type == FinanceDocType.payment
+                                            ? '引用应付'
+                                            : '从应收应付引入',
                                         onPressed:
                                             _saving || _createdDocId != null
                                             ? null
                                             : _importFromArAp,
                                       ),
-                                    if (isReceipt)
-                                      UtenButton(
-                                        key: const ValueKey(
-                                          'finance-receipt-reconciliation-toggle',
-                                        ),
-                                        type: UtenButtonType.secondary,
-                                        height: UtenTableToolbar.controlHeight,
-                                        icon: _showReceiptReconciliation
-                                            ? Icons.unfold_less_outlined
-                                            : Icons.receipt_long_outlined,
-                                        onPressed:
-                                            _saving || _createdDocId != null
-                                            ? null
-                                            : () => setState(() {
-                                                _showReceiptReconciliation =
-                                                    !_showReceiptReconciliation;
-                                              }),
-                                        child: Text(
-                                          _showReceiptReconciliation
-                                              ? '收起对账明细'
-                                              : '查看对账明细',
-                                        ),
-                                      ),
-                                    if (isReceipt && _canUseIntake)
-                                      _bankRecognitionButton(),
                                   ],
-                                  controller: _grid,
-                                  stickyHeaderPinned: _gridPinned,
-                                  columns: financeGridColumns(
-                                    _cfg.itemMode,
-                                    context: context,
-                                    names: names,
-                                    type: _cfg.type,
-                                    bankReferenceController: isReceipt
-                                        ? _bankReference
-                                        : null,
-                                    accountBaseCurrency: names
-                                        .accountIsBaseCurrency(_accountId),
-                                    showReceiptReconciliation:
-                                        _showReceiptReconciliation,
-                                  ),
-                                  createBlankRow: () =>
-                                      FinanceGridRow(mode: _cfg.itemMode),
-                                  cloneRow: (r) => r.clone(),
-                                  // 合计挂在明细表下方（全站统一口径），页面底部不再另起
-                                  // 一条固定条复述；核销类单据的小结跟着银行字段走。
-                                  footer: isReceipt
-                                      ? _receiptTableFooter(
-                                          theme,
-                                          names,
-                                          compact: compact,
-                                        )
-                                      : _cfg.type == FinanceDocType.payment
-                                      ? _paymentSummary(theme)
-                                      : _oldTotal(names),
-                                  showAddRow: !_cfg.isSettle,
-                                  emptyMessage: isReceipt
-                                      ? '暂无明细，请点击上方“引用应收”添加'
-                                      : _cfg.type == FinanceDocType.payment
-                                      ? '暂无应付核销明细，请点击上方“引用应付”添加'
-                                      : '暂无明细，点击下方按钮添加',
                                 ),
-                              ),
-                            ],
-
-                            if (isReceipt) ...[
-                              if (_isCustomerPrepayment)
-                                _receiptTableFooter(
-                                  theme,
-                                  names,
-                                  compact: compact,
-                                ),
-                              const SizedBox(height: UtenSpacing.s12),
-                              _receiptSettlementDetails(theme, names),
-                              if (_accountId != null ||
-                                  names.accountLoadError != null)
-                                _receiptAccountCurrencyNotice(theme, names),
-                            ],
-                            if (_cfg.type == FinanceDocType.payment) ...[
-                              const SizedBox(height: UtenSpacing.s12),
-                              _entryCard(
-                                key: const ValueKey('finance-entry-bank'),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    if (_canUseIntake) _bankRecognitionButton(),
-                                    _savedFields(
-                                      UtenFormGrid(
-                                        children: _currencyFields(names),
-                                      ),
+                                _savedFields(
+                                  UtenEditableGrid<FinanceGridRow>(
+                                    columnEditingEnabled:
+                                        !_loading &&
+                                        !_saving &&
+                                        _initializationError == null &&
+                                        _createdDocId == null,
+                                    forceVisibleColumnKeys: isReceipt
+                                        ? const {'amountLocal', 'bankReference'}
+                                        : const {},
+                                    tableKey:
+                                        'finance.${widget.docType.name}.items',
+                                    toolbarActions: [
+                                      if (isReceipt)
+                                        UtenImportButton(
+                                          key: const ValueKey(
+                                            'receipt-import-ar',
+                                          ),
+                                          label: '引用应收',
+                                          onPressed:
+                                              _saving || _createdDocId != null
+                                              ? null
+                                              : _importFromArAp,
+                                        ),
+                                      if (isReceipt)
+                                        UtenButton(
+                                          key: const ValueKey(
+                                            'finance-receipt-reconciliation-toggle',
+                                          ),
+                                          type: UtenButtonType.secondary,
+                                          height:
+                                              UtenTableToolbar.controlHeight,
+                                          icon: _showReceiptReconciliation
+                                              ? Icons.unfold_less_outlined
+                                              : Icons.receipt_long_outlined,
+                                          onPressed:
+                                              _saving || _createdDocId != null
+                                              ? null
+                                              : () => setState(() {
+                                                  _showReceiptReconciliation =
+                                                      !_showReceiptReconciliation;
+                                                }),
+                                          child: Text(
+                                            _showReceiptReconciliation
+                                                ? '收起对账明细'
+                                                : '查看对账明细',
+                                          ),
+                                        ),
+                                      if (isReceipt && _canUseIntake)
+                                        _bankRecognitionButton(),
+                                    ],
+                                    controller: _grid,
+                                    stickyHeaderPinned: _gridPinned,
+                                    columns: financeGridColumns(
+                                      _cfg.itemMode,
+                                      context: context,
+                                      names: names,
+                                      type: _cfg.type,
+                                      bankReferenceController: isReceipt
+                                          ? _bankReference
+                                          : null,
+                                      accountBaseCurrency: names
+                                          .accountIsBaseCurrency(_accountId),
+                                      showReceiptReconciliation:
+                                          _showReceiptReconciliation,
                                     ),
-                                    _paymentAuthoritySection(theme, names),
-                                  ],
+                                    createBlankRow: () =>
+                                        FinanceGridRow(mode: _cfg.itemMode),
+                                    cloneRow: (r) => r.clone(),
+                                    // 合计挂在明细表下方（全站统一口径），页面底部不再另起
+                                    // 一条固定条复述；核销类单据的小结跟着银行字段走。
+                                    footer: isReceipt
+                                        ? _receiptTableFooter(
+                                            theme,
+                                            names,
+                                            compact: compact,
+                                          )
+                                        : _cfg.type == FinanceDocType.payment
+                                        ? _paymentSummary(theme)
+                                        : _oldTotal(names),
+                                    showAddRow: !_cfg.isSettle,
+                                    emptyMessage: isReceipt
+                                        ? '暂无明细，请点击上方“引用应收”添加'
+                                        : _cfg.type == FinanceDocType.payment
+                                        ? '暂无应付核销明细，请点击上方“引用应付”添加'
+                                        : '暂无明细，点击下方按钮添加',
+                                  ),
                                 ),
-                              ),
-                            ],
-                            const SizedBox(height: UtenSpacing.s12),
-                            _entryDetails(theme),
-                            const SizedBox(height: UtenSpacing.s12),
-                            if (widget.id != null)
-                              BusinessAttachmentSection(
-                                ownerType: _attachmentOwnerType,
-                                ownerId: widget.id!,
-                                canView: ref
-                                    .watch(currentPermissionsProvider)
-                                    .contains(Perm.attachmentView),
-                                // 进入编辑页即已确认可写；草稿状态与范围由服务端附件策略再校验。
-                                canManage: !_saving,
-                                title: '单据和凭证',
-                                categories: const ['银行回单', '发票', '其他凭证'],
-                              )
-                            else ...[
-                              if (_createdDocId != null)
-                                PendingAttachmentRetryNotice(
-                                  documentLabel: _cfg.label,
+                              ],
+
+                              if (isReceipt) ...[
+                                if (_isCustomerPrepayment)
+                                  _receiptTableFooter(
+                                    theme,
+                                    names,
+                                    compact: compact,
+                                  ),
+                                const SizedBox(height: UtenSpacing.s12),
+                                _receiptSettlementDetails(theme, names),
+                                if (_accountId != null ||
+                                    names.accountLoadError != null)
+                                  _receiptAccountCurrencyNotice(theme, names),
+                              ],
+                              if (_cfg.type == FinanceDocType.payment) ...[
+                                const SizedBox(height: UtenSpacing.s12),
+                                _entryCard(
+                                  key: const ValueKey('finance-entry-bank'),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      if (_canUseIntake)
+                                        _bankRecognitionButton(),
+                                      _savedFields(
+                                        UtenFormGrid(
+                                          children: _currencyFields(names),
+                                        ),
+                                      ),
+                                      _paymentAuthoritySection(theme, names),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: UtenSpacing.s12),
+                              _entryDetails(theme),
+                              const SizedBox(height: UtenSpacing.s12),
+                              if (widget.id != null)
+                                BusinessAttachmentSection(
+                                  ownerType: _attachmentOwnerType,
+                                  ownerId: widget.id!,
+                                  canView: ref
+                                      .watch(currentPermissionsProvider)
+                                      .contains(Perm.attachmentView),
+                                  // 进入编辑页即已确认可写；草稿状态与范围由服务端附件策略再校验。
+                                  canManage: !_saving,
+                                  title: '单据和凭证',
+                                  categories: const ['银行回单', '发票', '其他凭证'],
+                                )
+                              else ...[
+                                if (_createdDocId != null)
+                                  PendingAttachmentRetryNotice(
+                                    documentLabel: _cfg.label,
+                                    controller: _pendingFiles,
+                                  ),
+                                BusinessAttachmentSection.draft(
+                                  key: const ValueKey(
+                                    'finance-doc-draft-attachments',
+                                  ),
                                   controller: _pendingFiles,
+                                  canManage: switch (_cfg.createPerm) {
+                                    final perm? =>
+                                      ref
+                                          .watch(currentPermissionsProvider)
+                                          .contains(perm),
+                                    null => false,
+                                  },
+                                  title: '单据和凭证',
+                                  categories: const ['银行回单', '发票', '其他凭证'],
                                 ),
-                              BusinessAttachmentSection.draft(
-                                key: const ValueKey(
-                                  'finance-doc-draft-attachments',
-                                ),
-                                controller: _pendingFiles,
-                                canManage: switch (_cfg.createPerm) {
-                                  final perm? =>
-                                    ref
-                                        .watch(currentPermissionsProvider)
-                                        .contains(perm),
-                                  null => false,
-                                },
-                                title: '单据和凭证',
-                                categories: const ['银行回单', '发票', '其他凭证'],
-                              ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
                     ),

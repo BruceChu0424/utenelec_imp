@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /** Read-only production valuation evidence; never a BOM or goods-master estimate. */
 public interface GoodsActualCostQueryPort {
@@ -55,4 +56,22 @@ public interface GoodsActualCostQueryPort {
     record Gap(String code, UUID costObjectId, UUID sourceId, String component) {}
 
     ActualCostSnapshot snapshot(Query query);
+
+    /** Small metadata for one live repeatable-read operation, not a partial fact snapshot. */
+    record StreamingHeader(UUID goodsId, OffsetDateTime capturedAt, String currencyBasis, String periodBasis,
+            String inputScope, Query filter, Summary summary, List<CostObject> costObjects,
+            List<Revision> selectedRevisions, long inputRows, long outputRows, long gapRows) { }
+
+    interface StreamingRead extends AutoCloseable {
+        StreamingHeader header();
+        void inputs(Consumer<InputLine> consumer);
+        void outputs(Consumer<OutputLine> consumer);
+        void gaps(Consumer<Gap> consumer);
+        @Override void close();
+    }
+
+    /** Caller validates every bounded input-reference batch with its existing authority. */
+    default StreamingRead openStream(Query query, int perSectionLimit, Consumer<List<InputLine>> inputInspector) {
+        throw new UnsupportedOperationException("Actual-cost streaming is unavailable");
+    }
 }

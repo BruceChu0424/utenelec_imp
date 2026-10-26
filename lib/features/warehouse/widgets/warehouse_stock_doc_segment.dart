@@ -12,6 +12,7 @@ import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // listRefreshTick，本组件据此重拉）。小类行进页面不预选（未选不发请求，
 // 显示引导占位），不再渲染 icon + 标题分段头——分类语境已由上方大类分段表达。
 import 'dart:async';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../shared/drafts/form_draft_store.dart';
@@ -311,10 +312,39 @@ class _WarehouseStockDocSegmentState
     );
   }
 
-  Future<void> _reload([int? page, bool silent = false]) =>
-      trackRefresh(_reloadRows(page, silent), replaceKey: 'rows');
+  List<Object?> get _pageQueryScope => [
+    _list.normalizedKeyword,
+    _list.sortKey,
+    _list.sortAsc,
+    widget.docType,
+    _seg,
+    _issueStatus,
+    _historyTime,
+    _historyTime.range?.start,
+    _historyTime.range?.end,
+    widget.productionReturnRequests,
+    WarehouseListScope.of(context),
+    Map.of(_columnFilters.values),
+  ];
 
-  Future<void> _reloadRows([int? page, bool silent = false]) async {
+  Future<void> _navigatePage(int page) => _reload(page, false, true);
+
+  Future<void> _reload([
+    int? page,
+    bool silent = false,
+    bool useCachedPage = false,
+  ]) => trackRefresh(
+    _reloadRows(page, silent, useCachedPage),
+    replaceKey: 'rows',
+  );
+
+  Future<void> _reloadRows([
+    int? page,
+    bool silent = false,
+    bool useCachedPage = false,
+  ]) async {
+    final cacheQuery = _pageQueryScope;
+    final ownerCurrent = captureReadOwner(ref);
     final generation = ++_reloadGeneration;
     if (!_shouldLoad) {
       // Deselecting a query also supersedes pending data and errors.
@@ -332,7 +362,16 @@ class _WarehouseStockDocSegmentState
       silent: silent,
       fetch: _fetch,
       fetchPage: _fetch,
-      isCurrent: captureReadOwner(ref),
+      useCachedPage: useCachedPage,
+      canPrefetch: () =>
+          mounted &&
+          TickerMode.valuesOf(context).enabled &&
+          (ModalRoute.of(context)?.isCurrent ?? true),
+      queryScope: cacheQuery,
+      isCurrent: () =>
+          mounted &&
+          ownerCurrent() &&
+          const DeepCollectionEquality().equals(cacheQuery, _pageQueryScope),
     );
     if (!mounted || generation != _reloadGeneration) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -871,7 +910,7 @@ class _WarehouseStockDocSegmentState
                       widget.productionReturnRequests,
                       WarehouseListScope.of(context),
                     ),
-                    onPageChange: (p) => _reload(p),
+                    onPageChange: _navigatePage,
                   ),
                 ),
         );

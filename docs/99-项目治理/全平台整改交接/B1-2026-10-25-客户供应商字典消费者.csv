@@ -1,0 +1,127 @@
+﻿路径,行,用途线索,代码,迁移原则,状态,确认分组
+lib/core/network/api_endpoints.dart,375,字典读取/失效/定义,static const clientsDict = '$clients/dict';,公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/core/network/api_endpoints.dart,455,字典读取/失效/定义,static const suppliersDict = '/master/suppliers/dict';,公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/features/admin/pages/audit_detail_panel.dart,1096,按ID名称显示,"_RefKind.supplier => pick(service.supplier(id)),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/basic_data/widgets/uten_supplier_picker.dart,90,字典读取/失效/定义,await ref.read(masterNameServiceProvider).reloadSuppliers();,去除全量预加载时接页内loadIds；原写后失效/身份隔离不丢,已定位源码消费点；新lookup/迁移尚未实施,读取/失效入口
+lib/features/finance/pages/finance_ar_ap_page.dart,180,按ID名称显示,return it.clientName ?? names.client(it.clientId);,按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/finance/pages/finance_ar_ap_page.dart,183,按ID名称显示,return it.supplierName ?? names.supplier(it.supplierId);,按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/finance/pages/finance_ar_ap_page.dart,494,选项集合/名称集合,? names.supplierEntries,服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/finance/pages/finance_ar_ap_page.dart,496,选项集合/名称集合,? names.clientEntries,服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/finance/pages/finance_ar_ap_page.dart,497,选项集合/名称集合,": {...names.clientEntries, ...names.supplierEntries},",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/finance/pages/finance_doc_detail_page.dart,542,按ID名称显示,? names.client(d.clientId),按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/finance/pages/finance_doc_detail_page.dart,544,按ID名称显示,? names.supplier(d.supplierId),按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/finance/pages/finance_doc_detail_page.dart,643,按ID名称显示,"names.supplier(d.settlementAgentSupplierId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/finance/pages/finance_doc_edit_page.dart,1772,选项集合/名称集合,"names.supplierEntries,",选项改服务器PagedPicker；显示另用lookup；禁止直接枚举partial entries,已定位源码消费点；新lookup/迁移尚未实施,真实编辑选项（同时可能显示名称）
+lib/features/finance/pages/finance_doc_edit_page.dart,2430,按ID名称显示,": names.client(_partyId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/finance/pages/finance_doc_edit_page.dart,2441,选项集合/名称集合,? names.clientEntries,选项改服务器PagedPicker；显示另用lookup；禁止直接枚举partial entries,已定位源码消费点；新lookup/迁移尚未实施,真实编辑选项（同时可能显示名称）
+lib/features/finance/pages/finance_doc_edit_page.dart,2442,选项集合/名称集合,": names.supplierEntries,",选项改服务器PagedPicker；显示另用lookup；禁止直接枚举partial entries,已定位源码消费点；新lookup/迁移尚未实施,真实编辑选项（同时可能显示名称）
+lib/features/finance/pages/finance_doc_edit_page.dart,2504,按ID名称显示,": names.client(_partyId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/finance/pages/finance_doc_list_page.dart,488,按ID名称显示,? names.client(it.partyId),按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/finance/pages/finance_doc_list_page.dart,489,按ID名称显示,": names.supplier(it.partyId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/finance/pages/finance_doc_list_page.dart,625,选项集合/名称集合,? names.clientEntries,服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/finance/pages/finance_doc_list_page.dart,626,选项集合/名称集合,": names.supplierEntries,",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart,996,按ID名称显示,"'clientId' => names.client(id),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart,1055,按ID名称显示,"title: '客户财务快照 · ${info.clientName ?? names.client(_detail?.clientId)}',",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart,1203,按ID名称显示,"info.clientName ?? names.client(d.clientId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/finance/pages/finance_statement_page.dart,174,字典读取/失效/定义,? ApiEndpoints.clientsDict,按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/finance/pages/finance_statement_page.dart,175,字典读取/失效/定义,: ApiEndpoints.suppliersDict;,按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/finance/payables/pages/finance_payables_page.dart,851,选项集合/名称集合,"names: names.supplierEntries,",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/finance/payables/widgets/supplier_settlement_actions.dart,248,选项集合/名称集合,for (final entry in names.supplierEntries.entries),选项改服务器PagedPicker；显示另用lookup；禁止直接枚举partial entries,已定位源码消费点；新lookup/迁移尚未实施,真实编辑选项（同时可能显示名称）
+lib/features/finance/providers/finance_name_provider.dart,148,字典读取/失效/定义,"loadDict(ApiEndpoints.clientsDict),",公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/features/finance/providers/finance_name_provider.dart,149,字典读取/失效/定义,"loadDict(ApiEndpoints.suppliersDict),",公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/features/finance/providers/finance_name_provider.dart,418,选项集合/名称集合,"Map<String, String> get clientEntries => _clients;",公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/features/finance/providers/finance_name_provider.dart,419,选项集合/名称集合,"Map<String, String> get supplierEntries => _suppliers;",公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/features/finance/providers/finance_name_provider.dart,446,字典读取/失效/定义,"ApiEndpoints.clientsDict,",公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/features/finance/providers/finance_name_provider.dart,447,字典读取/失效/定义,"ApiEndpoints.suppliersDict,",公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/features/finance/providers/finance_name_provider.dart,452,字典读取/失效/定义,if (key == ApiEndpoints.clientsDict || key == ApiEndpoints.suppliersDict) {,公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/features/finance/widgets/ar_ap_picker_dialog.dart,462,按ID名称显示,? names.client(widget.partyId),按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/finance/widgets/ar_ap_picker_dialog.dart,463,按ID名称显示,: names.supplier(widget.partyId);,按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/purchase/pages/purchase_doc_detail_page.dart,1336,按ID名称显示,"if (_cfg.hasSupplier) _KV('供应商', names.supplier(d.supplierId)),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/purchase/pages/purchase_doc_detail_page.dart,1946,按ID名称显示,"value: (_) => names.supplier(d.supplierId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/purchase/pages/purchase_doc_edit_page.dart,527,状态/默认条款预填,.supplierDefaultSettlement(supplierId);,先显式load所选ID；状态未知保持未知；默认结算仅预填不作写权威,已定位源码消费点；新lookup/迁移尚未实施,所选ID默认条款/禁用状态
+lib/features/purchase/pages/purchase_doc_edit_page.dart,555,选项集合/名称集合,final name = names.supplierEntries[id];,服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/purchase/pages/purchase_doc_edit_page.dart,557,状态/默认条款预填,return names.isSupplierDisabled(id) ? '$name（已禁用）' : name;,先显式load所选ID；状态未知保持未知；默认结算仅预填不作写权威,已定位源码消费点；新lookup/迁移尚未实施,所选ID默认条款/禁用状态
+lib/features/purchase/pages/purchase_doc_list_page.dart,457,选项集合/名称集合,"suppliers: names.supplierEntries,",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/purchase/pages/purchase_doc_list_page.dart,586,按ID名称显示,"value: (it) => names.supplier(it.supplierId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/purchase/pages/purchase_doc_list_page.dart,825,选项集合/名称集合,"names.supplierEntries,",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/purchase/pages/purchase_order_edit_page.dart,732,状态/默认条款预填,!names.isSupplierDisabled(terms.supplierId)) {,先显式load所选ID；状态未知保持未知；默认结算仅预填不作写权威,已定位源码消费点；新lookup/迁移尚未实施,所选ID默认条款/禁用状态
+lib/features/purchase/pages/purchase_order_edit_page.dart,859,状态/默认条款预填,.supplierDefaultSettlement(supplierId);,先显式load所选ID；状态未知保持未知；默认结算仅预填不作写权威,已定位源码消费点；新lookup/迁移尚未实施,所选ID默认条款/禁用状态
+lib/features/purchase/pages/purchase_order_edit_page.dart,1126,选项集合/名称集合,final entries = {...names.supplierActiveEntries};,选项改服务器PagedPicker；显示另用lookup；禁止直接枚举partial entries,已定位源码消费点；新lookup/迁移尚未实施,真实编辑选项（同时可能显示名称）
+lib/features/purchase/pages/purchase_order_edit_page.dart,1129,选项集合/名称集合,final name = names.supplierEntries[id];,服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/purchase/pages/purchase_order_edit_page.dart,1171,选项集合/名称集合,if ((names.supplierEntries[r.supplierId] ?? '').isNotEmpty),服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/purchase/pages/purchase_order_edit_page.dart,1172,选项集合/名称集合,"'供应商：${names.supplierEntries[r.supplierId]}',",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/purchase/pages/purchase_order_edit_page.dart,2004,选项集合/名称集合,"supplierEntries: _supplierDropdownEntries(),",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/purchase/pages/purchase_report_page.dart,324,按ID名称显示,"'${r.ym.substring(0, 10)}  ·  ${names.supplier(r.supplierId)}',",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/purchase/widgets/doc_link_picker.dart,202,选项集合/名称集合,"partyEntries: (names) => names.supplierEntries,",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/purchase/widgets/doc_link_picker.dart,203,按ID名称显示,"partyName: (names, supplierId) => names.supplier(supplierId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/purchase/widgets/doc_link_picker.dart,344,按ID名称显示,"value: (d) => names.supplier(d.supplierId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/purchase/widgets/purchase_grid_columns.dart,516,选项集合/名称集合,"Map<String, String> supplierEntries = const {},",选项改服务器PagedPicker；显示另用lookup；禁止直接枚举partial entries,已定位源码消费点；新lookup/迁移尚未实施,真实编辑选项（同时可能显示名称）
+lib/features/purchase/widgets/purchase_grid_columns.dart,529,选项集合/名称集合,final showSupplier = supplierRequired || supplierEntries.isNotEmpty;,选项改服务器PagedPicker；显示另用lookup；禁止直接枚举partial entries,已定位源码消费点；新lookup/迁移尚未实施,真实编辑选项（同时可能显示名称）
+lib/features/purchase/widgets/purchase_grid_columns.dart,725,选项集合/名称集合,"textOf: (r) => supplierEntries[r.supplierId] ?? '',",选项改服务器PagedPicker；显示另用lookup；禁止直接枚举partial entries,已定位源码消费点；新lookup/迁移尚未实施,真实编辑选项（同时可能显示名称）
+lib/features/purchase/widgets/purchase_grid_columns.dart,734,选项集合/名称集合,"entries: supplierEntries,",选项改服务器PagedPicker；显示另用lookup；禁止直接枚举partial entries,已定位源码消费点；新lookup/迁移尚未实施,真实编辑选项（同时可能显示名称）
+lib/features/sales/pages/sales_doc_detail_page.dart,1813,按ID名称显示,"_KV('客户', names.client(d.clientId)),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/sales/pages/sales_doc_detail_page.dart,2139,按ID名称显示,"Text(names.client(d.clientId), style: theme.textTheme.titleSmall),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/sales/pages/sales_doc_edit_page.dart,1714,按ID名称显示,"clientName: ref.read(salesMasterNameServiceProvider).client(cid),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/sales/pages/sales_doc_edit_page.dart,2882,按ID名称显示,: ref.read(salesMasterNameServiceProvider).client(clientId);,按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/sales/pages/sales_doc_edit_page.dart,2908,按ID名称显示,": ref.read(salesMasterNameServiceProvider).client(clientId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/sales/pages/sales_doc_edit_page.dart,3467,选项集合/名称集合,!names.clientEntries.containsKey(id)) {,先lookup当前ID；cache miss不等于无权/不存在，不清原ID或草稿,已定位源码消费点；新lookup/迁移尚未实施,所选ID名称/是否已解析检查
+lib/features/sales/pages/sales_doc_edit_page.dart,3470,按ID名称显示,return names.client(id);,按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/sales/pages/sales_doc_list_page.dart,493,按ID名称显示,"'${names.client(q.clientId)} · ${q.billDate ?? ''} · ${financeLocalMoneyWithUnitSuffix(q.totalLocalText ?? q.totalLocal?.toString())}',",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/sales/pages/sales_doc_list_page.dart,827,按ID名称显示,"value: (it) => names.client(it.clientId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/sales/pages/sales_doc_list_page.dart,1302,选项集合/名称集合,"clients: names.clientEntries,",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/sales/pages/sales_doc_list_page.dart,1467,选项集合/名称集合,"'client': masterDictionaryFacets(names.clientEntries),",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/sales/pages/sales_order_progress_page.dart,782,选项集合/名称集合,"clients: names.clientEntries,",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/sales/providers/master_name_provider.dart,20,字典读取/失效/定义,"ensureDictionaryLoaded(ApiEndpoints.clientsDict, (items) {",公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/features/sales/providers/master_name_provider.dart,41,选项集合/名称集合,"Map<String, String> get clientEntries => _clients;",公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/features/sales/providers/master_name_provider.dart,42,选项集合/名称集合,"Map<String, String> get selectableClientEntries => _selectableClients;",公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/features/sales/widgets/sales_batch_ship_panel.dart,624,按ID名称显示,"'${names.client(l.clientId)} · ${l.billNo ?? ''}',",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/sales/widgets/sales_batch_ship_panel.dart,693,按ID名称显示,"names.client(l.clientId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/sales/widgets/sales_doc_link_picker.dart,116,选项集合/名称集合,"partyEntries: (names) => names.clientEntries,",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/sales/widgets/sales_doc_link_picker.dart,117,按ID名称显示,"partyName: (names, clientId) => names.client(clientId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/sales/widgets/sales_doc_link_picker.dart,251,按ID名称显示,"value: (d) => names.client(d.clientId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/sales/widgets/sales_shipment_task_workbench.dart,1121,按ID名称显示,"value: (item) => names.client(item.clientId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/subcontract/pages/subcontract_business_list_pages.dart,709,选项集合/名称集合,"suppliers: names.supplierEntries,",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/subcontract/pages/subcontract_business_list_pages.dart,1081,选项集合/名称集合,"names.supplierEntries,",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/subcontract/pages/subcontract_business_list_pages.dart,1203,按ID名称显示,"value: (row) => names.supplier(row.supplierId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/subcontract/pages/subcontract_doc_detail_page.dart,944,按ID名称显示,"if (_cfg.hasSupplier) _KV('委外商', names.supplier(d.supplierId)),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/subcontract/pages/subcontract_doc_detail_page.dart,1416,按ID名称显示,"value: (_) => names.supplier(d.supplierId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/subcontract/pages/subcontract_doc_edit_page.dart,485,状态/默认条款预填,.supplierDefaultSettlement(supplierId);,先显式load所选ID；状态未知保持未知；默认结算仅预填不作写权威,已定位源码消费点；新lookup/迁移尚未实施,所选ID默认条款/禁用状态
+lib/features/subcontract/pages/subcontract_doc_edit_page.dart,549,选项集合/名称集合,final name = names.supplierEntries[id];,服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/subcontract/pages/subcontract_doc_edit_page.dart,551,状态/默认条款预填,return names.isSupplierDisabled(id) ? '$name（已禁用）' : name;,先显式load所选ID；状态未知保持未知；默认结算仅预填不作写权威,已定位源码消费点；新lookup/迁移尚未实施,所选ID默认条款/禁用状态
+lib/features/subcontract/pages/subcontract_order_edit_page.dart,714,状态/默认条款预填,!names.isSupplierDisabled(terms.supplierId)) {,先显式load所选ID；状态未知保持未知；默认结算仅预填不作写权威,已定位源码消费点；新lookup/迁移尚未实施,所选ID默认条款/禁用状态
+lib/features/subcontract/pages/subcontract_order_edit_page.dart,849,状态/默认条款预填,.supplierDefaultSettlement(supplierId);,先显式load所选ID；状态未知保持未知；默认结算仅预填不作写权威,已定位源码消费点；新lookup/迁移尚未实施,所选ID默认条款/禁用状态
+lib/features/subcontract/pages/subcontract_order_edit_page.dart,1051,选项集合/名称集合,final entries = {...names.supplierActiveEntries};,选项改服务器PagedPicker；显示另用lookup；禁止直接枚举partial entries,已定位源码消费点；新lookup/迁移尚未实施,真实编辑选项（同时可能显示名称）
+lib/features/subcontract/pages/subcontract_order_edit_page.dart,1054,选项集合/名称集合,final name = names.supplierEntries[id];,服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/subcontract/pages/subcontract_order_edit_page.dart,1096,选项集合/名称集合,if ((names.supplierEntries[r.supplierId] ?? '').isNotEmpty),服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/subcontract/pages/subcontract_order_edit_page.dart,1097,选项集合/名称集合,"'委外商：${names.supplierEntries[r.supplierId]}',",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/subcontract/pages/subcontract_order_edit_page.dart,1867,选项集合/名称集合,"supplierEntries: _supplierDropdownEntries(),",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/subcontract/widgets/subcontract_grid_columns.dart,410,选项集合/名称集合,"Map<String, String> supplierEntries = const {},",选项改服务器PagedPicker；显示另用lookup；禁止直接枚举partial entries,已定位源码消费点；新lookup/迁移尚未实施,真实编辑选项（同时可能显示名称）
+lib/features/subcontract/widgets/subcontract_grid_columns.dart,422,选项集合/名称集合,cfg.hasSupplier && (supplierRequired || supplierEntries.isNotEmpty);,选项改服务器PagedPicker；显示另用lookup；禁止直接枚举partial entries,已定位源码消费点；新lookup/迁移尚未实施,真实编辑选项（同时可能显示名称）
+lib/features/subcontract/widgets/subcontract_grid_columns.dart,574,选项集合/名称集合,"textOf: (r) => supplierEntries[r.supplierId] ?? '',",选项改服务器PagedPicker；显示另用lookup；禁止直接枚举partial entries,已定位源码消费点；新lookup/迁移尚未实施,真实编辑选项（同时可能显示名称）
+lib/features/subcontract/widgets/subcontract_grid_columns.dart,583,选项集合/名称集合,"entries: supplierEntries,",选项改服务器PagedPicker；显示另用lookup；禁止直接枚举partial entries,已定位源码消费点；新lookup/迁移尚未实施,真实编辑选项（同时可能显示名称）
+lib/features/subcontract/widgets/subcontract_link_picker.dart,175,选项集合/名称集合,"partyEntries: (names) => names.supplierEntries,",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/subcontract/widgets/subcontract_link_picker.dart,176,按ID名称显示,"partyName: (names, supplierId) => names.supplier(supplierId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/subcontract/widgets/subcontract_link_picker.dart,300,按ID名称显示,"value: (d) => names.supplier(d.supplierId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart,106,字典读取/失效/定义,"names.ensureSuppliersLoaded(),",去除全量预加载时接页内loadIds；原写后失效/身份隔离不丢,已定位源码消费点；新lookup/迁移尚未实施,读取/失效入口
+lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart,511,选项集合/名称集合,"ref.watch(masterNameServiceProvider).supplierEntries,",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart,137,字典读取/失效/定义,.ensureSuppliersLoaded(),去除全量预加载时接页内loadIds；原写后失效/身份隔离不丢,已定位源码消费点；新lookup/迁移尚未实施,读取/失效入口
+lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart,760,选项集合/名称集合,"ref.watch(masterNameServiceProvider).supplierEntries,",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/shared/drafts/draft_workspace_sources.dart,246,按ID名称显示,"party: names.supplier(row.supplierId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/shared/drafts/draft_workspace_sources.dart,289,按ID名称显示,"party: names.supplier(row.supplierId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/shared/drafts/draft_workspace_sources.dart,330,按ID名称显示,"FinanceDocType.receipt => financeNames.client(row.partyId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/shared/drafts/draft_workspace_sources.dart,331,按ID名称显示,"FinanceDocType.payment => financeNames.supplier(row.partyId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/shared/drafts/draft_workspace_sources.dart,430,按ID名称显示,"party: salesNames.client(row.clientId),",按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示
+lib/shared/drafts/draft_workspace_table.dart,193,选项集合/名称集合,? ref.read(financeNameServiceProvider).supplierEntries,服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/shared/drafts/draft_workspace_table.dart,194,选项集合/名称集合,": ref.read(masterNameServiceProvider).supplierEntries,",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/shared/drafts/draft_workspace_table.dart,197,选项集合/名称集合,? ref.read(financeNameServiceProvider).clientEntries,服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/shared/drafts/draft_workspace_table.dart,198,选项集合/名称集合,": ref.read(salesMasterNameServiceProvider).clientEntries,",服务器分页选项，保留历史/disabled可筛语义；不能用新单selectableOnly=true强行收窄,已定位源码消费点；新lookup/迁移尚未实施,筛选或关联单据选择的完整候选
+lib/shared/providers/master_dictionary_repository.dart,107,字典读取/失效/定义,"if (under('/master/suppliers')) ApiEndpoints.suppliersDict,",公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/shared/providers/master_dictionary_repository.dart,108,字典读取/失效/定义,"if (under('/master/clients')) ApiEndpoints.clientsDict,",公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/shared/providers/master_name_provider.dart,558,字典读取/失效/定义,"ApiEndpoints.suppliersDict,",公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/shared/providers/master_name_provider.dart,580,字典读取/失效/定义,Future<void> reloadSuppliers() => _loadSuppliers(reload: true);,公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/shared/providers/master_name_provider.dart,583,字典读取/失效/定义,Future<void> ensureSuppliersLoaded() => _loadSuppliers();,公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/shared/providers/master_name_provider.dart,598,选项集合/名称集合,"Map<String, String> get supplierEntries => _suppliers;",公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/shared/providers/master_name_provider.dart,602,选项集合/名称集合,"Map<String, String> get supplierActiveEntries => {",公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/shared/providers/master_name_provider.dart,608,状态/默认条款预填,bool isSupplierDisabled(String? id) =>,公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/shared/providers/master_name_provider.dart,613,状态/默认条款预填,String? supplierDefaultSettlement(String? id) =>,公共100-ID队列和同scope有界cache；不可把partial cache声明为完整字典,已定位源码消费点；新lookup/迁移尚未实施,公共加载/缓存/定义
+lib/shared/widgets/commercial_terms_batch_sheet.dart,141,选项集合/名称集合,: (names.supplierEntries[_supplierId] ?? _supplierId);,按当前行/详情/草稿实际IDs lookup；保留冻结名和原ID，不枚举options,已定位源码消费点；新lookup/迁移尚未实施,按ID名称显示

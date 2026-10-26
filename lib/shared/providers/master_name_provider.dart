@@ -7,12 +7,14 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../../core/utils/currency_display.dart';
 import 'master_dictionary_repository.dart';
 import 'master_lookup_queue.dart';
+import 'master_party_lookup.dart';
 import 'session_provider.dart';
 
 /// 货品搜索/选择用的轻量项。
@@ -124,10 +126,15 @@ class WarehouseDictEntry {
 /// [ensureDictionaryLoaded] 从会话级字典仓库取行(仓库自身单飞、只缓存成功结果)，
 /// 本实例只保存解析好的名称映射。字典被写后失效时自动重取并重新解析。
 /// 加载失败时保留占位符，不阻塞业务列表；显式编辑/保存仍由各 Repository 返回真实错误。
-class MasterDictionaryService {
+class MasterDictionaryService extends ChangeNotifier {
   /// [dictionaries] 缺省时用一份私有仓库(测试与独立预览); 正式环境由 provider 传入会话级共享仓库。
-  MasterDictionaryService(this.api, [MasterDictionaryRepository? dictionaries])
-    : dictionaries = dictionaries ?? MasterDictionaryRepository(api) {
+  MasterDictionaryService(
+    this.api, [
+    MasterDictionaryRepository? dictionaries,
+    MasterPartyLookup? partyReferences,
+  ]) : _ownsDictionaries = dictionaries == null,
+       dictionaries = dictionaries ?? MasterDictionaryRepository(api) {
+    this.partyReferences = partyReferences ?? this.dictionaries.partyReferences;
     _invalidations = this.dictionaries.invalidations.listen(_onInvalidated);
   }
 
@@ -135,6 +142,8 @@ class MasterDictionaryService {
 
   /// 会话级字典仓库(多个名称服务共用一份)。
   final MasterDictionaryRepository dictionaries;
+  final bool _ownsDictionaries;
+  late final MasterPartyLookup partyReferences;
   late final StreamSubscription<String> _invalidations;
   final Map<String, void Function(List<Map<String, dynamic>>)> _appliers = {};
 
@@ -152,6 +161,68 @@ class MasterDictionaryService {
   final Map<String, GoodsDictEntry> _goodsInfo = {};
   final Map<String, String> _employees = {};
   bool _disposed = false;
+  bool _partyNotifyScheduled = false;
+  Timer? _partyNotifyTimer;
+  late final _clientReferenceNames = MasterPartyNameMap(
+    partyReferences,
+    MasterPartyKind.client,
+    (ids) => _loadPartyNames(MasterPartyKind.client, ids, refresh: false),
+  );
+  late final _supplierReferenceNames = MasterPartyNameMap(
+    partyReferences,
+    MasterPartyKind.supplier,
+    (ids) => _loadPartyNames(MasterPartyKind.supplier, ids, refresh: false),
+  );
+
+  Map<String, String> get clientReferenceNames => _clientReferenceNames;
+  Map<String, String> get supplierReferenceNames => _supplierReferenceNames;
+
+  Future<void> loadClientNames(Iterable<String> ids) =>
+      _loadPartyNames(MasterPartyKind.client, ids);
+  Future<void> loadSupplierNames(Iterable<String> ids) =>
+      _loadPartyNames(MasterPartyKind.supplier, ids);
+  Future<void> _loadPartyNames(
+    MasterPartyKind kind,
+    Iterable<String> ids, {
+    bool refresh = true,
+  }) async {
+    if (_disposed) return;
+    final before = partyReferences.dataRevision(kind);
+    try {
+      await partyReferences.load(kind, ids, refresh: refresh);
+    } catch (_) {
+      if (!_disposed && before != partyReferences.dataRevision(kind)) {
+        _schedulePartyNotification();
+      }
+      return;
+    } // Display can retain its original snapshot/placeholder.
+    if (!_disposed && partyReferences.dataRevision(kind) != before) {
+      _schedulePartyNotification();
+    }
+  }
+
+  void _schedulePartyNotification() {
+    if (_partyNotifyScheduled || _disposed) return;
+    _partyNotifyScheduled = true;
+    _partyNotifyTimer = Timer(Duration.zero, () {
+      _partyNotifyTimer = null;
+      _partyNotifyScheduled = false;
+      if (!_disposed) notifyListeners();
+    });
+  }
+
+  bool clientReferenceKnown(String? id) =>
+      partyReferences.positive(MasterPartyKind.client, id);
+  bool clientReferenceSelectable(String? id) =>
+      partyReferences.selectable(MasterPartyKind.client, id);
+  bool supplierReferenceSelectable(String? id) =>
+      partyReferences.selectable(MasterPartyKind.supplier, id);
+
+  bool supplierReferenceKnown(String? id) {
+    final row = partyReferences.reference(MasterPartyKind.supplier, id);
+    return row != null && (row['status'] as String?)?.isNotEmpty == true;
+  }
+
   static const maxCachedLookupRows = 4096;
 
   void _boundLookupCaches() {
@@ -231,6 +302,11 @@ class MasterDictionaryService {
 
   /// 字典被写后失效: 本实例加载过它就立即按同一解析函数重取。
   void _onInvalidated(String key) {
+    if (_disposed) return;
+    if (key == ApiEndpoints.clientsDict || key == ApiEndpoints.suppliersDict) {
+      notifyListeners();
+      return;
+    }
     final apply = _appliers[key];
     if (apply == null || !_dictionaryLoads.containsKey(key)) return;
     _dictionaryLoads.remove(key);
@@ -238,14 +314,20 @@ class MasterDictionaryService {
   }
 
   /// provider 释放时取消对仓库作废通知的订阅。
+  @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _partyNotifyTimer?.cancel();
+    _partyNotifyTimer = null;
+    _partyNotifyScheduled = false;
     _goodsLookup.dispose();
     _employeeLookup.dispose();
     _dictionaryLoads.clear();
     _appliers.clear();
     unawaited(_invalidations.cancel());
+    if (_ownsDictionaries) dictionaries.dispose();
+    super.dispose();
   }
 
   /// Load just the actual warehouse tree for operations that already have
@@ -527,26 +609,20 @@ class MasterDictionaryService {
 
 /// 采购、委外、仓库和生产域使用的名称服务。
 class MasterNameService extends MasterDictionaryService {
-  MasterNameService(super.api, [super.dictionaries]);
+  MasterNameService(super.api, [super.dictionaries, super.partyReferences]);
 
-  Map<String, String> _suppliers = {};
-
-  /// 供应商状态（id → 使用/禁用；缺失视为启用，兼容旧后端未返回 status 的字典）。
-  Map<String, String> _supplierStatus = {};
-
-  /// 供应商默认结算方式（id → settlement_methods.id；V452。订货开单预填用，可空）。
-  Map<String, String> _supplierDefaultSettlement = {};
   Map<String, String> _departments = {};
   Future<void> ensureLoaded() =>
-      Future.wait([ensureCommonLoaded(), _loadSuppliers(), _loadDepartments()]);
+      Future.wait([ensureCommonLoaded(), _loadDepartments()]);
 
   /// Read-only procurement summaries only display supplier and color names.
   /// Empty results need neither dictionary, nor warehouse/currency/unit/department data.
   Future<void> ensureReportNamesLoaded({
     bool suppliers = false,
     bool colors = false,
+    Iterable<String> supplierIds = const [],
   }) => Future.wait([
-    if (suppliers) _loadSuppliers(),
+    if (suppliers) loadSupplierNames(supplierIds),
     if (colors)
       ensureDictionaryLoaded(
         ApiEndpoints.colorsDict,
@@ -554,33 +630,15 @@ class MasterNameService extends MasterDictionaryService {
       ),
   ]);
 
-  Future<void> _loadSuppliers({bool reload = false}) => ensureDictionaryLoaded(
-    ApiEndpoints.suppliersDict,
-    (entries) {
-      _suppliers = {
-        for (final entry in entries)
-          entry['id'] as String: (entry['name'] ?? '') as String,
-      };
-      _supplierStatus = {
-        for (final entry in entries)
-          if (entry['status'] != null)
-            entry['id'] as String: entry['status'] as String,
-      };
-      _supplierDefaultSettlement = {
-        for (final entry in entries)
-          if (entry['defaultSettlementMethodId'] != null &&
-              (entry['defaultSettlementMethodId'] as String).isNotEmpty)
-            entry['id'] as String: entry['defaultSettlementMethodId'] as String,
-      };
-    },
-    reload: reload,
-  );
+  /// Refresh only referenced suppliers; new selections load their chosen ID.
+  Future<void> reloadSuppliers() async {
+    final ids = partyReferences.ids(MasterPartyKind.supplier).toList();
+    partyReferences.invalidate(MasterPartyKind.supplier);
+    await loadSupplierNames(ids);
+  }
 
-  /// 单据页内联新增供应商后重载字典（让本实例的下拉选项立即含新值）。
-  Future<void> reloadSuppliers() => _loadSuppliers(reload: true);
-
-  /// Supplier-only table filters do not need the other master dictionaries.
-  Future<void> ensureSuppliersLoaded() => _loadSuppliers();
+  Future<void> ensureSuppliersLoaded({Iterable<String> ids = const []}) =>
+      loadSupplierNames(ids);
 
   Future<void> _loadDepartments() => ensureDictionaryLoaded(
     ApiEndpoints.departmentsTree,
@@ -591,27 +649,38 @@ class MasterNameService extends MasterDictionaryService {
   Future<void> ensureDepartmentsLoaded() => _loadDepartments();
 
   String supplier(String? id) =>
-      MasterDictionaryService.resolveName(_suppliers, id);
+      MasterDictionaryService.resolveName(supplierReferenceNames, id);
   String department(String? id) =>
       MasterDictionaryService.resolveName(_departments, id);
 
-  Map<String, String> get supplierEntries => _suppliers;
+  Map<String, String> get supplierEntries => supplierReferenceNames;
 
   /// 启用中的供应商（单据表单下拉用）：禁用项不进选项，避免对禁用商下新单。
-  /// 名称解析仍走 [supplierEntries] 全量（历史单据可能引用禁用商）。
+  /// 这里只含已解析引用；完整可选项使用服务端分页选择器。
   Map<String, String> get supplierActiveEntries => {
-    for (final entry in _suppliers.entries)
-      if (_supplierStatus[entry.key] != '禁用') entry.key: entry.value,
+    for (final entry in supplierReferenceNames.entries)
+      if (supplierReferenceKnown(entry.key) && !isSupplierDisabled(entry.key))
+        entry.key: entry.value,
   };
 
-  /// 供应商是否禁用（状态缺失视为启用）。
+  /// 只报告已知的禁用事实；业务判断须先加载ID并检查supplierReferenceKnown。
   bool isSupplierDisabled(String? id) =>
-      id != null && _supplierStatus[id] == '禁用';
+      id != null &&
+      partyReferences.reference(MasterPartyKind.supplier, id)?['status'] ==
+          '禁用';
 
   /// 供应商主档默认结算方式 id（V452；未维护返回 null）。仅作开单预填，
   /// 单据保存/审核仍按各自必填与订单快照校验。
-  String? supplierDefaultSettlement(String? id) =>
-      id == null || id.isEmpty ? null : _supplierDefaultSettlement[id];
+  String? supplierDefaultSettlement(String? id) {
+    if (id == null || id.isEmpty) return null;
+    final value =
+        partyReferences.reference(
+              MasterPartyKind.supplier,
+              id,
+            )?['defaultSettlementMethodId']
+            as String?;
+    return value?.isEmpty == false ? value : null;
+  }
 
   Map<String, String> get departmentEntries => _departments;
 
@@ -656,7 +725,18 @@ final masterNameServiceProvider = Provider<MasterNameService>((ref) {
   final service = MasterNameService(
     ref.watch(apiClientProvider),
     ref.watch(masterDictionaryRepositoryProvider),
+    ref.watch(masterPartyLookupProvider),
   );
-  ref.onDispose(service.dispose);
+  // Keep the public Provider contract (including existing value overrides).
+  // Riverpod's supported mutable-state notification bridges the name cache.
+  void changed() {
+    if (ref.mounted) ref.notifyListeners();
+  }
+
+  service.addListener(changed);
+  ref.onDispose(() {
+    service.removeListener(changed);
+    service.dispose();
+  });
   return service;
-});
+}, dependencies: [masterPartyLookupProvider]);

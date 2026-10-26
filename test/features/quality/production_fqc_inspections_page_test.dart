@@ -226,34 +226,49 @@ void main() {
     );
   });
 
-  testWidgets('服务端多词结果处置回写仍保留匹配行，刷新失败不会误删部分任务', (tester) async {
-    final api = _FqcApi(failReloadAfterDecision: true);
-    final partial = ProductionFqcInspection.fromJson({
-      ...api._inspection,
-      'passedQty': 1,
-      'remainingQty': 9,
-      'status': 'PARTIAL',
+  for (final search in ['', '本色\tV51043']) {
+    testWidgets('部分决定后刷新失败保留同查询，返回清空搜索时隔离旧查询 ($search)', (tester) async {
+      final api = _FqcApi(failReloadAfterDecision: true);
+      final partial = ProductionFqcInspection.fromJson({
+        ...api._inspection,
+        'passedQty': 1,
+        'remainingQty': 9,
+        'status': 'PARTIAL',
+      });
+      await _pumpPage(
+        tester,
+        api: api,
+        permissions: const {Perm.productionQualityInspectionView},
+        handlingResult: partial,
+      );
+      if (search.isNotEmpty) {
+        await tester.enterText(find.byType(TextField).first, search);
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+      }
+      expect(_taskTable(tester).items.single.id, _inspectionId);
+      expect(api.listQueries.last['keyword'], search.isEmpty ? null : search);
+      await _doubleTapRow(tester, _reportNo);
+      await tester.tap(find.text('返回部分已决定结果'));
+      await tester.pumpAndSettle();
+      if (search.isEmpty) {
+        expect(_taskTable(tester).items.single.status, 'PARTIAL');
+        expect(_taskTable(tester).items.single.remainingQty, 9);
+      } else {
+        expect(api.listQueries.last['keyword'], isNull);
+        expect(
+          _taskTable(tester).items,
+          isEmpty,
+          reason:
+              'return clears page search, so its failed new query cannot display older filtered rows',
+        );
+        expect(_taskTable(tester).error, isNotNull);
+      }
+      expect(_taskTable(tester).currentPage, 1);
+      expect(api.decisionBody, isNull);
+      expect(tester.takeException(), isNull);
     });
-    await _pumpPage(
-      tester,
-      api: api,
-      permissions: const {Perm.productionQualityInspectionView},
-      handlingResult: partial,
-    );
-    await tester.enterText(find.byType(TextField).first, '本色\tV51043');
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
-    expect(_taskTable(tester).items.single.id, _inspectionId);
-    expect(api.listQueries.last['keyword'], '本色\tV51043');
-    await _doubleTapRow(tester, _reportNo);
-    await tester.tap(find.text('返回部分已决定结果'));
-    await tester.pumpAndSettle();
-    expect(_taskTable(tester).items.single.status, 'PARTIAL');
-    expect(_taskTable(tester).items.single.remainingQty, 9);
-    expect(_taskTable(tester).currentPage, 1);
-    expect(api.decisionBody, isNull);
-    expect(tester.takeException(), isNull);
-  });
+  }
 
   testWidgets(
     'manual FQC refresh preserves raw report input and retry identity',
@@ -523,7 +538,7 @@ void main() {
   testWidgets('FQC queue exposes server paging controls at 375px', (
     tester,
   ) async {
-    final api = _FqcApi(totalPages: 2);
+    final api = _FqcApi(totalPages: 2, pageSpecificRows: true);
     await _pumpPage(
       tester,
       api: api,
@@ -538,8 +553,19 @@ void main() {
     expect(find.text('/ 2'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pumpAndSettle();
-    expect(api.requestedPage, 2);
-    expect(_taskTable(tester).currentPage, 2);
+    expect(api.listQueries.map((query) => query['page']), contains(2));
+    final pageInput = tester.widget<TextField>(
+      find.byWidgetPredicate(
+        (widget) => widget is TextField && widget.decoration?.hintText == '页码',
+      ),
+    );
+    expect(pageInput.controller?.text, '2');
+    expect(
+      find.text('FQC-PAGE-2').hitTestable(),
+      findsOneWidget,
+      reason:
+          'the leading page-1 buffer must preserve the explicit page-2 viewport',
+    );
     expect(_taskTable(tester).totalPages, 2);
   });
 
@@ -562,11 +588,17 @@ void main() {
     await tester.pump();
     expect(_taskTable(tester).selectedIds, {_inspectionId});
 
+    final beforeHistory = api.listQueries.length;
     await selectFilterSegment(tester, '历史单据');
     await tester.pumpAndSettle();
-    expect(api.listQueries.last['status'], 'HISTORY');
+    final historyQueries = api.listQueries.skip(beforeHistory).toList();
+    expect(historyQueries.first['status'], 'HISTORY');
+    expect(historyQueries.first['page'], 1);
+    expect(
+      historyQueries.every((query) => query['status'] == 'HISTORY'),
+      isTrue,
+    );
     expect(find.byType(TaskDraftRecoveryNotice), findsNothing);
-    expect(api.listQueries.last['page'], 1);
     expect(_taskTable(tester).currentPage, 1);
     expect(_taskTable(tester).selectedIds, isEmpty);
     expect(_taskTable(tester).selectable, isFalse);
@@ -574,10 +606,14 @@ void main() {
 
     expect(find.text('RB-CANCELLED'), findsOneWidget);
 
+    final beforeActive = api.listQueries.length;
     await selectFilterSegment(tester, '待处理');
     await tester.pumpAndSettle();
-    expect(api.listQueries.last['status'], 'ACTIVE');
-    expect(api.listQueries.last['page'], 1);
+    final activeQueries = api.listQueries.skip(beforeActive).toList();
+    expect(activeQueries.first['status'], 'ACTIVE');
+    expect(activeQueries.first['page'], 1);
+    expect(activeQueries.every((query) => query['status'] == 'ACTIVE'), isTrue);
+    expect(_taskTable(tester).currentPage, 1);
     expect(find.text('RB-RESOLVED'), findsNothing);
     expect(find.text('RB-CANCELLED'), findsNothing);
     expect(find.byType(TaskDraftRecoveryNotice), findsOneWidget);
@@ -610,10 +646,22 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
     await tester.pumpAndSettle();
 
-    expect(api.listQueries, hasLength(listCallsBeforeSearch + 1));
-    expect(api.listQueries.last['keyword'], 'V51043');
-    expect(api.listQueries.last['page'], 1);
+    final searchQueries = api.listQueries.skip(listCallsBeforeSearch).toList();
+    expect(searchQueries.length, inInclusiveRange(1, 2));
+    expect(searchQueries.first['keyword'], 'V51043');
+    expect(searchQueries.first['page'], 1);
+    expect(
+      searchQueries.where((query) => query['page'] == 1),
+      hasLength(1),
+      reason:
+          'one debounced foreground read; at most one adjacent-page prefetch',
+    );
+    expect(
+      searchQueries.every((query) => query['keyword'] == 'V51043'),
+      isTrue,
+    );
     expect(_taskTable(tester).currentPage, 1);
+    expect(_taskTable(tester).selectedIds, isEmpty);
     expect(find.text(_reportNo), findsOneWidget);
   });
 }
@@ -624,6 +672,7 @@ class _FqcApi extends ApiClient {
     this.failReloadAfterDecision = false,
     this.totalPages = 1,
     this.includeStocked = false,
+    this.pageSpecificRows = false,
   }) : super(Dio());
 
   Map<String, dynamic>? decisionBody;
@@ -632,6 +681,7 @@ class _FqcApi extends ApiClient {
   Completer<Map<String, dynamic>>? capabilityResponse;
   final bool failReloadAfterDecision;
   final int totalPages;
+  final bool pageSpecificRows;
 
   /// 额外给待检队列塞一行「先入库后检」的成品（带登记库位与已上架位置）。
   final bool includeStocked;
@@ -778,7 +828,16 @@ class _FqcApi extends ApiClient {
         .toList(growable: false);
     final effectiveTotalPages = items.isEmpty ? 0 : totalPages;
     return {
-      'items': items,
+      'items': pageSpecificRows
+          ? [
+              for (final item in items)
+                {
+                  ...item,
+                  'id': '${item['id']}-page-$requestedPage',
+                  'reportNo': 'FQC-PAGE-$requestedPage',
+                },
+            ]
+          : items,
       'page': requestedPage,
       'size': 40,
       'total': items.isEmpty ? 0 : totalPages,

@@ -12,6 +12,8 @@ import 'package:uten_imp/features/basic_data/providers/mould_workshop_tree.dart'
 import 'package:uten_imp/features/basic_data/repositories/mould_category_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/mould_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_inline_edit.dart';
+import 'package:uten_imp/features/basic_data/widgets/mould_manufacturer_field.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -221,8 +223,9 @@ void main() {
       matching: find.byType(TextField),
     );
     expect(tester.widget<TextField>(monthInput).controller!.text, '2008-09');
-    final manufacturer = find.byWidgetPredicate(
-      (widget) => widget is TextField && widget.decoration?.hintText == '模具制造商',
+    final manufacturer = find.descendant(
+      of: find.byType(MouldManufacturerField),
+      matching: find.byType(TextField),
     );
     await tester.enterText(manufacturer, '测试制造商');
     await tester.tap(find.text('保存'));
@@ -317,6 +320,54 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('1+1'), findsOneWidget, reason: '模数列取 qty');
     expect(find.text('12'), findsOneWidget, reason: '套数列取 tqty（整数不带小数位）');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('模具行内编辑复用制造商字段，保持紧凑并暂存输入', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = _Moulds();
+    await _pumpPage(tester, repository, await SharedPreferences.getInstance());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('历史模具'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit table'));
+    await tester.pumpAndSettle();
+    final activate = find.byKey(
+      const ValueKey('inline-activate-mould-manufacturer'),
+    );
+    await tester.ensureVisible(activate);
+    await tester.tap(activate);
+    await tester.pumpAndSettle();
+    final field = find.byType(MouldManufacturerField);
+    expect(field, findsOneWidget);
+    expect(tester.widget<MouldManufacturerField>(field).dense, isTrue);
+    final input = find.descendant(of: field, matching: find.byType(TextField));
+    await tester.enterText(input, '行内核实制造商');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.widget<TextField>(input).controller!.text, '行内核实制造商');
+    expect(repository.saved, isNull, reason: '编辑中仅暂存，保存前不写数据库');
+    final actions = tester.widget<MasterInlineEditActions<MouldListItem>>(
+      find.byType(MasterInlineEditActions<MouldListItem>),
+    );
+    final rowKey =
+        (actions.controller.appendRowsSource.value.first.key as ValueKey).value;
+    final appendActivate = find.byKey(
+      ValueKey('inline-create-activate-$rowKey-manufacturer'),
+    );
+    await tester.ensureVisible(appendActivate);
+    await tester.tap(appendActivate);
+    await tester.pumpAndSettle();
+    final appendedField = find.byType(MouldManufacturerField).last;
+    expect(tester.widget<MouldManufacturerField>(appendedField).dense, isTrue);
+    final appendedInput = find.descendant(
+      of: appendedField,
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(appendedInput, '新行核实制造商');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.widget<TextField>(appendedInput).controller!.text, '新行核实制造商');
+    expect(repository.created, isNull, reason: '追加行的制造商也仅暂存');
     expect(tester.takeException(), isNull);
   });
 }

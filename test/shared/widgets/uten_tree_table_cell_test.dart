@@ -1,8 +1,120 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/shared/widgets/uten_tree_table_cell.dart';
 
 void main() {
+  testWidgets(
+    'Ctrl dispatch opens peers once and ordinary click keeps its action',
+    (tester) async {
+      var toggles = 0;
+      var peers = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 320,
+              child: UtenTreeTableCell.compact(
+                depth: 1,
+                title: '同层组件',
+                hasChildren: true,
+                onToggle: () => toggles++,
+                onExpandPeers: () => peers++,
+                toggleKey: const Key('ctrl-peer-toggle'),
+              ),
+            ),
+          ),
+        ),
+      );
+      final toggle = find.byKey(const Key('ctrl-peer-toggle'));
+      for (final key in [
+        LogicalKeyboardKey.controlLeft,
+        LogicalKeyboardKey.controlRight,
+      ]) {
+        await tester.sendKeyDownEvent(key);
+        await tester.tap(toggle);
+        await tester.sendKeyUpEvent(key);
+      }
+      expect(peers, 2);
+      expect(toggles, 0);
+      await tester.tap(toggle);
+      expect(toggles, 1);
+      expect(peers, 2);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
+    for (final dark in [false, true]) {
+      testWidgets(
+        'compact deep column remains valid at its drag limit: $platform dark=$dark',
+        (tester) async {
+          for (final scale in [1.0, 2.0]) {
+            await tester.pumpWidget(
+              MaterialApp(
+                theme: (dark ? ThemeData.dark() : ThemeData.light()).copyWith(
+                  platform: platform,
+                ),
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!,
+                ),
+                home: Scaffold(
+                  body: Builder(
+                    builder: (context) => SizedBox(
+                      width: UtenTreeTableCell.compactMinimumWidthOf(
+                        context,
+                        depth: 12,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        child: UtenTreeTableCell.compact(
+                          depth: 12,
+                          title: '很长的深层组件名称仍能显示完整语义',
+                          hasChildren: true,
+                          onToggle: () {},
+                          toggleKey: const Key('deep-compact-toggle'),
+                          ancestorContinuations: const [
+                            true,
+                            true,
+                            true,
+                            true,
+                            true,
+                            true,
+                            true,
+                            true,
+                            true,
+                            true,
+                            true,
+                            true,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+            expect(
+              tester
+                  .getSize(find.byKey(const Key('deep-compact-toggle')))
+                  .height,
+              greaterThanOrEqualTo(
+                platform == TargetPlatform.android ? 48 : 32,
+              ),
+            );
+            expect(tester.takeException(), isNull);
+          }
+        },
+      );
+    }
+  }
+
   Finder guideOf(Key cellKey) => find.descendant(
     of: find.byKey(cellKey),
     matching: find.byWidgetPredicate(

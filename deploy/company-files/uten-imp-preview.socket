@@ -1,0 +1,15 @@
+[Unit]
+Description=Uten company-file isolated preview socket
+
+[Socket]
+ListenStream=/run/uten-imp-preview.sock
+SocketUser=root
+SocketGroup=uten-imp
+SocketMode=0660
+Accept=yes
+MaxConnections=2
+Backlog=2
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

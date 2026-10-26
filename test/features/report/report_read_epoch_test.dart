@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:go_router/go_router.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -59,12 +61,14 @@ class _ReportApi extends ApiClient {
   _ReportApi() : super(Dio());
   bool newReader = false;
   final pending = <Completer<Map<String, dynamic>>>[];
+  final paths = <String>[];
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
     if (path.contains('/reports/')) {
+      paths.add(path);
       if (newReader) return _report(value: 'reader-B-fresh');
       final completion = Completer<Map<String, dynamic>>();
       pending.add(completion);
@@ -227,6 +231,123 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  final modePairs = <String, (Widget, Widget)>{
+    'sales': (
+      const SalesReportPage(kind: SalesReportKind.detail),
+      const SalesReportPage(kind: SalesReportKind.summary),
+    ),
+    'purchase': (
+      const PurchaseReportTablePage(kind: PurchaseReportKind.detail),
+      const PurchaseReportTablePage(kind: PurchaseReportKind.summary),
+    ),
+    'subcontract': (
+      const SubcontractReportTablePage(kind: SubcontractReportKind.detail),
+      const SubcontractReportTablePage(kind: SubcontractReportKind.summary),
+    ),
+    'warehouse': (
+      const WarehouseReportTablePage(kind: WarehouseReportKind.detail),
+      const WarehouseReportTablePage(kind: WarehouseReportKind.summary),
+    ),
+    'production': (
+      const ProductionReportPage(kind: ProductionReportKind.detail),
+      const ProductionReportPage(kind: ProductionReportKind.summary),
+    ),
+    'finance': (
+      const FinanceReportTablePage(cardId: 'detail'),
+      const FinanceReportTablePage(cardId: 'summary'),
+    ),
+  };
+  for (final entry in modePairs.entries) {
+    testWidgets(
+      '${entry.key} same State report identity retires late former schema',
+      (tester) async {
+        final api = _ReportApi();
+        final selected = ValueNotifier(entry.value.$1);
+        addTearDown(selected.dispose);
+        await _mount(
+          tester,
+          ValueListenableBuilder<Widget>(
+            valueListenable: selected,
+            builder: (_, page, _) => page,
+          ),
+          api,
+        );
+        final state = tester.state(find.byType(entry.value.$1.runtimeType));
+        selected.value = entry.value.$2;
+        await tester.pump();
+        await tester.pump();
+        expect(
+          tester.state(find.byType(entry.value.$2.runtimeType)),
+          same(state),
+        );
+        expect(api.pending, hasLength(2));
+        expect(
+          api.paths.first,
+          contains(entry.key == 'finance' ? '/order-plan' : '/detail'),
+        );
+        expect(api.paths.last, contains('/summary'));
+        final fresh = _report(value: 'mode-B-row');
+        fresh['columns'] = [
+          {'key': 'proof', 'label': 'mode-B-schema', 'type': 'text'},
+        ];
+        api.pending.last.complete(fresh);
+        await tester.pumpAndSettle();
+        api.pending.first.complete(_report(value: 'mode-A-late'));
+        await tester.pumpAndSettle();
+        expect(find.text('mode-B-row'), findsOneWidget);
+        expect(find.text('mode-A-late'), findsNothing);
+        final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+          find.byType(MasterDataTableView<Map<String, dynamic>>).first,
+        );
+        expect(table.columns.single.label, 'mode-B-schema');
+        expect(table.currentPage, 1);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'subcontract route detail to summary reuses State with the new API and schema',
+    (tester) async {
+      final api = _ReportApi();
+      final router = GoRouter(
+        initialLocation: '/subcontract/report/detail',
+        routes: [
+          GoRoute(
+            path: '/subcontract/report/:kind',
+            builder: (_, state) => SubcontractReportTablePage(
+              kind: state.pathParameters['kind'] == 'summary'
+                  ? SubcontractReportKind.summary
+                  : SubcontractReportKind.detail,
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await _mount(tester, Router.withConfig(config: router), api);
+      final before = tester.state(find.byType(SubcontractReportTablePage));
+      api.pending.first.complete(_report(value: 'old-detail'));
+      await tester.pumpAndSettle();
+      router.go('/subcontract/report/summary');
+      await tester.pump();
+      await tester.pump();
+      expect(
+        tester.state(find.byType(SubcontractReportTablePage)),
+        same(before),
+      );
+      expect(find.text('old-detail'), findsNothing);
+      expect(api.paths.last, '/subcontract/reports/RECEIPT/summary');
+      api.pending.last.complete(_report(value: 'new-summary'));
+      await tester.pumpAndSettle();
+      expect(find.text('new-summary'), findsOneWidget);
+      expect(
+        router.routeInformationProvider.value.uri.path,
+        '/subcontract/report/summary',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'customer drill-down removes its old title and cannot revive after ABA',

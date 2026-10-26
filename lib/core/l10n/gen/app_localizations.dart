@@ -21791,7 +21791,7 @@ abstract class AppLocalizations {
   /// No description provided for @goodsImportMergeHint.
   ///
   /// In zh, this message translates to:
-  /// **'系统标识确定原货品；没有系统标识时按编号匹配，新编号可新增同名、不同颜色或材质的货品。系统标识和编号都为空时，才按同分类同名称唯一匹配，多条同名须补充编号或系统标识。空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值。同编号已删除货品按清单内容恢复。'**
+  /// **'系统标识确定原货品；没有系统标识时按编号匹配。两者都为空时新增货品并自动编号；新编号也可新增同名、不同颜色、材质或规格的货品，名称不用于匹配身份。更新时空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值。同编号已删除货品按清单内容恢复。'**
   String get goodsImportMergeHint;
 
   /// No description provided for @goodsImportUndoHint.
@@ -21977,25 +21977,25 @@ abstract class AppLocalizations {
   /// No description provided for @orderClosureContactQuality.
   ///
   /// In zh, this message translates to:
-  /// **'请由有权限的品质人员完成本单质检后，再重新核对结束申请。'**
+  /// **'请由有权限的品质人员完成本单质检后，再核对并结束订单。'**
   String get orderClosureContactQuality;
 
   /// No description provided for @orderClosureContactWarehouse.
   ///
   /// In zh, this message translates to:
-  /// **'请由有权限的仓库人员办清本单收退货或实物处置后，再重新核对结束申请。'**
+  /// **'请由有权限的仓库人员办清本单收退货或实物处置后，再核对并结束订单。'**
   String get orderClosureContactWarehouse;
 
   /// No description provided for @orderClosureContactSubcontract.
   ///
   /// In zh, this message translates to:
-  /// **'请由有权限的委外人员核对本单领料任务后，再重新核对结束申请。'**
+  /// **'请由有权限的委外人员核对本单领料任务后，再核对并结束订单。'**
   String get orderClosureContactSubcontract;
 
   /// No description provided for @orderClosureContactFinance.
   ///
   /// In zh, this message translates to:
-  /// **'请由有权限的财务人员处理本单当前审批后，再重新核对结束申请。'**
+  /// **'本单原订单条款正在财务审批，请先处理当前审批，再核对并结束订单。'**
   String get orderClosureContactFinance;
 
   /// No description provided for @orderClosureQualityPreserved.
@@ -22055,13 +22055,13 @@ abstract class AppLocalizations {
   /// No description provided for @orderClosureEligibleOnlyConfirm.
   ///
   /// In zh, this message translates to:
-  /// **'已确认只提交上方可办理订单，不可办理项保留不变'**
+  /// **'已确认只结束上方可办理订单，不可办理项保留不变'**
   String get orderClosureEligibleOnlyConfirm;
 
   /// No description provided for @orderClosureUnsupportedRowReason.
   ///
   /// In zh, this message translates to:
-  /// **'此记录不是可提交结束申请的订货单，保留不变。'**
+  /// **'此记录不是可结束的订货单，保留不变。'**
   String get orderClosureUnsupportedRowReason;
 
   /// No description provided for @orderClosureBusy.
@@ -22097,13 +22097,13 @@ abstract class AppLocalizations {
   /// No description provided for @orderClosureMissingPermission.
   ///
   /// In zh, this message translates to:
-  /// **'缺少提交财务审批权限，请联系管理员授权。'**
+  /// **'缺少采购或委外订单办理权限，请联系管理员授权。'**
   String get orderClosureMissingPermission;
 
   /// No description provided for @orderClosureWholeOrderHint.
   ///
   /// In zh, this message translates to:
-  /// **'本次按整张订货单申请结束，包含订单全部明细；同一订单勾选多条货品只申请一次。两种方式都须财务批准，不会删除历史数据。'**
+  /// **'本次结束整张订货单的剩余履约，包含全部明细；同一订单勾选多条货品只办理一次。确认后立即生效，无需财务批准，历史记录保留。'**
   String get orderClosureWholeOrderHint;
 
   /// No description provided for @orderClosureAlreadyPending.
@@ -22115,7 +22115,7 @@ abstract class AppLocalizations {
   /// No description provided for @orderClosureAlreadyEnded.
   ///
   /// In zh, this message translates to:
-  /// **'本单已经结束，不能重复申请。'**
+  /// **'本单已经结束，不能重复办理。'**
   String get orderClosureAlreadyEnded;
 
   /// No description provided for @orderClosureReadOnly.
@@ -22127,19 +22127,19 @@ abstract class AppLocalizations {
   /// No description provided for @orderClosureApprovalHint.
   ///
   /// In zh, this message translates to:
-  /// **'两种方式都须财务批准后才生效。已有收货、库存和账务记录保留，在外材料责任仍须处理；审批期间履约变化须重新核对申请。'**
+  /// **'采购或委外确认后立即取消未收余量，无需财务批准。已有收货、库存和应付记录保留，在外材料责任仍须处理；财务详情同步显示取消数量和原因。'**
   String get orderClosureApprovalHint;
 
   /// No description provided for @orderClosureReceiptFinalityHint.
   ///
   /// In zh, this message translates to:
-  /// **'结束前请办清收退货和质检处置；批准后不能直接更改原单已核定实收。'**
+  /// **'结束前请办清收退货和质检处置；结束后不能直接更改原单已核定实收。'**
   String get orderClosureReceiptFinalityHint;
 
   /// No description provided for @orderClosureCloseHint.
   ///
   /// In zh, this message translates to:
-  /// **'批准后结束本单剩余履约，仓库不再等待剩余到货。'**
+  /// **'立即取消本单未收余量，仓库不再等待剩余到货。'**
   String get orderClosureCloseHint;
 
   /// No description provided for @orderClosureReorder.
@@ -22151,7 +22151,7 @@ abstract class AppLocalizations {
   /// No description provided for @orderClosureReorderHint.
   ///
   /// In zh, this message translates to:
-  /// **'批准后按核定剩余量生成新草稿，保留原单关联与价格参考；请在新单重新选择供应商、核对条款，再提交正常财务审批。'**
+  /// **'立即结束原单，按核定剩余量生成关联草稿并保留价格参考；新单须重新选择供应商、核对条款，再提交正常财务审批。'**
   String get orderClosureReorderHint;
 
   /// No description provided for @orderClosureReason.
@@ -22175,25 +22175,25 @@ abstract class AppLocalizations {
   /// No description provided for @orderClosureSubmit.
   ///
   /// In zh, this message translates to:
-  /// **'提交财务审批'**
+  /// **'确认结束订单'**
   String get orderClosureSubmit;
 
   /// No description provided for @orderClosureSubmitted.
   ///
   /// In zh, this message translates to:
-  /// **'结束申请已提交财务审批，批准后生效'**
+  /// **'订单已结束，未收余量已取消'**
   String get orderClosureSubmitted;
 
   /// No description provided for @orderClosureLoadFailed.
   ///
   /// In zh, this message translates to:
-  /// **'结束申请信息暂时读取失败'**
+  /// **'订单结束信息暂时读取失败'**
   String get orderClosureLoadFailed;
 
   /// No description provided for @orderClosureUnavailable.
   ///
   /// In zh, this message translates to:
-  /// **'本单当前不能申请结束，请刷新后核对状态'**
+  /// **'本单当前不能结束，请刷新后核对状态'**
   String get orderClosureUnavailable;
 
   /// No description provided for @orderClosureRemaining.
@@ -22211,7 +22211,7 @@ abstract class AppLocalizations {
   /// No description provided for @orderClosurePending.
   ///
   /// In zh, this message translates to:
-  /// **'结束待审批'**
+  /// **'历史结束申请待业务确认'**
   String get orderClosurePending;
 
   /// No description provided for @orderClosureApproved.
@@ -23125,6 +23125,210 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'预览文件'**
   String get companyFilesPreview;
+
+  /// No description provided for @mouldManufacturerLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'模具制造商'**
+  String get mouldManufacturerLabel;
+
+  /// No description provided for @mouldManufacturerMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'待补充'**
+  String get mouldManufacturerMissing;
+
+  /// No description provided for @mouldManufacturerMissingHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'制造商尚未登记'**
+  String get mouldManufacturerMissingHint;
+
+  /// No description provided for @mouldManufacturerMissingEditableHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'制造商尚未登记，可在编辑模具或编辑模式中补充'**
+  String get mouldManufacturerMissingEditableHint;
+
+  /// No description provided for @mouldManufacturerHistoryUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'候选加载失败，仍可直接输入'**
+  String get mouldManufacturerHistoryUnavailable;
+
+  /// No description provided for @mouldManufacturerHistoryEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无历史候选，可直接输入'**
+  String get mouldManufacturerHistoryEmpty;
+
+  /// No description provided for @mouldManufacturerSupplierCandidates.
+  ///
+  /// In zh, this message translates to:
+  /// **'供应商名称(供核实选用)'**
+  String get mouldManufacturerSupplierCandidates;
+
+  /// No description provided for @mouldManufacturerSupplierUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'供应商候选加载失败，仍可直接输入'**
+  String get mouldManufacturerSupplierUnavailable;
+
+  /// No description provided for @mouldManufacturerSupplierEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无匹配供应商，可继续输入查找'**
+  String get mouldManufacturerSupplierEmpty;
+
+  /// No description provided for @mouldManufacturerInputHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'待补充，可输入制造商名称'**
+  String get mouldManufacturerInputHint;
+
+  /// No description provided for @mouldManufacturerInputHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'可直接输入或选择候选，核实后保存'**
+  String get mouldManufacturerInputHelp;
+
+  /// No description provided for @mouldManufacturerChooseHistoryTooltip.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择历史制造商'**
+  String get mouldManufacturerChooseHistoryTooltip;
+
+  /// No description provided for @employeeIdentitySectionTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'证件信息'**
+  String get employeeIdentitySectionTitle;
+
+  /// No description provided for @employeeIdentitySavedReadbackFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'证件信息已保存，读取最新资料失败，请重试读取。'**
+  String get employeeIdentitySavedReadbackFailed;
+
+  /// No description provided for @employeeIdentitySeparateSaveHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'证件信息单独保存，现有登录账号继续保留。'**
+  String get employeeIdentitySeparateSaveHint;
+
+  /// No description provided for @orderClosureDirectEnded.
+  ///
+  /// In zh, this message translates to:
+  /// **'已直接结束'**
+  String get orderClosureDirectEnded;
+
+  /// No description provided for @orderClosureCancelledByPurchase.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购已取消以下剩余未收数量，原单按实际收货继续结算。'**
+  String get orderClosureCancelledByPurchase;
+
+  /// No description provided for @orderClosureCancelledBySubcontract.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外已取消以下剩余未收数量，原单按实际收货继续结算，在外材料责任保留。'**
+  String get orderClosureCancelledBySubcontract;
+
+  /// No description provided for @orderClosureOperator.
+  ///
+  /// In zh, this message translates to:
+  /// **'办理人'**
+  String get orderClosureOperator;
+
+  /// No description provided for @orderClosureClosedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'结束时间'**
+  String get orderClosureClosedAt;
+
+  /// No description provided for @orderClosureOrdered.
+  ///
+  /// In zh, this message translates to:
+  /// **'原订数量'**
+  String get orderClosureOrdered;
+
+  /// No description provided for @orderClosureReceived.
+  ///
+  /// In zh, this message translates to:
+  /// **'累计收货'**
+  String get orderClosureReceived;
+
+  /// No description provided for @orderClosureCancelled.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消未收数量'**
+  String get orderClosureCancelled;
+
+  /// No description provided for @orderClosureCancelledGift.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消未收赠品'**
+  String get orderClosureCancelledGift;
+
+  /// No description provided for @orderClosureLegacyPendingHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'这是历史待审批结束申请。请采购或委外重新核对后直接结束，无需财务批准。'**
+  String get orderClosureLegacyPendingHint;
+
+  /// No description provided for @orderClosureReturned.
+  ///
+  /// In zh, this message translates to:
+  /// **'累计退货'**
+  String get orderClosureReturned;
+
+  /// No description provided for @orderClosureSettledLoss.
+  ///
+  /// In zh, this message translates to:
+  /// **'已结清损耗'**
+  String get orderClosureSettledLoss;
+
+  /// No description provided for @orderClosureOrderedGift.
+  ///
+  /// In zh, this message translates to:
+  /// **'原订赠品'**
+  String get orderClosureOrderedGift;
+
+  /// No description provided for @orderClosureReceivedGift.
+  ///
+  /// In zh, this message translates to:
+  /// **'已收赠品'**
+  String get orderClosureReceivedGift;
+
+  /// No description provided for @orderClosureReturnedGift.
+  ///
+  /// In zh, this message translates to:
+  /// **'已退赠品'**
+  String get orderClosureReturnedGift;
+
+  /// No description provided for @orderClosureResultUnconfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未确认订单已结束，请刷新原单核对结果后再办理。'**
+  String get orderClosureResultUnconfirmed;
+
+  /// No description provided for @orderClosureRecordTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看结束记录'**
+  String get orderClosureRecordTitle;
+
+  /// No description provided for @orderClosureRequestCanceled.
+  ///
+  /// In zh, this message translates to:
+  /// **'历史结束申请已撤回'**
+  String get orderClosureRequestCanceled;
+
+  /// No description provided for @orderClosureQuantityBasisHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消数量按实际留存、质检实退和已结清损耗核定；累计收货不等于净留存数量。'**
+  String get orderClosureQuantityBasisHint;
 }
 
 class _AppLocalizationsDelegate

@@ -716,8 +716,10 @@ public class SubcontractShortDeliveryService
         rows.setParameter("offset", (long) (safePage - 1) * safeSize);
         rows.setParameter("limit", safeSize);
         boolean decideAuthority = access.hasAuthority(DECIDE_AUTHORITY);
-        List<CaseRow> items = NativeQueryResults.objectArrayRows(rows).stream()
-                .map(row -> mapRow(row, decideAuthority)).toList();
+        List<Object[]> pageRows = NativeQueryResults.objectArrayRows(rows);
+        Map<UUID, String> names = caseEmployeeNames(pageRows, List.of());
+        List<CaseRow> items = pageRows.stream()
+                .map(row -> mapRow(row, decideAuthority, names)).toList();
         long total = ((Number) count.getSingleResult()).longValue();
         return new PageResponse<>(items, safePage, safeSize, total,
                 (int) Math.ceil(total / (double) safeSize));
@@ -733,12 +735,12 @@ public class SubcontractShortDeliveryService
         var scope = access.nativeReadScope("c.owner_employee_id", "owners", VIEW_AUTHORITY);
         String where = segmentPredicate(normalized) + " AND "
                 + shortDeliveryWhere(scope, null);
-        Query query = em.createNativeQuery("SELECT COALESCE(c.order_bill_no_snapshot, ''), COUNT(*) "
+        Query query = NativeFacets.query(em, "orderBillNo", "SELECT COALESCE(c.order_bill_no_snapshot, ''), COUNT(*) "
                 + ROW_FROM + " WHERE " + where + " GROUP BY 1 ORDER BY 1")
                 .setMaxResults(500);
         bindShortDeliveryFilters(query, scope, supplierId, orderId, keyword, dateFrom, dateTo, null);
         return Map.of("orderBillNo",
-                NativeFacets.rows(NativeQueryResults.objectArrayRows(query)));
+                NativeFacets.rowsOf(query));
     }
 
     /** 分段归一化（白名单 fail-closed）。 */
@@ -845,17 +847,21 @@ public class SubcontractShortDeliveryService
         if (rows.isEmpty()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "短交案件不存在或无权查看");
         }
-        CaseRow row = mapRow(rows.getFirst(), access.hasAuthority(DECIDE_AUTHORITY));
-        List<CaseEvent> caseEvents = jdbc.query("""
+        List<CaseEventSource> eventRows = jdbc.query("""
                 SELECT id, event_type, actor_employee_id, created_at, event_snapshot::text
                 FROM subcontract_short_delivery_case_events
                 WHERE case_id = ? ORDER BY created_at, id
-                """, (rs, n) -> new CaseEvent(
+                """, (rs, n) -> new CaseEventSource(
                         rs.getObject("id", UUID.class),
                         rs.getString("event_type"),
-                        nameResolver.nameOf(rs.getObject("actor_employee_id", UUID.class)),
+                        rs.getObject("actor_employee_id", UUID.class),
                         offset(rs.getTimestamp("created_at")),
                         readSnapshot(rs.getString("event_snapshot"))), caseId);
+        Map<UUID, String> names = caseEmployeeNames(rows, eventRows);
+        CaseRow row = mapRow(rows.getFirst(), access.hasAuthority(DECIDE_AUTHORITY), names);
+        List<CaseEvent> caseEvents = eventRows.stream().map(event -> new CaseEvent(
+                event.id(), event.eventType(), event.actorId() == null ? null : names.get(event.actorId()),
+                event.createdAt(), event.snapshot())).toList();
         return new CaseDetail(row, caseEvents);
     }
 
@@ -962,7 +968,21 @@ public class SubcontractShortDeliveryService
                    c.decided_at, c.closed_at, c.loss_qty, c.loss_pct, c.waste_id, waste.bill_no, c.version
             """.formatted(EFFECTIVE_STATUS_SQL) + ROW_FROM;
 
-    private CaseRow mapRow(Object[] r, boolean decideAuthority) {
+    private record CaseEventSource(UUID id, String eventType, UUID actorId,
+                                   OffsetDateTime createdAt, Map<String, Object> snapshot) { }
+
+    private Map<UUID, String> caseEmployeeNames(List<Object[]> rows, List<CaseEventSource> events) {
+        if (rows.isEmpty() && events.isEmpty()) return Map.of();
+        List<UUID> employeeIds = new ArrayList<>(rows.size() * 2 + events.size());
+        for (Object[] row : rows) {
+            employeeIds.add((UUID) row[28]);
+            employeeIds.add((UUID) row[29]);
+        }
+        events.forEach(event -> employeeIds.add(event.actorId()));
+        return nameResolver.namesOf(employeeIds);
+    }
+
+    private CaseRow mapRow(Object[] r, boolean decideAuthority, Map<UUID, String> names) {
         UUID ownerEmployee = (UUID) r[28];
         String status = (String) r[21];
         boolean open = STATUS_PENDING.equals(status) || STATUS_WAITING.equals(status);
@@ -973,7 +993,7 @@ public class SubcontractShortDeliveryService
                 decimal(r[14]), (BigDecimal) r[15], (BigDecimal) r[16], decimal(r[17]), decimal(r[18]), decimal(r[19]),
                 (String) r[20], status, (String) r[22], Boolean.TRUE.equals(r[23]),
                 (String) r[24], localDate(r[25]), (String) r[26], r[27] == null ? 0 : ((Number) r[27]).intValue(),
-                nameResolver.nameOf(ownerEmployee), nameResolver.nameOf((UUID) r[29]),
+                ownerEmployee == null ? null : names.get(ownerEmployee), r[29] == null ? null : names.get((UUID) r[29]),
                 offset(r[30]), offset(r[31]), offset(r[32]), offset(r[33]),
                 (BigDecimal) r[34], (BigDecimal) r[35], (UUID) r[36], (String) r[37],
                 ((Number) r[38]).longValue(),

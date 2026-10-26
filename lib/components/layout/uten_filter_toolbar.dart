@@ -46,6 +46,7 @@
 // counts 类接口同源；加载中传 null（两种形态都不渲染数字）。
 
 import 'package:flutter/material.dart';
+import '../inputs/uten_field_hint_icon.dart';
 
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -418,13 +419,14 @@ class UtenFilterPlaceholder extends StatelessWidget {
               color: theme.colorScheme.onSurfaceVariant,
             ),
             const SizedBox(height: UtenSpacing.s12),
-            Text(message, style: theme.textTheme.titleSmall),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              description,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(message, style: theme.textTheme.titleSmall),
+                ),
+                UtenFieldHintIcon(info: description, dense: true),
+              ],
             ),
           ],
         ),

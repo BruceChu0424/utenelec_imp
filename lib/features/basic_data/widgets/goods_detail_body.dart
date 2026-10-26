@@ -56,8 +56,10 @@ import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 import '../models/goods_bom_item.dart';
 import '../models/goods_node.dart';
+import '../models/goods_field_edit_policy.dart';
 import '../providers/color_unit_dict.dart';
 import '../repositories/goods_repository.dart';
+import '../repositories/master_inline_edit_repository.dart';
 import 'basic_data_l10n.dart';
 import 'goods_bom_preview.dart';
 import 'goods_bom_tab.dart';
@@ -838,9 +840,25 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       context.appWarning('当前账号没有本次货品保存权限', force: true);
       return;
     }
-    final rawBody = _formKey?.currentState?.buildBody();
+    final form = _formKey?.currentState;
+    final permissions = ref.read(currentPermissionsProvider);
+    final superAdmin = ref.read(isSuperAdminProvider);
+    final editing = _mode == _GoodsDetailMode.edit;
+    final skipKeys = editing && !superAdmin
+        ? {
+            for (final field in form?.widget.fields ?? <MasterFieldDef>[])
+              if (!GoodsFieldEditPolicy.canEditField(field.key, permissions))
+                field.key,
+          }
+        : <String>{};
+    final rawBody = form?.buildBody(skipKeys: skipKeys);
     if (rawBody == null) return; // 校验失败
     final body = normalizeGoodsUuidFirstBody(rawBody);
+    if (editing && !superAdmin) {
+      body.removeWhere(
+        (key, _) => !GoodsFieldEditPolicy.canEditField(key, permissions),
+      );
+    }
     // Preserve the exact old UUID/legacy snapshot, including unresolved history.
     // The API and DB independently reject spoofed changes to a used unit.
     if (_detail?.quantityUnitLocked == true) {
@@ -870,7 +888,41 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         }
         widget.onDataChanged?.call();
       } else {
-        await repo.update(_goodsId!, body);
+        if (!superAdmin && !permissions.contains(Perm.goodsEdit)) {
+          final changes = <String, dynamic>{};
+          for (final field in form!.widget.fields) {
+            if (!body.containsKey(field.key)) continue;
+            final controller = form.controller.controllers[field.key];
+            if (controller != null &&
+                controller.text ==
+                    (form.controller.initialValues[field.key] ?? '')) {
+              continue;
+            }
+            if (controller == null &&
+                '${body[field.key] ?? ''}' ==
+                    (form.controller.initialValues[field.key] ?? '')) {
+              continue;
+            }
+            changes[field.key] =
+                field.type == MasterFieldType.money &&
+                    controller != null &&
+                    controller.text.trim().isNotEmpty
+                ? controller.text.trim()
+                : body[field.key];
+          }
+          if (changes.isNotEmpty) {
+            await ref
+                .read(masterInlineEditRepositoryProvider)
+                .saveParty(
+                  'goods',
+                  _goodsId!,
+                  changes,
+                  expectedVersion: _detail?.version,
+                );
+          }
+        } else {
+          await repo.update(_goodsId!, body);
+        }
         if (!mounted) return;
         // 已有货品保存后留在详情，立即可在右上角撤回本次修改。
         final fresh = await repo.detail(_goodsId!);
@@ -1260,7 +1312,15 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         ref.watch(isSuperAdminProvider) ||
         ref.watch(currentPermissionsProvider).contains(Perm.goodsPriceView) ||
         canEditPrice;
+    final fieldPermissions = ref.watch(currentPermissionsProvider);
     final readOnlyKeys = <String>{
+      if (_mode == _GoodsDetailMode.edit && !ref.watch(isSuperAdminProvider))
+        for (final field in _goodsFields(
+          canViewDiscount: canViewDiscount,
+          canViewPrice: canViewPrice,
+        ))
+          if (!GoodsFieldEditPolicy.canEditField(field.key, fieldPermissions))
+            field.key,
       // 价格字段仅可查看者才在表里；可见但无编辑权 → 锁定。
       if (!canEditPrice && canViewPrice) 'price',
       if (!canEditPrice && canViewDiscount) 'discount',
@@ -1546,7 +1606,14 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         // 比例不是价格，不看成本权限；能编辑货品就能改。
         _GoodsPurchaseOverReceiptDetailRow(
           pct: d.purchaseAllowedOverReceiptPct,
-          onEdit: _canEditSaved ? _editPurchaseOverReceipt : null,
+          onEdit:
+              _canEditSaved &&
+                  (ref.watch(isSuperAdminProvider) ||
+                      ref
+                          .watch(currentPermissionsProvider)
+                          .contains(Perm.goodsPurchaseEdit))
+              ? _editPurchaseOverReceipt
+              : null,
         ),
         // V593 单一事实源两价：订货行价预填；每次保存采购/委外单自动写回最新价。
         if (canViewLearnedPrice)

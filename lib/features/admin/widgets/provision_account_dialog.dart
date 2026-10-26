@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../employee/widgets/employee_account_provision_flow.dart';
+import '../../employee/widgets/employee_account_batch_provision_flow.dart';
 import '../models/admin_models.dart';
 import '../repositories/admin_repository.dart';
 
@@ -77,10 +78,30 @@ class _ProvisionAccountDialogState
     ];
   }
 
-  Future<void> _provision(AccountProvisionCandidate candidate) async {
+  Future<void> _provision(List<AccountProvisionCandidate> candidates) async {
     if (_provisioning) return;
     setState(() => _provisioning = true);
     try {
+      if (candidates.length > 1) {
+        final attempted = await showProvisionSelectedEmployeeAccountsFlow(
+          widget.parentContext,
+          ref: ref,
+          employees: [
+            for (final candidate in candidates)
+              EmployeeAccountProvisionTarget(
+                id: candidate.employeeId,
+                name: candidate.name,
+                code: candidate.code,
+              ),
+          ],
+          isCurrent: () => mounted,
+        );
+        if (!mounted || !attempted) return;
+        Navigator.pop(context);
+        widget.onProvisioned();
+        return;
+      }
+      final candidate = candidates.single;
       final result = await showProvisionSelectedEmployeeAccountFlow(
         widget.parentContext,
         ref: ref,
@@ -104,14 +125,21 @@ class _ProvisionAccountDialogState
       absorbing: _provisioning,
       child: UtenEmployeeSelectionPanel(
         loader: _load,
+        multiple: true,
         title: '选择开通账号的员工',
+        confirmLabel: '开通所选账号',
+        selectedCountLabel: (count) => '已选择 $count 位员工',
         emptyMessage: '没有匹配的待开通员工',
         onConfirm: (selection) {
           if (selection.isEmpty || _provisioning) return;
-          final candidate = _candidates[selection.single.id];
-          if (candidate != null && candidate.provisionable) {
-            _provision(candidate);
-          }
+          final candidates = [
+            for (final selected in selection)
+              if (_candidates[selected.id] case final candidate?
+                  when candidate.provisionable)
+                candidate,
+          ];
+          if (candidates.length != selection.length) return;
+          _provision(candidates);
         },
       ),
     ),

@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import '../../../shared/providers/master_party_options.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 到货异常任务中心（可嵌入）：财务定案后仓库按批准量一键入库 / 退回归档。
 //
@@ -16,8 +18,6 @@ import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -28,6 +28,8 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/auth/native_read_view_scope_mixin.dart'
+    show nativeReadAccessDenied;
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
@@ -68,8 +70,28 @@ class WarehouseArrivalExceptionsView extends ConsumerStatefulWidget {
 
 class _WarehouseArrivalExceptionsViewState
     extends ConsumerState<WarehouseArrivalExceptionsView>
-    with UtenRefreshParticipant<WarehouseArrivalExceptionsView> {
+    with
+        UtenRefreshParticipant<WarehouseArrivalExceptionsView>,
+        ScopedPagedReadViewMixin<WarehouseArrivalExceptionsView> {
+  int get _refreshPage => _readingRows.visiblePage ?? (_result?.page ?? 1);
+
+  final _readingRows =
+      MasterDataTableRowsController<ProcurementArrivalException>();
+  @override
+  void scopedPagedReadOwnerChanged() {
+    ++_requestVersion;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+      _selectedIds = {};
+      _readingRows.update(const []);
+    });
+  }
+
   PagedResult<ProcurementArrivalException>? _result;
+  Object? _acceptedQuery;
   bool _loading = false;
   String? _error;
   int _requestVersion = 0;
@@ -256,7 +278,7 @@ class _WarehouseArrivalExceptionsViewState
             ? '该批次已办理过，本次没有重复处理（共 ${result.processedCount} 条）'
             : '已批量按财务批准量处理 ${result.processedCount} 条到货异常',
       );
-      await _load(_result?.page ?? 1);
+      await _load(_refreshPage);
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
     } catch (_) {
@@ -326,10 +348,10 @@ class _WarehouseArrivalExceptionsViewState
       if (!mounted) return;
       invalidateWarehouseTaskCounts(ref);
       context.appSuccess('已按批准数量审核收货并送检');
-      await _load(_result?.page ?? 1);
+      await _load(_refreshPage);
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
-      if (e.code == 'CONFLICT') await _load(_result?.page ?? 1);
+      if (e.code == 'CONFLICT') await _load(_refreshPage);
     } catch (_) {
       if (mounted) context.appError('按批准量处理失败，请稍后重试');
     } finally {
@@ -337,45 +359,121 @@ class _WarehouseArrivalExceptionsViewState
     }
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     final version = ++_requestVersion;
+    final ownerCurrent = captureReadOwner(ref);
+    final query = (
+      _keyword,
+      _history,
+      _supplierIdFilter,
+      _warehouseIdFilter,
+      _statusFilter,
+      _columnFilters.sortColumn,
+      _columnFilters.sortAscending,
+      _columnFilters['receiptBillNo'],
+      _columnFilters['orderBillNo'],
+      WarehouseListScope.of(context),
+    );
+    bool current() => mounted && version == _requestVersion && ownerCurrent();
     setState(() {
+      if (_acceptedQuery != query) {
+        _result = null;
+        _selectedIds = const {};
+      }
       _loading = true;
       _error = null;
     });
     try {
-      final result = await ref
-          .read(procurementInboundRepositoryProvider)
-          .warehouseExceptions(
-            page: page,
-            keyword: _keyword,
-            history: _history,
-            supplierId: _supplierIdFilter,
-            warehouseId: _warehouseIdFilter,
-            status: _statusFilter,
-            scope: WarehouseListScope.of(context),
-            sort: _kSortFields[_columnFilters.sortColumn],
-            order: _columnFilters.sortColumn == null
-                ? null
-                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
-            receiptBillNo: _columnFilters['receiptBillNo'],
-            orderBillNo: _columnFilters['orderBillNo'],
-          );
-      if (!mounted || version != _requestVersion) return;
+      final pageRepository = ref.read(procurementInboundRepositoryProvider);
+      final pageKeyword = _keyword;
+      final pageHistory = _history;
+      final pageSupplierId = _supplierIdFilter;
+      final pageWarehouseId = _warehouseIdFilter;
+      final pageStatus = _statusFilter;
+      final pageScope = WarehouseListScope.of(context);
+      final pageSort = _kSortFields[_columnFilters.sortColumn];
+      final pageOrder = _columnFilters.sortColumn == null
+          ? null
+          : (_columnFilters.sortAscending ? 'asc' : 'desc');
+      final pageReceiptBillNo = _columnFilters['receiptBillNo'];
+      final pageOrderBillNo = _columnFilters['orderBillNo'];
+
+      final result = await readScopedPage(
+        page,
+        slot: '_load',
+        query: [
+          pageRepository,
+          pageKeyword,
+          pageHistory,
+          pageSupplierId,
+          pageWarehouseId,
+          pageStatus,
+          pageScope,
+          pageSort,
+          pageOrder,
+          pageReceiptBillNo,
+          pageOrderBillNo,
+        ],
+        currentQuery: () => [
+          ref.read(procurementInboundRepositoryProvider),
+          _keyword,
+          _history,
+          _supplierIdFilter,
+          _warehouseIdFilter,
+          _statusFilter,
+          WarehouseListScope.of(context),
+          _kSortFields[_columnFilters.sortColumn],
+          _columnFilters.sortColumn == null
+              ? null
+              : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+          _columnFilters['receiptBillNo'],
+          _columnFilters['orderBillNo'],
+        ],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.warehouseExceptions(
+          page: target,
+          keyword: pageKeyword,
+          history: pageHistory,
+          supplierId: pageSupplierId,
+          warehouseId: pageWarehouseId,
+          status: pageStatus,
+          scope: pageScope,
+          sort: pageSort,
+          order: pageOrder,
+          receiptBillNo: pageReceiptBillNo,
+          orderBillNo: pageOrderBillNo,
+        ),
+      );
+      if (!current()) return;
+      unawaited(
+        ref
+            .read(masterNameServiceProvider)
+            .loadSupplierNames(partyReferenceIds([_supplierIdFilter]))
+            .then<void>((_) {
+              if (current()) setState(() {});
+            }, onError: (Object _, StackTrace _) {}),
+      );
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
       unawaited(_loadBillNoFacets());
       setState(() {
         _result = result;
+        _acceptedQuery = query;
         _loading = false;
       });
     } on ApiException catch (error) {
-      if (!mounted || version != _requestVersion) return;
+      if (!mounted) return;
+      if (!current()) return;
       setState(() {
+        if (nativeReadAccessDenied(error)) {
+          _result = null;
+          _acceptedQuery = null;
+          _selectedIds = const {};
+        }
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || version != _requestVersion) return;
+      if (!current()) return;
       setState(() {
         _error = '到货异常加载失败，请检查网络后重试';
         _loading = false;
@@ -434,30 +532,7 @@ class _WarehouseArrivalExceptionsViewState
         !_history &&
         (ref.watch(isSuperAdminProvider) ||
             permissions.contains(Perm.warehouseInboundStockIn));
-    // 骨架/错误态也钉住宿主分类栏（2026-10-01 用户口径：点击子分类的瞬间
-    // 整条分类栏不得消失），数据到位后照常走联动折叠容器。
-    final Widget fallback;
-    if (_loading && result == null) {
-      fallback = const UtenSkeletonList();
-    } else if (_error != null && result == null) {
-      fallback = UtenEmpty.error(
-        message: _error,
-        actionLabel: '重新加载',
-        onAction: () => _load(1),
-      );
-    } else {
-      return _buildList(result, canBatchStockIn: canBatchStockIn);
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (widget.externalHeader != null) ...[
-          widget.externalHeader!,
-          const SizedBox(height: UtenSpacing.s8),
-        ],
-        Expanded(child: fallback),
-      ],
-    );
+    return _buildList(result, canBatchStockIn: canBatchStockIn);
   }
 
   Widget _buildList(
@@ -498,6 +573,8 @@ class _WarehouseArrivalExceptionsViewState
         ],
       ),
       body: MasterDataTableView<ProcurementArrivalException>(
+        rowsController: _readingRows,
+        expensiveRowMounts: false,
         tableKey:
             'features.warehouse.widgets.warehouse_arrival_exceptions_view.WarehouseArrivalExceptionsViewState._buildList.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
@@ -507,8 +584,9 @@ class _WarehouseArrivalExceptionsViewState
         items: result.items,
         // 表头筛选桶（2026-09-16）：供应商/仓库走主档 dict；状态固定枚举六档。
         facets: {
-          'supplierName': masterDictionaryFacets(
-            ref.watch(masterNameServiceProvider).supplierEntries,
+          'supplierName': selectedPartyFacet(
+            _supplierIdFilter,
+            ref.watch(masterNameServiceProvider).supplier,
           ),
           'warehouseName': masterDictionaryFacets(
             ref.watch(masterNameServiceProvider).warehouseEntries,
@@ -541,6 +619,11 @@ class _WarehouseArrivalExceptionsViewState
           'receiptBillNo': _columnFilters.bucketOf('receiptBillNo'),
           'orderBillNo': _columnFilters.bucketOf('orderBillNo'),
         },
+        facetPageLoaders: {'supplierName': supplierPartyFacetLoader(ref)},
+        facetSearchScope: partyFacetSearchScope(
+          ref,
+          'warehouse_arrival_exceptions_view-party',
+        ),
         nullCounts: const {},
         filters: {
           'supplierName': _supplierIdFilter,
@@ -612,7 +695,7 @@ class _WarehouseArrivalExceptionsViewState
         isLoading: _loading,
         loadingMore: _loading && _result != null,
         error: result.items.isEmpty ? _error : null,
-        onRetry: () => _load(result.page),
+        onRetry: () => _load(_refreshPage),
         emptyMessage: _history
             ? '历史中没有已完成的到货异常'
             : _keyword.isNotEmpty
@@ -621,7 +704,7 @@ class _WarehouseArrivalExceptionsViewState
         currentPage: result.page,
         totalPages: result.totalPages,
         paginationScope: (_keyword, _history, WarehouseListScope.of(context)),
-        onPageChange: _load,
+        onPageChange: (page) => _load(page, useCache: true),
       ),
     );
   }

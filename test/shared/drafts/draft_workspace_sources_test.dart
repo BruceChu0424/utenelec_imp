@@ -77,6 +77,10 @@ class _Names extends MasterNameService {
   @override
   Future<void> ensureLoaded() async {}
   @override
+  Future<void> loadSupplierNames(Iterable<String> ids) async {}
+  @override
+  String supplier(String? id) => supplierEntries[id] ?? '—';
+  @override
   Map<String, String> get supplierEntries => const {'supplier-a': '丰翔'};
 }
 

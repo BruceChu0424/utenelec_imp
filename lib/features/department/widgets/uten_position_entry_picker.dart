@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -413,25 +414,10 @@ class _PositionEntrySheetState extends ConsumerState<_PositionEntrySheet> {
       color: theme.colorScheme.surface,
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    l10n.positionPickerTitle,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  tooltip: l10n.commonCancel,
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close_rounded),
-                ),
-              ],
-            ),
+          UtenPanelHeader(
+            title: l10n.positionPickerTitle,
+            closeTooltip: l10n.commonCancel,
+            onClose: () => Navigator.of(context).pop(),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),

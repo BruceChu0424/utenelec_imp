@@ -4,6 +4,8 @@
 // 服务端回 403 REAUTH_REQUIRED 后网络层在根导航器上弹统一密码框。忙碌遮罩是 root Overlay 里的
 // 裸 OverlayEntry，导航器推路由会把它抬回最顶层——若不让位，密码框被遮罩整片盖住，请求等密码、
 // 遮罩等请求，整页卡死。宿主照搬页面写法 (AbsorbPointer + UtenBusyOverlay)，全部按坐标点击。
+// 2026-10-25：共享遮罩增加所属路由生命周期保护，直接弹出的密码框同样自动让位；
+// 显式 yieldWhile 保留为兼容入口，两条路径都必须在返回后恢复仍在运行的任务遮罩。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -52,7 +54,7 @@ void main() {
     );
   });
 
-  testWidgets('对照: 不让位直接弹框时遮罩盖在密码框之上, 点确认没有反应 (原卡死现场)', (tester) async {
+  testWidgets('无需主动让位直接弹框也能输入确认，旧页面遮罩按路由自动恢复', (tester) async {
     final navigatorKey = GlobalKey<NavigatorState>();
     await tester.pumpWidget(_host(navigatorKey));
     await _frames(tester);
@@ -72,15 +74,24 @@ void main() {
     );
     await _frames(tester);
 
-    expect(find.text('正在保存部门权限'), findsOneWidget);
+    expect(find.text('正在保存部门权限'), findsNothing);
     await tester.tapAt(
       tester.getCenter(find.byKey(const Key('reauth-confirm'))),
     );
     await _frames(tester);
 
-    expect(find.text('请输入登录密码'), findsNothing, reason: '点击落在遮罩上, 没到确认按钮');
+    expect(find.text('请输入登录密码'), findsOneWidget, reason: '确认按钮可以到达，正常提示必填密码');
     expect(verifyCalls, 0);
     expect(find.byKey(const Key('reauth-dialog')), findsOneWidget);
+    await tester.tapAt(tester.getCenter(find.byKey(const Key('reauth-password'))));
+    await tester.pump();
+    tester.testTextInput.enterText('CorrectPassword1');
+    await tester.pump();
+    await tester.tapAt(tester.getCenter(find.byKey(const Key('reauth-confirm'))));
+    await _frames(tester);
+    expect(verifyCalls, 1);
+    expect(find.byKey(const Key('reauth-dialog')), findsNothing);
+    expect(find.text('正在保存部门权限'), findsOneWidget);
   });
 }
 

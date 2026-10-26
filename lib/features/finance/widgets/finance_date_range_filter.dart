@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -135,48 +136,51 @@ class FinanceDateRangeFilter extends StatelessWidget {
       (null, final DateTime end) => '${english ? 'Until' : '截至'} ${_date(end)}',
       _ => english ? 'All dates' : '全部日期',
     };
-    return MenuAnchor(
-      menuChildren: [
-        MenuItemButton(
-          onPressed: () =>
-              onChanged(defaultReportFrom(), ChinaDateTime.today()),
-          child: Text(english ? 'Recent month' : '最近一月'),
-        ),
-        MenuItemButton(
-          onPressed: () {
-            final today = ChinaDateTime.today();
-            onChanged(DateTime.utc(today.year, today.month), today);
-          },
-          child: Text(english ? 'This month' : '本月'),
-        ),
-        MenuItemButton(
-          onPressed: () {
-            final today = ChinaDateTime.today();
-            onChanged(
-              DateTime.utc(today.year, today.month - 1),
-              DateTime.utc(today.year, today.month, 0),
-            );
-          },
-          child: Text(english ? 'Last month' : '上月'),
-        ),
-        MenuItemButton(
-          onPressed: () => _custom(context),
-          child: Text(english ? 'Custom range' : '自定义'),
-        ),
-        if (allowOpenRange)
+    return UtenDropdownScrollScope(
+      child: MenuAnchor(
+        menuChildren: [
           MenuItemButton(
-            onPressed: () => onChanged(null, null),
-            child: Text(english ? 'Clear dates' : '清除日期'),
+            onPressed: () =>
+                onChanged(defaultReportFrom(), ChinaDateTime.today()),
+            child: Text(english ? 'Recent month' : '最近一月'),
           ),
-      ],
-      builder: (context, controller, _) => UtenButton(
-        type: UtenButtonType.secondary,
-        icon: Icons.date_range_outlined,
-        onPressed: !enabled
-            ? null
-            : () => controller.isOpen ? controller.close() : controller.open(),
-        child: Text(
-          '${english && label == '日期' ? 'Date' : label}: $rangeLabel',
+          MenuItemButton(
+            onPressed: () {
+              final today = ChinaDateTime.today();
+              onChanged(DateTime.utc(today.year, today.month), today);
+            },
+            child: Text(english ? 'This month' : '本月'),
+          ),
+          MenuItemButton(
+            onPressed: () {
+              final today = ChinaDateTime.today();
+              onChanged(
+                DateTime.utc(today.year, today.month - 1),
+                DateTime.utc(today.year, today.month, 0),
+              );
+            },
+            child: Text(english ? 'Last month' : '上月'),
+          ),
+          MenuItemButton(
+            onPressed: () => _custom(context),
+            child: Text(english ? 'Custom range' : '自定义'),
+          ),
+          if (allowOpenRange)
+            MenuItemButton(
+              onPressed: () => onChanged(null, null),
+              child: Text(english ? 'Clear dates' : '清除日期'),
+            ),
+        ],
+        builder: (context, controller, _) => UtenButton(
+          type: UtenButtonType.secondary,
+          icon: Icons.date_range_outlined,
+          onPressed: !enabled
+              ? null
+              : () =>
+                    controller.isOpen ? controller.close() : controller.open(),
+          child: Text(
+            '${english && label == '日期' ? 'Date' : label}: $rangeLabel',
+          ),
         ),
       ),
     );

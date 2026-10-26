@@ -4,6 +4,51 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_reference_picker_field.dart';
+import 'package:uten_imp/components/inputs/uten_table_cell_spec.dart';
+
+Widget _tableHost(
+  TextEditingController controller, {
+  required TargetPlatform platform,
+  double scale = 1,
+}) => MaterialApp(
+  theme: ThemeData(
+    platform: platform,
+    inputDecorationTheme: const InputDecorationTheme(
+      border: OutlineInputBorder(),
+    ),
+  ),
+  builder: (context, child) => MediaQuery(
+    data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
+    child: child!,
+  ),
+  home: Scaffold(
+    body: SizedBox(
+      width: 360,
+      child: UtenTableCellInputTheme(
+        child: IntrinsicHeight(
+          child: Row(
+            key: const Key('reference-table-row'),
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: UtenReferencePickerField<String>(
+                  controller: controller,
+                  label: '组件名称',
+                  hint: '输入名称查找',
+                  loadSuggestions: (_) async => const [],
+                  labelOf: (value) => value,
+                  onSelected: (_) {},
+                  onInputChanged: (_) {},
+                  onOpenPicker: (_) async {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  ),
+);
 
 Widget _host(
   TextEditingController controller, {
@@ -47,6 +92,46 @@ Widget _host(
 );
 
 void main() {
+  for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
+    testWidgets('table reference keeps intrinsic cell height: $platform', (
+      tester,
+    ) async {
+      final controller = TextEditingController(text: '外壳');
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(_tableHost(controller, platform: platform));
+      await tester.pumpAndSettle();
+      final row = find.byKey(const Key('reference-table-row'));
+      final height = platform == TargetPlatform.android ? 48.0 : 32.0;
+      expect(tester.getSize(row).height, closeTo(height, .5));
+      await tester.tap(find.byType(TextField));
+      await tester.enterText(find.byType(TextField), '新组件');
+      await tester.pumpAndSettle();
+      expect(tester.getSize(row).height, closeTo(height, .5));
+      await tester.tap(find.byTooltip('清除组件名称'));
+      await tester.pumpAndSettle();
+      expect(controller.text, isEmpty);
+      expect(tester.getSize(row).height, closeTo(height, .5));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('table reference grows for large text without a floating label', (
+    tester,
+  ) async {
+    final controller = TextEditingController(text: '外壳');
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      _tableHost(controller, platform: TargetPlatform.windows, scale: 2),
+    );
+    await tester.pumpAndSettle();
+    final row = find.byKey(const Key('reference-table-row'));
+    expect(tester.getSize(row).height, greaterThan(32));
+    final input = tester.getRect(find.byType(EditableText));
+    expect(input.top, greaterThanOrEqualTo(tester.getRect(row).top));
+    expect(input.bottom, lessThanOrEqualTo(tester.getRect(row).bottom));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'a boundary transition fences an already visible candidate before rebuild',
     (tester) async {

@@ -78,6 +78,8 @@ class _ImportState extends ConsumerState<PermissionConfigurationImportDialog> {
   @override
   void initState() {
     super.initState();
+    _baseline = widget.configuration.includesBaseline;
+    _dataScopes = widget.configuration.includesDataScopes;
     for (final entry in widget.configuration.departments) {
       _departments.add(
         _Target(
@@ -478,27 +480,34 @@ class _ImportState extends ConsumerState<PermissionConfigurationImportDialog> {
                     ),
                   ),
                 if (_initialized) ...[
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    title: const Text('导入全员基础包'),
-                    subtitle: const Text('影响所有在职员工'),
-                    value: _baseline,
-                    onChanged: enabled
-                        ? (value) => _edit(() => _baseline = value == true)
-                        : null,
-                  ),
+                  if (widget.configuration.exportScope != null)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: UtenSpacing.s8),
+                      child: Text('这是单项权限文件，仅导入文件声明的范围。'),
+                    ),
+                  if (widget.configuration.includesBaseline)
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: const Text('导入全员基础包'),
+                      subtitle: const Text('影响所有在职员工'),
+                      value: _baseline,
+                      onChanged: enabled
+                          ? (value) => _edit(() => _baseline = value == true)
+                          : null,
+                    ),
                   _targets('部门权限', _departments),
                   _targets('个人操作权限', _users),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    title: const Text('同时导入所选员工的可查看数据范围'),
-                    value: _dataScopes,
-                    onChanged: enabled
-                        ? (value) => _edit(() => _dataScopes = value == true)
-                        : null,
-                  ),
+                  if (widget.configuration.includesDataScopes)
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: const Text('同时导入所选员工的可查看数据范围'),
+                      value: _dataScopes,
+                      onChanged: enabled
+                          ? (value) => _edit(() => _dataScopes = value == true)
+                          : null,
+                    ),
                   if (_dataScopes && requiredOwners.isNotEmpty)
                     _targets(
                       '数据归属员工',

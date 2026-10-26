@@ -20,6 +20,7 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_table_cell_spec.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../models/department_node.dart';
 import '../repositories/department_repository.dart';
@@ -613,31 +614,15 @@ class _DepartmentPickerSheetState extends State<_DepartmentPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '选择部门',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
-          ),
+        UtenPanelHeader(
+          title: '选择部门',
+          onClose: () => Navigator.of(context).pop(),
         ),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s12),
+            padding: UtenPanelSpacing.body(context),
             child: UtenDepartmentTreeView(
               nodes: widget.tree,
               mode: _isMulti

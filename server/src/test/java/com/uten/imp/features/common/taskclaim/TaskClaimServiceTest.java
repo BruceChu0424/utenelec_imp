@@ -48,6 +48,23 @@ class TaskClaimServiceTest {
     private final UUID actor = UUID.randomUUID();
 
     @Test
+    void businessResolutionRetiresAnObsoleteReviewersLeaseWithoutGrantingFinanceManagement() {
+        String type="PROCUREMENT_FINANCE_APPROVE", key=UUID.randomUUID().toString();
+        when(meUser.getPermissions()).thenReturn(Set.of("purchase_order:view","purchase_order:submit_finance"));
+        when(currentUser.requireEmployeeId()).thenReturn(me);
+        TaskClaim obsolete=activeClaim(other);
+        when(claimRepo.findUnreleasedForUpdate(type,key)).thenReturn(Optional.of(obsolete));
+        service.releaseAfterBusinessResolution(type,key);
+        org.junit.jupiter.api.Assertions.assertNotNull(obsolete.getReleasedAt());
+        assertEquals(me,obsolete.getReleasedBy());
+        assertEquals("business_resolved",obsolete.getReleaseReason());
+        verify(claimRepo).saveAndFlush(obsolete);
+        verify(audit).logCommitted(eq(actor),eq("auditor"),eq("task_business_resolved"),
+                eq("task_claims"),eq(type+"/"+key),eq("success"));
+        org.mockito.Mockito.verifyNoInteractions(procurementReviewers);
+    }
+
+    @Test
     void commercialMutationCannotBypassItsOwnActiveReviewClaim() {
         when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
                 .thenReturn(Optional.of(activeClaim(me)));

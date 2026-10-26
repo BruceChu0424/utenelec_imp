@@ -131,7 +131,7 @@ class GoodsBomEditSnapshotTest {
                 mock(UnitRepository.class), mock(MouldRepository.class), mock(TxSessionVars.class),
                 mock(EntityManager.class), mock(CategoryDrivenCodeService.class), owners, current,
                 mock(GoodsCostMasker.class), mock(GoodsMasterRelationshipResolver.class));
-        ReflectionTestUtils.setField(actualGoods, "goodsOwnerScopeEnabled", true);
+        ReflectionTestUtils.setField(ReflectionTestUtils.getField(actualGoods, "goodsReadScopePolicy"), "ownerScopeEnabled", true);
         Goods writable = active(), readOnly = active(), hidden = active(), unowned = active();
         writable.setOwnerEmployeeId(writableOwner);
         readOnly.setOwnerEmployeeId(readOnlyOwner);

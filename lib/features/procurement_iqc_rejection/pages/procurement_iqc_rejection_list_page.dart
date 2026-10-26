@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -19,6 +18,10 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/auth/native_read_view_scope_mixin.dart'
+    show nativeReadAccessDenied;
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/procurement_iqc_rejection.dart';
@@ -58,8 +61,12 @@ class ProcurementIqcRejectionListPage extends ConsumerStatefulWidget {
 }
 
 class _ProcurementIqcRejectionListPageState
-    extends ConsumerState<ProcurementIqcRejectionListPage> {
+    extends ConsumerState<ProcurementIqcRejectionListPage>
+    with ScopedPagedReadViewMixin<ProcurementIqcRejectionListPage> {
+  final _tableRows =
+      MasterDataTableRowsController<ProcurementIqcRejectionCase>();
   PagedResult<ProcurementIqcRejectionCase>? _result;
+  Object? _acceptedQuery;
   ProcurementIqcRejectionCounts? _counts;
   ProcurementIqcReceiptType? _receiptType;
   String? _status = 'ACTIVE';
@@ -75,6 +82,19 @@ class _ProcurementIqcRejectionListPageState
   bool _loading = true;
   String? _error;
   int _requestId = 0;
+
+  @override
+  void scopedPagedReadOwnerChanged() => setState(() {
+    _requestId++;
+    _tableRows.update(const []);
+    _result = null;
+    _acceptedQuery = null;
+    _counts = null;
+    _selectedIds.clear();
+    _hasAcceptedList = false;
+    _loading = false;
+    _error = scopedPagedReadRejection?.message;
+  });
 
   /// 行勾选集（2026-10-10 审核页防看岔行口径：纯阅读辅助，无批量动作）。
   final Set<String> _selectedIds = <String>{};
@@ -110,7 +130,7 @@ class _ProcurementIqcRejectionListPageState
     super.didUpdateWidget(oldWidget);
     if (widget.refreshTick != oldWidget.refreshTick) {
       final completion = widget.refreshCompletion;
-      _load(_result?.page ?? 1).whenComplete(() {
+      _load(_tableRows.visiblePage ?? _result?.page ?? 1).whenComplete(() {
         if (completion != null && !completion.isCompleted) {
           completion.complete();
         }
@@ -125,9 +145,17 @@ class _ProcurementIqcRejectionListPageState
     super.dispose();
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     final requestId = ++_requestId;
+    final repository = _repository;
+    final ownerCurrent = captureReadOwner(ref);
+    final query = (_receiptType, _status, _statusSelected, _keyword);
+    bool current() => mounted && requestId == _requestId && ownerCurrent();
     setState(() {
+      if (_acceptedQuery != query) {
+        _result = null;
+        _selectedIds.clear();
+      }
       _loading = true;
       _error = null;
     });
@@ -142,39 +170,86 @@ class _ProcurementIqcRejectionListPageState
         receiptType: _receiptType,
         keyword: _keyword,
       );
-      final values = await Future.wait<Object>([
-        _statusSelected
-            ? _repository.list(filter)
-            : Future.value(
-                const PagedResult<ProcurementIqcRejectionCase>(
-                  items: [],
-                  page: 1,
-                  size: 20,
-                  total: 0,
-                  totalPages: 1,
+      unawaited(_loadCounts(countFilter, current));
+      final result = _statusSelected
+          ? await readScopedPage<ProcurementIqcRejectionCase>(
+              page,
+              query: (repository, query),
+              currentQuery: () => (
+                _repository,
+                (_receiptType, _status, _statusSelected, _keyword),
+              ),
+              useCache: useCache,
+              fetchPage: (page) => repository.list(
+                ProcurementIqcRejectionFilter(
+                  receiptType: filter.receiptType,
+                  status: filter.status,
+                  keyword: filter.keyword,
+                  page: page,
                 ),
               ),
-        _repository.counts(countFilter),
-      ]);
-      if (!mounted || requestId != _requestId) return;
+            )
+          : const PagedResult<ProcurementIqcRejectionCase>(
+              items: [],
+              page: 1,
+              size: 20,
+              total: 0,
+              totalPages: 1,
+            );
+      if (!current()) return;
       setState(() {
-        _result = values[0] as PagedResult<ProcurementIqcRejectionCase>;
+        _result = result;
+        _acceptedQuery = query;
         if (_statusSelected) _hasAcceptedList = true;
-        _counts = values[1] as ProcurementIqcRejectionCounts;
         _loading = false;
       });
     } on ApiException catch (error) {
-      if (!mounted || requestId != _requestId) return;
+      if (!current()) return;
       setState(() {
+        if (nativeReadAccessDenied(error)) {
+          ++_requestId;
+          _result = null;
+          _acceptedQuery = null;
+          _counts = null;
+          _selectedIds.clear();
+          _hasAcceptedList = false;
+        }
         _loading = false;
         _error = error.message;
       });
     } catch (_) {
-      if (!mounted || requestId != _requestId) return;
+      if (!current()) return;
       setState(() {
         _loading = false;
         _error = 'IQC 不合格退回与贷项任务加载失败，请检查网络后重试';
       });
+    }
+  }
+
+  Future<void> _loadCounts(
+    ProcurementIqcRejectionFilter filter,
+    bool Function() current,
+  ) async {
+    try {
+      final counts = await _repository.counts(filter);
+      if (current()) setState(() => _counts = counts);
+    } on ApiException catch (error) {
+      if (!current()) return;
+      if (error.httpStatus == 401 ||
+          error.httpStatus == 403 ||
+          error.code == 'UNAUTHORIZED' ||
+          error.code == 'FORBIDDEN') {
+        ++_requestId;
+        setState(() {
+          _result = null;
+          _hasAcceptedList = false;
+          _counts = null;
+          _loading = false;
+          _error = error.message;
+        });
+      }
+    } catch (_) {
+      // Keep the accepted list usable when only its badge request failed.
     }
   }
 
@@ -223,43 +298,12 @@ class _ProcurementIqcRejectionListPageState
     // （通知深链/收藏直达）返回后行状态停留在旧值，要手动刷新。
     if (!widget.embedded) {
       _myLocation ??= currentLocationOr(context, _defaultBackPath);
-      ref.onPageResume(_myLocation!, () => _load(_result?.page ?? 1));
-    }
-    // 加载/错误态也钉住宿主分类栏（2026-10-01 用户口径：点击子分类的瞬间
-    // 整条分类栏不得消失），数据到位后照常走折叠容器。
-    final transient = !_hasAcceptedList && (_loading || _error != null);
-    final Widget fallback;
-    if (_loading && transient) {
-      fallback = Center(
-        child: Semantics(
-          label: '正在加载 IQC 不合格任务',
-          child: const CircularProgressIndicator(strokeWidth: 2.5),
-        ),
+      ref.onPageResume(
+        _myLocation!,
+        () => _load(_tableRows.visiblePage ?? _result?.page ?? 1),
       );
-    } else if (_error != null && transient) {
-      fallback = UtenEmpty.error(
-        message: '无法加载 IQC 不合格任务',
-        description: _error,
-        actionLabel: '重新加载',
-        onAction: () => _load(1),
-      );
-    } else {
-      fallback = _buildContent();
     }
-    final body = SafeArea(
-      child: transient
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (widget.externalHeader != null) ...[
-                  widget.externalHeader!,
-                  const SizedBox(height: UtenSpacing.s8),
-                ],
-                Expanded(child: fallback),
-              ],
-            )
-          : fallback,
-    );
+    final body = SafeArea(child: _buildContent());
     if (widget.embedded) return body;
     return Scaffold(
       appBar: UtenAppBar(
@@ -272,7 +316,9 @@ class _ProcurementIqcRejectionListPageState
             label: '刷新',
             icon: Icons.refresh_rounded,
             isLoading: _loading,
-            onPressed: _loading ? null : () => _load(1),
+            onPressed: _loading
+                ? null
+                : () => _load(_tableRows.visiblePage ?? _result?.page ?? 1),
           ),
         ],
       ),
@@ -300,8 +346,8 @@ class _ProcurementIqcRejectionListPageState
             widget.externalHeader!,
             const SizedBox(height: UtenFilterRow.rowGap),
           ],
-          if (_counts != null) _buildCounts(_counts!),
-          if (_counts != null) const SizedBox(height: UtenSpacing.s12),
+          _buildCounts(_counts),
+          const SizedBox(height: UtenSpacing.s12),
           _buildFilters(),
           if (_error != null) ...[
             const SizedBox(height: UtenSpacing.s8),
@@ -314,10 +360,14 @@ class _ProcurementIqcRejectionListPageState
                     color: Theme.of(context).colorScheme.error,
                   ),
                   const SizedBox(width: UtenSpacing.s8),
-                  Expanded(child: Text('刷新失败：${_error!}')),
+                  Expanded(
+                    child: Text(
+                      !_hasAcceptedList ? '无法加载 IQC 不合格任务' : '刷新失败：${_error!}',
+                    ),
+                  ),
                   TextButton(
                     onPressed: _loading ? null : () => _load(result.page),
-                    child: const Text('重试'),
+                    child: Text(!_hasAcceptedList ? '重新加载' : '重试'),
                   ),
                 ],
               ),
@@ -363,7 +413,7 @@ class _ProcurementIqcRejectionListPageState
   /// 原「点击已选 Chip 取消筛选」由显式「全部」分段承担。
   /// 2026-10-10 用户口径：页首「品质拒收、实物退回与财务贷项分步留痕」责任
   /// 横幅退役（全站提示卡口径），流程说明留在详情页。
-  Widget _buildCounts(ProcurementIqcRejectionCounts counts) {
+  Widget _buildCounts(ProcurementIqcRejectionCounts? counts) {
     return UtenFilterToolbar<String?>(
       segmentsKey: const Key('iqc-rejection-status-segments'),
       segments: [
@@ -371,10 +421,10 @@ class _ProcurementIqcRejectionListPageState
         UtenFilterSegment(
           value: 'PENDING_RETURN',
           label: '待退回',
-          count: counts.actionablePendingReturn > 0
-              ? counts.actionablePendingReturn
-              : counts.pendingReturn,
-          countForm: counts.actionablePendingReturn > 0
+          count: (counts?.actionablePendingReturn ?? 0) > 0
+              ? counts?.actionablePendingReturn
+              : counts?.pendingReturn,
+          countForm: (counts?.actionablePendingReturn ?? 0) > 0
               ? UtenSegmentCountForm.actionable
               : UtenSegmentCountForm.browsing,
         ),
@@ -384,20 +434,20 @@ class _ProcurementIqcRejectionListPageState
         UtenFilterSegment(
           value: 'RETURN_RECORDED',
           label: '已退回待财务',
-          count: counts.actionableReturnRecorded > 0
-              ? counts.actionableReturnRecorded
-              : counts.returnRecorded,
-          countForm: counts.actionableReturnRecorded > 0
+          count: (counts?.actionableReturnRecorded ?? 0) > 0
+              ? counts?.actionableReturnRecorded
+              : counts?.returnRecorded,
+          countForm: (counts?.actionableReturnRecorded ?? 0) > 0
               ? UtenSegmentCountForm.actionable
               : UtenSegmentCountForm.browsing,
         ),
         UtenFilterSegment(
           value: 'FINANCE_EXCEPTION',
           label: '财务异常',
-          count: counts.actionableFinanceException > 0
-              ? counts.actionableFinanceException
-              : counts.financeException,
-          countForm: counts.actionableFinanceException > 0
+          count: (counts?.actionableFinanceException ?? 0) > 0
+              ? counts?.actionableFinanceException
+              : counts?.financeException,
+          countForm: (counts?.actionableFinanceException ?? 0) > 0
               ? UtenSegmentCountForm.actionable
               : UtenSegmentCountForm.browsing,
         ),
@@ -425,6 +475,8 @@ class _ProcurementIqcRejectionListPageState
 
   Widget _buildTable(PagedResult<ProcurementIqcRejectionCase> result) {
     return MasterDataTableView<ProcurementIqcRejectionCase>(
+      rowsController: _tableRows,
+      expensiveRowMounts: false,
       tableKey:
           'features.procurement_iqc_rejection.pages.procurement_iqc_rejection_list_page.ProcurementIqcRejectionListPageState._buildTable.1',
       key: const Key('iqc-rejection-task-table'),
@@ -498,7 +550,7 @@ class _ProcurementIqcRejectionListPageState
       currentPage: result.page,
       totalPages: result.totalPages,
       paginationScope: (_receiptType, _status, _keyword),
-      onPageChange: _load,
+      onPageChange: (page) => _load(page, useCache: true),
     );
   }
 

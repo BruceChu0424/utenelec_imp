@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +10,22 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+
+class _ReferenceApi extends ApiClient {
+  _ReferenceApi({this.authorized = true}) : super(Dio());
+  bool authorized;
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => authorized && path.endsWith('/lookup')
+      ? [
+          for (final id in (query!['ids'] as String).split(','))
+            {'id': id, 'name': '甲客户', 'status': '使用'},
+        ]
+      : [];
+}
 
 class _Drafts extends FormDraftsNotifier {
   _Drafts(this.initial);
@@ -47,6 +64,95 @@ typedef _Union = FormDraftCategoryRow<_Record>;
 const _scope = FormDraftCategoryScope(kind: 'salesOrder');
 
 void main() {
+  testWidgets(
+    'draft wrapper requires fresh reference proof and forwards complete party candidates',
+    (tester) async {
+      final api = _ReferenceApi(authorized: false);
+      var readRevision = 0;
+      late StateSetter update;
+      Future<MasterFacetPage> candidates(String _, int _) async =>
+          const MasterFacetPage(
+            items: [
+              MasterFacetBucket(
+                value: 'other-client',
+                label: '其他授权客户',
+                count: 0,
+              ),
+            ],
+            hasMore: false,
+          );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            formDraftsProvider.overrideWith(() => _Drafts([_draft('local')])),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: StatefulBuilder(
+                builder: (context, setState) {
+                  update = setState;
+                  return FormDraftCategoryTable<_Record>(
+                    scope: _scope,
+                    localReadRevision: readRevision,
+                    table: MasterDataTableView<_Record>(
+                      columns: [
+                        MasterColumnDef(
+                          key: 'client',
+                          label: '客户',
+                          width: 200,
+                          value: (_) => '',
+                        ),
+                      ],
+                      items: const [],
+                      facets: const {
+                        'client': [
+                          MasterFacetBucket(
+                            value: 'client-a',
+                            label: '旧缓存私有客户',
+                            count: 1,
+                          ),
+                        ],
+                      },
+                      facetPageLoaders: {'client': candidates},
+                      nullCounts: const {},
+                      filters: const {'client': 'client-a'},
+                      onFilterChanged: (_, _) {},
+                      idOf: (row) => row.id,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      var table = tester.widget<MasterDataTableView<_Union>>(
+        find.byType(MasterDataTableView<_Union>),
+      );
+      expect(table.items.single.draft!.data['clientId'], 'client-a');
+      expect(table.columns.single.value(table.items.single), '已选择');
+      expect(table.facetPageLoaders['client'], same(candidates));
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('form-draft-row-local')),
+          matching: find.text('旧缓存私有客户'),
+        ),
+        findsNothing,
+      );
+      api.authorized = true;
+      update(() => readRevision++);
+      await tester.pumpAndSettle();
+      table = tester.widget<MasterDataTableView<_Union>>(
+        find.byType(MasterDataTableView<_Union>),
+      );
+      expect(table.columns.single.value(table.items.single), '甲客户');
+      expect(table.items.single.draft!.data['clientId'], 'client-a');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('draft wrapper forwards background window and retry feedback', (
     tester,
   ) async {
@@ -55,6 +161,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiClientProvider.overrideWithValue(_ReferenceApi()),
           formDraftsProvider.overrideWith(() => _Drafts([_draft('local')])),
         ],
         child: MaterialApp(
@@ -116,7 +223,10 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [formDraftsProvider.overrideWith(() => _Drafts([]))],
+          overrides: [
+            apiClientProvider.overrideWithValue(_ReferenceApi()),
+            formDraftsProvider.overrideWith(() => _Drafts([])),
+          ],
           child: MaterialApp(
             home: Scaffold(
               body: FormDraftCategoryTable<_Record>(
@@ -173,6 +283,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            apiClientProvider.overrideWithValue(_ReferenceApi()),
             formDraftsProvider.overrideWith(() => _Drafts([_draft('local')])),
           ],
           child: MaterialApp(
@@ -239,7 +350,10 @@ void main() {
         addTearDown(() => tester.binding.setSurfaceSize(null));
         await tester.pumpWidget(
           ProviderScope(
-            overrides: [formDraftsProvider.overrideWith(() => _Drafts([]))],
+            overrides: [
+              apiClientProvider.overrideWithValue(_ReferenceApi()),
+              formDraftsProvider.overrideWith(() => _Drafts([])),
+            ],
             child: MaterialApp(
               home: Scaffold(
                 body: FormDraftCategoryTable<_Record>(
@@ -284,6 +398,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            apiClientProvider.overrideWithValue(_ReferenceApi()),
             formDraftsProvider.overrideWith(
               () => _Drafts([
                 _draft('order'),
@@ -326,7 +441,10 @@ void main() {
       final selectedRecords = <_Record>[];
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [formDraftsProvider.overrideWith(() => drafts)],
+          overrides: [
+            apiClientProvider.overrideWithValue(_ReferenceApi()),
+            formDraftsProvider.overrideWith(() => drafts),
+          ],
           child: MaterialApp(
             home: Scaffold(
               body: StatefulBuilder(
@@ -393,7 +511,10 @@ void main() {
     (tester) async {
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [formDraftsProvider.overrideWith(() => _Drafts([]))],
+          overrides: [
+            apiClientProvider.overrideWithValue(_ReferenceApi()),
+            formDraftsProvider.overrideWith(() => _Drafts([])),
+          ],
           child: const MaterialApp(
             home: Scaffold(body: FormDraftCategoryList(scope: _scope)),
           ),
@@ -422,6 +543,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            apiClientProvider.overrideWithValue(_ReferenceApi()),
             formDraftsProvider.overrideWith(
               () => _Drafts([_draft('finish', createdId: 'server-1')]),
             ),
@@ -475,6 +597,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            apiClientProvider.overrideWithValue(_ReferenceApi()),
             formDraftsProvider.overrideWith(() => _Drafts([_draft('local')])),
           ],
           child: MaterialApp(
@@ -551,6 +674,7 @@ void main() {
     () {
       final container = ProviderContainer(
         overrides: [
+          apiClientProvider.overrideWithValue(_ReferenceApi()),
           formDraftsProvider.overrideWith(
             () => _Drafts([
               _draft('new'),
@@ -632,7 +756,10 @@ void main() {
       addTearDown(router.dispose);
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [formDraftsProvider.overrideWith(() => drafts)],
+          overrides: [
+            apiClientProvider.overrideWithValue(_ReferenceApi()),
+            formDraftsProvider.overrideWith(() => drafts),
+          ],
           child: MaterialApp.router(
             routerConfig: router,
             localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -684,7 +811,10 @@ void main() {
       final drafts = _Drafts([_draft('local', createdId: 'server-1')]);
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [formDraftsProvider.overrideWith(() => drafts)],
+          overrides: [
+            apiClientProvider.overrideWithValue(_ReferenceApi()),
+            formDraftsProvider.overrideWith(() => drafts),
+          ],
           child: MaterialApp(
             home: Scaffold(
               body: FormDraftCategoryTable<_Record>(
@@ -726,7 +856,10 @@ void main() {
     (tester) async {
       final drafts = _Drafts([_draft('local')]);
       Widget app({String? client, int page = 1}) => ProviderScope(
-        overrides: [formDraftsProvider.overrideWith(() => drafts)],
+        overrides: [
+          apiClientProvider.overrideWithValue(_ReferenceApi()),
+          formDraftsProvider.overrideWith(() => drafts),
+        ],
         child: MaterialApp(
           home: Scaffold(
             body: FormDraftCategoryTable<_Record>(

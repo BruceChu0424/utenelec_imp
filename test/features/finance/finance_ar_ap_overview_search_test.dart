@@ -373,11 +373,15 @@ void main() {
       expect(api.reportQueries.last['page'], 2);
       _expectGlobal(api.reportQueries.last, 'C-002');
       expect(_table(tester).items.single['partyName'], 'PAGE2-C-002');
+      final beforeSort = api.reportQueries.length;
       _table(tester).onSortChange!('arAmount', false);
       await tester.pumpAndSettle();
       expect(api.reportQueries.last, containsPair('sort', 'arAmount'));
       expect(api.reportQueries.last, containsPair('order', 'desc'));
-      expect(api.reportQueries.last['page'], 1);
+      final sortedFirstPage = api.reportQueries
+          .skip(beforeSort)
+          .firstWhere((query) => query['page'] == 1);
+      expect(sortedFirstPage['includeCount'], isNull);
       _expectGlobal(api.reportQueries.last, 'C-002');
     },
   );

@@ -1,6 +1,3 @@
-import 'dart:typed_data';
-
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -16,8 +13,12 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/admin_models.dart';
 import '../models/permission_configuration.dart';
+import '../models/permission_template.dart';
 import '../providers/admin_providers.dart';
 import '../repositories/permission_configuration_repository.dart';
+import '../repositories/permission_template_repository.dart';
+import '../services/permission_archive_files.dart';
+import '../services/permission_workspace_archive.dart';
 import 'permission_configuration_import_dialog.dart';
 import 'permission_transfer_preview.dart';
 
@@ -68,17 +69,20 @@ class _ArchiveActionsState
       final scope = await ref
           .read(apiClientProvider)
           .captureRequestScope(isCurrent: current);
-      final configuration = await scope.run(
-        ref.read(permissionConfigurationRepositoryProvider).export,
+      final results = await Future.wait<Object>([
+        scope.run(ref.read(permissionConfigurationRepositoryProvider).export),
+        scope.run(ref.read(permissionTemplateRepositoryProvider).list),
+      ]);
+      if (!current()) return;
+      final bytes = await buildPermissionWorkspaceArchive(
+        configuration: results[0] as PermissionConfiguration,
+        templates: results[1] as List<PermissionTemplate>,
+        stillCurrent: current,
       );
       if (!current()) return;
-      final stamp = DateTime.now()
-          .toIso8601String()
-          .substring(0, 19)
-          .replaceAll(':', '-');
       final path = await saveBytes(
-        configuration.encode(),
-        '权限设置-$stamp.json',
+        bytes,
+        permissionWorkspaceArchiveFilename,
         stillCurrent: current,
       );
       if (mounted && current()) context.appSuccess('已保存的权限设置已导出：$path');
@@ -101,31 +105,9 @@ class _ArchiveActionsState
     if (_busy || !current()) return;
     setState(() => _importing = true);
     try {
-      final files = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['json'],
-        withReadStream: true,
-      );
-      if (!current() || files == null) return;
-      final file = files.files.single;
-      if (file.size > permissionConfigurationMaxBytes) {
-        throw const FormatException('权限文件不能超过 16 MB');
-      }
-      final bytes = BytesBuilder(copy: false);
-      if (file.bytes != null) {
-        bytes.add(file.bytes!);
-      } else if (file.readStream != null) {
-        await for (final part in file.readStream!) {
-          if (!current()) return;
-          if (bytes.length + part.length > permissionConfigurationMaxBytes) {
-            throw const FormatException('权限文件不能超过 16 MB');
-          }
-          bytes.add(part);
-        }
-      } else {
-        throw const FormatException('无法读取文件，请重新选择权限设置文件');
-      }
-      final configuration = PermissionConfiguration.decode(bytes.takeBytes());
+      final bytes = await pickPermissionArchiveBytes(stillCurrent: current);
+      if (bytes == null || !current()) return;
+      final configuration = PermissionConfiguration.decode(bytes);
       if (!mounted || !current()) return;
       final applied = await showDialog<bool>(
         context: context,
@@ -160,14 +142,17 @@ class _ArchiveActionsState
       spacing: UtenSpacing.s4,
       runSpacing: UtenSpacing.s4,
       children: [
-        UtenButton(
-          key: const ValueKey('export-permission-configuration'),
-          type: UtenButtonType.secondary,
-          size: UtenButtonSize.small,
-          icon: Icons.download_outlined,
-          isLoading: _exporting,
-          onPressed: _busy ? null : _export,
-          child: const Text('导出权限设置'),
+        Tooltip(
+          message: '下载完整 ZIP，包含权限设置和全部模板。解压后可通过各自入口导入 JSON。',
+          child: UtenButton(
+            key: const ValueKey('export-permission-configuration'),
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.small,
+            icon: Icons.download_outlined,
+            isLoading: _exporting,
+            onPressed: _busy ? null : _export,
+            child: const Text('导出全部权限'),
+          ),
         ),
         UtenButton(
           key: const ValueKey('import-permission-configuration'),

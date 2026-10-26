@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
@@ -11,14 +10,15 @@ import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/authenticated_request_scope.dart';
 import '../../core/network/server_config.dart';
+import '../../core/router/page_navigation_session.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
 import '../badges/badge_registry.dart';
 import '../auth/permissions.dart';
 import '../providers/authenticated_scope_provider.dart';
-import '../formatters/exact_decimal.dart';
 import '../models/procurement_order_closure.dart';
 import 'procurement_order_closure_blocker_action.dart';
+import 'procurement_order_closure_quantities.dart';
 
 /// Reuse the same reviewable request from order detail and workbench entry points.
 Future<bool?> showProcurementOrderClosureDialog(
@@ -67,6 +67,7 @@ class _ProcurementOrderClosureDialogState
   bool _loading = true;
   bool _submitting = false;
   bool _openingBlocker = false;
+  final _navigation = PageNavigationSession();
   bool _invalidated = false;
   ModalRoute<dynamic>? _dialogRoute;
 
@@ -97,6 +98,7 @@ class _ProcurementOrderClosureDialogState
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _navigation.attach(context);
     _dialogRoute ??= ModalRoute.of(context);
   }
 
@@ -113,6 +115,7 @@ class _ProcurementOrderClosureDialogState
 
   @override
   void dispose() {
+    _navigation.dispose();
     _reason.dispose();
     super.dispose();
   }
@@ -160,7 +163,7 @@ class _ProcurementOrderClosureDialogState
     }
     setState(() => _submitting = true);
     try {
-      await scope.run(
+      final result = await scope.run(
         () => ref
             .read(apiClientProvider)
             .post(
@@ -174,6 +177,14 @@ class _ProcurementOrderClosureDialogState
       );
       if (!mounted || !_current) return;
       refreshBadges(ref);
+      if (result['status'] != 'APPROVED') {
+        setState(
+          () => _error = AppLocalizations.of(
+            context,
+          ).orderClosureResultUnconfirmed,
+        );
+        return;
+      }
       context.appSuccess(AppLocalizations.of(context).orderClosureSubmitted);
       Navigator.of(context).pop(true);
     } catch (error) {
@@ -189,7 +200,7 @@ class _ProcurementOrderClosureDialogState
     try {
       await _requestScope?.verify();
       if (!mounted || !_current) return;
-      await context.push<void>(route);
+      await _navigation.push<void>(route);
       if (!mounted || !_current) return;
       await _load();
     } catch (error) {
@@ -234,6 +245,7 @@ class _ProcurementOrderClosureDialogState
                     Text(l10n.orderClosureApprovalHint),
                     const SizedBox(height: UtenSpacing.s8),
                     Text(l10n.orderClosureReceiptFinalityHint),
+                    Text(l10n.orderClosureQuantityBasisHint),
                     if (preview?.unverifiedQuantity == true) ...[
                       const SizedBox(height: UtenSpacing.s8),
                       Text(
@@ -296,11 +308,7 @@ class _ProcurementOrderClosureDialogState
                             const <ProcurementOrderClosureLine>[])
                       Padding(
                         padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                        child: Text(
-                          '${line.goodsCode} ${line.goodsName}\n'
-                          '${l10n.orderClosureRemaining}: ${financeExactTrimmed(line.remainingQty) ?? '—'} ${line.unitName}'
-                          ' · ${l10n.orderClosureRemainingGift}: ${financeExactTrimmed(line.remainingGiftQty) ?? '—'} ${line.unitName}',
-                        ),
+                        child: ProcurementOrderClosureQuantities(line: line),
                       ),
                     TextFormField(
                       key: const Key('procurement-order-closure-reason'),

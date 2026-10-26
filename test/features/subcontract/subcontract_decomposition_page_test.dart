@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -45,6 +47,114 @@ const _decomposePermissions = {
 };
 
 void main() {
+  testWidgets(
+    'pending application projection keeps replacement pages typed and draw rows unpaged',
+    (tester) async {
+      _desktop(tester, const Size(1700, 1000));
+      final data = _data(capability: true);
+      final gateway = _Gateway(data);
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: gateway,
+              drawRepository: FakeSubcontractDrawGateway(
+                rows: [drawRow('projection-draw')],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '待处理');
+      await tester.pumpAndSettle();
+      final finder = find.byKey(
+        const Key('subcontract-decomposition-pending-table'),
+      );
+      MasterDataTableView<SubcontractPendingRow> table() =>
+          tester.widget(finder);
+      expect(readWindowBindingOf(table().items), isNotNull);
+      final session = PagedReadWindowSession<OperationsWorkbenchTask>(
+        isCurrent: () => true,
+      );
+      addTearDown(session.invalidate);
+      session.bindResult(
+        PagedResult(
+          items: data.items,
+          page: 1,
+          size: 20,
+          total: 2,
+          totalPages: 1,
+        ),
+        replacementPages: {
+          1: [data.items.last],
+        },
+      );
+      table().onSelectedIdsChanged!({});
+      await tester.pumpAndSettle();
+      final binding = readWindowBindingOf(table().items)!;
+      expect(binding.projectionKey, (
+        'subcontract-pending-application-rows',
+        true,
+      ));
+      final replacement = binding.replacementPages![1]!;
+      expect(replacement, hasLength(1));
+      expect(
+        (replacement.single as SubcontractApplicationRow).task,
+        same(data.items.last),
+      );
+      expect(replacement.whereType<SubcontractPendingDrawRow>(), isEmpty);
+      expect(
+        table().unpagedItems.whereType<SubcontractPendingDrawRow>(),
+        hasLength(1),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final navigation in ['go', 'platform']) {
+    testWidgets('$navigation return releases subcontract draw navigation', (
+      tester,
+    ) async {
+      _desktop(tester, const Size(1700, 1000));
+      final draw = FakeSubcontractDrawGateway(rows: [drawRow('nav-item')]);
+      final opened = <List<String>>[];
+      final router = _router(
+        page: SubcontractDecompositionPage(
+          repository: _Gateway(_data(capability: true)),
+          drawRepository: draw,
+          initialSegment: 'draw',
+        ),
+        opened: opened,
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        _scope(child: MaterialApp.router(routerConfig: router)),
+      );
+      await tester.pumpAndSettle();
+      for (var visit = 0; visit < 2; visit++) {
+        await tester.tap(
+          find.byKey(const ValueKey('subcontract-draw-go-nav-item')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('领料页已打开'), findsOneWidget);
+        if (navigation == 'go') {
+          router.go(RouteName.operationsSubcontractWorkbench);
+        } else {
+          await router.routeInformationProvider.didPushRouteInformation(
+            RouteInformation(
+              uri: Uri.parse(RouteName.operationsSubcontractWorkbench),
+            ),
+          );
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('领料页已打开'), findsNothing);
+      }
+      expect(opened, hasLength(2));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('unselected subcontract entry requests only category overview', (
     tester,
   ) async {

@@ -59,6 +59,7 @@ public class PurchaseOrderPrintService {
                 LEFT JOIN colors c ON c.id = i.color_id
                 LEFT JOIN units u ON u.id = i.unit_id
                 WHERE i.order_id = :id
+                  AND NOT i.is_deleted
                 ORDER BY i.line_no, i.id
                 """).setParameter("id", id).getResultList();
         rows.forEach(row -> descriptions.put((UUID) row[0], row));
@@ -110,7 +111,7 @@ public class PurchaseOrderPrintService {
     static String status(OrderDetail detail) {
         if (detail.getStatus() != null && detail.getStatus() == 2) return "已取消";
         if (detail.getStatus() != null && detail.getStatus() == -1) return "已反审";
-        if(detail.getClosureRequest()!=null&&"APPROVED".equals(detail.getClosureRequest().status())) return "已结束(财务批准)";
+        if(detail.getClosureRequest()!=null&&"APPROVED".equals(detail.getClosureRequest().status())) return "DIRECT".equals(detail.getClosureRequest().executionMode())?"已结束(采购取消剩余)":"已结束(历史财务批准)";
         String finance = detail.getFinanceApproval() == null ? "" : detail.getFinanceApproval().status();
         return switch (finance) {
             case "PENDING" -> detail.getStatus() != null && detail.getStatus() == 1 ? "改量待财务复核" : "等待财务审核";
@@ -134,7 +135,11 @@ public class PurchaseOrderPrintService {
             String companyName, String companyPhone, String supplierName, String supplierContact,
             String supplierPhone, String deliveryPlace, String currencyName, String currencyCode,
             String settlementMethod, String totalOriginal, boolean priceMasked, String remark,
-            String makerName, String reviewerName, String statusLabel, List<PrintLine> lines, boolean financeApproved) {}
+            String makerName, String reviewerName, String statusLabel, List<PrintLine> lines, boolean financeApproved) {
+        /** Only stable rendered snapshot fields participate; transport authorization is checked separately. */
+        @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public String contentDigest(){return PurchasePrintSnapshotDigest.of(this);}
+    }
 
     public record PrintLine(UUID id, Integer lineNo, String goodsCode, String goodsName,
             String model, String spec, String colorName, String unitName, String physicalQty,

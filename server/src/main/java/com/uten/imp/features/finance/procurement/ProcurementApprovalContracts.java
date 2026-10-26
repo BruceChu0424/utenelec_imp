@@ -132,7 +132,15 @@ public final class ProcurementApprovalContracts {
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal toleranceMin,
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal toleranceMax,
             List<String> allowedActions,
-            String status,String requestType) {
+            String status,String requestType,String executionMode) {
+        public ApprovalTask(UUID caseId,String orderType,UUID orderId,String billNo,BigDecimal amount,BigDecimal totalOriginal,
+                String currencyName,String supplierName,String warehouseName,LocalDate expectedDate,int attempt,long version,
+                UUID submittedByEmployeeId,String submittedByName,OffsetDateTime submittedAt,long changeCount,BigDecimal exchangeRate,
+                int lineCount,String goodsSummary,BigDecimal toleranceMin,BigDecimal toleranceMax,List<String> allowedActions,String status,String requestType) {
+            this(caseId,orderType,orderId,billNo,amount,totalOriginal,currencyName,supplierName,warehouseName,expectedDate,attempt,
+                    version,submittedByEmployeeId,submittedByName,submittedAt,changeCount,exchangeRate,lineCount,goodsSummary,
+                    toleranceMin,toleranceMax,allowedActions,status,requestType,null);
+        }
         public ApprovalTask(UUID caseId,String orderType,UUID orderId,String billNo,BigDecimal amount,BigDecimal totalOriginal,
                 String currencyName,String supplierName,String warehouseName,LocalDate expectedDate,int attempt,long version,
                 UUID submittedByEmployeeId,String submittedByName,OffsetDateTime submittedAt,long changeCount,BigDecimal exchangeRate,

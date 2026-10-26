@@ -56,7 +56,12 @@ class _Wire {
         InterceptorsWrapper(
           onRequest: (request, handler) {
             Object data = <String, dynamic>{};
-            if (request.method == 'GET' && request.path == endpoint) {
+            final settlementPage =
+                type == 'settlement' &&
+                request.path ==
+                    '/master/reference-methods/settlement-admin/page';
+            if (request.method == 'GET' &&
+                (request.path == endpoint || settlementPage)) {
               if (failReloadAfterCreate && created.isNotEmpty) {
                 handler.reject(
                   DioException.badResponse(
@@ -71,12 +76,24 @@ class _Wire {
                 );
                 return;
               }
+              final page = settlementPage
+                  ? int.parse('${request.queryParameters['page'] ?? 1}')
+                  : 1;
+              final size = settlementPage
+                  ? int.parse('${request.queryParameters['size'] ?? 100}')
+                  : 20;
+              final start = ((page - 1) * size).clamp(0, rows.length).toInt();
               data = {
-                'items': rows,
-                'page': 1,
-                'size': 20,
+                'items': settlementPage
+                    ? rows.sublist(
+                        start,
+                        (start + size).clamp(0, rows.length).toInt(),
+                      )
+                    : rows,
+                'page': page,
+                'size': size,
                 'total': rows.length,
-                'totalPages': 1,
+                'totalPages': settlementPage ? (rows.length / size).ceil() : 1,
               };
             } else if (request.method == 'GET' &&
                 (request.path.endsWith('/dict') ||

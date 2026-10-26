@@ -222,6 +222,99 @@ Future<void> _capturePreview(WidgetTester tester, String name) async {
 }
 
 void main() {
+  testWidgets(
+    'cancel real same-DTO destination navigation preserves page one editor and its complete raw draft',
+    (tester) async {
+      final reads = <int>[];
+      var saves = 0;
+      await _pump(
+        tester,
+        totalPages: 3,
+        loadPage: (query) async {
+          reads.add(query.page);
+          return PagedResult<_Row>(
+            items: [
+              for (var i = 0; i < 20; i++)
+                (
+                  id: query.page == 1 && i == 0 ? 'g1' : 'g${query.page}-$i',
+                  code: 'G${query.page}-$i',
+                  name: '第${query.page}页货品$i',
+                  version: 7,
+                  writable: true,
+                ),
+            ],
+            page: query.page,
+            size: 20,
+            total: 60,
+            totalPages: 3,
+          );
+        },
+        save: (_, _, _) async => saves++,
+      );
+      MasterDataTableView<_Row> table() =>
+          tester.widget(find.byType(MasterDataTableView<_Row>));
+      final rows = table().rowsController!;
+      await rows.loadNextPage();
+      await tester.pumpAndSettle();
+      await rows.loadNextPage();
+      await tester.pumpAndSettle();
+      expect(rows.visiblePage, 1);
+      table().onSelectedIdsChanged!({'g1'});
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('编辑模式'));
+      await tester.pumpAndSettle();
+      await _activateName(tester);
+      const raw = TextEditingValue(
+        text: ' 未完成 shuru ',
+        selection: TextSelection(baseOffset: 5, extentOffset: 10),
+        composing: TextRange(start: 5, end: 10),
+      );
+      tester.testTextInput.updateEditingValue(raw);
+      await tester.pump();
+      final input = _nameInput();
+      final editable = find.descendant(
+        of: input,
+        matching: find.byType(EditableText),
+      );
+      final originalElement = tester.element(input);
+      final originalState = tester.state<EditableTextState>(editable);
+      final controller = originalState.widget.controller;
+      final visibleIds = rows.items.map((row) => row.id).toList();
+      final beforeReads = List<int>.of(reads);
+      final position = find
+          .descendant(
+            of: find.byType(MasterDataTableView<_Row>),
+            matching: find.byType(Scrollable),
+          )
+          .evaluate()
+          .whereType<StatefulElement>()
+          .map((element) => (element.state as ScrollableState).position)
+          .firstWhere(
+            (position) =>
+                position.axis == Axis.vertical &&
+                position.maxScrollExtent > 200,
+          );
+      final offset = position.pixels;
+      rows.goToPage(3);
+      await tester.pumpAndSettle();
+      expect(find.text('放弃未保存的修改？'), findsOneWidget);
+      await tester.tap(find.text('继续编辑'));
+      await tester.pumpAndSettle();
+      expect(rows.visiblePage, 1);
+      expect(rows.items.map((row) => row.id), visibleIds);
+      expect(reads, beforeReads);
+      expect(saves, 0);
+      expect(position.pixels, closeTo(offset, .5));
+      expect(table().selectedIds, {'g1'});
+      expect(identical(tester.element(input), originalElement), isTrue);
+      expect(
+        identical(tester.state<EditableTextState>(editable), originalState),
+        isTrue,
+      );
+      expect(controller.value, raw.copyWith(composing: TextRange.empty));
+    },
+  );
+
   for (final failReload in [false, true]) {
     testWidgets(
       'active IME cell survives a pending reload and ${failReload ? 'read error' : 'read success'}',

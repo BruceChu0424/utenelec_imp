@@ -30,7 +30,9 @@ public final class MigratedSchemaBaseline {
         private static final TemplatePool POOL = new TemplatePool(
                 () -> new PostgreSQLContainer("postgres:16-alpine")
                         .withDatabaseName("uten_migrated_template")
-                        .withReuse(false),
+                        .withReuse(false)
+                        .withCreateContainerCmdModifier(cmd->cmd.getHostConfig()
+                                .withMemory(1024L*1024*1024).withNanoCPUs(1_000_000_000L)),
                 MigratedSchemaBaseline::migrate);
 
         static {

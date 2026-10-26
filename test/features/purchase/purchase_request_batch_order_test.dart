@@ -20,6 +20,45 @@ const _writePermissions = {
 };
 
 void main() {
+  for (final navigation in ['go', 'platform']) {
+    testWidgets('$navigation return releases request order navigation', (
+      tester,
+    ) async {
+      final api = _RequestApi();
+      final router = await _pump(tester, api, _writePermissions);
+      final tableFinder = find.byType(MasterDataTableView<PurchaseDocItem>);
+      for (var visit = 0; visit < 2; visit++) {
+        await tester.tap(
+          find
+              .descendant(of: tableFinder, matching: find.byType(Checkbox))
+              .first,
+        );
+        await tester.pumpAndSettle();
+        final action = find.byKey(const Key('purchase-request-generate-order'));
+        await tester.ensureVisible(action);
+        await tester.tap(action);
+        await tester.pumpAndSettle();
+        expect(find.text('新订货单'), findsOneWidget);
+        if (navigation == 'go') {
+          router.go('/request');
+        } else {
+          await router.routeInformationProvider.didPushRouteInformation(
+            RouteInformation(uri: Uri.parse('/request')),
+          );
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('新订货单'), findsNothing);
+        expect(
+          tester
+              .widget<MasterDataTableView<PurchaseDocItem>>(tableFinder)
+              .selectedIds,
+          isEmpty,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets(
     'gift-only demand remains selectable while physically fulfilled demand cannot generate again',
     (tester) async {

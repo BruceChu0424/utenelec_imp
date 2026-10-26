@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
@@ -158,7 +159,7 @@ public class GoodsCostCalculator {
         if(depth>30 || s.lines.size()>=3000) throw invalid("BOM层数或明细数量超出成本计算范围");
         GoodsInfo goods=edge.goods();
         if(!ancestors.add(goods.id())) throw invalid("BOM存在循环，请修正后计算");
-        references.requireVisibleGoods(goods.id());
+        s.requireVisible(goods.id());
         if(goods.unitId()==null) throw invalid("组件还没有设置基本单位");
         s.revisions.put("goods:"+goods.id(),goods.revision());
         s.revisions.put("edge:"+path,edge.revision()+"/"+text(edge.effectiveQty())+"/"+edge.samples());
@@ -234,7 +235,7 @@ public class GoodsCostCalculator {
         if(item!=null || automatic || "APPROVED_PURCHASE".equals(s.input.priceStrategy())) {
             boolean taxOnly=override!=null&&override.taxMode()!=null;
             boolean pinned=override!=null&&Objects.toString(override.priceSourceType(),"").endsWith("_PINNED");
-            PriceEvidence found=sources.approved(goods,"SUBCONTRACT".equals(route),s.input.effectiveDate(),taxOnly&&!pinned?null:item);
+            PriceEvidence found=s.approved(goods,"SUBCONTRACT".equals(route),taxOnly&&!pinned?null:item);
             if(found!=null&&override!=null&&override.taxMode()!=null) {
                 if(!Set.of("AS_RECORDED","EXCLUDE_TAX").contains(override.taxMode()))throw invalid("成本税口径无效");
                 if(!Objects.equals(override.priceSourceItemId(),found.sourceItemId())
@@ -251,10 +252,10 @@ public class GoodsCostCalculator {
                         "APPROVED_WITH_COMPONENTS".equals(found.approvalState())?found.reason()+"；税口径确认："+override.reason():override.reason());
             }
             if(found==null&&automatic&&"BUY".equals(route)&&item==null&&(override==null||override.taxMode()==null))
-                return sources.inventory(goods,s.input.effectiveDate());
+                return s.inventory(goods);
             return found;
         }
-        if("INVENTORY".equals(s.input.priceStrategy())&&"BUY".equals(route))return sources.inventory(goods,s.input.effectiveDate());
+        if("INVENTORY".equals(s.input.priceStrategy())&&"BUY".equals(route))return s.inventory(goods);
         return null;
     }
     private List<FeeResult> calculateFees(State s,List<FeeInput> fees) {
@@ -378,14 +379,37 @@ public class GoodsCostCalculator {
         if(values.stream().anyMatch(Objects::isNull))throw invalid("成本输入不能含空明细");
         return values;
     }
+    private record ApprovedPriceKey(GoodsInfo goods,boolean subcontract,LocalDate date,UUID item) {}
+    private record InventoryPriceKey(GoodsInfo goods,LocalDate date) {}
     private final class State {
         final DraftInput input;final BigDecimal batch,fx;
         final Map<String,LineOverride> overrides=new HashMap<>();
         final LinkedHashMap<String,CostLine> lines=new LinkedHashMap<>();
         final List<Issue> issues=new ArrayList<>();final Map<String,String> revisions=new LinkedHashMap<>();
         final Map<UUID,List<Edge>> edgeCache=new HashMap<>();
+        // Only raw read facts are shared within this calculation. Each occurrence
+        // still applies its own quantity, manual price and tax acknowledgement.
+        final Set<UUID> visibleGoods=new HashSet<>();
+        final Map<ApprovedPriceKey,Optional<PriceEvidence>> approvedPrices=new HashMap<>();
+        final Map<InventoryPriceKey,Optional<PriceEvidence>> inventoryPrices=new HashMap<>();
         final Map<String,CostFraction> quantities=new HashMap<>();
         State(DraftInput input,BigDecimal batch,BigDecimal fx){this.input=input;this.batch=batch;this.fx=fx;}
         List<Edge> edges(UUID goods){return edgeCache.computeIfAbsent(goods,sources::edges);}
+        void requireVisible(UUID goods) {
+            if(visibleGoods.contains(goods))return;
+            references.requireVisibleGoods(goods);
+            visibleGoods.add(goods);
+        }
+        PriceEvidence approved(GoodsInfo goods,boolean subcontract,UUID item) {
+            var key=new ApprovedPriceKey(goods,subcontract,input.effectiveDate(),item);
+            // Optional also caches a genuine miss; exceptions leave the key absent.
+            return approvedPrices.computeIfAbsent(key,ignored->Optional.ofNullable(
+                    sources.approved(goods,subcontract,input.effectiveDate(),item))).orElse(null);
+        }
+        PriceEvidence inventory(GoodsInfo goods) {
+            var key=new InventoryPriceKey(goods,input.effectiveDate());
+            return inventoryPrices.computeIfAbsent(key,ignored->Optional.ofNullable(
+                    sources.inventory(goods,input.effectiveDate()))).orElse(null);
+        }
     }
 }

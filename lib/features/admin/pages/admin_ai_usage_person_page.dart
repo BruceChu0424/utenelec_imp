@@ -5,6 +5,7 @@
 // 「设置限额」打开按人限额编辑面板。
 //
 // 安全: 与看板页同门禁(/admin/* 守卫 + 页内超管校验); 限额编辑走独立面板。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
@@ -269,62 +270,66 @@ class _AdminAiUsagePersonPageState
   }
 
   Widget _content(AppLocalizations l10n, AiUsagePersonDetail? detail) {
-    return ListView(
-      key: const ValueKey('ai-usage-person-list'),
+    return UtenPageEdgePadding.scroll(
       padding: const EdgeInsets.all(UtenSpacing.s16),
-      children: [
-        if (detail?.limits.disabled == true) ...[
-          UtenInlineNotice(
-            key: const ValueKey('ai-usage-person-disabled-banner'),
-            level: UtenInlineNoticeLevel.error,
-            message: l10n.aiUsageDisabledBanner,
+      builder: (context, pagePadding) => ListView(
+        key: const ValueKey('ai-usage-person-list'),
+        padding: pagePadding,
+        children: [
+          if (detail?.limits.disabled == true) ...[
+            UtenInlineNotice(
+              key: const ValueKey('ai-usage-person-disabled-banner'),
+              level: UtenInlineNoticeLevel.error,
+              message: l10n.aiUsageDisabledBanner,
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+          ],
+          _gaugeCard(l10n, detail),
+          const SizedBox(height: UtenSpacing.s16),
+          UtenSegmentedFilter<AiUsageWindow>(
+            key: const ValueKey('ai-usage-person-window-filter'),
+            segments: [
+              for (final window in AiUsageWindow.values)
+                UtenSegment(
+                  value: window,
+                  label: aiUsageWindowLabel(l10n, window),
+                ),
+            ],
+            selected: _window,
+            onChanged: _loading ? (value) {} : _onWindowChanged,
           ),
           const SizedBox(height: UtenSpacing.s12),
+          AiUsageTrendCard(
+            points: detail?.series ?? const <AiUsageSeriesPoint>[],
+            title:
+                '${aiUsageWindowLabel(l10n, _window)} · ${l10n.aiUsageTrend}',
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          UtenResponsiveGrid(
+            itemCount: 2,
+            spacing: UtenSpacing.s12,
+            columns: const UtenResponsiveColumns(medium: 1, expanded: 2),
+            itemBuilder: (context, index, _) => index == 0
+                ? _DistributionCard(
+                    key: const ValueKey('ai-usage-person-by-purpose'),
+                    title: l10n.aiUsageByPurpose,
+                    icon: Icons.category_outlined,
+                    rows: detail?.byPurpose ?? const <AiUsageDistribution>[],
+                    emptyText: l10n.aiUsageEmpty,
+                  )
+                : _DistributionCard(
+                    key: const ValueKey('ai-usage-person-by-provider'),
+                    title: l10n.aiUsageByProvider,
+                    icon: Icons.dns_outlined,
+                    rows: detail?.byProvider ?? const <AiUsageDistribution>[],
+                    emptyText: l10n.aiUsageEmpty,
+                  ),
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          _RecentUsesCard(detail: detail),
+          const SizedBox(height: UtenSpacing.s24),
         ],
-        _gaugeCard(l10n, detail),
-        const SizedBox(height: UtenSpacing.s16),
-        UtenSegmentedFilter<AiUsageWindow>(
-          key: const ValueKey('ai-usage-person-window-filter'),
-          segments: [
-            for (final window in AiUsageWindow.values)
-              UtenSegment(
-                value: window,
-                label: aiUsageWindowLabel(l10n, window),
-              ),
-          ],
-          selected: _window,
-          onChanged: _loading ? (value) {} : _onWindowChanged,
-        ),
-        const SizedBox(height: UtenSpacing.s12),
-        AiUsageTrendCard(
-          points: detail?.series ?? const <AiUsageSeriesPoint>[],
-          title: '${aiUsageWindowLabel(l10n, _window)} · ${l10n.aiUsageTrend}',
-        ),
-        const SizedBox(height: UtenSpacing.s16),
-        UtenResponsiveGrid(
-          itemCount: 2,
-          spacing: UtenSpacing.s12,
-          columns: const UtenResponsiveColumns(medium: 1, expanded: 2),
-          itemBuilder: (context, index, _) => index == 0
-              ? _DistributionCard(
-                  key: const ValueKey('ai-usage-person-by-purpose'),
-                  title: l10n.aiUsageByPurpose,
-                  icon: Icons.category_outlined,
-                  rows: detail?.byPurpose ?? const <AiUsageDistribution>[],
-                  emptyText: l10n.aiUsageEmpty,
-                )
-              : _DistributionCard(
-                  key: const ValueKey('ai-usage-person-by-provider'),
-                  title: l10n.aiUsageByProvider,
-                  icon: Icons.dns_outlined,
-                  rows: detail?.byProvider ?? const <AiUsageDistribution>[],
-                  emptyText: l10n.aiUsageEmpty,
-                ),
-        ),
-        const SizedBox(height: UtenSpacing.s16),
-        _RecentUsesCard(detail: detail),
-        const SizedBox(height: UtenSpacing.s24),
-      ],
+      ),
     );
   }
 
@@ -677,25 +682,28 @@ class _LoadingSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      key: const ValueKey('ai-usage-person-skeleton'),
+    return UtenPageEdgePadding.scroll(
       padding: const EdgeInsets.all(UtenSpacing.s16),
-      physics: const NeverScrollableScrollPhysics(),
-      children: const [
-        UtenSkeleton(height: 220, borderRadius: 14),
-        SizedBox(height: UtenSpacing.s16),
-        UtenSkeleton(height: 44, borderRadius: 999),
-        SizedBox(height: UtenSpacing.s12),
-        UtenSkeleton(height: 200, borderRadius: 14),
-        SizedBox(height: UtenSpacing.s16),
-        Row(
-          children: [
-            Expanded(child: UtenSkeleton(height: 180, borderRadius: 14)),
-            SizedBox(width: UtenSpacing.s12),
-            Expanded(child: UtenSkeleton(height: 180, borderRadius: 14)),
-          ],
-        ),
-      ],
+      builder: (context, pagePadding) => ListView(
+        key: const ValueKey('ai-usage-person-skeleton'),
+        padding: pagePadding,
+        physics: const NeverScrollableScrollPhysics(),
+        children: const [
+          UtenSkeleton(height: 220, borderRadius: 14),
+          SizedBox(height: UtenSpacing.s16),
+          UtenSkeleton(height: 44, borderRadius: 999),
+          SizedBox(height: UtenSpacing.s12),
+          UtenSkeleton(height: 200, borderRadius: 14),
+          SizedBox(height: UtenSpacing.s16),
+          Row(
+            children: [
+              Expanded(child: UtenSkeleton(height: 180, borderRadius: 14)),
+              SizedBox(width: UtenSpacing.s12),
+              Expanded(child: UtenSkeleton(height: 180, borderRadius: 14)),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

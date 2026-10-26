@@ -34,6 +34,7 @@ import '../models/production_draw_request.dart';
 import '../models/production_execution_batch.dart';
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_execution_batch_repository.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 /// Split a complete, immediately producible batch from an unstarted waiting task.
 class ProductionExecutionBatchPage extends ConsumerStatefulWidget {
@@ -336,7 +337,7 @@ class _ProductionExecutionBatchPageState
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final unit = preview.productUnitName ?? l10n.productionBatchUnitUnknown;
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s12,
         UtenSpacing.s16,
@@ -769,7 +770,7 @@ class _ProductionExecutionBatchPageState
         .map((row) => row.warehouseId)
         .toSet()
         .length;
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -800,6 +801,7 @@ class _ProductionExecutionBatchPageState
           const SizedBox(height: UtenSpacing.s8),
           Expanded(
             child: MasterDataTableView<ProductionDrawRequestSummary>(
+              expensiveRowMounts: false,
               tableKey:
                   'features.production.pages.production_execution_batch_page.ProductionExecutionBatchPageState._materials.1',
               key: const Key('execution-batch-material-table'),

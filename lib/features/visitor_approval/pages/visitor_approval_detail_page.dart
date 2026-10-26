@@ -1,7 +1,7 @@
 // 访客审批详情（HR）：查看 + 批准/拒绝/转接待人确认。
 //
-// 响应式：详情页走窄收敛——compact 自套 UtenContentContainer.narrow
-//（medium+ 外壳已收敛，不叠加 gutter）。
+// 页面水平边距由共享入口持有；滚动上下留白保持在内容中。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,12 +14,10 @@ import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
-import '../../../components/layout/uten_content_container.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../visitor/models/visitor_application.dart';
@@ -215,73 +213,67 @@ class _VisitorApprovalDetailPageState
             ),
             data: (d) {
               final app = d.application;
-              final isCompact = context.breakpoint.isCompact;
-              Widget content = SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  isCompact ? 0 : UtenSpacing.s16,
+              final content = UtenPageEdgePadding.scroll(
+                padding: const EdgeInsets.fromLTRB(
                   UtenSpacing.s16,
-                  isCompact ? 0 : UtenSpacing.s16,
+                  UtenSpacing.s16,
+                  UtenSpacing.s16,
                   // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
                   UtenFloatingActionGroup.scrollClearance,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    UtenDetailSummaryCard(
-                      key: ValueKey('visitor-approval-summary-${app.id}'),
-                      heading: Text(app.visitPurpose),
-                      status: UtenStatusBadge(
-                        label: visitorStatusLabel(app.status, l10n),
-                        type: visitorBadgeType(app.status),
-                        icon: visitorStatusIcon(app.status),
+                builder: (context, pagePadding) => SingleChildScrollView(
+                  padding: pagePadding,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      UtenDetailSummaryCard(
+                        key: ValueKey('visitor-approval-summary-${app.id}'),
+                        heading: Text(app.visitPurpose),
+                        status: UtenStatusBadge(
+                          label: visitorStatusLabel(app.status, l10n),
+                          type: visitorBadgeType(app.status),
+                          icon: visitorStatusIcon(app.status),
+                        ),
+                        facts: [
+                          UtenSummaryField(
+                            label: l10n.visitorApplyName,
+                            value: app.visitorName,
+                            emphasis: true,
+                          ),
+                          UtenSummaryField(
+                            label: l10n.visitorDetailHost,
+                            value: app.hostName ?? app.hostDepartment,
+                          ),
+                          UtenSummaryField(
+                            label: l10n.visitorDetailVisitTime,
+                            value: fmtDateTime(app.plannedVisitAt),
+                          ),
+                          if (app.hasVehicle && app.plateNo != null)
+                            UtenSummaryField(
+                              label: l10n.securityPlate,
+                              value: app.plateNo,
+                            ),
+                        ],
+                        details: [
+                          UtenSummaryField(
+                            label: l10n.visitorDetailAppliedAt,
+                            value: fmtDateTime(app.appliedAt),
+                          ),
+                        ],
+                        notices: [
+                          if (app.rejectReason != null &&
+                              app.rejectReason!.isNotEmpty)
+                            UtenSummaryField(
+                              label: l10n.visitorDetailRejectReason,
+                              value: app.rejectReason,
+                              danger: true,
+                            ),
+                        ],
                       ),
-                      facts: [
-                        UtenSummaryField(
-                          label: l10n.visitorApplyName,
-                          value: app.visitorName,
-                          emphasis: true,
-                        ),
-                        UtenSummaryField(
-                          label: l10n.visitorDetailHost,
-                          value: app.hostName ?? app.hostDepartment,
-                        ),
-                        UtenSummaryField(
-                          label: l10n.visitorDetailVisitTime,
-                          value: fmtDateTime(app.plannedVisitAt),
-                        ),
-                        if (app.hasVehicle && app.plateNo != null)
-                          UtenSummaryField(
-                            label: l10n.securityPlate,
-                            value: app.plateNo,
-                          ),
-                      ],
-                      details: [
-                        UtenSummaryField(
-                          label: l10n.visitorDetailAppliedAt,
-                          value: fmtDateTime(app.appliedAt),
-                        ),
-                      ],
-                      notices: [
-                        if (app.rejectReason != null &&
-                            app.rejectReason!.isNotEmpty)
-                          UtenSummaryField(
-                            label: l10n.visitorDetailRejectReason,
-                            value: app.rejectReason,
-                            danger: true,
-                          ),
-                      ],
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
-              // compact 自套窄收敛；selectable:false——访客待办计数轮询与拖选并发有
-              // CME 风险（准则 §3.4，用户口径：轮询页不包）。
-              if (isCompact) {
-                content = UtenContentContainer.narrow(
-                  selectable: false,
-                  child: content,
-                );
-              }
               return content;
             },
           ),

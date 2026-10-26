@@ -143,6 +143,7 @@ public class ProcurementApprovalProjectionQuery {
                     WHERE order_type = :orderType
                       AND order_id = :orderId
                       AND status = 'PENDING'
+                      AND request_type='ORDER'
                 )
                 """,
                 new MapSqlParameterSource()
@@ -166,7 +167,8 @@ public class ProcurementApprovalProjectionQuery {
                 SELECT EXISTS(
                     SELECT 1
                     FROM procurement_order_approval_cases
-                    WHERE order_type = ? AND order_id = ? AND status = 'PENDING'
+                    WHERE order_type = ? AND order_id = ? AND status = 'PENDING' AND request_type='ORDER'
+                      AND request_type='ORDER'
                 )
                 """, Boolean.class, requireOrderType(orderType), orderId);
         if (Boolean.TRUE.equals(pending)) {

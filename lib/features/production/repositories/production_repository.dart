@@ -1229,6 +1229,23 @@ class ProductionPlanRepository {
     ),
   );
 
+  /// This endpoint returns a complete source snapshot, not server pages. Keep
+  /// its DTO work sliced; a dialog may project several local pages from it.
+  Future<List<MaterialFutureTransferSource>> materialFutureTransferSourceSnapshot({
+    required String targetAnalysisId,
+    required String targetMaterialId,
+    bool Function()? isCurrent,
+  }) async {
+    final json = await api.getList(
+      '$_materialAnalysesBase/${Uri.encodeComponent(targetAnalysisId)}/materials/${Uri.encodeComponent(targetMaterialId)}/future-transfer-sources',
+    );
+    return List<MaterialFutureTransferSource>.unmodifiable(await mapInUiSlices(
+      json,
+      MaterialFutureTransferSource.fromJson,
+      budget: UiWorkBudget(isCurrent: isCurrent, debugLabel: 'future-transfer-source-snapshot'),
+    ));
+  }
+
   Future<PagedResult<MaterialFutureTransferSource>>
   materialFutureTransferSources({
     required String targetAnalysisId,
@@ -1237,11 +1254,12 @@ class ProductionPlanRepository {
     int size = 20,
     String keyword = '',
   }) async {
-    final json = await api.getList(
-      '$_materialAnalysesBase/${Uri.encodeComponent(targetAnalysisId)}/materials/${Uri.encodeComponent(targetMaterialId)}/future-transfer-sources',
+    final snapshot = await materialFutureTransferSourceSnapshot(
+      targetAnalysisId: targetAnalysisId,
+      targetMaterialId: targetMaterialId,
     );
     final all = rankedKeywordMatches(
-      json.map(MaterialFutureTransferSource.fromJson),
+      snapshot,
       keyword,
       primaryFields: (source) => [source.goodsName],
       fields: (source) => [source.sourceLabel, source.goodsCode],

@@ -1,8 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read_provider.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 import '../../basic_data/models/account_node.dart';
@@ -97,10 +100,32 @@ final expenseListProvider =
     AsyncNotifierProvider.autoDispose<
       ExpenseListNotifier,
       PagedResult<ExpenseClaim>
-    >(ExpenseListNotifier.new);
+    >(
+      ExpenseListNotifier.new,
+      retry: pagedReadProviderRetry,
+      dependencies: [
+        _expenseMineReads,
+        expenseRepositoryProvider,
+        masterDataSessionKeyProvider,
+        expenseFilterProvider,
+        expenseStatusFilterProvider,
+        expenseCategoryFilterProvider,
+        expenseClaimNoFilterProvider,
+        expenseSortColumnProvider,
+        expenseSortAscendingProvider,
+      ],
+    );
+
+final _expenseMineReads = Provider.autoDispose
+    .family<ScopedPagedReadProviderLease<ExpenseClaim>, Object>((ref, query) {
+      ref.watch(expenseRepositoryProvider);
+      return ScopedPagedReadProviderLease(ref, query: query);
+    }, dependencies: [exportContextEpochProvider, expenseRepositoryProvider]);
 
 class ExpenseListNotifier extends AsyncNotifier<PagedResult<ExpenseClaim>> {
   int _page = 1;
+  int? _requestedPage;
+  int? Function()? _visiblePage;
   ExpenseFilter? _lastFilter;
   ExpenseClaimStatus? _lastStatus;
   String? _lastCategory;
@@ -108,11 +133,27 @@ class ExpenseListNotifier extends AsyncNotifier<PagedResult<ExpenseClaim>> {
   String? _lastSortColumn;
   bool? _lastSortAscending;
 
+  Object get _readQuery => (
+    ref.read(expenseFilterProvider),
+    ref.read(expenseStatusFilterProvider),
+    ref.read(expenseCategoryFilterProvider),
+    ref.read(expenseClaimNoFilterProvider),
+    ref.read(expenseSortColumnProvider),
+    ref.read(expenseSortAscendingProvider),
+  );
+  ScopedPagedReadProviderLease<ExpenseClaim> get _reader =>
+      ref.read(_expenseMineReads(_readQuery));
+  void bindReadView(BuildContext context, {int? Function()? visiblePage}) {
+    _visiblePage = visiblePage;
+    _reader.bindView(context, currentQuery: () => _readQuery);
+  }
+
   @override
   Future<PagedResult<ExpenseClaim>> build() async {
     ref.listen(masterDataSessionKeyProvider, (previous, next) {
       if (previous == next) return;
       _page = 1;
+      _requestedPage = 1;
       state = const AsyncLoading();
       ref.invalidateSelf();
     });
@@ -131,54 +172,71 @@ class ExpenseListNotifier extends AsyncNotifier<PagedResult<ExpenseClaim>> {
         _lastSortColumn != sortColumn ||
         _lastSortAscending != sortAscending) {
       _page = 1;
+    } else {
+      _page = _requestedPage ?? _visiblePage?.call() ?? _page;
     }
+    _requestedPage = null;
     _lastFilter = filter;
     _lastStatus = status;
     _lastCategory = category;
     _lastClaimNo = claimNo;
     _lastSortColumn = sortColumn;
     _lastSortAscending = sortAscending;
-    return ref
-        .watch(expenseRepositoryProvider)
-        .listMine(
-          statuses: status != null ? [status] : filter.apiStatuses,
-          category: category,
-          page: _page,
-          claimNo: claimNo,
-          sort: sortColumn,
-          order: sortColumn == null ? null : (sortAscending ? 'asc' : 'desc'),
-        );
+    final repository = ref.watch(expenseRepositoryProvider);
+    final reader = ref.watch(_expenseMineReads(_readQuery));
+    return reader.read(
+      _page,
+      fetchPage: (page) => repository.listMine(
+        statuses: status != null ? [status] : filter.apiStatuses,
+        category: category,
+        page: page,
+        claimNo: claimNo,
+        sort: sortColumn,
+        order: sortColumn == null ? null : (sortAscending ? 'asc' : 'desc'),
+      ),
+    );
   }
 
-  Future<void> refresh() => _reloadPage(1);
+  Future<void> refresh() {
+    _reader.invalidate();
+    return _reloadPage(_visiblePage?.call() ?? _page);
+  }
+
+  Future<void> retry() {
+    _reader.invalidate();
+    return _reloadPage(_page);
+  }
 
   Future<void> previousPage() async {
     final current = state.value;
-    if (current == null || current.page <= 1) return;
-    await _goTo(current.page - 1);
+    final page = _visiblePage?.call() ?? current?.page ?? 1;
+    if (current == null || page <= 1) return;
+    await _goTo(page - 1);
   }
 
   Future<void> nextPage() async {
     final current = state.value;
-    if (current == null || current.page >= current.totalPages) return;
-    await _goTo(current.page + 1);
+    final page = _visiblePage?.call() ?? current?.page ?? 1;
+    if (current == null || page >= current.totalPages) return;
+    await _goTo(page + 1);
   }
 
   /// 直接拉目标页（2026-09-09 我的报销列表表格化：表格内置翻页条含跳页输入）。
   Future<void> goToPage(int page) async {
     final current = state.value;
     if (current == null) return;
-    if (page < 1 || page == current.page || page > current.totalPages) return;
+    if (page < 1 || page == (_visiblePage?.call() ?? current.page) || page > current.totalPages) return;
     await _goTo(page);
   }
 
   Future<void> _goTo(int page) async {
     if (state.isLoading) return;
-    await _reloadPage(page);
+    await _reader.paginate(page, () => _reloadPage(page));
   }
 
   Future<void> _reloadPage(int page) async {
     _page = page;
+    _requestedPage = page;
     state = const AsyncLoading<PagedResult<ExpenseClaim>>().copyWithPrevious(
       state,
     );
@@ -476,11 +534,54 @@ final expenseApprovalListProvider =
     AsyncNotifierProvider.autoDispose<
       ExpenseApprovalListNotifier,
       PagedResult<ExpenseClaim>
-    >(ExpenseApprovalListNotifier.new);
+    >(
+      ExpenseApprovalListNotifier.new,
+      retry: pagedReadProviderRetry,
+      dependencies: [
+        _expenseApprovalReads,
+        expenseRepositoryProvider,
+        masterDataSessionKeyProvider,
+        approvalQueueProvider,
+        expenseApprovalFiltersProvider,
+        expenseApprovalSortColumnProvider,
+        expenseApprovalSortAscendingProvider,
+      ],
+    );
+
+final _expenseApprovalReads = Provider.autoDispose
+    .family<ScopedPagedReadProviderLease<ExpenseClaim>, Object>((ref, query) {
+      ref.watch(expenseRepositoryProvider);
+      return ScopedPagedReadProviderLease(ref, query: query);
+    }, dependencies: [exportContextEpochProvider, expenseRepositoryProvider]);
 
 class ExpenseApprovalListNotifier
     extends AsyncNotifier<PagedResult<ExpenseClaim>> {
   int _requestGeneration = 0;
+  int _page = 1;
+  Object? _lastReadQuery;
+  int? Function()? _visiblePage;
+
+  Object get _readQuery {
+    final filters = ref.read(expenseApprovalFiltersProvider);
+    return (
+      ref.read(approvalQueueProvider),
+      filters.departmentId,
+      filters.yearMonth,
+      filters.category,
+      filters.claimNo,
+      ref.read(expenseApprovalSortColumnProvider),
+      ref.read(expenseApprovalSortAscendingProvider),
+    );
+  }
+
+  ScopedPagedReadProviderLease<ExpenseClaim> get _reader =>
+      ref.read(_expenseApprovalReads(_readQuery));
+  void bindReadView(BuildContext context, {int? Function()? visiblePage}) {
+    _visiblePage = visiblePage;
+    _reader.bindView(context, currentQuery: () => _readQuery);
+  }
+
+  void invalidateCachedPages() => _reader.invalidate();
 
   @override
   Future<PagedResult<ExpenseClaim>> build() {
@@ -488,6 +589,7 @@ class ExpenseApprovalListNotifier
     ref.listen(masterDataSessionKeyProvider, (previous, next) {
       if (previous == next) return;
       _requestGeneration++;
+      _lastReadQuery = null;
       state = const AsyncLoading();
       ref.invalidateSelf();
     });
@@ -497,26 +599,32 @@ class ExpenseApprovalListNotifier
     ref.watch(expenseApprovalFiltersProvider);
     ref.watch(expenseApprovalSortColumnProvider);
     ref.watch(expenseApprovalSortAscendingProvider);
-    return _fetch(1);
+    ref.watch(_expenseApprovalReads(_readQuery));
+    final query = _readQuery;
+    _page = _lastReadQuery == query ? (_visiblePage?.call() ?? _page) : 1;
+    _lastReadQuery = query;
+    return _fetch(_page);
   }
 
   Future<void> previousPage() async {
     final current = state.value;
-    if (current == null || current.page <= 1) return;
-    await _goTo(current.page - 1);
+    final page = _visiblePage?.call() ?? current?.page ?? 1;
+    if (current == null || page <= 1) return;
+    await _goTo(page - 1);
   }
 
   Future<void> nextPage() async {
     final current = state.value;
-    if (current == null || current.page >= current.totalPages) return;
-    await _goTo(current.page + 1);
+    final page = _visiblePage?.call() ?? current?.page ?? 1;
+    if (current == null || page >= current.totalPages) return;
+    await _goTo(page + 1);
   }
 
   /// 直接拉目标页（2026-09-09 报销审批列表表格化：表格内置翻页条含跳页输入）。
   Future<void> goToPage(int page) async {
     final current = state.value;
     if (current == null) return;
-    if (page < 1 || page == current.page || page > current.totalPages) return;
+    if (page < 1 || page == (_visiblePage?.call() ?? current.page) || page > current.totalPages) return;
     await _goTo(page);
   }
 
@@ -527,8 +635,12 @@ class ExpenseApprovalListNotifier
       previous,
     );
     final generation = _requestGeneration;
-    final result = await AsyncValue.guard(() => _fetch(page));
+    final result = await _reader.paginate(
+      page,
+      () => AsyncValue.guard(() => _fetch(page)),
+    );
     if (generation == _requestGeneration) {
+      if (result.hasValue) _page = result.requireValue.page;
       state = result.hasError ? result.copyWithPrevious(previous) : result;
     }
   }
@@ -543,38 +655,41 @@ class ExpenseApprovalListNotifier
         ? null
         : (ref.read(expenseApprovalSortAscendingProvider) ? 'asc' : 'desc');
     final repository = ref.read(expenseRepositoryProvider);
-    return switch (queue) {
-      ApprovalQueue.pending => repository.listPending(
-        page: page,
-        year: filters.year,
-        month: filters.month,
-        departmentId: filters.departmentId,
-        category: filters.category,
-        claimNo: claimNo,
-        sort: sortColumn,
-        order: order,
-      ),
-      ApprovalQueue.history => repository.listHistory(
-        page: page,
-        year: filters.year,
-        month: filters.month,
-        departmentId: filters.departmentId,
-        category: filters.category,
-        claimNo: claimNo,
-        sort: sortColumn,
-        order: order,
-      ),
-      ApprovalQueue.payable => repository.listPayable(
-        page: page,
-        year: filters.year,
-        month: filters.month,
-        departmentId: filters.departmentId,
-        category: filters.category,
-        claimNo: claimNo,
-        sort: sortColumn,
-        order: order,
-      ),
-    };
+    return _reader.read(
+      page,
+      fetchPage: (page) => switch (queue) {
+        ApprovalQueue.pending => repository.listPending(
+          page: page,
+          year: filters.year,
+          month: filters.month,
+          departmentId: filters.departmentId,
+          category: filters.category,
+          claimNo: claimNo,
+          sort: sortColumn,
+          order: order,
+        ),
+        ApprovalQueue.history => repository.listHistory(
+          page: page,
+          year: filters.year,
+          month: filters.month,
+          departmentId: filters.departmentId,
+          category: filters.category,
+          claimNo: claimNo,
+          sort: sortColumn,
+          order: order,
+        ),
+        ApprovalQueue.payable => repository.listPayable(
+          page: page,
+          year: filters.year,
+          month: filters.month,
+          departmentId: filters.departmentId,
+          category: filters.category,
+          claimNo: claimNo,
+          sort: sortColumn,
+          order: order,
+        ),
+      },
+    );
   }
 }
 

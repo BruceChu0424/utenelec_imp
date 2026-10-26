@@ -238,7 +238,7 @@ public class GoodsController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('goods:edit', 'goods:status')")
+    @PreAuthorize("hasAnyAuthority('goods:edit', 'goods:purchase:edit', 'goods:sales:edit', 'goods:price:edit', 'goods:name_en:edit', 'goods:status')")
     public GoodsDetail update(@PathVariable UUID id, @Valid @RequestBody GoodsSaveRequest req) {
         return service.update(id, req);
     }
@@ -248,7 +248,7 @@ public class GoodsController {
      * 持 goods:edit 的人同样可以; 页面按详情里的 canEditNameEn 决定是否显示入口。
      */
     @PutMapping("/{id}/name-en")
-    @PreAuthorize("hasAnyAuthority('goods:name_en:edit', 'goods:edit')")
+    @PreAuthorize("hasAnyAuthority('goods:name_en:edit', 'goods:sales:edit')")
     public GoodsDetail updateNameEn(@PathVariable UUID id,
                                     @Valid @RequestBody com.uten.imp.features.master.goods.dto.GoodsNameEnRequest req) {
         return service.updateNameEn(id, req.nameEn(), req.version());

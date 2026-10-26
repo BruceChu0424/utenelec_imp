@@ -12,6 +12,13 @@ SOURCES = (
     "tool/pdf_worker.dart",
     "lib/core/print/print_pdf_document.dart",
     "lib/core/performance/ui_work_budget.dart",
+    "lib/features/purchase/models/purchase_order_pdf_bundle.dart",
+    "lib/features/purchase/models/purchase_order_pdf.dart",
+    "lib/features/purchase/models/purchase_order_print_document.dart",
+    "lib/shared/export/document_batch_limits.dart",
+    "lib/shared/formatters/exact_decimal.dart",
+    "lib/core/network/api_exception.dart",
+    "lib/core/network/api_error.dart",
     "pubspec.lock",
 )
 OUTPUT = ROOT / "assets/workers/uten_pdf_worker.js"
@@ -48,7 +55,7 @@ def main():
     receipt = {
         "format": "uten-pdf-worker-v1", "compiler": (version.stdout + version.stderr).strip(),
         "flags": FLAGS, "sources": sources, "workerSha256": digest(OUTPUT), "workerBytes": OUTPUT.stat().st_size,
-        "protocolVersion": 1, "sourceTextNormalization": "LF",
+        "protocolVersion": 3, "supportedProtocolVersions": [1, 2, 3], "sourceTextNormalization": "LF",
     }
     RECEIPT.write_text(json.dumps(receipt, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"PDF_WORKER_BUILT bytes={OUTPUT.stat().st_size} sha256={receipt['workerSha256']}")

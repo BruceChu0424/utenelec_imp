@@ -28,7 +28,8 @@ class ClientReleaseStateTest(unittest.TestCase):
         self.destination = self.root / "export"
         self.target = self.root / "restored"
 
-    def release(self, identifier=ID, *, state="PUBLISHED", mode="windows_archive", data=b"real package bytes", uploaded=True):
+    def release(self, identifier=ID, *, state="PUBLISHED", mode="windows_archive", data=b"real package bytes", uploaded=True,
+                kind=None, filename=None):
         folder = self.source / identifier
         folder.mkdir(exist_ok=True)
         digest = hashlib.sha256(data).hexdigest() if mode != "store" else None
@@ -37,6 +38,10 @@ class ClientReleaseStateTest(unittest.TestCase):
                  "expectedSha256": digest, "sha256": digest if uploaded else None,
                  "sizeBytes": len(data) if uploaded and mode != "store" else 0,
                  "releaseNotes": "Recover metadata and its exact package together"}
+        if kind is not None:
+            value["packageKind"] = kind
+        if filename is not None:
+            value["fileName"] = filename
         if uploaded and mode != "store":
             (folder / "package.bin").write_bytes(data)
         (folder / "release.json").write_text(json.dumps(value), encoding="utf-8")
@@ -71,6 +76,82 @@ class ClientReleaseStateTest(unittest.TestCase):
         self.assertFalse((self.target / ID / "package.bin").exists())
         self.assertFalse((self.target / store / "package.bin").exists())
         self.assertEqual("WITHDRAWN", json.loads((self.target / OTHER / "release.json").read_text())["state"])
+
+    def test_legacy_update_and_new_full_installer_share_a_lossless_cold_restore(self):
+        self.release()  # Existing metadata has no packageKind field.
+        self.release(OTHER, mode="windows_bundle", kind="installer", data=b"complete first-install fixture")
+        originals = {identifier: (self.source / identifier / "release.json").read_bytes()
+                     for identifier in (ID, OTHER)}
+        work, summary = self.make_pair()
+        target = self.root / "new-mixed-media"
+        target.mkdir()
+        report = paired.restore_client_release_states(work, target)
+        self.assertEqual((2, 4), (report["internal"]["releases"], report["internal"]["files"]))
+        for identifier in (ID, OTHER):
+            self.assertEqual(originals[identifier], (target / "client-releases" / identifier / "release.json").read_bytes())
+        self.assertEqual(b"complete first-install fixture", (target / "client-releases" / OTHER / "package.bin").read_bytes())
+        self.assertEqual(summary, paired.verify_set(work))
+
+    def test_setup_exe_legacy_bundle_and_update_keep_exact_bytes_through_cold_restore(self):
+        setup = "42345678-1234-1234-1234-123456789abc"
+        self.release()  # Legacy update without a packageKind field.
+        self.release(OTHER, mode="windows_bundle", kind="installer", state="WITHDRAWN",
+                     data=b"legacy complete ZIP catalog fixture")
+        self.release(setup, mode="windows_setup", kind="installer", filename="Uten-Setup-2.5.32.EXE",
+                     data=b"MZ synthetic Setup.exe fixture only; not a runnable client")
+        originals = {identifier: {name: (self.source / identifier / name).read_bytes()
+                                  for name in ("release.json", "package.bin")}
+                     for identifier in (ID, OTHER, setup)}
+        work, summary = self.make_pair()
+        target = self.root / "new-setup-media"
+        target.mkdir()
+        report = paired.restore_client_release_states(work, target)
+        self.assertEqual((3, 6), (report["internal"]["releases"], report["internal"]["files"]))
+        for identifier, files in originals.items():
+            for name, original in files.items():
+                self.assertEqual(original, (target / "client-releases" / identifier / name).read_bytes())
+        self.assertEqual(summary, paired.verify_set(work))
+
+    def test_windows_setup_requires_installer_kind_windows_platform_and_safe_exe_name(self):
+        for kind, platform, filename in (("update", "windows", "Uten-Setup.exe"),
+                                          ("installer", "android", "Uten-Setup.exe"),
+                                          ("installer", "windows", "Uten-Setup.zip"),
+                                          ("installer", "windows", "../Uten-Setup.exe"),
+                                          ("installer", "windows", None)):
+            with self.subTest(kind=kind, platform=platform, filename=filename):
+                self.release(mode="windows_setup", kind=kind, filename=filename)
+                metadata = self.source / ID / "release.json"
+                value = json.loads(metadata.read_text())
+                value["platform"] = platform
+                metadata.write_text(json.dumps(value))
+                with self.assertRaisesRegex(ValueError, "package kind/install mode|executable filename"):
+                    client.export_client_releases(self.source, self.destination)
+                self.assertFalse(self.destination.exists())
+
+    def test_installer_kind_mode_or_platform_mismatch_is_not_a_valid_backup(self):
+        for mode, kind, platform in (("windows_bundle", "update", "windows"),
+                                      ("windows_archive", "installer", "windows"),
+                                      ("windows_bundle", "installer", "android")):
+            with self.subTest(mode=mode, kind=kind, platform=platform):
+                self.release(mode=mode, kind=kind)
+                metadata = self.source / ID / "release.json"
+                value = json.loads(metadata.read_text())
+                value["platform"] = platform
+                metadata.write_text(json.dumps(value))
+                with self.assertRaisesRegex(ValueError, "package kind/install mode"):
+                    client.export_client_releases(self.source, self.destination)
+                self.assertFalse(self.destination.exists())
+
+    def test_legacy_explicit_null_kind_still_restores_its_exact_metadata(self):
+        self.release()
+        metadata = self.source / ID / "release.json"
+        value = json.loads(metadata.read_text())
+        value["packageKind"] = None
+        raw = json.dumps(value).encode()
+        metadata.write_bytes(raw)
+        client.export_client_releases(self.source, self.destination)
+        client.restore_client_releases(self.destination, self.target)
+        self.assertEqual(raw, (self.target / ID / "release.json").read_bytes())
 
     def test_uncommitted_draft_binary_does_not_become_an_uploaded_restored_pair(self):
         self.release(state="DRAFT", uploaded=False)

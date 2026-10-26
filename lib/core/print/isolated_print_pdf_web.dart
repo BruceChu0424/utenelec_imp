@@ -17,6 +17,19 @@ extension type _PdfRequest._(JSObject _) implements JSObject {
     required JSArray<JSArray<JSString>> rows,
     required JSArray<JSNumber>? widths,
     required JSUint8Array? font,
+    required JSArray<_OutlineLine>? outline,
+    required JSString? kind,
+    required JSString? payload,
+  });
+}
+
+extension type _OutlineLine._(JSObject _) implements JSObject {
+  external factory _OutlineLine({
+    required JSString kind,
+    required JSNumber depth,
+    required JSString text,
+    required JSString? detail,
+    required JSBoolean bold,
   });
 }
 
@@ -46,17 +59,38 @@ class IsolatedPrintPdfGenerator {
         }
         rows.add(cells.toJS);
       }
+      final outline = request.orgChartLines == null
+          ? null
+          : <_OutlineLine>[].toJS;
+      for (final line in request.orgChartLines ?? const <OrgChartPrintLine>[]) {
+        outline!.add(
+          _OutlineLine(
+            kind: line.kind.toJS,
+            depth: line.depth.toJS,
+            text: line.text.toJS,
+            detail: line.detail?.toJS,
+            bold: line.bold.toJS,
+          ),
+        );
+        await work.checkpoint();
+      }
       work.ensureCurrent();
       final url = Uri.parse(
         web.document.baseURI,
       ).resolve('assets/assets/workers/uten_pdf_worker.js');
       final worker = _worker = web.Worker(url.toString().toJS);
       final result = _pending = Completer<Uint8List>();
+      final version = request.binaryKind != null
+          ? 3
+          : request.orgChartLines == null
+          ? 1
+          : 2;
       worker.onmessage = ((web.MessageEvent event) {
         if (_disposed || result.isCompleted) return;
         try {
           final message = event.data as JSObject;
-          if (message.getProperty<JSNumber>('version'.toJS).toDartInt != 1 ||
+          if (message.getProperty<JSNumber>('version'.toJS).toDartInt !=
+                  version ||
               message.getProperty<JSBoolean?>('error'.toJS)?.toDart == true) {
             result.completeError(StateError('PDF worker failed'));
           } else {
@@ -80,7 +114,7 @@ class IsolatedPrintPdfGenerator {
       worker.onmessageerror = fail.toJS;
       worker.postMessage(
         _PdfRequest(
-          version: 1.toJS,
+          version: version.toJS,
           title: request.title.toJS,
           subtitle: request.subtitle?.toJS,
           headers: request.headers.map((value) => value.toJS).toList().toJS,
@@ -90,6 +124,9 @@ class IsolatedPrintPdfGenerator {
               .toList()
               .toJS,
           font: request.fontBytes?.toJS,
+          outline: outline,
+          kind: request.binaryKind?.toJS,
+          payload: request.binaryPayload?.toJS,
         ),
       );
       final bytes = await result.future.timeout(const Duration(minutes: 2));

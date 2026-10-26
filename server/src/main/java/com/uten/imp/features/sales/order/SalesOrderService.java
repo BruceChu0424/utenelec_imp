@@ -275,9 +275,65 @@ public class SalesOrderService {
     @PreAuthorize("hasAuthority('sales_order:view')")
     public List<com.uten.imp.features.sales.order.dto.OrderShippableLine> shippableLines() {
         var writeScope = accessPolicy.scope();
+        var query = shippableQuery(null, writeScope, false);
+        var rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(query.create(em,
+                query.sql() + query.orderBy()).setMaxResults(com.uten.imp.common.validation.RequestLimits.DOCUMENT_LINES + 1));
+        if (rows.size() > com.uten.imp.common.validation.RequestLimits.DOCUMENT_LINES)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "可发行超过单批500行，请使用分页选择并按客户或关键词收窄");
+        return shippableRows(rows, writeScope);
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public PageResponse<com.uten.imp.features.sales.order.dto.OrderShippableLine> shippableLinesPage(
+            com.uten.imp.features.sales.order.dto.ShippableLineFilter filter, int page, int size) {
+        var pageable = Pageables.of(page, size);
+        var writeScope = accessPolicy.scope();
+        var query = shippableQuery(filter, writeScope, false);
+        long total = ((Number) query.create(em, "SELECT COUNT(*) FROM (" + query.sql() + ") shippable_count").getSingleResult()).longValue();
+        if (total == 0) return new PageResponse<>(List.of(), pageable.getPageNumber() + 1, pageable.getPageSize(), 0, 0);
+        var rowsQuery = query.create(em, query.sql() + query.orderBy() + " LIMIT :shippableLimit OFFSET :shippableOffset")
+                .setParameter("shippableLimit", pageable.getPageSize())
+                .setParameter("shippableOffset", pageable.getOffset());
+        var rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(rowsQuery);
+        return new PageResponse<>(shippableRows(rows, writeScope), pageable.getPageNumber() + 1, pageable.getPageSize(), total,
+                (int) Math.min(Integer.MAX_VALUE, (total + pageable.getPageSize() - 1) / pageable.getPageSize()));
+    }
+
+    /** All writable matches, or a clear refusal; never a silently truncated "select all". */
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public PageResponse<com.uten.imp.features.sales.order.dto.OrderShippableLine> shippableLinesSelection(
+            com.uten.imp.features.sales.order.dto.ShippableLineFilter filter) {
+        int limit = com.uten.imp.common.validation.RequestLimits.DOCUMENT_LINES;
+        if (!accessPolicy.hasAuthority("sales_shipment:create"))
+            return new PageResponse<>(List.of(), 1, limit, 0, 0);
+        var writeScope = accessPolicy.scope();
+        var query = shippableQuery(filter, writeScope, true);
+        var rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(query.create(em,
+                query.sql() + query.orderBy()).setMaxResults(limit + 1));
+        if (rows.size() > limit)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "可发行超过单批500行，请按客户或关键词收窄后再全选");
+        var items = shippableRows(rows, writeScope);
+        return new PageResponse<>(items, 1, limit, items.size(), items.isEmpty() ? 0 : 1);
+    }
+
+    private record ShippableQuery(String sql, String orderBy, Map<String, Object> parameters) {
+        jakarta.persistence.Query create(EntityManager em, String statement) {
+            var query = em.createNativeQuery(statement);
+            parameters.forEach(query::setParameter);
+            return query;
+        }
+    }
+
+    /** One availability, provenance, finance and object-scope predicate for every read contract. */
+    private ShippableQuery shippableQuery(com.uten.imp.features.sales.order.dto.ShippableLineFilter filter,
+            com.uten.imp.security.OwnerVisibility.OwnerScope writeScope, boolean writableOnly) {
+        if (filter != null && filter.keyword() != null && filter.keyword().length() > 200)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "可发行关键词最多200字");
+        String keyword = KeywordSearch.phrase(filter == null ? null : filter.keyword());
         var ownerScope = accessPolicy.nativeReadScope(
                 "o.owner_employee_id", "salesOwners", writeScope);
-        boolean canCreateShipment = accessPolicy.hasAuthority("sales_shipment:create");
         String sql = """
                 SELECT i.id, i.order_id, o.bill_no, o.client_id, i.deliver_date, i.goods_id, i.color_id,
                        i.unit_id, i.unit_rate, i.qty, i.shipped_qty,
@@ -286,6 +342,8 @@ public class SalesOrderService {
                        o.owner_employee_id
                 FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i
                 JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o ON o.id = i.order_id
+                LEFT JOIN clients shippable_client ON shippable_client.id = o.client_id
+                LEFT JOIN goods shippable_goods ON shippable_goods.id = i.goods_id
                 LEFT JOIN (
                     SELECT si.order_item_id, SUM(si.qty) AS allocated_qty
                     FROM (SELECT * FROM sales_shipment_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_shipment_items',archive_origin.id)) si
@@ -301,12 +359,36 @@ public class SalesOrderService {
                   AND COALESCE(o.finance_rejected, false) = false
                   AND COALESCE(o.is_deleted,false) = false AND COALESCE(i.is_deleted,false) = false
                   AND GREATEST(%s - COALESCE(draft.allocated_qty,0), 0) > 0
-                """.formatted(physicalShipmentReservationSql("i"),physicalShipmentReservationSql("i")) + " AND " + ownerScope.predicate()
-                + " ORDER BY o.client_id, i.deliver_date NULLS LAST, o.bill_no, i.line_no NULLS LAST";
-        var q = em.createNativeQuery(sql);
-        ownerScope.bind(q);
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = q.getResultList();
+                """.formatted(physicalShipmentReservationSql("i"),physicalShipmentReservationSql("i")) + " AND " + ownerScope.predicate();
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        if (ownerScope.parameterName() != null) parameters.put(ownerScope.parameterName(), ownerScope.owners());
+        if (!keyword.isEmpty()) {
+            sql += " AND " + TaskKeywordSearch.conditionParameter("shippableKeyword", "o.bill_no", "shippable_client.name",
+                    "i.goods_code_snapshot", "i.goods_name_snapshot", "shippable_goods.code", "shippable_goods.name");
+            parameters.put("shippableKeyword", keyword);
+        }
+        if (filter != null && filter.clientId() != null) {
+            sql += " AND o.client_id = :shippableClientId";
+            parameters.put("shippableClientId", filter.clientId());
+        }
+        if (writableOnly) {
+            sql += " AND o.owner_employee_id IS NOT NULL";
+            if (!writeScope.seeAll()) {
+                if (writeScope.writableOwners().isEmpty()) sql += " AND 1=0";
+                else {
+                    sql += " AND o.owner_employee_id IN (:shippableWritableOwners)";
+                    parameters.put("shippableWritableOwners", writeScope.writableOwners());
+                }
+            }
+        }
+        return new ShippableQuery(sql,
+                " ORDER BY o.client_id, i.deliver_date NULLS LAST, o.bill_no, i.line_no NULLS LAST, i.id", Map.copyOf(parameters));
+    }
+
+    private List<com.uten.imp.features.sales.order.dto.OrderShippableLine> shippableRows(List<Object[]> rows,
+            com.uten.imp.security.OwnerVisibility.OwnerScope writeScope) {
+        boolean canCreateShipment = accessPolicy.hasAuthority("sales_shipment:create");
+        boolean canViewPrices = priceMasker.canView();
         List<com.uten.imp.features.sales.order.dto.OrderShippableLine> out = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             out.add(new com.uten.imp.features.sales.order.dto.OrderShippableLine(
@@ -314,7 +396,7 @@ public class SalesOrderService {
                     r[4] == null ? null : localDate(r[4]),
                     (UUID) r[5], (UUID) r[6], (UUID) r[7],
                     (BigDecimal) r[8], (BigDecimal) r[9], (BigDecimal) r[10],
-                    (BigDecimal) r[11], (BigDecimal) r[12],
+                    (BigDecimal) r[11], canViewPrices ? (BigDecimal) r[12] : null,
                     canCreateShipment && accessPolicy.canWrite((UUID) r[13], writeScope)));
         }
         return out;
@@ -387,7 +469,7 @@ public class SalesOrderService {
         var rq = em.createNativeQuery(rowsSql);
         ownerScope.bind(rq);
         bindProgressFilterParams(rq, normalizedStage, normalizedKeyword, dateFrom, dateTo, normalizedBillNo);
-        rq.setFirstResult((safePage - 1) * safeSize).setMaxResults(safeSize);
+        rq.setFirstResult(Pageables.checkedOffset(safePage, safeSize)).setMaxResults(safeSize);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = rq.getResultList();
         List<OrderProgressRow> items = rows.stream().map(row -> {
@@ -447,13 +529,14 @@ public class SalesOrderService {
         String normalizedStage = normalizeProgressStage(stage);
         String normalizedKeyword = KeywordSearch.phrase(keyword);
         var ownerScope = accessPolicy.nativeReadScope("o.owner_employee_id", "salesOwners");
-        var q = em.createNativeQuery(
+        var q = NativeFacets.query(em, "billNo",
                 "SELECT t.bill_no, COUNT(*) FROM (" + progressGroupedSql(ownerScope) + ") t WHERE "
                         + progressFilterPredicate() + " GROUP BY t.bill_no ORDER BY 1");
         ownerScope.bind(q);
         bindProgressFilterParams(q, normalizedStage, normalizedKeyword, dateFrom, dateTo, "");
+        q.setMaxResults(com.uten.imp.common.web.TableFacets.DEFAULT_LIMIT);
         return java.util.Map.of("billNo",
-                NativeFacets.rows(NativeQueryResults.objectArrayRows(q)));
+                NativeFacets.rowsOf(q));
     }
 
     /** 订单进度列表/计数/桶共用的 WHERE 谓词（作用于聚合子查询别名 t；2026-09-25 单号列统一抽出复用）。 */

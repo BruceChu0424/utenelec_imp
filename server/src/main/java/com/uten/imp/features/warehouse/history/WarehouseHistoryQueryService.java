@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Isolation;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -110,10 +110,11 @@ public class WarehouseHistoryQueryService {
                 normalizedSourceDocNo, scope)
                 .setParameter("limit", safeSize)
                 .setParameter("offset", pageable.getOffset());
-        Map<UUID, String> employeeCache = new HashMap<>();
-        List<WarehouseHistoryListItem> items = NativeQueryResults.objectArrayRows(rowsQuery)
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(rowsQuery);
+        Map<UUID, String> employeeNames = employeeNames(rows);
+        List<WarehouseHistoryListItem> items = rows
                 .stream()
-                .map(row -> toListItem(type, row, employeeCache))
+                .map(row -> toListItem(type, row, employeeNames))
                 .toList();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
@@ -138,17 +139,17 @@ public class WarehouseHistoryQueryService {
         WarehouseTaskScope scope = warehouseScopes.current(requestedWarehouse);
         String normalizedKeyword = normalize(keyword);
         return Map.of(
-                "billNo", billBuckets(type, "COALESCE(h.bill_no, '')",
+                "billNo", billBuckets(type, "billNo", "COALESCE(h.bill_no, '')",
                         normalizedKeyword, status, dateFrom, dateTo, scope),
-                "sourceDocNo", billBuckets(type, "COALESCE(h.source_doc_no, '')",
+                "sourceDocNo", billBuckets(type, "sourceDocNo", "COALESCE(h.source_doc_no, '')",
                         normalizedKeyword, status, dateFrom, dateTo, scope));
     }
 
     private List<Map<String, Object>> billBuckets(
-            WarehouseHistoryType type, String expr, String keyword, Short status,
+            WarehouseHistoryType type, String field, String expr, String keyword, Short status,
             LocalDate dateFrom, LocalDate dateTo, WarehouseTaskScope scope) {
         return NativeFacets.rowsOf(bindFilters(
-                entityManager.createNativeQuery(
+                NativeFacets.query(entityManager, field,
                         WarehouseHistoryQueries.facetsSql(type, expr, scope)),
                 keyword, status, dateFrom, dateTo, null, null, scope)
                 .setMaxResults(500));
@@ -176,8 +177,7 @@ public class WarehouseHistoryQueryService {
                 .stream()
                 .map(this::toLine)
                 .toList();
-        Map<UUID, String> employeeCache = new HashMap<>();
-        HeaderRow header = header(headers.getFirst(), employeeCache);
+        HeaderRow header = header(headers.getFirst(), employeeNames(headers));
         return new WarehouseHistoryDetail(
                 header.id(),
                 type.pathSegment(),
@@ -305,12 +305,19 @@ public class WarehouseHistoryQueryService {
             String legacyName,
             Map<UUID, String> employeeCache) {
         if (id == null) return normalizeToNull(legacyName);
-        String cached = employeeCache.get(id);
-        if (cached != null) return cached;
-        String resolved = normalizeToNull(employeeNames.nameOf(id));
-        String value = resolved == null ? normalizeToNull(legacyName) : resolved;
-        if (value != null) employeeCache.put(id, value);
-        return value;
+        String resolved = normalizeToNull(employeeCache.get(id));
+        return resolved == null ? normalizeToNull(legacyName) : resolved;
+    }
+
+    /** Resolve only the authorized page; missing identities keep each row's own frozen name. */
+    private Map<UUID, String> employeeNames(List<Object[]> rows) {
+        if (rows.isEmpty()) return Map.of();
+        List<UUID> ids = new ArrayList<>(rows.size() * 2);
+        for (Object[] row : rows) {
+            ids.add(NativeValueConverters.uuid(row[10]));
+            ids.add(NativeValueConverters.uuid(row[11]));
+        }
+        return employeeNames.namesOf(ids);
     }
 
     private static String normalize(String value) {

@@ -60,6 +60,7 @@ import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../widgets/finance_party_snapshot_card.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class FinanceSalesOrderReviewPage extends ConsumerStatefulWidget {
   const FinanceSalesOrderReviewPage({
@@ -651,7 +652,7 @@ class _FinanceSalesOrderReviewPageState
                   // 滚动仍为折叠头+表内滚：上滑先收卡片区，明细标题吸顶后在表格内部滚。
                   : UtenContentContainer(
                       child: UtenCollapsingHeaderScrollView(
-                        collapsingHeader: Padding(
+                        collapsingHeader: UtenPageEdgePadding(
                           padding: const EdgeInsets.fromLTRB(
                             UtenSpacing.s12,
                             UtenSpacing.s12,
@@ -720,7 +721,7 @@ class _FinanceSalesOrderReviewPageState
                             ],
                           ),
                         ),
-                        body: Padding(
+                        body: UtenPageEdgePadding(
                           padding: const EdgeInsets.fromLTRB(
                             UtenSpacing.s12,
                             UtenSpacing.s12,
@@ -1073,6 +1074,7 @@ class _FinanceSalesOrderReviewPageState
     // 老订单(无来源报价、无客户文件信息)不取本地化实例，列与文案保持原样。
     final l10n = hasQuote || hasFile ? AppLocalizations.of(context) : null;
     return MasterDataTableView<SalesOrderFinanceReviewLine>(
+      expensiveRowMounts: false,
       tableKey: 'sales.order.items',
       primary: true,
       bottomContentPadding: UtenFloatingActionGroup.scrollClearance,

@@ -6,6 +6,8 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_scroll_gutter.dart';
+import '../../../components/layout/uten_vertical_scrollbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -303,6 +305,7 @@ class _ImportReviewPageState extends State<ImportReviewPage> {
                   const SizedBox(height: UtenSpacing.s16),
                   Expanded(
                     child: MasterDataTableView<ImportReviewRow>(
+      expensiveRowMounts: false,
                       key: const ValueKey('import-review-table'),
                       columns: _columns(l10n),
                       items: widget.rows,
@@ -433,14 +436,12 @@ class _ImportReviewValueState extends State<_ImportReviewValue> {
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.2,
       ),
-      child: Scrollbar(
+      child: UtenVerticalScrollbar(
         controller: controller,
-        thumbVisibility: true,
-        child: SingleChildScrollView(
-          controller: controller,
-          primary: false,
-          child: Padding(
-            padding: const EdgeInsetsDirectional.only(end: UtenSpacing.s8),
+        child: UtenScrollGutter(
+          child: SingleChildScrollView(
+            controller: controller,
+            primary: false,
             child: Text(text, style: style, semanticsLabel: '$label: $text'),
           ),
         ),

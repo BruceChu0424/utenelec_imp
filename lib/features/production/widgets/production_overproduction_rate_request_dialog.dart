@@ -9,12 +9,14 @@ import '../../../shared/drafts/form_draft_field_codec.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/page_navigation_session.dart';
 import '../repositories/production_overproduction_rate_repository.dart';
 
 Future<ProductionOverproductionRateRequest?> showProductionRateRequestDialog(
   BuildContext context,
-  ProductionOverproductionRateContext source,
-) async {
+  ProductionOverproductionRateContext source, {
+  PageNavigationSession? navigation,
+}) async {
   String? pendingToView;
   final result = await showDialog<ProductionOverproductionRateRequest>(
     context: context,
@@ -26,9 +28,16 @@ Future<ProductionOverproductionRateRequest?> showProductionRateRequestDialog(
     ),
   );
   if (pendingToView != null && context.mounted) {
-    await context.push(
-      RoutePath.productionOverproductionRateRequest(pendingToView!),
+    final location = RoutePath.productionOverproductionRateRequest(
+      pendingToView!,
     );
+    if (navigation != null) {
+      await navigation.push(location);
+    } else {
+      // Standalone callers own no navigation lock. A State-owned session is
+      // required when the caller must wait safely across replace/go flows.
+      await context.push(location);
+    }
   }
   return result;
 }

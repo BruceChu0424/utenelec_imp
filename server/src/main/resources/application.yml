@@ -280,10 +280,13 @@ uten:
       # 缓存在附件存储根目录 preview/ 私有子目录。默认关闭；打开后仍需 soffice 可执行，
       # 否则接口返回业务错误，客户端自动回落为下载原件。
       enabled: ${UTEN_ATTACHMENT_PREVIEW_ENABLED:false}
-      soffice-path: ${UTEN_ATTACHMENT_PREVIEW_SOFFICE_PATH:soffice}
+      soffice-path: ${UTEN_ATTACHMENT_PREVIEW_SOFFICE_PATH:/usr/local/libexec/uten-preview-soffice-isolated}
       timeout: ${UTEN_ATTACHMENT_PREVIEW_TIMEOUT_SECONDS:60}
       max-concurrent: ${UTEN_ATTACHMENT_PREVIEW_MAX_CONCURRENT:2}
       cache-max-bytes: ${UTEN_ATTACHMENT_PREVIEW_CACHE_MAX_BYTES:1073741824}
+      max-output-bytes: ${UTEN_ATTACHMENT_PREVIEW_MAX_OUTPUT_BYTES:67108864}
+      max-expanded-bytes: ${UTEN_ATTACHMENT_PREVIEW_MAX_EXPANDED_BYTES:268435456}
+      max-archive-entries: ${UTEN_ATTACHMENT_PREVIEW_MAX_ARCHIVE_ENTRIES:10000}
   reporting:
     materialized-view-refresh:
       enabled: ${UTEN_REPORT_REFRESH_ENABLED:true}

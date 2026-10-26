@@ -51,6 +51,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiClientProvider.overrideWithValue(ApiClient(Dio())),
           attachmentServiceProvider.overrideWithValue(service),
           currentPermissionsProvider.overrideWithValue(permissions),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -280,6 +281,10 @@ void main() {
 
 class _Files extends AttachmentService {
   _Files() : super(ApiClient(Dio()));
+
+  @override
+  Future<Uint8List> downloadBytes(Attachment attachment) async =>
+      throw StateError('Preview is outside this category fixture');
 
   final uploaded = <(String name, String? category)>[];
   final categoryCalls = <(String id, String? category)>[];

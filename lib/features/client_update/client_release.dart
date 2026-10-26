@@ -14,6 +14,8 @@ class ClientRelease {
     this.mandatory = false,
     this.storeUrl,
     this.state = 'PUBLISHED',
+    this.packageKind = 'update',
+    this.fileName,
   });
 
   factory ClientRelease.fromJson(Map<String, dynamic> json) => ClientRelease(
@@ -29,6 +31,8 @@ class ClientRelease {
     mandatory: json['mandatory'] == true,
     storeUrl: json['storeUrl'] as String?,
     state: json['state'] as String? ?? 'PUBLISHED',
+    packageKind: json['packageKind'] as String? ?? 'update',
+    fileName: json['fileName'] as String?,
   );
 
   final String id, platform, architecture, version, releaseNotes, installMode;
@@ -36,9 +40,18 @@ class ClientRelease {
   final int buildNumber, sizeBytes;
   final bool mandatory;
   final String? storeUrl;
+  final String packageKind;
+  final String? fileName;
   String get packagePath => '/client-updates/$id/download';
 
+  bool get isWindowsInstaller =>
+      platform == 'windows' &&
+      packageKind == 'installer' &&
+      installMode == 'windows_setup' &&
+      state == 'PUBLISHED';
+
   bool matches(ClientInstallContext context) =>
+      packageKind == 'update' &&
       platform == context.platform &&
       (architecture == context.architecture || architecture == 'universal') &&
       buildNumber > context.currentBuild &&

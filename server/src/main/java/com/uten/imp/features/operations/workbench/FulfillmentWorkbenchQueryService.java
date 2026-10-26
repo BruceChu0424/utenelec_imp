@@ -404,31 +404,28 @@ public class FulfillmentWorkbenchQueryService {
                 ? WAREHOUSE_DOCUMENT_ROWS
                 : "PURCHASE".equals(department) ? PURCHASE_ITEM_ROWS : SUBCONTRACT_ITEM_ROWS;
         sourceView = enrichTableRows(sourceView, department);
-        String statusBranches = """
-                       OR (:status = 'IN_PROGRESS' AND task_status IN (%s))
-                       OR (:status NOT IN ('OPEN_ANY', 'IN_PROGRESS') AND task_status = :status)""";
-        String filters = """
-                department = :department
-                  AND (:status = ''
-                       OR (:status = 'OPEN_ANY' AND open_line_count > 0)
-                %s)
-                  AND (:exception = ''
-                       OR (:exception = 'OVERDUE_ANY' AND exception_code LIKE 'OVERDUE%%')
+        String statusFilter = """
+                (:status = '' OR (:status = 'OPEN_ANY' AND open_line_count > 0)
+                 OR (:status = 'IN_PROGRESS' AND task_status IN (%s))
+                 OR (:status NOT IN ('OPEN_ANY', 'IN_PROGRESS') AND task_status = :status))
+                """.formatted(IN_PROGRESS_STATUS_SQL);
+        String exceptionFilter = """
+                (:exception = ''
+                       OR (:exception = 'OVERDUE_ANY' AND exception_code LIKE 'OVERDUE%')
                        OR (:exception <> 'OVERDUE_ANY' AND exception_code = :exception))
-                  AND %s
-                  -- 历史记录时间门控：仅行/汇总查询传入日期；null = 不过滤
-                  -- （状态/异常/待完成计数始终传 null，保持角标全量口径）。
-                  -- updated_at 对已完成任务近似完结时间。
-                  AND (CAST(:date_from AS date) IS NULL
+                """;
+        String dateFilter = """
+                (CAST(:date_from AS date) IS NULL
                        OR updated_at >= CAST(:date_from AS date))
                   AND (CAST(:date_to AS date) IS NULL
                        OR updated_at < CAST(:date_to AS date) + INTERVAL '1 day')
-                """.formatted(statusBranches.formatted(IN_PROGRESS_STATUS_SQL), TaskKeywordSearch.conditionParameter("keyword",
+                """;
+        String baseFilter = "department = :department AND " + TaskKeywordSearch.conditionParameter("keyword",
                         "plan_no", "action_doc_no", "goods_code", "goods_name", "production_product_code", "production_product_name",
-                        "material_request_no", "execution_segment_codes", "array_to_string(search_goods_names,' ')", "array_to_string(search_goods_codes,' ')"));
+                        "material_request_no", "execution_segment_codes", "array_to_string(search_goods_names,' ')", "array_to_string(search_goods_codes,' ')");
         boolean scoped = "WAREHOUSE".equals(department)
                 && warehouseScope != null && warehouseScope.active();
-        if (scoped) filters += " AND " + warehouseScope.predicate("warehouse_id", ":warehouse_scope");
+        if (scoped) baseFilter += " AND " + warehouseScope.predicate("warehouse_id", ":warehouse_scope");
         java.util.function.Consumer<Query> bindScope = query -> {
             if (scoped) query.setParameter("warehouse_scope", warehouseScope.idsCsv());
         };
@@ -438,27 +435,53 @@ public class FulfillmentWorkbenchQueryService {
                 new String[]{"production_product_name", "CASE WHEN goods_count=1 THEN goods_name END"},
                 new String[]{"search_goods_names"},
                 new String[]{"goods_code", "production_product_code", "action_doc_no", "plan_no", "material_request_no"}, "search_goods_codes") + ", ";
-        String orderBy = relevance + priority + (table == null ? "need_date NULLS LAST, task_id" : table.orderSql());
+        String orderBy = relevance + priority + (table == null ? "need_date NULLS LAST, task_id" : table.orderSql())
+                + ", department, action_doc_type, action_doc_id, action_item_id";
 
-        Query rowsQuery = em.createNativeQuery("""
-                SELECT department, task_id, package_id, plan_id, plan_no,
-                       warehouse_id, warehouse_name, goods_id, goods_code,
-                       goods_name, spec, color_id, color_name, unit_id, unit_name,
-                       supply_route, required_qty, allocated_qty, fulfilled_qty,
-                       supply_pegged_qty, open_qty, task_status, need_date,
-                       expected_date, exception_code, updated_at,
-                       action_doc_type, action_doc_id, action_doc_no, action_item_id, action_doc_status,
-                       goods_count, open_line_count, action_item_ids, issued_at, can_create_order,
-                       display_stage,
-                       materials_defined, production_product_code, production_product_name, material_request_no,
-                       workshop_name, worker_name, draw_batch_no, lines,
-                       rd_task_no, bom_missing_item_ids, orderable_qty,
-                       supplier_name
+        if (!exportAll) {
+            Query pageQuery = em.createNativeQuery(FulfillmentWorkbenchPageRead.sql(sourceView, baseFilter,
+                    statusFilter, exceptionFilter, dateFilter, orderBy, department, table));
+            bind(pageQuery, department, normalizedStatus, normalizedKeyword, normalizedException, dateFrom, dateTo);
+            bindScope.accept(pageQuery);
+            if (table != null) table.bind(pageQuery);
+            pageQuery.setParameter("offset", (long) (safePage - 1) * safeSize);
+            pageQuery.setParameter("limit", safeSize);
+            List<Object[]> result = NativeQueryResults.objectArrayRows(pageQuery);
+            if (result.isEmpty()) throw new IllegalStateException("Workbench page is missing its aggregate row");
+            List<FulfillmentTaskRow> pageItems = result.stream().filter(row -> row[0] != null)
+                    .map(FulfillmentWorkbenchQueryService::mapRow).map(this::applyActionAccess).toList();
+            if ("SUBCONTRACT".equals(department)) pageItems = enrichApplicationSources(pageItems);
+            Object[] metadata = result.getFirst();
+            int offset = FulfillmentWorkbenchPageRead.METADATA_OFFSET;
+            long total = ((Number) metadata[offset]).longValue();
+            Map<String, Long> statusCounts = FulfillmentWorkbenchPageRead.counts(metadata[offset + 4]);
+            if (usesDecompositionProjection(department)) {
+                statusCounts.put("IN_PROGRESS", IN_PROGRESS_STATUSES.stream()
+                        .mapToLong(code -> statusCounts.getOrDefault(code, 0L)).sum());
+            }
+            var facets = FulfillmentWorkbenchPageRead.facets(metadata[offset + 7]);
+            return new FulfillmentWorkbenchPage(pageItems, safePage, safeSize, total,
+                    (int) Math.ceil(total / (double) safeSize),
+                    new FulfillmentWorkbenchPage.Summary(total,
+                            ((Number) metadata[offset + 1]).longValue(),
+                            ((Number) metadata[offset + 2]).longValue(), decimal(metadata[offset + 3]),
+                            statusCounts, FulfillmentWorkbenchPageRead.counts(metadata[offset + 5]),
+                            ((Number) metadata[offset + 6]).longValue()),
+                    new FulfillmentWorkbenchPage.Capabilities(
+                            "PURCHASE".equals(department) && accessPolicy.canCreatePurchaseOrder(),
+                            "SUBCONTRACT".equals(department) && accessPolicy.canCreateSubcontractOrder()),
+                    facets.values(), facets.nullCounts());
+        }
+
+        String filters = baseFilter + " AND " + statusFilter + " AND " + exceptionFilter + " AND " + dateFilter;
+
+        Query rowsQuery = com.uten.imp.common.report.ReportExportCursor.query(em,"""
+                SELECT %s
                 FROM %s
                 WHERE %s
                 ORDER BY %s
-                OFFSET :offset LIMIT :limit
-                """.formatted(sourceView, filters + tableFilters, orderBy));
+                LIMIT :limit OFFSET :offset
+                """.formatted(FulfillmentWorkbenchPageRead.ROW_COLUMNS, sourceView, filters + tableFilters, orderBy));
         bind(rowsQuery, department, normalizedStatus, normalizedKeyword,
                 normalizedException, dateFrom, dateTo);
         bindScope.accept(rowsQuery);
@@ -466,164 +489,16 @@ public class FulfillmentWorkbenchQueryService {
         rowsQuery.setParameter("offset", (long) (safePage - 1) * safeSize);
         rowsQuery.setParameter("limit", safeSize);
         List<FulfillmentTaskRow> items =
-                NativeQueryResults.objectArrayRows(rowsQuery).stream()
+                com.uten.imp.common.report.ReportExportCursor.rows(em,rowsQuery).stream()
                         .map(FulfillmentWorkbenchQueryService::mapRow)
                         .map(this::applyActionAccess)
                         .toList();
         if ("SUBCONTRACT".equals(department)) items = enrichApplicationSources(items);
 
-        Query summaryQuery = em.createNativeQuery("""
-                SELECT COUNT(*),
-                       COUNT(*) FILTER (WHERE exception_code LIKE 'OVERDUE%%'),
-                       COUNT(*) FILTER (WHERE open_line_count > 0),
-                       COALESCE(SUM(open_qty), 0)
-                FROM %s
-                WHERE %s
-                """.formatted(sourceView, filters + tableFilters));
-        bind(summaryQuery, department, normalizedStatus, normalizedKeyword,
-                normalizedException, dateFrom, dateTo);
-        bindScope.accept(summaryQuery);
-        if (table != null) table.bind(summaryQuery);
-        Object[] summary = (Object[]) summaryQuery.getSingleResult();
-        long total = ((Number) summary[0]).longValue();
-
-        // ADR-143 §二.3：缺 BOM 的委外申请行(display_stage BOM_MISSING)照样列在「待处理」段(task_status
-        // 仍是 WAITING_ORDER), 但球在研发手上, 不计入该段红数; 单独以 BOM_MISSING 计数, 与 countPending 同口径。
-        String statusKey = "SUBCONTRACT".equals(department)
-                ? "CASE WHEN display_stage = 'BOM_MISSING' THEN 'BOM_MISSING' ELSE task_status END"
-                : "task_status";
-        Query statusQuery = em.createNativeQuery("""
-                SELECT %s AS status_key, COUNT(*)
-                FROM %s
-                WHERE %s
-                GROUP BY 1
-                ORDER BY 1
-                """.formatted(statusKey, sourceView, filters));
-        // Status cards always describe the whole department/keyword result so
-        // selecting one card never makes the other card counts disappear.
-        bind(statusQuery, department, "", normalizedKeyword, normalizedException, null, null);
-        bindScope.accept(statusQuery);
-        Map<String, Long> statusCounts = new LinkedHashMap<>();
-        for (Object[] row : NativeQueryResults.objectArrayRows(statusQuery)) {
-            statusCounts.put((String) row[0], ((Number) row[1]).longValue());
-        }
-        if (usesDecompositionProjection(department)) {
-            // 采购与委外的任务中心都把等待财务审核 / 财务已通过 / 财务已退回合并成「进行中」
-            // 一段(ADR-100 的黄色在办数); 三档各自的计数保留给可筛的状态列与异常小类行。
-            // 合并只发生在分段栏这一层, 逐档明细一个都没丢。
-            statusCounts.put("IN_PROGRESS", IN_PROGRESS_STATUSES.stream()
-                    .mapToLong(code -> statusCounts.getOrDefault(code, 0L)).sum());
-        }
-
-        Query exceptionQuery = em.createNativeQuery("""
-                SELECT exception_code, COUNT(*)
-                FROM %s
-                WHERE %s
-                  AND exception_code IS NOT NULL
-                GROUP BY exception_code
-                ORDER BY exception_code
-                """.formatted(sourceView, filters));
-        // Exception options are server-wide for the active department/status/keyword,
-        // never inferred from the current page.
-        bind(exceptionQuery, department, normalizedStatus, normalizedKeyword, "", null, null);
-        bindScope.accept(exceptionQuery);
-        Map<String, Long> exceptionCounts = new LinkedHashMap<>();
-        for (Object[] row : NativeQueryResults.objectArrayRows(exceptionQuery)) {
-            exceptionCounts.put((String) row[0], ((Number) row[1]).longValue());
-        }
-
-        // 「待完成」卡计数：open_line_count > 0，部门×关键字全量口径（与状态卡一致，
-        // 不受当前状态卡筛选影响——否则选中「已完成」时待完成卡会被错误清零）。
-        // 与列表及分段分布一致，逐条统计未完成的来源明细。
-        Query pendingQuery = em.createNativeQuery("""
-                SELECT COUNT(*) FILTER (WHERE open_line_count > 0)
-                FROM %s
-                WHERE %s
-                """.formatted(sourceView, filters));
-        bind(pendingQuery, department, "", normalizedKeyword, normalizedException, null, null);
-        bindScope.accept(pendingQuery);
-        long pendingTasks = ((Number) pendingQuery.getSingleResult()).longValue();
-        Map<String, List<FulfillmentWorkbenchPage.Facet>> facets = new LinkedHashMap<>();
-        Map<String, Long> nullCounts = new LinkedHashMap<>();
-        if (table != null && !"WAREHOUSE".equals(department)) {
-            // One materialized candidate set; each column excludes its own filter, while
-            // retaining all other columns and the real date/category/keyword predicates.
-            String values = FulfillmentWorkbenchTableQuery.FIELDS.entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey()).map(entry -> {
-                        String label = "goods".equals(entry.getKey())
-                                ? "NULLIF(concat_ws(' ',goods_code,goods_name),'')" : entry.getValue();
-                        return "('" + entry.getKey() + "'," + entry.getValue() + "," + label
-                                + ", (TRUE " + table.filterSql(entry.getKey()) + "))";
-                    }).collect(java.util.stream.Collectors.joining(","));
-            Query facetQuery = em.createNativeQuery("""
-                    WITH candidates AS MATERIALIZED (SELECT * FROM %s WHERE %s)
-                    SELECT facet.key, facet.value, MAX(facet.label), COUNT(*)
-                    FROM candidates CROSS JOIN LATERAL (VALUES %s) facet(key,value,label,included)
-                    WHERE facet.included
-                    GROUP BY facet.key,facet.value ORDER BY facet.key,facet.value NULLS LAST
-                    """.formatted(sourceView, filters + table.rangeSql(), values));
-            bind(facetQuery, department, normalizedStatus, normalizedKeyword, normalizedException, dateFrom, dateTo);
-            bindScope.accept(facetQuery);
-            table.bind(facetQuery);
-            for (Object[] row : NativeQueryResults.objectArrayRows(facetQuery)) {
-                String key = (String) row[0];
-                long count = ((Number) row[3]).longValue();
-                if (row[1] == null) {
-                    nullCounts.put(key, count);
-                } else {
-                    facets.computeIfAbsent(key, ignored -> new java.util.ArrayList<>()).add(
-                            new FulfillmentWorkbenchPage.Facet(row[1].toString(), (String) row[2], count));
-                }
-            }
-        } else if ("WAREHOUSE".equals(department)) {
-            // 2026-09-25 单号列统一：仓库待领任务也带回 docNo（领料单号）桶——只算这一列
-            // （其余列仍不做分面），谓词与列表同一份 filters，docNo 自身的值筛选不算进桶。
-            // table 可为 null（未排序、无列筛选时），此时桶只按状态/关键字/范围过滤。
-            String docNoFilter = table == null ? "" : table.filterSql("docNo");
-            Query docNoFacetQuery = em.createNativeQuery("""
-                    SELECT visible_doc_no, COUNT(*)
-                    FROM %s
-                    WHERE %s
-                    GROUP BY visible_doc_no
-                    ORDER BY visible_doc_no NULLS LAST
-                    """.formatted(sourceView, filters + docNoFilter));
-            bind(docNoFacetQuery, department, normalizedStatus, normalizedKeyword, normalizedException, dateFrom, dateTo);
-            bindScope.accept(docNoFacetQuery);
-            if (table != null) {
-                // 只绑定进得了 SQL 的参数：docNo 被排除在桶谓词外，绑了会撞
-                // Hibernate「未出现的命名参数」校验。
-                table.bindFilters(docNoFacetQuery, "docNo");
-            }
-            for (Object[] row : NativeQueryResults.objectArrayRows(docNoFacetQuery)) {
-                long count = ((Number) row[1]).longValue();
-                if (row[0] == null) {
-                    nullCounts.put("docNo", count);
-                } else {
-                    facets.computeIfAbsent("docNo", ignored -> new java.util.ArrayList<>()).add(
-                            new FulfillmentWorkbenchPage.Facet(row[0].toString(), row[0].toString(), count));
-                }
-            }
-        }
-
-        return new FulfillmentWorkbenchPage(
-                items,
-                safePage,
-                safeSize,
-                total,
-                (int) Math.ceil(total / (double) safeSize),
-                new FulfillmentWorkbenchPage.Summary(
-                        total,
-                        ((Number) summary[1]).longValue(),
-                        ((Number) summary[2]).longValue(),
-                        decimal(summary[3]),
-                        statusCounts,
-                        exceptionCounts,
-                        pendingTasks),
-                new FulfillmentWorkbenchPage.Capabilities(
-                        "PURCHASE".equals(department)
-                                && accessPolicy.canCreatePurchaseOrder(),
-                        "SUBCONTRACT".equals(department)
-                                && accessPolicy.canCreateSubcontractOrder()), facets, nullCounts);
+        // Exports need the authorized row projection without table metadata per cursor batch.
+        return new FulfillmentWorkbenchPage(items, safePage, safeSize, -1, 0,
+                new FulfillmentWorkbenchPage.Summary(-1, 0, 0, BigDecimal.ZERO, Map.of(), Map.of(), 0),
+                new FulfillmentWorkbenchPage.Capabilities(false, false), Map.of(), Map.of());
     }
 
     /** Same row source, filters, ordering and document fences as the on-screen purchase table. */
@@ -634,13 +509,12 @@ public class FulfillmentWorkbenchQueryService {
         if (maxRows < 1 || maxRows == Integer.MAX_VALUE) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "系统导出行数上限无效，请检查系统设置");
         }
-        FulfillmentWorkbenchPage page = queryRows("PURCHASE", status, keyword, exception, dateFrom, dateTo,
-                1, maxRows + 1, table, null, true);
-        if (page.total() > maxRows) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "导出超过系统设置的 " + maxRows + " 行上限，请缩小日期或筛选范围后重试");
-        }
-        List<Map<String, Object>> rows = page.items().stream().map(row -> {
+        return com.uten.imp.common.report.ReportQueryKit.paginateAll(maxRows,
+                (page,size)->queryRows("PURCHASE",status,keyword,exception,dateFrom,dateTo,page,size,table,null,true),
+                FulfillmentWorkbenchPage::total,ignored->purchaseExportColumns(),
+                page->page.items().stream().map(FulfillmentWorkbenchQueryService::purchaseExportRow).toList());
+    }
+    private static Map<String,Object> purchaseExportRow(FulfillmentTaskRow row) {
             Map<String, Object> values = new LinkedHashMap<>();
             String statusLabel = purchaseStatusLabel(row.displayStage() == null ? row.taskStatus() : row.displayStage());
             String exceptionLabel = purchaseExceptionLabel(row.exceptionCode());
@@ -658,13 +532,15 @@ public class FulfillmentWorkbenchQueryService {
             values.put("allocatedQty", row.allocatedQty());
             values.put("fulfilledQty", row.fulfilledQty());
             values.put("openQty", row.openQty());
+            values.put("differenceQty", row.differenceQty());
             values.put("exception", exceptionLabel);
             values.put("warehouseName", row.warehouseName());
             values.put("needDate", row.needDate() == null ? null : row.needDate().toString());
             values.put("expectedDate", row.expectedDate() == null ? null : row.expectedDate().toString());
             return values;
-        }).toList();
-        List<ExportColumn> columns = List.of(
+    }
+    private static List<ExportColumn> purchaseExportColumns() {
+        return List.of(
                 new ExportColumn("status", "状态", ExportColumn.TEXT),
                 new ExportColumn("planNo", "计划号", ExportColumn.TEXT),
                 new ExportColumn("actionDocNo", "单据号", ExportColumn.TEXT),
@@ -677,11 +553,11 @@ public class FulfillmentWorkbenchQueryService {
                 new ExportColumn("allocatedQty", "已分配", ExportColumn.QTY, null, null, "unitName"),
                 new ExportColumn("fulfilledQty", "已履约", ExportColumn.QTY, null, null, "unitName"),
                 new ExportColumn("openQty", "未完成", ExportColumn.QTY, null, null, "unitName"),
+                new ExportColumn("differenceQty", "差异数", ExportColumn.QTY, null, null, "unitName"),
                 new ExportColumn("exception", "异常", ExportColumn.TEXT),
                 new ExportColumn("warehouseName", "仓库", ExportColumn.TEXT),
                 new ExportColumn("needDate", "需求日期", ExportColumn.DATE),
                 new ExportColumn("expectedDate", "预计日期", ExportColumn.DATE));
-        return new ExportPayload(columns, rows, rows.size());
     }
 
     private static String purchaseStatusLabel(String status) {
@@ -692,7 +568,7 @@ public class FulfillmentWorkbenchQueryService {
             case "FINANCE_REJECTED" -> "财务驳回";
             case "FINANCE_REVIEW_PENDING" -> "改量待财务复核";
             case "FINANCE_REVIEW_REJECTED" -> "改量财务退回";
-            case "ORDER_CLOSE_PENDING" -> "结束待财务审批";
+            case "ORDER_CLOSE_PENDING" -> "历史结束待业务确认";
             case "ORDER_CLOSE_REJECTED" -> "结束申请已退回";
             case "ORDER_CLOSED" -> "已提前结束";
             case "COMPLETED" -> "已完成";
@@ -1158,6 +1034,13 @@ public class FulfillmentWorkbenchQueryService {
                 )
                 """.formatted(source) : "";
         if (subcontract) source = "kit_base";
+        String difference = (purchase || subcontract)
+                ? "CASE WHEN base.action_doc_type='" + (subcontract ? "SUBCONTRACT" : "PURCHASE")
+                    + "_ORDER' THEN (SELECT "
+                    + com.uten.imp.common.finance.ProcurementDeliveryDifference.sql("difference_item.qty", "difference_item.received_qty", "difference_item.returned_qty")
+                    + " FROM " + (subcontract ? "subcontract" : "purchase")
+                    + "_order_items difference_item WHERE difference_item.id=base.action_item_id) END"
+                : "NULL::numeric";
         // An order item can have several source issues. Its earliest issue remains
         // the displayed date; later application creation never substitutes for it.
         return """
@@ -1181,7 +1064,8 @@ public class FulfillmentWorkbenchQueryService {
                         %s AS rd_task_no, %s AS bom_missing_item_ids,
                         %s AS orderable_qty,
                         CASE WHEN %s IS NOT NULL THEN base.supplier_name END AS supplier_name,
-                        base.search_goods_names, base.search_goods_codes
+                        base.search_goods_names, base.search_goods_codes,
+                        %s AS difference_qty
                  FROM %s base %s %s %s %s %s)
                 """.formatted(kitPrefix, exceptionExpression, subcontract ? "issue.issued_at" : "NULL::timestamptz",
                         canCreate ? "TRUE" : "FALSE", requestType,
@@ -1195,7 +1079,7 @@ public class FulfillmentWorkbenchQueryService {
                         subcontract ? "bom_gap.rd_task_no" : "NULL::text",
                         subcontract ? "COALESCE(bom_gap.item_ids, ARRAY[]::text[])" : "ARRAY[]::text[]",
                         subcontract ? "kit.orderable_qty" : "NULL::numeric",
-                        visibleDoc,
+                        visibleDoc, difference,
                         source, issueJoin, progressJoin, bomGapJoin, productionProductJoin, closureJoin);
     }
 
@@ -1276,7 +1160,8 @@ public class FulfillmentWorkbenchQueryService {
                 row.length > 45 ? (String) row[45] : null,
                 row.length > 46 ? stringArray(row[46]) : List.of(),
                 row.length > 47 && row[47] != null ? decimal(row[47]) : null,
-                row.length > 48 ? (String) row[48] : null);
+                row.length > 48 ? (String) row[48] : null,
+                row.length > 49 && row[49] != null ? decimal(row[49]) : null);
     }
 
     private static final com.fasterxml.jackson.databind.ObjectMapper LINES_MAPPER =
@@ -1435,7 +1320,8 @@ public class FulfillmentWorkbenchQueryService {
                 row.productionProductCode(), row.productionProductName(), restricted ? null : row.materialRequestNo(),
                 row.workshopName(), row.workerName(), row.drawBatchNo(), row.lines(),
                 row.rdTaskNo(), restricted ? List.of() : row.bomMissingItemIds(),
-                restricted ? null : row.orderableQty(), restricted ? null : row.supplierName());
+                restricted ? null : row.orderableQty(), restricted ? null : row.supplierName(),
+                restricted ? null : row.differenceQty());
     }
 
     private static BigDecimal decimal(Object value) {

@@ -52,6 +52,7 @@ import '../repositories/finance_repository.dart';
 import '../widgets/finance_status_badge.dart';
 import '../../../shared/widgets/sales_order_money_summary_card.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class FinanceDocDetailPage extends ConsumerStatefulWidget {
   const FinanceDocDetailPage({
@@ -164,6 +165,13 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
       final d = await ref
           .read(financeRepositoryProvider(widget.docType))
           .detail(widget.id);
+      if (!acceptsRead()) return;
+      await ref
+          .read(financeNameServiceProvider)
+          .loadPartyNames(
+            clientIds: [d.clientId].whereType<String>(),
+            supplierIds: [d.supplierId].whereType<String>(),
+          );
       if (!acceptsRead()) return;
       acceptNativeRead();
       setState(() {
@@ -438,19 +446,22 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
       canViewFiles,
     );
     if (!_hasItemsTable) {
-      return ListView(
-        // 底部让位右下悬浮操作组。
+      return UtenPageEdgePadding.scroll(
         padding: const EdgeInsets.fromLTRB(
           UtenSpacing.s12,
           UtenSpacing.s12,
           UtenSpacing.s12,
           UtenFloatingActionGroup.scrollClearance,
         ),
-        children: sections,
+        builder: (context, resolvedPagePadding) => ListView(
+          // 底部让位右下悬浮操作组。
+          padding: resolvedPagePadding,
+          children: sections,
+        ),
       );
     }
     return UtenCollapsingHeaderScrollView(
-      collapsingHeader: Padding(
+      collapsingHeader: UtenPageEdgePadding(
         padding: const EdgeInsets.fromLTRB(
           UtenSpacing.s12,
           UtenSpacing.s12,
@@ -463,7 +474,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         ),
       ),
       // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
-      body: Padding(
+      body: UtenPageEdgePadding(
         // 底部让位右下悬浮操作组：末段可滚出按钮区。
         padding: const EdgeInsets.fromLTRB(
           UtenSpacing.s12,

@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
@@ -14,7 +15,6 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
-import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
@@ -32,6 +32,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
@@ -88,10 +89,30 @@ class SalesShipmentTaskWorkbench extends ConsumerStatefulWidget {
 }
 
 class _SalesShipmentTaskWorkbenchState
-    extends ConsumerState<SalesShipmentTaskWorkbench> {
+    extends ConsumerState<SalesShipmentTaskWorkbench>
+    with ScopedPagedReadViewMixin<SalesShipmentTaskWorkbench> {
+  int get _refreshPage => _tableRows.visiblePage ?? (_result?.page ?? _page);
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    if (!mounted) return;
+    ++_requestGeneration;
+    setState(() {
+      _result = null;
+      _acceptedQuery = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+      _clearSelection();
+      _selectedIds.clear();
+      _selectedById.clear();
+      _tableRows.update(const []);
+    });
+  }
+
   static const int _maxBatchSize = 100;
 
   PagedResult<SalesDocListItem>? _result;
+  Object? _acceptedQuery;
   bool _loading = false;
   String? _error;
   int _page = 1;
@@ -164,6 +185,20 @@ class _SalesShipmentTaskWorkbenchState
   @override
   void initState() {
     super.initState();
+    ref.listenManual(exportContextEpochProvider, (previous, next) {
+      if (!mounted || previous == next) return;
+      setState(() {
+        ++_requestGeneration;
+        _result = null;
+        _error = null;
+        _loading = false;
+        _keyword = '';
+        _page = 1;
+        _columnFilters.reset();
+        _clearSelection();
+      });
+      if (_hasRequiredPermission) unawaited(_load(1));
+    });
     _financeAudit = _isFinance ? 0 : 1;
     if (!_isFinance) {
       _warehouseWorkStatus = SalesWarehouseWorkStatus.pendingPick;
@@ -214,61 +249,112 @@ class _SalesShipmentTaskWorkbenchState
     super.dispose();
   }
 
-  Future<void> _load([int? page]) async {
+  Future<void> _load([int? page, bool useCache = false]) async {
     // 路由守卫之外再失败关闭；权限撤销或独立 widget 场景都不得旁路请求数据。
     if (!_hasRequiredPermission) return;
-    final requestedPage = page ?? _page;
+    final requestedPage = page ?? _refreshPage;
     final generation = ++_requestGeneration;
+    final epoch = ref.read(exportContextEpochProvider);
+    final query = (
+      epoch,
+      _financeAudit,
+      _financeRejected,
+      _warehouseWorkStatus,
+      _keyword,
+      _columnFilters['billNo'],
+      _columnFilters.sortColumn,
+      _columnFilters.sortAscending,
+    );
+    bool current() =>
+        mounted &&
+        generation == _requestGeneration &&
+        epoch == ref.read(exportContextEpochProvider);
     // 单号桶随列表口径重取（2026-09-25 单号列统一）。
     unawaited(_loadBillNoFacets());
     setState(() {
+      if (_acceptedQuery != query) {
+        _result = null;
+        _columnFilters.buckets = const {};
+        _clearSelection();
+      }
       _loading = true;
       _error = null;
       _page = requestedPage;
     });
     try {
-      final value = await ref
-          .read(salesRepositoryProvider(SalesDocType.shipment))
-          .list(
-            page: requestedPage,
-            filter: SalesDocFilter(
-              keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
-              // 两个专页都是“当前人工任务”，历史已出库/红冲仍从销售历史页查。
-              status: _isFinance && _financeAudit != 0
-                  ? null
-                  : kSalesStatusDraft,
-              financeAudit: _financeAudit,
-              financeRejected: _financeRejected ? true : null,
-              warehouseWorkStatus: _isFinance
-                  ? (_financeAudit == 0
-                        ? SalesWarehouseWorkStatus.pendingPick
-                        : null)
-                  : _warehouseWorkStatus,
-              // 2026-09-25 单号列统一：出货单号表头值筛选（服务端精确匹配）。
-              billNo: _columnFilters['billNo'],
+      final pageRepository = ref.read(
+        salesRepositoryProvider(SalesDocType.shipment),
+      );
+      final pageFilter = SalesDocFilter(
+        keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
+        status: _isFinance && _financeAudit != 0 ? null : kSalesStatusDraft,
+        financeAudit: _financeAudit,
+        financeRejected: _financeRejected ? true : null,
+        warehouseWorkStatus: _isFinance
+            ? (_financeAudit == 0 ? SalesWarehouseWorkStatus.pendingPick : null)
+            : _warehouseWorkStatus,
+        billNo: _columnFilters['billNo'],
+      );
+      final pageSort = _columnFilters.sortColumn;
+      final pageOrder = _columnFilters.sortColumn == null
+          ? null
+          : (_columnFilters.sortAscending ? 'asc' : 'desc');
+
+      final value = await readScopedPage(
+        requestedPage,
+        slot: '_load',
+        query: [pageRepository, query, _isFinance],
+        currentQuery: () => [
+          ref.read(salesRepositoryProvider(SalesDocType.shipment)),
+          (
+            ref.read(exportContextEpochProvider),
+            _financeAudit,
+            _financeRejected,
+            _warehouseWorkStatus,
+            _keyword,
+            _columnFilters['billNo'],
+            _columnFilters.sortColumn,
+            _columnFilters.sortAscending,
+          ),
+          _isFinance,
+        ],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.list(
+          page: target,
+          filter: pageFilter,
+          sort: pageSort,
+          order: pageOrder,
+        ),
+      );
+      if (!current()) return;
+      unawaited(
+        ref
+            .read(salesMasterNameServiceProvider)
+            .loadClientNames(
+              value.items.map((item) => item.clientId).whereType<String>(),
             ),
-            // 2026-09-25 单号列统一：列排序（billNo 已入服务端白名单）。
-            sort: _columnFilters.sortColumn,
-            order: _columnFilters.sortColumn == null
-                ? null
-                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
-          );
-      if (!mounted || generation != _requestGeneration) return;
+      );
       setState(() {
         _result = value;
+        _acceptedQuery = query;
         _loading = false;
         for (final item in value.items) {
           if (_selectedIds.contains(item.id)) _selectedById[item.id] = item;
         }
       });
     } on ApiException catch (error) {
-      if (!mounted || generation != _requestGeneration) return;
+      if (!current()) return;
       setState(() {
+        if ({401, 403}.contains(error.httpStatus)) {
+          _result = null;
+          _columnFilters.reset();
+          _clearSelection();
+        }
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || generation != _requestGeneration) return;
+      if (!current()) return;
       setState(() {
         _error = _isFinance ? '出货财务审核任务加载失败' : '销售出库任务加载失败';
         _loading = false;
@@ -279,6 +365,7 @@ class _SalesShipmentTaskWorkbenchState
   /// 出货单号值筛选桶随过滤上下文重取（2026-09-25 单号列统一；失败静默保持旧桶）。
   Future<void> _loadBillNoFacets() {
     if (!_hasRequiredPermission) return Future.value();
+    final epoch = ref.read(exportContextEpochProvider);
     return _columnFilters.loadFacets(
       () async => {
         'billNo': await ref
@@ -299,6 +386,7 @@ class _SalesShipmentTaskWorkbenchState
               ),
             ),
       },
+      isCurrent: () => mounted && epoch == ref.read(exportContextEpochProvider),
       onLoaded: () {
         if (mounted) setState(() {});
       },
@@ -420,6 +508,9 @@ class _SalesShipmentTaskWorkbenchState
   /// 任一笔认领失败/内容失效 → 整批不提交。
   Future<TaskClaimSession?> _claimSelection({required bool forApprove}) async {
     if (!_canDecideFinance(forApprove: forApprove)) return null;
+    final epoch = ref.read(exportContextEpochProvider);
+    bool current() => mounted && epoch == ref.read(exportContextEpochProvider);
+    final selectedIds = _selectedIds.toList(growable: false);
     final claim = financeReviewClaim(
       ProviderScope.containerOf(context, listen: false),
       localizations: AppLocalizations.of(context),
@@ -428,11 +519,8 @@ class _SalesShipmentTaskWorkbenchState
     setState(() => _busyDecision = true);
     final repo = ref.read(salesRepositoryProvider(SalesDocType.shipment));
     try {
-      await claim.claimAll(
-        'SALES_SHIPMENT_FINANCE_AUDIT',
-        _selectedIds.toList(),
-      );
-      if (!mounted || !claim.isReady) {
+      await claim.claimAll('SALES_SHIPMENT_FINANCE_AUDIT', selectedIds);
+      if (!current() || !claim.isReady) {
         if (mounted) {
           context.appWarning(
             claim.failureMessage ?? '这批出货单还没有认领成功，可能正被别人处理，请稍后重试',
@@ -441,9 +529,9 @@ class _SalesShipmentTaskWorkbenchState
         await _releaseBatchClaim(claim);
         return null;
       }
-      for (final id in _selectedIds) {
+      for (final id in selectedIds) {
         final info = await repo.financeAuditInfo(id);
-        if (!mounted ||
+        if (!current() ||
             !_canDecideFinance(forApprove: forApprove) ||
             !claim.isReady ||
             !_readableSnapshot(info) ||
@@ -648,10 +736,15 @@ class _SalesShipmentTaskWorkbenchState
     String okMsg, {
     required bool forApprove,
   }) async {
-    if (!_canDecideFinance(forApprove: forApprove)) return;
+    if (!_canDecideFinance(forApprove: forApprove) || _selectedIds.isEmpty) {
+      return;
+    }
+    final epoch = ref.read(exportContextEpochProvider);
+    bool current() => mounted && epoch == ref.read(exportContextEpochProvider);
+    final selectedIds = _selectedIds.toList(growable: false);
     setState(() => _busyDecision = true);
     try {
-      if (!await claim.validateForDecision() || !mounted) {
+      if (!await claim.validateForDecision() || !current()) {
         if (mounted) {
           context.appWarning(claim.failureMessage ?? '这批单据的审核认领已失效，请刷新后重新核对');
         }
@@ -659,9 +752,9 @@ class _SalesShipmentTaskWorkbenchState
       }
       final repo = ref.read(salesRepositoryProvider(SalesDocType.shipment));
       final decisions = <ShipmentFinanceBatchDecision>[];
-      for (final id in _selectedIds) {
+      for (final id in selectedIds) {
         final info = await repo.financeAuditInfo(id);
-        if (!mounted ||
+        if (!current() ||
             !_canDecideFinance(forApprove: forApprove) ||
             !_readableSnapshot(info) ||
             !info.allows(forApprove ? 'APPROVE' : 'REJECT')) {
@@ -682,8 +775,11 @@ class _SalesShipmentTaskWorkbenchState
           ),
         );
       }
-      await action(decisions);
-      if (!mounted) return;
+      if (!current()) return;
+      final scope = await repo.api.captureRequestScope(isCurrent: current);
+      await scope.run(() => action(decisions));
+      await scope.verify();
+      if (!mounted || !current()) return;
       context.appSuccess(okMsg);
       setState(_clearSelection);
       refreshBadges(ref);
@@ -692,7 +788,7 @@ class _SalesShipmentTaskWorkbenchState
       bumpListRefresh(ref, SalesDocConfig.by(SalesDocType.shipment).refreshKey);
       await _load(1);
     } on Object catch (error) {
-      if (mounted) {
+      if (mounted && current()) {
         context.appApiError(
           error,
           fallback: AppLocalizations.of(
@@ -717,16 +813,6 @@ class _SalesShipmentTaskWorkbenchState
         UtenEmpty.error(
           message: '无权查看$_title',
           description: '请联系负责人或超级管理员开通这项查看权限。',
-        ),
-      );
-    } else if (_loading && _result == null) {
-      main = _pinHostHeader(const UtenSkeletonList());
-    } else if (_error != null && _result == null) {
-      main = _pinHostHeader(
-        UtenEmpty.error(
-          message: _error,
-          actionLabel: '重新加载',
-          onAction: () => _load(1),
         ),
       );
     } else {
@@ -760,7 +846,7 @@ class _SalesShipmentTaskWorkbenchState
                 UtenRefreshButton(
                   key: const Key('sales-shipment-task-refresh'),
                   busy: _loading,
-                  onRefresh: () => _load(1),
+                  onRefresh: () => _load(_refreshPage),
                 ),
               ]
             : null,
@@ -841,7 +927,7 @@ class _SalesShipmentTaskWorkbenchState
               routePrefix: '/finance/sales-shipment-audits/',
             ),
           ),
-        if (_error != null) ...[
+        if (_error != null && result.items.isNotEmpty) ...[
           const SizedBox(height: UtenSpacing.s8),
           _InlineTaskError(message: _error!, onRetry: _load),
         ],
@@ -851,6 +937,7 @@ class _SalesShipmentTaskWorkbenchState
     final table = AbsorbPointer(
       absorbing: _busyDecision,
       child: MasterDataTableView<SalesDocListItem>(
+        expensiveRowMounts: false,
         rowsController: _tableRows,
         paginationRevision: _result,
         paginationScope: (
@@ -907,10 +994,12 @@ class _SalesShipmentTaskWorkbenchState
               ]
             : null,
         isLoading: _loading,
+        error: result.items.isEmpty ? _error : null,
+        onRetry: () => _load(_refreshPage),
         emptyMessage: _emptyMessage,
         currentPage: result.page,
         totalPages: result.totalPages,
-        onPageChange: _load,
+        onPageChange: (page) => _load(page, true),
       ),
     );
     // 独立页与嵌入态（业务审核中心分段）统一折叠联动：上滑先收摘要/筛选，

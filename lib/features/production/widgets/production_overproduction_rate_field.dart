@@ -96,33 +96,41 @@ class ProductionOverproductionRateField extends StatelessWidget {
     super.key,
     required this.controller,
     this.enabled = true,
+    this.readOnlyPresentation = false,
     this.onChanged,
   });
 
   final TextEditingController controller;
   final bool enabled;
+
+  /// A permanently read-only table does not need a disabled editor subtree.
+  /// Transient busy/saving states leave this false to preserve focus and IME.
+  final bool readOnlyPresentation;
   final ValueChanged<String>? onChanged;
 
   @override
-  Widget build(BuildContext context) =>
-      ValueListenableBuilder<TextEditingValue>(
-        valueListenable: controller,
-        builder: (context, value, _) => TextField(
-          controller: controller,
-          enabled: enabled,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          onChanged: onChanged,
-          decoration: UtenInputDecoration(
-            InputDecoration(
-              isDense: true,
-              suffixText: '%',
-              hintText: '允许超产比例',
-              hintMaxLines: 1,
-              error: parseProductionOverproductionPercent(value.text) == null
-                  ? const UtenFieldMessage.error('请输入非负百分比，最多 4 位小数')
-                  : null,
+  Widget build(
+    BuildContext context,
+  ) => ValueListenableBuilder<TextEditingValue>(
+    valueListenable: controller,
+    builder: (context, value, _) => readOnlyPresentation
+        ? Text(value.text.isEmpty ? '—' : '${value.text}%')
+        : TextField(
+            controller: controller,
+            enabled: enabled,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: onChanged,
+            decoration: UtenInputDecoration(
+              InputDecoration(
+                isDense: true,
+                suffixText: '%',
+                hintText: '允许超产比例',
+                hintMaxLines: 1,
+                error: parseProductionOverproductionPercent(value.text) == null
+                    ? const UtenFieldMessage.error('请输入非负百分比，最多 4 位小数')
+                    : null,
+              ),
             ),
           ),
-        ),
-      );
+  );
 }

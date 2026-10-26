@@ -57,7 +57,7 @@ public class ProductionFqcRecordController {
      * 单号列 facets（2026-09-25 单号列统一）：{sourceNo/referenceNo/sheetNo:[…]}，
      * 与列表同一过滤参数（不含单号列自身的值筛选）。
      */
-    @GetMapping("/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('production_quality_inspection:view')")
     public Map<String, List<Map<String, Object>>> facets(
             @RequestParam(defaultValue = "ALL") String decision,

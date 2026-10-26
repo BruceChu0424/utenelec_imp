@@ -1,3 +1,4 @@
+import '../../../shared/providers/master_party_options.dart';
 import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 // 销售单据列表页（按 docType 参数化）。
@@ -11,6 +12,7 @@ import '../../../shared/auth/read_owner_fence.dart';
 import 'dart:async';
 import '../../../components/feedback/uten_dialog.dart';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_master_names.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -557,8 +559,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   }
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
-  Future<PagedResult<SalesDocListItem>> _fetch([int? requestedPage]) {
-    return ref
+  Future<PagedResult<SalesDocListItem>> _fetch([int? requestedPage]) async {
+    final names = ref.read(salesMasterNameServiceProvider);
+    final current = captureReadOwner(ref);
+    final selectedParty = _clientIdFilter;
+    final result = await ref
         .read(salesRepositoryProvider(widget.docType))
         .list(
           page: requestedPage ?? _list.pageNum,
@@ -568,6 +573,16 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
               ? null
               : _list.sortOrder,
         );
+    if (!current()) throw StateError('读取作用域已变化');
+    unawaited(
+      names.loadClientNames(
+        partyReferenceIds([
+          ...result.items.map((item) => item.clientId),
+          selectedParty,
+        ]),
+      ),
+    );
+    return result;
   }
 
   /// 单据号值筛选桶随过滤上下文重取（失败静默保持旧桶，不阻断列表）。
@@ -586,10 +601,43 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     );
   }
 
-  Future<void> _reload([int? page, bool silent = false]) =>
-      trackRefresh(_reloadRows(page, silent), replaceKey: 'rows');
+  List<Object?> get _pageQueryScope => [
+    _list.normalizedKeyword,
+    _list.sortKey,
+    _list.sortAsc,
+    widget.docType,
+    _stage,
+    _statusSeg,
+    _shippableFirst,
+    _historyTime,
+    _historyTime.range?.start,
+    _historyTime.range?.end,
+    _clientIdFilter,
+    _financeAuditFilter,
+    _warehouseWorkStatusFilter,
+    _currencyIdFilter,
+    _warehouseIdFilter,
+    Map.of(_columnFilters.values),
+  ];
 
-  Future<void> _reloadRows([int? page, bool silent = false]) async {
+  Future<void> _navigatePage(int page) => _reload(page, false, true);
+
+  Future<void> _reload([
+    int? page,
+    bool silent = false,
+    bool useCachedPage = false,
+  ]) => trackRefresh(
+    _reloadRows(page, silent, useCachedPage),
+    replaceKey: 'rows',
+  );
+
+  Future<void> _reloadRows([
+    int? page,
+    bool silent = false,
+    bool useCachedPage = false,
+  ]) async {
+    final cacheQuery = _pageQueryScope;
+    final ownerCurrent = captureReadOwner(ref);
     final generation = ++_reloadGeneration;
     if (page == 1) clearDraftSelection();
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
@@ -613,7 +661,16 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       silent: silent,
       fetch: _fetch,
       fetchPage: _fetch,
-      isCurrent: captureReadOwner(ref),
+      useCachedPage: useCachedPage,
+      canPrefetch: () =>
+          mounted &&
+          TickerMode.valuesOf(context).enabled &&
+          (ModalRoute.of(context)?.isCurrent ?? true),
+      queryScope: cacheQuery,
+      isCurrent: () =>
+          mounted &&
+          ownerCurrent() &&
+          const DeepCollectionEquality().equals(cacheQuery, _pageQueryScope),
     );
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
       return;
@@ -1206,6 +1263,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                       columns: _columns(names, l10n),
                       items: _list.page?.items ?? const [],
                       facets: _statusFacets(names, l10n),
+                      facetPageLoaders: {'client': clientPartyFacetLoader(ref)},
+                      facetSearchScope: partyFacetSearchScope(ref, (
+                        'sales-list-party',
+                        widget.docType,
+                      )),
                       nullCounts: const {},
                       filters: _statusFilterMap,
                       onFilterChanged: _onColumnFilterChanged,
@@ -1237,7 +1299,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                         _shippableFirst,
                         _historyTime,
                       ),
-                      onPageChange: (p) => _reload(p),
+                      onPageChange: _navigatePage,
                     ),
                   ),
           );
@@ -1296,6 +1358,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     return FormDraftCategoryTable<SalesDocListItem>(
       scope: formDraftScopeForDocumentStatus(scope),
       table: table,
+      localReadRevision: _reloadGeneration,
       localValue: (draft, key) => formDraftMasterColumnValue(
         draft,
         key,
@@ -1464,7 +1527,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         MasterFacetBucket(value: '-1', count: 0, label: '已反审'),
       ],
     if (_isShipment) ...{
-      'client': masterDictionaryFacets(names.clientEntries),
+      'client': selectedPartyFacet(_clientIdFilter, names.client),
       'financeAudit': const [
         MasterFacetBucket(value: '0', count: 0, label: '待财务审核'),
         MasterFacetBucket(value: '1', count: 0, label: '已财务审核'),

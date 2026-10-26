@@ -329,11 +329,11 @@ public class ProductionFinishedInboundTaskService {
         boolean scoped = warehouseScope != null && warehouseScope.active();
         String filter = taskFilter(normalized, normalizedStage, warehouseId,
                 scoped ? warehouseScope : null, null, null);
-        List<java.util.Map<String, Object>> taskNoBuckets = billBuckets(
+        List<java.util.Map<String, Object>> taskNoBuckets = billBuckets("taskNo",
                 "SELECT " + TASK_NO_EXPR + ", COUNT(*) FROM task_documents " + filter
                         + " GROUP BY 1 ORDER BY 1",
                 normalized, normalizedStage, warehouseId, scoped ? warehouseScope : null);
-        List<java.util.Map<String, Object>> planNoBuckets = billBuckets(
+        List<java.util.Map<String, Object>> planNoBuckets = billBuckets("planNo",
                 "SELECT COALESCE(plan_no, ''), COUNT(*) FROM task_documents " + filter
                         + " GROUP BY 1 ORDER BY 1",
                 normalized, normalizedStage, warehouseId, scoped ? warehouseScope : null);
@@ -343,9 +343,9 @@ public class ProductionFinishedInboundTaskService {
     /** 单号桶查询 + 行映射（value/count/label，label=value；上限 500 桶）。
      *  task_documents 是 BASE_SQL 里的 CTE，桶查询必须同样带上 CTE 前缀。 */
     private List<java.util.Map<String, Object>> billBuckets(
-            String sql, String normalized, String normalizedStage, UUID warehouseId,
+            String field, String sql, String normalized, String normalizedStage, UUID warehouseId,
             WarehouseTaskScope warehouseScope) {
-        Query query = em.createNativeQuery(baseSql(warehouseScope) + sql).setMaxResults(500);
+        Query query = NativeFacets.query(em, field, baseSql(warehouseScope) + sql).setMaxResults(500);
         bindTaskFilters(query, normalized, normalizedStage, warehouseId, warehouseScope, null, null);
         return NativeFacets.rowsOf(query);
     }

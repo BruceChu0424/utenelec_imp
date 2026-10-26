@@ -23,6 +23,12 @@
 
 ## 防止占用系统盘
 
+### 2026-10-26 只读复核补充
+
+本轮从活进程环境中仅提取无秘密的存储/扫描/预览配置：仍为 `internal`、媒体卷根 `/var/lib/uten-imp-media/attachments`、10 GiB 余量及上传开启；ClamAV 为 active，活进程已经配置 `/run/clamav/clamd.ctl`。这更新了上节 2026-10-25 的 TCP 配置时间点，不能据此推定本轮重新执行过真实 EICAR、挂载门禁或备份恢复。
+
+Office 转换明确为 `UTEN_ATTACHMENT_PREVIEW_ENABLED=false`，`/usr/bin/soffice` 不存在。已安装的 root:root 0755 `/usr/local/libexec/uten-preview-soffice` 与本轮修改前的环境清理包装器一致，只清除继承环境，不提供独立文件/网络隔离。因此当前 Word/Excel/PPT 等转换预览尚未启用，保持原件下载。本轮已提供[独立 worker 候选](PREVIEW_WORKER.zh-CN.md)，新客户端另用 `/usr/local/libexec/uten-preview-soffice-isolated`，避免误调用现场旧 wrapper；开启前须完成成套部署和真实 systemd/员工模板验收。本轮没有安装、修改服务器配置、部署或重启。完整检查与本地验证见[本轮记录](../../docs/99-项目治理/2026-10-26-公司资料库安全稳定性检查.md)。
+
 `RequiresMountsFor` 负责启动依赖，但还需要验证实际挂载对象，避免 fstab 被误改或挂载消失后落到根文件系统。提供只读启动门禁：
 
 - `validate_storage.py`：核对独立文件系统、精确挂载来源和文件系统 UUID、ext4 保护选项、无符号链接、同卷命名空间、0700 属主、10 GiB 最低保留及可访问的 ClamAV Unix socket。已存在的 preview 缓存目录同样核验。失败时返回非零，不创建目录、不回退路径、不读取密钥文件、不触碰对象。

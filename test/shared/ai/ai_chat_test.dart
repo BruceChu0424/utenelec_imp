@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,7 +24,13 @@ import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/core/theme/uten_scroll_behavior.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
+import 'package:uten_imp/components/layout/uten_page_scrollbar_host.dart';
+import 'package:uten_imp/components/layout/uten_content_container.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
+import 'package:uten_imp/components/layout/uten_scroll_gutter.dart';
+import 'package:uten_imp/components/layout/uten_vertical_scrollbar.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/dashboard/models/dashboard_overview.dart';
 import 'package:uten_imp/features/dashboard/pages/dashboard_page.dart';
@@ -31,6 +38,7 @@ import 'package:uten_imp/features/dashboard/providers/dashboard_overview_provide
 import 'package:uten_imp/features/notice/providers/notice_providers.dart';
 import 'package:uten_imp/features/settings/pages/settings_page.dart';
 import 'package:uten_imp/features/shell/pages/main_shell_page.dart';
+import 'package:uten_imp/features/shell/widgets/uten_side_nav_rail.dart';
 import 'package:uten_imp/shared/ai/chat/ai_chat_action_card.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/ai/page_context/ai_page_context.dart';
@@ -3541,6 +3549,8 @@ Future<_Harness> _pump(
   ThemeData? theme,
   TextScaler? textScaler,
   double interfaceZoom = 1,
+  bool pageScrollbarHost = false,
+  ValueListenable<Size>? overlaySize,
   Widget page = const SizedBox(key: ValueKey('business-surface')),
 }) async {
   tester.view.physicalSize = size;
@@ -3585,6 +3595,23 @@ Future<_Harness> _pump(
       child: Scaffold(body: page),
     ),
   );
+  final sizedHome = overlaySize == null
+      ? home
+      : Align(
+          alignment: Alignment.topLeft,
+          child: ValueListenableBuilder<Size>(
+            valueListenable: overlaySize,
+            child: home,
+            builder: (context, value, child) => SizedBox(
+              width: value.width,
+              height: value.height,
+              child: child,
+            ),
+          ),
+        );
+  final hostedHome = pageScrollbarHost
+      ? UtenPageScrollbarHost(child: sizedHome)
+      : sizedHome;
   Widget scoped(BuildContext context, Widget? child) => MediaQuery(
     data: MediaQuery.of(context).copyWith(textScaler: textScaler),
     child: interfaceZoom == 1
@@ -3601,7 +3628,7 @@ Future<_Harness> _pump(
               ? null
               : (context, state) => redirect(state.uri.path),
           routes: [
-            GoRoute(path: '/', builder: (context, state) => home),
+            GoRoute(path: '/', builder: (context, state) => hostedHome),
             GoRoute(
               path: '/sales/:seg/new',
               builder: (context, state) {
@@ -3649,7 +3676,7 @@ Future<_Harness> _pump(
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,
               builder: scoped,
-              home: home,
+              home: hostedHome,
             ),
     ),
   );
@@ -3667,8 +3694,14 @@ Future<GoRouter> _pumpRealShell(
   _FakeJobRepository? jobs,
   void Function(Uri, Object?)? onDraftOpened,
   String? Function(String path)? redirect,
+  Size size = const Size(1200, 900),
+  double interfaceZoom = 1,
+  ThemeData? theme,
+  ScrollBehavior? scrollBehavior,
+  WidgetBuilder? editorPageBuilder,
+  bool outerPageHost = false,
 }) async {
-  tester.view.physicalSize = const Size(1200, 900);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -3681,7 +3714,10 @@ Future<GoRouter> _pumpRealShell(
         : (context, state) => redirect(state.uri.path),
     routes: [
       ShellRoute(
-        builder: (_, _, child) => MainShellPage(child: child),
+        builder: (_, _, child) {
+          final shell = MainShellPage(child: child);
+          return outerPageHost ? UtenPageScrollbarHost(child: shell) : shell;
+        },
         routes: [
           for (final tab in [RouteName.dashboard, RouteName.settings])
             GoRoute(
@@ -3694,7 +3730,8 @@ Future<GoRouter> _pumpRealShell(
           ),
           GoRoute(
             path: '/sales/:seg/new',
-            builder: (_, state) =>
+            builder: (context, state) =>
+                editorPageBuilder?.call(context) ??
                 Scaffold(body: Text('Editor ${state.pathParameters['seg']}')),
           ),
           GoRoute(
@@ -3749,6 +3786,12 @@ Future<GoRouter> _pumpRealShell(
         ),
       ],
       child: MaterialApp.router(
+        theme: theme,
+        scrollBehavior: scrollBehavior,
+        builder: interfaceZoom == 1
+            ? null
+            : (context, child) =>
+                  UtenDisplayZoomBox(fontFactor: interfaceZoom, child: child!),
         routerConfig: router,
         locale: const Locale('en'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,

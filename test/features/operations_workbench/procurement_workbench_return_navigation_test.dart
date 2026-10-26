@@ -238,7 +238,14 @@ void main() {
             );
             expect(find.text('FIRST-NEW'), findsNothing);
             expect(find.text('ACCESS-REMOVED'), findsOneWidget);
-            expect(tableState.mounted, isFalse);
+            expect(tableState.mounted, isTrue);
+            final table = tester
+                .widget<MasterDataTableView<OperationsWorkbenchTask>>(
+                  tableFinder,
+                );
+            expect(table.items, isEmpty);
+            expect(table.facets.values.expand((buckets) => buckets), isEmpty);
+            expect(table.selectedIds, isEmpty);
           } else {
             expect(find.text('FIRST-NEW'), findsOneWidget);
             expect(find.text('SECOND-NEW'), findsOneWidget);

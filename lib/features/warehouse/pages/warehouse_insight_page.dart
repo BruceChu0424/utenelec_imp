@@ -1,3 +1,6 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 // 库存分析页 (ADR-135 §6.4, review/product.md §1.6; /warehouse/insights, stock_report:view)。
 //
 // 顶部 KPI 卡 (点一下跳到对应分段并带上筛选): 呆滞品项 / 库龄超180天 / 今日建议盘点 /
@@ -70,7 +73,33 @@ class WarehouseInsightPage extends ConsumerStatefulWidget {
       _WarehouseInsightPageState();
 }
 
-class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
+class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
+    with ScopedPagedReadViewMixin<WarehouseInsightPage> {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    if (!mounted) return;
+    _healthRequests.begin();
+    _cycleRequests.begin();
+    _alertRequests.begin();
+    _learningRequests.begin();
+    setState(() {
+      _health = null;
+      _cycle = null;
+      _alerts = null;
+      _learning = null;
+      _healthLoading = false;
+      _cycleLoading = false;
+      _alertsLoading = false;
+      _learningLoading = false;
+      _healthError = scopedPagedReadRejection?.message;
+      _cycleError = scopedPagedReadRejection?.message;
+      _alertsError = scopedPagedReadRejection?.message;
+      _learningError = scopedPagedReadRejection?.message;
+      _cycleSelected.clear();
+      _cycleSelectedRows.clear();
+    });
+  }
+
   late WarehouseInsightSegment _segment;
   final _search = TextEditingController();
   String _keyword = '';
@@ -199,7 +228,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
 
   // ---- 取数 ----
 
-  Future<void> _loadHealth(int page) async {
+  Future<void> _loadHealth(int page, {bool useCache = false}) async {
     final generation = _healthRequests.begin();
     final key = _healthKey;
     setState(() {
@@ -207,16 +236,59 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
       _healthError = null;
     });
     try {
-      final r = await _repo.health(
-        scope: _scope,
-        page: page,
-        keyword: _keyword,
-        abc: _abc,
-        onlyDead: _onlyDead,
-        agedOver180: _agedOver180,
-        sort: _healthSort,
-        ascending: _healthAsc,
+      final pageRepository = _repo;
+      final pageScope = _scope;
+      final pageKeyword = _keyword;
+      final pageAbc = _abc;
+      final pageOnlyDead = _onlyDead;
+      final pageAgedOver180 = _agedOver180;
+      final pageSort = _healthSort;
+      final pageAscending = _healthAsc;
+
+      final cached = await readScopedPage<InsightHealthRow>(
+        page,
+        slot: '_loadHealth',
+        query: [
+          pageRepository,
+          pageScope,
+          pageKeyword,
+          pageAbc,
+          pageOnlyDead,
+          pageAgedOver180,
+          pageSort,
+          pageAscending,
+        ],
+        currentQuery: () => [
+          _repo,
+          _scope,
+          _keyword,
+          _abc,
+          _onlyDead,
+          _agedOver180,
+          _healthSort,
+          _healthAsc,
+        ],
+        useCache: useCache,
+        fetchPage: (target) async {
+          final snapshot = await pageRepository.health(
+            scope: pageScope,
+            page: target,
+            keyword: pageKeyword,
+            abc: pageAbc,
+            onlyDead: pageOnlyDead,
+            agedOver180: pageAgedOver180,
+            sort: pageSort,
+            ascending: pageAscending,
+          );
+          return PagedReadSnapshot<InsightHealthRow, InsightHealthResult>(
+            page: snapshot.rows,
+            snapshot: snapshot,
+          );
+        },
       );
+      final r =
+          (cached as PagedReadSnapshot<InsightHealthRow, InsightHealthResult>)
+              .snapshot;
       if (!mounted || !_healthRequests.isCurrent(generation)) return;
       setState(() {
         _health = r;
@@ -232,7 +304,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
     }
   }
 
-  Future<void> _loadCycle(int page) async {
+  Future<void> _loadCycle(int page, {bool useCache = false}) async {
     final generation = _cycleRequests.begin();
     final key = _cycleKey;
     setState(() {
@@ -240,7 +312,18 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
       _cycleError = null;
     });
     try {
-      final r = await _repo.cycleCount(scope: _scope, page: page);
+      final pageRepository = _repo;
+      final pageScope = _scope;
+
+      final r = await readScopedPage(
+        page,
+        slot: '_loadCycle',
+        query: [pageRepository, pageScope],
+        currentQuery: () => [_repo, _scope],
+        useCache: useCache,
+        fetchPage: (target) =>
+            pageRepository.cycleCount(scope: pageScope, page: target),
+      );
       if (!mounted || !_cycleRequests.isCurrent(generation)) return;
       setState(() {
         _cycle = r;
@@ -256,7 +339,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
     }
   }
 
-  Future<void> _loadAlerts(int page) async {
+  Future<void> _loadAlerts(int page, {bool useCache = false}) async {
     final generation = _alertRequests.begin();
     final key = _alertsKey;
     setState(() {
@@ -264,7 +347,33 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
       _alertsError = null;
     });
     try {
-      final r = await _repo.weightAlerts(days: _alertDays, page: page);
+      final pageRepository = _repo;
+      final pageDays = _alertDays;
+
+      final cached = await readScopedPage<InsightWeightAlertRow>(
+        page,
+        slot: '_loadAlerts',
+        query: [pageRepository, pageDays],
+        currentQuery: () => [_repo, _alertDays],
+        useCache: useCache,
+        fetchPage: (target) async {
+          final snapshot = await pageRepository.weightAlerts(
+            days: pageDays,
+            page: target,
+          );
+          return PagedReadSnapshot<
+            InsightWeightAlertRow,
+            InsightWeightAlertsResult
+          >(page: snapshot.rows, snapshot: snapshot);
+        },
+      );
+      final r =
+          (cached
+                  as PagedReadSnapshot<
+                    InsightWeightAlertRow,
+                    InsightWeightAlertsResult
+                  >)
+              .snapshot;
       if (!mounted || !_alertRequests.isCurrent(generation)) return;
       setState(() {
         _alerts = r;
@@ -280,7 +389,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
     }
   }
 
-  Future<void> _loadLearning(int page) async {
+  Future<void> _loadLearning(int page, {bool useCache = false}) async {
     final generation = _learningRequests.begin();
     final key = _learningKey;
     setState(() {
@@ -288,10 +397,21 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
       _learningError = null;
     });
     try {
-      final r = await _repo.learning(
-        filter: _learningFilter,
-        keyword: _keyword,
-        page: page,
+      final pageRepository = _repo;
+      final pageFilter = _learningFilter;
+      final pageKeyword = _keyword;
+
+      final r = await readScopedPage(
+        page,
+        slot: '_loadLearning',
+        query: [pageRepository, pageFilter, pageKeyword],
+        currentQuery: () => [_repo, _learningFilter, _keyword],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.learning(
+          filter: pageFilter,
+          keyword: pageKeyword,
+          page: target,
+        ),
       );
       if (!mounted || !_learningRequests.isCurrent(generation)) return;
       setState(() {
@@ -880,6 +1000,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
     final rows = _health?.rows;
     final canOpenLedger = _canOpenStockItem;
     return MasterDataTableView<InsightHealthRow>(
+      expensiveRowMounts: false,
       tableKey:
           'features.warehouse.pages.warehouse_insight_page.WarehouseInsightPageState._healthTable.1',
       key: const Key('insight-health-table'),
@@ -937,7 +1058,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
       currentPage: rows?.page ?? 1,
       totalPages: rows?.totalPages ?? 1,
       paginationScope: (_scope, _keyword, _abc, _onlyDead, _agedOver180),
-      onPageChange: _loadHealth,
+      onPageChange: (page) => _loadHealth(page, useCache: true),
     );
   }
 
@@ -946,6 +1067,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
     final checkPath = RoutePath.stockDocNew(StockDocType.check.code);
     final canCreateCheck = _canOpen(checkPath);
     return MasterDataTableView<InsightCycleCountRow>(
+      expensiveRowMounts: false,
       tableKey:
           'features.warehouse.pages.warehouse_insight_page.WarehouseInsightPageState._cycleTable.1',
       key: const Key('insight-cycle-table'),
@@ -991,13 +1113,14 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
       currentPage: rows?.page ?? 1,
       totalPages: rows?.totalPages ?? 1,
       paginationScope: _scope,
-      onPageChange: _loadCycle,
+      onPageChange: (page) => _loadCycle(page, useCache: true),
     );
   }
 
   Widget _alertsTable(WeightDisplay display) {
     final rows = _alerts?.rows;
     return MasterDataTableView<InsightWeightAlertRow>(
+      expensiveRowMounts: false,
       tableKey:
           'features.warehouse.pages.warehouse_insight_page.WarehouseInsightPageState._alertsTable.1',
       key: const Key('insight-alerts-table'),
@@ -1030,13 +1153,14 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
       currentPage: rows?.page ?? 1,
       totalPages: rows?.totalPages ?? 1,
       paginationScope: _alertDays,
-      onPageChange: _loadAlerts,
+      onPageChange: (page) => _loadAlerts(page, useCache: true),
     );
   }
 
   Widget _counterpartTable(WeightDisplay display) {
     final alerts = _alerts;
     return MasterDataTableView<InsightCounterpartSummary>(
+      expensiveRowMounts: false,
       tableKey:
           'features.warehouse.pages.warehouse_insight_page.WarehouseInsightPageState._counterpartTable.1',
       key: const Key('insight-counterpart-table'),
@@ -1058,11 +1182,16 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
   Widget _learningTable(WeightUnit sampleUnit) {
     final rows = _learning;
     final canSample = ref.watch(weightSampleAllowedProvider);
-    final items = [
-      for (final r in rows?.items ?? const <InsightLearningRow>[])
-        _learningUpdates[r.goodsId] ?? r,
-    ];
+    final source = rows?.items ?? const <InsightLearningRow>[];
+    final items = _projectLearningRows(source);
+    projectReadWindowBinding(
+      source,
+      items,
+      project: _projectLearningRows,
+      projectionKey: 'warehouse-learning-confirmed-overlay-v1',
+    );
     return MasterDataTableView<InsightLearningRow>(
+      expensiveRowMounts: true,
       tableKey:
           'features.warehouse.pages.warehouse_insight_page.WarehouseInsightPageState._learningTable.1',
       key: const Key('insight-learning-table'),
@@ -1109,9 +1238,13 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
       currentPage: rows?.page ?? 1,
       totalPages: rows?.totalPages ?? 1,
       paginationScope: (_learningFilter, _keyword),
-      onPageChange: _loadLearning,
+      onPageChange: (page) => _loadLearning(page, useCache: true),
     );
   }
+
+  List<InsightLearningRow> _projectLearningRows(
+    List<InsightLearningRow> source,
+  ) => [for (final row in source) _learningUpdates[row.goodsId] ?? row];
 
   @override
   Widget build(BuildContext context) {

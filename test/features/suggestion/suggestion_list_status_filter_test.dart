@@ -213,7 +213,8 @@ void main() {
     );
     await container.read(suggestionListProvider.notifier).refresh();
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('suggestion-list-table')), findsNothing);
+    expect(find.byKey(const Key('suggestion-list-table')), findsOneWidget);
+    expect(table().items, isEmpty);
     expect(find.text('提交建议'), findsNothing);
     expect(find.text('提建议'), findsOneWidget);
     expect(find.byType(UtenFloatingActionGroup), findsOneWidget);

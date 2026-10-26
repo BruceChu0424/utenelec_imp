@@ -40,6 +40,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -130,6 +131,17 @@ class DepartmentEmployeePickerSecurityContractTest {
         http.perform(get("/api/org/employees")).andExpect(status().isForbidden());
         verify(departments).tree();
         verifyNoInteractions(employees);
+    }
+    @ParameterizedTest
+    @ValueSource(strings={"employee:create","employee:edit"})
+    void employeeEditorsCanChooseDepartmentsWithViewOnlyAndCannotEditTheOrganization(String action) throws Exception {
+        login(staff(Set.of(action,"employee:view","department:view"),false,false));
+        when(departments.tree()).thenReturn(List.of());
+        http.perform(get("/api/org/departments/tree")).andExpect(status().isOk());
+        http.perform(put("/api/org/departments/"+departmentId).contentType("application/json").content("{\"name\":\"unauthorized rename\"}"))
+                .andExpect(status().isForbidden());
+        verify(departments).tree();
+        org.mockito.Mockito.verify(departments,org.mockito.Mockito.never()).update(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any());
     }
 
     @Test

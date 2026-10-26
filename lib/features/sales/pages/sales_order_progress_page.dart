@@ -1,3 +1,6 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/shared/providers/native_facet_options.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 // 销售订单进度查询（订单进度查询卡）：已审订单的生产/发货进度看板。
 //
 // 2026-09-05 起列表改为 MasterDataTableView 统一表格（原进度环卡片下线）：
@@ -147,7 +150,23 @@ class SalesOrderProgressPage extends ConsumerStatefulWidget {
 }
 
 class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
-    with DraftBulkDeleteMixin<SalesOrderProgressPage> {
+    with
+        DraftBulkDeleteMixin<SalesOrderProgressPage>,
+        ScopedPagedReadViewMixin<SalesOrderProgressPage> {
+  int get _refreshPage => _tableRows.visiblePage ?? (_result?.page ?? _page);
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    ++_requestVersion;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+      _tableRows.update(const []);
+    });
+  }
+
   static const _size = 50;
 
   /// 当前选中分段；null = 未选择引导态（不发请求）。
@@ -162,6 +181,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
 
   String _keyword = '';
   int _requestVersion = 0;
+  int _stageCountsVersion = 0;
   int _page = 1;
   bool _loading = false;
   bool _cancelBusy = false;
@@ -221,6 +241,22 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   @override
   void initState() {
     super.initState();
+    listenReadOwner(
+      ref,
+      () => setState(() {
+        ++_requestVersion;
+        ++_stageCountsVersion;
+        _result = null;
+        _stageCounts = null;
+        _loading = false;
+        _error = null;
+        _page = 1;
+        _seg = null;
+        _keyword = '';
+        _columnFilters.reset();
+        clearDraftSelection();
+      }),
+    );
     // 打开即清完工徽章（已读语义）；并拉阶段计数（徽章，全量口径）。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       markSalesCompletionSeen(context);
@@ -229,51 +265,98 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   }
 
   Future<void> _loadStageCounts() async {
+    final generation = ++_stageCountsVersion;
+    final current = captureReadOwner(ref);
     try {
       final counts = await ref
           .read(salesRepositoryProvider(SalesDocType.order))
           .progressStageCounts();
-      if (mounted) setState(() => _stageCounts = counts);
+      if (current() && generation == _stageCountsVersion) {
+        setState(() => _stageCounts = counts);
+      }
     } catch (_) {
       // 计数失败静默：徽章不显示，不影响列表。
     }
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     if (!_shouldLoad) return;
     final version = ++_requestVersion;
     final seg = _seg!;
     final range = seg.history ? _historyTime.range : null;
     // 单号桶随列表口径重取（2026-09-25 单号列统一）。
-    unawaited(_loadBillNoFacets());
+
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final res = await ref
-          .read(salesRepositoryProvider(SalesDocType.order))
-          .progress(
-            page: page,
-            size: _size,
-            origin: seg.history
-                ? BusinessDocumentOrigin.all
-                : BusinessDocumentOrigin.current,
-            // 历史记录 = 全部订单（含被驳回/进行中/已发货/已中止/已结案），
-            // 阶段不限（stage=''），只按日期/关键字过滤。
-            stage: _stageFilter ?? (seg.history ? '' : seg.stage!),
-            keyword: _keyword,
-            dateFrom: range == null
-                ? null
-                : ChinaDateTime.formatDate(range.start),
-            dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
-            // 2026-09-25 单号列统一：订单号/交货日排序白名单 + 订单号表头值筛选。
-            sort: _columnFilters.sortColumn,
-            order: _columnFilters.sortColumn == null
-                ? null
-                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
-            billNo: _columnFilters['billNo'],
-          );
+      final pageRepository = ref.read(
+        salesRepositoryProvider(SalesDocType.order),
+      );
+      const pageSize = _size;
+      final pageOrigin = seg.history
+          ? BusinessDocumentOrigin.all
+          : BusinessDocumentOrigin.current;
+      final pageStage = _stageFilter ?? (seg.history ? '' : seg.stage!);
+      final pageKeyword = _keyword;
+      final pageDateFrom = range == null
+          ? null
+          : ChinaDateTime.formatDate(range.start);
+      final pageDateTo = range == null
+          ? null
+          : ChinaDateTime.formatDate(range.end);
+      final pageSort = _columnFilters.sortColumn;
+      final pageOrder = _columnFilters.sortColumn == null
+          ? null
+          : (_columnFilters.sortAscending ? 'asc' : 'desc');
+      final pageBillNo = _columnFilters['billNo'];
+
+      final res = await readScopedPage(
+        page,
+        slot: '_load',
+        query: [
+          pageRepository,
+          pageSize,
+          pageOrigin,
+          pageStage,
+          pageKeyword,
+          pageDateFrom,
+          pageDateTo,
+          pageSort,
+          pageOrder,
+          pageBillNo,
+        ],
+        currentQuery: () => [
+          ref.read(salesRepositoryProvider(SalesDocType.order)),
+          _size,
+          seg.history
+              ? BusinessDocumentOrigin.all
+              : BusinessDocumentOrigin.current,
+          _stageFilter ?? (seg.history ? '' : seg.stage!),
+          _keyword,
+          range == null ? null : ChinaDateTime.formatDate(range.start),
+          range == null ? null : ChinaDateTime.formatDate(range.end),
+          _columnFilters.sortColumn,
+          _columnFilters.sortColumn == null
+              ? null
+              : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+          _columnFilters['billNo'],
+        ],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.progress(
+          page: target,
+          size: pageSize,
+          origin: pageOrigin,
+          stage: pageStage,
+          keyword: pageKeyword,
+          dateFrom: pageDateFrom,
+          dateTo: pageDateTo,
+          sort: pageSort,
+          order: pageOrder,
+          billNo: pageBillNo,
+        ),
+      );
       if (!mounted || version != _requestVersion) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || version != _requestVersion) return;
@@ -298,33 +381,6 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   }
 
   /// 订单号值筛选桶随过滤上下文重取（2026-09-25 单号列统一；失败静默保持旧桶）。
-  Future<void> _loadBillNoFacets() {
-    if (!_shouldLoad) return Future.value();
-    final seg = _seg!;
-    final range = seg.history ? _historyTime.range : null;
-    return _columnFilters.loadFacets(
-      () async => {
-        'billNo': await ref
-            .read(salesRepositoryProvider(SalesDocType.order))
-            .progressFacets(
-              origin: seg.history
-                  ? BusinessDocumentOrigin.all
-                  : BusinessDocumentOrigin.current,
-              stage: _stageFilter ?? (seg.history ? '' : seg.stage!),
-              keyword: _keyword,
-              dateFrom: range == null
-                  ? null
-                  : ChinaDateTime.formatDate(range.start),
-              dateTo: range == null
-                  ? null
-                  : ChinaDateTime.formatDate(range.end),
-            ),
-      },
-      onLoaded: () {
-        if (mounted) setState(() {});
-      },
-    );
-  }
 
   /// 服务端列筛选/排序落地后：setState 刷新表头 + 重拉回第 1 页。
   void _refilter() {
@@ -409,7 +465,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
       if (!mounted) return;
       context.appSuccess('订单已取消');
       bumpListRefresh(ref, SalesDocConfig.by(SalesDocType.order).refreshKey);
-      await _load(_page);
+      await _load(_refreshPage);
       _loadStageCounts();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -577,7 +633,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     // 嵌入态（任务中心「订货进度」大类）无独立路由落点时回退到进度页路径。
     _myLocation ??= currentLocationOr(context, RouteName.salesOrderProgress);
     ref.onPageResume(_myLocation!, () async {
-      await Future.wait([_load(_page), _loadStageCounts()]);
+      await Future.wait([_load(_refreshPage), _loadStageCounts()]);
     });
     // 主阶段 + 表格：独立页与任务中心嵌入态共用一份。
     // 嵌入态由宿主页提供容器，避免双重边距；头部空行程只在独立页留。
@@ -694,6 +750,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     }
     return _withDraftCategory(
       MasterDataTableView<SalesOrderProgressRow>(
+        expensiveRowMounts: false,
         rowsController: _tableRows,
         paginationRevision: _result,
         tableKey:
@@ -714,7 +771,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
                   delete: _deleteDraft,
                   reload: () async {
                     bumpListRefresh(ref, SalesDocConfig.order.refreshKey);
-                    await _load(_page);
+                    await _load(_refreshPage);
                     await _loadStageCounts();
                   },
                 ),
@@ -730,6 +787,38 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
           'billNo': _columnFilters.bucketOf('billNo'),
         },
         nullCounts: const {},
+        facetPageLoaders: nativeFacetLoaders(
+          ref,
+          path: '/sales/orders/progress/facets',
+          fields: const ['billNo'],
+          filters: {
+            'originScope': _seg?.history == true ? 'ALL' : 'CURRENT',
+            'stage': _stageFilter ?? (_seg?.history == true ? '' : _seg?.stage),
+            'keyword': _keyword,
+            'dateFrom': _seg?.history == true && _historyTime.range != null
+                ? ChinaDateTime.formatDate(_historyTime.range!.start)
+                : null,
+            'dateTo': _seg?.history == true && _historyTime.range != null
+                ? ChinaDateTime.formatDate(_historyTime.range!.end)
+                : null,
+          },
+        ),
+        facetSearchScope: nativeFacetSearchScope(
+          ref,
+          '/sales/orders/progress/facets',
+          {
+            'originScope': _seg?.history == true ? 'ALL' : 'CURRENT',
+            'stage': _stageFilter ?? (_seg?.history == true ? '' : _seg?.stage),
+            'keyword': _keyword,
+            'dateFrom': _seg?.history == true && _historyTime.range != null
+                ? ChinaDateTime.formatDate(_historyTime.range!.start)
+                : null,
+            'dateTo': _seg?.history == true && _historyTime.range != null
+                ? ChinaDateTime.formatDate(_historyTime.range!.end)
+                : null,
+          },
+        ),
+
         filters: {'stage': _stageFilter, 'billNo': _columnFilters['billNo']},
         onFilterChanged: (key, value) {
           if (key == 'stage') {
@@ -760,12 +849,12 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         isLoading: _loading && _result == null,
         loadingMore: _loading && _result != null,
         error: _error,
-        onRetry: () => _load(_page),
+        onRetry: () => _load(_refreshPage),
         emptyMessage: _seg!.history ? '该时间段内暂无订单' : '该阶段暂无订单',
         currentPage: _result?.page ?? 1,
         totalPages: _result?.totalPages ?? 1,
         paginationScope: (_keyword, _seg, _stageFilter, _historyTime),
-        onPageChange: _load,
+        onPageChange: (page) => _load(page, useCache: true),
       ),
     );
   }
@@ -774,6 +863,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     if (_seg?.stage != _kDraftStage) return table;
     final names = ref.watch(salesMasterNameServiceProvider);
     return FormDraftCategoryTable<SalesOrderProgressRow>(
+      localReadRevision: _requestVersion,
       scope: const FormDraftCategoryScope(kind: 'salesOrder'),
       table: table,
       localValue: (draft, key) => formDraftMasterColumnValue(

@@ -1349,23 +1349,7 @@ public class MasterRecordHistoryService {
 
   private List<Change> changes(AuthUser user, List<Fact> facts) {
     List<Change> changes = new ArrayList<>();
-    Map<String, String> names = new HashMap<>();
-    Set<UUID> people = new HashSet<>();
-    for (Fact fact : facts)
-      for (JsonNode row : Arrays.asList(fact.before(), fact.after()))
-        if (row != null)
-          for (String key :
-              List.of(
-                  "owner_employee_id",
-                  "employee_id",
-                  "keeper_id",
-                  "owning_responsible_employee_id",
-                  "grantee_employee_id",
-                  "audited_by")) {
-            UUID person = uuidField(row, key);
-            if (person != null) people.add(person);
-          }
-    employeeNames.namesWithCodeOf(people).forEach((id, name) -> names.put("employees:" + id, name));
+    Map<String, String> names = referenceNames(user, facts);
     for (Fact fact : facts) {
       if (fact.table().equals("platform_record_fields")) {
         changes.addAll(fieldChanges(user, fact));
@@ -1401,33 +1385,9 @@ public class MasterRecordHistoryService {
                   has ? had ? "新图片" : "已上传" : "未上传"));
         }
       }
-      Set<String> keys = new TreeSet<>();
-      if (fact.before() != null) fact.before().fieldNames().forEachRemaining(keys::add);
-      if (fact.after() != null) fact.after().fieldNames().forEachRemaining(keys::add);
-      for (String key : keys) {
-        if (META.contains(key) || DISPLAY_INTERNAL.contains(key)) continue;
-        if (fact.table().equals("goods") && key.equals("zk") && !has(user, "goods:discount:view"))
-          continue;
-        if (key.equals("legacy_id")
-            || key.endsWith("_legacy_id")
-            || key.equals("code_managed")
-            || key.equals("code_sequence")
-            || key.equals("code_prefix_category_id")) continue;
-        if (fact.table().equals("goods") && goodsCostField(key) && !has(user, "goods:cost:view"))
-          continue;
-        if (fact.table().equals("goods")
-            && goodsPriceField(key)
-            && !has(user, "goods:price:view")
-            && !has(user, "goods:price:edit")) continue;
-        if (fact.table().equals("goods_bom_items")
-            && Set.of("price", "total").contains(key)
-            && !has(user, "goods:cost:view")) continue;
-        if (fact.table().equals("accounts")
-            && (ACCOUNT_MONEY.contains(key) || key.contains("balance") || key.contains("amount"))
-            && !has(user, "account:balance:view")) continue;
+      for (String key : changedKeys(user, fact)) {
         JsonNode b = fact.before() == null ? null : fact.before().get(key),
             a = fact.after() == null ? null : fact.after().get(key);
-        if (sameDisplayValue(b, a)) continue;
         String fieldLabel = fieldLabel(fact.table(), key);
         if (fact.table().equals("goods_bom_items"))
           fieldLabel =
@@ -1683,6 +1643,158 @@ public class MasterRecordHistoryService {
     };
   }
 
+  /** One visibility policy drives both label prefetch and the final difference projection. */
+  private static Set<String> changedKeys(AuthUser user, Fact fact) {
+    Set<String> keys = new TreeSet<>();
+    if (fact.before() != null) fact.before().fieldNames().forEachRemaining(keys::add);
+    if (fact.after() != null) fact.after().fieldNames().forEachRemaining(keys::add);
+    keys.removeIf(key -> {
+      if (META.contains(key) || DISPLAY_INTERNAL.contains(key)) return true;
+      if (key.equals("legacy_id") || key.endsWith("_legacy_id") || key.equals("code_managed")
+          || key.equals("code_sequence") || key.equals("code_prefix_category_id")) return true;
+      if (fact.table().equals("goods")) {
+        if (key.equals("zk") && !has(user, "goods:discount:view")) return true;
+        if (goodsCostField(key) && !has(user, "goods:cost:view")) return true;
+        if (goodsPriceField(key) && !has(user, "goods:price:view") && !has(user, "goods:price:edit")) return true;
+      }
+      if (fact.table().equals("goods_bom_items") && Set.of("price", "total").contains(key)
+          && !has(user, "goods:cost:view")) return true;
+      if (fact.table().equals("accounts")
+          && (ACCOUNT_MONEY.contains(key) || key.contains("balance") || key.contains("amount"))
+          && !has(user, "account:balance:view")) return true;
+      return sameDisplayValue(fact.before() == null ? null : fact.before().get(key),
+          fact.after() == null ? null : fact.after().get(key));
+    });
+    return keys;
+  }
+
+  private record ReferenceRequest(String table, UUID id, boolean ownAccount) {
+    String key() { return referenceKey(table, id.toString(), ownAccount); }
+  }
+
+  /** Per selected command only; no cross-user cache and no full master/binary snapshots. */
+  private Map<String, String> referenceNames(AuthUser user, List<Fact> facts) {
+    Set<ReferenceRequest> requests = new LinkedHashSet<>();
+    for (Fact fact : facts) {
+      if (fact.table().equals("platform_record_fields")) continue;
+      Set<String> keys = changedKeys(user, fact);
+      if (!keys.isEmpty() && fact.table().equals("goods_bom_items"))
+        requestReference(requests, "goods", (fact.after() == null ? fact.before() : fact.after())
+            .get("component_goods_id"), false);
+      for (String key : keys) {
+        String table = referenceTable(fact.entity(), key);
+        if (table == null) continue;
+        boolean ownAccount = fact.entity().equals("accounts")
+            && Set.of("currencies", "payment_styles").contains(table);
+        requestReference(requests, table, fact.before() == null ? null : fact.before().get(key), ownAccount);
+        requestReference(requests, table, fact.after() == null ? null : fact.after().get(key), ownAccount);
+      }
+    }
+    Map<String, String> names = new HashMap<>();
+    Map<String, List<ReferenceRequest>> byTable = new LinkedHashMap<>();
+    for (ReferenceRequest request : requests) {
+      String view = referenceView(request.table());
+      if (!Set.of("employees", "departments").contains(request.table()) && !request.ownAccount()
+          && (view == null || !has(user, view + ":view"))) {
+        names.put(request.key(), "关联资料（无名称查看权限）");
+      } else byTable.computeIfAbsent(request.table(), ignored -> new ArrayList<>()).add(request);
+    }
+    for (var entry : byTable.entrySet()) {
+      String table = entry.getKey();
+      List<UUID> ids = entry.getValue().stream().map(ReferenceRequest::id).distinct().toList();
+      if (table.equals("employees") || table.equals("departments")) {
+        Map<UUID, String> values = table.equals("employees")
+            ? employeeNames.namesWithCodeOf(ids) : departmentNames.namesOf(ids);
+        String missing = table.equals("employees") ? "关联员工不可解析" : "关联部门已删除或不可解析";
+        entry.getValue().forEach(request -> names.put(request.key(), values.getOrDefault(request.id(), missing)));
+        continue;
+      }
+      var clientScope = table.equals("clients") ? clients.evaluate() : null;
+      var clientRead = table.equals("clients") ? clients.nativeReadScope("ref", clientScope) : null;
+      var goodsScope = table.equals("goods") && goodsOwnerScopeEnabled
+          ? owners.evaluate("goods", "goods:view:all") : null;
+      Map<UUID, Object[]> rows = new HashMap<>();
+      for (int start = 0; start < ids.size(); start += 256) {
+        var query = em.createNativeQuery(referenceLabelSql(table, clientRead == null ? "TRUE" : clientRead.predicate()))
+            .setParameter("ids", ids.subList(start, Math.min(start + 256, ids.size())));
+        if (clientRead != null) clientRead.bind(query);
+        for (Object[] row : com.uten.imp.common.util.NativeQueryResults.objectArrayRows(query))
+          rows.put((UUID) row[0], row);
+      }
+      for (ReferenceRequest request : entry.getValue()) {
+        Object[] row = rows.get(request.id());
+        String label = "关联资料已删除或不可解析";
+        if (row != null) {
+          boolean allowed = !table.equals("clients") || Boolean.TRUE.equals(row[5])
+              || row[4] != null && clientScope.sharedClientIds().contains(request.id());
+          if (goodsScope != null) allowed = goodsScope.seeAll() || row[4] == null || goodsScope.visibleOwners().contains((UUID) row[4]);
+          label = allowed
+              ? ((row[1] == null ? "" : row[1].toString()) + " " + (row[2] == null ? "" : row[2].toString())).strip()
+                  + (Boolean.TRUE.equals(row[3]) ? "（已删除）" : "")
+              : "关联资料（无名称查看权限）";
+        }
+        names.put(request.key(), label);
+      }
+    }
+    return names;
+  }
+
+  private static void requestReference(Set<ReferenceRequest> requests, String table, JsonNode value, boolean ownAccount) {
+    if (value == null || value.isNull()) return;
+    try { requests.add(new ReferenceRequest(table, UUID.fromString(value.asText()), ownAccount)); }
+    catch (IllegalArgumentException invalid) { /* The display path preserves the original unresolved-identity message. */ }
+  }
+
+  private static String referenceKey(String table, String id, boolean ownAccount) {
+    return table + ":" + id + (ownAccount ? ":own-account" : "");
+  }
+
+  /** Only immutable relation constants become syntax; requested ids and owner scopes are bound. */
+  private static String referenceLabelSql(String table, String readable) {
+    String relation = switch (table) {
+      case "goods" -> "goods";
+      case "clients" -> "clients";
+      case "suppliers" -> "suppliers";
+      case "colors" -> "colors";
+      case "units" -> "units";
+      case "moulds" -> "moulds";
+      case "currencies" -> "currencies";
+      case "warehouses" -> "warehouses";
+      case "accounts" -> "accounts";
+      case "payment_styles" -> "payment_styles";
+      case "settlement_methods" -> "settlement_methods";
+      case "material_categories" -> "material_categories";
+      case "client_categories" -> "client_categories";
+      case "supplier_categories" -> "supplier_categories";
+      case "mould_categories" -> "mould_categories";
+      default -> throw bad("不支持的历史资料表");
+    };
+    return "SELECT ref.id, ref.code, ref.name, COALESCE(ref.is_deleted,false), "
+        + (Set.of("clients", "goods").contains(table) ? "ref.owner_employee_id" : "NULL::uuid")
+        + ", " + readable + " AS readable FROM " + relation + " ref WHERE ref.id IN (:ids)";
+  }
+
+  private static String referenceView(String table) {
+    return switch (table) {
+      case "goods" -> "goods";
+      case "clients" -> "client";
+      case "suppliers" -> "supplier";
+      case "colors" -> "color";
+      case "units" -> "unit";
+      case "moulds" -> "mould";
+      case "currencies" -> "currency";
+      case "warehouses" -> "warehouse";
+      case "accounts" -> "account";
+      case "payment_styles" -> "payment_style";
+      case "settlement_methods" -> "settlement_method";
+      case "material_categories" -> "material_category";
+      case "client_categories" -> "client_category";
+      case "supplier_categories" -> "supplier_category";
+      case "mould_categories" -> "mould_category";
+      default -> null;
+    };
+  }
+
   private String referenceName(
       AuthUser user, String table, JsonNode value, Map<String, String> names) {
     return referenceName(user, table, value, names, false);
@@ -1695,68 +1807,11 @@ public class MasterRecordHistoryService {
       Map<String, String> names,
       boolean ownAccountReference) {
     if (value == null || value.isNull()) return "";
-    String key = table + ":" + value.asText();
-    if (names.containsKey(key)) return names.get(key);
     UUID id;
-    try {
-      id = UUID.fromString(value.asText());
-    } catch (IllegalArgumentException invalid) {
-      return "关联身份不可解析";
-    }
-    // Public relationship names use the same narrowly-scoped resolvers as
-    // normal client/supplier/mould detail, never employee HR projections.
-    if (table.equals("employees")) {
-      String label = employeeNames.nameWithCodeOf(id);
-      label = label == null ? "关联员工不可解析" : label;
-      names.put(key, label);
-      return label;
-    }
-    if (table.equals("departments")) {
-      String label = departmentNames.nameOf(id);
-      label = label == null ? "关联部门已删除或不可解析" : label;
-      names.put(key, label);
-      return label;
-    }
-    String view =
-        switch (table) {
-          case "goods" -> "goods";
-          case "clients" -> "client";
-          case "suppliers" -> "supplier";
-          case "colors" -> "color";
-          case "units" -> "unit";
-          case "moulds" -> "mould";
-          case "currencies" -> "currency";
-          case "warehouses" -> "warehouse";
-          case "accounts" -> "account";
-          case "payment_styles" -> "payment_style";
-          case "settlement_methods" -> "settlement_method";
-          case "material_categories" -> "material_category";
-          case "client_categories" -> "client_category";
-          case "supplier_categories" -> "supplier_category";
-          case "mould_categories" -> "mould_category";
-          default -> null;
-        };
-    if (!ownAccountReference && (view == null || !has(user, view + ":view")))
-      return "关联资料（无名称查看权限）";
-    JsonNode row = snapshot(table, id);
-    String label = "关联资料已删除或不可解析";
-    boolean allowed = true;
-    if (table.equals("clients") && row != null)
-      allowed =
-          has(user, "client:view")
-              && clients.canRead(id, uuidField(row, "owner_employee_id"), clients.evaluate());
-    if (table.equals("goods") && row != null && goodsOwnerScopeEnabled) {
-      var scope = owners.evaluate("goods", "goods:view:all");
-      UUID owner = uuidField(row, "owner_employee_id");
-      allowed = scope.seeAll() || owner == null || scope.visibleOwners().contains(owner);
-    }
-    if (row != null && allowed)
-      label =
-          (row.path("code").asText("") + " " + row.path("name").asText("")).strip()
-              + (row.path("is_deleted").asBoolean() ? "（已删除）" : "");
-    if (!allowed) label = "关联资料（无名称查看权限）";
-    names.put(key, label);
-    return label;
+    try { id = UUID.fromString(value.asText()); }
+    catch (IllegalArgumentException invalid) { return "关联身份不可解析"; }
+    return names.getOrDefault(referenceKey(table, id.toString(), ownAccountReference),
+        "关联资料已删除或不可解析");
   }
 
   private List<Fact> command(Fact selected) {

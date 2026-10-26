@@ -8,9 +8,19 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/widgets/commercial_terms_batch_sheet.dart';
+
+class _Owner extends Notifier<AuthenticatedScope?> {
+  @override
+  AuthenticatedScope? build() => const AuthenticatedScope(userId: 'A');
+  void change(String id) => state = AuthenticatedScope(userId: id);
+}
+
+final _owner = NotifierProvider<_Owner, AuthenticatedScope?>(_Owner.new);
 
 /// 主档名称服务用空字典 ApiClient 覆盖（避免依赖 sharedPreferences）。
 ApiClient _stubApi() {
@@ -30,6 +40,37 @@ ApiClient _stubApi() {
 }
 
 void main() {
+  testWidgets(
+    'A-B-A keeps typed terms local and cannot apply them as a new reader',
+    (tester) async {
+      final portal = GlobalKey<_SheetHostState>();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            masterNameServiceProvider.overrideWithValue(
+              MasterNameService(_stubApi()),
+            ),
+            authenticatedScopeProvider.overrideWith((ref) => ref.watch(_owner)),
+          ],
+          child: MaterialApp(home: _SheetHost(key: portal)),
+        ),
+      );
+      await portal.currentState!.openPanel(tester);
+      await tester.enterText(find.widgetWithText(TextField, '税率(%)'), '13');
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(_SheetHost)),
+      );
+      container.read(_owner.notifier).change('B');
+      await tester.pump();
+      container.read(_owner.notifier).change('A');
+      await tester.pump();
+      expect(find.text('13'), findsOneWidget);
+      await tester.tap(find.text('应用到选中行'));
+      await tester.pumpAndSettle();
+      expect(await portal.currentState!.result, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('填税率后应用，留空项返回 null（保持各行原值）', (tester) async {
     final portal = GlobalKey<_SheetHostState>();
     final api = _stubApi();
@@ -44,7 +85,18 @@ void main() {
     await portal.currentState!.openPanel(tester);
 
     expect(find.text('统一设置 2 行商业条款'), findsOneWidget);
-    expect(find.textContaining('留空的项保持各行原值'), findsOneWidget);
+    const guidance = '留空的项保持各行原值；保存时按「供应商+条款组合」自动拆单。';
+    expect(find.textContaining('留空的项保持各行原值'), findsNothing);
+    final headingHint = find.byWidgetPredicate(
+      (widget) => widget is UtenFieldHintIcon && widget.info == guidance,
+    );
+    expect(headingHint, findsOneWidget);
+    await tester.tap(headingHint);
+    await tester.pumpAndSettle();
+    expect(find.text(guidance), findsOneWidget);
+    Tooltip.dismissAllToolTips();
+    await tester.pumpAndSettle();
+    expect(find.text(guidance), findsNothing);
     // 汇率输入已撤（2026-10-10 口径），面板不再出现汇率字段。
     expect(find.text('汇率'), findsNothing);
 

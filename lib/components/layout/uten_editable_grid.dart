@@ -2673,6 +2673,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
         ? rows.length
         : _autoGrowSampleSize;
     if (sample == 0) return;
+    // Keep time-sliced shaping off the presented geometry. Updating widths on
+    // every slice relayouts every mounted row while the user is scrolling.
+    final fittedWidths = List<double>.of(_widths);
     var columnIndex = 0;
     var rowIndex = 0;
     void measure(Duration _) {
@@ -2687,9 +2690,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
       }
       final clock = Stopwatch()..start();
       var cells = 0;
-      var changed = false;
       while (columnIndex < columns.length &&
-          columnIndex < _widths.length &&
+          columnIndex < fittedWidths.length &&
           cells < 32 &&
           (cells == 0 || clock.elapsed < const Duration(milliseconds: 2))) {
         final column = columns[columnIndex];
@@ -2700,28 +2702,36 @@ class _UtenEditableGridState<T extends EditableGridRow>
           continue;
         }
         final next = _growOnly(
-          _widths[columnIndex],
+          fittedWidths[columnIndex],
           _measureText(read(rows[rowIndex]), style, scaler) +
               _cellChromeX +
               chromeWidths[columnIndex] +
               _autoGrowBuffer,
         );
         cells++;
-        if (next > _widths[columnIndex]) {
-          _widths[columnIndex] = next;
-          changed = true;
-        }
+        fittedWidths[columnIndex] = next;
         if (++rowIndex >= sample) {
           columnIndex++;
           rowIndex = 0;
         }
       }
       debugUiWorkSliceObserver?.call('grid.auto-fit-batch', clock.elapsed);
-      if (changed) setState(() {});
-      if (columnIndex < columns.length && columnIndex < _widths.length) {
+      if (columnIndex < columns.length && columnIndex < fittedWidths.length) {
         WidgetsBinding.instance.addPostFrameCallback(measure);
         WidgetsBinding.instance.ensureVisualUpdate();
+        return;
       }
+      var changed = false;
+      for (var i = 0; i < columns.length && i < _widths.length; i++) {
+        // A manual resize or live input may arrive during sampling. Respect
+        // those current widths instead of overwriting them with old geometry.
+        if (_manualResized.contains(columns[i].key)) continue;
+        final next = _growOnly(_widths[i], fittedWidths[i]);
+        if (next <= _widths[i]) continue;
+        _widths[i] = next;
+        changed = true;
+      }
+      if (changed) setState(() {});
     }
 
     WidgetsBinding.instance.addPostFrameCallback(measure);
@@ -3638,7 +3648,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
         !editMode &&
         widget.showRemoveRowsAction &&
         (widget.showAddRow || widget.onRemoveRows != null);
-    if (widget.showColumnSettings ||
+    if (_platform.error != null ||
+        widget.showColumnSettings ||
         widget.batchActionsBuilder != null ||
         widget.toolbarActions.isNotEmpty ||
         hasSelectAll ||
@@ -3661,6 +3672,13 @@ class _UtenEditableGridState<T extends EditableGridRow>
               // 默认的 start 会让矮按钮顶在上沿，看起来像没对齐。
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
+                if (_platform.error != null)
+                  PlatformTableStatus(
+                    error: _platform.error,
+                    retry: _platform.retryRead,
+                    loading: _platform.loading,
+                    failure: _platform.readFailure,
+                  ),
                 if (widget.showColumnSettings)
                   UtenColumnChooserButton(
                     entries: [

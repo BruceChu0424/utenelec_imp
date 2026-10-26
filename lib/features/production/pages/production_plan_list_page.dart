@@ -11,6 +11,7 @@ import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 // 路径写死（待用户在 route_names.dart 加 RouteName.production* 后替换）。
 import 'dart:async';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -197,10 +198,36 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
   /// 分段计数范围(2026-09-21 用户口径: 父分类 hub 卡有草稿红徽章, 子分类也要有数)。
   static const _statusScope = DocumentStatusScope(DraftDocKind.productionPlan);
 
-  Future<void> _reload([int? page, bool silent = false]) =>
-      trackRefresh(_reloadRows(page, silent), replaceKey: 'rows');
+  List<Object?> get _pageQueryScope => [
+    _list.normalizedKeyword,
+    _list.sortKey,
+    _list.sortAsc,
+    _statusFilter,
+    _historyMode,
+    _historyTime,
+    _historyTime.range?.start,
+    _historyTime.range?.end,
+    _workshopIdFilter,
+  ];
 
-  Future<void> _reloadRows([int? page, bool silent = false]) async {
+  Future<void> _navigatePage(int page) => _reload(page, false, true);
+
+  Future<void> _reload([
+    int? page,
+    bool silent = false,
+    bool useCachedPage = false,
+  ]) => trackRefresh(
+    _reloadRows(page, silent, useCachedPage),
+    replaceKey: 'rows',
+  );
+
+  Future<void> _reloadRows([
+    int? page,
+    bool silent = false,
+    bool useCachedPage = false,
+  ]) async {
+    final cacheQuery = _pageQueryScope;
+    final ownerCurrent = captureReadOwner(ref);
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
     ref.invalidate(documentStatusCountsProvider(_statusScope));
     if (!_statusFilterSelected || (_historyMode && _historyTime.isNone)) {
@@ -218,7 +245,16 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
       silent: silent,
       fetch: _fetch,
       fetchPage: _fetch,
-      isCurrent: captureReadOwner(ref),
+      useCachedPage: useCachedPage,
+      canPrefetch: () =>
+          mounted &&
+          TickerMode.valuesOf(context).enabled &&
+          (ModalRoute.of(context)?.isCurrent ?? true),
+      queryScope: cacheQuery,
+      isCurrent: () =>
+          mounted &&
+          ownerCurrent() &&
+          const DeepCollectionEquality().equals(cacheQuery, _pageQueryScope),
     );
     if (!mounted || _selectedIds.isEmpty) return;
     final draftIds = {
@@ -516,15 +552,17 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
             UtenButton(
               type: UtenButtonType.secondary,
               icon: Icons.fact_check_outlined,
-              onPressed: () =>
-                  context.push(RouteName.productionOverproductionRateRequests),
+              onPressed: () => pushPage(
+                context,
+                RouteName.productionOverproductionRateRequests,
+              ),
               child: const Text('超产比例审批'),
             ),
             UtenButton(
               type: UtenButtonType.secondary,
               icon: Icons.inventory_2_outlined,
               onPressed: () =>
-                  context.push(RouteName.productionOverLimitDispositions),
+                  pushPage(context, RouteName.productionOverLimitDispositions),
               child: const Text('超限产出处置'),
             ),
           ],
@@ -624,7 +662,7 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
                         _statusFilter,
                         _workshopIdFilter,
                       ),
-                      onPageChange: (p) => _reload(p),
+                      onPageChange: _navigatePage,
                     ),
                   ),
                 );

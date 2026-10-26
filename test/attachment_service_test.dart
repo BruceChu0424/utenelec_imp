@@ -3,10 +3,103 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
 import 'package:uten_imp/shared/attachments/attachment_service.dart';
 
 void main() {
+  for (final testCase in [
+    (size: 4, hash: null, label: 'truncated original'),
+    (
+      size: 3,
+      hash: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+      label: 'same-size corrupt original',
+    ),
+  ]) {
+    test('download rejects ${testCase.label} before preview or save', () async {
+      final dio = Dio(BaseOptions(baseUrl: 'https://office.example/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: request.path.endsWith('/download-grant')
+                    ? {'url': '/attachments/raw/object'}
+                    : [1, 2, 3],
+              ),
+            );
+          },
+        ),
+      );
+      final service = AttachmentService(ApiClient(dio));
+      final attachment = Attachment(
+        id: 'id',
+        ownerType: 'COMPANY_FILE',
+        ownerId: 'owner',
+        storageKey: 'object',
+        originalName: '原件.txt',
+        sizeBytes: testCase.size,
+        sha256: testCase.hash,
+      );
+      await expectLater(
+        service.downloadBytes(attachment),
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.code,
+            'code',
+            'ATTACHMENT_INTEGRITY_MISMATCH',
+          ),
+        ),
+      );
+    });
+  }
+
+  for (final url in [
+    '//outside.example/collect',
+    '/attachments/raw/../settings',
+    '/attachments/raw/%2e%2e',
+    '/settings/private',
+  ]) {
+    test(
+      'invalid grant $url never reaches the authenticated raw client',
+      () async {
+        final dio = Dio(BaseOptions(baseUrl: 'https://office.example/api'));
+        var requests = 0;
+        dio.interceptors.add(
+          InterceptorsWrapper(
+            onRequest: (request, handler) {
+              requests++;
+              expect(request.path, '/attachments/id/download-grant');
+              handler.resolve(
+                Response<dynamic>(
+                  requestOptions: request,
+                  statusCode: 200,
+                  data: {'url': url},
+                ),
+              );
+            },
+          ),
+        );
+        final service = AttachmentService(ApiClient(dio));
+        const attachment = Attachment(
+          id: 'id',
+          ownerType: 'COMPANY_FILE',
+          ownerId: 'owner',
+          storageKey: 'object',
+          originalName: '原件.txt',
+          sizeBytes: 3,
+        );
+        await expectLater(
+          service.downloadBytes(attachment),
+          throwsFormatException,
+        );
+        expect(requests, 1);
+      },
+    );
+  }
+
   test(
     'local upload uses /api raw endpoint and sends the bound upload token',
     () async {
@@ -191,6 +284,8 @@ void main() {
         storageKey: 'fixed.png',
         originalName: 'receipt.png',
         sizeBytes: 3,
+        sha256:
+            '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
       );
 
       expect(

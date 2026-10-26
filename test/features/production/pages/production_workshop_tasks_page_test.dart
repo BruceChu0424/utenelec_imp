@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 import 'package:dio/dio.dart';
 import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
@@ -1197,6 +1199,62 @@ void batchBusyOverlayTests() {
     return plans;
   }
 
+  testWidgets(
+    'workshop readiness projection sorts every replacement page and respects server sort mode',
+    (tester) async {
+      PagedResult<ProductionExecutionWorkbenchSegment>? raw;
+      await mountReady(
+        tester,
+        repository: _repository(
+          withWaitingRow: true,
+          capturePage: (page) => raw = page,
+        ),
+      );
+      final finder = find.byWidgetPredicate(
+        (widget) =>
+            widget is MasterDataTableView<ProductionExecutionWorkbenchSegment>,
+      );
+      MasterDataTableView<ProductionExecutionWorkbenchSegment> table() =>
+          tester.widget(finder);
+      expect(readWindowBindingOf(table().items), isNotNull);
+      final source = raw!;
+      final first = source.items.singleWhere(
+        (row) => row.segmentId == 'segment-a',
+      );
+      final waiting = source.items.singleWhere(
+        (row) => row.segmentId == 'segment-c',
+      );
+      final session =
+          PagedReadWindowSession<ProductionExecutionWorkbenchSegment>(
+            isCurrent: () => true,
+          );
+      addTearDown(session.invalidate);
+      session.bindResult(
+        source,
+        replacementPages: {
+          1: [waiting, first],
+        },
+      );
+      table().onSelectedIdsChanged!({});
+      await tester.pumpAndSettle();
+      final binding = readWindowBindingOf(table().items)!;
+      expect(binding.projectionKey, (
+        'workshop-preparing-readiness',
+        true,
+        null,
+      ));
+      expect(binding.replacementPages![1]!.map((row) => row.segmentId), [
+        'segment-a',
+        'segment-c',
+      ]);
+      table().onSortChange!('segment', true);
+      await tester.pumpAndSettle();
+      expect(readWindowBindingOf(table().items), isNotNull);
+      expect(readWindowBindingOf(table().items)!.projectionKey, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   /// 遮罩里的转圈是无限动画: 只要它在屏上, pumpAndSettle 永不收敛, 只能定量推帧。
   Future<void> pumpFrames(WidgetTester tester, [int frames = 4]) async {
     for (var i = 0; i < frames; i++) {
@@ -1370,29 +1428,38 @@ void batchBusyOverlayTests() {
     },
   );
 
-  testWidgets('returning to the page clears a stuck busy overlay', (
-    tester,
-  ) async {
-    final plans = await mountReady(tester);
-    plans.startGate = Completer<void>();
-    await tester.tap(find.text('批量开工(1)'));
-    await pumpFrames(tester);
-    expect(find.byKey(const Key('workshop-batch-start-busy')), findsOneWidget);
+  testWidgets(
+    'returning preserves the in-flight batch write until its response',
+    (tester) async {
+      final plans = await mountReady(tester);
+      plans.startGate = Completer<void>();
+      await tester.tap(find.text('批量开工(1)'));
+      await pumpFrames(tester);
+      expect(
+        find.byKey(const Key('workshop-batch-start-busy')),
+        findsOneWidget,
+      );
 
-    // 日报页 replace 吃掉 push completer 那一类路径会让 finally 走不到。
-    final notifier = ProviderScope.containerOf(
-      tester.element(find.byType(ProductionWorkshopTasksPage)),
-    ).read(pageResumeProvider.notifier);
-    bumpPageResumeState(notifier, '/production/daily-reports/new');
-    bumpPageResumeState(notifier, RouteName.productionWorkshopTasks);
-    await pumpFrames(tester);
-    expect(find.byKey(const Key('workshop-batch-start-busy')), findsNothing);
+      // Navigation return must not retire a pending business write or replay it.
+      final notifier = ProviderScope.containerOf(
+        tester.element(find.byType(ProductionWorkshopTasksPage)),
+      ).read(pageResumeProvider.notifier);
+      bumpPageResumeState(notifier, '/production/daily-reports/new');
+      bumpPageResumeState(notifier, RouteName.productionWorkshopTasks);
+      await pumpFrames(tester);
+      expect(
+        find.byKey(const Key('workshop-batch-start-busy')),
+        findsOneWidget,
+      );
+      expect(plans.startedPlanIds, isEmpty);
 
-    plans.startGate!.complete();
-    await pumpFrames(tester, 8);
-    expect(find.byKey(const Key('workshop-batch-start-busy')), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+      plans.startGate!.complete();
+      await pumpFrames(tester, 8);
+      expect(find.byKey(const Key('workshop-batch-start-busy')), findsNothing);
+      expect(plans.startedPlanIds, hasLength(1));
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 void routeConfirmationTests() {
@@ -2514,6 +2581,7 @@ ProductionExecutionWorkbenchRepository _repository({
   bool cCanRecheck = true,
   bool aCanBatchReport = true,
   String? aStatus,
+  void Function(PagedResult<ProductionExecutionWorkbenchSegment>)? capturePage,
 }) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
@@ -2618,7 +2686,10 @@ ProductionExecutionWorkbenchRepository _repository({
       },
     ),
   );
-  return ProductionExecutionWorkbenchRepository(ApiClient(dio));
+  final api = ApiClient(dio);
+  return capturePage == null
+      ? ProductionExecutionWorkbenchRepository(api)
+      : _ProjectionWorkshopRepository(api, capturePage);
 }
 
 Map<String, dynamic> _task(
@@ -3213,5 +3284,46 @@ void discoveryMaterialTests() {
         expect(tester.takeException(), isNull);
       },
     );
+  }
+}
+
+class _ProjectionWorkshopRepository
+    extends ProductionExecutionWorkbenchRepository {
+  _ProjectionWorkshopRepository(super.api, this.capture);
+  final void Function(PagedResult<ProductionExecutionWorkbenchSegment>)?
+  capture;
+  @override
+  Future<PagedResult<ProductionExecutionWorkbenchSegment>> workshopTasks({
+    int page = 1,
+    int size = 50,
+    String keyword = '',
+    String? status,
+    String? preparationFilter,
+    String? routeFilter,
+    String? workshopDepartmentId,
+    String? dateFrom,
+    String? dateTo,
+    String? analysisNo,
+    String? segmentCode,
+    String? sort,
+    String? order,
+  }) async {
+    final result = await super.workshopTasks(
+      page: page,
+      size: size,
+      keyword: keyword,
+      status: status,
+      preparationFilter: preparationFilter,
+      routeFilter: routeFilter,
+      workshopDepartmentId: workshopDepartmentId,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+      analysisNo: analysisNo,
+      segmentCode: segmentCode,
+      sort: sort,
+      order: order,
+    );
+    capture?.call(result);
+    return result;
   }
 }

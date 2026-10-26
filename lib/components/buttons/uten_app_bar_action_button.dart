@@ -42,6 +42,8 @@ class UtenAppBarActionButton extends StatelessWidget {
 
   /// Return the real request Future so the header can show pending feedback
   /// and prevent another click until completion.
+  /// Navigation-only links use the synchronous pushPage helper. Child flows
+  /// that need a result or return cleanup use their owner's PageNavigationSession.
   final FutureOr<void> Function()? onPressed;
   final FutureOr<void> Function()? onLongPress;
 

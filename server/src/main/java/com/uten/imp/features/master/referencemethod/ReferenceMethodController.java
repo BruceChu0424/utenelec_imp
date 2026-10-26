@@ -60,13 +60,20 @@ public class ReferenceMethodController {
     @GetMapping("/settlement-admin")
     @PreAuthorize("hasAuthority('settlement_method:view')")
     public List<SettlementMethodAdminItem> settlementAdmin(
+            @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String systemRole,
             @RequestParam(required = false) String termsBase,
             @RequestParam(required = false) String dueRule,
             @RequestParam(required = false) Set<String> nullFields) {
         return service.settlementAdminList(
-                new SettlementMethodAdminQueryFilter(status, systemRole, termsBase, dueRule, nullFields));
+                new SettlementMethodAdminQueryFilter(status, systemRole, termsBase, dueRule, nullFields, keyword));
+    }
+
+    @PreAuthorize("hasAuthority('settlement_method:view')")
+    public List<SettlementMethodAdminItem> settlementAdmin(String status,String systemRole,String termsBase,
+                                                        String dueRule,Set<String> nullFields) {
+        return settlementAdmin(null,status,systemRole,termsBase,dueRule,nullFields);
     }
 
     /** 结算方式表头筛选桶：各可筛字段 distinct + 空值计数（权限同列表）。 */
@@ -76,11 +83,27 @@ public class ReferenceMethodController {
         return service.settlementAdminFacets();
     }
 
+    /** Bounded counterpart of the complete small-dictionary compatibility route. */
+    @GetMapping("/settlement-admin/page")
+    @PreAuthorize("hasAuthority('settlement_method:view')")
+    public com.uten.imp.common.web.PageResponse<SettlementMethodAdminItem> settlementAdminPage(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String systemRole,
+            @RequestParam(required = false) String termsBase,
+            @RequestParam(required = false) String dueRule,
+            @RequestParam(required = false) Set<String> nullFields,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "100") int size) {
+        return service.settlementAdminPage(new SettlementMethodAdminQueryFilter(status,systemRole,termsBase,dueRule,nullFields,keyword), page,size);
+    }
+
     // ---------- 加密 Excel 导出（POST，密码走 body；过滤参数与 GET /settlement-admin 一致；V717） ----------
 
     @PostMapping("/settlement-admin/export")
     @PreAuthorize("hasAuthority('settlement_method:export')")
     public ResponseEntity<byte[]> exportSettlementAdmin(
+            @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String systemRole,
             @RequestParam(required = false) String termsBase,
@@ -88,7 +111,7 @@ public class ReferenceMethodController {
             @RequestParam(required = false) Set<String> nullFields,
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.exportSettlementAdmin(
-                new SettlementMethodAdminQueryFilter(status, systemRole, termsBase, dueRule, nullFields),
+                new SettlementMethodAdminQueryFilter(status, systemRole, termsBase, dueRule, nullFields, keyword),
                 exportLimits.exportMaxRows());
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_settlement_method");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

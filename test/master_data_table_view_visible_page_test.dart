@@ -23,6 +23,7 @@ class _Harness extends StatefulWidget {
     this.leadingContent = false,
     this.maxRetainedPages = 5,
     this.selectable = false,
+    this.totalPages = 5,
   });
 
   final bool primary;
@@ -33,6 +34,7 @@ class _Harness extends StatefulWidget {
   final bool leadingContent;
   final int maxRetainedPages;
   final bool selectable;
+  final int totalPages;
 
   @override
   State<_Harness> createState() => _HarnessState();
@@ -87,7 +89,7 @@ class _HarnessState extends State<_Harness> {
             idOf: _id,
             itemBuilder: (_, row) => _cell(row),
             currentPage: page,
-            totalPages: 5,
+            totalPages: widget.totalPages,
             onPageChange: load,
             paginationScope: scope,
             paginationRevision: items,
@@ -130,7 +132,7 @@ class _HarnessState extends State<_Harness> {
             filters: const {},
             onFilterChanged: (_, _) {},
             currentPage: page,
-            totalPages: 5,
+            totalPages: widget.totalPages,
             onPageChange: load,
             paginationScope: scope,
             paginationRevision: items,
@@ -262,8 +264,8 @@ void main() {
     ], reason: 'scrolling does not submit typed pages');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    expect(host.requests, [2, 3, 4]);
-    expect(host.rows.items, _rowsFor('A', 4));
+    expect(host.requests, [2, 3, 4, 3]);
+    expect(host.rows.items, [..._rowsFor('A', 3), ..._rowsFor('A', 4)]);
     _expectPage(tester, 4);
 
     await tester.enterText(find.byType(TextFormField), '5');
@@ -276,6 +278,7 @@ void main() {
       2,
       3,
       4,
+      3,
     ], reason: 'blurring an edit restores visible page');
     expect(tester.takeException(), isNull);
   });
@@ -327,7 +330,7 @@ void main() {
       _expectPage(tester, 3);
       await _lookAtPage(tester, 2, forward: false);
       _expectPage(tester, 2);
-      expect(host.requests, [2, 3, 4, 2]);
+      expect(host.requests, [2, 3, 4, 2, 1]);
       expect(host.rows.items, contains('A-page-1-row-0'));
       expect(tester.takeException(), isNull);
     },
@@ -352,6 +355,7 @@ void main() {
           withIdentity: mode != 'values',
           variableHeight: mode == 'variable-zoom',
           zoom: mode == 'variable-zoom' ? 1.5 : 1,
+          totalPages: 3,
         ),
       );
       await tester.pumpAndSettle();
@@ -385,7 +389,7 @@ void main() {
     tester,
   ) async {
     final key = GlobalKey<_HarnessState>();
-    await tester.pumpWidget(_Harness(key: key));
+    await tester.pumpWidget(_Harness(key: key, totalPages: 3));
     await tester.pumpAndSettle();
     await tester.tap(find.text('全屏'));
     await tester.pumpAndSettle();
@@ -422,14 +426,19 @@ void main() {
     _expectPage(tester, 1);
     await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pumpAndSettle();
-    expect(host.requests.last, 2, reason: 'next follows visible page 1');
-    expect(host.rows.items, _rowsFor('A', 2));
+    expect(
+      host.requests,
+      [2, 3, 1, 2, 3, 2, 1],
+      reason: 'next follows visible page 1 and seeds its previous buffer',
+    );
+    expect(host.rows.items, [..._rowsFor('A', 1), ..._rowsFor('A', 2)]);
+    _expectPage(tester, 2);
 
     await tester.enterText(find.byType(TextFormField), '4');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    expect(host.requests.last, 4);
-    expect(host.rows.items, _rowsFor('A', 4));
+    expect(host.requests, [2, 3, 1, 2, 3, 2, 1, 4, 3]);
+    expect(host.rows.items, [..._rowsFor('A', 3), ..._rowsFor('A', 4)]);
     _expectPage(tester, 4);
     expect(tester.takeException(), isNull);
   });

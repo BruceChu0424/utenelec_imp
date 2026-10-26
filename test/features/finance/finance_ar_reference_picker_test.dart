@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -160,7 +161,7 @@ void main() {
       await _selectAndFillFirst(tester, '7.0001');
 
       await _wheelAtLedgerBottom(tester, api);
-      expect(api.pages, [1, 2]);
+      expect(api.pages, [1, 2, 2]);
       expect(
         find.byKey(const ValueKey('ar-ap-select-ledger-51')),
         findsNothing,
@@ -188,10 +189,10 @@ void main() {
 
       // A further wheel while an error is displayed must not retry in a loop.
       await _wheelAtLedgerBottom(tester, api);
-      expect(api.pages, [1, 2]);
+      expect(api.pages, [1, 2, 2]);
       await tester.tap(find.text('重试'));
       await tester.pumpAndSettle();
-      expect(api.pages, [1, 2, 2]);
+      expect(api.pages, [1, 2, 2, 2]);
       expect(
         find.byKey(const ValueKey('ar-ap-select-ledger-51')),
         findsOneWidget,
@@ -203,6 +204,32 @@ void main() {
       expect(applied, hasLength(1));
       expect(applied!.single.ledgerId, 'ledger-1');
       expect(applied!.single.receiptAmountText, '7.0001');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'AR speculative denial retires private rows while keeping raw local amount',
+    (tester) async {
+      final gate = Completer<void>();
+      final api = _PagedArReferenceApi()
+        ..nextGate = gate
+        ..denyNext = true;
+      await _openPagedPicker(tester, api, (_) {});
+      await _selectAndFillFirst(tester, '12.3400');
+      final controller = tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('ar-ap-amount-ledger-1')),
+          )
+          .controller!;
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('ar-ap-select-ledger-1')), findsNothing);
+      expect(find.byKey(const ValueKey('ar-ap-confirm')), findsNothing);
+      expect(find.text('picker read revoked'), findsOneWidget);
+      expect(controller.text, '12.3400');
+      await tester.pump(const Duration(seconds: 1));
+      expect(api.pages, [1, 2]);
       expect(tester.takeException(), isNull);
     },
   );
@@ -302,7 +329,7 @@ Future<void> _openPagedPicker(
   );
   await tester.tap(find.text('打开引用'));
   await tester.pumpAndSettle();
-  expect(api.pages, [1]);
+  expect(api.pages, [1, 2], reason: 'next DTO is prepared before any scroll');
 }
 
 Future<void> _selectAndFillFirst(
@@ -354,8 +381,9 @@ Future<void> _wheelAtLedgerBottom(
   expect(position.extentAfter, lessThanOrEqualTo(0.5));
   expect(
     api.pages,
-    beforeWheel,
-    reason: 'Only continued user scrolling loads the next page',
+    api.failPageTwoOnce && beforeWheel.length == 2 ? [1, 2, 2] : beforeWheel,
+    reason:
+        'At most the missing prepared DTO is retried on reaching the boundary',
   );
   await tester.sendEventToBinding(
     PointerScrollEvent(
@@ -375,7 +403,9 @@ class _PagedArReferenceApi extends _ArReferenceApi {
         },
       );
   final bool failPageTwoOnce;
-  bool _failed = false;
+  Completer<void>? nextGate;
+  bool denyNext = false;
+  int _failed = 0;
   final pages = <int>[];
 
   @override
@@ -386,8 +416,11 @@ class _PagedArReferenceApi extends _ArReferenceApi {
     if (path != '/finance/ar-ap') return super.get(path, query: query);
     final page = (query?['page'] as num?)?.toInt() ?? 1;
     pages.add(page);
-    if (page == 2 && failPageTwoOnce && !_failed) {
-      _failed = true;
+    if (page == 2 && nextGate != null) await nextGate!.future;
+    if (page == 2 && denyNext)
+      throw ApiException('FORBIDDEN', 'picker read revoked', httpStatus: 403);
+    if (page == 2 && failPageTwoOnce && _failed < 2) {
+      _failed++;
       throw NetworkException();
     }
     final template = await super.get(path, query: query);

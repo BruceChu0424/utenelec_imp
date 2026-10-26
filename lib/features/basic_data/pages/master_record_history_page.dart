@@ -1,3 +1,10 @@
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import '../../../shared/paging/cursor_paged_read_adapter.dart';
+import '../../../shared/paging/paged_query_identity.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../repositories/master_record_history_repository.dart'
+    as history
+    show MasterRecordHistoryPage;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,7 +51,9 @@ class MasterRecordHistoryPage extends ConsumerStatefulWidget {
 }
 
 class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
-    with NativeReadViewScopeMixin<MasterRecordHistoryPage> {
+    with
+        NativeReadViewScopeMixin<MasterRecordHistoryPage>,
+        ScopedPagedReadViewMixin<MasterRecordHistoryPage> {
   late String _entity =
       masterHistoryViewPermissions.containsKey(widget.entityType)
       ? widget.entityType!
@@ -61,7 +70,30 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
 
   /// 修改日期门控；默认近三个月（2026-10-24 用户口径，与全站历史段一致）。
   UtenHistoryTimeValue _time = UtenHistoryTimeValue.lastThreeMonths();
-  final Map<int, String?> _cursors = {1: null};
+  final _cursorPages =
+      CursorPagedReadAdapter<
+        MasterRecordRevision,
+        history.MasterRecordHistoryPage,
+        String
+      >();
+  int _requestedPage = 1;
+
+  Object _cursorQuery() {
+    final range = _time.range;
+    return [
+      ref.read(masterRecordHistoryRepositoryProvider),
+      _query,
+      range == null ? null : ChinaDateTime.formatDate(range.start),
+      range == null ? null : ChinaDateTime.formatDate(range.end),
+    ];
+  }
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _clear();
+    if (mounted) setState(() => _error = scopedPagedReadRejection?.message);
+  }
+
   List<MasterRecordRevision> _rows = const [];
   String? _nextCursor;
   int _page = 1;
@@ -108,6 +140,7 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
 
   @override
   void dispose() {
+    _cursorPages.invalidate();
     if (widget.changeSignal == null) _changes.dispose();
     super.dispose();
   }
@@ -142,15 +175,15 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
   }
 
   void _clear() {
+    invalidateScopedPageReads();
     _epoch++;
     if (!mounted) return;
     setState(() {
       _rows = const [];
       _loading = false;
       _error = null;
-      _cursors
-        ..clear()
-        ..[1] = null;
+      _cursorPages.invalidate();
+      _requestedPage = 1;
       _nextCursor = null;
       _page = 1;
     });
@@ -163,49 +196,85 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
   @override
   Future<void> nativeReadReload() => _load(reset: true);
 
-  Future<void> _load({bool reset = false, int? page}) async {
+  Future<void> _load({
+    bool reset = false,
+    int? page,
+    bool useCache = false,
+  }) async {
     if (reset) {
-      _cursors
-        ..clear()
-        ..[1] = null;
       page = 1;
+      _cursorPages.invalidate();
     }
     final target = page ?? _page;
-    if (!_cursors.containsKey(target)) return;
+    _requestedPage = target;
     final accepts = captureNativeRead(_query, () => _query);
     if (!accepts()) return;
     final epoch = ++_epoch;
     setState(() {
       _loading = true;
       _error = null;
-      _rows = const [];
+      if (reset) _rows = const [];
     });
+    final repository = ref.read(masterRecordHistoryRepositoryProvider);
+    final scope = _cursorQuery();
+    final range = _time.range;
+    final entity = _entity == 'all' ? null : _entity,
+        record = _record,
+        category = _category,
+        action = _action;
+    final actor = _actor.trim().isEmpty ? null : _actor.trim(),
+        keyword = _keyword.trim().isEmpty ? null : _keyword.trim();
+    final from = range == null ? null : ChinaDateTime.formatDate(range.start),
+        to = range == null ? null : ChinaDateTime.formatDate(range.end);
+    final owner = captureNativeOwnership(),
+        readerEpoch = ref.read(exportContextEpochProvider);
+    bool current() =>
+        mounted &&
+        owner() &&
+        readerEpoch == ref.read(exportContextEpochProvider) &&
+        samePagedReadQuery(scope, _cursorQuery());
+    _cursorPages.bind([readerEpoch, scope], reset: reset);
     try {
-      final range = _time.range;
-      final response = await ref
-          .read(masterRecordHistoryRepositoryProvider)
-          .list(
-            entityType: _entity == 'all' ? null : _entity,
-            recordId: _record,
-            categoryId: _category,
-            action: _action,
-            actorKeyword: _actor.trim().isEmpty ? null : _actor.trim(),
-            keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
-            dateFrom: range == null
-                ? null
-                : ChinaDateTime.formatDate(range.start),
-            dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
-            cursor: _cursors[target],
-          );
+      final cached = await readScopedPage<MasterRecordRevision>(
+        target,
+        slot: 'master-history',
+        query: scope,
+        currentQuery: _cursorQuery,
+        useCache: useCache && !reset,
+        isCurrent: current,
+        fetchPage: (ordinal) => _cursorPages.fetch(
+          ordinal,
+          fetch: (cursor) => repository.list(
+            entityType: entity,
+            recordId: record,
+            categoryId: category,
+            action: action,
+            actorKeyword: actor,
+            keyword: keyword,
+            dateFrom: from,
+            dateTo: to,
+            cursor: cursor,
+          ),
+          rowsOf: (response) => response.entries,
+          nextCursorOf: (response) => response.nextCursor,
+          isCurrent: current,
+        ),
+      );
+      final snapshot =
+          cached
+              as CursorReadSnapshot<
+                MasterRecordRevision,
+                history.MasterRecordHistoryPage,
+                String
+              >;
+      _cursorPages.remember(snapshot);
+      final response = snapshot.snapshot;
       if (!accepts() || epoch != _epoch) return;
       acceptNativeRead();
       setState(() {
         _rows = response.entries;
         _page = target;
         _nextCursor = response.nextCursor;
-        if (response.nextCursor != null) {
-          _cursors[target + 1] = response.nextCursor;
-        }
         _loading = false;
       });
     } catch (error) {
@@ -537,6 +606,7 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
                 const LinearProgressIndicator(),
               Expanded(
                 child: MasterDataTableView<MasterRecordRevision>(
+                  expensiveRowMounts: false,
                   key: const Key('master-record-history-table'),
                   tableKey: 'master.record.history',
                   preserveQueryOnReturn: true,
@@ -579,7 +649,7 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
                   onRowTap: _loading ? null : _open,
                   isLoading: _loading,
                   error: _error,
-                  onRetry: () => _load(),
+                  onRetry: () => _load(page: _requestedPage),
                   emptyMessage: hasAccess
                       ? t(
                           '暂无符合筛选的修改记录',
@@ -637,7 +707,7 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
                       type: UtenButtonType.secondary,
                       onPressed: _loading || _page <= 1
                           ? null
-                          : () => _load(page: _page - 1),
+                          : () => _load(page: _page - 1, useCache: true),
                       child: Text(t('上一页', 'Previous', '이전')),
                     ),
                     Text(t('第 $_page 页', 'Page $_page', '$_page 페이지')),
@@ -645,7 +715,7 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
                       type: UtenButtonType.secondary,
                       onPressed: _loading || _nextCursor == null
                           ? null
-                          : () => _load(page: _page + 1),
+                          : () => _load(page: _page + 1, useCache: true),
                       child: Text(t('下一页', 'Next', '다음')),
                     ),
                   ],

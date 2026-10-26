@@ -163,6 +163,23 @@ public class ClientController {
         return service.dict(excludeLegacyFinanceStub);
     }
 
+    @GetMapping("/lookup")
+    @PreAuthorize("hasAuthority('client:view')")
+    public java.util.List<ClientDictItem> lookup(@RequestParam Set<UUID> ids,
+            @RequestParam(defaultValue = "true") boolean excludeLegacyFinanceStub) {
+        return service.lookup(ids, excludeLegacyFinanceStub);
+    }
+
+    @PostMapping("/search-context")
+    @PreAuthorize("hasAuthority('client:view')")
+    public com.uten.imp.common.web.MasterSearchContext searchContext(
+            @Valid @RequestBody ClientQueryFilter filter,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "100") int size) {
+        return service.searchContext(filter.withColumnSearch(com.uten.imp.common.util.ColumnKeywordSearch.contactRequestValues(
+                request, filter.columnSearch())), page, size);
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('client:view')")
     public ClientDetail detail(@PathVariable UUID id) {

@@ -7,6 +7,7 @@ import '../../components/feedback/uten_empty.dart';
 import '../../components/feedback/uten_inline_notice.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/server_config.dart';
+import '../../core/network/read_scope_revision.dart';
 import '../providers/authenticated_scope_provider.dart';
 import 'session_snapshot_provider.dart';
 
@@ -81,6 +82,19 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
     ref.listenManual(apiBaseUrlProvider, (previous, next) {
       if (previous != next) ownerChanged();
     });
+    ref.listenManual(readScopeRevisionProvider, (previous, next) {
+      if (previous == next ||
+          !mounted ||
+          ref.read(authenticatedScopeProvider) == null) {
+        return;
+      }
+      // An actual read-scope change can keep the same account, roles and Me
+      // generation. Retire derived DTOs/dialog authority, retaining this
+      // reader's local controllers, draft text and uncertain command intent.
+      invalidateNativeReadAccess();
+      nativeReadPermissionChanged();
+      _scheduleNativeReadReload();
+    });
     ref.listenManual(sessionSnapshotProvider, (previous, next) {
       if (ref.read(authenticatedScopeProvider) == null) return;
       final snapshot = confirmedSessionSnapshot(next);
@@ -92,14 +106,7 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
           _hasConfirmedSnapshot &&
           (!ready || generation != _snapshotGeneration);
       if (revalidate) {
-        _accessEpoch++;
-        _readEpoch++;
-        _pendingRead = false;
-        _accepted = false;
-        _acceptedResource = null;
-        _pendingResource = null;
-        _refreshError = null;
-        _accessChanges.value++;
+        invalidateNativeReadAccess();
       }
       if (ready) {
         _hasConfirmedSnapshot = true;
@@ -115,13 +122,23 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
           !_accepted &&
           !_pendingRead &&
           mounted) {
-        final owner = _ownerEpoch;
-        final read = _readEpoch;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && owner == _ownerEpoch && read == _readEpoch) {
-            nativeReadReload();
-          }
-        });
+        _scheduleNativeReadReload();
+      }
+    });
+  }
+
+  void _scheduleNativeReadReload() {
+    if (!mounted || !_permissionReady || _accepted || _pendingRead) return;
+    final owner = _ownerEpoch;
+    final read = _readEpoch;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          _permissionReady &&
+          !_accepted &&
+          !_pendingRead &&
+          owner == _ownerEpoch &&
+          read == _readEpoch) {
+        nativeReadReload();
       }
     });
   }

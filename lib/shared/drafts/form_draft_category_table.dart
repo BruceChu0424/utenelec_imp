@@ -1,3 +1,6 @@
+import '../providers/master_party_options.dart';
+import '../providers/party_reference_read_controller.dart';
+import '../providers/export_context_epoch_provider.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../platform_tables/platform_table_binding.dart';
 import 'package:flutter/material.dart';
@@ -98,6 +101,7 @@ class FormDraftCategoryTable<T> extends ConsumerStatefulWidget {
     required this.table,
     this.formalId,
     this.localValue,
+    this.localReadRevision,
     this.search = '',
     this.localPredicate,
     this.includeConfirmedWithoutRecord = false,
@@ -107,6 +111,7 @@ class FormDraftCategoryTable<T> extends ConsumerStatefulWidget {
   final MasterDataTableView<T> table;
   final String? Function(T)? formalId;
   final String? Function(FormDraft, String)? localValue;
+  final Object? localReadRevision;
   final String search;
   final bool Function(FormDraft)? localPredicate;
   final bool includeConfirmedWithoutRecord;
@@ -125,6 +130,21 @@ class _FormDraftCategoryTableState<T>
     extends ConsumerState<FormDraftCategoryTable<T>> {
   final _localSelected = <String>{};
   static const _prefix = 'form-draft:';
+  late final _partyReferences = PartyReferenceReadController(ref);
+  @override
+  void initState() {
+    super.initState();
+    _partyReferences.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _partyReferences.dispose();
+    super.dispose();
+  }
+
   Map<int, List<T>>? _windowSource;
   Map<String, FormDraft> _windowRecovery = const {};
   Map<int, List<FormDraftCategoryRow<T>>> _windowRows = const {};
@@ -143,6 +163,26 @@ class _FormDraftCategoryTableState<T>
       widget.table.rowKeyOf?.call(item) ??
       widget.table.idOf?.call(item);
   String? _value(FormDraft draft, String key) {
+    final partyField = formDraftFieldKey(key);
+    if (partyField == 'clientId' || partyField == 'supplierId') {
+      final ids = formDraftColumnRawValues(draft, key);
+      if (ids.isNotEmpty) {
+        final original = formDraftHeader(
+          draft,
+        )[partyField.replaceFirst(RegExp(r'Id$'), 'Name')];
+        if (original is String && original.isNotEmpty) return original;
+        final entries = partyField == 'clientId'
+            ? _partyReferences.snapshot.clients
+            : _partyReferences.snapshot.suppliers;
+        return ids
+            .map((id) {
+              final name = entries[id];
+              return name == null || name.isEmpty || name == '—' ? '已选择' : name;
+            })
+            .toSet()
+            .join('、');
+      }
+    }
     final override = widget.localValue?.call(draft, key);
     if (override != null) return override;
     final canonical = formDraftFieldKey(key);
@@ -217,6 +257,26 @@ class _FormDraftCategoryTableState<T>
     final paginated = table.onPageChange != null;
     final formalItems = table.error == null ? table.items : <T>[];
     final drafts = ref.watch(formDraftCategoryProvider(widget.scope));
+    final referenceKey = [
+      for (final draft in drafts)
+        '${draft.id}:${formDraftColumnRawValues(draft, 'client').join(',')}:${formDraftColumnRawValues(draft, 'supplier').join(',')}',
+    ]..sort();
+    _partyReferences.prepare(
+      (
+        ref.watch(exportContextEpochProvider),
+        widget.scope,
+        widget.localReadRevision ?? table.paginationRevision,
+        table.paginationScope,
+        referenceKey.join('|'),
+      ),
+      clients: partyReferenceIds(
+        drafts.expand((draft) => formDraftColumnRawValues(draft, 'client')),
+      ),
+      suppliers: partyReferenceIds(
+        drafts.expand((draft) => formDraftColumnRawValues(draft, 'supplier')),
+      ),
+    );
+
     final recovering = <String, FormDraft>{
       for (final draft in drafts)
         for (final id in formDraftConfirmedIds(draft)) id: draft,
@@ -404,6 +464,7 @@ class _FormDraftCategoryTableState<T>
       items: rows,
       facets: table.facets,
       loadFacetPage: table.loadFacetPage,
+      facetPageLoaders: table.facetPageLoaders,
       facetSearchScope: table.facetSearchScope,
       nullCounts: table.nullCounts,
       filters: table.filters,
@@ -644,6 +705,7 @@ class _FormDraftCategoryTableState<T>
       currentPage: table.currentPage,
       totalPages: table.totalPages,
       onPageChange: table.onPageChange,
+      expensiveRowMounts: table.expensiveRowMounts,
       summaryBar: table.error != null && local.isNotEmpty
           ? Column(
               mainAxisSize: MainAxisSize.min,

@@ -24,6 +24,36 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  for (final navigation in ['go', 'platform']) {
+    testWidgets('$navigation return releases account detail navigation', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _AccountRepositoryFake();
+      final router = await _pumpRoutedPage(tester, repository);
+      for (var visit = 0; visit < 2; visit++) {
+        await tester.tap(find.text('基本户').first);
+        await tester.pump(const Duration(milliseconds: 60));
+        await tester.tap(find.text('基本户').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(AccountDetailPage), findsOneWidget);
+        if (navigation == 'go') {
+          router.go('/basicinfo/account');
+        } else {
+          await router.routeInformationProvider.didPushRouteInformation(
+            RouteInformation(uri: Uri.parse('/basicinfo/account')),
+          );
+        }
+        await tester.pumpAndSettle();
+        expect(find.byType(AccountDetailPage), findsNothing);
+        expect(repository.activeListCalls, visit + 2);
+      }
+      expect(repository.updateCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   setUp(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
   });
@@ -379,7 +409,7 @@ Future<void> _pumpPage(
   await tester.pumpAndSettle();
 }
 
-Future<void> _pumpRoutedPage(
+Future<GoRouter> _pumpRoutedPage(
   WidgetTester tester,
   _AccountRepositoryFake repository,
 ) async {
@@ -419,6 +449,7 @@ Future<void> _pumpRoutedPage(
     ),
   );
   await tester.pumpAndSettle();
+  return router;
 }
 
 class _AccountRepositoryFake implements AccountRepository {

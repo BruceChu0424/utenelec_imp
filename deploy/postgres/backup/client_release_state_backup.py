@@ -130,9 +130,21 @@ def _catalog_inventory(root: Path, *, source: bool, copy_budget=None) -> list[st
         release = h._json(root, relative, MAX_METADATA_BYTES)
         if (not isinstance(release, dict) or release.get("id") != folder.name
                 or release.get("state") not in {"DRAFT", "PUBLISHED", "WITHDRAWN"}
-                or release.get("installMode") not in {"store", "windows_archive", "android_package"}
+                or release.get("installMode") not in {"store", "windows_archive", "windows_bundle", "windows_setup", "android_package"}
                 or type(release.get("sizeBytes")) is not int):
             raise ValueError("Invalid client release metadata identity/state")
+        kind = release.get("packageKind")
+        if kind is None:
+            kind = "update"  # Legacy receipts predate the discriminator.
+        if (not isinstance(kind, str) or kind not in {"update", "installer"}
+                or (kind == "installer") != (release["installMode"] in {"windows_bundle", "windows_setup"})
+                or kind == "installer" and release.get("platform") != "windows"):
+            raise ValueError("Invalid client package kind/install mode")
+        if release["installMode"] == "windows_setup":
+            filename = release.get("fileName")
+            if (not isinstance(filename, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._ -]{0,180}", filename)
+                    or not filename.lower().endswith(".exe")):
+                raise ValueError("Windows setup requires an executable filename")
         size, digest = release["sizeBytes"], release.get("sha256")
         mode, state = release["installMode"], release["state"]
         names.append(relative)

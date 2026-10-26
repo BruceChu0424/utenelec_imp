@@ -1,3 +1,7 @@
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/search/keyword_search.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +21,11 @@ import 'package:uten_imp/features/basic_data/repositories/reference_method_repos
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+
+class _Snapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
+}
 
 final _grants = StateProvider<Set<String>>(
   (_) => {Perm.settlementMethodView, Perm.settlementMethodEdit},
@@ -44,7 +53,26 @@ class _Repository extends ReferenceMethodRepository {
   final writes = <Map<String, dynamic>>[];
 
   @override
+  Future<PagedResult<SettlementMethodAdminItem>> settlementAdminPage({
+    int page = 1,
+    int size = 100,
+    String? keyword,
+    Map<String, String?> filters = const {},
+  }) async {
+    final all = (await settlementAdminList(keyword: keyword, filters: filters))
+        .where((item) => matchesKeywordSearch([item.name, item.code], keyword ?? '')).toList();
+    return PagedResult(
+      items: all.skip((page - 1) * size).take(size).toList(),
+      page: page,
+      size: size,
+      total: all.length,
+      totalPages: (all.length / size).ceil(),
+    );
+  }
+
+  @override
   Future<List<SettlementMethodAdminItem>> settlementAdminList({
+    String? keyword,
     Map<String, String?> filters = const {},
   }) async => [
     item,
@@ -105,6 +133,9 @@ Future<ProviderContainer> _pump(
     ProviderScope(
       overrides: [
         referenceMethodRepositoryProvider.overrideWithValue(repository),
+        apiClientProvider.overrideWithValue(ApiClient(Dio())),
+        authenticatedScopeProvider.overrideWithValue(const AuthenticatedScope(userId: 'settlement-test')),
+        sessionSnapshotProvider.overrideWith(_Snapshot.new),
         currentPermissionsProvider.overrideWith((ref) => ref.watch(_grants)),
         isSuperAdminProvider.overrideWithValue(false),
       ],
@@ -251,6 +282,14 @@ void main() {
       final before = _fieldRects(tester);
       container.read(_grants.notifier).state = {Perm.settlementMethodView};
       await tester.pumpAndSettle();
+      expect(find.text('原输入已保留，此窗口不会提交'), findsOneWidget);
+      expect(find.byType(MasterEditForm), findsNothing);
+      final retained = tester.widget<MasterEditForm>(find.byType(MasterEditForm, skipOffstage: false));
+      expect(retained.initialValues, edit.initialValues);
+      expect(find.widgetWithText(UtenButton, '保存'), findsNothing);
+      await tester.tap(find.widgetWithText(UtenButton, '关闭'));
+      await tester.pumpAndSettle();
+      await _open(tester, repository);
       final view = _form(tester);
       expect(
         view.fields.map((field) => (field.key, field.label, field.group)),

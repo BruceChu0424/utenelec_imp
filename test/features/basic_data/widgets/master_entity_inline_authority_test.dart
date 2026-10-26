@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -110,6 +111,86 @@ class _Host extends ConsumerWidget {
 }
 
 void main() {
+  for (final freshLabel in ['A', 'C']) {
+    testWidgets(
+      'same-account scope changes retire private rows and late replies while keeping local field input: $freshLabel',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1250, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        SharedPreferences.setMockInitialValues({});
+        final pending = Completer<PagedResult<_Row>>();
+        var reads = 0;
+        final container = ProviderContainer(
+          overrides: [
+            sessionProvider.overrideWith(_Session.new),
+            apiBaseUrlProvider.overrideWithValue('https://company.invalid/api'),
+            authenticatedScopeProvider.overrideWith(
+              (ref) => ref.watch(_boundary).identity,
+            ),
+            sensitiveReadBoundaryProvider.overrideWith(
+              (ref) => ref.watch(_boundary),
+            ),
+            sharedPreferencesProvider.overrideWithValue(
+              await SharedPreferences.getInstance(),
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp(
+              locale: const Locale('zh'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: Scaffold(
+                body: _Host(
+                  read: (owner) {
+                    reads++;
+                    return reads == 2
+                        ? pending.future
+                        : Future.value(_rows(reads == 1 ? 'A' : freshLabel));
+                  },
+                  save: (_) async {},
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('编辑模式'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('inline-activate-1-name')));
+        await tester.pumpAndSettle();
+        final input = find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField && widget.decoration?.hintText == '名称',
+        );
+        await tester.enterText(input.first, '保留的本地输入');
+        await tester.pump();
+        container.read(readScopeRevisionProvider.notifier).state = 1;
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('A 私有资料二'), findsNothing);
+        expect(reads, 2);
+        container.read(readScopeRevisionProvider.notifier).state = 2;
+        await tester.pumpAndSettle();
+        expect(reads, 3);
+        expect(find.text('$freshLabel 私有资料二'), findsOneWidget);
+        expect(find.text('保留的本地输入'), findsOneWidget);
+        expect(
+          find.text('可见范围已变化，输入已保留；请重新载入并核对后保存。'),
+          freshLabel == 'A' ? findsNothing : findsOneWidget,
+        );
+        pending.complete(_rows('B'));
+        await tester.pumpAndSettle();
+        expect(find.text('B 私有资料二'), findsNothing);
+        expect(find.text('$freshLabel 私有资料二'), findsOneWidget);
+        expect(find.text('保留的本地输入'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets(
     'owner replacement uses rebuilt repository closures, ignores late reads and fences the remaining writes',
     (tester) async {

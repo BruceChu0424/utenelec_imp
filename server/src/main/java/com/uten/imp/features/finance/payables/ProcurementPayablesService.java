@@ -105,13 +105,13 @@ public class ProcurementPayablesService {
             String keyword) {
         Filter filter = filter(businessType, supplierId, status, settlementMethodId,
                 currencyId, dateFrom, dateTo, dueFrom, dueTo, keyword, null);
-        Query query = em.createNativeQuery(
+        Query query = NativeFacets.query(em, "sourceDocNo",
                 "SELECT ledger.source_doc_no, COUNT(*) " + baseFrom() + filter.sql()
                         + " GROUP BY ledger.source_doc_no ORDER BY 1");
         bind(query, filter.params());
         query.setMaxResults(500);
         return Map.of("sourceDocNo",
-                NativeFacets.rows(com.uten.imp.common.util.NativeQueryResults.objectArrayRows(query)));
+                NativeFacets.rowsOf(query));
     }
 
     @Transactional(readOnly = true)

@@ -29,6 +29,8 @@ import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_colors.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
+import '../../../../shared/auth/native_read_view_scope_mixin.dart'
+    show nativeReadAccessDenied;
 import '../../../basic_data/widgets/periodic_bom_confirmation.dart';
 import '../models/workshop_material_models.dart';
 import '../repositories/workshop_material_repository.dart';
@@ -128,6 +130,8 @@ class WmPrepTab extends ConsumerStatefulWidget {
 
 class _WmPrepTabState extends ConsumerState<WmPrepTab> {
   final _grid = UtenEditableGridController<WmPrepRow>();
+  final _deniedGrid = UtenEditableGridController<WmPrepRow>();
+  bool _readDenied = false;
   final _nonce = const Uuid().v4();
   WmPreparation? _prep;
   List<WmMaterialOption> _materials = const [];
@@ -150,6 +154,7 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
   @override
   void dispose() {
     _grid.dispose();
+    _deniedGrid.dispose();
     super.dispose();
   }
 
@@ -163,6 +168,7 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
       if (!mounted) return;
       setState(() {
         _prep = prep;
+        _readDenied = false;
         _materials = prep.materials;
         _grid.replaceAll(wmPrepRowsOf(prep.rows));
         _truncated =
@@ -173,6 +179,7 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
       if (mounted) {
         setState(() {
           _loading = false;
+          _readDenied = _readDenied || nativeReadAccessDenied(e);
           _error = e.message;
         });
       }
@@ -526,17 +533,7 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final prep = _prep;
-    if (_loading && prep == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null && prep == null) {
-      return UtenEmpty.error(
-        message: _error,
-        actionLabel: '重试',
-        onAction: _load,
-      );
-    }
+    final prep = _readDenied ? null : _prep;
     return Stack(
       children: [
         SingleChildScrollView(
@@ -548,15 +545,12 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                l10n.wmGoLiveProgress(
-                  prep?.total ?? 0,
-                  prep?.chosen ?? 0,
-                  prep?.weighed ?? 0,
+              if (prep != null)
+                Text(
+                  l10n.wmGoLiveProgress(prep.total, prep.chosen, prep.weighed),
+                  key: const Key('wm-prep-progress'),
+                  style: theme.textTheme.titleSmall,
                 ),
-                key: const Key('wm-prep-progress'),
-                style: theme.textTheme.titleSmall,
-              ),
               if (_truncated)
                 Padding(
                   padding: const EdgeInsets.only(top: UtenSpacing.s2),
@@ -569,25 +563,34 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                   ),
                 ),
               const SizedBox(height: UtenSpacing.s8),
-              if (_grid.isEmpty)
-                const UtenEmpty(
-                  message: '没有要准备的产品',
-                  description: '近 12 个月这个车间没有做过、也没有归属它的产品',
-                )
-              else
-                UtenEditableGrid<WmPrepRow>(
-                  tableKey:
-                      'features.warehouse.materialbin.widgets.workshop_material_prep_tab.WmPrepTabState.build.1',
-                  key: const Key('wm-prep-grid'),
-                  controller: _grid,
-                  columns: _columns(l10n, theme),
-                  showAddRow: false,
-                  selectable: true,
-                  showRowDelete: false,
-                  showColumnSettings: false,
-                  onRowsHiddenByFilter: (hidden) =>
-                      setState(() => _hidden = hidden),
-                ),
+              UtenEditableGrid<WmPrepRow>(
+                tableKey:
+                    'features.warehouse.materialbin.widgets.workshop_material_prep_tab.WmPrepTabState.build.1',
+                key: const Key('wm-prep-grid'),
+                controller: _readDenied ? _deniedGrid : _grid,
+                columns: _columns(l10n, theme),
+                emptyPlaceholder: _loading
+                    ? const SizedBox(
+                        height: 80,
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    : _error != null
+                    ? UtenEmpty.error(
+                        message: _error,
+                        actionLabel: '重试',
+                        onAction: _load,
+                      )
+                    : const UtenEmpty(
+                        message: '没有要准备的产品',
+                        description: '近 12 个月这个车间没有做过、也没有归属它的产品',
+                      ),
+                showAddRow: false,
+                selectable: true,
+                showRowDelete: false,
+                showColumnSettings: false,
+                onRowsHiddenByFilter: (hidden) =>
+                    setState(() => _hidden = hidden),
+              ),
             ],
           ),
         ),
@@ -603,7 +606,11 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                   type: UtenButtonType.secondary,
                   size: UtenButtonSize.large,
                   icon: Icons.auto_fix_high_outlined,
-                  onPressed: _busyTitle == null && _grid.selectedCount > 0
+                  onPressed:
+                      _busyTitle == null &&
+                          !_loading &&
+                          !_readDenied &&
+                          _grid.selectedCount > 0
                       ? _fillFromGoodsWeight
                       : null,
                   child: Text(
@@ -614,7 +621,11 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                   key: const Key('wm-prep-save'),
                   size: UtenButtonSize.large,
                   icon: Icons.save_outlined,
-                  onPressed: _busyTitle == null && !_grid.isEmpty
+                  onPressed:
+                      _busyTitle == null &&
+                          !_loading &&
+                          !_readDenied &&
+                          !_grid.isEmpty
                       ? _save
                       : null,
                   child: Text(l10n.commonSave),

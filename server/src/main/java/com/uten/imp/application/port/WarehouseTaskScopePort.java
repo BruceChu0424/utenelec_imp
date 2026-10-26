@@ -40,6 +40,11 @@ public interface WarehouseTaskScopePort {
      */
     WarehouseAccess access();
 
+    /** Authorization publication must bypass WINDOW and REQUESTED and use the original SQL authority. */
+    default WarehouseAccess freshAccess(UUID userId, boolean businessTasks) {
+        throw new UnsupportedOperationException("Fresh warehouse authority is required");
+    }
+
     /**
      * 列表 / 计数用的生效范围。
      *

@@ -348,7 +348,8 @@ void main() {
       tester.element(find.byKey(const ValueKey('anchor-1-0'))),
       axis: Axis.vertical,
     ).position;
-    scroll.jumpTo(500);
+    // Stay away from the look-ahead boundary while testing revalidation alone.
+    scroll.jumpTo(120);
     await tester.pumpAndSettle();
     final pixels = scroll.pixels;
     final pending = Completer<PagedResult<_Row>>();

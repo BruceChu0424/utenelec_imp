@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -5,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
@@ -17,6 +19,7 @@ import '../../../components/inputs/uten_drop_target.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_page_scrollbar_host.dart';
 import '../../../core/io/file_saver.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -464,15 +467,15 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
           builder: (_) => CompanyFileScopeBoundary(
             boundary: boundary,
             scope: scope,
-            child: _CompanyFilePreview(
+            child: AttachmentPreviewDialog(
               bytes: bytes,
               name: file.name,
               contentType: converted ? 'application/pdf' : file.contentType,
               onDownload: () async {
                 scope.checkCurrent();
-                final original = converted
-                    ? await scope.run(() => service.downloadBytes(attachment))
-                    : bytes;
+                final original = await scope.run(
+                  () => service.downloadBytes(attachment),
+                );
                 scope.checkCurrent();
                 await saveBytes(
                   original,
@@ -1124,7 +1127,12 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
           ),
         ],
       ),
-      drawer: Drawer(child: SafeArea(child: _navigation())),
+      onDrawerChanged: (_) => UtenPageScrollbarHost.invalidate(context),
+      drawer: Drawer(
+        child: UtenPageScrollbarModalBlocker(
+          child: SafeArea(child: _navigation()),
+        ),
+      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _floatingActions(),
@@ -1132,117 +1140,124 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
           ? null
           : SafeArea(top: false, child: _queuePanel()),
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, box) {
-            final wide = _useSidebar(box.maxWidth);
-            final showDetails =
-                _details && _selected != null && box.maxWidth >= 1220;
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(
-                  key: const ValueKey('company-files-navigation'),
-                  width: wide ? (_directoryExpanded ? 180 : 56) : 0,
-                  child: wide
-                      ? _navigation(
-                          collapsed: !_directoryExpanded,
-                          sidebar: true,
-                        )
-                      : null,
-                ),
-                SizedBox(
-                  width: wide ? 1 : 0,
-                  child: wide
-                      ? VerticalDivider(width: 1, color: scheme.outlineVariant)
-                      : null,
-                ),
-                Expanded(
-                  key: const ValueKey('company-files-workspace'),
-                  child: UtenDropTarget(
-                    operationKey: dropKey,
-                    canContinue: () =>
-                        mounted &&
-                        dropKey ==
-                            (
-                              ref.read(sensitiveReadBoundaryProvider),
-                              _epoch,
-                              _parentId,
-                              _trash,
-                            ),
-                    maxFileBytes: AttachmentLimits.maxFileBytes,
-                    maxTotalBytes:
-                        kPendingAttachmentMaxTotalBytes -
-                        _queue.fold<int>(0, (sum, f) => sum + f.bytes.length),
-                    onRejected: (name, reason) => context.appError(
-                      '$name: ${switch (reason) {
-                        'FILE_TOO_LARGE' => l.companyFilesTooLarge,
-                        'BATCH_TOO_LARGE' => l.companyFilesBatchTooLarge,
-                        'UNREADABLE' => l.companyFilesUnreadable,
-                        _ => l.companyFilesUnsupported,
-                      }}',
-                    ),
-                    enabled:
-                        !_blocked &&
-                        !_trash &&
-                        _listing?.allows('upload') == true,
-                    hint: l.companyFilesDropHint,
-                    onFiles: (files) => unawaited(_uploadFiles(files)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _breadcrumbs(sidebar: wide),
-                        if (_busy || _loading && _listing != null)
-                          const LinearProgressIndicator(minHeight: 2),
-                        if (_error != null && _listing != null)
-                          Padding(
-                            padding: const EdgeInsets.all(UtenSpacing.s8),
-                            child: Wrap(
-                              spacing: UtenSpacing.s8,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              children: [
-                                Text(companyFileError(_error!, l)),
-                                TextButton(
-                                  onPressed: _load,
-                                  child: Text(l.companyFilesRetry),
-                                ),
-                              ],
-                            ),
-                          ),
-                        Expanded(
-                          child: Listener(
-                            key: const ValueKey('company-files-canvas'),
-                            behavior: HitTestBehavior.opaque,
-                            onPointerDown: (event) {
-                              if (event.buttons & kSecondaryButton != 0 &&
-                                  claimUtenContextMenuPointer(event)) {
-                                unawaited(_showBackgroundMenu(event.position));
-                              }
-                            },
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () => setState(() => _selected = null),
-                              child: _content(),
-                            ),
-                          ),
-                        ),
-                        if (_listing != null) _footer(),
-                      ],
-                    ),
-                  ),
-                ),
-                if (showDetails) ...[
-                  VerticalDivider(width: 1, color: scheme.outlineVariant),
+        child: UtenPageEdgePadding(
+          child: LayoutBuilder(
+            builder: (context, box) {
+              final wide = _useSidebar(box.maxWidth);
+              final showDetails =
+                  _details && _selected != null && box.maxWidth >= 1220;
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
                   SizedBox(
-                    width: 300,
-                    child: _detailPanel(
-                      _selected!,
-                      close: () => setState(() => _details = false),
+                    key: const ValueKey('company-files-navigation'),
+                    width: wide ? (_directoryExpanded ? 180 : 56) : 0,
+                    child: wide
+                        ? _navigation(
+                            collapsed: !_directoryExpanded,
+                            sidebar: true,
+                          )
+                        : null,
+                  ),
+                  SizedBox(
+                    width: wide ? 1 : 0,
+                    child: wide
+                        ? VerticalDivider(
+                            width: 1,
+                            color: scheme.outlineVariant,
+                          )
+                        : null,
+                  ),
+                  Expanded(
+                    key: const ValueKey('company-files-workspace'),
+                    child: UtenDropTarget(
+                      operationKey: dropKey,
+                      canContinue: () =>
+                          mounted &&
+                          dropKey ==
+                              (
+                                ref.read(sensitiveReadBoundaryProvider),
+                                _epoch,
+                                _parentId,
+                                _trash,
+                              ),
+                      maxFileBytes: AttachmentLimits.maxFileBytes,
+                      maxTotalBytes:
+                          kPendingAttachmentMaxTotalBytes -
+                          _queue.fold<int>(0, (sum, f) => sum + f.bytes.length),
+                      onRejected: (name, reason) => context.appError(
+                        '$name: ${switch (reason) {
+                          'FILE_TOO_LARGE' => l.companyFilesTooLarge,
+                          'BATCH_TOO_LARGE' => l.companyFilesBatchTooLarge,
+                          'UNREADABLE' => l.companyFilesUnreadable,
+                          _ => l.companyFilesUnsupported,
+                        }}',
+                      ),
+                      enabled:
+                          !_blocked &&
+                          !_trash &&
+                          _listing?.allows('upload') == true,
+                      hint: l.companyFilesDropHint,
+                      onFiles: (files) => unawaited(_uploadFiles(files)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _breadcrumbs(sidebar: wide),
+                          if (_busy || _loading && _listing != null)
+                            const LinearProgressIndicator(minHeight: 2),
+                          if (_error != null && _listing != null)
+                            Padding(
+                              padding: const EdgeInsets.all(UtenSpacing.s8),
+                              child: Wrap(
+                                spacing: UtenSpacing.s8,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  Text(companyFileError(_error!, l)),
+                                  TextButton(
+                                    onPressed: _load,
+                                    child: Text(l.companyFilesRetry),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          Expanded(
+                            child: Listener(
+                              key: const ValueKey('company-files-canvas'),
+                              behavior: HitTestBehavior.opaque,
+                              onPointerDown: (event) {
+                                if (event.buttons & kSecondaryButton != 0 &&
+                                    claimUtenContextMenuPointer(event)) {
+                                  unawaited(
+                                    _showBackgroundMenu(event.position),
+                                  );
+                                }
+                              },
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => setState(() => _selected = null),
+                                child: _content(),
+                              ),
+                            ),
+                          ),
+                          if (_listing != null) _footer(),
+                        ],
+                      ),
                     ),
                   ),
+                  if (showDetails) ...[
+                    VerticalDivider(width: 1, color: scheme.outlineVariant),
+                    SizedBox(
+                      width: 300,
+                      child: _detailPanel(
+                        _selected!,
+                        close: () => setState(() => _details = false),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -1564,24 +1579,26 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
   );
 
   List<Widget> _explorerControls() => [
-    PopupMenuButton<String>(
-      tooltip: l.companyFilesSort,
-      initialValue: _sort,
-      enabled: !_blocked,
-      onSelected: (v) {
-        setState(() {
-          _sort = v;
-          _page = 0;
-        });
-        unawaited(_load());
-      },
-      itemBuilder: (_) => [
-        PopupMenuItem(value: 'name', child: Text(l.companyFilesName)),
-        PopupMenuItem(value: 'updated', child: Text(l.companyFilesUpdated)),
-        PopupMenuItem(value: 'size', child: Text(l.companyFilesSize)),
-        PopupMenuItem(value: 'manual', child: Text(l.companyFilesManual)),
-      ],
-      icon: const Icon(Icons.sort),
+    UtenDropdownScrollScope(
+      child: PopupMenuButton<String>(
+        tooltip: l.companyFilesSort,
+        initialValue: _sort,
+        enabled: !_blocked,
+        onSelected: (v) {
+          setState(() {
+            _sort = v;
+            _page = 0;
+          });
+          unawaited(_load());
+        },
+        itemBuilder: (_) => [
+          PopupMenuItem(value: 'name', child: Text(l.companyFilesName)),
+          PopupMenuItem(value: 'updated', child: Text(l.companyFilesUpdated)),
+          PopupMenuItem(value: 'size', child: Text(l.companyFilesSize)),
+          PopupMenuItem(value: 'manual', child: Text(l.companyFilesManual)),
+        ],
+        icon: const Icon(Icons.sort),
+      ),
     ),
     IconButton(
       tooltip: _direction == 'asc'
@@ -1597,29 +1614,31 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
         _direction == 'asc' ? Icons.arrow_upward : Icons.arrow_downward,
       ),
     ),
-    PopupMenuButton<CompanyFileView>(
-      tooltip: l.companyFilesDetails,
-      initialValue: _view,
-      onSelected: (v) => setState(() => _view = v),
-      itemBuilder: (_) => [
-        PopupMenuItem(
-          value: CompanyFileView.icons,
-          child: Text(l.companyFilesIcons),
-        ),
-        PopupMenuItem(
-          value: CompanyFileView.tiles,
-          child: Text(l.companyFilesTiles),
-        ),
-        PopupMenuItem(
-          value: CompanyFileView.details,
-          child: Text(l.companyFilesDetails),
-        ),
-      ],
-      icon: Icon(switch (_view) {
-        CompanyFileView.icons => Icons.grid_view_rounded,
-        CompanyFileView.tiles => Icons.view_agenda_outlined,
-        CompanyFileView.details => Icons.view_list_outlined,
-      }),
+    UtenDropdownScrollScope(
+      child: PopupMenuButton<CompanyFileView>(
+        tooltip: l.companyFilesDetails,
+        initialValue: _view,
+        onSelected: (v) => setState(() => _view = v),
+        itemBuilder: (_) => [
+          PopupMenuItem(
+            value: CompanyFileView.icons,
+            child: Text(l.companyFilesIcons),
+          ),
+          PopupMenuItem(
+            value: CompanyFileView.tiles,
+            child: Text(l.companyFilesTiles),
+          ),
+          PopupMenuItem(
+            value: CompanyFileView.details,
+            child: Text(l.companyFilesDetails),
+          ),
+        ],
+        icon: Icon(switch (_view) {
+          CompanyFileView.icons => Icons.grid_view_rounded,
+          CompanyFileView.tiles => Icons.view_agenda_outlined,
+          CompanyFileView.details => Icons.view_list_outlined,
+        }),
+      ),
     ),
   ];
 
@@ -2078,61 +2097,4 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
       ),
     );
   }
-}
-
-class _CompanyFilePreview extends StatefulWidget {
-  const _CompanyFilePreview({
-    required this.bytes,
-    required this.name,
-    required this.contentType,
-    required this.onDownload,
-  });
-  final Uint8List bytes;
-  final String name;
-  final String? contentType;
-  final Future<void> Function() onDownload;
-  @override
-  State<_CompanyFilePreview> createState() => _CompanyFilePreviewState();
-}
-
-class _CompanyFilePreviewState extends State<_CompanyFilePreview> {
-  bool _saving = false;
-  Future<void> _download() async {
-    if (_saving) return;
-    setState(() => _saving = true);
-    try {
-      await widget.onDownload();
-    } catch (e) {
-      if (mounted) {
-        context.appError(companyFileError(e, AppLocalizations.of(context)));
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: !_saving,
-    child: Stack(
-      children: [
-        AbsorbPointer(
-          absorbing: _saving,
-          child: AttachmentPreviewDialog(
-            bytes: widget.bytes,
-            name: widget.name,
-            contentType: widget.contentType,
-            onDownload: _download,
-          ),
-        ),
-        if (_saving)
-          Positioned.fill(
-            child: ColoredBox(
-              color: Theme.of(context).colorScheme.scrim.withValues(alpha: .2),
-              child: const Center(child: CircularProgressIndicator()),
-            ),
-          ),
-      ],
-    ),
-  );
 }

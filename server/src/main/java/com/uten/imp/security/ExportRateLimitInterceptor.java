@@ -1,16 +1,17 @@
 package com.uten.imp.security;
 
-import com.uten.imp.common.web.ApiException;
-import com.uten.imp.common.web.ErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.uten.imp.common.export.LegacyExportBudget;
+import com.uten.imp.common.export.LegacyExportRows;
+import org.springframework.web.method.HandlerMethod;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.Semaphore;
 
 /**
  * 导出限流拦截器：POST 导出端点进入 Controller 前，按当前用户做每分钟频率检查。
@@ -29,15 +30,19 @@ public class ExportRateLimitInterceptor implements HandlerInterceptor {
 
     private final ExportRateLimiter rateLimiter;
     private final SecurityContextCurrentUser currentUser;
-    private final Semaphore concurrencyGate;
+    private final LegacyExportBudget budget;
+
+    @Autowired
+    public ExportRateLimitInterceptor(ExportRateLimiter rateLimiter, SecurityContextCurrentUser currentUser,
+            LegacyExportBudget budget) {
+        this.rateLimiter = rateLimiter; this.currentUser = currentUser; this.budget = budget;
+    }
 
     public ExportRateLimitInterceptor(
             ExportRateLimiter rateLimiter,
             SecurityContextCurrentUser currentUser,
             @Value("${uten.security.export-max-concurrent:2}") int maxConcurrent) {
-        this.rateLimiter = rateLimiter;
-        this.currentUser = currentUser;
-        this.concurrencyGate = new Semaphore(Math.max(1, maxConcurrent), true);
+        this(rateLimiter, currentUser, new LegacyExportBudget(maxConcurrent));
     }
 
     @Override
@@ -49,11 +54,12 @@ public class ExportRateLimitInterceptor implements HandlerInterceptor {
         if (userId.isEmpty()) {
             return true;
         }
+        if (request.getAttribute(CONCURRENCY_PERMIT_ATTRIBUTE) instanceof LegacyExportBudget.Scope) return true;
         rateLimiter.check(userId.get());
-        if (!concurrencyGate.tryAcquire()) {
-            throw new ApiException(ErrorCode.RATE_LIMITED, "导出任务繁忙，请稍后重试");
-        }
-        request.setAttribute(CONCURRENCY_PERMIT_ATTRIBUTE, Boolean.TRUE);
+        String path = SecurityRequestPath.withinApplication(request);
+        LegacyExportRows natural = handler instanceof HandlerMethod method ? method.getMethodAnnotation(LegacyExportRows.class) : null;
+        request.setAttribute(CONCURRENCY_PERMIT_ATTRIBUTE, path.endsWith("/download") ? budget.openDownload()
+                : natural == null ? budget.open() : budget.openNatural(natural.value()));
         return true;
     }
 
@@ -63,9 +69,9 @@ public class ExportRateLimitInterceptor implements HandlerInterceptor {
             HttpServletResponse response,
             Object handler,
             Exception exception) {
-        if (Boolean.TRUE.equals(request.getAttribute(CONCURRENCY_PERMIT_ATTRIBUTE))) {
+        if (request.getAttribute(CONCURRENCY_PERMIT_ATTRIBUTE) instanceof LegacyExportBudget.Scope scope) {
             request.removeAttribute(CONCURRENCY_PERMIT_ATTRIBUTE);
-            concurrencyGate.release();
+            scope.close();
         }
     }
 }

@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -115,20 +116,14 @@ public class CompanyFileService {
                     Math.clamp(size, 1, 200),
                     rootActions,
                     false);
+        if (trash)
+            return listTrash(scope, folder, breadcrumbs, search, sort, direction, page, size, rootActions);
         String query =
                 "SELECT n.* FROM company_file_nodes n WHERE n.parent_id IS NOT DISTINCT FROM ? AND"
                         + " n.deleted=?";
         Object[] args = {parentId, trash};
-        // Trash starts at deleted subtree roots; child restoration is shown by entering its deleted
-        // folder.
-        if (trash && parentId == null) {
-            query =
-                    "SELECT n.* FROM company_file_nodes n LEFT JOIN company_file_nodes p ON"
-                        + " p.id=n.parent_id WHERE n.deleted AND (p.id IS NULL OR NOT p.deleted)";
-            args = new Object[0];
-        }
         List<Node> candidates =
-                jdbc.query(query + " ORDER BY n.position,n.id LIMIT 501", NODE, args);
+                jdbc.query(query + " ORDER BY " + ordering(sort, direction) + " LIMIT 501", NODE, args);
         if (candidates.size() > MAX_CHILDREN)
             throw new ApiException(ErrorCode.CONFLICT, "这个目录内容过多，请联系管理员整理后再打开");
         scope.prime(candidates);
@@ -139,7 +134,6 @@ public class CompanyFileService {
                 candidates.stream()
                         .filter(n -> scope.can(n, "view", trash, false))
                         .filter(n -> n.name.toLowerCase(Locale.ROOT).contains(needle))
-                        .sorted(comparator(sort, direction))
                         .toList();
         int limit = Math.clamp(size, 1, 200), current = Math.max(0, page);
         long start = Math.min((long) current * limit, visible.size());
@@ -168,6 +162,49 @@ public class CompanyFileService {
                 canReorder);
     }
 
+    /** Past deletion batches are not bounded by a directory's current live-item capacity. */
+    private Listing listTrash(Scope scope, Node folder, List<Breadcrumb> breadcrumbs,
+            String search, String sort, String direction, int page, int size, List<String> rootActions) {
+        String needle = search == null ? "" : search.strip().toLowerCase(Locale.ROOT);
+        if (needle.length() > 180) throw invalid("搜索内容最多 180 个字符");
+        int limit = Math.clamp(size, 1, 200), current = Math.max(0, page);
+        long start = (long) current * limit;
+        Entry folderEntry = folder == null ? null : scope.entry(folder, true);
+        String sql = (folder == null
+                ? "SELECT n.* FROM company_file_nodes n LEFT JOIN company_file_nodes p ON"
+                    + " p.id=n.parent_id WHERE n.deleted AND (p.id IS NULL OR NOT p.deleted)"
+                : "SELECT n.* FROM company_file_nodes n WHERE n.deleted AND n.parent_id=?")
+                + " ORDER BY " + ordering(sort, direction);
+        return jdbc.query(connection -> {
+            var statement = connection.prepareStatement(sql);
+            if (folder != null) statement.setObject(1, folder.id);
+            statement.setFetchSize(200);
+            return statement;
+        }, (ResultSetExtractor<Listing>) rows -> {
+            long total = 0;
+            List<Entry> entries = new ArrayList<>();
+            boolean more = true;
+            while (more) {
+                List<Node> batch = new ArrayList<>(200);
+                while (batch.size() < 200 && (more = rows.next())) batch.add(NODE.mapRow(rows, 0));
+                // Keep ancestry/ACL/name memory bounded while the transaction's shared lock
+                // preserves one policy snapshot for the entire cursor.
+                scope.cache.clear();
+                scope.aclCache.clear();
+                scope.actorNames.clear();
+                scope.prime(batch);
+                for (Node n : batch) {
+                    if (!n.name.toLowerCase(Locale.ROOT).contains(needle)
+                            || !scope.can(n, "view", true, false)) continue;
+                    if (total >= start && entries.size() < limit) entries.add(scope.entry(n, true));
+                    total++;
+                }
+            }
+            return new Listing(folderEntry, breadcrumbs, List.copyOf(entries), total, current, limit,
+                    rootActions, false);
+        });
+    }
+
     public Entry detail(UUID id) {
         Scope s = new Scope(user());
         Node n = s.node(id);
@@ -186,7 +223,6 @@ public class CompanyFileService {
     }
 
     private Entry create(Create request, String kind) {
-        treeLock();
         AuthUser user = user();
         requireGlobal(user, "view");
         String action = kind.equals("FOLDER") ? "create" : "upload";
@@ -197,13 +233,16 @@ public class CompanyFileService {
         Map<String, Acl> initialRules = access == null ? Map.of() : validatedRules(access.rules(), true);
         if (access != null && access.inheritPermissions() == null) throw invalid("请选择访问权限的继承方式");
         String fingerprint = creationFingerprint(user, request, kind, name, description, initialRules);
+        List<Map<String, Object>> previous = previousCreation(user.getId(), request.requestId());
+        // BCrypt must not hold the exclusive tree lock: one password should not pause every
+        // employee's listing, download authorization or unrelated upload confirmation. An
+        // already committed receipt also must not rehash on an unknown-result retry.
+        String passwordHash = access == null || !previous.isEmpty() ? null : unlocks.hash(access.password());
+        treeLock();
         if (request.requestId() != null) {
-            List<Map<String, Object>> previous =
-                    jdbc.queryForList(
-                            "SELECT id,request_fingerprint FROM company_file_nodes WHERE"
-                                    + " created_by=? AND request_id=?",
-                            user.getId(),
-                            request.requestId());
+            // Identity/fingerprint cannot change after insertion. Only new requests need a
+            // second lookup to catch another creator that committed during password hashing.
+            if (previous.isEmpty()) previous = previousCreation(user.getId(), request.requestId());
             if (!previous.isEmpty()) {
                 Map<String, Object> receipt = previous.getFirst();
                 if (!fingerprint.equals(receipt.get("request_fingerprint")))
@@ -223,7 +262,6 @@ public class CompanyFileService {
             if (scope.chain(parent).size() >= MAX_DEPTH) throw invalid("文件夹最多支持 32 层");
         }
         capacity(request.parentId());
-        String passwordHash = access == null ? null : unlocks.hash(access.password());
         boolean inherit = access == null || access.inheritPermissions();
         if (access != null && !inherit) {
             List<String> creatorActions = ACTIONS.stream()
@@ -271,6 +309,12 @@ public class CompanyFileService {
         }
         event(user, kind.equals("FOLDER") ? "create" : "upload_reserve", id);
         return createdScope.entry(created, false);
+    }
+
+    private List<Map<String, Object>> previousCreation(UUID actor, UUID requestId) {
+        return requestId == null ? List.of() : jdbc.queryForList(
+                "SELECT id,request_fingerprint FROM company_file_nodes WHERE created_by=? AND request_id=?",
+                actor, requestId);
     }
 
     @Transactional
@@ -481,9 +525,11 @@ public class CompanyFileService {
         Scope s = new Scope(user());
         Node n = s.node(id);
         s.require(n, "manage_permissions", false, true);
+        List<Acl> rules = s.rules(n.id);
+        Map<String, Principal> principals = loadPrincipals(rules);
         return new Permissions(
                 n.inheritPermissions,
-                s.rules(n.id).stream().map(this::ruleDto).toList(),
+                rules.stream().map(rule -> ruleDto(rule, principals)).toList(),
                 n.version);
     }
 
@@ -554,15 +600,17 @@ public class CompanyFileService {
 
     @Transactional
     public Entry setPassword(UUID id, Password request) {
-        treeLock();
         AuthUser u = user();
+        requireGlobal(u, "view");
+        requireGlobal(u, "manage_permissions");
+        if (u.getImpersonatedBy() != null)
+            throw new ApiException(ErrorCode.IMPERSONATION_READ_ONLY);
+        String hash = unlocks.hash(request.password());
+        treeLock();
         Scope s = new Scope(u);
         Node n = s.node(id);
         s.require(n, "manage_permissions", false, true);
         checkVersion(n, request.version());
-        if (u.getImpersonatedBy() != null)
-            throw new ApiException(ErrorCode.IMPERSONATION_READ_ONLY);
-        String hash = unlocks.hash(request.password());
         jdbc.update(
                 "UPDATE company_file_nodes SET"
                     + " password_hash=?,password_revision=password_revision+1,version=version+1,updated_at=now(),updated_by=?"
@@ -966,52 +1014,52 @@ public class CompanyFileService {
             Acl value = new Acl(rule.subjectType(), rule.subjectId(), rule.effect(), rule.actions().stream().sorted().toList());
             if (result.putIfAbsent(aclKey(value.subjectType, value.subjectId, value.effect), value) != null)
                 throw invalid("同一对象的相同授权类型不能重复");
-            principal(rule.subjectType(), rule.subjectId());
+        }
+        Map<String, Principal> principals = loadPrincipals(result.values());
+        if (result.values().stream().anyMatch(rule -> !principals.containsKey(principalKey(rule.subjectType, rule.subjectId))))
+            throw invalid("授权对象已停用或不存在，请重新选择");
+        return result;
+    }
+
+    private Rule ruleDto(Acl acl, Map<String, Principal> principals) {
+        Principal p = principals.getOrDefault(principalKey(acl.subjectType, acl.subjectId),
+                new Principal(acl.subjectId, "已停用对象", "", acl.subjectType));
+        return new Rule(acl.subjectType, acl.subjectId, p.name(), acl.effect, acl.actions);
+    }
+
+    /** Read and validate the same active subjects in at most one query per subject type. */
+    private Map<String, Principal> loadPrincipals(Collection<Acl> rules) {
+        Map<String, Principal> result = new HashMap<>();
+        for (String type : List.of("USER", "DEPARTMENT")) {
+            List<UUID> ids = rules.stream().filter(rule -> rule.subjectType.equals(type))
+                    .map(Acl::subjectId).distinct().toList();
+            if (ids.isEmpty()) continue;
+            String query;
+            if (type.equals("USER")) query =
+                    "SELECT u.id,coalesce(e.full_name||'('||e.code||')','管理员') AS"
+                        + " name,coalesce(d.name,'') AS detail FROM users u LEFT JOIN"
+                        + " employees e ON e.id=u.employee_id LEFT JOIN departments d ON"
+                        + " d.id=e.department_id WHERE u.id IN (" + placeholders(ids.size())
+                        + ") AND NOT u.is_deleted AND u.status='active'";
+            else query = "SELECT id,name,code detail FROM departments WHERE id IN ("
+                    + placeholders(ids.size()) + ") AND NOT is_deleted";
+            List<Principal> subjects =
+                    jdbc.query(
+                            query,
+                            (rs, row) ->
+                                    new Principal(
+                                            rs.getObject("id", UUID.class),
+                                            rs.getString("name"),
+                                            rs.getString("detail"),
+                                            type),
+                            ids.toArray());
+            subjects.forEach(subject -> result.put(principalKey(type, subject.id()), subject));
         }
         return result;
     }
 
-    private Rule ruleDto(Acl acl) {
-        Principal p;
-        try {
-            p = principal(acl.subjectType, acl.subjectId);
-        } catch (ApiException ex) {
-            p = new Principal(acl.subjectId, "已停用对象", "", acl.subjectType);
-        }
-        return new Rule(acl.subjectType, acl.subjectId, p.name(), acl.effect, acl.actions);
-    }
-
-    private Principal principal(String type, UUID id) {
-        List<Principal> result;
-        if (type.equals("USER"))
-            result =
-                    jdbc.query(
-                            "SELECT u.id,coalesce(e.full_name||'('||e.code||')','管理员') AS"
-                                + " name,coalesce(d.name,'') AS detail FROM users u LEFT JOIN"
-                                + " employees e ON e.id=u.employee_id LEFT JOIN departments d ON"
-                                + " d.id=e.department_id WHERE u.id=? AND NOT u.is_deleted AND"
-                                + " u.status='active'",
-                            (rs, row) ->
-                                    new Principal(
-                                            rs.getObject("id", UUID.class),
-                                            rs.getString("name"),
-                                            rs.getString("detail"),
-                                            type),
-                            id);
-        else
-            result =
-                    jdbc.query(
-                            "SELECT id,name,code detail FROM departments WHERE id=? AND NOT"
-                                    + " is_deleted",
-                            (rs, row) ->
-                                    new Principal(
-                                            rs.getObject("id", UUID.class),
-                                            rs.getString("name"),
-                                            rs.getString("detail"),
-                                            type),
-                            id);
-        if (result.isEmpty()) throw invalid("授权对象已停用或不存在，请重新选择");
-        return result.getFirst();
+    private static String principalKey(String type, UUID id) {
+        return type + ":" + id;
     }
 
     private Node load(UUID id) {
@@ -1188,23 +1236,21 @@ public class CompanyFileService {
         else target.append(value.length()).append(':').append(value);
     }
 
-    private static Comparator<Node> comparator(String sort, String direction) {
+    /** One fixed-expression ordering contract for ordinary directories and streamed trash roots. */
+    private static String ordering(String sort, String direction) {
         String key = sort == null ? "manual" : sort;
         if (!Set.of("manual", "name", "updated", "size").contains(key)) throw invalid("排序方式无效");
         if (direction != null && !Set.of("asc", "desc").contains(direction))
             throw invalid("排序方向无效");
-        Comparator<Node> value =
+        String value =
                 switch (key) {
-                    case "name" -> Comparator.comparing(n -> n.name, String.CASE_INSENSITIVE_ORDER);
-                    case "updated" -> Comparator.comparing(n -> n.updatedAt);
-                    case "size" ->
-                            Comparator.comparingLong(n -> n.sizeBytes == null ? 0 : n.sizeBytes);
-                    default -> Comparator.comparingLong(n -> n.position);
+                    case "name" -> "lower(n.name) COLLATE \"C\"";
+                    case "updated" -> "n.updated_at";
+                    case "size" -> "coalesce(n.size_bytes,0)";
+                    default -> "n.position";
                 };
-        if ("desc".equals(direction)) value = value.reversed();
-        return Comparator.<Node, Boolean>comparing(n -> !n.kind.equals("FOLDER"))
-                .thenComparing(value)
-                .thenComparing(n -> n.id);
+        return "(n.kind<>'FOLDER')," + value
+                + ("desc".equals(direction) ? " DESC" : " ASC") + ",n.id";
     }
 
     private void event(AuthUser u, String action, UUID id) {

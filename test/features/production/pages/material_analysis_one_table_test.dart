@@ -13,6 +13,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show precisionErrorTolerance;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -51,6 +52,7 @@ part 'material_analysis_presentation_work_cases.dart';
 part 'material_analysis_view_transition_cases.dart';
 part 'material_analysis_append_quantity_cases.dart';
 part 'material_analysis_handling_density_cases.dart';
+part 'material_analysis_tree_shortcuts_cases.dart';
 
 const _permissions = {
   Perm.productionMaterialAnalysisView,
@@ -274,6 +276,7 @@ void main() {
   materialUnifiedHandlingCases();
   materialProductWithdrawalCases();
   materialHandlingDensityCases();
+  materialTreeShortcutCases();
   materialOrderAuthorityCases();
   materialQuantityPresentationCases();
   materialPolicyCases();

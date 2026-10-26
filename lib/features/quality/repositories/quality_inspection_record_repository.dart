@@ -61,6 +61,24 @@ class QualityInspectionRecordRepository {
   /// 单号列 facets（2026-09-25 单号列统一）：{sourceNo/referenceNo/sheetNo:
   /// [MasterFacetBucket]}，与列表同一过滤上下文（不含单号自身的值筛选）；
   /// IQC 无检查单号，sheetNo 恒为空表。
+  Map<String, dynamic> facetParameters({
+    String? decision,
+    String keyword = '',
+    QualityInspectionDateRange? dateRange,
+    String? sourceType,
+    String? effective,
+    String? disposition,
+  }) => {
+    if (decision?.trim().isNotEmpty == true) 'decision': decision!.trim(),
+    if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+    if (dateRange != null) 'from': _fromInstant(dateRange).toIso8601String(),
+    if (dateRange != null) 'to': _toInstant(dateRange).toIso8601String(),
+    if (sourceType?.trim().isNotEmpty == true) 'sourceType': sourceType!.trim(),
+    if (effective?.trim().isNotEmpty == true) 'effective': effective!.trim(),
+    if (disposition?.trim().isNotEmpty == true)
+      'disposition': disposition!.trim(),
+  };
+
   Future<Map<String, List<MasterFacetBucket>>> facets({
     required QualityInspectionRecordDomain domain,
     String? decision,
@@ -72,19 +90,14 @@ class QualityInspectionRecordRepository {
   }) async {
     final json = await api.get(
       '${_listPath(domain)}/facets',
-      query: {
-        if (decision?.trim().isNotEmpty == true) 'decision': decision!.trim(),
-        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
-        if (dateRange != null)
-          'from': _fromInstant(dateRange).toIso8601String(),
-        if (dateRange != null) 'to': _toInstant(dateRange).toIso8601String(),
-        if (sourceType?.trim().isNotEmpty == true)
-          'sourceType': sourceType!.trim(),
-        if (effective?.trim().isNotEmpty == true)
-          'effective': effective!.trim(),
-        if (disposition?.trim().isNotEmpty == true)
-          'disposition': disposition!.trim(),
-      },
+      query: facetParameters(
+        decision: decision,
+        keyword: keyword,
+        dateRange: dateRange,
+        sourceType: sourceType,
+        effective: effective,
+        disposition: disposition,
+      ),
     );
     final result = <String, List<MasterFacetBucket>>{};
     for (final entry in json.entries) {

@@ -10,8 +10,8 @@ import java.util.UUID;
 
 /** Finance reviewed the final receipt basis; later quantity corrections need a separate reviewed process. */
 public final class ProcurementTerminatedReceiptBasis {
-    public static final String MESSAGE="该订单已按当前实收量经财务批准结束，不能直接新增退货或红冲原收退货；请先联系财务核对后续处置。";
-    public static final String SETTLED_LOSS_MESSAGE="该损耗已计入订单财务结束时核定的履约数量，不能直接红冲；请联系财务核对后续处置。";
+    public static final String MESSAGE="该订单已按当前实收量取消剩余数量并结束，不能直接新增退货或红冲原收退货；请先联系财务核对后续处置。";
+    public static final String SETTLED_LOSS_MESSAGE="该损耗已计入订单结束时核定的履约数量，不能直接红冲；请联系财务核对后续处置。";
     private ProcurementTerminatedReceiptBasis() {}
 
     public static void requireMutable(EntityManager em,String type,Collection<UUID> orderItemIds) {

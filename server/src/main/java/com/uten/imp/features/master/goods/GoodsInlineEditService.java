@@ -24,7 +24,7 @@ import java.util.UUID;
 /** Merges a narrow table draft on the server, retaining exact persisted decimals. */
 @Service
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('goods:edit') and hasAuthority('goods:view')")
+@PreAuthorize("hasAuthority('goods:view') and hasAnyAuthority('goods:edit', 'goods:purchase:edit', 'goods:sales:edit', 'goods:price:edit', 'goods:name_en:edit')")
 public class GoodsInlineEditService {
     private final GoodsService goods;
     private final GoodsRepository repository;
@@ -37,7 +37,7 @@ public class GoodsInlineEditService {
     private static final Set<String> EDITABLE = Set.of(
             "name", "clientGoodsName", "nameEn", "model", "spec", "series", "cNumber", "material", "paper",
             "rearInsertCode", "stockPlace", "sourceType", "colorId", "unitId", "mouldId",
-            "owningWarehouseId", "minOrderQty", "orderMultipleQty", "price", "discount");
+            "owningWarehouseId", "minOrderQty", "orderMultipleQty", "price", "discount", "status");
     // Existing full-form apply() assigns these scalars unconditionally. All
     // references and nameEn are deliberately omitted unless explicitly changed.
     private static final Set<String> BASELINE = Set.of(
@@ -50,7 +50,7 @@ public class GoodsInlineEditService {
 
     @Transactional
     public GoodsDetail patch(UUID id, Map<String, JsonNode> expected, Map<String, JsonNode> changes) {
-        CurrentAuthorityGuard.requireAll("goods:view", "goods:edit");
+        CurrentAuthorityGuard.requireAll("goods:view");
         var user = currentUser.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED, "当前登录状态无效"));
         if (user.getEmployeeId() == null || user.isVisitor() || !user.isAccountNonLocked()
                 || user.isMustChangePassword() || user.getImpersonatedBy() != null) {

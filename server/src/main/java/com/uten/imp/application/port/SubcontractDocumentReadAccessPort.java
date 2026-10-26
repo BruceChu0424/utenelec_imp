@@ -8,6 +8,9 @@ import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
  * the subcontract feature; callers receive only a bindable SQL scope.
  */
 public interface SubcontractDocumentReadAccessPort {
+    default com.uten.imp.security.OwnerVisibility.OwnerScope scope(String... operationAuthorities) {
+        throw new UnsupportedOperationException("Subcontract owner authority is required");
+    }
 
     boolean hasAuthority(String authority);
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -75,6 +76,36 @@ class _TestSnapshot extends SessionSnapshotNotifier {
 }
 
 void main() {
+  testWidgets(
+    'sales candidate remainder projection retains the canonical paged read binding',
+    (tester) async {
+      final response = _salesCandidatesJson();
+      final lines =
+          ((response['items'] as List).single as Map)['lines'] as List;
+      (lines.last as Map)['remainingQty'] = 0;
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 900),
+        seeded: false,
+        permissions: const {Perm.productionMaterialAnalysisCreate},
+        responseOverride: (request) =>
+            request.path.endsWith('/sales-candidates') ? response : null,
+      );
+      final table = tester
+          .widget<MasterDataTableView<MaterialAnalysisSalesCandidateLine>>(
+            find.byKey(const Key('material-analysis-candidate-table')),
+          );
+      expect(table.items.map((row) => row.salesOrderItemId), ['sales-line-a']);
+      final binding = readWindowBindingOf(table.items);
+      expect(binding, isNotNull);
+      expect(
+        binding!.projectionKey.toString(),
+        contains('sales-candidates-with-remaining-quantity'),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'a retained hidden page does not poll BOM diagnostics until visible',
     (tester) async {

@@ -139,8 +139,21 @@ class EmployeePhoneView {
   };
 }
 
+/// Archived identity facts are deliberately separate from editable current lists.
+class EmployeeIdentityArchiveRow {
+  EmployeeIdentityArchiveRow.fromJson(Map<String, dynamic> json)
+    : values = Map<String, dynamic>.unmodifiable(json);
+  final Map<String, dynamic> values;
+  String? get sourceEmployeeId => values['sourceEmployeeId'] as String?;
+  String? get sourceEmployeeCode => values['sourceEmployeeCode'] as String?;
+  String text(String key) => values[key]?.toString() ?? '';
+}
+
 class EmploymentHistoryView {
   const EmploymentHistoryView({
+    this.sourceEmployeeId,
+    this.sourceEmployeeCode,
+    this.historicalReadOnly = false,
     this.id,
     this.eventType,
     this.fromDeptName,
@@ -155,8 +168,15 @@ class EmploymentHistoryView {
   final String? eventDate;
   final String? remark;
 
+  final String? sourceEmployeeId;
+  final String? sourceEmployeeCode;
+  final bool historicalReadOnly;
+
   factory EmploymentHistoryView.fromJson(Map<String, dynamic> json) =>
       EmploymentHistoryView(
+        sourceEmployeeId: json['sourceEmployeeId'] as String?,
+        sourceEmployeeCode: json['sourceEmployeeCode'] as String?,
+        historicalReadOnly: json['historicalReadOnly'] == true,
         id: json['id'] as String?,
         eventType: json['eventType'] as String?,
         fromDeptName: json['fromDeptName'] as String?,
@@ -221,6 +241,9 @@ class EmployeeProfile {
     this.accountSupportAllowed,
     this.emergencyContacts = const [],
     this.history = const [],
+    this.resolvedFromEmployeeId,
+    this.historicalCertificates = const [],
+    this.historicalEducations = const [],
     this.vehicles = const [],
     this.phones = const [],
     this.attachments = const [],
@@ -296,6 +319,9 @@ class EmployeeProfile {
 
   final List<EmergencyContactView> emergencyContacts;
   final List<EmploymentHistoryView> history;
+  final String? resolvedFromEmployeeId;
+  final List<EmployeeIdentityArchiveRow> historicalCertificates;
+  final List<EmployeeIdentityArchiveRow> historicalEducations;
   final List<EmployeeVehicleView> vehicles; // ADR-021
   final List<EmployeePhoneView> phones; // 备用手机号（按权限脱敏）
 
@@ -312,6 +338,22 @@ class EmployeeProfile {
     final ec = json['emergencyContacts'] as List<dynamic>? ?? const [];
     final hist = json['history'] as List<dynamic>? ?? const [];
     return EmployeeProfile(
+      resolvedFromEmployeeId: json['resolvedFromEmployeeId'] as String?,
+      historicalCertificates:
+          (json['historicalCertificates'] as List? ?? const [])
+              .map(
+                (row) => EmployeeIdentityArchiveRow.fromJson(
+                  Map<String, dynamic>.from(row as Map),
+                ),
+              )
+              .toList(),
+      historicalEducations: (json['historicalEducations'] as List? ?? const [])
+          .map(
+            (row) => EmployeeIdentityArchiveRow.fromJson(
+              Map<String, dynamic>.from(row as Map),
+            ),
+          )
+          .toList(),
       id: json['id'] as String,
       code: json['code'] as String,
       fullName: json['fullName'] as String?,

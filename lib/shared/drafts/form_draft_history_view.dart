@@ -1,4 +1,6 @@
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../components/buttons/uten_back_button.dart';
 import '../../components/buttons/uten_refresh_button.dart';
 import '../../core/ui/app_notification.dart';
@@ -108,6 +110,10 @@ class _HistoryPageState extends ConsumerState<_FormDraftHistoryPage> {
         title: '本机草稿历史',
         leading: UtenBackButton(onPressed: () => Navigator.of(context).pop()),
         actions: [
+          const UtenFieldHintIcon(
+            info: '保存、完成和删除的内容保留在当前设备。历史仅供查看。',
+            dense: true,
+          ),
           UtenRefreshButton(
             tooltip: '刷新历史',
             busy: page.isLoading,
@@ -149,10 +155,6 @@ class _HistoryPageState extends ConsumerState<_FormDraftHistoryPage> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.all(UtenSpacing.s12),
-                    child: Text('保存、完成和删除的内容保留在当前设备。历史仅供查看。'),
-                  ),
                   Expanded(
                     child: entries.isEmpty
                         ? const Center(child: Text('此页没有当前类别可查看的历史'))
@@ -192,7 +194,7 @@ class _HistoryPageState extends ConsumerState<_FormDraftHistoryPage> {
                             },
                           ),
                   ),
-                  Padding(
+                  UtenPageEdgePadding(
                     padding: const EdgeInsets.all(UtenSpacing.s12),
                     child: Wrap(
                       spacing: UtenSpacing.s12,
@@ -276,14 +278,24 @@ class _HistoryDetail extends ConsumerWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  projection.title,
-                                  style: Theme.of(context).textTheme.titleLarge,
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        projection.title,
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.titleLarge,
+                                      ),
+                                    ),
+                                    const UtenFieldHintIcon(
+                                      info:
+                                          '按当前权限展示已接通的字段。未展示字段与附件原件仍保留；未填写的值不补零。',
+                                      dense: true,
+                                    ),
+                                  ],
                                 ),
                                 const SizedBox(height: UtenSpacing.s12),
-                                const Text(
-                                  '按当前权限展示已接通的字段。未展示字段与附件原件仍保留；未填写的值不补零。',
-                                ),
                                 if (projection.sections.isEmpty)
                                   const Text('此表单的内容投影尚未接通。'),
                               ],

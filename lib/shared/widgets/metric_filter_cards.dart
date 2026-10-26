@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
+import '../../components/inputs/uten_table_cell_spec.dart';
 
 /// 指标筛选卡色调 → 颜色（与任务工作台行级状态药丸同色系）。
 Color metricToneColor(String tone, ThemeData theme) {
@@ -32,6 +34,7 @@ class MetricFilterCardItem {
     this.tone = 'neutral',
     this.icon = Icons.assessment_outlined,
     this.description,
+    this.info,
     this.selected = false,
     this.onTap,
   });
@@ -44,9 +47,11 @@ class MetricFilterCardItem {
   final String tone;
   final IconData icon;
 
-  /// 可选说明行（单卡任务中心的口径说明，如「仅显示分配给您的订货单」）；
-  /// 最多两行，超出省略。筛选卡行一般不设置。
+  /// Short business facts, states or quantities remain visible below the value.
   final String? description;
+
+  /// Pure scope/mechanism guidance disclosed beside the label.
+  final String? info;
   final bool selected;
   final VoidCallback? onTap;
 }
@@ -107,13 +112,23 @@ class MetricFilterCards extends StatelessWidget {
         }
 
         final labelHeight = items
-            .map(
-              (item) => measure(
-                item.label,
-                theme.textTheme.bodySmall,
-                math.max(1.0, contentWidth - 22 - UtenSpacing.s8),
-              ),
-            )
+            .map((item) {
+              final hasInfo = item.info?.trim().isNotEmpty ?? false;
+              final hintExtent = hasInfo
+                  ? UtenEditableGridCellSpec.heightOf(context)
+                  : 0.0;
+              return math.max(
+                hintExtent,
+                measure(
+                  item.label,
+                  theme.textTheme.bodySmall,
+                  math.max(
+                    1.0,
+                    contentWidth - 22 - UtenSpacing.s8 - hintExtent,
+                  ),
+                ),
+              );
+            })
             .fold(22.0, math.max);
         final valueHeight = items
             .map(
@@ -126,16 +141,19 @@ class MetricFilterCards extends StatelessWidget {
               ),
             )
             .reduce(math.max);
-        final descriptionHeight = items
-            .map(
-              (item) => measure(
-                item.description ?? ' ',
-                theme.textTheme.bodySmall,
-                contentWidth,
-                maxLines: 2,
-              ),
-            )
-            .reduce(math.max);
+        final descriptionHeight =
+            items.any((item) => item.description?.trim().isNotEmpty ?? false)
+            ? items
+                  .map(
+                    (item) => measure(
+                      item.description ?? '',
+                      theme.textTheme.bodySmall,
+                      contentWidth,
+                      maxLines: 2,
+                    ),
+                  )
+                  .reduce(math.max)
+            : 0.0;
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -225,6 +243,8 @@ class _MetricFilterCard extends StatelessWidget {
                           ),
                         ),
                       ),
+                      if (item.info?.trim().isNotEmpty ?? false)
+                        UtenFieldHintIcon(info: item.info, dense: true),
                     ],
                   ),
                 ),
@@ -239,18 +259,22 @@ class _MetricFilterCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: UtenSpacing.s8),
-                SizedBox(
-                  height: descriptionHeight,
-                  child: Text(
-                    item.description ?? ' ',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                if (descriptionHeight > 0) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  SizedBox(
+                    height: descriptionHeight,
+                    child: item.description?.isNotEmpty == true
+                        ? Text(
+                            item.description!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          )
+                        : const SizedBox.shrink(),
                   ),
-                ),
+                ],
               ],
             ),
           ),

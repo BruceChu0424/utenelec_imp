@@ -1,5 +1,8 @@
+import 'package:uten_imp/shared/providers/native_facet_options.dart';
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'dart:async';
+import '../../../components/buttons/uten_tree_expansion_button.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 import '../../../shared/search/keyword_search.dart';
@@ -12,6 +15,8 @@ import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import 'package:flutter/foundation.dart' show listEquals, mapEquals, setEquals;
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
+import '../../../components/layout/uten_section_header.dart';
 import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -81,6 +86,10 @@ import '../models/material_analysis_source_graph.dart';
 import '../models/material_quantity_apportionment.dart';
 import '../models/material_quantity_presentation.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/paged_read_window_binding.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../models/material_future_transfer.dart';
 import '../models/material_aggregate_order.dart';
@@ -109,6 +118,7 @@ import '../widgets/material_manual_demand_editor.dart';
 import '../widgets/material_preparation_route_card.dart';
 import '../widgets/production_overproduction_rate_field.dart';
 import '../widgets/bom_usage_basis_text.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 part 'material_analysis_bom_tree.dart';
 part 'material_analysis_borrow.dart';
@@ -170,7 +180,8 @@ enum _CompanionRead {
 }
 
 abstract class _MaterialAnalysisPageBase
-    extends ConsumerState<ProductionMaterialAnalysisPage> {
+    extends ConsumerState<ProductionMaterialAnalysisPage>
+    with ScopedPagedReadViewMixin<ProductionMaterialAnalysisPage> {
   static const int _maxAnalysisItems = 500;
   static const int _requestChunkSize = 500;
   static const int _maxPlansPerPrintJob = 50;
@@ -426,6 +437,7 @@ abstract class _MaterialAnalysisPageBase
   final _candidateTableRows =
       MasterDataTableRowsController<MaterialAnalysisSalesCandidateLine>();
   MaterialAnalysisSalesCandidatePage? _candidatePage;
+  List<MaterialAnalysisSalesCandidateLine>? _candidateReadRows;
   String? _warehouseId;
   final Set<String> _warehouseIds = {};
   String? _error;
@@ -1188,7 +1200,19 @@ abstract class _MaterialAnalysisPageBase
     ProductionMaterialAnalysisMaterial material,
   );
 
-  Future<void> _loadCandidates({int? page}) async {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _candidateRequests.begin();
+    _candidateTableRows.update(const []);
+    setState(() {
+      _candidatePage = null;
+      _candidateReadRows = null;
+      _loadingCandidates = false;
+      _error = scopedPagedReadRejection?.message;
+    });
+  }
+
+  Future<void> _loadCandidates({int? page, bool useCache = false}) async {
     final request = _candidateRequests.begin();
     final readOwnerCurrent = captureReadOwner(ref);
     // 2026-09-25 单号列统一：销售单号排序/值筛选随列表下推（服务端白名单）。
@@ -1198,38 +1222,71 @@ abstract class _MaterialAnalysisPageBase
         : (_candidateSortAscending ? 'asc' : 'desc');
     final requestedOrderNo = _candidateOrderNoFilter;
     final requestedKeyword = _candidateKeyword;
+    final requestedAscending = _candidateSortAscending;
     setState(() {
       _loadingCandidates = true;
       _error = null;
-      if (page != null) _candidatePageNo = page;
+      _candidatePageNo =
+          page ?? _candidateTableRows.visiblePage ?? _candidatePageNo;
     });
     try {
       final repository = ref.read(productionPlanRepositoryProvider);
-      final result = await repository.materialAnalysisSalesCandidates(
-        page: _candidatePageNo,
-        size: _candidatePageSize,
-        keyword: requestedKeyword,
-        sort: requestedSort,
-        order: requestedOrder,
-        orderBillNo: requestedOrderNo,
+      final cached = await readScopedPage<MaterialAnalysisSalesCandidateLine>(
+        _candidatePageNo,
+        slot: 'sales-candidates',
+        query: (
+          repository,
+          requestedKeyword,
+          requestedSort,
+          requestedAscending,
+          requestedOrderNo,
+        ),
+        currentQuery: () => (
+          ref.read(productionPlanRepositoryProvider),
+          _candidateKeyword,
+          _candidateSortColumn,
+          _candidateSortAscending,
+          _candidateOrderNoFilter,
+        ),
+        useCache: useCache,
+        fetchPage: (target) async {
+          final result = await repository.materialAnalysisSalesCandidates(
+            page: target,
+            size: _candidatePageSize,
+            keyword: requestedKeyword,
+            sort: requestedSort,
+            order: requestedOrder,
+            orderBillNo: requestedOrderNo,
+          );
+          return PagedReadSnapshot(
+            page: PagedResult(
+              items: result.lines,
+              page: result.page,
+              size: result.size,
+              total: result.total,
+              totalPages: result.totalPages,
+            ),
+            snapshot: result,
+          );
+        },
       );
+      final result =
+          (cached
+                  as PagedReadSnapshot<
+                    MaterialAnalysisSalesCandidateLine,
+                    MaterialAnalysisSalesCandidatePage
+                  >)
+              .snapshot;
       // 单号 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
-      Map<String, List<MasterFacetBucket>> facets = const {};
-      try {
-        facets = await repository.materialAnalysisSalesCandidateFacets(
-          keyword: requestedKeyword,
-        );
-      } catch (_) {
-        facets = const {};
-      }
+
       if (!mounted ||
           !readOwnerCurrent() ||
           !_candidateRequests.isCurrent(request)) {
         return;
       }
       setState(() {
-        _candidateDocNoFacets = facets;
         _candidatePage = result;
+        _candidateReadRows = cached.items;
         _candidatePageNo = result.page;
         _loadingCandidates = false;
       });
@@ -1283,6 +1340,7 @@ abstract class _MaterialAnalysisPageBase
           _serverRefreshNotice = '登录身份或查看范围已变化，原操作可能已完成；请重新打开核对，勿重复提交。';
         }
         _candidatePage = null;
+        _candidateReadRows = null;
         _candidateDocNoFacets = const {};
         _loadingCandidates = false;
         _booting = false;
@@ -2369,42 +2427,47 @@ class _ProductionMaterialAnalysisPageState
             SizedBox(
               width: 48,
               height: 48,
-              child: PopupMenuButton<String>(
-                tooltip: '打开记录',
-                icon: const Icon(Icons.history_rounded),
-                enabled: !_busy,
-                onSelected: (value) {
-                  if (value == 'sheet') {
-                    _openSummarySheet();
-                  } else if (value == 'analyses') {
-                    context.push(RouteName.productionMaterialAnalysisHistory);
-                  } else {
-                    context.push(RouteName.productionPlanList);
-                  }
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
-                    value: 'sheet',
-                    child: ListTile(
-                      leading: Icon(Icons.summarize_outlined),
-                      title: Text('备料汇总预览'),
+              child: UtenDropdownScrollScope(
+                child: PopupMenuButton<String>(
+                  tooltip: '打开记录',
+                  icon: const Icon(Icons.history_rounded),
+                  enabled: !_busy,
+                  onSelected: (value) {
+                    if (value == 'sheet') {
+                      _openSummarySheet();
+                    } else if (value == 'analyses') {
+                      pushPage(
+                        context,
+                        RouteName.productionMaterialAnalysisHistory,
+                      );
+                    } else {
+                      pushPage(context, RouteName.productionPlanList);
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'sheet',
+                      child: ListTile(
+                        leading: Icon(Icons.summarize_outlined),
+                        title: Text('备料汇总预览'),
+                      ),
                     ),
-                  ),
-                  PopupMenuItem(
-                    value: 'analyses',
-                    child: ListTile(
-                      leading: Icon(Icons.fact_check_outlined),
-                      title: Text('物料分析记录'),
+                    PopupMenuItem(
+                      value: 'analyses',
+                      child: ListTile(
+                        leading: Icon(Icons.fact_check_outlined),
+                        title: Text('物料分析记录'),
+                      ),
                     ),
-                  ),
-                  PopupMenuItem(
-                    value: 'plans',
-                    child: ListTile(
-                      leading: Icon(Icons.assignment_outlined),
-                      title: Text('生产计划历史'),
+                    PopupMenuItem(
+                      value: 'plans',
+                      child: ListTile(
+                        leading: Icon(Icons.assignment_outlined),
+                        title: Text('生产计划历史'),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             )
           else ...[
@@ -2422,7 +2485,8 @@ class _ProductionMaterialAnalysisPageState
               icon: Icons.fact_check_outlined,
               onPressed: _busy
                   ? null
-                  : () => context.push(
+                  : () => pushPage(
+                      context,
                       RouteName.productionMaterialAnalysisHistory,
                     ),
               child: const Text('物料分析记录'),
@@ -2432,7 +2496,7 @@ class _ProductionMaterialAnalysisPageState
               icon: Icons.history_rounded,
               onPressed: _busy
                   ? null
-                  : () => context.push(RouteName.productionPlanList),
+                  : () => pushPage(context, RouteName.productionPlanList),
               child: const Text('生产计划历史'),
             ),
           ],

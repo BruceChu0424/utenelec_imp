@@ -40,7 +40,7 @@ import java.util.UUID;
  *   <li>{@code GET /api/subcontract/reports/monthly} —— 月度汇总（MV 兜底，前端不再暴露入口）。</li>
  * </ul>
  *
- * <p>询价/申请/订货/损耗 无报表（用户要求删）。docType 取值见 {@link SubcontractReportService#monthly}。
+ * <p>另提供 ORDER/detail 核对订单累计到货差异；询价/申请/损耗不提供报表。
  */
 @RestController
 @RequestMapping("/api/subcontract/reports")
@@ -54,6 +54,7 @@ public class SubcontractReportController {
     private final SecurityContextCurrentUser currentUser;
 
     /** 8 张明细/汇总报表：doc/view 路由分发。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/{doc}/{view}")
     @PreAuthorize("hasAuthority('subcontract_report:view')")
     public ReportTableResponse table(
@@ -79,6 +80,7 @@ public class SubcontractReportController {
         // 归一化 doc：大小写不敏感 + 连字符/下划线等价（receipt|material-issue 与 RECEIPT|MATERIAL_ISSUE 均匹配）
         String key = doc.replace('-', '_').toUpperCase(java.util.Locale.ROOT) + "/" + view;
         return switch (key) {
+            case "ORDER/detail"          -> service.orderDetail(billNo, supplierId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
             case "RECEIPT/detail"        -> service.receiptDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
             case "RECEIPT/summary"       -> service.receiptSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
             case "RETURN/detail"         -> service.returnDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
@@ -92,6 +94,7 @@ public class SubcontractReportController {
     }
 
     /** 委外出入状况表（综合 O）。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/in-out-status")
     @PreAuthorize("hasAuthority('subcontract_report:view')")
     public ReportTableResponse inOutStatus(
@@ -130,6 +133,7 @@ public class SubcontractReportController {
     }
 
     /** 月度汇总（MV，兜底；前端不再暴露入口）。 */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/monthly")
     @PreAuthorize("hasAuthority('subcontract_report:view')")
     public List<SubcontractMonthlyRow> monthly(

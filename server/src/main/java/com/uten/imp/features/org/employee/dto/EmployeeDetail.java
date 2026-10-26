@@ -101,6 +101,11 @@ public class EmployeeDetail {
     private List<EmploymentHistoryDto> history;
     private List<CredentialDto> certificates;
     private List<EducationDto> educations;
+    /** Verified archived identities stay outside the editable replacement collections. */
+    private List<CredentialDto> historicalCertificates = List.of();
+    private List<EducationDto> historicalEducations = List.of();
+    /** Present only when the requested, verified alias resolves to this canonical id. */
+    private UUID resolvedFromEmployeeId;
     // 车辆（employee:view/本人可见）与备用手机号（本人或 pii:view 明文，否则掩码）—— ADR-021
     private List<VehicleDto> vehicles;
     private List<PhoneDto> phones;

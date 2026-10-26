@@ -42,7 +42,7 @@ class PageSearchLifecycle {
   bool _disposed = false;
   int _revision = 0;
 
-  void attach(BuildContext context) {
+  void attach(BuildContext context, {bool fallbackToActivePage = false}) {
     if (_disposed) return;
     final router = GoRouter.maybeOf(context);
     if (identical(router, _router)) return;
@@ -55,7 +55,7 @@ class PageSearchLifecycle {
     // explicit scope can carry the host identity into a fullscreen presentation
     // so search inputs first mounted there still join the host's session.
     final settings = ModalRoute.of(context)?.settings;
-    if (scope == null && settings is! Page) return;
+    if (scope == null && settings is! Page && !fallbackToActivePage) return;
     final settingsKey = settings is Page ? settings.key : null;
     final config = router.routerDelegate.currentConfiguration;
     if (config.isEmpty || config.isError) return;
@@ -73,6 +73,12 @@ class PageSearchLifecycle {
       // Shell tabs may be constructed directly by the shell, rather than by a
       // GoRoute. They mount on first visit, so capture that active leaf once.
       location ??= config.last.matchedLocation;
+      // Navigation initiated in a dialog/native Navigator page belongs to the
+      // active GoRouter page. Keep its key as well as its path: a second push
+      // to the same URL is still a different page visit.
+      if (fallbackToActivePage && match == null) {
+        pageKey ??= config.last.pageKey;
+      }
     }
     _router = router;
     _location = location;

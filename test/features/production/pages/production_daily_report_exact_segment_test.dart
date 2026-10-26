@@ -14,6 +14,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_employee_multi_picker.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
@@ -69,6 +70,7 @@ part 'production_daily_report_create_recovery_cases.dart';
 part 'production_daily_report_attachment_late_ack_cases.dart';
 part 'production_daily_report_precision_cases.dart';
 part 'production_daily_report_session_boundary_cases.dart';
+part 'production_daily_report_navigation_cases.dart';
 part 'production_daily_report_product_card_cases.dart';
 part 'production_daily_report_manual_destination_cases.dart';
 part 'production_daily_report_partial_quantity_cases.dart';
@@ -106,6 +108,7 @@ void main() {
   registerDailyReportProductCardTests();
   registerDailyReportManualDestinationTests();
   registerDailyReportSessionBoundaryTests();
+  registerDailyReportNavigationTests();
   registerDailyReportPrecisionTests();
   registerDailyReportDraftIdentityTests();
   registerDailyReportCreateRecoveryTests();
@@ -2713,6 +2716,7 @@ Future<void> _pumpNewReport(
   ProductionDailyReportEditPage? page,
   Set<String> extraPermissions = const {},
   bool followSessionIdentity = false,
+  GoRouter? router,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1440, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -2758,20 +2762,30 @@ Future<void> _pumpNewReport(
           ...extraPermissions,
         }),
       ],
-      child: MaterialApp(
-        home: Column(
-          children: [
-            const AppNotificationHost(),
-            Expanded(
-              child:
-                  page ??
-                  const ProductionDailyReportEditPage(
-                    initialExecutionSegmentId: 'segment-1',
+      child: router != null
+          ? MaterialApp.router(
+              routerConfig: router,
+              builder: (_, child) => Column(
+                children: [
+                  const AppNotificationHost(),
+                  Expanded(child: child!),
+                ],
+              ),
+            )
+          : MaterialApp(
+              home: Column(
+                children: [
+                  const AppNotificationHost(),
+                  Expanded(
+                    child:
+                        page ??
+                        const ProductionDailyReportEditPage(
+                          initialExecutionSegmentId: 'segment-1',
+                        ),
                   ),
+                ],
+              ),
             ),
-          ],
-        ),
-      ),
     ),
   );
   await tester.pumpAndSettle();

@@ -1,4 +1,6 @@
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -253,9 +255,22 @@ class _SmsEditorState extends ConsumerState<_SmsEditor> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '此公司的短信服务',
-                            style: Theme.of(context).textTheme.titleMedium,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '此公司的短信服务',
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
+                                ),
+                              ),
+                              const UtenFieldHintIcon(
+                                info:
+                                    '保存后用于下一次发码，不会发送测试短信，也不会改变验证码时限、发送间隔和每日限额。',
+                                dense: true,
+                              ),
+                            ],
                           ),
                           Text(
                             '配置来源：${settings.source == 'ENV' ? '部署环境' : '数据库覆盖'}',
@@ -266,9 +281,6 @@ class _SmsEditorState extends ConsumerState<_SmsEditor> {
                           Text('配置状态：${_status(settings.status)}'),
                           if (settings.detail?.isNotEmpty == true)
                             Text(settings.detail!),
-                          const Text(
-                            '保存后用于下一次发码，不会发送测试短信，也不会改变验证码时限、发送间隔和每日限额。',
-                          ),
                         ],
                       ),
                     ),
@@ -282,61 +294,64 @@ class _SmsEditorState extends ConsumerState<_SmsEditor> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            DropdownButtonFormField<String>(
-                              key: const ValueKey('sms-provider'),
-                              initialValue: _provider,
-                              isExpanded: true,
-                              decoration: const UtenInputDecoration(
-                                InputDecoration(
-                                  labelText: '短信网关',
-                                  border: OutlineInputBorder(),
+                            UtenDropdownScrollScope(
+                              nativeDropdown: true,
+                              child: DropdownButtonFormField<String>(
+                                key: const ValueKey('sms-provider'),
+                                initialValue: _provider,
+                                isExpanded: true,
+                                decoration: const UtenInputDecoration(
+                                  InputDecoration(
+                                    labelText: '短信网关',
+                                    border: OutlineInputBorder(),
+                                  ),
                                 ),
-                              ),
-                              selectedItemBuilder: (context) => [
-                                for (final provider in [
-                                  'DISABLED',
-                                  'ALIYUN',
-                                  if (settings.canUseLog) 'LOG',
-                                ])
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      _providerLabel(
-                                        provider,
-                                        settings.canUseLog,
+                                selectedItemBuilder: (context) => [
+                                  for (final provider in [
+                                    'DISABLED',
+                                    'ALIYUN',
+                                    if (settings.canUseLog) 'LOG',
+                                  ])
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        _providerLabel(
+                                          provider,
+                                          settings.canUseLog,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                  ),
-                              ],
-                              items: [
-                                const DropdownMenuItem(
-                                  value: 'DISABLED',
-                                  child: Text('停用短信'),
-                                ),
-                                const DropdownMenuItem(
-                                  value: 'ALIYUN',
-                                  child: Text('阿里云短信'),
-                                ),
-                                if (settings.canUseLog)
+                                ],
+                                items: [
                                   const DropdownMenuItem(
-                                    value: 'LOG',
-                                    child: Text('开发日志'),
+                                    value: 'DISABLED',
+                                    child: Text('停用短信'),
                                   ),
-                              ],
-                              onChanged: _enabled
-                                  ? (value) {
-                                      if (value != null) {
-                                        setState(() {
-                                          _provider = value;
-                                          if (value != 'DISABLED') {
-                                            _clear = false;
-                                          }
-                                        });
+                                  const DropdownMenuItem(
+                                    value: 'ALIYUN',
+                                    child: Text('阿里云短信'),
+                                  ),
+                                  if (settings.canUseLog)
+                                    const DropdownMenuItem(
+                                      value: 'LOG',
+                                      child: Text('开发日志'),
+                                    ),
+                                ],
+                                onChanged: _enabled
+                                    ? (value) {
+                                        if (value != null) {
+                                          setState(() {
+                                            _provider = value;
+                                            if (value != 'DISABLED') {
+                                              _clear = false;
+                                            }
+                                          });
+                                        }
                                       }
-                                    }
-                                  : null,
+                                    : null,
+                              ),
                             ),
                             const SizedBox(height: UtenSpacing.s12),
                             _field(
@@ -476,16 +491,18 @@ class _SmsEditorState extends ConsumerState<_SmsEditor> {
           suffixIcon:
               key == 'endpoint' &&
                   (_settings?.allowedEndpoints.isNotEmpty ?? false)
-              ? PopupMenuButton<String>(
-                  key: const ValueKey('sms-endpoint-options'),
-                  tooltip: '选择官方短信接口',
-                  enabled: _enabled,
-                  icon: const Icon(Icons.arrow_drop_down),
-                  onSelected: (value) => _endpoint.text = value,
-                  itemBuilder: (context) => [
-                    for (final endpoint in _settings!.allowedEndpoints)
-                      PopupMenuItem(value: endpoint, child: Text(endpoint)),
-                  ],
+              ? UtenDropdownScrollScope(
+                  child: PopupMenuButton<String>(
+                    key: const ValueKey('sms-endpoint-options'),
+                    tooltip: '选择官方短信接口',
+                    enabled: _enabled,
+                    icon: const Icon(Icons.arrow_drop_down),
+                    onSelected: (value) => _endpoint.text = value,
+                    itemBuilder: (context) => [
+                      for (final endpoint in _settings!.allowedEndpoints)
+                        PopupMenuItem(value: endpoint, child: Text(endpoint)),
+                    ],
+                  ),
                 )
               : null,
           border: const OutlineInputBorder(),

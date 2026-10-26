@@ -40,7 +40,7 @@ public class SubcontractLossClaimController {
 
     /** 损耗单号 facets（2026-09-25 单号列统一）：{wasteBillNo:[各损耗单号]}——
      *  同列表过滤口径（不含 wasteBillNo 自身值筛选）。 */
-    @GetMapping("/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('subcontract_loss_claim:view')")
     public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(
             @RequestParam(required = false) UUID supplierId,

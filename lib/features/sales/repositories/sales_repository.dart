@@ -593,10 +593,39 @@ class SalesRepository {
     return SalesDocDetail.fromJson(json);
   }
 
-  /// 批量发货可发行（GET /sales/orders/shippable-lines；SOP §一9，仅 order 类型可用）。
-  Future<List<ShippableLine>> shippableLines() async {
-    final json = await api.getList('/sales/orders/shippable-lines');
-    return json.map(ShippableLine.fromJson).toList();
+  /// 有界浏览当前可发行；选择与输入由面板独立于当前页保存。
+  Future<PagedResult<ShippableLine>> shippableLinesPage({
+    int page = 1,
+    int size = 100,
+    String? keyword,
+    String? clientId,
+  }) async {
+    final json = await api.get(
+      '/sales/orders/shippable-lines/page',
+      query: {
+        'page': page,
+        'size': size,
+        if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
+        'clientId': ?clientId,
+      },
+    );
+    return PagedResult.fromJsonResponsive(json, ShippableLine.fromJson);
+  }
+
+  /// 服务端同谓词快照：完整返回单批≤500的合法可写候选，超限明确拒绝。
+  /// 不能按当前浏览页全选，也不能截取前500行冒充全部候选。
+  Future<PagedResult<ShippableLine>> shippableLinesSelection({
+    String? keyword,
+    String? clientId,
+  }) async {
+    final json = await api.post(
+      '/sales/orders/shippable-lines/selection',
+      body: {
+        if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
+        'clientId': ?clientId,
+      },
+    );
+    return PagedResult.fromJsonResponsive(json, ShippableLine.fromJson);
   }
 
   /// 批量发货开单（POST /sales/shipments/batch；SOP §一9）：同客户合并一张出货草稿。

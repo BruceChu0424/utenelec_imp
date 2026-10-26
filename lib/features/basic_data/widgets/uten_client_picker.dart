@@ -15,16 +15,19 @@ import 'master_data_table_view.dart';
 import 'uten_master_picker.dart';
 
 /// 弹出客户选择器，返回所选客户；取消返回 null。
-/// 列表始终请求 selectableOnly：只有「使用」状态的真实客户可选。
+/// 默认只选使用状态；历史筛选可显式selectableOnly=false，原UUID与权限口径保留。
 Future<ClientListItem?> showUtenClientPicker(
   BuildContext context,
-  WidgetRef ref,
-) {
+  WidgetRef ref, {
+  String title = '选择客户',
+  bool selectableOnly = true,
+  bool excludeLegacyFinanceStub = true,
+}) {
   final clients = ref.read(clientRepositoryProvider);
   return showUtenMasterPicker<ClientListItem>(
     context,
     UtenMasterPickerSpec<ClientListItem>(
-      title: '选择客户',
+      title: title,
       noun: '客户',
       searchKey: const Key('uten-client-picker-search'),
       loadTree: () => ref.read(clientCategoryRepositoryProvider).tree(),
@@ -32,10 +35,22 @@ Future<ClientListItem?> showUtenClientPicker(
         categoryId,
         page: page,
         keyword: keyword,
-        selectableOnly: true,
+        selectableOnly: selectableOnly,
+        excludeLegacyFinanceStub: excludeLegacyFinanceStub,
       ),
-      search: (query, page) =>
-          clients.search(query, page: page, size: 100, selectableOnly: true),
+      search: (query, page) => clients.search(
+        query,
+        page: page,
+        size: 100,
+        selectableOnly: selectableOnly,
+        excludeLegacyFinanceStub: excludeLegacyFinanceStub,
+      ),
+      searchContext: (query, page) => clients.searchContext(
+        query,
+        page: page,
+        selectableOnly: selectableOnly,
+        excludeLegacyFinanceStub: excludeLegacyFinanceStub,
+      ),
       idOf: (c) => c.id,
       categoryIdOf: (c) => c.categoryId,
       labelOf: clientPickerLabel,
@@ -98,6 +113,7 @@ class ClientPickerField extends StatelessWidget {
     required this.onPick,
     this.label = '客户',
     this.required = false,
+    this.enabled = true,
     this.errorMessage,
   });
 
@@ -112,6 +128,7 @@ class ClientPickerField extends StatelessWidget {
 
   final String label;
   final bool required;
+  final bool enabled;
   final String? errorMessage;
 
   @override
@@ -126,6 +143,7 @@ class ClientPickerField extends StatelessWidget {
     hint: '点击选择客户',
     icon: Icons.storefront_outlined,
     required: required,
+    enabled: enabled,
     errorMessage: errorMessage,
   );
 }

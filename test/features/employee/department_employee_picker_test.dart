@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
 import 'package:uten_imp/components/layout/uten_split_view.dart';
+import 'package:uten_imp/components/layout/uten_scroll_gutter.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
@@ -407,6 +408,24 @@ void main() {
     expect(repository.requestedPages, containsAll(<int>[1, 2]));
   });
 
+  testWidgets('进入部门首屏即准备下一页，展开已准备页不重复请求', (tester) async {
+    final repository = _PagedEmployeeRepository();
+    await _pumpPicker(tester, repository);
+    await tester.tap(find.text('销售部'));
+    await tester.pumpAndSettle();
+    MasterDataTableView<UtenEmployeePickerItem> table() => tester.widget(
+      find.byKey(const ValueKey('department-employee-table')),
+    );
+    expect(repository.requestedPages, [1, 2],
+        reason: 'page 2 starts without any wheel, thumb or load-more action');
+    expect(table().items.map((item) => item.id), ['first']);
+    table().onLoadMore!();
+    await tester.pumpAndSettle();
+    expect(repository.requestedPages, [1, 2]);
+    expect(table().items.map((item) => item.id), ['first', 'second']);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('纯部门命中点击仍保留左查询并浏览该部门全部员工', (tester) async {
     final repository = _FakeEmployeeRepository();
     await _pumpPicker(tester, repository);
@@ -467,8 +486,10 @@ void main() {
     await tester.pumpAndSettle();
     final treeFinder = find.byType(UtenDepartmentTreeView);
     expect(tester.getSize(treeFinder).width, 160);
-    // 2026-10-18 左缘贴 0 口径：左栏搜索框水平内边距为 0，贴满面板宽。
-    expect(tester.getSize(_pickerSearch(tester)).width, 160);
+    // The tree keeps its minimum width; its search preserves the one trailing
+    // scrollbar lane rather than covering that lane with an input hit target.
+    expect(tester.getSize(_pickerSearch(tester)).width,
+        160 - UtenScrollGutter.trackWidth);
 
     await tester.tap(find.byTooltip('展开销售部'));
     await tester.pumpAndSettle();

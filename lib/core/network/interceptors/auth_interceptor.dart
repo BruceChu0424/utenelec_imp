@@ -154,6 +154,27 @@ class AuthInterceptor extends Interceptor {
     return readAuthRequestRecords(storage);
   }
 
+  static AuthenticatedRequestIdentity? retainedIdentity(
+    RequestOptions options,
+  ) => options.extra[_requestIdentityKey] as AuthenticatedRequestIdentity?;
+
+  Future<bool> requestBelongsToCurrentIdentity(RequestOptions options) async {
+    try {
+      final current = await _readContext();
+      _requireIdentity(
+        options,
+        AuthenticatedRequestIdentity.fromRecords(
+          options.baseUrl,
+          current.auth,
+          current.impersonation,
+        ),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   void _requireIdentity(
     RequestOptions options,
     AuthenticatedRequestIdentity current,

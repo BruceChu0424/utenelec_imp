@@ -3,6 +3,7 @@
 // 面向管理员回答：谁、何时、做了什么、结果如何、是否有风险、具体改了什么。
 // 写侧由请求覆盖、显式安全事件和数据库脱敏触发器共同落 audit_log，本页是只读调查入口。
 // 仅持 audit_log:view 的核查人员可见；导出还需 audit_log:export。
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -22,6 +23,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_date_range_picker.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_employee_picker_access.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
@@ -29,6 +31,8 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import 'admin_audit_session_detail_page.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
+import '../../../components/layout/uten_scroll_prefetch_policy.dart';
+import '../../../core/responsive/display_zoom.dart';
 import '../../../core/audit/device_audit_store.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
@@ -36,6 +40,9 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/paging/paged_query_identity.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -107,6 +114,11 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   String? _sessionError;
   final _loadRequests = LatestRequestGuard();
   final _sessionLoadRequests = LatestRequestGuard();
+  final _eventRead = ScopedPagedRead<AuditLogEntry>();
+  final _sessionRead = ScopedPagedRead<AuditSessionSummary>();
+  int _eventReadEpoch = 0, _sessionReadEpoch = 0;
+  Object? _eventPreparedFrom, _sessionPreparedFrom;
+  int? _observedEventPage, _observedSessionPage;
   final _searchController = TextEditingController();
   final _requestIdController = TextEditingController();
   final _scrollController = ScrollController();
@@ -124,6 +136,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   Object? _lastPaginationScope;
   bool _loadingPreviousPage = false;
   bool _visiblePageUpdateScheduled = false;
+  double? _laidOutScrollPixels;
 
   Object get _paginationScope => (
     _actionFilter,
@@ -144,6 +157,69 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   );
 
   void _onPageScrollPositionChanged() => _scheduleVisiblePageUpdate();
+
+  void _eventReadingPageChanged() {
+    final page = _eventRows.visiblePage;
+    if (page == null || page == _observedEventPage) return;
+    _observedEventPage = page;
+    _prepareAuditNext(sessions: false, page: page);
+  }
+
+  void _sessionReadingPageChanged() {
+    final page = _sessionRows.visiblePage;
+    if (page == null || page == _observedSessionPage) return;
+    _observedSessionPage = page;
+    _prepareAuditNext(sessions: true, page: page);
+  }
+
+  void _prepareAuditNext({required bool sessions, required int page}) {
+    if (PagedReadIntent.isBufferSeed ||
+        !mounted ||
+        sessions != _sessionMode ||
+        _snapshotId == null ||
+        (_activeLoading && !_loadingPreviousPage) ||
+        (sessions
+            ? _sessionPage == null || _sessionError != null
+            : _page == null || _error != null)) {
+      return;
+    }
+    if (!TickerMode.valuesOf(context).enabled ||
+        !(ModalRoute.of(context)?.isCurrent ?? true)) {
+      return;
+    }
+    final epoch = sessions ? _sessionReadEpoch : _eventReadEpoch;
+    final key = (epoch, _snapshotId, page);
+    if ((sessions ? _sessionPreparedFrom : _eventPreparedFrom) == key) return;
+    if (sessions) {
+      _sessionPreparedFrom = key;
+    } else {
+      _eventPreparedFrom = key;
+    }
+    bool canPrepare() =>
+        mounted &&
+        sessions == _sessionMode &&
+        _canLoad &&
+        TickerMode.valuesOf(context).enabled &&
+        (ModalRoute.of(context)?.isCurrent ?? true);
+    unawaited(
+      sessions
+          ? _sessionRead.prepareNext(page, canPrepare: canPrepare)
+          : _eventRead.prepareNext(page, canPrepare: canPrepare),
+    );
+  }
+
+  void _noteExternalScrollIntent() {
+    if (_loadingPreviousPage ||
+        !TickerMode.valuesOf(context).enabled ||
+        !(ModalRoute.of(context)?.isCurrent ?? true)) {
+      return;
+    }
+    if (_sessionMode) {
+      _sessionRows.noteScrollIntent();
+    } else {
+      _eventRows.noteScrollIntent();
+    }
+  }
 
   void _scheduleVisiblePageUpdate() {
     if (_visiblePageUpdateScheduled ||
@@ -166,6 +242,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       }
       final viewport = _scrollViewportKey.currentContext?.findRenderObject();
       if (viewport is! RenderBox || !viewport.hasSize) return;
+      _laidOutScrollPixels = _scrollController.position.pixels;
       if (sessions) {
         if (!_sessionRows.isAppending) _sessionRows.updateVisiblePage(viewport);
       } else {
@@ -176,10 +253,15 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   }
 
   void _appendAtScrollEnd(ScrollMetrics metrics) {
-    if (metrics.axis != Axis.vertical ||
-        metrics.extentAfter > 0.5 ||
+    if (!UtenScrollPrefetchPolicy.isNearEdge(
+          metrics,
+          fontZoom: UtenDisplayScale.fontZoomOf(context),
+        ) ||
         !_canLoad ||
-        _activeLoading) {
+        _activeLoading ||
+        _loadingPreviousPage ||
+        !TickerMode.valuesOf(context).enabled ||
+        !(ModalRoute.of(context)?.isCurrent ?? true)) {
       return;
     }
     unawaited(
@@ -213,24 +295,38 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     );
   }
 
-  void _prependAtTableStart(Offset pointerPosition) {
+  void _prependAtTableStart([Offset? pointerPosition]) {
     if (!_canLoad ||
         _activeLoading ||
         _loadingPreviousPage ||
-        !_scrollController.hasClients) {
+        !_scrollController.hasClients ||
+        !TickerMode.valuesOf(context).enabled ||
+        !(ModalRoute.of(context)?.isCurrent ?? true)) {
       return;
     }
     final sessions = _sessionMode;
-    final tableRect = _globalRect(sessions ? _sessionTableKey : _eventTableKey);
-    final rowRect = _globalRect(
+    final tableKey = sessions ? _sessionTableKey : _eventTableKey;
+    final tableRect = _rectInScrollViewport(tableKey);
+    final rowRect = _rectInScrollViewport(
       sessions ? _sessionFirstRowKey : _eventFirstRowKey,
     );
-    final viewportRect = _globalRect(_scrollViewportKey);
-    if (tableRect == null ||
-        rowRect == null ||
-        viewportRect == null ||
-        !tableRect.contains(pointerPosition) ||
-        rowRect.top < viewportRect.top - 0.5) {
+    final viewportRect = _rectInScrollViewport(_scrollViewportKey);
+    if (tableRect == null || rowRect == null || viewportRect == null) {
+      return;
+    }
+    if (pointerPosition != null &&
+        !(_globalRect(tableKey)?.contains(pointerPosition) ?? false)) {
+      return;
+    }
+    final visibleTableTop = math.max(viewportRect.top, tableRect.top);
+    final visibleTableBottom = math.min(viewportRect.bottom, tableRect.bottom);
+    final firstRowDistance = math.max(0.0, visibleTableTop - rowRect.top);
+    if (visibleTableBottom <= visibleTableTop ||
+        firstRowDistance >
+            UtenScrollPrefetchPolicy.distanceOf(
+              _scrollController.position,
+              fontZoom: UtenDisplayScale.fontZoomOf(context),
+            )) {
       return;
     }
     unawaited(
@@ -245,7 +341,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         ? _sessionRows.isAppending
         : _eventRows.isAppending;
     final successfulPage = sessions ? _sessionPage?.page : _page?.page;
-    Future<void> load() => sessions ? _loadSessions(page) : _load(page);
+    Future<void> load() => sessions
+        ? _loadSessions(page, useCache: true, extending: extending)
+        : _load(page, useCache: true, extending: extending);
     final anchor = _rectInScrollViewport(
       sessions ? _sessionFirstRowKey : _eventFirstRowKey,
     );
@@ -256,9 +354,14 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         !_scrollController.hasClients) {
       return load();
     }
+    // Thumb/keyboard notifications precede viewport layout. Normalize the last
+    // laid-out anchor to the already updated position, without waiting for
+    // loading/error chrome to alter the original row before capturing it.
+    final pixels = _scrollController.position.pixels;
+    final anchorTop = anchor.top - (pixels - (_laidOutScrollPixels ?? pixels));
     // Every prepend request passes here, including the table's retry button.
     // Manual previous-page navigation does not set the extension flag.
-    return _loadPreviousPage(sessions, anchor.top, load);
+    return _loadPreviousPage(sessions, anchorTop, load);
   }
 
   Future<void> _loadPreviousPage(
@@ -272,6 +375,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     if (anchorId == null) return;
     final scope = _lastPaginationScope;
     final initialPixels = _scrollController.position.pixels;
+    var appliedCorrection = 0.0;
     _loadingPreviousPage = true;
     if (sessions) {
       _sessionPrependAnchorId = anchorId;
@@ -282,6 +386,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       await load();
       WidgetsBinding.instance.ensureVisualUpdate();
       await WidgetsBinding.instance.endOfFrame;
+      await (sessions ? _sessionRows : _eventRows).settled;
       if (!mounted ||
           sessions != _sessionMode ||
           scope != _lastPaginationScope ||
@@ -297,7 +402,8 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         // Keep the original first row under the same point, including any user
         // scrolling while the previous page was being requested. Measuring the
         // row excludes variable-height summary/filter cards above it.
-        final expectedTop = anchorTop - (position.pixels - initialPixels);
+        final expectedTop =
+            anchorTop - (position.pixels - initialPixels - appliedCorrection);
         final correction = anchor.top - expectedTop;
         final target = position.pixels + correction;
         if (correction.abs() <= 0.5) break;
@@ -324,9 +430,82 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
           }
           continue;
         }
+        final beforeCorrection = position.pixels;
         position.jumpTo(
           target.clamp(position.minScrollExtent, position.maxScrollExtent),
         );
+        appliedCorrection += position.pixels - beforeCorrection;
+        // The second pass measures the first correction after real layout.
+        // Our own jump is not additional user movement to compensate again.
+        WidgetsBinding.instance.ensureVisualUpdate();
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted ||
+            sessions != _sessionMode ||
+            scope != _lastPaginationScope ||
+            !_scrollController.hasClients) {
+          return;
+        }
+      }
+    } finally {
+      // The table releases its extension chrome only after this callback
+      // returns. Keep the anchor through that final layout as well.
+      unawaited(
+        _finishPreviousPageAnchor(
+          sessions: sessions,
+          scope: scope,
+          anchorTop: anchorTop,
+          initialPixels: initialPixels,
+          appliedCorrection: appliedCorrection,
+        ),
+      );
+    }
+  }
+
+  Future<void> _finishPreviousPageAnchor({
+    required bool sessions,
+    required Object? scope,
+    required double anchorTop,
+    required double initialPixels,
+    required double appliedCorrection,
+  }) async {
+    final rows = sessions ? _sessionRows : _eventRows;
+    bool current() =>
+        mounted &&
+        sessions == _sessionMode &&
+        scope == _lastPaginationScope &&
+        _scrollController.hasClients;
+    try {
+      for (
+        var frame = 0;
+        current() && rows.isAppending && frame < 120;
+        frame++
+      ) {
+        WidgetsBinding.instance.ensureVisualUpdate();
+        await WidgetsBinding.instance.endOfFrame;
+      }
+      if (!current() || rows.isAppending) return;
+      await rows.settled;
+      for (var pass = 0; current() && pass < 3; pass++) {
+        WidgetsBinding.instance.ensureVisualUpdate();
+        await WidgetsBinding.instance.endOfFrame;
+        if (!current()) return;
+        final anchor = _rectInScrollViewport(
+          sessions ? _sessionFirstRowKey : _eventFirstRowKey,
+        );
+        if (anchor == null) return;
+        final position = _scrollController.position;
+        final expectedTop =
+            anchorTop - (position.pixels - initialPixels - appliedCorrection);
+        final correction = anchor.top - expectedTop;
+        if (correction.abs() <= .5) return;
+        final before = position.pixels;
+        position.jumpTo(
+          (before + correction).clamp(
+            position.minScrollExtent,
+            position.maxScrollExtent,
+          ),
+        );
+        appliedCorrection += position.pixels - before;
       }
     } finally {
       _loadingPreviousPage = false;
@@ -352,6 +531,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     )) {
       return;
     }
+    _noteExternalScrollIntent();
     _scheduleVisiblePageUpdate();
     if (event.scrollDelta.dy > 0) {
       _appendAtScrollEnd(_scrollController.position);
@@ -428,7 +608,22 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       });
     });
     _scrollController.addListener(_onPageScrollPositionChanged);
+    _eventRows.pagination.addListener(_eventReadingPageChanged);
+    _sessionRows.pagination.addListener(_sessionReadingPageChanged);
     _scheduleInitialRequestInvestigation();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final sessions = _sessionMode;
+      final page = sessions
+          ? _sessionRows.visiblePage ?? _sessionPage?.page
+          : _eventRows.visiblePage ?? _page?.page;
+      if (page != null) _prepareAuditNext(sessions: sessions, page: page);
+    });
   }
 
   @override
@@ -448,9 +643,150 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     });
   }
 
-  Future<void> _load(int page, {bool silent = false}) async {
+  Map<String, dynamic> get _eventReadQuery => {
+    'action': _actionFilter,
+    'actorId': _requestId.isEmpty && !_anonymousMode && !_systemAnomalyMode
+        ? _selectedActor?.actorId
+        : null,
+    'keyword': _keyword.trim().isEmpty ? null : _keyword.trim(),
+    'targetType': _targetTypeFilter,
+    'eventSource': _eventSourceFilter,
+    'requestId': _requestId.trim().isEmpty ? null : _requestId.trim(),
+    'operationKind': _operationKindFilter,
+    'actorScope': _actorScopeFilter,
+    'activityOnly': !_isRequestInvestigation,
+    'riskLevel': _riskFilter,
+    'eventCategory': _categoryFilter,
+    'outcome': _outcomeFilter,
+    'dateFrom': _dateRange == null
+        ? null
+        : ChinaDateTime.formatDate(_dateRange!.start),
+    'dateTo': _dateRange == null
+        ? null
+        : ChinaDateTime.formatDate(_dateRange!.end),
+  };
+
+  void _invalidateAuditReads() {
+    _eventReadEpoch++;
+    _sessionReadEpoch++;
+    _eventRead.invalidate();
+    _sessionRead.invalidate();
+    _eventPreparedFrom = null;
+    _sessionPreparedFrom = null;
+    _observedEventPage = null;
+    _observedSessionPage = null;
+  }
+
+  void _retireAuditAccess(ApiException error) {
+    _invalidateAuditReads();
+    _loadRequests.begin();
+    _sessionLoadRequests.begin();
+    _eventRows.update(const []);
+    _sessionRows.update(const []);
+    setState(() {
+      _page = null;
+      _sessionPage = null;
+      _summary = null;
+      _snapshotId = null;
+      _summaryFailed = false;
+      _loading = false;
+      _sessionLoading = false;
+      _error = error.message;
+      _sessionError = error.message;
+    });
+  }
+
+  Future<AuditLogPage> _readEventPage(
+    int page,
+    AuditLogRepository repository, {
+    required bool useCache,
+  }) async {
+    if (!useCache) {
+      _eventRead.invalidate();
+      _eventReadEpoch++;
+    }
+    final epoch = _eventReadEpoch;
+    final ownerCurrent = captureReadOwner(ref);
+    final query = Map<String, dynamic>.unmodifiable(_eventReadQuery);
+    bool current() =>
+        mounted &&
+        ownerCurrent() &&
+        epoch == _eventReadEpoch &&
+        identical(repository, ref.read(auditLogRepositoryProvider)) &&
+        !_sessionMode &&
+        _canLoad &&
+        samePagedReadQuery(query, _eventReadQuery);
+    Future<AuditLogPage> fetch(int target, int? highWater) => repository.list(
+      page: target,
+      action: query['action'] as String?,
+      actorId: query['actorId'] as String?,
+      keyword: query['keyword'] as String?,
+      targetType: query['targetType'] as String?,
+      eventSource: query['eventSource'] as String?,
+      requestId: query['requestId'] as String?,
+      operationKind: query['operationKind'] as String?,
+      actorScope: query['actorScope'] as String?,
+      activityOnly: query['activityOnly'] as bool,
+      snapshotId: highWater,
+      riskLevel: query['riskLevel'] as String?,
+      eventCategory: query['eventCategory'] as String?,
+      outcome: query['outcome'] as String?,
+      dateFrom: query['dateFrom'] as String?,
+      dateTo: query['dateTo'] as String?,
+    );
+    AuditLogPage? initial;
+    var highWater = _snapshotId;
+    if (highWater == null) {
+      initial = await fetch(page, null);
+      if (!current()) throw StateError('Audit read owner changed');
+      highWater = initial.snapshotId;
+    }
+    final result = await _eventRead.read(
+      page,
+      scope: ['events', repository, epoch, query, highWater],
+      useCache: useCache,
+      isCurrent: current,
+      // The visible reading page prepares its successor explicitly. A leading
+      // buffer never chooses another predecessor as a forecasting center.
+      canPrefetch: () => false,
+      onPrefetchError: (error) {
+        if (current() && pagedReadAccessDenied(error)) {
+          _retireAuditAccess(error as ApiException);
+        }
+      },
+      fetchPage: (target) async {
+        final cachedInitial = initial;
+        initial = null;
+        final result = cachedInitial != null && cachedInitial.page == target
+            ? cachedInitial
+            : await fetch(target, highWater);
+        return PagedReadSnapshot(
+          page: result,
+          snapshot: result,
+          revision: (result.snapshotId, result.readScopeVersion),
+        );
+      },
+    );
+    if (!current()) throw StateError('Audit read owner changed');
+    return (result as PagedReadSnapshot<AuditLogEntry, AuditLogPage>).snapshot;
+  }
+
+  Future<void> _load(
+    int page, {
+    bool silent = false,
+    bool useCache = false,
+    bool extending = false,
+  }) async {
     if (!_canLoad) return;
     final generation = _loadRequests.begin();
+    final ownerCurrent = captureReadOwner(ref);
+    final requestedRepository = ref.read(auditLogRepositoryProvider);
+    bool current() =>
+        mounted &&
+        _loadRequests.isCurrent(generation) &&
+        ownerCurrent() &&
+        identical(requestedRepository, ref.read(auditLogRepositoryProvider)) &&
+        !_sessionMode;
     if (!_eventRows.isAppending) _prependScrollPadding = 0;
     final requestedSnapshotId = _snapshotId;
     _pageNum = page;
@@ -462,32 +798,13 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       });
     }
     try {
-      final repository = ref.read(auditLogRepositoryProvider);
-      final pageResult = await repository.list(
-        page: page,
-        action: _actionFilter,
-        actorId: _requestId.isEmpty && !_anonymousMode && !_systemAnomalyMode
-            ? _selectedActor?.actorId
-            : null,
-        keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
-        targetType: _targetTypeFilter,
-        eventSource: _eventSourceFilter,
-        requestId: _requestId.trim().isEmpty ? null : _requestId.trim(),
-        operationKind: _operationKindFilter,
-        actorScope: _actorScopeFilter,
-        activityOnly: !_isRequestInvestigation,
-        snapshotId: requestedSnapshotId,
-        riskLevel: _riskFilter,
-        eventCategory: _categoryFilter,
-        outcome: _outcomeFilter,
-        dateFrom: _dateRange == null
-            ? null
-            : ChinaDateTime.formatDate(_dateRange!.start),
-        dateTo: _dateRange == null
-            ? null
-            : ChinaDateTime.formatDate(_dateRange!.end),
+      final repository = requestedRepository;
+      final pageResult = await _readEventPage(
+        page,
+        repository,
+        useCache: useCache && !silent,
       );
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (!current()) return;
       // List visibility must not wait for the optional aggregate query.
       // Both reads still use the same server-issued high-water mark.
       setState(() {
@@ -498,6 +815,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         _summaryFailed = false;
         if (requestedSnapshotId == null) _summary = null;
       });
+      _prepareAuditNext(
+        sessions: false,
+        page: extending
+            ? (_eventRows.visiblePage ?? pageResult.page)
+            : pageResult.page,
+      );
       if (requestedSnapshotId == null || _summary == null) {
         try {
           final summary = await repository.summary(
@@ -522,22 +845,33 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                 ? null
                 : ChinaDateTime.formatDate(_dateRange!.end),
           );
-          if (!mounted || !_loadRequests.isCurrent(generation)) return;
+          if (!current()) return;
           setState(() => _summary = summary);
+        } on ApiException catch (error) {
+          if (!current()) return;
+          if (pagedReadAccessDenied(error)) {
+            _retireAuditAccess(error);
+            return;
+          }
+          setState(() => _summaryFailed = true);
         } catch (_) {
-          if (!mounted || !_loadRequests.isCurrent(generation)) return;
+          if (!current()) return;
           setState(() => _summaryFailed = true);
         }
       }
     } on ApiException catch (e) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (!current()) return;
+      if (pagedReadAccessDenied(e)) {
+        _retireAuditAccess(e);
+        return;
+      }
       if (silent) return; // 静默刷新失败：保留旧数据，不弹错误（stale-while-revalidate）
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (!current()) return;
       if (silent) return;
       setState(() {
         _error = '加载审计日志失败';
@@ -546,13 +880,99 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     }
   }
 
-  Future<void> _loadSessions(int page, {bool silent = false}) async {
+  Object get _sessionReadQuery => (
+    _selectedActor?.actorId,
+    _dateRange == null ? null : ChinaDateTime.formatDate(_dateRange!.start),
+    _dateRange == null ? null : ChinaDateTime.formatDate(_dateRange!.end),
+  );
+
+  Future<AuditSessionPage> _readSessionPage(
+    int page,
+    AuditLogRepository repository,
+    AuditActorOption actor,
+    DateTimeRange range, {
+    required bool useCache,
+  }) async {
+    if (!useCache) {
+      _sessionRead.invalidate();
+      _sessionReadEpoch++;
+    }
+    final epoch = _sessionReadEpoch;
+    final ownerCurrent = captureReadOwner(ref);
+    final from = ChinaDateTime.formatDate(range.start);
+    final to = ChinaDateTime.formatDate(range.end);
+    final query = (actor.actorId, from, to);
+    bool current() =>
+        mounted &&
+        ownerCurrent() &&
+        epoch == _sessionReadEpoch &&
+        identical(repository, ref.read(auditLogRepositoryProvider)) &&
+        _sessionMode &&
+        _canUseSessionView &&
+        query == _sessionReadQuery;
+    Future<AuditSessionPage> fetch(int target, int? highWater) =>
+        repository.sessions(
+          actorId: actor.actorId,
+          dateFrom: from,
+          dateTo: to,
+          page: target,
+          snapshotAuditId: highWater,
+        );
+    AuditSessionPage? initial;
+    var highWater = _snapshotId;
+    if (highWater == null) {
+      initial = await fetch(page, null);
+      if (!current()) throw StateError('Audit read owner changed');
+      highWater = initial.snapshotAuditId;
+    }
+    final result = await _sessionRead.read(
+      page,
+      scope: ['sessions', repository, epoch, query, highWater],
+      useCache: useCache,
+      isCurrent: current,
+      canPrefetch: () => false,
+      onPrefetchError: (error) {
+        if (current() && pagedReadAccessDenied(error)) {
+          _retireAuditAccess(error as ApiException);
+        }
+      },
+      fetchPage: (target) async {
+        final cachedInitial = initial;
+        initial = null;
+        final result = cachedInitial != null && cachedInitial.page == target
+            ? cachedInitial
+            : await fetch(target, highWater);
+        return PagedReadSnapshot(
+          page: result,
+          snapshot: result,
+          revision: (result.snapshotAuditId, result.readScopeVersion),
+        );
+      },
+    );
+    if (!current()) throw StateError('Audit read owner changed');
+    return (result as PagedReadSnapshot<AuditSessionSummary, AuditSessionPage>)
+        .snapshot;
+  }
+
+  Future<void> _loadSessions(
+    int page, {
+    bool silent = false,
+    bool useCache = false,
+    bool extending = false,
+  }) async {
     final actor = _selectedActor;
     final range = _dateRange;
     if (!_canUseSessionView || actor == null || range == null) return;
     final generation = _sessionLoadRequests.begin();
+    final ownerCurrent = captureReadOwner(ref);
+    final repository = ref.read(auditLogRepositoryProvider);
+    bool current() =>
+        mounted &&
+        _sessionLoadRequests.isCurrent(generation) &&
+        ownerCurrent() &&
+        identical(repository, ref.read(auditLogRepositoryProvider)) &&
+        _sessionMode;
     if (!_sessionRows.isAppending) _prependScrollPadding = 0;
-    final requestedSnapshotId = _snapshotId;
     _sessionPageNum = page;
     if (!silent) {
       setState(() {
@@ -561,31 +981,39 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       });
     }
     try {
-      final pageResult = await ref
-          .read(auditLogRepositoryProvider)
-          .sessions(
-            actorId: actor.actorId,
-            dateFrom: ChinaDateTime.formatDate(range.start),
-            dateTo: ChinaDateTime.formatDate(range.end),
-            page: page,
-            snapshotAuditId: requestedSnapshotId,
-          );
-      if (!mounted || !_sessionLoadRequests.isCurrent(generation)) return;
+      final pageResult = await _readSessionPage(
+        page,
+        repository,
+        actor,
+        range,
+        useCache: useCache && !silent,
+      );
+      if (!current()) return;
       setState(() {
         _sessionPage = pageResult;
         _snapshotId = pageResult.snapshotAuditId;
         _sessionLoading = false;
         _sessionError = null;
       });
+      _prepareAuditNext(
+        sessions: true,
+        page: extending
+            ? (_sessionRows.visiblePage ?? pageResult.page)
+            : pageResult.page,
+      );
     } on ApiException catch (error) {
-      if (!mounted || !_sessionLoadRequests.isCurrent(generation)) return;
+      if (!current()) return;
+      if (pagedReadAccessDenied(error)) {
+        _retireAuditAccess(error);
+        return;
+      }
       if (silent) return;
       setState(() {
         _sessionError = error.message;
         _sessionLoading = false;
       });
     } catch (_) {
-      if (!mounted || !_sessionLoadRequests.isCurrent(generation)) return;
+      if (!current()) return;
       if (silent) return;
       setState(() {
         _sessionError = '加载登录会话失败';
@@ -624,6 +1052,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   }
 
   void _invalidateScopeResults() {
+    _invalidateAuditReads();
+    _eventRows.update(const []);
+    _sessionRows.update(const []);
     _loadRequests.begin();
     _sessionLoadRequests.begin();
     _scopeApplied = false;
@@ -702,6 +1133,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
 
   @override
   void dispose() {
+    _eventRows.pagination.removeListener(_eventReadingPageChanged);
+    _sessionRows.pagination.removeListener(_sessionReadingPageChanged);
+    _eventRead.dispose();
+    _sessionRead.dispose();
     _searchController.dispose();
     _requestIdController.dispose();
     _scrollController.removeListener(_onPageScrollPositionChanged);
@@ -1059,9 +1494,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     if (!_canLoad) return;
     setState(() => _snapshotId = null);
     if (_sessionMode) {
-      await _loadSessions(1);
+      await _loadSessions(_sessionRows.visiblePage ?? _sessionPageNum);
     } else {
-      await _load(1);
+      await _load(_eventRows.visiblePage ?? _pageNum);
     }
   }
 
@@ -1136,13 +1571,16 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     _scheduleVisiblePageUpdate();
     // 返回即刷新：从其它页面回到审计中心时重拉当前页（保留筛选/页码），
     // 保证看到最新审计记录。本页路由为静态路径，直接用 RouteName 常量。
-    ref.onPageResume(RouteName.adminAuditLogs, () {
+    ref.onPageResume(RouteName.adminAuditLogs, () async {
       if (!_canLoad) return;
       _snapshotId = null;
       if (_sessionMode) {
-        _loadSessions(_sessionPageNum, silent: true);
+        await _loadSessions(
+          _sessionRows.visiblePage ?? _sessionPageNum,
+          silent: true,
+        );
       } else {
-        _load(_pageNum, silent: true);
+        await _load(_eventRows.visiblePage ?? _pageNum, silent: true);
       }
     });
     final items = _page?.items ?? const <AuditLogEntry>[];
@@ -1284,7 +1722,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                             ).auditSummaryUnavailable,
                           ),
                           trailing: TextButton(
-                            onPressed: _loading ? null : () => _load(_pageNum),
+                            onPressed: _loading
+                                ? null
+                                : () =>
+                                      _load(_eventRows.visiblePage ?? _pageNum),
                             child: Text(
                               AppLocalizations.of(context).auditSummaryRetry,
                             ),
@@ -1371,12 +1812,15 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                           ),
                           child: _AuditSessionListHeader(
                             total: _sessionPage?.total,
-                            currentPage: _sessionPage?.page,
+                            currentPage:
+                                _sessionRows.visiblePage ?? _sessionPage?.page,
                             totalPages: _sessionPage?.totalPages,
                           ),
                         ),
                       ),
-                    if (_canLoad && _activeLoading)
+                    if (_canLoad &&
+                        _activeLoading &&
+                        (_sessionMode ? _sessionPage == null : _page == null))
                       const SliverToBoxAdapter(
                         child: LinearProgressIndicator(),
                       ),
@@ -1387,7 +1831,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                       SliverToBoxAdapter(
                         child: _AuditErrorCard(
                           message: _sessionError!,
-                          onRetry: () => _loadSessions(_sessionPageNum),
+                          onRetry: () => _loadSessions(
+                            _sessionRows.visiblePage ?? _sessionPageNum,
+                          ),
                         ),
                       )
                     else if (_canLoad &&
@@ -1420,7 +1866,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                           totalPages: _sessionPage?.totalPages ?? 1,
                           loadingMore: _sessionLoading,
                           error: _sessionError,
-                          onRetry: () => _loadSessions(_sessionPageNum),
+                          onRetry: () => _loadSessions(
+                            _sessionRows.visiblePage ?? _sessionPageNum,
+                          ),
                           onPageChange: (page) =>
                               _loadTablePage(page, sessions: true),
                           stickyHeaderPinned: _sessionsPinned,
@@ -1447,7 +1895,8 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                       SliverToBoxAdapter(
                         child: _AuditErrorCard(
                           message: _error!,
-                          onRetry: () => _load(_pageNum),
+                          onRetry: () =>
+                              _load(_eventRows.visiblePage ?? _pageNum),
                         ),
                       )
                     else if (_canLoad &&
@@ -1471,7 +1920,8 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                           totalPages: _page?.totalPages ?? 1,
                           loadingMore: _loading,
                           error: _error,
-                          onRetry: () => _load(_pageNum),
+                          onRetry: () =>
+                              _load(_eventRows.visiblePage ?? _pageNum),
                           onPageChange: (page) =>
                               _loadTablePage(page, sessions: false),
                           stickyHeaderPinned: _eventsPinned,
@@ -1508,34 +1958,19 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                 behavior: HitTestBehavior.translucent,
                 child: NotificationListener<ScrollNotification>(
                   onNotification: (notification) {
-                    if (notification.depth == 0 &&
-                        notification.metrics.axis == Axis.vertical &&
-                        (notification is ScrollUpdateNotification ||
-                            notification is OverscrollNotification)) {
+                    if (notification.depth != 0 ||
+                        notification.metrics.axis != Axis.vertical) {
+                      return false;
+                    }
+                    final direction = UtenScrollPrefetchPolicy.directionOf(
+                      notification,
+                    );
+                    if (direction != 0) {
+                      _noteExternalScrollIntent();
                       _scheduleVisiblePageUpdate();
                     }
-                    final forward =
-                        notification is ScrollUpdateNotification &&
-                            notification.dragDetails != null &&
-                            (notification.scrollDelta ?? 0) > 0 ||
-                        notification is OverscrollNotification &&
-                            notification.overscroll > 0;
-                    if (forward) _appendAtScrollEnd(notification.metrics);
-                    if (notification is ScrollUpdateNotification &&
-                        notification.metrics.axis == Axis.vertical &&
-                        notification.dragDetails != null &&
-                        (notification.scrollDelta ?? 0) < 0) {
-                      _prependAtTableStart(
-                        notification.dragDetails!.globalPosition,
-                      );
-                    } else if (notification is OverscrollNotification &&
-                        notification.metrics.axis == Axis.vertical &&
-                        notification.dragDetails != null &&
-                        notification.overscroll < 0) {
-                      _prependAtTableStart(
-                        notification.dragDetails!.globalPosition,
-                      );
-                    }
+                    if (direction > 0) _appendAtScrollEnd(notification.metrics);
+                    if (direction < 0) _prependAtTableStart();
                     return false;
                   },
                   child: content,

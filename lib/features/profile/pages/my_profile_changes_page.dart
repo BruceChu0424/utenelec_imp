@@ -11,18 +11,16 @@
 // 选中即切到对应分段并回第 1 页（下推后端 status 参数，非页内裁剪）。
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/retained_async_page.dart';
-import '../../../shared/providers/master_name_provider.dart'
-    show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -52,17 +50,22 @@ class MyProfileChangesPage extends ConsumerStatefulWidget {
 class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
   final _retainedPage =
       RetainedAsyncPage<ProfileChangePage<MyProfileChangeListItem>>();
-  Object get _paginationScope =>
-      (_status, ref.watch(masterDataSessionKeyProvider));
+  Object get _paginationScope => (_status, retainedReaderEpoch(ref));
   String? _status = 'pending';
   int _page = 1; // 当前页（服务端真分页：翻页/换筛选都从后端按页拉取）
+  final _tableRows = MasterDataTableRowsController<MyProfileChangeListItem>();
+  bool _initialReadReady = false;
   final List<UtenSegment<String?>> _segments = [];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Refresh an already observed profile queue before our first watch,
+      // avoiding a cold GET immediately followed by a second invalidation GET.
       ref.invalidate(myProfileChangesProvider);
+      setState(() => _initialReadReady = true);
     });
   }
 
@@ -118,6 +121,7 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
     try {
       await ref.read(profileChangeRepositoryProvider).cancel(batchId);
       if (!mounted) return;
+      setState(() => _page = _tableRows.visiblePage ?? _page);
       ref.invalidate(myProfileChangesProvider);
       context.appSuccess(l10n.profileChangeCancelledByMe);
     } on ApiException catch (e) {
@@ -140,10 +144,13 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
         const UtenSegment(value: 'history', label: '历史单据'),
       ]);
 
-    final async = _retainedPage.resolve(
-      _paginationScope,
-      ref.watch(myProfileChangesProvider((status: _status, page: _page))),
-    );
+    final async = _initialReadReady
+        ? _retainedPage.resolveFor(
+            ref,
+            _paginationScope,
+            myProfileChangesProvider((status: _status, page: _page)),
+          )
+        : const AsyncLoading<ProfileChangePage<MyProfileChangeListItem>>();
 
     Widget body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -168,6 +175,8 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
     // compact 下页面自带宽度收敛；medium+ 由 MainShell 的容器统一处理
     if (context.breakpoint.isCompact) {
       body = UtenContentContainer(child: body);
+    } else {
+      body = UtenPageEdgePadding(child: body);
     }
 
     return Scaffold(
@@ -186,71 +195,83 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
     AppLocalizations l10n,
     AsyncValue<ProfileChangePage<MyProfileChangeListItem>> async,
   ) {
-    return async.when(
-      skipLoadingOnReload: true,
-      skipError: true,
-      data: (page) => RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(myProfileChangesProvider);
-          await ref.read(
-            myProfileChangesProvider((status: _status, page: _page)).future,
+    final readLease = ref.watch(myProfileChangesReadProvider(_status))
+      ..bindView(context, currentQuery: () => (_status,));
+    final page =
+        async.value ??
+        const ProfileChangePage<MyProfileChangeListItem>(
+          items: [],
+          page: 1,
+          size: 20,
+          total: 0,
+          totalPages: 0,
+        );
+    return RefreshIndicator(
+      onRefresh: () async {
+        setState(() => _page = _tableRows.visiblePage ?? _page);
+        readLease.invalidate();
+        ref.invalidate(myProfileChangesProvider);
+        await ref.read(
+          myProfileChangesProvider((status: _status, page: _page)).future,
+        );
+      },
+      child: MasterDataTableView<MyProfileChangeListItem>(
+        rowsController: _tableRows,
+        expensiveRowMounts: false,
+        tableKey:
+            'features.profile.pages.my_profile_changes_page.MyProfileChangesPageState._buildBody.1',
+        key: const Key('my-profile-changes-table'),
+        paginationScope: _paginationScope,
+        isLoading: async.isLoading && !async.hasValue,
+        loadingMore: async.isLoading && async.hasValue,
+        error: async.hasError ? '${async.error}' : null,
+        onRetry: () {
+          readLease.invalidate();
+          ref.invalidate(
+            myProfileChangesProvider((status: _status, page: _page)),
           );
         },
-        child: MasterDataTableView<MyProfileChangeListItem>(
-          tableKey:
-              'features.profile.pages.my_profile_changes_page.MyProfileChangesPageState._buildBody.1',
-          key: const Key('my-profile-changes-table'),
-          paginationScope: _paginationScope,
-          loadingMore: async.isLoading,
-          error: async.hasError ? '${async.error}' : null,
-          onRetry: () => ref.invalidate(
-            myProfileChangesProvider((status: _status, page: _page)),
+        columns: _columns(l10n),
+        items: page.items,
+        facets: {'status': _statusFacets(l10n)},
+        nullCounts: const {},
+        filters: {'status': _status == 'history' ? null : _status},
+        onFilterChanged: _onFilterChanged,
+        // 双击行打开本批旧→新差异弹窗（保留原卡片「查看差异」能力）。
+        onRowTap: (item) => _openDetail(item.batchId),
+        // 行右键/长按菜单：撤销申请（仅待审批）+ 查看差异。
+        rowMenuBuilder: (item) => [
+          UtenMenuItem(
+            label: l10n.profileChangeDiffTitle,
+            icon: Icons.difference_outlined,
+            onTap: () => _openDetail(item.batchId),
           ),
-          columns: _columns(l10n),
-          items: page.items,
-          facets: {'status': _statusFacets(l10n)},
-          nullCounts: const {},
-          filters: {'status': _status == 'history' ? null : _status},
-          onFilterChanged: _onFilterChanged,
-          // 双击行打开本批旧→新差异弹窗（保留原卡片「查看差异」能力）。
-          onRowTap: (item) => _openDetail(item.batchId),
-          // 行右键/长按菜单：撤销申请（仅待审批）+ 查看差异。
-          rowMenuBuilder: (item) => [
+          if (item.status == ProfileChangeStatus.pending) ...[
+            const UtenMenuDivider(),
             UtenMenuItem(
-              label: l10n.profileChangeDiffTitle,
-              icon: Icons.difference_outlined,
-              onTap: () => _openDetail(item.batchId),
+              label: l10n.profileChangeCancel,
+              icon: Icons.undo_rounded,
+              destructive: true,
+              onTap: () => _cancel(item.batchId),
             ),
-            if (item.status == ProfileChangeStatus.pending) ...[
-              const UtenMenuDivider(),
-              UtenMenuItem(
-                label: l10n.profileChangeCancel,
-                icon: Icons.undo_rounded,
-                destructive: true,
-                onTap: () => _cancel(item.batchId),
-              ),
-            ],
           ],
-          emptyMessage: l10n.profileChangeListEmpty,
-          currentPage: page.page,
-          totalPages: page.totalPages,
-          onPageChange: (p) async {
-            setState(() => _page = p);
-            await _retainedPage.waitFor(
-              ref,
-              myProfileChangesProvider((status: _status, page: _page)),
-              () => ref.read(
-                myProfileChangesProvider((status: _status, page: _page)).future,
-              ),
-            );
-          },
-        ),
-      ),
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => UtenEmpty.error(
-        message: e is ApiException ? e.message : l10n.commonError,
-        actionLabel: l10n.commonRetry,
-        onAction: () => ref.invalidate(myProfileChangesProvider),
+        ],
+        emptyMessage: l10n.profileChangeListEmpty,
+        currentPage: page.page,
+        totalPages: page.totalPages,
+        onPageChange: (p) => readLease.paginate(p, () async {
+          setState(() => _page = p);
+          ref.invalidate(
+            myProfileChangesProvider((status: _status, page: _page)),
+          );
+          await _retainedPage.waitFor(
+            ref,
+            myProfileChangesProvider((status: _status, page: _page)),
+            () => ref.read(
+              myProfileChangesProvider((status: _status, page: _page)).future,
+            ),
+          );
+        }),
       ),
     );
   }

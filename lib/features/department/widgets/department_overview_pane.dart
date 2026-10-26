@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -360,7 +361,9 @@ class _DepartmentOverviewPaneState
     }
     return UtenCollapsingHeaderScrollView(
       collapsingHeader: _detailCards(info, hPad),
-      body: Padding(
+      body: UtenPageEdgePadding(
+        preserveStart: true,
+
         padding: EdgeInsets.fromLTRB(hPad, 0, hPad, UtenSpacing.s12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -377,7 +380,9 @@ class _DepartmentOverviewPaneState
   /// 折叠头内容：部门详情卡 + 人员总览卡（随上滚收起、下滚拉回）。
   Widget _detailCards(DepartmentInfo info, double hPad) {
     final l10n = AppLocalizations.of(context);
-    return Padding(
+    return UtenPageEdgePadding(
+      preserveStart: true,
+
       padding: EdgeInsets.fromLTRB(hPad, UtenSpacing.s16, hPad, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -537,6 +542,7 @@ class _DepartmentOverviewPaneState
 
   Widget _employeeTable(AppLocalizations l10n) {
     return MasterDataTableView<EmployeeSummary>(
+      expensiveRowMounts: false,
       tableKey:
           'features.department.widgets.department_overview_pane.DepartmentOverviewPaneState._employeeTable.1',
       key: const Key('department-employee-table'),

@@ -9,6 +9,7 @@ import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/components/inputs/uten_table_cell_action.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -983,13 +984,21 @@ class _PreviewFailureCosts extends _Costs {
 }
 
 class _HierarchyCosts extends _Costs {
-  _HierarchyCosts({this.goodsItself = false});
+  _HierarchyCosts({
+    this.goodsItself = false,
+    this.pendingIssue = false,
+    this.pendingParentIssue = false,
+  });
 
   final bool goodsItself;
+  final bool pendingIssue;
+  final bool pendingParentIssue;
 
   @override
-  Future<GoodsCostCalculation> preview(Map<String, dynamic> input) async =>
-      sheet(input: input).calculation;
+  Future<GoodsCostCalculation> preview(Map<String, dynamic> input) async {
+    previewCalls++;
+    return sheet(input: input).calculation;
+  }
 
   @override
   GoodsCostSheet sheet({Map<String, dynamic>? input, int version = 3}) {
@@ -1014,6 +1023,100 @@ class _HierarchyCosts extends _Costs {
           'depth': occurrence.$2,
           'goodsId': occurrence.$3 == '共用组件' ? 'shared' : occurrence.$1,
           'goodsName': occurrence.$3,
+        },
+    ];
+    if (pendingIssue || pendingParentIssue) {
+      calculation['issues'] = [
+        if (pendingIssue)
+          {'path': 'assembly-a/shared/leaf', 'code': 'MISSING_PRICE'},
+        if (pendingParentIssue) {'path': 'assembly-a', 'code': 'MISSING_PRICE'},
+      ];
+    }
+    data['calculation'] = calculation;
+    return GoodsCostSheet(data);
+  }
+}
+
+class _LargeHierarchyCosts extends _Costs {
+  static const groupCount = 30;
+  static const childrenPerGroup = 40;
+
+  @override
+  Future<GoodsCostCalculation> preview(Map<String, dynamic> input) async {
+    previewCalls++;
+    return sheet(input: input).calculation;
+  }
+
+  @override
+  GoodsCostSheet sheet({Map<String, dynamic>? input, int version = 3}) {
+    final data = super.sheet(input: input, version: version).json;
+    final calculation = costMap(data['calculation']);
+    final base = costMaps(calculation['lines']).first;
+    final lines = <Map<String, dynamic>>[];
+    for (var group = 0; group < groupCount; group++) {
+      lines.add({
+        ...base,
+        'path': 'group-$group',
+        'depth': 0,
+        'goodsName': '组装件 $group',
+      });
+      for (var child = 0; child < childrenPerGroup; child++) {
+        lines.add({
+          ...base,
+          'path': 'group-$group-child-$child',
+          'depth': 1,
+          'goodsName': '组件 $group/$child',
+        });
+      }
+    }
+    calculation['lines'] = lines;
+    calculation['issues'] = [
+      for (var group = 0; group < groupCount; group++)
+        for (var child = 0; child < childrenPerGroup; child += 4)
+          {'path': 'group-$group-child-$child', 'code': 'MISSING_PRICE'},
+    ];
+    data['calculation'] = calculation;
+    return GoodsCostSheet(data);
+  }
+}
+
+class _PeerHierarchyCosts extends _HierarchyCosts {
+  @override
+  GoodsCostSheet sheet({Map<String, dynamic>? input, int version = 3}) {
+    final data = super.sheet(input: input, version: version).json;
+    final calculation = costMap(data['calculation']);
+    final base = costMaps(calculation['lines']).first;
+    calculation['lines'] = [
+      for (final row in [
+        ('root-a', 0),
+        ('opaque-shared-a', 1),
+        ('opaque-leaf-a', 2),
+        ('opaque-other-a', 1),
+        ('opaque-other-leaf-a', 2),
+        ('root-b', 0),
+        ('opaque-shared-b', 1),
+        ('opaque-leaf-b', 2),
+      ])
+        {...base, 'path': row.$1, 'depth': row.$2, 'goodsName': row.$1},
+    ];
+    data['calculation'] = calculation;
+    return GoodsCostSheet(data);
+  }
+}
+
+class _DeepHierarchyCosts extends _HierarchyCosts {
+  @override
+  GoodsCostSheet sheet({Map<String, dynamic>? input, int version = 3}) {
+    final data = super.sheet(input: input, version: version).json;
+    final calculation = costMap(data['calculation']);
+    final base = costMaps(calculation['lines']).first;
+    calculation['lines'] = [
+      for (var depth = 0; depth <= 10; depth++)
+        {
+          ...base,
+          'path': 'deep-$depth',
+          'depth': depth,
+          'goodsName': '深层长名称组件 $depth',
         },
     ];
     data['calculation'] = calculation;
@@ -1083,6 +1186,7 @@ Future<void> _pump(
   Size size = const Size(1800, 1200),
   bool costView = true,
   bool costExport = true,
+  bool purchaseEdit = false,
   CurrencyRepository? currencies,
   StateProvider<Set<String>>? livePermissions,
   double textScale = 1,
@@ -1114,6 +1218,7 @@ Future<void> _pump(
           currentPermissionsProvider.overrideWithValue({
             if (costView) Perm.goodsCostView,
             Perm.goodsEdit,
+            if (purchaseEdit) Perm.goodsPurchaseEdit,
             Perm.goodsView,
             Perm.goodsExport,
             Perm.goodsCostEdit,
@@ -1425,113 +1530,551 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
-  testWidgets(
-    'cost hierarchy matches assembly levels and keeps repeated occurrences independent',
-    (tester) async {
-      await _pump(tester, _HierarchyCosts(), platform: TargetPlatform.windows);
-      UtenTreeTableCell cell(String path) => tester.widget<UtenTreeTableCell>(
-        find.byKey(ValueKey('goods-cost-tree-cell-$path')),
-      );
-
-      expect(find.text('组件 1 级'), findsNWidgets(2));
-      expect(find.text('组件 2 级'), findsNWidgets(2));
-      expect(find.text('组件 3 级'), findsOneWidget);
-      expect(cell('assembly-a').sequence, '1');
-      expect(cell('assembly-a/shared').sequence, '1.1');
-      expect(cell('assembly-a/shared/leaf').sequence, '1.1.1');
-      expect(cell('assembly-b').sequence, '2');
-      expect(cell('assembly-b/shared').sequence, '2.1');
-      expect(cell('assembly-a/shared/leaf').ancestorContinuations, [
-        true,
-        false,
-      ]);
-      expect(cell('assembly-a/shared/leaf').isLastChild, isTrue);
-      final firstTitle = find.descendant(
-        of: find.byKey(const ValueKey('goods-cost-tree-cell-assembly-a')),
-        matching: find.text('组件甲'),
-      );
-      final nestedTitle = find.descendant(
-        of: find.byKey(
-          const ValueKey('goods-cost-tree-cell-assembly-a/shared'),
-        ),
-        matching: find.text('共用组件'),
-      );
-      expect(
-        tester.getTopLeft(nestedTitle).dx - tester.getTopLeft(firstTitle).dx,
-        24,
-      );
-      final automaticPrice = tester.widget<TextField>(
-        find.descendant(
-          of: find.byKey(const ValueKey('cost-unitPrice-assembly-a')),
-          matching: find.byType(TextField),
-        ),
-      );
-      expect(
-        (automaticPrice.decoration!.enabledBorder! as OutlineInputBorder)
-            .borderRadius,
-        UtenEditableGridCellSpec.borderRadius,
-      );
-      final priceFinder = find.byKey(
-        const ValueKey('cost-unitPrice-assembly-a'),
-      );
-      final editable = find.descendant(
-        of: priceFinder,
-        matching: find.byType(EditableText),
-      );
-      final priceContainer = InputDecorator.containerOf(
-        tester.element(editable),
-      )!;
-      final priceOutline =
-          priceContainer.localToGlobal(Offset.zero) & priceContainer.size;
-      final treeRect = tester.getRect(
-        find.byKey(const ValueKey('goods-cost-tree-cell-assembly-a')),
-      );
-      expect(priceOutline.height, closeTo(32, .5));
-      expect(priceOutline.center.dy, closeTo(treeRect.center.dy, .5));
-      expect(
-        tester.getRect(editable).center.dy,
-        closeTo(tester.getRect(find.text('2.123456').first).center.dy, .5),
-      );
-
-      await tester.tap(
-        find.byKey(const ValueKey('goods-cost-tree-toggle-assembly-a')),
-      );
+  testWidgets('cost tree toggles retain settled column width on every frame', (
+    tester,
+  ) async {
+    final repo = _DeepHierarchyCosts();
+    await _pump(tester, repo, platform: TargetPlatform.windows);
+    final root = find.byKey(const ValueKey('goods-cost-tree-cell-deep-0'));
+    final settledWidth = tester.getSize(root).width;
+    final previews = repo.previewCalls;
+    for (var cycle = 0; cycle < 4; cycle++) {
+      await tester.tap(find.byKey(const Key('cost-tree-expansion')));
+      for (var frame = 0; frame < 24; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(
+          tester.getSize(root).width,
+          greaterThanOrEqualTo(settledWidth - 0.5),
+          reason: 'toggle $cycle frame $frame must not collapse measured width',
+        );
+      }
       await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('goods-cost-tree-cell-assembly-a/shared')),
-        findsNothing,
-      );
-      expect(cell('assembly-b/shared').sequence, '2.1');
-      expect(find.text('共用组件'), findsOneWidget);
-      await tester.tap(
-        find.byKey(const ValueKey('goods-cost-tree-toggle-assembly-a')),
-      );
-      await tester.pumpAndSettle();
-      expect(cell('assembly-a/shared/leaf').sequence, '1.1.1');
-      expect(tester.takeException(), isNull);
-      final boundary = tester.renderObject<RenderRepaintBoundary>(
-        find.byKey(const Key('cost-render')),
-      );
-      await tester.runAsync(() async {
-        final image = await boundary.toImage();
-        final data = await image.toByteData(format: ui.ImageByteFormat.png);
-        final file = File('build/cost-hierarchy-widget-preview.png');
-        await file.parent.create(recursive: true);
-        await file.writeAsBytes(data!.buffer.asUint8List());
-        image.dispose();
-      });
-    },
-  );
-  testWidgets('cost without a BOM identifies the goods itself', (tester) async {
-    await _pump(tester, _HierarchyCosts(goodsItself: true));
-    final cell = tester.widget<UtenTreeTableCell>(
-      find.byKey(const ValueKey('goods-cost-tree-cell-ROOT')),
+    }
+    expect(
+      repo.previewCalls,
+      previews,
+      reason: 'visibility needs no calculation',
     );
-    expect(cell.sequence, isEmpty);
-    expect(cell.levelLabel, '货品名称');
-    expect(find.text('组件 1 级'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'cost hierarchy stays compact and keeps repeated occurrences independent',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        final repo = _HierarchyCosts();
+        await _pump(tester, repo, platform: TargetPlatform.windows);
+        UtenTreeTableCell cell(String path) => tester.widget<UtenTreeTableCell>(
+          find.byKey(ValueKey('goods-cost-tree-cell-$path')),
+        );
+
+        expect(find.textContaining(RegExp(r'组件 \d+ 级|层级 \d+')), findsNothing);
+        expect(find.text('1.1.1'), findsNothing);
+        expect(find.bySemanticsLabel(RegExp('底层材料.*组件 3 级')), findsWidgets);
+        for (final path in [
+          'assembly-a',
+          'assembly-a/shared',
+          'assembly-a/shared/leaf',
+          'assembly-b',
+          'assembly-b/shared',
+        ]) {
+          expect(cell(path).sequence, isEmpty);
+          expect(cell(path).levelLabel, '组件 ${cell(path).depth + 1} 级');
+          expect(cell(path).sequenceInline, isTrue);
+          expect(cell(path).showLeafMarker, isFalse);
+          expect(cell(path).mutedToggleWhenChildless, isTrue);
+          expect(cell(path).desktopToggleExtent, 32);
+          expect(cell(path).guideBleed, 4);
+        }
+        expect(cell('assembly-a/shared/leaf').ancestorContinuations, [
+          true,
+          false,
+        ]);
+        expect(cell('assembly-a/shared/leaf').isLastChild, isTrue);
+        final firstTitle = find.descendant(
+          of: find.byKey(const ValueKey('goods-cost-tree-cell-assembly-a')),
+          matching: find.text('组件甲'),
+        );
+        final nestedTitle = find.descendant(
+          of: find.byKey(
+            const ValueKey('goods-cost-tree-cell-assembly-a/shared'),
+          ),
+          matching: find.text('共用组件'),
+        );
+        expect(
+          tester.getTopLeft(nestedTitle).dx - tester.getTopLeft(firstTitle).dx,
+          24,
+        );
+        final leafTitle = find.descendant(
+          of: find.byKey(
+            const ValueKey('goods-cost-tree-cell-assembly-a/shared/leaf'),
+          ),
+          matching: find.text('底层材料'),
+        );
+        expect(
+          tester
+              .renderObject<RenderParagraph>(
+                find.descendant(of: leafTitle, matching: find.byType(RichText)),
+              )
+              .didExceedMaxLines,
+          isFalse,
+          reason: '自动列宽应包含实际层级前缀，常见短名称不应提前省略',
+        );
+        final automaticPrice = tester.widget<TextField>(
+          find.descendant(
+            of: find.byKey(const ValueKey('cost-unitPrice-assembly-a')),
+            matching: find.byType(TextField),
+          ),
+        );
+        expect(
+          (automaticPrice.decoration!.enabledBorder! as OutlineInputBorder)
+              .borderRadius,
+          UtenEditableGridCellSpec.borderRadius,
+        );
+        final priceFinder = find.byKey(
+          const ValueKey('cost-unitPrice-assembly-a'),
+        );
+        final editable = find.descendant(
+          of: priceFinder,
+          matching: find.byType(EditableText),
+        );
+        final priceContainer = InputDecorator.containerOf(
+          tester.element(editable),
+        )!;
+        final priceOutline =
+            priceContainer.localToGlobal(Offset.zero) & priceContainer.size;
+        final treeRect = tester.getRect(
+          find.byKey(const ValueKey('goods-cost-tree-cell-assembly-a')),
+        );
+        expect(priceOutline.height, closeTo(32, .5));
+        expect(priceOutline.center.dy, closeTo(treeRect.center.dy, .5));
+        final row = find.byKey(const ValueKey('row:assembly-a'));
+        expect(tester.getSize(row).height, inInclusiveRange(40, 41));
+        expect(
+          tester
+              .getSize(
+                find.byKey(const ValueKey('goods-cost-tree-toggle-assembly-a')),
+              )
+              .height,
+          closeTo(32, .5),
+        );
+        expect(
+          tester.getRect(editable).center.dy,
+          closeTo(tester.getRect(find.text('2.123456').first).center.dy, .5),
+        );
+
+        await tester.tap(
+          find.byKey(const ValueKey('goods-cost-tree-toggle-assembly-a')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('goods-cost-tree-cell-assembly-a/shared')),
+          findsNothing,
+        );
+        expect(cell('assembly-b/shared').depth, 1);
+        expect(find.text('共用组件'), findsOneWidget);
+        final treeExpansion = find.byKey(const Key('cost-tree-expansion'));
+        expect(
+          find.descendant(of: treeExpansion, matching: find.text('全部展开')),
+          findsOneWidget,
+        );
+        await tester.tap(treeExpansion);
+        await tester.pumpAndSettle();
+        expect(cell('assembly-a/shared/leaf').depth, 2);
+        final leafPrice = find.byKey(
+          const ValueKey('cost-unitPrice-assembly-a/shared/leaf'),
+        );
+        await tester.enterText(leafPrice, '0.7654321');
+        await tester.pump(const Duration(milliseconds: 650));
+        await tester.pumpAndSettle();
+        expect(
+          find.descendant(of: treeExpansion, matching: find.text('全部收起')),
+          findsOneWidget,
+        );
+        await tester.tap(treeExpansion);
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('goods-cost-tree-cell-assembly-a')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('goods-cost-tree-cell-assembly-b')),
+          findsOneWidget,
+        );
+        expect(find.text('共用组件'), findsNothing);
+        expect(leafPrice, findsNothing);
+        await tester.tap(treeExpansion);
+        await tester.pumpAndSettle();
+        expect(find.text('共用组件'), findsNWidgets(2));
+        expect(
+          tester.widget<TextFormField>(leafPrice).controller!.text,
+          '0.7654321',
+        );
+        await tester.tap(find.byKey(const Key('cost-save')));
+        await tester.pumpAndSettle();
+        final override = costMaps(repo.saved?['lineOverrides']).single;
+        expect(override['path'], 'assembly-a/shared/leaf');
+        expect(override['unitPrice'], '0.7654321');
+        expect(tester.takeException(), isNull);
+        final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(const Key('cost-render')),
+        );
+        await tester.runAsync(() async {
+          final image = await boundary.toImage();
+          final data = await image.toByteData(format: ui.ImageByteFormat.png);
+          final file = File('build/cost-hierarchy-widget-preview.png');
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(data!.buffer.asUint8List());
+          image.dispose();
+        });
+      } finally {
+        semantics.dispose();
+      }
+    },
+  );
+  testWidgets('cost compact hierarchy keeps touch expansion targets', (
+    tester,
+  ) async {
+    await _pump(tester, _HierarchyCosts(), platform: TargetPlatform.android);
+    final toggle = find.byKey(
+      const ValueKey('goods-cost-tree-toggle-assembly-a'),
+    );
+    expect(tester.getSize(toggle).height, greaterThanOrEqualTo(48));
+    expect(
+      tester.getSize(find.byKey(const ValueKey('row:assembly-a'))).height,
+      inInclusiveRange(56, 57),
+    );
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('goods-cost-tree-cell-assembly-a/shared')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('goods-cost-tree-cell-assembly-b/shared')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('cost without a BOM identifies the goods itself', (tester) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      await _pump(tester, _HierarchyCosts(goodsItself: true));
+      final cell = tester.widget<UtenTreeTableCell>(
+        find.byKey(const ValueKey('goods-cost-tree-cell-ROOT')),
+      );
+      expect(cell.sequence, isEmpty);
+      expect(cell.levelLabel, '货品名称');
+      expect(cell.sequenceInline, isTrue);
+      expect(find.byKey(const Key('cost-tree-expansion')), findsNothing);
+      expect(find.bySemanticsLabel(RegExp('货品本身.*货品名称')), findsWidgets);
+      expect(find.text('组件 1 级'), findsNothing);
+      expect(tester.takeException(), isNull);
+    } finally {
+      semantics.dispose();
+    }
+  });
+  testWidgets('cost pending-only rows hide the tree expansion action', (
+    tester,
+  ) async {
+    await _pump(tester, _HierarchyCosts(pendingIssue: true));
+    expect(find.byKey(const Key('cost-tree-expansion')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('cost-pending-filter')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('cost-tree-expansion')), findsNothing);
+    expect(find.text('底层材料'), findsOneWidget);
+    expect(find.text('组件甲'), findsNothing);
+    await tester.tap(find.byKey(const Key('cost-pending-filter')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('cost-tree-expansion')), findsOneWidget);
+    expect(find.text('组件甲'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets(
+    'pending cost parent rows stay flat and editable without tree actions',
+    (tester) async {
+      final repo = _HierarchyCosts(pendingParentIssue: true);
+      await _pump(tester, repo, platform: TargetPlatform.windows);
+      final calls = repo.previewCalls;
+      await tester.tap(find.byKey(const Key('cost-pending-filter')));
+      await tester.pumpAndSettle();
+      final cell = tester.widget<UtenTreeTableCell>(
+        find.byKey(const ValueKey('goods-cost-tree-cell-assembly-a')),
+      );
+      expect(cell.depth, 0);
+      expect(cell.hasChildren, isFalse);
+      expect(cell.onToggle, isNull);
+      expect(cell.onExpandPeers, isNull);
+      expect(cell.ancestorContinuations, isEmpty);
+      expect(
+        find.byKey(const ValueKey('goods-cost-tree-toggle-assembly-a')),
+        findsNothing,
+      );
+      expect(repo.previewCalls, calls);
+      final price = find.byKey(const ValueKey('cost-unitPrice-assembly-a'));
+      await tester.enterText(price, '0.7654321123456789');
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      expect(repo.previewCalls, calls + 1);
+      expect(
+        tester.widget<TextFormField>(price).controller!.text,
+        '0.7654321123456789',
+      );
+      await tester.tap(find.byKey(const Key('cost-save')));
+      await tester.pumpAndSettle();
+      final override = costMaps(repo.saved?['lineOverrides']).single;
+      expect(override['path'], 'assembly-a');
+      expect(override['unitPrice'], '0.7654321123456789');
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'large cost snapshots reuse tree and input indexes across selection and collapse',
+    (tester) async {
+      final repo = _LargeHierarchyCosts();
+      await _pump(tester, repo, platform: TargetPlatform.windows);
+      MasterDataTableView<Map<String, dynamic>> materialTable() =>
+          tester.widget(find.byKey(const ValueKey('cost-material-product')));
+      final rows = materialTable().items;
+      const count =
+          _LargeHierarchyCosts.groupCount *
+          (_LargeHierarchyCosts.childrenPerGroup + 1);
+      expect(rows, hasLength(count));
+      final projectionBuilds = debugGoodsCostTreeProjectionBuilds;
+      final lookupBuilds = debugGoodsCostInputLookupBuilds;
+      final previewCalls = repo.previewCalls;
+      final root = find.byKey(const ValueKey('row:group-0'));
+      await tester.tap(
+        find.descendant(of: root, matching: find.byType(Checkbox)).first,
+      );
+      await tester.pump();
+      expect(materialTable().items, same(rows));
+      final toggle = find.byKey(
+        const ValueKey('goods-cost-tree-toggle-group-0'),
+      );
+      await tester.tap(toggle);
+      await tester.pump();
+      expect(materialTable().items, hasLength(count - 40));
+      await tester.tap(toggle);
+      await tester.pump();
+      expect(materialTable().items, hasLength(count));
+      expect(debugGoodsCostTreeProjectionBuilds, projectionBuilds);
+      expect(debugGoodsCostInputLookupBuilds, lookupBuilds);
+      expect(repo.previewCalls, previewCalls);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('cost-unitPrice-group-0')),
+        '0.123456789012345678',
+      );
+      await tester.pump();
+      expect(debugGoodsCostTreeProjectionBuilds, projectionBuilds);
+      expect(debugGoodsCostInputLookupBuilds, lookupBuilds + 1);
+      expect(repo.previewCalls, previewCalls);
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      expect(repo.previewCalls, previewCalls + 1);
+      expect(debugGoodsCostTreeProjectionBuilds, projectionBuilds + 1);
+
+      final visits = debugGoodsCostPendingFilterVisits;
+      await tester.tap(find.byKey(const Key('cost-pending-filter')));
+      await tester.pumpAndSettle();
+      final pendingRows = materialTable().items;
+      expect(pendingRows, hasLength(300));
+      expect(debugGoodsCostPendingFilterVisits - visits, count);
+      materialTable().onSelectedIdsChanged!({
+        pendingRows.first['path'].toString(),
+      });
+      await tester.pump();
+      expect(materialTable().items, same(pendingRows));
+      expect(debugGoodsCostPendingFilterVisits - visits, count);
+      expect(debugGoodsCostTreeProjectionBuilds, projectionBuilds + 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
+    testWidgets(
+      'deep cost narrow columns retain large-text controls on $platform',
+      (tester) async {
+        await _pump(
+          tester,
+          _DeepHierarchyCosts(),
+          platform: platform,
+          textScale: 2,
+          size: const Size(800, 1300),
+        );
+        final handle = find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenColumnResizeHandle && widget.label == '货品名称',
+        );
+        void shrinkIdentity() =>
+            tester.widget<UtenColumnResizeHandle>(handle).onResize(-1000);
+        final root = find.byKey(const ValueKey('goods-cost-tree-cell-deep-0'));
+        // The measured identity is inside the cell's 24px horizontal padding
+        // and 0.5px grid border. Allow one logical pixel for that inner box.
+        const borderTolerance = 1.0;
+        shrinkIdentity();
+        await tester.pumpAndSettle();
+        final context = tester.element(root);
+        final deepMinimum = UtenTreeTableCell.compactMinimumWidthOf(
+          context,
+          depth: 10,
+        );
+        expect(
+          tester.getSize(root).width,
+          inInclusiveRange(deepMinimum - 24 - borderTolerance, deepMinimum),
+        );
+        expect(tester.takeException(), isNull);
+        final deepToggle = find.byKey(
+          const ValueKey('goods-cost-tree-toggle-deep-9'),
+        );
+        await tester.ensureVisible(deepToggle);
+        expect(
+          tester.getSize(deepToggle).height,
+          greaterThanOrEqualTo(platform == TargetPlatform.android ? 48 : 32),
+        );
+        await tester.tap(deepToggle);
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('goods-cost-tree-cell-deep-10')),
+          findsNothing,
+        );
+        await tester.tap(find.byKey(const Key('cost-tree-expansion')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('cost-tree-expansion')));
+        await tester.pumpAndSettle();
+        shrinkIdentity();
+        await tester.pumpAndSettle();
+        final rootMinimum = UtenTreeTableCell.compactMinimumWidthOf(
+          tester.element(root),
+          depth: 0,
+        );
+        expect(
+          tester.getSize(root).width,
+          inInclusiveRange(rootMinimum - 24 - borderTolerance, rootMinimum),
+        );
+        await tester.tap(find.byKey(const Key('cost-tree-expansion')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('goods-cost-tree-cell-deep-10')),
+          findsOneWidget,
+        );
+        expect(
+          tester.getSize(root).width,
+          greaterThanOrEqualTo(deepMinimum - 24 - borderTolerance),
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  testWidgets('identical slow cost refreshes share one preview request', (
+    tester,
+  ) async {
+    final repo = _Costs();
+    await _pump(tester, repo, platform: TargetPlatform.windows);
+    repo.defer = true;
+    final calls = repo.previewCalls;
+    final action = tester
+        .widget<UtenButton>(find.byKey(const Key('cost-more')))
+        .onPressed!;
+    final operations = <Future<void>>[];
+    Future<void> startRefresh() async {
+      operations.add(Future<void>.sync(action));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(find.text('刷新来源价格与用量').last);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+    }
+
+    await startRefresh();
+    await startRefresh();
+    expect(repo.previewCalls, calls + 1);
+    expect(repo.pending, hasLength(1));
+    repo.pending.single.complete(GoodsCostCalculation(_calculation()));
+    await tester.pumpAndSettle();
+    await Future.wait(operations);
+    repo.defer = false;
+    await _more(tester, '刷新来源价格与用量');
+    expect(repo.previewCalls, calls + 2);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('manual cost refresh consumes the pending debounce', (
+    tester,
+  ) async {
+    final repo = _Costs();
+    await _pump(tester, repo, platform: TargetPlatform.windows);
+    repo.defer = true;
+    final calls = repo.previewCalls;
+    final price = find.byKey(const ValueKey('cost-unitPrice-edge-a'));
+    await tester.enterText(price, '0.987654321');
+    final action = tester
+        .widget<UtenButton>(find.byKey(const Key('cost-more')))
+        .onPressed!;
+    final refresh = Future<void>.sync(action);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.text('刷新来源价格与用量').last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(repo.previewCalls, calls + 1);
+    expect(repo.pending, hasLength(1));
+    repo.pending.single.complete(GoodsCostCalculation(_calculation()));
+    await tester.pumpAndSettle();
+    await refresh;
+    expect(tester.widget<TextFormField>(price).controller!.text, '0.987654321');
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets(
+    'Ctrl cost expansion uses projected peers and preserves descendants',
+    (tester) async {
+      final repo = _PeerHierarchyCosts();
+      await _pump(tester, repo, platform: TargetPlatform.windows);
+      final leafPrice = find.byKey(
+        const ValueKey('cost-unitPrice-opaque-leaf-a'),
+      );
+      await tester.enterText(leafPrice, '0.987654321123456789');
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      final projections = debugGoodsCostTreeProjectionBuilds;
+      await tester.tap(find.byKey(const Key('cost-tree-expansion')));
+      await tester.pumpAndSettle();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      try {
+        await tester.tap(
+          find.byKey(const ValueKey('goods-cost-tree-toggle-root-a')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('opaque-shared-a'), findsOneWidget);
+        expect(find.text('opaque-shared-b'), findsOneWidget);
+        expect(find.text('opaque-leaf-a'), findsNothing);
+        expect(find.text('opaque-leaf-b'), findsNothing);
+        await tester.tap(
+          find.byKey(const ValueKey('goods-cost-tree-toggle-opaque-shared-a')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('opaque-leaf-a'), findsOneWidget);
+        expect(find.text('opaque-other-leaf-a'), findsOneWidget);
+        expect(find.text('opaque-leaf-b'), findsNothing);
+        expect(
+          tester.widget<TextFormField>(leafPrice).controller!.text,
+          '0.987654321123456789',
+        );
+      } finally {
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      }
+      expect(debugGoodsCostTreeProjectionBuilds, projections);
+      await tester.tap(find.byKey(const Key('cost-save')));
+      await tester.pumpAndSettle();
+      final override = costMaps(repo.saved?['lineOverrides']).single;
+      expect(override['path'], 'opaque-leaf-a');
+      expect(override['unitPrice'], '0.987654321123456789');
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'ordinary settings keep the material table visible and defer advanced fields',
     (tester) async {
@@ -1941,10 +2484,19 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets('cost edit alone cannot open the purchase loss policy', (
+    tester,
+  ) async {
+    await _pump(tester, _Costs());
+    await tester.tap(find.byKey(const Key('cost-more')));
+    await tester.pumpAndSettle();
+    expect(find.text('委外允许损耗'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'subcontract loss policy refuses database-rounding input before save',
     (tester) async {
-      await _pump(tester, _Costs());
+      await _pump(tester, _Costs(), purchaseEdit: true);
       await _more(tester, '委外允许损耗');
       final input = find.descendant(
         of: find.byType(AlertDialog),

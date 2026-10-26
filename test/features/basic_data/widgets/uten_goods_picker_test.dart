@@ -104,8 +104,9 @@ void main() {
     expect(results.single.map((goods) => goods.id), ['goods-a', 'goods-b']);
   });
 
-  testWidgets('从后页向上滚动补前页，失败后重试同一页', (tester) async {
-    final repository = _FakeGoodsRepository(splitAcrossPages: true);
+  testWidgets('分页失败重试同一页，已预取的前页保留且不重拉', (tester) async {
+    final repository = _FakeGoodsRepository(splitAcrossPages: true)
+      ..failNextPage = 2;
     GoodsListItem? selected;
     await _pumpPicker(
       tester,
@@ -117,27 +118,26 @@ void main() {
     await tester.enterText(_searchEditable(), 'G-');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
+    expect(repository.searchPages, [1, 2]);
+    repository.failNextPage = 2;
     await tester.tap(find.text('下一页'));
     await tester.pumpAndSettle();
-    expect(find.text('连接器甲'), findsNothing);
-    expect(find.text('连接器乙'), findsOneWidget);
-    final oldRowTop = tester.getTopLeft(find.text('连接器乙')).dy;
-
-    repository.failNextPage = 1;
-    await _wheelOnGoods(tester, '连接器乙', -100);
-    await tester.pumpAndSettle();
-    expect(repository.searchPages, [1, 2, 1]);
-    expect(find.text('连接器乙'), findsOneWidget);
+    expect(repository.searchPages, [1, 2, 2]);
+    expect(find.text('连接器甲'), findsOneWidget);
     await tester.tap(find.text('重试').last);
     await tester.pumpAndSettle();
-    expect(repository.searchPages, [1, 2, 1, 1]);
+    expect(repository.searchPages, [1, 2, 2, 2, 1]);
+    expect(find.text('连接器乙'), findsOneWidget);
+    final oldRowTop = tester.getTopLeft(find.text('连接器乙')).dy;
+    await _wheelOnGoods(tester, '连接器乙', -100);
+    await tester.pumpAndSettle();
     // Prepending keeps the old row anchored. The preceding row is above the
     // viewport and may remain unbuilt until the user continues scrolling up.
     expect(find.text('连接器乙'), findsOneWidget);
     expect(tester.getTopLeft(find.text('连接器乙')).dy, closeTo(oldRowTop, 0.5));
     await _wheelOnGoods(tester, '连接器乙', -100);
     await tester.pumpAndSettle();
-    expect(repository.searchPages, [1, 2, 1, 1]);
+    expect(repository.searchPages, [1, 2, 2, 2, 1]);
 
     expect(find.text('连接器甲'), findsOneWidget);
     expect(find.text('连接器乙'), findsOneWidget);
@@ -350,7 +350,7 @@ void main() {
       find.byType(UtenCategoryTreeView<ProductCategoryNode>),
     );
     expect(tree.visibleFilterIds, {'section-a', 'section-b'});
-    expect(goodsRepository.searchPages, [1]);
+    expect(goodsRepository.searchPages, [1, 2]);
     expect(goodsRepository.searchCategoryIdQueries, ['G-']);
 
     await tester.tap(find.text('下一页'));

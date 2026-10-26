@@ -3,12 +3,60 @@ import 'dart:typed_data';
 
 const permissionConfigurationMaxBytes = 16 * 1024 * 1024;
 
+enum PermissionConfigurationScope { employee, department, baseline }
+
 /// Portable permission codes and source keys. UUIDs are resolved only by the
 /// target server and explicitly reviewed before any authorization is written.
 class PermissionConfiguration {
-  PermissionConfiguration._(this.json);
+  PermissionConfiguration._(this.json, {this.exportScope});
 
   final Map<String, dynamic> json;
+  final PermissionConfigurationScope? exportScope;
+
+  bool get includesBaseline =>
+      exportScope == null ||
+      exportScope == PermissionConfigurationScope.baseline;
+  bool get includesDataScopes =>
+      exportScope == null ||
+      exportScope == PermissionConfigurationScope.employee;
+
+  /// A portable selection retains the existing server backup contract. Scope is
+  /// carried outside [json], so it cannot become an unknown server DTO field.
+  PermissionConfiguration select(
+    PermissionConfigurationScope scope, {
+    String? sourceId,
+  }) {
+    final selectedDepartments = scope == PermissionConfigurationScope.department
+        ? departments.where((row) => row['key'] == sourceId).toList()
+        : <Map<String, dynamic>>[];
+    final selectedUsers = scope == PermissionConfigurationScope.employee
+        ? users.where((row) => row['key'] == sourceId).toList()
+        : <Map<String, dynamic>>[];
+    if ((scope == PermissionConfigurationScope.department &&
+            selectedDepartments.length != 1) ||
+        (scope == PermissionConfigurationScope.employee &&
+            selectedUsers.length != 1)) {
+      throw const FormatException('当前部门或员工已变化，请刷新后重新导出');
+    }
+    final ownerKeys = <String>{
+      for (final user in selectedUsers)
+        for (final values
+            in (user['dataScopes'] as Map<String, dynamic>).values)
+          ...List<String>.from(values as List),
+    };
+    final selected = PermissionConfiguration.fromJson({
+      ...json,
+      'baseline': scope == PermissionConfigurationScope.baseline
+          ? baseline
+          : <String>[],
+      'departments': selectedDepartments,
+      'users': selectedUsers,
+      'scopeOwners': owners
+          .where((row) => ownerKeys.contains(row['key']))
+          .toList(),
+    });
+    return PermissionConfiguration._(selected.json, exportScope: scope);
+  }
 
   factory PermissionConfiguration.fromJson(Map<String, dynamic> json) {
     if (json['format'] != 'uten.permission-configuration' ||
@@ -98,16 +146,54 @@ class PermissionConfiguration {
     if (decoded is! Map<String, dynamic>) {
       throw const FormatException('权限文件格式不正确');
     }
+    if (decoded['format'] == 'uten.permission-configuration-selection') {
+      if (decoded['version'] != 1 ||
+          decoded['configuration'] is! Map<String, dynamic>) {
+        throw const FormatException('权限范围文件格式或版本不正确');
+      }
+      final scope = PermissionConfigurationScope.values
+          .where((item) => item.name == decoded['scope'])
+          .firstOrNull;
+      if (scope == null) throw const FormatException('权限范围文件缺少有效范围');
+      final configuration = PermissionConfiguration.fromJson(
+        decoded['configuration'] as Map<String, dynamic>,
+      );
+      final valid = switch (scope) {
+        PermissionConfigurationScope.employee =>
+          configuration.users.length == 1 &&
+              configuration.departments.isEmpty &&
+              configuration.baseline.isEmpty,
+        PermissionConfigurationScope.department =>
+          configuration.departments.length == 1 &&
+              configuration.users.isEmpty &&
+              configuration.owners.isEmpty &&
+              configuration.baseline.isEmpty,
+        PermissionConfigurationScope.baseline =>
+          configuration.departments.isEmpty &&
+              configuration.users.isEmpty &&
+              configuration.owners.isEmpty,
+      };
+      if (!valid) throw const FormatException('权限文件内容超出声明范围，不能导入');
+      return PermissionConfiguration._(configuration.json, exportScope: scope);
+    }
     return PermissionConfiguration.fromJson(decoded);
   }
 
   Uint8List encode() {
+    final document = exportScope == null
+        ? json
+        : <String, dynamic>{
+            'format': 'uten.permission-configuration-selection',
+            'version': 1,
+            'scope': exportScope!.name,
+            'configuration': json,
+          };
     final readable = Uint8List.fromList(
-      utf8.encode(const JsonEncoder.withIndent('  ').convert(json)),
+      utf8.encode(const JsonEncoder.withIndent('  ').convert(document)),
     );
     if (readable.length <= permissionConfigurationMaxBytes) return readable;
     // Whitespace must not turn a valid server export into an unimportable file.
-    final compact = Uint8List.fromList(utf8.encode(jsonEncode(json)));
+    final compact = Uint8List.fromList(utf8.encode(jsonEncode(document)));
     if (compact.length > permissionConfigurationMaxBytes) {
       throw const FormatException('权限备份超过 16 MB，暂时无法保存为可导入文件');
     }

@@ -8,13 +8,36 @@ public final class ClientReleaseDto {
 
     public record Create(UUID requestId, String platform, String architecture, String version,
                          long buildNumber, String releaseNotes, boolean mandatory, String fileName,
-                         String expectedSha256, String storeUrl) {}
+                         String expectedSha256, String storeUrl, String packageKind) {
+        public Create {
+            packageKind = packageKind == null ? "update" : packageKind;
+        }
+
+        public Create(UUID requestId, String platform, String architecture, String version,
+                      long buildNumber, String releaseNotes, boolean mandatory, String fileName,
+                      String expectedSha256, String storeUrl) {
+            this(requestId, platform, architecture, version, buildNumber, releaseNotes, mandatory,
+                    fileName, expectedSha256, storeUrl, "update");
+        }
+    }
 
     public record Release(UUID id, String platform, String architecture, String version,
                           long buildNumber, String releaseNotes, boolean mandatory, String fileName,
                           String expectedSha256, String sha256, long sizeBytes, String installMode,
                           String storeUrl, String downloadUrl, String state, Instant createdAt,
-                          Instant publishedAt) {}
+                          Instant publishedAt, String packageKind) {
+        public Release {
+            packageKind = packageKind == null ? "update" : packageKind;
+        }
+
+        public Release(UUID id, String platform, String architecture, String version,
+                       long buildNumber, String releaseNotes, boolean mandatory, String fileName,
+                       String expectedSha256, String sha256, long sizeBytes, String installMode,
+                       String storeUrl, String downloadUrl, String state, Instant createdAt, Instant publishedAt) {
+            this(id, platform, architecture, version, buildNumber, releaseNotes, mandatory, fileName,
+                    expectedSha256, sha256, sizeBytes, installMode, storeUrl, downloadUrl, state, createdAt, publishedAt, "update");
+        }
+    }
 
     public record Check(boolean updateAvailable, Release release, int checkIntervalSeconds) {}
 }

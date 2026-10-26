@@ -10,6 +10,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../../components/layout/uten_panel_opening_scope.dart';
+
 /// 正在走转场动画的路由数(0 = 静止)。
 class RouteTransitionTracker extends ChangeNotifier {
   RouteTransitionTracker._();
@@ -110,6 +112,7 @@ class TrackedPageTransitionsBuilder extends PageTransitionsBuilder {
     Widget child,
   ) {
     return _TransitionActivity(
+      route: route,
       animation: animation,
       secondaryAnimation: secondaryAnimation,
       child: inner.buildTransitions<T>(
@@ -125,11 +128,13 @@ class TrackedPageTransitionsBuilder extends PageTransitionsBuilder {
 
 class _TransitionActivity extends StatefulWidget {
   const _TransitionActivity({
+    required this.route,
     required this.animation,
     required this.secondaryAnimation,
     required this.child,
   });
 
+  final PageRoute<dynamic> route;
   final Animation<double> animation;
   final Animation<double> secondaryAnimation;
   final Widget child;
@@ -139,9 +144,12 @@ class _TransitionActivity extends StatefulWidget {
 }
 
 class _TransitionActivityState extends State<_TransitionActivity> {
+  bool _openingReady = false;
+
   @override
   void initState() {
     super.initState();
+    _openingReady = _openingComplete;
     _attach(widget);
     _report();
   }
@@ -153,6 +161,7 @@ class _TransitionActivityState extends State<_TransitionActivity> {
         oldWidget.secondaryAnimation != widget.secondaryAnimation) {
       _detach(oldWidget);
       _attach(widget);
+      _openingReady = _openingReady || _openingComplete;
       _report();
     }
   }
@@ -174,7 +183,20 @@ class _TransitionActivityState extends State<_TransitionActivity> {
     target.secondaryAnimation.removeStatusListener(_onStatus);
   }
 
-  void _onStatus(AnimationStatus _) => _report();
+  void _onStatus(AnimationStatus _) {
+    // Release only once. Reverse and secondary animations must retain the
+    // mounted editors, selection and scroll positions during a return visit.
+    if (!_openingReady && _openingComplete) {
+      setState(() => _openingReady = true);
+    }
+    _report();
+  }
+
+  // Navigator briefly lays out a pushed route offstage with a completed proxy
+  // animation (for Hero measurement). That is not the end of its entrance.
+  bool get _openingComplete =>
+      !widget.route.offstage &&
+      widget.animation.status == AnimationStatus.completed;
 
   void _report() {
     bool moving(Animation<double> animation) =>
@@ -187,5 +209,9 @@ class _TransitionActivityState extends State<_TransitionActivity> {
   }
 
   @override
-  Widget build(BuildContext context) => widget.child;
+  Widget build(BuildContext context) {
+    // Do not hold ready data behind an invisible accessibility transition.
+    _openingReady = _openingReady || MediaQuery.disableAnimationsOf(context);
+    return UtenOpeningScope(ready: _openingReady, child: widget.child);
+  }
 }

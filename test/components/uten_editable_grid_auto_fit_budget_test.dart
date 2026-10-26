@@ -51,6 +51,50 @@ Widget _surface(
 );
 
 void main() {
+  testWidgets('sampled widths publish once after the complete bounded scan', (
+    tester,
+  ) async {
+    final controller = UtenEditableGridController<_Row>(
+      initial: List.generate(1000, _Row.new),
+    );
+    addTearDown(controller.dispose);
+    var width = 0.0;
+    var reads = 0;
+    final presentedWidths = <double>[];
+    await tester.pumpWidget(
+      _surface(
+        controller,
+        read: (row) {
+          reads++;
+          return 'm' * (15 + row.index ~/ 5);
+        },
+        onWidth: (value) {
+          width = value;
+          if (presentedWidths.isEmpty ||
+              (presentedWidths.last - value).abs() > .5) {
+            presentedWidths.add(value);
+          }
+        },
+      ),
+    );
+    for (var frame = 0; frame < 120 && reads < 200; frame++) {
+      final before = reads;
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(reads - before, lessThanOrEqualTo(32));
+    }
+    await tester.pumpAndSettle();
+    expect(reads, 200, reason: 'the existing 200-row sample stays complete');
+    expect(
+      presentedWidths,
+      hasLength(2),
+      reason: 'one floor and one final width',
+    );
+    expect(presentedWidths.first, closeTo(104, .5));
+    expect(width, closeTo(464, .5));
+    expect(controller.length, 1000);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('source replacement cancels unread old width samples', (
     tester,
   ) async {

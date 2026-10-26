@@ -321,7 +321,7 @@ public class GoodsOperationHistoryService {
         Set<String> needed=new LinkedHashSet<>();
         for(Row row:rows) {
             needed.add(switch(row.table()) {
-                case "goods" -> "goods:edit";
+                case "goods" -> "goods:view";
                 case "goods_bom_items" -> "goods:bom:edit";
                 case "material_categories" -> "material_category:edit";
                 default -> throw conflict("不支持的货品版本资料");
@@ -358,10 +358,10 @@ public class GoodsOperationHistoryService {
         Set<String> needed=new LinkedHashSet<>();
         switch(op.type()) {
             case "GOODS_CREATE"->needed.add("goods:create");
-            case "GOODS_EDIT"->needed.add("goods:edit");
-            case "GOODS_PURCHASE_POLICY"->needed.add("goods:edit");
-            case "GOODS_SUBCONTRACT_POLICY"->{needed.add("goods:edit");needed.add("goods:cost:view");}
-            case "GOODS_NAME_EN"->{if(!user.getPermissions().contains("goods:edit"))needed.add("goods:name_en:edit");}
+            case "GOODS_EDIT"->{}
+            case "GOODS_PURCHASE_POLICY"->needed.add("goods:purchase:edit");
+            case "GOODS_SUBCONTRACT_POLICY"->{needed.add("goods:purchase:edit");needed.add("goods:cost:view");}
+            case "GOODS_NAME_EN"->{if(!user.getPermissions().contains("goods:sales:edit"))needed.add("goods:name_en:edit");}
             case "GOODS_STATUS"->needed.add("goods:status");
             case "GOODS_DELETE"->needed.add("goods:delete");
             case "GOODS_IMPORT"->{needed.add("goods:import");needed.add("goods:import:undo");}
@@ -382,13 +382,22 @@ public class GoodsOperationHistoryService {
             default->{return "此操作需要专用业务流程处理";}
         }
         for(Row row:rows) {
-            if("BOM_PASTE".equals(op.type())&&row.before()!=null&&row.after()!=null&&row.after().path("is_deleted").asBoolean())needed.add("goods:bom:delete");
-            if("GOODS_EDIT".equals(op.type())&&"goods".equals(row.table())) {
+            if("goods".equals(row.table()) && row.before()!=null && row.after()!=null) {
                 if(changed(row.before(),row.after(),"status"))needed.add("goods:status");
                 if(changed(row.before(),row.after(),"price","zk"))needed.add("goods:price:edit");
                 if(changed(row.before(),row.after(),"zk"))needed.add("goods:discount:view");
-                if(changed(row.before(),row.after(),GOODS_COSTS.toArray(String[]::new)))needed.add("goods:cost:view");
+                // Direct master edits and version restoration require the same field rights.
+                // BOM-derived source costs retain the original BOM command's authority.
+                if(("GOODS_EDIT".equals(op.type()) || "GOODS_IMPORT".equals(op.type()))
+                        && changed(row.before(),row.after(),GOODS_COSTS.toArray(String[]::new))) {
+                    needed.add("goods:edit"); needed.add("goods:cost:view");
+                }
+                if(changed(row.before(),row.after(),"code","category_id","name","short_name","model","spec","series","stock_place","material","thickness","m_weight","pack","pieces","paper","rear_insert_code","color_id","unit_id","mould_id","thickness_unit_id","m_weight_unit_id","owning_warehouse_id","color_legacy_id","unit_legacy_id","mould_legacy_id"))needed.add("goods:edit");
+                if(changed(row.before(),row.after(),"source_type","min_order_qty","order_multiple_qty","default_supplier_id","secondary_supplier_id","vend_legacy_id","vend2_legacy_id","subcontract_allowed_loss_pct","purchase_allowed_over_receipt_pct"))needed.add("goods:purchase:edit");
+                if(changed(row.before(),row.after(),"c_number","client_goods_name","client_id","client_legacy_id"))needed.add("goods:sales:edit");
+                if(changed(row.before(),row.after(),"name_en") && !user.getPermissions().contains("goods:name_en:edit"))needed.add("goods:sales:edit");
             }
+            if("BOM_PASTE".equals(op.type())&&row.before()!=null&&row.after()!=null&&row.after().path("is_deleted").asBoolean())needed.add("goods:bom:delete");
             if("GOODS_CREATE".equals(op.type())&&"goods".equals(row.table())&&row.after()!=null) {
                 if(row.after().hasNonNull("status")&&!"使用".equals(row.after().path("status").asText()))needed.add("goods:status");
                 if(row.after().hasNonNull("price")||row.after().hasNonNull("zk"))needed.add("goods:price:edit");

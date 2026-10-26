@@ -1,3 +1,4 @@
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // UtenGoodsPicker - 货品选择器（单据明细/报表选货品用）。
 //
 // 触发：函数式 showUtenGoodsPicker(context, ref) → 返回 GoodsListItem?。
@@ -26,6 +27,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../components/layout/uten_split_view.dart';
@@ -513,7 +515,29 @@ class _GoodsPickerSheet extends ConsumerStatefulWidget {
   ConsumerState<_GoodsPickerSheet> createState() => _GoodsPickerSheetState();
 }
 
-class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
+class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
+    with ScopedPagedReadViewMixin<_GoodsPickerSheet> {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    ++_requestVersion;
+    if (mounted) {
+      setState(() {
+        _boundaryChanged = true;
+        _paged = null;
+        _selected.clear();
+        _loading = false;
+        _searchLoading = false;
+      });
+    }
+    _closeStaleRoute();
+    if (mounted) {
+      setState(() {
+        _error = scopedPagedReadRejection?.message;
+        _searchError = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   String? _selectedCategoryId;
   String? _searchCategoryId;
   bool _includeRelated = false;
@@ -787,66 +811,119 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     return ids;
   }
 
-  Future<PagedResult<GoodsListItem>> _categoryPage(
+  Object _pagingQuery() => [
+    widget.dataSource,
+    ref.read(goodsRepositoryProvider),
+    widget.scope,
+    _selectedCategoryId,
+    _searchCategoryId,
+    _query,
+    _includeRelated,
+    _expandedScope,
+    _showingGlobalResults,
+    _columnFilters,
+    _goodsPickerSort,
+    _goodsPickerOrder,
+    _scopeRootIds,
+    _searchesAllSelectableGoods,
+  ];
+
+  Future<PagedResult<GoodsListItem>> Function(int) _categoryReader(
     String categoryId, {
-    int page = 1,
     String? keyword,
-  }) =>
-      widget.dataSource?.list(categoryId, page: page, keyword: keyword) ??
-      ref
-          .read(goodsRepositoryProvider)
-          .list(
-            categoryId,
+  }) {
+    final source = widget.dataSource;
+    final repository = ref.read(goodsRepositoryProvider);
+    final filters = Map<String, String?>.unmodifiable(_columnFilters);
+    const sort = _goodsPickerSort, order = _goodsPickerOrder;
+    return (page) =>
+        source?.list(categoryId, page: page, keyword: keyword) ??
+        repository.list(
+          categoryId,
+          page: page,
+          keyword: keyword,
+          filters: filters,
+          sort: sort,
+          order: order,
+          excludeDisabled: true,
+          excludeStub: true,
+        );
+  }
+
+  Future<PagedResult<GoodsListItem>> Function(int) _searchReader(String query) {
+    final source = widget.dataSource;
+    final repository = ref.read(goodsRepositoryProvider);
+    final filters = Map<String, String?>.unmodifiable(_columnFilters);
+    const sort = _goodsPickerSort, order = _goodsPickerOrder;
+    final category = _searchCategoryId;
+    final related = _includeRelated;
+    final allSelectable = _searchesAllSelectableGoods;
+    final allowedCategories = Set<String>.unmodifiable(
+      _searchAllowedCategoryIds,
+    );
+    Future<PagedResult<GoodsListItem>> checked(
+      Future<PagedResult<GoodsListItem>> pending,
+    ) async {
+      final result = await pending;
+      if (result.items.any(
+        (goods) => goods.categoryId == null
+            ? !allSelectable
+            : !allowedCategories.contains(goods.categoryId),
+      )) {
+        throw StateError('goods search returned an item outside picker scope');
+      }
+      return result;
+    }
+
+    final roots = Set<String>.unmodifiable(
+      _searchesAllSelectableGoods ? <String>{} : _scopeRootIds,
+    );
+    return (page) {
+      if (source != null) {
+        return checked(
+          source.searchWithOptions(
+            query,
             page: page,
-            keyword: keyword,
-            filters: _columnFilters,
-            sort: _goodsPickerSort,
-            order: _goodsPickerOrder,
+            categoryId: category,
+            includeRelated: related,
+          ),
+        );
+      }
+      if (filters.isNotEmpty) {
+        if (repository is! GoodsColumnSearchGateway) {
+          throw StateError('货品数据源尚未支持列搜索，请刷新后重试');
+        }
+        return checked(
+          (repository as GoodsColumnSearchGateway).searchColumns(
+            query,
+            filters: filters,
+            page: page,
+            size: 100,
+            categoryRootIds: roots,
+            categoryId: category,
+            includeRelated: related,
             excludeDisabled: true,
             excludeStub: true,
-          );
-
-  Future<PagedResult<GoodsListItem>> _searchPage(String query, int page) {
-    final source = widget.dataSource;
-    if (source != null) {
-      return source.searchWithOptions(
-        query,
-        page: page,
-        categoryId: _searchCategoryId,
-        includeRelated: _includeRelated,
-      );
-    }
-    final repository = ref.read(goodsRepositoryProvider);
-    if (_columnFilters.isNotEmpty) {
-      if (repository is! GoodsColumnSearchGateway) {
-        throw StateError('货品数据源尚未支持列搜索，请刷新后重试');
+            sort: sort,
+            order: order,
+          ),
+        );
       }
-      return (repository as GoodsColumnSearchGateway).searchColumns(
-        query,
-        filters: Map.of(_columnFilters),
-        page: page,
-        size: 100,
-        categoryRootIds: _searchesAllSelectableGoods ? const {} : _scopeRootIds,
-        categoryId: _searchCategoryId,
-        includeRelated: _includeRelated,
-        excludeDisabled: true,
-        excludeStub: true,
-        sort: _goodsPickerSort,
-        order: _goodsPickerOrder,
+      return checked(
+        repository.search(
+          query,
+          page: page,
+          size: 100,
+          categoryRootIds: roots,
+          categoryId: category,
+          includeRelated: related,
+          excludeDisabled: true,
+          excludeStub: true,
+          sort: sort,
+          order: order,
+        ),
       );
-    }
-    return repository.search(
-      query,
-      page: page,
-      size: 100,
-      categoryRootIds: _searchesAllSelectableGoods ? const {} : _scopeRootIds,
-      categoryId: _searchCategoryId,
-      includeRelated: _includeRelated,
-      excludeDisabled: true,
-      excludeStub: true,
-      sort: _goodsPickerSort,
-      order: _goodsPickerOrder,
-    );
+    };
   }
 
   Future<Set<String>> _searchCategoryIds(String query) {
@@ -883,7 +960,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     );
   }
 
-  Future<void> _reloadCategory({String? keyword}) async {
+  Future<void> _reloadCategory({String? keyword, bool useCache = false}) async {
     if (!_canRead) return;
     final categoryId = _selectedCategoryId;
     final requestedPage = _page;
@@ -902,10 +979,13 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       _error = null;
     });
     try {
-      final result = await _categoryPage(
-        categoryId,
-        page: requestedPage,
-        keyword: keyword,
+      final result = await readScopedPage<GoodsListItem>(
+        requestedPage,
+        query: _pagingQuery(),
+        currentQuery: _pagingQuery,
+        useCache: useCache,
+        isCurrent: () => _canRead,
+        fetchPage: _categoryReader(categoryId, keyword: keyword),
       );
       if (!mounted ||
           !_canRead ||
@@ -931,7 +1011,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     }
   }
 
-  Future<void> _reloadGlobalSearch() async {
+  Future<void> _reloadGlobalSearch({bool useCache = false}) async {
     if (!_canRead) return;
     final query = _query;
     final requestedPage = _page;
@@ -963,7 +1043,14 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       final needsLocation =
           _globalResolutionQuery != query || _globalResolution == null;
       final responses = await Future.wait<Object?>([
-        _searchPage(query, requestedPage),
+        readScopedPage<GoodsListItem>(
+          requestedPage,
+          query: _pagingQuery(),
+          currentQuery: _pagingQuery,
+          useCache: useCache,
+          isCurrent: () => _canRead,
+          fetchPage: _searchReader(query),
+        ),
         if (needsLocation)
           _searchCategoryIds(
             query,
@@ -978,18 +1065,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
         return;
       }
 
-      // Keep the category guard for ordinary/dedicated scopes and unknown
-      // non-null categories. Explicit all-goods search also permits genuinely
-      // unclassified rows; the repository still owns eligibility and paging.
       final allowedCategoryIds = _searchAllowedCategoryIds;
-      if (result.items.any((goods) {
-        final categoryId = goods.categoryId;
-        return categoryId == null
-            ? !_searchesAllSelectableGoods
-            : !allowedCategoryIds.contains(categoryId);
-      })) {
-        throw StateError('goods search returned an item outside picker scope');
-      }
 
       final HierarchySearchResolution resolution;
       if (needsLocation) {
@@ -1043,11 +1119,12 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     }
   }
 
-  Future<void> _reloadCurrentPage() async {
+  Future<void> _reloadCurrentPage({bool useCache = false, bool reloadVisible = false}) async {
+    if (reloadVisible && _error == null) _page = _pickerRows.visiblePage ?? _page;
     if (_query.isNotEmpty && _showingGlobalResults) {
-      await _reloadGlobalSearch();
+      await _reloadGlobalSearch(useCache: useCache);
     } else {
-      await _reloadCategory();
+      await _reloadCategory(useCache: useCache);
     }
   }
 
@@ -1144,29 +1221,14 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       children: [
         Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      widget.title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
+            UtenPanelHeader(
+              title: widget.title,
+              onClose: () => Navigator.of(context).pop(),
             ),
             const Divider(height: 1),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
+                padding: UtenPanelSpacing.browseBody(context),
                 child: UtenPanelDeferredView(builder: (_) => body),
               ),
             ),
@@ -1297,41 +1359,37 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.checklist_rounded,
-                                  size: 20,
-                                  color: theme.colorScheme.primary,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    '已选货品（${_selected.length}）',
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                                UtenButton(
-                                  type: UtenButtonType.danger,
-                                  size: UtenButtonSize.small,
-                                  onPressed: _selected.isEmpty
-                                      ? null
-                                      : () => setState(_selected.clear),
-                                  child: const Text('清空全部'),
-                                ),
-                                IconButton(
-                                  tooltip: '收起',
-                                  onPressed: () => setState(
-                                    () => _selectedPanelOpen = false,
-                                  ),
-                                  icon: const Icon(Icons.close_rounded),
-                                ),
-                              ],
+                          UtenPanelHeader(
+                            title: '已选货品（${_selected.length}）',
+                            titleStyle: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
                             ),
+                            leading: Padding(
+                              padding: EdgeInsets.only(
+                                right: UtenPanelSpacing.inset(
+                                  context,
+                                  UtenSpacing.s8,
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.checklist_rounded,
+                                size: 20,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                            closeTooltip: '收起',
+                            onClose: () =>
+                                setState(() => _selectedPanelOpen = false),
+                            actions: [
+                              UtenButton(
+                                type: UtenButtonType.danger,
+                                size: UtenButtonSize.small,
+                                onPressed: _selected.isEmpty
+                                    ? null
+                                    : () => setState(_selected.clear),
+                                child: const Text('清空全部'),
+                              ),
+                            ],
                           ),
                           const Divider(height: 1),
                           Expanded(
@@ -1403,7 +1461,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   Widget _buildUnifiedSearch() {
     return Padding(
       // 左缘贴 0（2026-10-18 全站分栏口径）：与分类页左栏搜索共缘。
-      padding: const EdgeInsets.only(top: 8, bottom: 8),
+      padding: UtenPanelSpacing.search(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1529,6 +1587,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       columnSearchEnabled: _supportsColumnSearch && search,
     );
     return MasterDataTableView<GoodsListItem>(
+      expensiveRowMounts: false,
       key: const Key('goods-picker-paged-list'),
       singleTapRows: true,
       rowsController: _pickerRows,
@@ -1634,14 +1693,14 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       ),
       onPageChange: (page) {
         setState(() => _page = page);
-        return _reloadCurrentPage();
+        return _reloadCurrentPage(useCache: true);
       },
       isLoading:
           (_loading || _searchLoading) && (_paged?.items.isEmpty ?? true),
       loadingMore:
           (_loading || _searchLoading) && (_paged?.items.isNotEmpty ?? false),
       error: _error,
-      onRetry: _reloadCurrentPage,
+      onRetry: () => _reloadCurrentPage(reloadVisible: true),
       emptyMessage: _paged == null
           ? (_tree.isEmpty ? '没有可选择的货品分类' : '请选择左侧分类或搜索货品')
           : '当前条件下没有可选货品',

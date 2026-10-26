@@ -13,6 +13,7 @@
 // 注册表以路由段 `:categoryId` 为键：按钮只报 id，落点页按 id 找 scope——
 // scope 带 BadgeModule 枚举与集合，不适合整份塞进 URL。
 import 'package:flutter/material.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../components/layout/uten_app_bar_action_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -211,6 +212,13 @@ class FormDraftsPage extends ConsumerWidget {
       appBar: UtenAppBar(
         title: category == null ? '草稿' : '${category.hubTitle} · 草稿',
         showBackButton: true,
+        actions: [
+          if (categoryId == 'warehouse')
+            const UtenFieldHintIcon(
+              info: '显示本人全部可见的仓库草稿，不受任务页的选仓筛选影响。',
+              dense: true,
+            ),
+        ],
       ),
       body: category == null
           ? const SafeArea(
@@ -224,11 +232,6 @@ class FormDraftsPage extends ConsumerWidget {
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          if (categoryId == 'warehouse')
-                            const Padding(
-                              padding: EdgeInsets.only(bottom: UtenSpacing.s8),
-                              child: Text('显示本人全部可见的仓库草稿，不受任务页的选仓筛选影响。'),
-                            ),
                           Expanded(
                             child: DraftWorkspaceTable(
                               kinds: category.kinds,

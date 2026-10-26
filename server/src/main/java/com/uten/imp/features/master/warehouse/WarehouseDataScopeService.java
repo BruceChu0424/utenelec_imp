@@ -55,7 +55,21 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
             // 系统上下文(定时任务、事件投递)没有登录主体: 不按人裁剪; HTTP 端点都要求登录。
             return new WarehouseAccess(Role.SUPERVISOR, List.of(), WarehouseTaskScope.ALL, false);
         }
-        return reuse("access:" + userId + ":tasks=" + BusinessTaskContext.active(), WarehouseAccess.class, () -> resolve(userId));
+        return reuse("access:" + userId + ":tasks=" + BusinessTaskContext.active(), WarehouseAccess.class,
+                () -> resolve(userId, BusinessTaskContext.active()));
+    }
+
+    @Override public WarehouseAccess freshAccess(UUID userId, boolean businessTasks) {
+        Objects.requireNonNull(userId);
+        WarehouseAccess fresh=resolve(userId, businessTasks);
+        // Publication may run inside an older GET WINDOW. Do not let the data
+        // query reuse a pre-proof audience or a selected-warehouse derivative.
+        Map<String,Object> window=WINDOW.get();
+        if(window!=null) {
+            window.clear();
+            window.put("access:"+userId+":tasks="+businessTasks,fresh);
+        }
+        return fresh;
     }
 
     @Override
@@ -224,13 +238,13 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
         return resolved;
     }
 
-    private WarehouseAccess resolve(UUID userId) {
+    private WarehouseAccess resolve(UUID userId, boolean businessTasks) {
         return jdbc.sql("""
                         SELECT role, keeper_warehouse_ids, scope_warehouse_ids, includes_unassigned, warehouse_member
                         FROM fn_user_warehouse_access(:userId, :businessTasks)
                         """)
                 .param("userId", userId)
-                .param("businessTasks", BusinessTaskContext.active())
+                .param("businessTasks", businessTasks)
                 .query((rs, row) -> {
                     Role role = Role.valueOf(rs.getString("role"));
                     Array scope = rs.getArray("scope_warehouse_ids");

@@ -36,7 +36,7 @@ void main() {
           unorderedEquals([
             ApiEndpoints.purchaseReportMonthly,
             ApiEndpoints.purchaseReportPending,
-            if (populated) ApiEndpoints.suppliersDict,
+            if (populated) '/master/suppliers/lookup',
             if (populated) ApiEndpoints.goodsLookup,
           ]),
         );
@@ -80,9 +80,9 @@ class _ReportApi extends ApiClient {
           : [];
     }
     if (path == ApiEndpoints.purchaseReportPending) return [];
-    if (path == ApiEndpoints.suppliersDict) {
+    if (path == '/master/suppliers/lookup') {
       return [
-        {'id': 'supplier-1', 'name': '测试供应商'},
+        {'id': 'supplier-1', 'name': '测试供应商', 'status': '使用'},
       ];
     }
     if (path == ApiEndpoints.goodsLookup) {

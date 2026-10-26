@@ -27,7 +27,32 @@ public record ReportTableResponse(
         long total,
         int totalPages,
         Map<String, Object> meta,
-        List<ReportTotal> totals) {
+        List<ReportTotal> totals,
+        String readScopeVersion,
+        String statisticsGeneratedAt) {
+    public ReportTableResponse(List<ReportColumn> columns, List<Map<String,Object>> rows,
+            Map<String,List<ReportFacet>> facets,int page,int size,long total,int totalPages,
+            List<ReportTotal> totals,String readScopeVersion) {
+        this(columns,rows,facets,page,size,total,totalPages,Map.of(),totals,readScopeVersion,
+                com.uten.imp.common.report.ReportReadPlan.statisticsGeneratedAt(total,facets,totals));
+    }
+
+    public ReportTableResponse(List<ReportColumn> columns,List<Map<String,Object>> rows,
+            Map<String,List<ReportFacet>> facets,int page,int size,long total,int totalPages,
+            Map<String,Object> meta,List<ReportTotal> totals) {
+        this(columns,rows,facets,page,size,total,totalPages,meta,totals,
+                com.uten.imp.common.report.ReportReadPlan.current().readScopeVersion(),
+                com.uten.imp.common.report.ReportReadPlan.statisticsGeneratedAt(total,facets,totals));
+    }
+
+
+    public ReportTableResponse(List<ReportColumn> columns, List<Map<String, Object>> rows,
+                               Map<String, List<ReportFacet>> facets, int page, int size,
+                               long total, int totalPages, List<ReportTotal> totals) {
+        this(columns,rows,facets,page,size,total,totalPages,totals,
+                com.uten.imp.common.report.ReportReadPlan.current().readScopeVersion());
+    }
+
 
     public ReportTableResponse(List<ReportColumn> columns, List<Map<String, Object>> rows,
                                Map<String, List<ReportFacet>> facets, int page, int size,

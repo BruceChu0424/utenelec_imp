@@ -1,3 +1,4 @@
+import '../../support/native_facet_fake_transport.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -60,6 +61,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.listQueries.last['status'], 'OPEN');
     final reads = api.listQueries.length;
+    await tester.runAsync(
+      () => tester
+          .widget<MasterDataTableView<SubcontractLossClaimSummary>>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is MasterDataTableView<SubcontractLossClaimSummary>,
+            ),
+          )
+          .facetPageLoaders['wasteBillNo']!('', 1),
+    );
     final facetReads = api.facetQueries.length;
     await selectFilterSegment(tester, '待处理');
     await tester.pumpAndSettle();
@@ -71,12 +82,22 @@ void main() {
     await selectFilterSegment(tester, '全部');
     await tester.pumpAndSettle();
     expect(api.listQueries.last.containsKey('status'), isFalse);
+    await tester.runAsync(
+      () => tester
+          .widget<MasterDataTableView<SubcontractLossClaimSummary>>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is MasterDataTableView<SubcontractLossClaimSummary>,
+            ),
+          )
+          .facetPageLoaders['wasteBillNo']!('', 1),
+    );
     expect(api.facetQueries.last.containsKey('status'), isFalse);
     expect(find.text('生成付款单'), findsNothing);
   });
 }
 
-class _ClaimListApi extends ApiClient {
+class _ClaimListApi extends ApiClient with NativeFacetFakeTransport {
   _ClaimListApi() : super(Dio());
   final listQueries = <Map<String, dynamic>>[];
   final facetQueries = <Map<String, dynamic>>[];

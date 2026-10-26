@@ -12,7 +12,8 @@
 // 「≈3.52 t (另有 12 项未称)」，「<重量key>_estimated_rows」> 0 时重量前缀「≈」——这两项
 // 不再单独占位。其余 'count' 项按整数显示、为 0 时整项隐藏。
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
+import '../../core/utils/display_datetime.dart';
 
 import '../../components/data_display/uten_totals_summary_bar.dart';
 import '../measurement/weight_unit.dart';
@@ -255,9 +256,30 @@ List<UtenTotalEntry> reportTotalEntries(
 Widget? reportTotalsBar(
   List<ReportTotal> totals, {
   WeightDisplay weightDisplay = WeightDisplay.auto,
+  String? statisticsGeneratedAt,
 }) {
-  if (totals.isEmpty) return null;
   final entries = reportTotalEntries(totals, weightDisplay: weightDisplay);
-  if (entries.every((e) => e.value.trim().isEmpty)) return null;
-  return UtenTotalsSummaryBar(density: true, compact: true, entries: entries);
+  final visible = entries.any((e) => e.value.trim().isNotEmpty);
+  final generated = DisplayDateTime.beijing(statisticsGeneratedAt);
+  if (!visible && generated.isEmpty) return null;
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.end,
+    children: [
+      if (visible)
+        UtenTotalsSummaryBar(density: true, compact: true, entries: entries),
+      if (generated.isNotEmpty)
+        Builder(
+          builder: (context) => Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              '统计生成于 $generated；翻页保留，刷新更新',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+    ],
+  );
 }

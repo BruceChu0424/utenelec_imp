@@ -25,8 +25,8 @@ public class AttachmentPreviewProperties {
     /** 是否启用 Office → PDF 转换预览。 */
     private boolean enabled = false;
 
-    /** soffice 可执行文件；可为 PATH 中的命令名或绝对路径。 */
-    private String sofficePath = "soffice";
+    /** 默认连接隔离 worker；直接 soffice 路径仅供显式配置的隔离开发测试。 */
+    private String sofficePath = "/usr/local/libexec/uten-preview-soffice-isolated";
 
     /** 单次转换超时；超时进程被强制结束并按失败处理。 */
     @DurationUnit(ChronoUnit.SECONDS)
@@ -37,4 +37,13 @@ public class AttachmentPreviewProperties {
 
     /** 预览缓存目录总量上限；超出后按最久未使用删除。 */
     private long cacheMaxBytes = 1073741824L;
+
+    /** PDF 单文件上限；转换器本身的内存/磁盘/网络隔离仍由独立 worker 提供。 */
+    private long maxOutputBytes = 67108864L;
+
+    /** Office ZIP 容器在进入转换器之前的累计展开字节上限。 */
+    private long maxExpandedBytes = 268435456L;
+
+    /** Office ZIP 容器的条目数上限，避免海量小文件耗尽转换资源。 */
+    private int maxArchiveEntries = 10000;
 }

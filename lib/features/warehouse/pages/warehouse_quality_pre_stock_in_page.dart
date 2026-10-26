@@ -26,6 +26,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/authenticated_request_scope.dart';
@@ -46,6 +47,7 @@ import '../widgets/warehouse_quality_slice_table.dart'
     show warehouseQualityQuantity;
 import '../widgets/warehouse_quality_stock_in_warehouse_picker.dart';
 import '../../../shared/badges/badge_registry.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class WarehouseQualityPreStockInPage extends ConsumerStatefulWidget {
   const WarehouseQualityPreStockInPage({
@@ -476,6 +478,14 @@ class _WarehouseQualityPreStockInPageState
                     ),
             ),
             actions: [
+              const UtenFieldHintIcon(
+                key: Key('warehouse-quality-pre-stock-notice'),
+                dense: true,
+                info:
+                    '先入库后质检：只落位置，不改库存\n\n'
+                    '把实物先放到上架仓与库位，本页只记录位置；品质部会按这个位置到储放区域检验。'
+                    '合格后系统自动按此位置转正入库(无需仓库再确认)，不合格由仓库从库位取出登记退回。',
+              ),
               UtenAppBarActionButton(
                 key: const Key('warehouse-quality-pre-stock-refresh'),
                 label: '刷新',
@@ -534,61 +544,59 @@ class _WarehouseQualityPreStockInPageState
   }
 
   Widget _buildBody(ThemeData theme, WarehouseQualityResultDetail detail) {
-    return ListView(
-      controller: _pageScroll,
+    return UtenPageEdgePadding.scroll(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s12,
         UtenSpacing.s12,
         UtenSpacing.s12,
         UtenFloatingActionGroup.scrollClearance,
       ),
-      children: [
-        UtenInlineNotice(
-          key: const Key('warehouse-quality-pre-stock-notice'),
-          title: '先入库后质检：只落位置，不改库存',
-          message:
-              '把实物先放到上架仓与库位，本页只记录位置；品质部会按这个位置到储放区域检验。'
-              '合格后系统自动按此位置转正入库(无需仓库再确认)，不合格由仓库从库位取出登记退回。'
-              '${_canPreStockIn ? '' : '当前账号没有「到货先入库后质检」权限，只能查看。'}',
-        ),
-        const SizedBox(height: UtenSpacing.s12),
-        Text(
-          '${detail.receiptType.label} ${detail.billNo ?? detail.receiptId}'
-          '${detail.supplierName == null ? '' : ' · ${detail.supplierName}'}'
-          ' · 收货参考仓 ${detail.warehouseName ?? '—'}',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+      builder: (context, resolvedPagePadding) => ListView(
+        controller: _pageScroll,
+        padding: resolvedPagePadding,
+        children: [
+          if (!_canPreStockIn) ...[
+            const UtenInlineNotice(message: '当前账号没有「到货先入库后质检」权限，只能查看。'),
+            const SizedBox(height: UtenSpacing.s12),
+          ],
+          Text(
+            '${detail.receiptType.label} ${detail.billNo ?? detail.receiptId}'
+            '${detail.supplierName == null ? '' : ' · ${detail.supplierName}'}'
+            ' · 收货参考仓 ${detail.warehouseName ?? '—'}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        UtenEditableGrid<WarehousePreStockRow>(
-          tableKey:
-              'features.warehouse.pages.warehouse_quality_pre_stock_in_page.WarehouseQualityPreStockInPageState._buildBody.1',
-          key: const Key('warehouse-quality-pre-stock-grid'),
-          controller: _grid,
-          stickyHeaderPinned: _gridPinned,
-          columns: _columns(context),
-          showAddRow: false,
-          showRowDelete: false,
-          showSelectAllToggle: false,
-          showRemoveRowsAction: false,
-          selectable: true,
-          selectionEnabled:
-              _canPreStockIn && !_saving && _pendingCommand == null,
-          selectedOf: (row) => row.selected,
-          onRowSelect: (row, selected) =>
-              setState(() => row.selected = selected),
-          emptyMessage: '本单没有可先入库上架的待检明细',
-        ),
-        if (_error != null) ...[
           const SizedBox(height: UtenSpacing.s8),
-          UtenInlineNotice(
-            key: const Key('warehouse-quality-pre-stock-error'),
-            level: UtenInlineNoticeLevel.error,
-            message: _error!,
+          UtenEditableGrid<WarehousePreStockRow>(
+            tableKey:
+                'features.warehouse.pages.warehouse_quality_pre_stock_in_page.WarehouseQualityPreStockInPageState._buildBody.1',
+            key: const Key('warehouse-quality-pre-stock-grid'),
+            controller: _grid,
+            stickyHeaderPinned: _gridPinned,
+            columns: _columns(context),
+            showAddRow: false,
+            showRowDelete: false,
+            showSelectAllToggle: false,
+            showRemoveRowsAction: false,
+            selectable: true,
+            selectionEnabled:
+                _canPreStockIn && !_saving && _pendingCommand == null,
+            selectedOf: (row) => row.selected,
+            onRowSelect: (row, selected) =>
+                setState(() => row.selected = selected),
+            emptyMessage: '本单没有可先入库上架的待检明细',
           ),
+          if (_error != null) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            UtenInlineNotice(
+              key: const Key('warehouse-quality-pre-stock-error'),
+              level: UtenInlineNoticeLevel.error,
+              message: _error!,
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 

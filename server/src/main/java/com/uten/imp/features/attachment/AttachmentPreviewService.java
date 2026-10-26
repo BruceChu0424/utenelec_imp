@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
@@ -29,8 +30,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -60,6 +59,9 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
     /** 已可读的缓存 PDF；{@code fileName} 是给浏览器的展示名（原名改 .pdf 后缀）。 */
     public record RenderedPreview(Path file, long sizeBytes, String fileName) {
     }
+
+    /** Already-open cache content: eviction cannot race the controller's later file open. */
+    public record PreviewDownload(InputStream stream, long sizeBytes, String fileName) { }
 
     /**
      * 交给 LibreOffice 转 PDF 的类型（2026-09-11 从 6 种扩到 11 种）。
@@ -102,13 +104,14 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
     private final StorageProperties storage;
     private final ProcessRunner runner;
     private final Semaphore slots;
-    private final BlockingQueue<Integer> profileSlots;
+    private final Object cacheLock = new Object();
 
     @Autowired
     public AttachmentPreviewService(AttachmentService attachments,
                                     AttachmentPreviewProperties properties,
                                     StorageProperties storage) {
-        this(attachments, properties, storage, AttachmentPreviewService::runSoffice);
+        this(attachments, properties, storage,
+                (command, directory, timeout) -> runSoffice(command, directory, timeout, properties.getMaxOutputBytes()));
     }
 
     AttachmentPreviewService(AttachmentService attachments,
@@ -124,14 +127,14 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
             throw new IllegalStateException("Attachment preview concurrency must be between 1 and 8");
         }
         if (properties.getTimeout() == null || properties.getTimeout().isZero()
-                || properties.getTimeout().isNegative()) {
-            throw new IllegalStateException("Attachment preview timeout must be positive");
+                || properties.getTimeout().isNegative() || properties.getTimeout().compareTo(Duration.ofMinutes(10)) > 0) {
+            throw new IllegalStateException("Attachment preview timeout must be positive and at most ten minutes");
+        }
+        if (properties.getMaxOutputBytes() <= 0 || properties.getMaxExpandedBytes() <= 0
+                || properties.getMaxExpandedBytes() > Integer.MAX_VALUE || properties.getMaxArchiveEntries() <= 0) {
+            throw new IllegalStateException("Attachment preview resource limits must be positive and bounded");
         }
         this.slots = new Semaphore(maximum, true);
-        this.profileSlots = new ArrayBlockingQueue<>(maximum);
-        for (int slot = 0; slot < maximum; slot++) {
-            profileSlots.add(slot);
-        }
     }
 
     @PostConstruct
@@ -186,19 +189,37 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
         if (!sofficeResolvable()) {
             throw unsupported("服务器未安装文档转换组件");
         }
-        Integer slot = acquireSlot();
+        acquireSlot();
         try {
             hit = cacheHit(cached, source);
             if (hit != null) {
+                attachments.openPreviewSource(attachmentId);
                 return hit;
             }
-            return convert(root, cached, source, slot);
+            RenderedPreview rendered = convert(root, cached, source);
+            // Native conversion can take a minute; recheck live ACL/session/password after waiting.
+            attachments.openPreviewSource(attachmentId);
+            return rendered;
         } finally {
-            if (!profileSlots.offer(slot)) {
-                throw new IllegalStateException("文档转换配置槽位状态不一致");
-            }
             slots.release();
         }
+    }
+
+    public PreviewDownload open(UUID attachmentId) throws IOException {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            RenderedPreview rendered = render(attachmentId);
+            synchronized (cacheLock) {
+                try {
+                    long size = Files.size(rendered.file());
+                    return new PreviewDownload(Files.newInputStream(rendered.file(),
+                            StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS),
+                            size, rendered.fileName());
+                } catch (java.nio.file.NoSuchFileException evicted) {
+                    // A different conversion trimmed this entry between render and open; rebuild once.
+                }
+            }
+        }
+        throw new StorageResourceUnavailableException("预览缓存正在更新，请重试");
     }
 
     /** 附件物理删除完成后清掉其全部缓存版本（按附件 id 前缀）。 */
@@ -216,17 +237,19 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
             return;
         }
         String prefix = attachmentId + "-";
-        try (DirectoryStream<Path> files = Files.newDirectoryStream(cacheDirectory, prefix + "*.pdf")) {
-            for (Path file : files) {
-                Files.deleteIfExists(file);
+        synchronized (cacheLock) {
+            try (DirectoryStream<Path> files = Files.newDirectoryStream(cacheDirectory, prefix + "*.pdf")) {
+                for (Path file : files) {
+                    Files.deleteIfExists(file);
+                }
+            } catch (IOException error) {
+                log.warn("Attachment preview cache eviction failed for {}: {}", attachmentId, error.getMessage());
             }
-        } catch (IOException error) {
-            log.warn("Attachment preview cache eviction failed for {}: {}", attachmentId, error.getMessage());
         }
     }
 
     static String cacheFileName(UUID attachmentId, String sha256) {
-        return attachmentId + "-" + sha256 + ".pdf";
+        return attachmentId + "-" + sha256 + "-v2.pdf";
     }
 
     static boolean convertible(AttachmentService.PreviewSource source) {
@@ -246,6 +269,26 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
         return name.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
 
+    /** Legacy records may have no suffix; keep the worker's fixed format contract without .bin auto-detection. */
+    private static String conversionExtension(AttachmentService.PreviewSource source) {
+        String extension = extension(source.originalName());
+        if (CONVERTIBLE_EXTENSIONS.contains(extension)) return extension;
+        return switch (source.contentType() == null ? "" : source.contentType().toLowerCase(Locale.ROOT)) {
+            case "application/msword" -> "doc";
+            case "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> "docx";
+            case "application/rtf" -> "rtf";
+            case "application/vnd.oasis.opendocument.text" -> "odt";
+            case "application/vnd.ms-excel" -> "xls";
+            case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> "xlsx";
+            case "application/vnd.oasis.opendocument.spreadsheet" -> "ods";
+            case "application/vnd.ms-powerpoint" -> "ppt";
+            case "application/vnd.openxmlformats-officedocument.presentationml.presentation" -> "pptx";
+            case "application/vnd.oasis.opendocument.presentation" -> "odp";
+            case "image/svg+xml" -> "svg";
+            default -> throw unsupported("该文件类型不支持在线预览");
+        };
+    }
+
     private static String pdfDisplayName(String originalName) {
         String base = originalName == null || originalName.isBlank() ? "preview" : originalName;
         int dot = base.lastIndexOf('.');
@@ -258,7 +301,7 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
                 return null;
             }
             long size = Files.size(cached);
-            if (size <= 0) {
+            if (size <= 0 || size > properties.getMaxOutputBytes() || !hasPdfSignature(cached)) {
                 Files.deleteIfExists(cached);
                 return null;
             }
@@ -274,7 +317,7 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
         }
     }
 
-    private Integer acquireSlot() {
+    private void acquireSlot() {
         boolean acquired;
         try {
             acquired = slots.tryAcquire(SLOT_WAIT_SECONDS, TimeUnit.SECONDS);
@@ -285,28 +328,43 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
         if (!acquired) {
             throw new StorageResourceUnavailableException("预览转换繁忙，请稍后重试");
         }
-        Integer slot = profileSlots.poll();
-        if (slot == null) {
-            slots.release();
-            throw new StorageResourceUnavailableException("预览转换繁忙，请稍后重试");
-        }
-        return slot;
     }
 
-    private RenderedPreview convert(Path root, Path cached, AttachmentService.PreviewSource source, int slot) {
+    private RenderedPreview convert(Path root, Path cached, AttachmentService.PreviewSource source) {
         Path scratch = root.resolve(SCRATCH_DIRECTORY);
         Path work = null;
         try {
             Files.createDirectories(scratch);
             Files.createDirectories(cached.getParent());
             work = Files.createTempDirectory(scratch, WORK_PREFIX);
-            String extension = extension(source.originalName());
-            Path input = work.resolve("source." + (extension.isEmpty() ? "bin" : extension));
+            String extension = conversionExtension(source);
+            Path input = work.resolve("source." + extension);
             try (InputStream in = source.open(); OutputStream out = Files.newOutputStream(input)) {
-                in.transferTo(out);
+                long copied = 0;
+                byte[] buffer = new byte[65536];
+                int count;
+                while ((count = in.read(buffer, 0, (int) Math.min(buffer.length, source.sizeBytes() - copied + 1))) != -1) {
+                    copied += count;
+                    if (copied > source.sizeBytes()) throw unsupported("原件大小与记录不一致");
+                    out.write(buffer, 0, count);
+                }
+                if (copied != source.sizeBytes()) throw unsupported("原件大小与记录不一致");
             }
-            Path profile = scratch.resolve("lo-profile-" + slot);
-            Files.createDirectories(profile);
+            try {
+                com.uten.imp.common.files.document.ZipSafety.inspectOfficePreview(input, properties.getMaxExpandedBytes(),
+                        properties.getMaxArchiveEntries(), properties.getTimeout());
+                if ("svg".equals(extension) || "image/svg+xml".equals(source.contentType())) {
+                    try (InputStream svg = Files.newInputStream(input)) {
+                        com.uten.imp.common.files.document.OfficePreviewXmlSafety.inspect(svg,
+                                com.uten.imp.common.files.document.OfficePreviewXmlSafety.Kind.SVG);
+                    }
+                }
+            } catch (ApiException invalidArchive) {
+                throw unsupported("文档格式或内容未通过预览安全检查");
+            }
+            // Never reuse document-modifiable profiles or trust stores between conversions.
+            Path profile = work.resolve("profile");
+            writeSafeProfile(profile);
             List<String> command = List.of(
                     properties.getSofficePath(),
                     "--headless", "--norestore", "--nologo", "--nolockcheck",
@@ -316,13 +374,17 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
                     input.toString());
             int exit = runner.run(command, work, properties.getTimeout());
             Path output = work.resolve("source.pdf");
-            if (exit != 0 || !Files.isRegularFile(output) || Files.size(output) <= 0) {
+            if (exit != 0 || !Files.isRegularFile(output, LinkOption.NOFOLLOW_LINKS)
+                    || Files.size(output) <= 0 || Files.size(output) > properties.getMaxOutputBytes()
+                    || !hasPdfSignature(output)) {
                 throw unsupported("文档转换失败");
             }
-            publish(output, cached);
-            trimCache(cached.getParent());
-            long size = Files.size(cached);
-            return new RenderedPreview(cached, size, pdfDisplayName(source.originalName()));
+            synchronized (cacheLock) {
+                publish(output, cached);
+                trimCache(cached.getParent(), cached);
+                long size = Files.size(cached);
+                return new RenderedPreview(cached, size, pdfDisplayName(source.originalName()));
+            }
         } catch (TimeoutException timeout) {
             log.warn("Attachment preview conversion timed out id={}", source.id());
             throw unsupported("文档转换超时");
@@ -339,6 +401,21 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
         }
     }
 
+    private static boolean hasPdfSignature(Path path) throws IOException {
+        try (InputStream input = Files.newInputStream(path, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
+            return java.util.Arrays.equals(input.readNBytes(5), "%PDF-".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        }
+    }
+
+    /** Defense in depth, not an OS sandbox. Settings follow LibreOffice's own registry schemas. */
+    private static void writeSafeProfile(Path profile) throws IOException {
+        Path user = Files.createDirectories(profile.resolve("user"));
+        try (InputStream settings = AttachmentPreviewService.class.getResourceAsStream("/attachment-preview-safe-profile.xcu")) {
+            if (settings == null) throw new IOException("The shared preview safety profile is unavailable");
+            Files.copy(settings, user.resolve("registrymodifications.xcu"));
+        }
+    }
+
     /** 先移到同目录临时名再原子改名；并发生成同一缓存时保留先落地者。 */
     private static void publish(Path output, Path cached) throws IOException {
         Path staged = cached.resolveSibling(cached.getFileName() + "." + UUID.randomUUID() + ".part");
@@ -352,7 +429,7 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
         }
     }
 
-    private void trimCache(Path cacheDirectory) {
+    private void trimCache(Path cacheDirectory, Path retained) {
         long limit = properties.getCacheMaxBytes();
         if (limit <= 0 || cacheDirectory == null || !Files.isDirectory(cacheDirectory)) {
             return;
@@ -382,6 +459,8 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
                 if (total <= limit) {
                     break;
                 }
+                // Keep the response being returned even when one PDF is larger than the cache budget.
+                if (file.equals(retained)) continue;
                 long size = Files.size(file);
                 if (Files.deleteIfExists(file)) {
                     total -= size;
@@ -474,6 +553,11 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
      */
     static int runSoffice(List<String> command, Path workingDirectory, Duration timeout)
             throws IOException, InterruptedException, TimeoutException {
+        return runSoffice(command, workingDirectory, timeout, 67108864L);
+    }
+
+    private static int runSoffice(List<String> command, Path workingDirectory, Duration timeout, long maxOutputBytes)
+            throws IOException, InterruptedException, TimeoutException {
         ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(workingDirectory.toFile())
                 .redirectErrorStream(true)
@@ -492,16 +576,37 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
             environment.put(name, privateDirectory);
         }
         Process process = builder.start();
+        long deadline = System.nanoTime() + timeout.toNanos();
+        var children = new java.util.LinkedHashMap<Long, ProcessHandle>();
         try {
-            if (!process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
-                process.destroyForcibly();
-                throw new TimeoutException("soffice conversion exceeded " + timeout);
+            while (true) {
+                process.descendants().forEach(child -> children.put(child.pid(), child));
+                if (process.waitFor(100, TimeUnit.MILLISECONDS)) return process.exitValue();
+                Path output = workingDirectory.resolve("source.pdf");
+                if (Files.isRegularFile(output, LinkOption.NOFOLLOW_LINKS) && Files.size(output) > maxOutputBytes) {
+                    throw new IOException("Converted PDF exceeded output limit");
+                }
+                if (System.nanoTime() - deadline >= 0) {
+                    throw new TimeoutException("soffice conversion exceeded " + timeout);
+                }
             }
-            return process.exitValue();
         } finally {
-            if (process.isAlive()) {
-                process.destroyForcibly();
-            }
+            process.descendants().forEach(child -> children.put(child.pid(), child));
+            destroyProcessTree(process, new ArrayList<>(children.values()));
         }
+    }
+
+    private static void destroyProcessTree(Process process, List<ProcessHandle> descendants) {
+        // soffice may be a launcher with a separate soffice.bin child. Kill descendants first,
+        // then reap the launcher before allowing its private directory to be removed.
+        for (int index = descendants.size() - 1; index >= 0; index--) {
+            ProcessHandle child = descendants.get(index);
+            if (child.isAlive()) child.destroyForcibly();
+        }
+        if (process.isAlive()) process.destroyForcibly();
+        boolean interrupted = Thread.interrupted();
+        try { process.waitFor(2, TimeUnit.SECONDS); }
+        catch (InterruptedException ignored) { interrupted = true; }
+        finally { if (interrupted) Thread.currentThread().interrupt(); }
     }
 }

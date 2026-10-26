@@ -8,6 +8,7 @@
 //   * 路由 /admin/* 要求 authorization:manage; 服务端 Controller 另校验 superAdmin;
 //     页内再叠 _settingsOwner 同款门禁(会话/快照/服务器/权限任一变化即失效)。
 //   * 读端点不写数据; 限额编辑走独立面板(保存要求再认证)。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:math' as math;
 
 import 'package:clock/clock.dart';
@@ -170,6 +171,18 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
   }
 
   void _onLoadFailed(String message, {bool noAccess = false}) {
+    if (noAccess) {
+      setState(() {
+        _data = null;
+        _loading = false;
+        _error = message;
+        _noAccess = true;
+        _page = 0;
+        _statusFilter = null;
+        _sortColumn = null;
+      });
+      return;
+    }
     if (_data != null) {
       // 已有数据时刷新失败: 保留旧数据, 只提示。
       setState(() => _loading = false);
@@ -336,55 +349,60 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
   }
 
   Widget _content(AppLocalizations l10n, AiUsageDashboard? data) {
-    return ListView(
-      key: const ValueKey('ai-usage-list'),
+    return UtenPageEdgePadding.scroll(
       padding: const EdgeInsets.all(UtenSpacing.s16),
-      children: [
-        _KpiRow(window: _window, data: data),
-        const SizedBox(height: UtenSpacing.s16),
-        // 窗口筛选与「使用记录与费用」入口同行; 窄屏自动换行。
-        Wrap(
-          spacing: UtenSpacing.s8,
-          runSpacing: UtenSpacing.s8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            UtenSegmentedFilter<AiUsageWindow>(
-              key: const ValueKey('ai-usage-window-filter'),
-              segments: [
-                for (final window in AiUsageWindow.values)
-                  UtenSegment(
-                    value: window,
-                    label: aiUsageWindowLabel(l10n, window),
+      builder: (context, pagePadding) => ListView(
+        key: const ValueKey('ai-usage-list'),
+        padding: pagePadding,
+        children: [
+          _KpiRow(window: _window, data: data),
+          const SizedBox(height: UtenSpacing.s16),
+          // 窗口筛选与「使用记录与费用」入口同行; 窄屏自动换行。
+          Wrap(
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              UtenSegmentedFilter<AiUsageWindow>(
+                key: const ValueKey('ai-usage-window-filter'),
+                segments: [
+                  for (final window in AiUsageWindow.values)
+                    UtenSegment(
+                      value: window,
+                      label: aiUsageWindowLabel(l10n, window),
+                    ),
+                ],
+                selected: _window,
+                onChanged: _loading ? (value) {} : _onWindowChanged,
+              ),
+              // 与分段栏同高(分段条=44 按钮+上下 4 padding): 按钮本体 44, 外框 52 居中。
+              SizedBox(
+                height: 52,
+                child: Center(
+                  child: UtenButton(
+                    key: const ValueKey('ai-usage-open-records'),
+                    type: UtenButtonType.ghost,
+                    height: 44,
+                    icon: Icons.receipt_long_outlined,
+                    onPressed: () =>
+                        context.push(RouteName.adminAiUsageRecords),
+                    child: Text(l10n.aiAuditTitle),
                   ),
-              ],
-              selected: _window,
-              onChanged: _loading ? (value) {} : _onWindowChanged,
-            ),
-            // 与分段栏同高(分段条=44 按钮+上下 4 padding): 按钮本体 44, 外框 52 居中。
-            SizedBox(
-              height: 52,
-              child: Center(
-                child: UtenButton(
-                  key: const ValueKey('ai-usage-open-records'),
-                  type: UtenButtonType.ghost,
-                  height: 44,
-                  icon: Icons.receipt_long_outlined,
-                  onPressed: () => context.push(RouteName.adminAiUsageRecords),
-                  child: Text(l10n.aiAuditTitle),
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: UtenSpacing.s12),
-        AiUsageTrendCard(
-          points: data?.series ?? const <AiUsageSeriesPoint>[],
-          title: '${aiUsageWindowLabel(l10n, _window)} · ${l10n.aiUsageTrend}',
-        ),
-        const SizedBox(height: UtenSpacing.s16),
-        _peopleCard(l10n, data),
-        const SizedBox(height: UtenSpacing.s24),
-      ],
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          AiUsageTrendCard(
+            points: data?.series ?? const <AiUsageSeriesPoint>[],
+            title:
+                '${aiUsageWindowLabel(l10n, _window)} · ${l10n.aiUsageTrend}',
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          _peopleCard(l10n, data),
+          const SizedBox(height: UtenSpacing.s24),
+        ],
+      ),
     );
   }
 
@@ -435,6 +453,7 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
           ),
           const SizedBox(height: UtenSpacing.s8),
           MasterDataTableView<AiUsagePerson>(
+            expensiveRowMounts: false,
             tableKey:
                 'features.admin.pages.admin_ai_usage_page.PeopleTable.build.1',
             key: const Key('ai-usage-people-table'),
@@ -887,29 +906,32 @@ class _LoadingSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      key: const ValueKey('ai-usage-skeleton'),
+    return UtenPageEdgePadding.scroll(
       padding: const EdgeInsets.all(UtenSpacing.s16),
-      physics: const NeverScrollableScrollPhysics(),
-      children: const [
-        Row(
-          children: [
-            Expanded(child: UtenSkeleton(height: 112, borderRadius: 14)),
-            SizedBox(width: UtenSpacing.s8),
-            Expanded(child: UtenSkeleton(height: 112, borderRadius: 14)),
-            SizedBox(width: UtenSpacing.s8),
-            Expanded(child: UtenSkeleton(height: 112, borderRadius: 14)),
-            SizedBox(width: UtenSpacing.s8),
-            Expanded(child: UtenSkeleton(height: 112, borderRadius: 14)),
-          ],
-        ),
-        SizedBox(height: UtenSpacing.s16),
-        UtenSkeleton(height: 44, borderRadius: 999),
-        SizedBox(height: UtenSpacing.s12),
-        UtenSkeleton(height: 200, borderRadius: 14),
-        SizedBox(height: UtenSpacing.s16),
-        UtenSkeleton(height: 280, borderRadius: 14),
-      ],
+      builder: (context, pagePadding) => ListView(
+        key: const ValueKey('ai-usage-skeleton'),
+        padding: pagePadding,
+        physics: const NeverScrollableScrollPhysics(),
+        children: const [
+          Row(
+            children: [
+              Expanded(child: UtenSkeleton(height: 112, borderRadius: 14)),
+              SizedBox(width: UtenSpacing.s8),
+              Expanded(child: UtenSkeleton(height: 112, borderRadius: 14)),
+              SizedBox(width: UtenSpacing.s8),
+              Expanded(child: UtenSkeleton(height: 112, borderRadius: 14)),
+              SizedBox(width: UtenSpacing.s8),
+              Expanded(child: UtenSkeleton(height: 112, borderRadius: 14)),
+            ],
+          ),
+          SizedBox(height: UtenSpacing.s16),
+          UtenSkeleton(height: 44, borderRadius: 999),
+          SizedBox(height: UtenSpacing.s12),
+          UtenSkeleton(height: 200, borderRadius: 14),
+          SizedBox(height: UtenSpacing.s16),
+          UtenSkeleton(height: 280, borderRadius: 14),
+        ],
+      ),
     );
   }
 }

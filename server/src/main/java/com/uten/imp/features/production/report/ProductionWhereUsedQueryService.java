@@ -8,6 +8,8 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import jakarta.persistence.EntityManager;
+import com.uten.imp.common.report.ReportExportCursor;
+import com.uten.imp.common.report.ReportReadPlan;
 import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -381,6 +383,17 @@ public class ProductionWhereUsedQueryService {
     public ReportTableResponse whereUsed(UUID materialGoodsId, String source,
                                          LocalDate dateFrom, LocalDate dateTo,
                                          int page, int size, String sort, String order) {
+        return readWhereUsed(materialGoodsId,source,dateFrom,dateTo,page,size,sort,order,
+                ReportReadPlan.current().includeCount()||ReportReadPlan.current().includeTotals());
+    }
+
+    ReportTableResponse whereUsedExportPage(UUID materialGoodsId,String source,LocalDate from,LocalDate to,
+                                           int page,int size,String sort,String order,boolean includeMetadata) {
+        return readWhereUsed(materialGoodsId,source,from,to,page,size,sort,order,includeMetadata);
+    }
+
+    private ReportTableResponse readWhereUsed(UUID materialGoodsId,String source,LocalDate dateFrom,LocalDate dateTo,
+                                              int page,int size,String sort,String order,boolean includeMetadata) {
         String normalizedSource = normalizeSource(source);
         if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "起始日期不能晚于结束日期");
@@ -392,7 +405,7 @@ public class ProductionWhereUsedQueryService {
                 .toList();
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 200);
-        Map<String, Object> meta = materialGoodsId == null
+        Map<String, Object> meta = !includeMetadata?Map.of():materialGoodsId == null
                 ? emptyMeta(normalizedSource, dateFrom, dateTo)
                 : unattributedDemandMeta(materialGoodsId, normalizedSource, dateFrom, dateTo);
         if (materialGoodsId == null) {
@@ -458,19 +471,18 @@ public class ProductionWhereUsedQueryService {
                        row.legacy_required_qty AS "legacyRequiredQty",
                        row.subcontract_order_count AS "subcontractOrderCount",
                        row.subcontract_issue_count AS "subcontractIssueCount",
-                       row.last_used AS "lastUsed",
-                       COUNT(*) OVER() AS "__total"
-                FROM combined row
-                """ + " WHERE " + predicate
+                       row.last_used AS "lastUsed"
+                """ + (ReportReadPlan.current().includeCount()?", COUNT(*) OVER() AS \"__total\" ":"")
+                + " FROM combined row WHERE " + predicate
                 + " ORDER BY " + effectiveOrder + ", \"__productId\" ASC"
                 + " LIMIT :__limit OFFSET :__offset";
 
-        Query query = em.createNativeQuery(sql);
+        Query query = ReportExportCursor.query(em,sql);
         bindWhereUsed(query, materialGoodsId, dateFrom, dateTo);
         query.setParameter("__limit", safeSize);
         query.setParameter("__offset", (long) (safePage - 1) * safeSize);
         @SuppressWarnings("unchecked")
-        List<Object[]> rawRows = query.getResultList();
+        List<Object[]> rawRows = ReportExportCursor.rows(em,query);
 
         List<Map<String, Object>> rows = new ArrayList<>(rawRows.size());
         for (Object[] raw : rawRows) {
@@ -479,13 +491,14 @@ public class ProductionWhereUsedQueryService {
                 mapped.put(columns.get(index).key(), normalize(raw[index]));
             }
             mapped.put("__srcId", mapped.get("__productId")); // 兼容旧客户端；语义同产成品货品 UUID
+            com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(mapped);
             rows.add(mapped);
         }
 
-        long total = rawRows.isEmpty()
+        long total = !ReportReadPlan.current().includeCount()?ReportReadPlan.UNKNOWN_TOTAL:rawRows.isEmpty()
                 ? (safePage == 1 ? 0L : countRows(materialGoodsId, dateFrom, dateTo, predicate))
                 : ((Number) rawRows.get(0)[columns.size()]).longValue();
-        int totalPages = (int) ((total + safeSize - 1) / safeSize);
+        int totalPages = ReportReadPlan.totalPages(total,safeSize);
         return new ReportTableResponse(visible, rows, Map.of(), safePage, safeSize,
                 total, totalPages, meta);
     }
@@ -861,6 +874,7 @@ public class ProductionWhereUsedQueryService {
         Object[] row = (Object[]) query.getSingleResult();
         meta.put("unattributedDemandCount", ((Number) row[0]).longValue());
         meta.put("unattributedDemandQty", normalize(row[1]));
+        com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(meta);
         return meta;
     }
 

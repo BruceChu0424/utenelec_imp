@@ -12,6 +12,7 @@ import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_repository.dart';
@@ -159,6 +160,21 @@ UtenButton _printButton(WidgetTester tester) =>
     tester.widget<UtenButton>(find.widgetWithText(UtenButton, '打印'));
 
 void main() {
+  testWidgets(
+    'a data-scope revision permanently retires an already loaded paper even after ABA',
+    (tester) async {
+      final container = await _open(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('旧账号库存'), findsOneWidget);
+      container.read(readScopeRevisionProvider.notifier).state = 1;
+      await tester.pump();
+      container.read(readScopeRevisionProvider.notifier).state = 0;
+      await tester.pump();
+      expect(find.text('旧账号库存'), findsNothing);
+      expect(find.text(_invalidated), findsOneWidget);
+      expect(_printButton(tester).onPressed, isNull);
+    },
+  );
   for (final change in ['permissions', 'identity', 'server']) {
     testWidgets('loaded preview is cleared permanently after $change changes', (
       tester,

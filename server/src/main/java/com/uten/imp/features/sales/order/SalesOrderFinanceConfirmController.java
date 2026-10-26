@@ -66,7 +66,7 @@ public class SalesOrderFinanceConfirmController {
 
     /** 销售单号 facets（2026-09-25 单号列统一）：{billNo:[各销售单号]}——
      *  同列表过滤口径（不含 billNo 自身值筛选）。 */
-    @GetMapping("/finance-confirmation/pending/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/finance-confirmation/pending/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('sales_order_finance:view')")
     public Map<String, List<Map<String, Object>>> pendingFacets(
             @RequestParam(required = false) String rejected,

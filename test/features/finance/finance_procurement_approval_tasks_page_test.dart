@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,6 +42,8 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   FinanceProcurementOrderType? lastOrderType;
   Object? reviewError;
   int taskReads = 0;
+  Completer<FinanceProcurementApprovalPage>? blockedRead;
+  Object? taskError;
 
   @override
   Future<FinanceProcurementApprovalPage> approvalTasks({
@@ -55,6 +59,8 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
     taskReads++;
     lastKeyword = keyword;
     lastOrderType = orderType;
+    if (blockedRead case final blocked?) return blocked.future;
+    if (taskError case final error?) throw error;
     final filtered = items
         .where(
           (item) =>
@@ -254,6 +260,72 @@ Future<GoRouter> _pumpPage(
 }
 
 void main() {
+  testWidgets(
+    'slow bill-number query clears prior approval rows and selection',
+    (tester) async {
+      final repository = _FakeWorkflowRepo([
+        _task(
+          caseId: 'old',
+          orderId: 'order-old',
+          orderType: 'PURCHASE',
+          billNo: 'PO-OLD',
+        ),
+      ]);
+      await _pumpPage(tester, repository);
+      MasterDataTableView<FinanceProcurementApprovalTask> table() =>
+          tester.widget(find.byKey(const Key('finance-approval-task-table')));
+      table().onSelectedIdsChanged!({'old'});
+      await tester.pump();
+      final blocked = Completer<FinanceProcurementApprovalPage>();
+      repository.blockedRead = blocked;
+      table().onFilterChanged('billNo', 'PO-NEW');
+      await tester.pump();
+      expect(table().items, isEmpty);
+      expect(table().selectedIds, isEmpty);
+      expect(table().isLoading, isTrue);
+      expect(find.text('PO-OLD'), findsNothing);
+      blocked.completeError(ApiException('NETWORK', '新筛选暂时无法读取'));
+      await tester.pumpAndSettle();
+      expect(table().items, isEmpty);
+      expect(table().error, '新筛选暂时无法读取');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'same-query approval refresh retains rows on network error and clears on 403',
+    (tester) async {
+      final repository = _FakeWorkflowRepo([
+        _task(
+          caseId: 'old',
+          orderId: 'order-old',
+          orderType: 'PURCHASE',
+          billNo: 'PO-OLD',
+        ),
+      ]);
+      await _pumpPage(tester, repository);
+      MasterDataTableView<FinanceProcurementApprovalTask> table() =>
+          tester.widget(find.byKey(const Key('finance-approval-task-table')));
+      repository.taskError = ApiException('NETWORK', '网络暂时失败');
+      table().onRetry!();
+      await tester.pumpAndSettle();
+      expect(table().items.single.billNo, 'PO-OLD');
+      expect(find.text('网络暂时失败'), findsOneWidget);
+      repository.taskError = ApiException(
+        'FORBIDDEN',
+        '审批读取权限已撤销',
+        httpStatus: 403,
+      );
+      table().onRetry!();
+      await tester.pumpAndSettle();
+      expect(table().items, isEmpty);
+      expect(table().selectedIds, isEmpty);
+      expect(table().error, '审批读取权限已撤销');
+      expect(table().isLoading, isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final sourceOrder in [false, true]) {
     testWidgets('${sourceOrder ? '原订货单' : '审核详情'}无本地决定返回仍重核结束审批队列', (
       tester,
@@ -300,7 +372,7 @@ void main() {
       expect(repository.taskReads, beforeReads + 1);
       expect(find.text('PO-BEFORE'), findsNothing);
       expect(find.text('PO-AFTER'), findsOneWidget);
-      expect(find.text('采购 · 结束待审批'), findsOneWidget);
+      expect(find.text('采购 · 历史结束申请待业务确认'), findsOneWidget);
     });
   }
 
@@ -317,14 +389,51 @@ void main() {
     });
     final repository = _FakeWorkflowRepo([closure]);
     await _pumpPage(tester, repository);
-    await tester.tap(find.text('结束待审批'));
+    await tester.tap(find.text('历史结束申请'));
     await tester.pumpAndSettle();
     expect(find.text('PO-CLOSE-1'), findsOneWidget);
-    expect(find.text('采购 · 结束待审批'), findsOneWidget);
+    expect(find.text('采购 · 历史结束申请待业务确认'), findsOneWidget);
+    expect(
+      find.byKey(const Key('finance-approval-batch-approve')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('finance-approval-batch-reject')),
+      findsNothing,
+    );
+    expect(closure.decisionItem, isNull);
     expect(
       find.byKey(const Key('finance-approval-status-segments')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('直接结束历史明确显示业务部门取消且没有财务批准动作', (tester) async {
+    final closure = FinanceProcurementApprovalTask.fromJson({
+      'caseId': 'closure-direct-1',
+      'orderId': 'order-1',
+      'orderType': 'SUBCONTRACT',
+      'billNo': 'SO-CLOSE-DIRECT-1',
+      'status': 'APPROVED',
+      'requestType': 'CLOSE',
+      'executionMode': 'DIRECT',
+      'version': 1,
+      'allowedActions': ['APPROVE', 'REJECT'],
+    });
+    final repository = _FakeWorkflowRepo([closure]);
+    await _pumpPage(tester, repository);
+    await tester.tap(find.text('历史单据'));
+    await tester.pumpAndSettle();
+    expect(find.text('委外 · 已直接结束'), findsOneWidget);
+    expect(
+      find.byKey(const Key('finance-approval-batch-approve')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('finance-approval-batch-reject')),
+      findsNothing,
+    );
+    expect(closure.decisionItem, isNull);
   });
 
   for (final scenario in const [
@@ -425,10 +534,10 @@ void main() {
       ),
     ]);
     await _pumpPage(tester, repository);
-    expect(find.text('已批准'), findsNothing);
+    expect(find.text('已生效'), findsNothing);
     await tester.tap(find.text('历史单据'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('已批准'));
+    await tester.tap(find.text('已生效'));
     await tester.pumpAndSettle();
     final table = tester
         .widget<MasterDataTableView<FinanceProcurementApprovalTask>>(

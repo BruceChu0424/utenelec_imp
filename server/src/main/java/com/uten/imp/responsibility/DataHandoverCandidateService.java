@@ -86,7 +86,7 @@ public class DataHandoverCandidateService {
                     employee.full_name, employee.code, employee.id
                 """);
         bind(dataQuery, target, scope, keyword);
-        dataQuery.setFirstResult((page - 1) * size);
+        dataQuery.setFirstResult(com.uten.imp.common.web.Pageables.checkedOffset(page, size));
         dataQuery.setMaxResults(size);
         List<Object[]> rows = NativeQueryResults.objectArrayRows(dataQuery);
         List<DataHandoverCandidate> items = new ArrayList<>(rows.size());

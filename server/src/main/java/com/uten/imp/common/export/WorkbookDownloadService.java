@@ -18,6 +18,33 @@ import java.util.Objects;
 @Service
 public class WorkbookDownloadService {
 
+    /** Disk-backed equivalent for durable exports; passwords and whole workbooks stay out of the heap. */
+    public void protect(java.nio.file.Path source, java.nio.file.Path target, String password) throws java.io.IOException {
+        long sourceBytes=java.nio.file.Files.size(source);
+        if(sourceBytes>ExportResourceLimits.ARTIFACT_BYTES) throw new java.io.IOException("Export file size limit exceeded");
+        long reservation=sourceBytes+sourceBytes/10+1024*1024;
+        if(java.nio.file.Files.getFileStore(target.toAbsolutePath().getParent()).getUsableSpace()
+                <ExportResourceLimits.FREE_RESERVE_BYTES+reservation)
+            throw new java.io.IOException("Export free space reserve reached");
+        if (password == null || password.isEmpty()) {
+            java.nio.file.Files.copy(source, target);
+            return;
+        }
+        if (password.length() > 128) throw new IllegalArgumentException("导出密码长度不能超过 128 位");
+        try (POIFSFileSystem fileSystem = POIFSFileSystem.create(target.toFile())) {
+            EncryptionInfo info = new EncryptionInfo(EncryptionMode.agile);
+            Encryptor encryptor = info.getEncryptor();
+            encryptor.confirmPassword(password);
+            try (OutputStream encrypted = encryptor.getDataStream(fileSystem)) {
+                java.nio.file.Files.copy(source, encrypted);
+            }
+            fileSystem.writeFilesystem();
+            if(java.nio.file.Files.size(target)>reservation) throw new java.io.IOException("Encrypted export file size limit exceeded");
+        } catch (java.security.GeneralSecurityException error) {
+            throw new java.io.IOException("Excel 加密失败", error);
+        }
+    }
+
     /**
      * Returns the original workbook when no password is supplied, otherwise returns an encrypted container.
      */

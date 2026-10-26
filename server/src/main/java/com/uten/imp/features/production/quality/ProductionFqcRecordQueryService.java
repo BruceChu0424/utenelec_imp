@@ -137,14 +137,14 @@ public class ProductionFqcRecordQueryService {
                 case "sheetNo" -> "record.sheet_no";
                 default -> throw new IllegalArgumentException("Unknown document number field");
             };
-            Query query = em.createNativeQuery(
+            Query query = NativeFacets.query(em, column,
                     "SELECT COALESCE(" + expression + ", ''), COUNT(*)"
                             + " FROM " + records + " WHERE " + predicate
                             + " GROUP BY 1 HAVING COALESCE(" + expression
                             + ", '') <> '' ORDER BY 1")
                     .setMaxResults(500);
             bindFilters(query, filter, DocNoFilter.EMPTY, ownerScope, true);
-            result.put(column, NativeFacets.rows(NativeQueryResults.objectArrayRows(query)));
+            result.put(column, NativeFacets.rowsOf(query));
         }
         return result;
     }

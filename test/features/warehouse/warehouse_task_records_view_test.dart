@@ -426,6 +426,84 @@ Future<void> _doubleTap(WidgetTester tester, String text) async {
 }
 
 void main() {
+  for (final navigation in ['go', 'platform']) {
+    for (final entry in ['single', 'batch', 'draft']) {
+      testWidgets('$navigation return releases warehouse $entry navigation', (
+        tester,
+      ) async {
+        final draftEntry = entry == 'draft';
+        final rows = [
+          warehouseTestRecord(
+            source: draftEntry ? 'PURCHASE' : 'SALES',
+            record: draftEntry ? 'EXPECTATION' : 'SALES_SHIPMENT',
+            id: 'nav-one',
+            billNo: 'NAV-ONE',
+            action: draftEntry ? 'ARRIVAL_REGISTER' : 'SALES_OUTBOUND',
+            canHandle: true,
+          ),
+        ];
+        final route = RoutePath.warehouseArrivalRegistration(['nav-one']);
+        final spec = FormDraftCatalog.arrival.spec(route: route);
+        final gateway = WarehouseTaskRecordsFakeGateway(rows);
+        final harness = await _pump(
+          tester,
+          gateway,
+          spec: _ViewSpec(
+            direction: draftEntry
+                ? WarehouseTaskDirection.inbound
+                : WarehouseTaskDirection.outbound,
+            source: draftEntry ? 'PURCHASE' : 'SALES',
+            sources: draftEntry
+                ? warehouseTestInboundSources
+                : warehouseTestOutboundSources,
+          ),
+          drafts: [
+            if (draftEntry)
+              FormDraft(
+                id: 'nav-draft',
+                title: '到货原填写',
+                module: spec.module,
+                route: route,
+                permission: spec.permission,
+                updatedAt: DateTime.utc(2026, 10, 25),
+                data: const {
+                  'rows': [
+                    {'expectationId': 'nav-one'},
+                  ],
+                },
+              ),
+          ],
+        );
+        for (var visit = 0; visit < 2; visit++) {
+          if (entry == 'batch') {
+            _table(tester).onSelectedIdsChanged!({rows.single.rowKey});
+            await tester.pumpAndSettle();
+            await tester.tap(
+              find.byKey(const Key('warehouse-task-record-batch')),
+            );
+            await tester.pumpAndSettle();
+          } else {
+            await _doubleTap(tester, 'NAV-ONE');
+          }
+          expect(find.text('已打开原来源'), findsOneWidget);
+          if (navigation == 'go') {
+            harness.router.go('/records');
+          } else {
+            await harness.router.routeInformationProvider
+                .didPushRouteInformation(
+                  RouteInformation(uri: Uri.parse('/records')),
+                );
+          }
+          await tester.pumpAndSettle();
+          expect(find.text('已打开原来源'), findsNothing);
+          expect(_table(tester).selectedIds, isEmpty);
+        }
+        expect(harness.opened, hasLength(2));
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   testWidgets('DRAW退料委外与成品任务仅原明细成员附着草稿', (tester) async {
     for (final entry in [
       (
@@ -1498,9 +1576,15 @@ void main() {
     final gateway = WarehouseTaskRecordsFakeGateway(rows);
     await _pump(tester, gateway);
     expect(find.text('LATE-21'), findsNothing);
-    _table(tester).onPageChange!(2);
+    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pumpAndSettle();
-    expect(gateway.calls.last.page, 2);
+    expect(gateway.calls.any((query) => query.page == 2), isTrue);
+    final pageInput = tester.widget<TextField>(
+      find.byWidgetPredicate(
+        (widget) => widget is TextField && widget.decoration?.hintText == '页码',
+      ),
+    );
+    expect(pageInput.controller?.text, '2');
     expect(find.text('LATE-21'), findsOneWidget);
     _table(tester).onFilterChanged('status', 'OTHER_DRAFT');
     await tester.pumpAndSettle();
@@ -1516,11 +1600,20 @@ void main() {
     expect(gateway.calls.last.source, 'ALL');
     expect(gateway.calls.last.status, isNull);
     expect(_table(tester).totalPages, 2);
+    final beforeSort = gateway.calls.length;
     _table(tester).onSortChange!('billNo', false);
     await tester.pumpAndSettle();
-    expect(gateway.calls.last.page, 1);
-    expect(gateway.calls.last.sort, 'billNo');
-    expect(gateway.calls.last.order, 'desc');
+    final sortedQueries = gateway.calls.skip(beforeSort).toList();
+    expect(sortedQueries.first.page, 1);
+    expect(sortedQueries.first.sort, 'billNo');
+    expect(sortedQueries.first.order, 'desc');
+    expect(
+      sortedQueries.every(
+        (query) => query.sort == 'billNo' && query.order == 'desc',
+      ),
+      isTrue,
+    );
+    expect(_table(tester).currentPage, 1);
     expect(tester.takeException(), isNull);
   });
 

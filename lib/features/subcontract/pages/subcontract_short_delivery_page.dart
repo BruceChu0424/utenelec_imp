@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/shared/providers/native_facet_options.dart';
 // 委外回厂短交判定（/subcontract/short-deliveries，ADR-098）。
 //
 // 仓库登记回厂时累计数量少于订货量即按订货行开案件；本页让委外跟单员判定：
@@ -30,6 +32,9 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/auth/native_read_view_scope_mixin.dart'
+    show nativeReadAccessDenied;
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../../../shared/models/subcontract_short_delivery.dart';
@@ -79,8 +84,14 @@ class SubcontractShortDeliveryPage extends ConsumerStatefulWidget {
 }
 
 class _SubcontractShortDeliveryPageState
-    extends ConsumerState<SubcontractShortDeliveryPage> {
+    extends ConsumerState<SubcontractShortDeliveryPage>
+    with ScopedPagedReadViewMixin<SubcontractShortDeliveryPage> {
+  int get _refreshPage => _readingRows.visiblePage ?? (_result?.page ?? _page);
+
+  final _readingRows =
+      MasterDataTableRowsController<SubcontractShortDeliveryCase>();
   PagedResult<SubcontractShortDeliveryCase>? _result;
+  Object? _acceptedQuery;
   SubcontractShortDeliveryCounts _counts =
       const SubcontractShortDeliveryCounts();
   bool _loading = true;
@@ -124,52 +135,138 @@ class _SubcontractShortDeliveryPageState
   bool get _historyBlocked =>
       _seg == SubcontractShortDeliverySegment.history && _historyTime.isNone;
 
-  Future<void> _load({int? page}) async {
+  Future<void> _load({int? page, bool useCache = false}) async {
     if (!mounted) return;
     final requestId = ++_requestId;
+    final ownerCurrent = captureReadOwner(ref);
+    final query = (
+      _seg,
+      _historyTime,
+      _keyword,
+      _orderId,
+      _supplierId,
+      _columnFilters.sortColumn,
+      _columnFilters.sortAscending,
+      _columnFilters['orderBillNo'],
+    );
+    bool current() => mounted && requestId == _requestId && ownerCurrent();
     setState(() {
+      if (_acceptedQuery != query) _result = null;
       _loading = true;
       _error = null;
     });
+    // Category counts are independent of the current list query. Start them
+    // alongside the rows and never keep an empty table waiting for its badge.
+    unawaited(_loadCounts(current));
     try {
       PagedResult<SubcontractShortDeliveryCase>? next;
       if (!_historyBlocked) {
         final range = _seg == SubcontractShortDeliverySegment.history
             ? _historyTime.range
             : null;
-        next = await _repo.list(
-          segment: _seg.api,
-          keyword: _keyword,
-          supplierId: _supplierId,
-          orderId: _orderId,
-          dateFrom: range == null
-              ? null
-              : ChinaDateTime.formatDate(range.start),
-          dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
-          page: page ?? _page,
-          sort: _kSortFields[_columnFilters.sortColumn],
-          order: _columnFilters.sortColumn == null
-              ? null
-              : (_columnFilters.sortAscending ? 'asc' : 'desc'),
-          orderBillNo: _columnFilters['orderBillNo'],
+        final pageRepository = _repo;
+        final pageSegment = _seg.api;
+        final pageKeyword = _keyword;
+        final pageSupplierId = _supplierId;
+        final pageOrderId = _orderId;
+        final pageDateFrom = range == null
+            ? null
+            : ChinaDateTime.formatDate(range.start);
+        final pageDateTo = range == null
+            ? null
+            : ChinaDateTime.formatDate(range.end);
+        final pageSort = _kSortFields[_columnFilters.sortColumn];
+        final pageOrder = _columnFilters.sortColumn == null
+            ? null
+            : (_columnFilters.sortAscending ? 'asc' : 'desc');
+        final pageOrderBillNo = _columnFilters['orderBillNo'];
+
+        next = await readScopedPage(
+          page ?? _refreshPage,
+          slot: '_load',
+          query: [
+            pageRepository,
+            pageSegment,
+            pageKeyword,
+            pageSupplierId,
+            pageOrderId,
+            pageDateFrom,
+            pageDateTo,
+            pageSort,
+            pageOrder,
+            pageOrderBillNo,
+          ],
+          currentQuery: () => [
+            _repo,
+            _seg.api,
+            _keyword,
+            _supplierId,
+            _orderId,
+            range == null ? null : ChinaDateTime.formatDate(range.start),
+            range == null ? null : ChinaDateTime.formatDate(range.end),
+            _kSortFields[_columnFilters.sortColumn],
+            _columnFilters.sortColumn == null
+                ? null
+                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+            _columnFilters['orderBillNo'],
+          ],
+          useCache: useCache,
+          fetchPage: (target) => pageRepository.list(
+            segment: pageSegment,
+            keyword: pageKeyword,
+            supplierId: pageSupplierId,
+            orderId: pageOrderId,
+            dateFrom: pageDateFrom,
+            dateTo: pageDateTo,
+            page: target,
+            sort: pageSort,
+            order: pageOrder,
+            orderBillNo: pageOrderBillNo,
+          ),
         );
       }
-      final counts = await _repo.counts();
-      if (!mounted || requestId != _requestId) return;
+      if (!current()) return;
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
-      unawaited(_loadOrderBillNoFacets());
+
       setState(() {
         _result = next;
-        _counts = counts;
+        _acceptedQuery = query;
         _page = next?.page ?? 1;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted || requestId != _requestId) return;
+      if (!current()) return;
       setState(() {
+        if (nativeReadAccessDenied(error)) {
+          ++_requestId;
+          _result = null;
+          _acceptedQuery = null;
+          _counts = const SubcontractShortDeliveryCounts();
+        }
         _loading = false;
         _error = error is ApiException ? error.message : '短交案件加载失败，请稍后重试';
       });
+    }
+  }
+
+  Future<void> _loadCounts(bool Function() current) async {
+    try {
+      final counts = await _repo.counts();
+      if (current()) setState(() => _counts = counts);
+    } catch (error) {
+      if (!current()) return;
+      if (nativeReadAccessDenied(error)) {
+        // A confirmed access failure retires this whole read, including rows
+        // still in flight. A generic badge failure leaves accepted rows usable.
+        ++_requestId;
+        setState(() {
+          _result = null;
+          _acceptedQuery = null;
+          _counts = const SubcontractShortDeliveryCounts();
+          _loading = false;
+          _error = (error as ApiException).message;
+        });
+      }
     }
   }
 
@@ -197,29 +294,6 @@ class _SubcontractShortDeliveryPageState
 
   /// 订货单号 facets（2026-09-25 单号列统一）：与列表同过滤口径
   /// （不含单号列自身值筛选）。
-  Future<void> _loadOrderBillNoFacets() {
-    if (_historyBlocked) return Future.value();
-    final range = _seg == SubcontractShortDeliverySegment.history
-        ? _historyTime.range
-        : null;
-    return _columnFilters.loadFacets(
-      () async => {
-        'orderBillNo': await _repo.orderBillNoFacets(
-          segment: _seg.api,
-          keyword: _keyword,
-          supplierId: _supplierId,
-          orderId: _orderId,
-          dateFrom: range == null
-              ? null
-              : ChinaDateTime.formatDate(range.start),
-          dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
-        ),
-      },
-      onLoaded: () {
-        if (mounted) setState(() {});
-      },
-    );
-  }
 
   void _selectSeg(SubcontractShortDeliverySegment seg) {
     if (seg == _seg) return;
@@ -343,9 +417,7 @@ class _SubcontractShortDeliveryPageState
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.subcontract),
         ),
-        actions: [
-          UtenRefreshButton(busy: _loading, onRefresh: () => _load(page: 1)),
-        ],
+        actions: [UtenRefreshButton(busy: _loading, onRefresh: () => _load())],
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -460,6 +532,8 @@ class _SubcontractShortDeliveryPageState
     final openSeg =
         pendingSeg || _seg == SubcontractShortDeliverySegment.tolerant;
     return MasterDataTableView<SubcontractShortDeliveryCase>(
+      rowsController: _readingRows,
+      expensiveRowMounts: false,
       tableKey:
           'features.subcontract.pages.subcontract_short_delivery_page.SubcontractShortDeliveryPageState._buildTable.1',
       key: const Key('subcontract-short-delivery-table'),
@@ -673,6 +747,45 @@ class _SubcontractShortDeliveryPageState
       items: result?.items ?? const [],
       // 订货单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
       facets: {'orderBillNo': _columnFilters.bucketOf('orderBillNo')},
+      facetPageLoaders: nativeFacetLoaders(
+        ref,
+        path: '/subcontract/short-deliveries/facets',
+        fields: const ['orderBillNo'],
+        filters: {
+          'segment': _seg.api,
+          'keyword': _keyword,
+          'supplierId': _supplierId,
+          'orderId': _orderId,
+          'dateFrom':
+              _seg == SubcontractShortDeliverySegment.history &&
+                  _historyTime.range != null
+              ? ChinaDateTime.formatDate(_historyTime.range!.start)
+              : null,
+          'dateTo':
+              _seg == SubcontractShortDeliverySegment.history &&
+                  _historyTime.range != null
+              ? ChinaDateTime.formatDate(_historyTime.range!.end)
+              : null,
+        },
+      ),
+      facetSearchScope:
+          nativeFacetSearchScope(ref, '/subcontract/short-deliveries/facets', {
+            'segment': _seg.api,
+            'keyword': _keyword,
+            'supplierId': _supplierId,
+            'orderId': _orderId,
+            'dateFrom':
+                _seg == SubcontractShortDeliverySegment.history &&
+                    _historyTime.range != null
+                ? ChinaDateTime.formatDate(_historyTime.range!.start)
+                : null,
+            'dateTo':
+                _seg == SubcontractShortDeliverySegment.history &&
+                    _historyTime.range != null
+                ? ChinaDateTime.formatDate(_historyTime.range!.end)
+                : null,
+          }),
+
       nullCounts: const {},
       filters: {'orderBillNo': _columnFilters['orderBillNo']},
       // 表头排序走服务端（2026-09-25 单号列统一）。
@@ -710,7 +823,7 @@ class _SubcontractShortDeliveryPageState
       paginationScope: (_keyword, _orderId, _supplierId, _seg, _historyTime),
       onPageChange: (page) {
         setState(() => _page = page);
-        _load(page: page);
+        _load(page: page, useCache: true);
       },
     );
   }

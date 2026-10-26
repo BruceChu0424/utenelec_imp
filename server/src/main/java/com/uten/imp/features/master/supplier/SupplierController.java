@@ -149,6 +149,22 @@ public class SupplierController {
         return service.dict();
     }
 
+    @GetMapping("/lookup")
+    @PreAuthorize("hasAuthority('supplier:view')")
+    public java.util.List<SupplierDictItem> lookup(@RequestParam Set<UUID> ids) {
+        return service.lookup(ids);
+    }
+
+    @PostMapping("/search-context")
+    @PreAuthorize("hasAuthority('supplier:view')")
+    public com.uten.imp.common.web.MasterSearchContext searchContext(
+            @Valid @RequestBody SupplierQueryFilter filter,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "100") int size) {
+        return service.searchContext(filter.withColumnSearch(com.uten.imp.common.util.ColumnKeywordSearch.contactRequestValues(
+                request, filter.columnSearch())), page, size);
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('supplier:view')")
     public SupplierDetail detail(@PathVariable UUID id) {

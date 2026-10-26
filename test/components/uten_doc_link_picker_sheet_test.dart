@@ -14,6 +14,7 @@ import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_grid_header_filter_cell.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/basic_data/widgets/uten_master_picker.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/models/procurement_source_terms.dart';
 
@@ -40,6 +41,10 @@ UtenDocLinkPickerConfig<_Doc, _Item, Null> _config({
   Map<String, String>? exacts,
   bool allowOverRemaining = false,
   bool allowGiftOverRemaining = false,
+  Future<UtenDocLinkParty?> Function()? pickParty,
+  Future<void> Function(Set<String>)? loadPartyNames,
+  void Function(String?)? onListParty,
+  String detailPartyId = 's1',
 }) {
   return UtenDocLinkPickerConfig<_Doc, _Item, Null>(
     step1Title: '从测试单引入',
@@ -51,19 +56,24 @@ UtenDocLinkPickerConfig<_Doc, _Item, Null> _config({
     docIdOf: (d) => d.id,
     partyIdOf: (d) => d.partyId,
     watchNames: (_) => null,
-    partyEntries: (_) => const {'s1': '供应商一'},
+    pickParty: (_, _) =>
+        pickParty?.call() ?? Future.value((id: 's1', name: '供应商一')),
+    loadPartyNames: (_, ids) async => loadPartyNames?.call(ids),
     partyName: (_, partyId) => '供应商一',
     initNames: (_) async {},
     loadGoodsNames: (_, _) async {},
-    listDocs: (ref, page, keyword, partyId, sort, order) async => PagedResult(
-      items: docs,
-      page: 1,
-      size: docs.length,
-      total: docs.length,
-      totalPages: 1,
-    ),
+    listDocs: (ref, page, keyword, partyId, sort, order) async {
+      onListParty?.call(partyId);
+      return PagedResult(
+        items: docs,
+        page: 1,
+        size: docs.length,
+        total: docs.length,
+        totalPages: 1,
+      );
+    },
     loadDetail: (ref, docId) async => UtenDocLinkDetail<_Item>(
-      partyId: 's1',
+      partyId: detailPartyId,
       items: details[docId] ?? const [],
       docId: docId,
       sourceTerms: sourceTerms[docId],
@@ -158,6 +168,45 @@ Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets(
+    'party field opens paged picker, refreshes exact UUID and preloads list/detail references',
+    (tester) async {
+      final selected = <String?>[];
+      final proofs = <Set<String>>[];
+      await _openPanel(
+        tester,
+        _config(
+          docs: const [_Doc('doc-one', 'SOURCE-001', 'outside-first-page')],
+          detailPartyId: 'outside-first-page',
+          details: const {
+            'doc-one': [_Item('line', 'goods', 2, 2)],
+          },
+          pickParty: () async => (id: 'outside-first-page', name: '远端供应商'),
+          onListParty: selected.add,
+          loadPartyNames: (ids) async {
+            proofs.add({...ids});
+          },
+        ),
+      );
+      expect(selected, [null]);
+      expect(proofs, [
+        {'outside-first-page'},
+      ]);
+      await tester.tap(find.byType(UtenMasterPickerField<UtenDocLinkParty>));
+      await tester.pumpAndSettle();
+      expect(selected, [null, 'outside-first-page']);
+      expect(proofs, [
+        {'outside-first-page'},
+        {'outside-first-page'},
+      ]);
+      await _doubleTapRow(tester, find.text('SOURCE-001'));
+      await tester.pumpAndSettle();
+      expect(proofs.last, {'outside-first-page'});
+      expect(find.text('货品-goods'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'exact positive remainder remains visible when binary subtraction reached zero',
     (tester) async {

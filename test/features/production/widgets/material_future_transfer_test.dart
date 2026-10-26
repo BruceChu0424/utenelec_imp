@@ -13,6 +13,36 @@ import 'package:uten_imp/features/production/widgets/material_reallocation_dialo
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
+  testWidgets(
+    'future source pages reuse one complete response while retaining exact draft quantities',
+    (tester) async {
+      final repository = _Repository(sourceCount: 50);
+      await _pumpPicker(tester, repository);
+      final finder = find.byKey(
+        const Key('cross-reallocation-candidates-list'),
+      );
+      ListView list() => tester.widget<ListView>(finder);
+      expect(repository.sourceSnapshotCalls, 1);
+      expect(list().childrenDelegate.estimatedChildCount, 41);
+      final quantity = find.byKey(
+        const Key('future-transfer-qty-allocation-1'),
+      );
+      await tester.enterText(quantity, '1.2345');
+      await tester.enterText(
+        find.byKey(const Key('cross-reallocation-reason')),
+        '精确在途调拨',
+      );
+      list().controller!.jumpTo(list().controller!.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      expect(repository.sourceSnapshotCalls, 1);
+      expect(list().childrenDelegate.estimatedChildCount, 81);
+      final controller = tester.widget<TextFormField>(quantity).controller!;
+      expect(controller.text, '1.2345');
+      expect(repository.creates, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('cancel uses exact large remaining and restoration capacities', (
     tester,
   ) async {
@@ -510,6 +540,7 @@ const _view = ProductionMaterialAnalysisView(
 class _Repository extends ProductionPlanRepository {
   _Repository({
     this.late = false,
+    this.sourceCount = 2,
     this.failCreate = false,
     this.failCancel = false,
     this.outbound = false,
@@ -520,6 +551,8 @@ class _Repository extends ProductionPlanRepository {
     this.exactLimit,
   }) : super(ApiClient(Dio()));
   final bool late;
+  final int sourceCount;
+  int sourceSnapshotCalls = 0;
   bool failCreate;
   bool failCancel;
   final bool outbound;
@@ -532,6 +565,20 @@ class _Repository extends ProductionPlanRepository {
   final cancels = <Map<String, Object>>[];
   ProductionMaterialAnalysisView? lastView;
   @override
+  Future<List<MaterialFutureTransferSource>>
+  materialFutureTransferSourceSnapshot({
+    required String targetAnalysisId,
+    required String targetMaterialId,
+    bool Function()? isCurrent,
+  }) async {
+    sourceSnapshotCalls++;
+    return (await materialFutureTransferSources(
+      targetAnalysisId: targetAnalysisId,
+      targetMaterialId: targetMaterialId,
+    )).items;
+  }
+
+  @override
   Future<PagedResult<MaterialFutureTransferSource>>
   materialFutureTransferSources({
     required String targetAnalysisId,
@@ -541,7 +588,7 @@ class _Repository extends ProductionPlanRepository {
     String keyword = '',
   }) async => PagedResult(
     items: [
-      for (final id in ['allocation-1', 'allocation-2'])
+      for (final id in [for (var i = 1; i <= sourceCount; i++) 'allocation-$i'])
         MaterialFutureTransferSource(
           sourceAllocationId: id,
           sourceAnalysisId: 'source-A',

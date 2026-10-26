@@ -13,7 +13,7 @@ import java.util.UUID;
  */
 public record ClientQueryFilter(
         UUID categoryId,
-        String keyword,
+        @jakarta.validation.constraints.Size(max = 200) String keyword,
         Set<String> nullFields,
         String code,
         String name,
@@ -40,7 +40,9 @@ public record ClientQueryFilter(
         String website,
         boolean excludeLegacyFinanceStub,
         boolean selectableOnly,
-        java.util.Map<String, String> columnSearch) {
+        @jakarta.validation.constraints.Size(max = 160)
+        java.util.Map<@jakarta.validation.constraints.Size(max = 100) String,
+                @jakarta.validation.constraints.Size(max = 200) String> columnSearch) {
     public ClientQueryFilter(UUID categoryId, String keyword, Set<String> nullFields, String code, String name,
             String fullName, String clientXz, Integer tday, String region, String placeId, String empId,
             UUID ownerEmployeeId, String legalPerson, String linkman, String mobile, String phone, String phone2,

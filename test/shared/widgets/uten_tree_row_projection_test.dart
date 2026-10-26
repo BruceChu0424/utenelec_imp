@@ -68,6 +68,31 @@ void main() {
       expect(tree[0].ancestorContinuations, [true, true]);
       expect(tree[1].ancestorContinuations, [true, true, false]);
     });
+
+    test('筛选后的不同树不能继承上一棵树的父子关系和连线', () {
+      final rows = [
+        (depth: 0, tree: 'A'),
+        (depth: 1, tree: 'A'),
+        (depth: 2, tree: 'B'),
+        (depth: 3, tree: 'B'),
+      ];
+      final tree = utenTreeProjection(
+        rows,
+        depthOf: (row) => row.depth,
+        treeKeyOf: (row) => row.tree,
+      );
+      expect(tree[0].subtreeEnd, 2);
+      expect(tree[0].childCount, 1);
+      expect(tree[1].subtreeEnd, 2);
+      expect(tree[1].hasChildren, isFalse);
+      expect(tree[2].ancestorContinuations, [true, true]);
+      expect(tree[2].childCount, 1);
+      expect(tree[3].ancestorContinuations, [true, true, false]);
+      expect(
+        debugTreeProjectionBoundaryVisits,
+        lessThanOrEqualTo(2 * rows.length),
+      );
+    });
   });
 
   group('utenTreeGuideSegments', () {

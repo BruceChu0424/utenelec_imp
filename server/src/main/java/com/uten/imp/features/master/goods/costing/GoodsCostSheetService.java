@@ -437,6 +437,7 @@ public class GoodsCostSheetService {
         if(!mask.canView()||!has("goods:view")||!has(permission))throw new ApiException(ErrorCode.FORBIDDEN,"无访问或操作货品成本权限");
     }
     public void requireGoodsScope(UUID goodsId) {require(VIEW);references.requireVisibleGoods(goodsId);}
+    public void requireGoodsScopeBatch(java.util.Collection<UUID> goodsIds) {require(VIEW);references.requireVisibleGoodsBatch(goodsIds);}
     /** Rechecks both scopes before an import receipt may reveal or restore older manual inputs. */
     public void requireInputScope(DraftInput input) {
         require(VIEW);
@@ -453,7 +454,8 @@ public class GoodsCostSheetService {
     }
     private void assertScope(DraftInput in,Calculation calculation) {
         scope(in.goodsId(),in.clientId());
-        Set<UUID> ids=new HashSet<>();for(CostLine line:calculation.lines())if(ids.add(line.goodsId()))references.requireVisibleGoods(line.goodsId());
+        Set<UUID> ids=new HashSet<>();for(CostLine line:calculation.lines())ids.add(line.goodsId());
+        references.requireVisibleGoodsBatch(ids);
     }
     private <T> T command(String kind,String key,Object request,Class<T> type,Supplier<T> work) {
         if(key==null||!key.matches("[A-Za-z0-9._:-]{8,128}"))throw invalid("请求号格式无效，请刷新后重试");

@@ -354,18 +354,14 @@ void materialAnalysisPresentationWorkCases() {
         await tester.pumpAndSettle();
         expect(summaries(), expected);
       }
-      tester
-          .widget<UtenButton>(
-            find.byKey(const Key('material-analysis-bom-expansion-toggle')),
-          )
-          .onPressed!();
+      await tester.tap(
+        find.byKey(const Key('material-analysis-bom-expansion-toggle')),
+      );
       await tester.pumpAndSettle();
       expect(summaries(), expected);
-      tester
-          .widget<UtenButton>(
-            find.byKey(const Key('material-analysis-bom-expansion-toggle')),
-          )
-          .onPressed!();
+      await tester.tap(
+        find.byKey(const Key('material-analysis-bom-expansion-toggle')),
+      );
       await tester.pumpAndSettle();
       expect(summaries(), expected);
       expect(

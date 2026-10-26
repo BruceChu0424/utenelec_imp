@@ -58,7 +58,7 @@ public class CustomerPrepaymentQueryService {
                        ABS(ledger.amount_balance_original),ABS(ledger.amount_balance),ledger.updated_at
                 """ + where + " ORDER BY receipt.bill_date DESC,receipt.bill_no DESC,ledger.id"),
                 clientId, currencyId, salesOrderId)
-                .setFirstResult((page - 1) * size).setMaxResults(size).getResultList();
+                .setFirstResult(com.uten.imp.common.web.Pageables.checkedOffset(page, size)).setMaxResults(size).getResultList();
         List<PrepaymentItem> items = rows.stream().map(row -> new PrepaymentItem(
                 (UUID) row[0], (UUID) row[1], Objects.toString(row[2], null),
                 NativeValueConverters.toLocalDate(row[3]), (UUID) row[4], (UUID) row[5],

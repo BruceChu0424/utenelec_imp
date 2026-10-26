@@ -1,8 +1,10 @@
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // 币种资料管理页（基础资料 · 扁平主档，无分类树）。
 //
 // 与颜色/单位同级扁平字典（编号/名称/参考汇率/状态）。复刻 color_page：
 // 搜索栏 + MasterDataTableView + 右下角添加 + showMasterEditDialog/DetailSheet。
 // 查看全员可见（路由不设守卫），编辑按 currency:edit 显隐。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
@@ -18,6 +20,9 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
+import 'package:collection/collection.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../components/print/complete_print_snapshot.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -55,17 +60,34 @@ class CurrencyPage extends ConsumerStatefulWidget {
 }
 
 class _CurrencyPageState extends ConsumerState<CurrencyPage>
-    with MasterInlinePageMixin<CurrencyPage, CurrencyListItem> {
+    with
+        MasterInlinePageMixin<CurrencyPage, CurrencyListItem>,
+        ScopedPagedReadViewMixin<CurrencyPage> {
+  final _readViewportRows = MasterDataTableRowsController<CurrencyListItem>();
+  int get _visibleReadPage => _page == null
+      ? (_pageNum)
+      : (_readViewportRows.visiblePage ?? (_pageNum));
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    if (mounted) {
+      setState(() {
+        inlineClearView();
+        _error = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   @override
   String get inlineEntityType => 'currencies';
   @override
   bool get inlineCanEdit => _canEdit;
   @override
-  bool get inlineReadReady => !_loading && _error == null;
+  bool get inlineReadReady => _page != null && !_loading && _error == null;
   @override
   String inlineIdOf(CurrencyListItem row) => row.id;
   @override
-  Future<void> inlineReload() => _loadCurrencies(_pageNum);
+  Future<void> inlineReload() => _loadCurrencies(_visibleReadPage);
   @override
   Future<void> inlineReloadAfterBoundary() => _refresh();
   @override
@@ -206,25 +228,41 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
   bool get _canStatus =>
       ref.read(currentPermissionsProvider).contains(Perm.currencyStatus);
 
-  Future<void> _loadCurrencies(int page) async {
+  Future<void> _loadCurrencies(int page, {bool useCache = false}) async {
     if (page != _pageNum) _invalidateOperations();
-    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
+    final inlineReadBoundary = captureInlineRead();
     final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
       _pageNum = page;
     });
+    final repository = ref.read(currencyRepositoryProvider);
+    final keyword = _keyword.trim().isEmpty ? null : _keyword;
+    final filters = Map<String, String?>.unmodifiable(_filters);
+    Object pagingQuery() => [
+      ref.read(currencyRepositoryProvider),
+      _keyword,
+      _filters,
+      _sortKey,
+      _sortAsc,
+    ];
+    final sort = _sortKey;
+    final order = sort == null ? null : (_sortAsc ? 'asc' : 'desc');
     try {
-      final result = await ref
-          .read(currencyRepositoryProvider)
-          .list(
-            page: page,
-            keyword: _keyword.trim().isEmpty ? null : _keyword,
-            filters: _filters,
-            sort: _sortKey,
-            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
-          );
+      final result = await readScopedPage<CurrencyListItem>(
+        page,
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        fetchPage: (target) => repository.list(
+          page: target,
+          keyword: keyword,
+          filters: filters,
+          sort: sort,
+          order: order,
+        ),
+      );
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_loadRequests.isCurrent(generation)) {
@@ -258,7 +296,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
   }
 
   Future<void> _loadFacets() async {
-    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
+    final inlineReadBoundary = captureInlineRead();
     try {
       final f = await ref.read(currencyRepositoryProvider).facets();
       if (!mounted || !inlineAcceptsRead(inlineReadBoundary)) return;
@@ -353,7 +391,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
         onAccepted: () {
           if (!owner.isCurrent) return;
           context.appSuccess('币种已创建');
-          unawaited(_loadCurrencies(_pageNum));
+          unawaited(_loadCurrencies(_visibleReadPage));
         },
       );
     } finally {
@@ -408,7 +446,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
         onAccepted: () {
           if (!owner.isCurrent) return;
           context.appSuccess('币种已更新');
-          unawaited(_loadCurrencies(_pageNum));
+          unawaited(_loadCurrencies(_visibleReadPage));
         },
       );
     } finally {
@@ -466,7 +504,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
         rows: _detailRows(detail),
         historyEntityType: 'currencies',
         historyRecordId: detail.id,
-        onHistoryChanged: () => _loadCurrencies(_pageNum),
+        onHistoryChanged: () => _loadCurrencies(_visibleReadPage),
         dialogScopeBuilder: owner.ownDialog,
         isCurrent: () => owner.isCurrent,
         canEdit: _canEdit,
@@ -750,7 +788,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
         dialogScopeBuilder: owner.ownDialog,
       );
       if (!owner.isCurrent) return;
-      await Future.wait([_loadCurrencies(_pageNum), _loadFacets()]);
+      await Future.wait([_loadCurrencies(_visibleReadPage), _loadFacets()]);
       if (owner.isCurrent && _page?.items.isEmpty == true && _page!.page > 1) {
         await _loadCurrencies(_page!.page - 1);
       }
@@ -834,9 +872,9 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
     ),
   ];
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({int? page}) async {
     _invalidateOperations();
-    await Future.wait([_loadCurrencies(1), _loadFacets()]);
+    await Future.wait([_loadCurrencies(page ?? 1), _loadFacets()]);
   }
 
   /// 导出查询参数（与 _loadCurrencies 一致，不含 page/size）。
@@ -847,26 +885,51 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
     if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
   };
 
-  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  /// 打印预览数据：按当前筛选口径完整分页读取，列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
-    final result = await ref
-        .read(currencyRepositoryProvider)
-        .list(
-          size: 2000,
-          keyword: _keyword.trim().isEmpty ? null : _keyword,
-          filters: _filters,
-          sort: _sortKey,
-          order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
-        );
-    return UtenPrintTable(
-      columnKeys: [for (final c in _columns) c.key],
-      rowIds: [for (final a in result.items) a.id],
-      headers: [for (final c in _columns) c.label],
-      rows: [
-        for (final a in result.items)
-          [for (final c in _columns) c.value(a) ?? ''],
-      ],
+    final repository = ref.read(currencyRepositoryProvider);
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final epoch = ref.read(exportContextEpochProvider);
+    final version = _queryEpoch;
+    final query = Map<String, dynamic>.of(_exportQuery);
+    final filters = Map<String, String?>.unmodifiable(_filters);
+    final keyword = _keyword.trim().isEmpty ? null : _keyword;
+    final sort = _sortKey;
+    final order = sort == null ? null : (_sortAsc ? 'asc' : 'desc');
+    final columns = List.of(_columns);
+    var retired = false;
+    bool current() {
+      if (retired || !mounted) return false;
+      retired =
+          version != _queryEpoch ||
+          epoch != ref.read(exportContextEpochProvider) ||
+          boundary != ref.read(sensitiveReadBoundaryProvider) ||
+          !const DeepCollectionEquality().equals(query, _exportQuery);
+      return !retired;
+    }
+
+    final scope = await boundary.api.captureRequestScope(isCurrent: current);
+    final table = await scope.run(
+      () => loadCompletePrintSnapshot(
+        loadPage: (page, size) => repository.list(
+          page: page,
+          size: size,
+          keyword: keyword,
+          filters: filters,
+          sort: sort,
+          order: order,
+        ),
+        idOf: (row) => row.id,
+        headers: [for (final column in columns) column.label],
+        columnKeys: [for (final column in columns) column.key],
+        cellsOf: (row) => [
+          for (final column in columns) column.value(row) ?? '',
+        ],
+        isCurrent: () => current() && scope.isCurrent,
+      ),
     );
+    await scope.verify();
+    return table;
   }
 
   @override
@@ -894,7 +957,8 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
             ),
             UtenRefreshButton(
               busy: _loading,
-              onRefresh: () => inlineNavigate(_refresh),
+              onRefresh: () =>
+                  inlineNavigate(() => _refresh(page: _visibleReadPage)),
             ),
           ],
         ),
@@ -906,7 +970,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
                   padding: const EdgeInsets.only(top: UtenSpacing.s8),
                   child: Column(
                     children: [
-                      Padding(
+                      UtenPageEdgePadding(
                         padding: const EdgeInsets.only(
                           bottom: UtenSpacing.s8,
                           left: UtenSpacing.s4,
@@ -921,6 +985,8 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
                       ),
                       Expanded(
                         child: MasterDataTableView<CurrencyListItem>(
+                          rowsController: _readViewportRows,
+                          expensiveRowMounts: inlineEdit.active,
                           appendRowsSource: inlineAppendRowsSource,
                           bottomContentPadding: (_canCreate || _canEdit)
                               ? UtenFloatingActionGroup.scrollClearance
@@ -953,7 +1019,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
                           toolbarLeadingActions: [
                             UtenPrintPreviewButton(
                               title: '币种资料',
-                              subtitle: '最多前 2000 行',
+                              subtitle: '当前筛选的完整结果',
                               loader: _printLoader,
                               exportEndpoint: '/master/currencies/export',
                               exportPermission: Perm.currencyExport,
@@ -993,13 +1059,14 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
                           isLoading: _loading && _page == null,
                           loadingMore: _loading && _page != null,
                           error: _error,
-                          onRetry: () => _loadCurrencies(_pageNum),
+                          onRetry: () => _loadCurrencies(_visibleReadPage),
                           emptyMessage: '暂无币种',
                           currentPage: _page?.page ?? 1,
                           totalPages: _page?.totalPages ?? 1,
                           paginationScope: _keyword,
-                          onPageChange: (p) =>
-                              inlineNavigate(() => _loadCurrencies(p)),
+                          onPageChange: (p) => inlineNavigate(
+                            () => _loadCurrencies(p, useCache: true),
+                          ),
                         ),
                       ),
                     ],

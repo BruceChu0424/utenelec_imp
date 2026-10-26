@@ -105,7 +105,7 @@ class _MaterialTransferLauncherDialogState
               targetMaterialId: widget.material.materialLineId,
             )
             .then((page) {
-              if (mounted) setState(() => _futureCount = page.items.length);
+              if (mounted) setState(() => _futureCount = page.total);
             })
             .catchError((_) {
               if (mounted) setState(() => _futureCount = null);

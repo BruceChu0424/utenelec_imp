@@ -17,6 +17,7 @@
 // 选中只能互相切换——避免误触把已加载的历史列表清回占位态。
 
 import 'package:flutter/material.dart';
+import '../inputs/uten_field_hint_icon.dart';
 import 'uten_app_bar_action_scope.dart';
 import 'uten_segment_row.dart';
 
@@ -195,18 +196,19 @@ class UtenHistoryTimePlaceholder extends StatelessWidget {
             color: theme.colorScheme.onSurfaceVariant,
           ),
           const SizedBox(height: UtenSpacing.s12),
-          Text(
-            message,
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            description,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  message,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              UtenFieldHintIcon(info: description, dense: true),
+            ],
           ),
         ],
       ),

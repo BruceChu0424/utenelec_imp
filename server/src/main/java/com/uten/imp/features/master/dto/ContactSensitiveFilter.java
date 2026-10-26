@@ -27,4 +27,13 @@ public record ContactSensitiveFilter(
     public static ContactSensitiveFilter orNone(ContactSensitiveFilter filter) {
         return filter == null ? NONE : filter;
     }
+
+    /** The same transport bounds apply to list rows and count/category context reads. */
+    public static void requireBoundedReadValues(String keyword, String mobile, String phone, String phone2, String bankAccount) {
+        for (String value : new String[]{keyword, mobile, phone, phone2, bankAccount}) {
+            if (value != null && value.length() > 200)
+                throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,
+                        "联系方式及关键词筛选值不能超过200个字符");
+        }
+    }
 }

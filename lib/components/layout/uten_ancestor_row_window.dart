@@ -33,7 +33,7 @@ abstract final class _RowMountBudget {
   static bool _resetScheduled = false;
   static int _used = 0;
 
-  static bool take() {
+  static bool take({bool expensive = true}) {
     if (!_resetScheduled) {
       _resetScheduled = true;
       // Reset in the next frame's transient phase, before any widget builds.
@@ -43,11 +43,12 @@ abstract final class _RowMountBudget {
         _resetScheduled = false;
       });
     }
-    // A light row cannot predict the next row's input/layout cost. Admit one
-    // actual business subtree globally per frame, without restoring a larger
-    // allowance after a cheap frame. Existing rows do not consume admission.
-    if (_used >= 1) return false;
-    _used++;
+    // Input-heavy/unknown subtrees still consume the entire frame allowance.
+    // Explicit lightweight rows share a small fixed batch; never infer the
+    // next input's mount cost from a cheap preceding frame.
+    final cost = expensive ? 4 : 1;
+    if (_used + cost > 4) return false;
+    _used += cost;
     return true;
   }
 }
@@ -70,12 +71,14 @@ class UtenDeferredRowMount extends StatefulWidget {
     required this.builder,
     required this.estimatedExtent,
     this.deferNewMounts = true,
+    this.expensive = true,
     this.onExtentMeasured,
   });
   final UtenDeferredRowMountController controller;
   final WidgetBuilder builder;
   final double estimatedExtent;
   final bool deferNewMounts;
+  final bool expensive;
   final ValueChanged<double>? onExtentMeasured;
   @override
   State<UtenDeferredRowMount> createState() => _UtenDeferredRowMountState();
@@ -157,7 +160,9 @@ class _UtenDeferredRowMountState extends State<UtenDeferredRowMount> {
   Widget build(BuildContext context) {
     if (!_admitted &&
         _active &&
-        (!widget.deferNewMounts || (_shellLaidOut && _RowMountBudget.take()))) {
+        (!widget.deferNewMounts ||
+            (_shellLaidOut &&
+                _RowMountBudget.take(expensive: widget.expensive)))) {
       _admitted = true;
       _needsLayout = true;
       if (debugUiWorkSliceObserver != null) _clock = Stopwatch()..start();
@@ -206,6 +211,7 @@ class UtenAncestorRowWindow<T extends Object> extends StatefulWidget {
     this.estimatedRowExtent = 52,
     this.viewportOnly = false,
     this.preserveRowAnchorOnSourceChange = true,
+    this.expensiveRows = true,
   });
 
   /// Even a modest editable table can contain hundreds of input Elements.
@@ -223,6 +229,10 @@ class UtenAncestorRowWindow<T extends Object> extends StatefulWidget {
   /// default keeps screen-height headroom for content-height editor hosts.
   final bool viewportOnly;
   final bool preserveRowAnchorOnSourceChange;
+
+  /// Leave enabled for editable or unclassified custom rows. Disable only for
+  /// lightweight read-only rows to admit small batches and warm more content.
+  final bool expensiveRows;
 
   @override
   State<UtenAncestorRowWindow<T>> createState() =>
@@ -446,7 +456,9 @@ class _UtenAncestorRowWindowState<T extends Object>
       final extent = _windowViewportExtent;
       // Keep scrolling headroom bounded in pixels: a whole extra screen of
       // editable controls makes a single frame too expensive on dense forms.
-      final overscan = math.min(64.0, extent * .1);
+      final overscan = widget.expensiveRows
+          ? math.min(64.0, extent * .1)
+          : math.min(320.0, extent * .5);
       first = _rowAt(math.max(0, top - overscan));
       last = _rowAt(math.max(0, top + extent + overscan));
     }
@@ -770,7 +782,9 @@ class _UtenAncestorRowWindowState<T extends Object>
     for (final row in priorities) {
       if (_admitted.contains(row)) continue;
       if (!_presentationActive) break;
-      if (_stageNewRows && (!_shellLaidOut || !_RowMountBudget.take())) {
+      if (_stageNewRows &&
+          (!_shellLaidOut ||
+              !_RowMountBudget.take(expensive: widget.expensiveRows))) {
         break;
       }
       _admitted.add(row);

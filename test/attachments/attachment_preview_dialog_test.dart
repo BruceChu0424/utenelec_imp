@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -7,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:uten_imp/components/layout/uten_content_scrollbar.dart';
 import 'package:uten_imp/core/theme/uten_scroll_behavior.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/shared/attachments/attachment_file_rules.dart';
 import 'package:uten_imp/shared/attachments/attachment_preview_dialog.dart';
 
@@ -20,6 +22,7 @@ Future<void> _pumpPreview(
   Size size = const Size(900, 700),
   double textScale = 1.0,
   ScrollBehavior? scrollBehavior,
+  FutureOr<void> Function()? onDownload,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -34,6 +37,7 @@ Future<void> _pumpPreview(
             bytes: bytes,
             name: name,
             contentType: contentType,
+            onDownload: onDownload,
           ),
         ),
       ),
@@ -43,6 +47,61 @@ Future<void> _pumpPreview(
 }
 
 void main() {
+  testWidgets(
+    'original download awaits one request and recovers from failure',
+    (tester) async {
+      final pending = Completer<void>();
+      var requests = 0;
+      await _pumpPreview(
+        tester,
+        bytes: _utf8('原件内容'),
+        name: '原件.txt',
+        onDownload: () {
+          requests++;
+          return pending.future;
+        },
+      );
+      await tester.tap(find.byTooltip('下载原件'));
+      await tester.pump();
+      expect(requests, 1);
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byWidgetPredicate(
+                (widget) => widget is IconButton && widget.tooltip == '下载原件',
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byWidgetPredicate(
+                (widget) => widget is IconButton && widget.tooltip == '关闭',
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      pending.completeError(ApiException('FORBIDDEN', '资料权限已变化'));
+      await tester.pumpAndSettle();
+      expect(find.text('资料权限已变化'), findsOneWidget);
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byWidgetPredicate(
+                (widget) => widget is IconButton && widget.tooltip == '下载原件',
+              ),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   group('能力矩阵（列表图标、提示与弹窗同源）', () {
     test('上传白名单覆盖办公常见类型', () {
       const expected = {
@@ -244,8 +303,21 @@ void main() {
         expect(horizontal.controller!.position.maxScrollExtent, greaterThan(0));
         expect(horizontal.controller!.offset, 0);
         final verticalRect = tester.getRect(verticalFinder);
+        final canvasRect = tester.getRect(horizontalFinder);
+        expect(
+          verticalRect.right - canvasRect.right,
+          greaterThanOrEqualTo(16),
+          reason:
+              'The vertical thumb stays in the space outside the CSV canvas',
+        );
+        expect(
+          canvasRect.left,
+          closeTo(verticalRect.left, .01),
+          reason:
+              'The separate trailing rail must not introduce a second leading margin',
+        );
         await tester.dragFrom(
-          Offset(verticalRect.right - 8, verticalRect.top + 10),
+          Offset(verticalRect.right - 8, verticalRect.top + 32),
           const Offset(0, 120),
         );
         await tester.pumpAndSettle();

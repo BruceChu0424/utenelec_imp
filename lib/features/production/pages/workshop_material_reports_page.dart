@@ -41,10 +41,12 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../basic_data/widgets/goods_issue_method_dialog.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/workshop_material_report_models.dart';
 import '../repositories/workshop_material_report_repository.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 /// 报表分段。
 enum WmReportView { usage, product, trend, missing, ledger }
@@ -70,7 +72,8 @@ class WorkshopMaterialReportsPage extends ConsumerStatefulWidget {
 }
 
 class _WorkshopMaterialReportsPageState
-    extends ConsumerState<WorkshopMaterialReportsPage> {
+    extends ConsumerState<WorkshopMaterialReportsPage>
+    with ScopedPagedReadViewMixin<WorkshopMaterialReportsPage> {
   static const _pollInterval = Duration(seconds: 2);
   static const _pollWindow = Duration(seconds: 60);
 
@@ -90,9 +93,39 @@ class _WorkshopMaterialReportsPageState
   List<WmWasteTrendPoint>? _trend;
   List<WmMissingWeightRow>? _missing;
   PagedResult<WmLedgerRow>? _ledger;
+  final _ledgerRows = MasterDataTableRowsController<WmLedgerRow>();
+  Object? _acceptedLedgerQuery;
   bool _loadingData = false;
   String? _dataError;
   int _dataRequest = 0;
+  int _metadataEpoch = 0;
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _stopPolling();
+    setState(() {
+      _metadataEpoch++;
+      _ledgerRows.update(const []);
+      _acceptedLedgerQuery = null;
+      _dataRequest++;
+      _closeRequest++;
+      _bins = const [];
+      _periods = const [];
+      _binId = null;
+      _periodId = null;
+      _usage = null;
+      _product = null;
+      _trend = null;
+      _missing = null;
+      _ledger = null;
+      _closeStatus = null;
+      _loadingMeta = false;
+      _loadingData = false;
+      _metaError = scopedPagedReadRejection?.message;
+      _dataError = scopedPagedReadRejection?.message;
+      _closeError = null;
+    });
+  }
 
   /// 耗用差异率趋势当前看的料 (货品 + 颜色)。
   String? _trendMaterialKey;
@@ -151,13 +184,14 @@ class _WorkshopMaterialReportsPageState
   }
 
   Future<void> _loadBins() async {
+    final epoch = _metadataEpoch;
     setState(() {
       _loadingMeta = true;
       _metaError = null;
     });
     try {
       final bins = await _repo.bins();
-      if (!mounted) return;
+      if (!mounted || epoch != _metadataEpoch) return;
       final preferred = widget.initialBinId ?? _binId;
       setState(() {
         _bins = bins;
@@ -167,18 +201,21 @@ class _WorkshopMaterialReportsPageState
       });
       await _loadPeriods(initial: true);
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || epoch != _metadataEpoch) return;
       setState(() => _metaError = e.message);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || epoch != _metadataEpoch) return;
       setState(() => _metaError = '读取车间内料仓失败，请重试');
     } finally {
-      if (mounted) setState(() => _loadingMeta = false);
+      if (mounted && epoch == _metadataEpoch) {
+        setState(() => _loadingMeta = false);
+      }
     }
   }
 
   Future<void> _loadPeriods({bool initial = false}) async {
     if (!mounted) return;
+    final epoch = _metadataEpoch;
     final binId = _binId;
     if (binId == null) {
       setState(() {
@@ -192,24 +229,24 @@ class _WorkshopMaterialReportsPageState
       // 复制一份再排序 (仓库可能返回不可变列表)：新的期在上。
       final periods = [...await _repo.periods(binId)]
         ..sort((a, b) => (b.periodNo ?? 0).compareTo(a.periodNo ?? 0));
-      if (!mounted || binId != _binId) return;
+      if (!mounted || epoch != _metadataEpoch || binId != _binId) return;
       final wanted = initial ? widget.initialPeriodId : _periodId;
       setState(() {
         _periods = periods;
         _periodId = periods.any((p) => p.id == wanted) ? wanted : null;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || epoch != _metadataEpoch) return;
       setState(() => _metaError = e.message);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || epoch != _metadataEpoch) return;
       setState(() => _metaError = '读取盘点期间失败，请重试');
     }
-    if (!mounted) return;
+    if (!mounted || epoch != _metadataEpoch) return;
     await Future.wait([_loadData(), _loadCloseStatus()]);
   }
 
-  Future<void> _loadData([int page = 1]) async {
+  Future<void> _loadData([int? page, bool useCache = false]) async {
     if (!mounted) return;
     final binId = _binId;
     final request = ++_dataRequest;
@@ -221,6 +258,10 @@ class _WorkshopMaterialReportsPageState
     final from = period?.startDate;
     final to = period?.endDate;
     final view = _view;
+    final readQuery = (_repo, binId, from, to, view);
+    page ??= _acceptedLedgerQuery == readQuery
+        ? _ledgerRows.visiblePage ?? _ledger?.page ?? 1
+        : 1;
     setState(() {
       _loadingData = true;
       _dataError = null;
@@ -258,14 +299,26 @@ class _WorkshopMaterialReportsPageState
             setState(() => _missing = missingRows);
           }
         case WmReportView.ledger:
-          final result = await _repo.ledger(
-            binId,
-            from: from,
-            to: to,
-            page: page,
+          final repository = _repo;
+          final result = await readScopedPage<WmLedgerRow>(
+            page,
+            query: (repository, binId, from, to, view),
+            currentQuery: () => (
+              _repo,
+              _binId,
+              _selectedPeriod?.startDate,
+              _selectedPeriod?.endDate,
+              _view,
+            ),
+            useCache: useCache,
+            fetchPage: (page) =>
+                repository.ledger(binId, from: from, to: to, page: page),
           );
           if (mounted && request == _dataRequest) {
-            setState(() => _ledger = result);
+            setState(() {
+              _ledger = result;
+              _acceptedLedgerQuery = readQuery;
+            });
           }
       }
     } on ApiException catch (e) {
@@ -474,7 +527,7 @@ class _WorkshopMaterialReportsPageState
     _loadData();
   }
 
-  Future<void> _refresh() => _loadPeriods();
+  Future<void> _refresh() => _bins.isEmpty ? _loadBins() : _loadPeriods();
 
   @override
   Widget build(BuildContext context) {
@@ -648,6 +701,7 @@ class _WorkshopMaterialReportsPageState
     final rows = _usage ?? const <WmBinUsageRow>[];
     final showCost = rows.any((r) => r.hasCost);
     return MasterDataTableView<WmBinUsageRow>(
+      expensiveRowMounts: false,
       tableKey:
           'features.production.pages.workshop_material_reports_page.WorkshopMaterialReportsPageState._usageTable.1',
       key: ValueKey('wm-usage-table-$showCost'),
@@ -766,6 +820,7 @@ class _WorkshopMaterialReportsPageState
     final rows = _product ?? const <WmProductUsageRow>[];
     final showCost = rows.any((r) => r.hasCost);
     return MasterDataTableView<WmProductUsageRow>(
+      expensiveRowMounts: false,
       tableKey:
           'features.production.pages.workshop_material_reports_page.WorkshopMaterialReportsPageState._productTable.1',
       key: ValueKey('wm-product-table-$showCost'),
@@ -926,67 +981,65 @@ class _WorkshopMaterialReportsPageState
         : materials.keys.first;
     final points = all.where((p) => p.materialKey == key).toList()
       ..sort((a, b) => (a.startDate ?? '').compareTo(b.startDate ?? ''));
-    return ListView(
-      key: const Key('wm-trend-scroll'),
+    return UtenPageEdgePadding.scroll(
       padding: const EdgeInsets.all(UtenSpacing.s12),
-      children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: SizedBox(
-            width: 320,
-            child: UtenDropdownField(
-              key: const Key('wm-trend-material'),
-              label: l10n.wmReportMaterial,
-              selectedMaxLines: null,
-              menuMatchContentWidth: true,
-              allowClear: false,
-              value: key,
-              items: [
-                for (final e in materials.entries)
-                  UtenDropdownItem(
-                    value: e.key,
-                    label: e.value.isEmpty ? l10n.wmReportMaterial : e.value,
-                  ),
-              ],
-              onChanged: (v) {
-                if (v != null) setState(() => _trendMaterialKey = v);
-              },
-            ),
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s12),
-        Text(
-          '${l10n.wmWasteRate}：反映盘点耗用与理论的差额，不等于报废率。'
-          '空心点含容器估盘；低于 -30% 或高于 +50% 标红。',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        _WasteTrendChart(key: const Key('wm-trend-chart'), points: points),
-        const SizedBox(height: UtenSpacing.s12),
-        for (final p in points)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: DefaultTextStyle.merge(
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: _rateOutOfRange(p.wasteRate)
-                    ? theme.colorScheme.error
-                    : null,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_periodText(p.periodNo, p.startDate, p.endDate)),
-                  Text(
-                    '${l10n.wmWasteRate} ${p.hasEstimatedCount ? '≈ ' : ''}${_rate(p.wasteRate)}',
-                  ),
-                  Text(p.countEvidenceLabel),
+      builder: (context, resolvedPagePadding) => ListView(
+        key: const Key('wm-trend-scroll'),
+        padding: resolvedPagePadding,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              width: 320,
+              child: UtenDropdownField(
+                key: const Key('wm-trend-material'),
+                label: l10n.wmReportMaterial,
+                info:
+                    '${l10n.wmWasteRate}：反映盘点耗用与理论的差额，不等于报废率。'
+                    '空心点含容器估盘；低于 -30% 或高于 +50% 标红。',
+                selectedMaxLines: null,
+                menuMatchContentWidth: true,
+                allowClear: false,
+                value: key,
+                items: [
+                  for (final e in materials.entries)
+                    UtenDropdownItem(
+                      value: e.key,
+                      label: e.value.isEmpty ? l10n.wmReportMaterial : e.value,
+                    ),
                 ],
+                onChanged: (v) {
+                  if (v != null) setState(() => _trendMaterialKey = v);
+                },
               ),
             ),
           ),
-      ],
+          const SizedBox(height: UtenSpacing.s8),
+          _WasteTrendChart(key: const Key('wm-trend-chart'), points: points),
+          const SizedBox(height: UtenSpacing.s12),
+          for (final p in points)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: DefaultTextStyle.merge(
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: _rateOutOfRange(p.wasteRate)
+                      ? theme.colorScheme.error
+                      : null,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_periodText(p.periodNo, p.startDate, p.endDate)),
+                    Text(
+                      '${l10n.wmWasteRate} ${p.hasEstimatedCount ? '≈ ' : ''}${_rate(p.wasteRate)}',
+                    ),
+                    Text(p.countEvidenceLabel),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -995,6 +1048,7 @@ class _WorkshopMaterialReportsPageState
   Widget _missingTable(AppLocalizations l10n) {
     final rows = _missing ?? const <WmMissingWeightRow>[];
     return MasterDataTableView<WmMissingWeightRow>(
+      expensiveRowMounts: false,
       tableKey:
           'features.production.pages.workshop_material_reports_page.WorkshopMaterialReportsPageState._missingTable.1',
       key: const ValueKey('wm-missing-table'),
@@ -1076,6 +1130,8 @@ class _WorkshopMaterialReportsPageState
     final page = _ledger;
     final rows = page?.items ?? const <WmLedgerRow>[];
     return MasterDataTableView<WmLedgerRow>(
+      rowsController: _ledgerRows,
+      expensiveRowMounts: false,
       tableKey:
           'features.production.pages.workshop_material_reports_page.WorkshopMaterialReportsPageState._ledgerTable.1',
       key: const ValueKey('wm-ledger-table'),
@@ -1160,7 +1216,7 @@ class _WorkshopMaterialReportsPageState
         _selectedPeriod?.startDate,
         _selectedPeriod?.endDate,
       ),
-      onPageChange: _loadData,
+      onPageChange: (page) => _loadData(page, true),
     );
   }
 

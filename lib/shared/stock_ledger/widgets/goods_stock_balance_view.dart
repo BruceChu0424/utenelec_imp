@@ -1,3 +1,4 @@
+import '../../paging/scoped_paged_read_view_mixin.dart';
 // 库存面板「库存余额」分段: 该货品各仓库 (x 颜色) 的余额。
 //
 // 列: 仓库 | 颜色 | 库存数量 | 单位 | 库存重量 (≈ 估算、未称 = 没称过, 绝不当 0) | 最后变动 | 操作。
@@ -60,7 +61,29 @@ class GoodsStockBalanceView extends ConsumerStatefulWidget {
 }
 
 class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
-    with UtenRefreshParticipant<GoodsStockBalanceView> {
+    with
+        UtenRefreshParticipant<GoodsStockBalanceView>,
+        ScopedPagedReadViewMixin<GoodsStockBalanceView> {
+  final _readViewportRows = MasterDataTableRowsController<BalanceRow>();
+  int get _visibleReadPage => _balances == null ? (_balances?.page ?? 1) : (_readViewportRows.visiblePage ?? (_balances?.page ?? 1));
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _version++;
+    if (mounted) {
+      setState(() {
+        _balances = null;
+        _loading = false;
+        _error = null;
+      });
+    }
+    if (mounted) {
+      setState(() {
+        _error = scopedPagedReadRejection?.message;
+      });
+    }
+  }
+
   static const _pageSize = 50;
 
   PagedResult<BalanceRow>? _balances;
@@ -88,7 +111,7 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
         oldWidget.goodsId != widget.goodsId ||
         oldWidget.scope != widget.scope) {
       if (oldWidget.scope != widget.scope) _balances = null;
-      trackRefresh(_load(_balances?.page ?? 1));
+      trackRefresh(_load(_visibleReadPage));
     }
   }
 
@@ -105,21 +128,35 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
     }
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     final version = ++_version;
     setState(() {
       _loading = true;
       _error = null;
     });
+    final repository = ref.read(stockQueryRepositoryProvider);
+    final goodsId = widget.goodsId;
+    final scope = widget.scope;
+    Object pagingQuery() => [
+      ref.read(stockQueryRepositoryProvider),
+      widget.goodsId,
+      widget.scope,
+      widget.reloadTick,
+      _pageSize,
+    ];
     try {
-      final result = await ref
-          .read(stockQueryRepositoryProvider)
-          .balances(
-            page: page,
-            size: _pageSize,
-            goodsId: widget.goodsId,
-            scope: widget.scope,
-          );
+      final result = await readScopedPage<BalanceRow>(
+        page,
+        query: pagingQuery(),
+        currentQuery: pagingQuery,
+        useCache: useCache,
+        fetchPage: (target) => repository.balances(
+          page: target,
+          size: _pageSize,
+          goodsId: goodsId,
+          scope: scope,
+        ),
+      );
       if (!mounted || version != _version) return;
       setState(() {
         _balances = result;
@@ -179,7 +216,7 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
       fromWarehouseId: row.warehouseId,
     );
     if (!posted || !mounted) return;
-    await _load(_balances?.page ?? 1);
+    await _load(_visibleReadPage);
     widget.onChanged?.call();
   }
 
@@ -187,7 +224,7 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
     if (!_canCount) return;
     await context.push(RouteName.stockInstantInventory);
     if (!mounted) return;
-    await _load(_balances?.page ?? 1);
+    await _load(_visibleReadPage);
     widget.onChanged?.call();
   }
 
@@ -200,6 +237,8 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
     ref.watch(defectiveMoveOptionsProvider);
     final rows = _balances?.items ?? const <BalanceRow>[];
     return MasterDataTableView<BalanceRow>(
+                rowsController: _readViewportRows,
+      expensiveRowMounts: false,
       tableKey:
           'shared.stock_ledger.widgets.goods_stock_balance_view.GoodsStockBalanceViewState.build.1',
       key: const Key('stock-item-balance-table'),
@@ -215,12 +254,12 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
       isLoading: _loading && _balances == null,
       loadingMore: _loading && _balances != null,
       error: _error,
-      onRetry: () => _load(1),
+      onRetry: () => _load(_visibleReadPage),
       emptyMessage: '该货品暂无库存余额',
       currentPage: _balances?.page ?? 1,
       totalPages: _balances?.totalPages ?? 1,
       paginationScope: (widget.goodsId, widget.scope),
-      onPageChange: _load,
+      onPageChange: (page) => _load(page, useCache: true),
       summaryBar: widget.summaryBar,
     );
   }

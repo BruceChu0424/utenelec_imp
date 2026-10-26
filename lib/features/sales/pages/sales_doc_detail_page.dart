@@ -92,6 +92,7 @@ import '../widgets/sales_quote_status_chip.dart';
 import '../widgets/sales_status_badge.dart';
 import '../widgets/sales_plan_progress_panel.dart';
 import '../../../shared/badges/badge_registry.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class SalesDocDetailPage extends ConsumerStatefulWidget {
   const SalesDocDetailPage({
@@ -832,6 +833,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     try {
       await Future.wait([
         dictionaries,
+        names.loadClientNames([d.clientId].whereType<String>()),
         names.loadGoodsDetails(
           d.items.map((e) => e.goodsId).whereType<String>(),
         ),
@@ -1448,7 +1450,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                   // 2026-09-11 折叠头+表内滚：头部（表头卡/预收汇总/出货卡/附件/
                   // 退货质检）随上滚收起，明细标题吸顶后表格内部继续滚。
                   : UtenCollapsingHeaderScrollView(
-                      collapsingHeader: Padding(
+                      collapsingHeader: UtenPageEdgePadding(
                         padding: const EdgeInsets.fromLTRB(
                           UtenSpacing.s12,
                           UtenSpacing.s12,
@@ -1588,7 +1590,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                       // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
                       // 2026-09-12 右下悬浮操作组：滚动让位走表格内置 bottomContentPadding
                       // （随行滚动），钉住的合计条只让出按钮高度，不在固定布局里叠 200px。
-                      body: Padding(
+                      body: UtenPageEdgePadding(
                         padding: const EdgeInsets.fromLTRB(
                           UtenSpacing.s12,
                           UtenSpacing.s12,
@@ -2352,6 +2354,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       children: [
         Expanded(
           child: MasterDataTableView<SalesDocItem>(
+            expensiveRowMounts: false,
             tableKey: 'sales.${widget.docType.name}.items',
             primary: true,
             columns: canonicalSalesColumns<MasterColumnDef<SalesDocItem>>(

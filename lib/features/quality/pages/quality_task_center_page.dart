@@ -33,6 +33,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
 import '../../../shared/badges/badge_registry.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class QualityTaskCenterPage extends ConsumerWidget {
   const QualityTaskCenterPage({super.key});
@@ -118,7 +119,7 @@ class QualityTaskCenterPage extends ConsumerWidget {
     String title,
     List<_QualityEntry> entries,
   ) {
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

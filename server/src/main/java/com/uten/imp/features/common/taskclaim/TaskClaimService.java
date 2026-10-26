@@ -128,6 +128,20 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
                 });
     }
 
+    /** Business completion retires the task, including a former reviewer's now-obsolete lease. */
+    @Override
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void releaseAfterBusinessResolution(String targetType,String targetKey) {
+        lockReviewTargets(targetType,List.of(targetKey),false);
+        claimRepo.findUnreleasedForUpdate(targetType,targetKey).ifPresent(claim->{
+            claim.setReleasedAt(OffsetDateTime.now());
+            claim.setReleasedBy(currentUser.requireEmployeeId());
+            claim.setReleaseReason("business_resolved");
+            claimRepo.saveAndFlush(claim);
+            auditExplicit("task_business_resolved",targetType,targetKey);
+        });
+    }
+
     /** 接管（manage 权限）：原认领强制释放，转由我认领。 */
     @Transactional
     public TaskClaimView takeover(String targetType, String targetKey) {

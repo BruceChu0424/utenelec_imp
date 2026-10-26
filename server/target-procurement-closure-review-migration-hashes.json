@@ -1,0 +1,12 @@
+[
+  {
+    "Algorithm": "SHA256",
+    "Hash": "13933E941A5CC80E5D050D636D59FC42E44C7FD34D622638C3AD9DE48A0AD429",
+    "Path": "D:\\Projects\\uten_imp\\server\\src\\main\\resources\\db\\migration\\V922__procurement_finance_approved_termination.sql"
+  },
+  {
+    "Algorithm": "SHA256",
+    "Hash": "442B95B0276126351C155672275E49E29B47EA78D07D904B1FA9B10253D798F4",
+    "Path": "D:\\Projects\\uten_imp\\server\\src\\main\\resources\\db\\migration\\V923__procurement_termination_source_accounting.sql"
+  }
+]

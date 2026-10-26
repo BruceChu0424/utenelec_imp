@@ -1,9 +1,15 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
+import '../../../shared/auth/native_read_view_scope_mixin.dart'
+    show nativeReadAccessDenied;
+import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../shared/paging/paged_query_identity.dart';
 
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
-import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -17,7 +23,6 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
-import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -29,8 +34,6 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/providers/authenticated_scope_provider.dart';
-import '../../../core/network/server_config.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
@@ -75,7 +78,8 @@ class FinanceProcurementApprovalTasksPage extends ConsumerStatefulWidget {
 }
 
 class _FinanceProcurementApprovalTasksPageState
-    extends ConsumerState<FinanceProcurementApprovalTasksPage> {
+    extends ConsumerState<FinanceProcurementApprovalTasksPage>
+    with ScopedPagedReadViewMixin<FinanceProcurementApprovalTasksPage> {
   static const int _maxBatchSize = 100;
 
   FinanceProcurementApprovalPage? _result;
@@ -83,6 +87,8 @@ class _FinanceProcurementApprovalTasksPageState
   String? _error;
   int _requestVersion = 0;
   int _ownerGeneration = 0;
+  int? _readerEpoch;
+  Map<String, dynamic>? _acceptedQuery;
 
   /// 类型筛选由状态表头承接；null = 同时展示采购和委外。
   FinanceProcurementOrderType? _orderType;
@@ -141,6 +147,8 @@ class _FinanceProcurementApprovalTasksPageState
             !claim.isReady ||
             review.version != command.expectedVersion ||
             !review.isPending ||
+            review.isClosureRequest ||
+            review.isOrderClosed ||
             !review.allowedActions.contains(action)) {
           if (mounted) context.appWarning('部分订货内容、资格或认领已变化，请刷新后重新核对');
           await _releaseBatchClaim(claim);
@@ -177,6 +185,7 @@ class _FinanceProcurementApprovalTasksPageState
   @override
   void initState() {
     super.initState();
+    _readerEpoch = ref.read(exportContextEpochProvider);
     _status =
         const {
           'PENDING',
@@ -187,15 +196,6 @@ class _FinanceProcurementApprovalTasksPageState
         }.contains(widget.initialStatus)
         ? widget.initialStatus!
         : 'PENDING';
-    ref.listenManual(authenticatedScopeProvider, (previous, next) {
-      if (previous != next) _invalidateScope();
-    });
-    ref.listenManual(apiBaseUrlProvider, (previous, next) {
-      if (previous != next) _invalidateScope();
-    });
-    ref.listenManual(currentPermissionsProvider, (previous, next) {
-      if (!setEquals(previous, next)) _invalidateScope();
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final completion = widget.refreshCompletion;
@@ -204,21 +204,6 @@ class _FinanceProcurementApprovalTasksPageState
           completion.complete();
         }
       });
-    });
-  }
-
-  void _invalidateScope() {
-    ++_ownerGeneration;
-    ++_requestVersion;
-    ++_columnFilters.generation;
-    if (!mounted) return;
-    setState(() {
-      _result = null;
-      _columnFilters.reset();
-      _clearSelectionState();
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _load(1);
     });
   }
 
@@ -289,35 +274,120 @@ class _FinanceProcurementApprovalTasksPageState
 
   Future<void> _refreshCurrent() async {
     setState(_clearSelectionState);
-    await _load(_result?.page ?? 1);
+    await _load(_tableRows.visiblePage ?? _result?.page ?? 1);
   }
 
-  Future<void> _load(int page) async {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    final epoch = ref.read(exportContextEpochProvider);
+    final changedOwner = _readerEpoch != epoch;
+    _readerEpoch = epoch;
+    ++_ownerGeneration;
+    ++_requestVersion;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _acceptedQuery = null;
+      _columnFilters.reset();
+      _clearSelectionState();
+      _loading = false;
+      _error =
+          scopedPagedReadRejection?.message ??
+          (changedOwner ? null : '读取权限已变化，请重新加载');
+    });
+    if (changedOwner) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            _allowed &&
+            epoch == ref.read(exportContextEpochProvider)) {
+          _load(1);
+        }
+      });
+    }
+  }
+
+  Map<String, dynamic> get _cacheQuery => {
+    'owner': ref.read(exportContextEpochProvider),
+    'repository': ref.read(financeProcurementWorkflowRepositoryProvider),
+    'keyword': _keyword,
+    'orderType': _orderType,
+    'status': _status,
+    'columns': Map.of(_columnFilters.values),
+    'sort': _columnFilters.sortColumn,
+    'ascending': _columnFilters.sortAscending,
+  };
+
+  Future<void> _navigatePage(int page) => _load(page, useCache: true);
+
+  Future<void> _load(int page, {bool useCache = false}) async {
+    final cacheQuery = _cacheQuery;
+    final repo = ref.read(financeProcurementWorkflowRepositoryProvider);
+    final orderType = _orderType;
+    final status = _status;
+    final keyword = _keyword.isEmpty ? null : _keyword;
+    final sort = _kSortFields[_columnFilters.sortColumn];
+    final order = _columnFilters.sortColumn == null
+        ? null
+        : (_columnFilters.sortAscending ? 'asc' : 'desc');
+    final billNo = _columnFilters['billNo'];
+
     if (!_allowed) return;
     final requestVersion = ++_requestVersion;
     setState(() {
+      if (!samePagedReadQuery(_acceptedQuery, cacheQuery)) {
+        _result = null;
+        _columnFilters.generation++;
+        _columnFilters.buckets = const {};
+        _clearSelectionState();
+      }
       _loading = true;
       _error = null;
     });
     try {
-      final repo = ref.read(financeProcurementWorkflowRepositoryProvider);
-      final result = await repo.approvalTasks(
-        page: page,
-        orderType: _orderType,
-        keyword: _keyword.isEmpty ? null : _keyword,
-        sort: _kSortFields[_columnFilters.sortColumn],
-        order: _columnFilters.sortColumn == null
-            ? null
-            : (_columnFilters.sortAscending ? 'asc' : 'desc'),
-        billNo: _columnFilters['billNo'],
-        status: _status,
+      final cachedPage = await readScopedPage<FinanceProcurementApprovalTask>(
+        page,
+        query: cacheQuery,
+        currentQuery: () => _cacheQuery,
+        useCache: useCache,
+        fetchPage: (target) async {
+          final response = await repo.approvalTasks(
+            page: target,
+            orderType: orderType,
+            keyword: keyword,
+            sort: sort,
+            order: order,
+            billNo: billNo,
+            status: status,
+          );
+          return PagedReadSnapshot<
+            FinanceProcurementApprovalTask,
+            FinanceProcurementApprovalPage
+          >(
+            page: PagedResult(
+              items: response.items,
+              page: response.page,
+              size: response.size,
+              total: response.total,
+              totalPages: response.totalPages,
+            ),
+            snapshot: response,
+          );
+        },
       );
+      final result =
+          (cachedPage
+                  as PagedReadSnapshot<
+                    FinanceProcurementApprovalTask,
+                    FinanceProcurementApprovalPage
+                  >)
+              .snapshot;
       if (!mounted || requestVersion != _requestVersion) return;
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
       unawaited(_loadBillNoFacets());
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _result = result;
+        _acceptedQuery = cacheQuery;
         _loading = false;
         for (final task in result.items) {
           if (_selectedIds.contains(task.caseId)) {
@@ -326,8 +396,17 @@ class _FinanceProcurementApprovalTasksPageState
         }
       });
     } on ApiException catch (error) {
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!mounted || requestVersion != _requestVersion) {
+        return;
+      }
+      if (nativeReadAccessDenied(error)) invalidateScopedPageReads();
       setState(() {
+        if (nativeReadAccessDenied(error)) {
+          _result = null;
+          _acceptedQuery = null;
+          _columnFilters.reset();
+          _clearSelectionState();
+        }
         _error = error.message;
         _loading = false;
       });
@@ -421,11 +500,14 @@ class _FinanceProcurementApprovalTasksPageState
       if (_selectedTasksById[id] != null) _selectedTasksById[id]!,
   ];
 
+  bool _allowsTaskAction(FinanceProcurementApprovalTask task, String action) =>
+      !task.isClosureRequest && task.allowedActions.contains(action);
+
   bool _canSelectTask(FinanceProcurementApprovalTask task) =>
+      !task.isClosureRequest &&
       _taskDrafts(task).isEmpty &&
       task.decisionItem != null &&
-      (task.allowedActions.contains('APPROVE') ||
-          task.allowedActions.contains('REJECT'));
+      (_allowsTaskAction(task, 'APPROVE') || _allowsTaskAction(task, 'REJECT'));
 
   List<FormDraft> _taskDrafts(FinanceProcurementApprovalTask task) =>
       reviewTaskDraftsFor(
@@ -460,7 +542,7 @@ class _FinanceProcurementApprovalTasksPageState
         tasks.any((task) => task.decisionItem == null)) {
       return '部分任务已变化，请刷新后重新选择';
     }
-    if (tasks.any((task) => !task.allowedActions.contains(action))) {
+    if (tasks.any((task) => !_allowsTaskAction(task, action))) {
       return action == 'APPROVE'
           ? '所选任务中有不可通过的订货单，请调整选择'
           : '所选任务中有不可驳回的订货单，请调整选择';
@@ -505,11 +587,7 @@ class _FinanceProcurementApprovalTasksPageState
                   description: '确认后，系统将以此登录员工记录整批订货财务审核责任。',
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  _selectedTasks.any((task) => task.isClosureRequest)
-                      ? '$summary。${AppLocalizations.of(context).orderClosureBatchHint}'
-                      : '$summary。整批通过后订货立即生效，并分别生成仓库预计到货任务。',
-                ),
+                Text('$summary。整批通过后订货立即生效，并分别生成仓库预计到货任务。'),
               ],
             ),
           ),
@@ -654,7 +732,7 @@ class _FinanceProcurementApprovalTasksPageState
       context.appSuccess(okMsg);
       setState(_clearSelectionState);
       refreshBadges(ref);
-      await _load(_result?.page ?? 1);
+      await _load(_tableRows.visiblePage ?? _result?.page ?? 1);
     } on Object catch (error) {
       if (mounted) {
         context.appApiError(
@@ -682,16 +760,6 @@ class _FinanceProcurementApprovalTasksPageState
           description: AppLocalizations.of(
             context,
           ).financeProcurementReviewAccessHint,
-        ),
-      );
-    } else if (_loading && _result == null) {
-      main = _pinHostHeader(const UtenSkeletonList());
-    } else if (_error != null && _result == null) {
-      main = _pinHostHeader(
-        UtenEmpty.error(
-          message: _error,
-          actionLabel: '重新加载',
-          onAction: () => _load(1),
         ),
       );
     } else {
@@ -764,11 +832,11 @@ class _FinanceProcurementApprovalTasksPageState
           totalPages: 1,
         );
     final canApprove =
-        result.items.any((task) => task.allowedActions.contains('APPROVE')) ||
-        _selectedTasks.any((task) => task.allowedActions.contains('APPROVE'));
+        result.items.any((task) => _allowsTaskAction(task, 'APPROVE')) ||
+        _selectedTasks.any((task) => _allowsTaskAction(task, 'APPROVE'));
     final canReject =
-        result.items.any((task) => task.allowedActions.contains('REJECT')) ||
-        _selectedTasks.any((task) => task.allowedActions.contains('REJECT'));
+        result.items.any((task) => _allowsTaskAction(task, 'REJECT')) ||
+        _selectedTasks.any((task) => _allowsTaskAction(task, 'REJECT'));
     final selectable =
         (_status == 'PENDING' || _status == 'CLOSURE_PENDING') &&
         (canApprove || canReject);
@@ -792,14 +860,18 @@ class _FinanceProcurementApprovalTasksPageState
                 routePrefix: '/finance/procurement-approvals/',
               ),
             ),
-          if (_error != null) ...[
+          if (_error != null && result.items.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),
-            _InlineError(message: _error!, onRetry: () => _load(result.page)),
+            _InlineError(
+              message: _error!,
+              onRetry: () => _load(_tableRows.visiblePage ?? result.page),
+            ),
           ],
           const SizedBox(height: UtenSpacing.s8),
         ],
       ),
       body: MasterDataTableView<FinanceProcurementApprovalTask>(
+        expensiveRowMounts: false,
         rowsController: _tableRows,
         paginationRevision: _result,
         paginationScope: (
@@ -885,13 +957,13 @@ class _FinanceProcurementApprovalTasksPageState
         isLoading: _loading,
         loadingMore: _loading && _result != null,
         error: result.items.isEmpty ? _error : null,
-        onRetry: () => _load(result.page),
+        onRetry: () => _load(_tableRows.visiblePage ?? result.page),
         emptyMessage: _keyword.isNotEmpty || _orderType != null
             ? '没有匹配的待审订货单'
             : '目前没有待审核的订货单',
         currentPage: result.page,
         totalPages: result.totalPages,
-        onPageChange: _load,
+        onPageChange: _navigatePage,
       ),
     );
     // 嵌入形态不复套容器与内边距（业务审核中心已提供），避免双重 gutter。
@@ -906,7 +978,7 @@ class _FinanceProcurementApprovalTasksPageState
 
   String _typeStatusLabel(String type) => switch (_status) {
     'PENDING' => '$type待审批',
-    'APPROVED' => '$type已批准',
+    'APPROVED' => '$type已生效',
     'REJECTED' => '$type已驳回',
     _ => '$type订货',
   };
@@ -921,6 +993,9 @@ class _FinanceProcurementApprovalTasksPageState
     if (drafts.isNotEmpty) return '$type · ${taskDraftStatus(drafts)}';
     if (task.isClosureRequest) {
       final l10n = AppLocalizations.of(context);
+      if (task.isDirectClosure && task.status == 'APPROVED') {
+        return '$type · ${l10n.orderClosureDirectEnded}';
+      }
       return '$type · ${switch (task.status) {
         'APPROVED' => l10n.orderClosureApproved,
         'REJECTED' => l10n.orderClosureRejected,
@@ -978,10 +1053,7 @@ class _FinanceProcurementApprovalTasksPageState
               ),
               countForm: UtenSegmentCountForm.actionable,
             ),
-            UtenFilterSegment(
-              value: 'CLOSURE_PENDING',
-              label: AppLocalizations.of(context).orderClosurePending,
-            ),
+            const UtenFilterSegment(value: 'CLOSURE_PENDING', label: '历史结束申请'),
             const UtenFilterSegment(
               value: 'REJECTED',
               label: '已驳回',
@@ -1002,7 +1074,7 @@ class _FinanceProcurementApprovalTasksPageState
             autoSelectBadge: false,
             segments: const [
               UtenFilterSegment(value: 'ALL', label: '全部记录'),
-              UtenFilterSegment(value: 'APPROVED', label: '已批准'),
+              UtenFilterSegment(value: 'APPROVED', label: '已生效'),
             ],
             selected: {_status},
             onSelectionChanged: _selectStatus,
@@ -1125,15 +1197,13 @@ class _FinanceProcurementApprovalTasksPageState
 
   List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
     final canApprove =
-        (_result?.items.any(
-              (task) => task.allowedActions.contains('APPROVE'),
-            ) ??
+        (_result?.items.any((task) => _allowsTaskAction(task, 'APPROVE')) ??
             false) ||
-        _selectedTasks.any((task) => task.allowedActions.contains('APPROVE'));
+        _selectedTasks.any((task) => _allowsTaskAction(task, 'APPROVE'));
     final canReject =
-        (_result?.items.any((task) => task.allowedActions.contains('REJECT')) ??
+        (_result?.items.any((task) => _allowsTaskAction(task, 'REJECT')) ??
             false) ||
-        _selectedTasks.any((task) => task.allowedActions.contains('REJECT'));
+        _selectedTasks.any((task) => _allowsTaskAction(task, 'REJECT'));
     final approveIssue = _selectionIssue('APPROVE');
     final rejectIssue = _selectionIssue('REJECT');
     return [

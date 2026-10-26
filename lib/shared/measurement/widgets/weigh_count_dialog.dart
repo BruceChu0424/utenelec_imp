@@ -13,6 +13,7 @@
 // 本弹窗**不调用任何库存过账接口**: 只返回 [WeighCountResult] 让页面回填;
 // 唯一的写是「本批抽样」-> POST samples (SAMPLE 记录, 自动带上到货供应商) 与
 // 有管理权限时「记住为本货品皮重」-> PUT profile。
+import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:math' as math;
 
@@ -639,13 +640,6 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
               );
             },
           ),
-        Text(
-          _req.mode == WeighCountContext.outbound
-              ? '按本次出库数量估算重量，称完填入秤上的实际读数即可。'
-              : '称一下整批物品，系统按单件重量估算数量。数量仍可人工核对。',
-          style: theme.textTheme.bodySmall,
-        ),
-        const SizedBox(height: UtenSpacing.s12),
         if (_req.mode == WeighCountContext.outbound) _outboundTarget(theme),
         if (redTier &&
             !_loadingParams &&
@@ -857,6 +851,11 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
                       _invalid(_gross[i], entry) ? weightInputErrorText : null,
                     ),
                   ),
+                  info: i == 0
+                      ? (_req.mode == WeighCountContext.outbound
+                            ? '按本次出库数量估算重量，称完填入秤上的实际读数即可。'
+                            : '称一下整批物品，系统按单件重量估算数量。数量仍可人工核对。')
+                      : null,
                 ),
               ),
             ),
@@ -1253,20 +1252,22 @@ class _SampleUnitMenu extends StatelessWidget {
   final ValueChanged<WeightUnit> onSelected;
 
   @override
-  Widget build(BuildContext context) => PopupMenuButton<WeightUnit>(
-    key: const ValueKey('weigh-count-sample-unit'),
-    tooltip: '抽样重量单位',
-    initialValue: unit,
-    onSelected: onSelected,
-    itemBuilder: (_) => [
-      for (final u in WeightUnit.values)
-        PopupMenuItem(value: u, child: Text(u.label)),
-    ],
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s8),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [Text(unit.label), const Icon(Icons.arrow_drop_down)],
+  Widget build(BuildContext context) => UtenDropdownScrollScope(
+    child: PopupMenuButton<WeightUnit>(
+      key: const ValueKey('weigh-count-sample-unit'),
+      tooltip: '抽样重量单位',
+      initialValue: unit,
+      onSelected: onSelected,
+      itemBuilder: (_) => [
+        for (final u in WeightUnit.values)
+          PopupMenuItem(value: u, child: Text(u.label)),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [Text(unit.label), const Icon(Icons.arrow_drop_down)],
+        ),
       ),
     ),
   );

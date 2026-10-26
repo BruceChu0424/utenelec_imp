@@ -1,4 +1,5 @@
 // 员工资料核对：计划/原回执保留服务端权威；建议只读，手填后勾选确认。
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -1035,6 +1036,8 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
     }
     if (context.breakpoint.isCompact) {
       body = UtenContentContainer(child: body);
+    } else {
+      body = UtenPageEdgePadding(child: body);
     }
     return withFormDraft(
       PopScope(
@@ -1131,7 +1134,7 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
   ) {
     final theme = Theme.of(context);
     final counts = plan.counts;
-    return Padding(
+    return UtenPageEdgePadding(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s12,
         UtenSpacing.s8,
@@ -1252,6 +1255,7 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
   ) {
     final editable = _canExecutePlan(plan);
     return MasterDataTableView<HrReconcileRow>(
+      expensiveRowMounts: _canExecutePlan(plan),
       tableKey:
           'features.hr_task.pages.hr_reconcile_page.HrReconcilePageState._table.manual_v2',
       key: const Key('hr-reconcile-table'),

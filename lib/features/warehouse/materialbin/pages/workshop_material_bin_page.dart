@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 // 车间内料仓页 (/workshop-material/bin?workshopId=, ADR-131 §8.1)。
 //
 // 车间看: 内料仓里每种料的账面、本期领入 / 退回 / 其它耗用、估计已用与估计还剩、
@@ -6,6 +7,7 @@
 // 通用入口是车间总览 (唯一的车间清单, 开通/开启整批领料/撤销都在总览里批量办)。
 // 操作: 申请领料、退回、其它耗用、盘点、记录。按钮只按服务端下发的 allowedActions 显示。
 // 车间成员只看本车间 (服务端按对象范围过滤); 多个车间时顶部切换。
+import '../../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
@@ -68,7 +70,19 @@ class WorkshopMaterialBinPage extends ConsumerStatefulWidget {
 }
 
 class _WorkshopMaterialBinPageState
-    extends ConsumerState<WorkshopMaterialBinPage> {
+    extends ConsumerState<WorkshopMaterialBinPage>
+    with ScopedPagedReadViewMixin<WorkshopMaterialBinPage> {
+  @override
+  void scopedPagedReadOwnerChanged() {
+    if (!mounted) return;
+    ++_historyLoadGeneration;
+    setState(() {
+      _history = null;
+      _historyLoading = false;
+      _historyError = scopedPagedReadRejection?.message;
+    });
+  }
+
   late final StockCountInlineController _countEditor;
   late final WorkshopMaterialRequestInlineController _requestEditor;
   SensitiveReadBoundary? _positionBoundary;
@@ -467,7 +481,7 @@ class _WorkshopMaterialBinPageState
     return null;
   }
 
-  Future<void> _loadHistory(int page) async {
+  Future<void> _loadHistory(int page, {bool useCache = false}) async {
     final generation = ++_historyLoadGeneration;
     final setting = _current;
     if (setting == null) return;
@@ -481,12 +495,29 @@ class _WorkshopMaterialBinPageState
       _historyError = null;
     });
     try {
-      final result = await _repo.requisitions(
-        view: _view == _viewHistory
-            ? WarehouseTaskView.history
-            : WarehouseTaskView.active,
-        workshopId: workshopId,
-        page: page,
+      final pageRepository = _repo;
+      final pageView = _view == _viewHistory
+          ? WarehouseTaskView.history
+          : WarehouseTaskView.active;
+      final pageWorkshopId = workshopId;
+
+      final result = await readScopedPage(
+        page,
+        slot: '_loadHistory',
+        query: [pageRepository, pageView, pageWorkshopId],
+        currentQuery: () => [
+          _repo,
+          _view == _viewHistory
+              ? WarehouseTaskView.history
+              : WarehouseTaskView.active,
+          _current?.workshopDepartmentId,
+        ],
+        useCache: useCache,
+        fetchPage: (target) => pageRepository.requisitions(
+          view: pageView,
+          workshopId: pageWorkshopId,
+          page: target,
+        ),
       );
       if (!current()) return;
       setState(() {
@@ -754,7 +785,7 @@ class _WorkshopMaterialBinPageState
                 label: '盘点历史',
                 onPressed: _countEditor.active || _requestEditor.active
                     ? null
-                    : () => context.push(RouteName.stockCountRequests),
+                    : () => pushPage(context, RouteName.stockCountRequests),
               ),
           ],
         ),
@@ -781,16 +812,6 @@ class _WorkshopMaterialBinPageState
   }
 
   Widget _body(AppLocalizations l10n, ThemeData theme) {
-    if (_loading && _settings == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null && _settings == null) {
-      return UtenEmpty.error(
-        message: _error,
-        actionLabel: '重试',
-        onAction: _loadAll,
-      );
-    }
     if (_workshopId == null) {
       return WorkshopMaterialOverview(
         settings: _settings ?? const [],
@@ -802,6 +823,16 @@ class _WorkshopMaterialBinPageState
         onChanged: _loadAll,
         onOpenMachines: _canSetup ? () => _openSetup() : null,
         onRetry: _loadAll,
+      );
+    }
+    if (_loading && _settings == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null && _settings == null) {
+      return UtenEmpty.error(
+        message: _error,
+        actionLabel: '重试',
+        onAction: _loadAll,
       );
     }
     final enabled = _enabled;
@@ -1044,17 +1075,19 @@ class _WorkshopMaterialBinPageState
     ];
     return [
       if (more.isNotEmpty)
-        MenuAnchor(
-          menuChildren: more,
-          builder: (context, menu, _) => UtenButton(
-            key: const Key('wm-bin-more'),
-            size: UtenButtonSize.large,
-            type: UtenButtonType.secondary,
-            icon: Icons.more_horiz,
-            onPressed: starting
-                ? null
-                : () => menu.isOpen ? menu.close() : menu.open(),
-            child: const Text('更多操作'),
+        UtenDropdownScrollScope(
+          child: MenuAnchor(
+            menuChildren: more,
+            builder: (context, menu, _) => UtenButton(
+              key: const Key('wm-bin-more'),
+              size: UtenButtonSize.large,
+              type: UtenButtonType.secondary,
+              icon: Icons.more_horiz,
+              onPressed: starting
+                  ? null
+                  : () => menu.isOpen ? menu.close() : menu.open(),
+              child: const Text('更多操作'),
+            ),
           ),
         ),
       if (openCountHistory != null)
@@ -1103,6 +1136,7 @@ class _WorkshopMaterialBinPageState
     final kg = l10n.wmKg;
     String qty(double v) => wmQty(v);
     return MasterDataTableView<WmPositionRow>(
+      expensiveRowMounts: _countEditor.active || _requestEditor.active,
       tableKey:
           'features.warehouse.materialbin.pages.workshop_material_bin_page.WorkshopMaterialBinPageState._stockTable.1',
       key: const Key('wm-bin-stock-table'),
@@ -1287,6 +1321,7 @@ class _WorkshopMaterialBinPageState
   Widget _historyTable(AppLocalizations l10n) {
     final page = _history;
     return MasterDataTableView<WmRequisition>(
+      expensiveRowMounts: false,
       tableKey:
           'features.warehouse.materialbin.pages.workshop_material_bin_page.WorkshopMaterialBinPageState._historyTable.1',
       key: const Key('wm-bin-history-table'),
@@ -1398,7 +1433,7 @@ class _WorkshopMaterialBinPageState
       currentPage: page?.page ?? 1,
       totalPages: page?.totalPages ?? 1,
       paginationScope: (_current?.workshopDepartmentId, _view),
-      onPageChange: _loadHistory,
+      onPageChange: (page) => _loadHistory(page, useCache: true),
       emptyMessage: _view == _viewHistory
           ? '还没有已完成或取消的领料、退回单据'
           : '没有待处理的领料、退回申请',

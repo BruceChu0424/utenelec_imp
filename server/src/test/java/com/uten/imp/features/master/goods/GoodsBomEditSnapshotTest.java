@@ -89,11 +89,8 @@ class GoodsBomEditSnapshotTest {
         var snapshot = edits.snapshot(root.getId());
         assertEquals(501, snapshot.componentGoods().size());
         assertTrue(snapshot.componentGoods().stream().allMatch(item -> item.version() == 8 && item.componentGoodsWritable()));
-        verify(repository, times(3)).findAllById(argThat(ids -> {
-            int count = 0;
-            for (UUID ignored : ids) count++;
-            return count <= 250;
-        }));
+        verify(repository, times(3)).findAllById(argThat(ids ->
+                java.util.stream.StreamSupport.stream(ids.spliterator(), false).count() <= 250));
         verify(repository).findById(root.getId());
         verifyNoMoreInteractions(repository);
         verify(bom).list(root.getId());

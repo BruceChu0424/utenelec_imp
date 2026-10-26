@@ -40,8 +40,22 @@ final class SubcontractComponentCustodyProjection {
                             WHEN inspection.status IN ('PARTIAL','RESOLVED')
                                 THEN COALESCE(inspection.warehouse_stocked_base_qty,0)
                             ELSE 0 END)
-                FROM (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) receipt_item
-                JOIN (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipts',archive_origin.id)) receipt ON receipt.id=receipt_item.receipt_id
+                FROM LATERAL (
+                    WITH selected_stock_receipt_item AS MATERIALIZED (
+                        SELECT candidate.* FROM subcontract_receipt_items candidate
+                        WHERE candidate.order_item_id = item.id
+                    )
+                    SELECT archive_origin.* FROM selected_stock_receipt_item archive_origin
+                    WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)
+                ) receipt_item
+                JOIN LATERAL (
+                    WITH selected_stock_receipt AS MATERIALIZED (
+                        SELECT candidate.* FROM subcontract_receipts candidate
+                        WHERE candidate.id = receipt_item.receipt_id
+                    )
+                    SELECT archive_origin.* FROM selected_stock_receipt archive_origin
+                    WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipts',archive_origin.id)
+                ) receipt ON receipt.id=receipt_item.receipt_id
                   AND receipt.status=1 AND NOT receipt.is_deleted
                 LEFT JOIN procurement_inspection_items inspection ON inspection.receipt_type='SUBCONTRACT'
                   AND inspection.receipt_item_id=receipt_item.id
@@ -58,8 +72,27 @@ final class SubcontractComponentCustodyProjection {
                 SELECT SUM(fn_subcontract_order_source_share(item.id,source.application_item_id,
                     %s))
                 FROM subcontract_order_item_sources source
-                JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) item ON item.id=source.order_item_id AND NOT item.is_deleted
-                JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) document ON document.id=item.order_id
+                JOIN LATERAL (
+                    WITH selected_stock_order_item AS MATERIALIZED (
+                        SELECT candidate.* FROM subcontract_order_items candidate
+                        WHERE candidate.id = source.order_item_id AND source.alloc_qty>0 AND source.application_item_id IN (
+                        SELECT allocation.external_item_id FROM preplan_supply_action_allocations allocation
+                        WHERE allocation.action_id=action.id AND allocation.external_item_id IS NOT NULL
+                        UNION
+                        SELECT action.public_surplus_external_item_id
+                        WHERE action.public_surplus_external_item_id IS NOT NULL)
+                    )
+                    SELECT archive_origin.* FROM selected_stock_order_item archive_origin
+                    WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)
+                ) item ON item.id=source.order_item_id AND NOT item.is_deleted
+                JOIN LATERAL (
+                    WITH selected_stock_order AS MATERIALIZED (
+                        SELECT candidate.* FROM subcontract_orders candidate
+                        WHERE candidate.id = item.order_id
+                    )
+                    SELECT archive_origin.* FROM selected_stock_order archive_origin
+                    WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)
+                ) document ON document.id=item.order_id
                   AND document.status=1 AND NOT document.is_deleted
                 WHERE source.alloc_qty>0 AND source.application_item_id IN (
                     SELECT allocation.external_item_id FROM preplan_supply_action_allocations allocation

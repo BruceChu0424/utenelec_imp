@@ -7364,16 +7364,37 @@ public class MaterialAnalysisService {
                                GREATEST(application_item.qty * COALESCE(application_item.unit_rate,1)
                                    - COALESCE(SUM(ordered.ordered_base),0), 0) AS unordered_qty,
                                COALESCE(SUM(ordered.open_qty), 0) AS ordered_open_qty
-                        FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) application_item
+                        FROM LATERAL (
+                            WITH selected_draw_application AS MATERIALIZED (
+                                SELECT candidate.* FROM subcontract_application_items candidate
+                                WHERE candidate.id = %s
+                            )
+                            SELECT archive_origin.* FROM selected_draw_application archive_origin
+                            WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)
+                        ) application_item
                         LEFT JOIN LATERAL (
                             SELECT src.alloc_qty * COALESCE(order_item.unit_rate,1) AS ordered_base,
                                    fn_procurement_order_source_remaining_qty(
                                        'SUBCONTRACT', order_item.id, src.application_item_id) AS open_qty
                             FROM subcontract_order_item_sources src
-                            JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) order_item
+                            JOIN LATERAL (
+                                WITH selected_draw_order_item AS MATERIALIZED (
+                                    SELECT candidate.* FROM subcontract_order_items candidate
+                                    WHERE candidate.id = src.order_item_id AND src.application_item_id = application_item.id
+                                )
+                                SELECT archive_origin.* FROM selected_draw_order_item archive_origin
+                                WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)
+                            ) order_item
                               ON order_item.id = src.order_item_id
                              AND order_item.is_deleted = FALSE
-                            JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) subcontract_order
+                            JOIN LATERAL (
+                                WITH selected_draw_order AS MATERIALIZED (
+                                    SELECT candidate.* FROM subcontract_orders candidate
+                                    WHERE candidate.id = order_item.order_id
+                                )
+                                SELECT archive_origin.* FROM selected_draw_order archive_origin
+                                WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)
+                            ) subcontract_order
                               ON subcontract_order.id = order_item.order_id
                              AND subcontract_order.status = 1
                              AND subcontract_order.is_deleted = FALSE
@@ -7386,7 +7407,7 @@ public class MaterialAnalysisService {
                     CASE WHEN EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(action.goods_id))
                          THEN quantity.qty ELSE 0 END),4)
                  FROM (SELECT (%s)::numeric AS qty) quantity)
-                """.formatted(externalItemSql,quantitySql);
+                """.formatted(externalItemSql,externalItemSql,quantitySql);
     }
 
     /** Compute source prefixes once for the admitted analysis, not once per allocation. */

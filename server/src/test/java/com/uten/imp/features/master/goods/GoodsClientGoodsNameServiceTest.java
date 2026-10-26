@@ -55,7 +55,7 @@ class GoodsClientGoodsNameServiceTest {
     private GoodsService service;
 
     @BeforeEach void setUp() {
-        login(Set.of("goods:view", "goods:create", "goods:edit"));
+        login(Set.of("goods:view", "goods:create", "goods:edit", "goods:sales:edit"));
         Query query = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.setParameter(anyString(), any())).thenReturn(query);
@@ -139,6 +139,16 @@ class GoodsClientGoodsNameServiceTest {
         login(Set.of("goods:view"));
         var failure = assertThrows(ApiException.class, () -> service.update(value.getId(),
                 request("\"clientGoodsName\":\"forbidden\",")));
+        assertThat(failure.getCode()).isEqualTo(ErrorCode.FORBIDDEN);
+        assertOriginalCustomerFields(value);
+        verify(repository, never()).save(any());
+    }
+
+    @Test void generalGoodsEditCannotChangeCustomerFieldsWithoutSalesEdit() throws Exception {
+        Goods value = existing();
+        login(Set.of("goods:view", "goods:edit"));
+        var failure = assertThrows(ApiException.class, () -> service.update(value.getId(),
+                request("\"clientGoodsName\":\"forbidden\",\"cNumber\":\"forbidden model\",")));
         assertThat(failure.getCode()).isEqualTo(ErrorCode.FORBIDDEN);
         assertOriginalCustomerFields(value);
         verify(repository, never()).save(any());

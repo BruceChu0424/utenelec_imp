@@ -31,9 +31,13 @@ class NewPermissionDefaultClosedPostgresTest {
             UUID actor=UUID.randomUUID(),employee=UUID.randomUUID();
             sql.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,'授权测试人员','其他',?,current_date,'active','regular')",employee,"STAFF-GRANT-"+employee,department);
             sql.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,is_super_admin,status) VALUES(?,?,?,'not-a-login-hash',false,true,'active')",actor,employee,"staff-grant-"+actor);
-            try(Connection connection=source.getConnection(); var statement=connection.createStatement()) {
-                statement.execute("SELECT set_config('app.actor_id','"+actor+"',false)");
-                assertThat(statement.executeUpdate("INSERT INTO department_permissions(department_id,permission_id) SELECT '"+department+"',id FROM permissions WHERE code='goods:purchase:edit'")).isEqualTo(1);
+            try(Connection connection=source.getConnection();
+                    var actorStatement=connection.prepareStatement("SELECT set_config('app.actor_id',?,false)");
+                    var grantStatement=connection.prepareStatement("INSERT INTO department_permissions(department_id,permission_id) SELECT ?,id FROM permissions WHERE code='goods:purchase:edit'")) {
+                actorStatement.setString(1,actor.toString());
+                actorStatement.execute();
+                grantStatement.setObject(1,department);
+                assertThat(grantStatement.executeUpdate()).isEqualTo(1);
             }
         }
     }

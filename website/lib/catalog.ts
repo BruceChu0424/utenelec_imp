@@ -337,10 +337,7 @@ export function toStudioVariants(products: ProductWithRelations[], locale: strin
     if (!product.sceneEnabled || familySlug?.includes('floor') || family?.sourceIdentity === 'ch-uten-v2:series:53') return [];
     const view = publicProductView(product, locale, standardName);
     const baseProductHref = familySlug ? `/products/${familySlug}/${product.slug}` : '/products';
-    // Image-only product fallbacks have no persisted variant to resolve in a
-    // Studio deep link; only actual public variant identities can be selected.
-    const persistedVariantIds = new Set(product.variants.map(variant => variant.id));
-    return view.variants.filter(variant => persistedVariantIds.has(variant.id)).map(variant => ({
+    return view.variants.map(variant => ({
       ...variant, productName: view.name, model: variant.verified ? view.model : null,
       seriesName: catalogFamilyDisplayName(product.series, locale),
       productHref: `${baseProductHref}?variant=${encodeURIComponent(variant.id)}`,

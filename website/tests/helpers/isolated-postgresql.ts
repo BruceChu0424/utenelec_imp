@@ -19,11 +19,8 @@ type Evidence={databaseName:string;host:string;port:number;created:boolean;migra
 export async function createIsolatedPostgresqlDatabase(label:string) {
   if(!postgresqlTestsEnabled())throw new Error('PostgreSQL tests require UTEN_TEST_POSTGRESQL=1');
   if(!/^[a-z0-9_]{1,12}$/.test(label))throw new Error('Invalid isolated test label');
-  const configuredPath=process.env.UTEN_TEST_POSTGRESQL_CONFIG;
-  if(configuredPath&&!path.isAbsolute(configuredPath))throw new Error('UTEN_TEST_POSTGRESQL_CONFIG must be an absolute local configuration path');
-  const configPath=configuredPath||path.join(workspaceRoot,'.local-artifacts/website-imp/local-config.json');
   let config:Record<string,unknown>;
-  try {config=JSON.parse(await readFile(configPath,'utf8')) as Record<string,unknown>;}
+  try {config=JSON.parse(await readFile(path.join(workspaceRoot,'.local-artifacts/website-imp/local-config.json'),'utf8')) as Record<string,unknown>;}
   catch {throw new Error('The local PostgreSQL test credentials could not be loaded');}
   if(typeof config.databaseUser!=='string'||!config.databaseUser||typeof config.databasePassword!=='string'||!config.databasePassword)
     throw new Error('Local PostgreSQL test credentials are incomplete');

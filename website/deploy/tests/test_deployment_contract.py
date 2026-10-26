@@ -257,32 +257,12 @@ class DeploymentContractTest(unittest.TestCase):
         self.assertIn("if ($uten_website_gate = 1) { return 503; }", nginx)
         self.assertIn("alias /var/lib/uten-website/runtime/uploads/", nginx)
         self.assertIn("disable_symlinks on", nginx)
-        self.assertNotRegex(nginx, r"alias\s+[^;]*/documents/?\s*;")
-
-    def test_all_admin_upload_locations_match_next_pdf_request_envelope(self):
-        nginx = (DEPLOY / "nginx-website.conf.example").read_text(encoding="utf-8")
-        next_config = (ROOT / "website" / "next.config.mjs").read_text(encoding="utf-8")
-        action_limit = re.search(r"bodySizeLimit:\s*['\"](\d+)mb['\"]", next_config)
-        self.assertIsNotNone(action_limit)
-        self.assertEqual(int(action_limit.group(1)), 22)
-        locations = re.findall(r"location\s+(=|\^~)\s+(/admin/?)\s*\{([^{}]*)\}", nginx)
-        self.assertEqual(sorted((kind, route) for kind, route, _ in locations), [("=", "/admin"), ("^~", "/admin/")])
-        for _, route, block in locations:
-            with self.subTest(route=route):
-                edge_limit = re.search(r"client_max_body_size\s+(\d+)m;", block)
-                self.assertIsNotNone(edge_limit)
-                self.assertEqual(edge_limit.group(1), action_limit.group(1))
-                self.assertIn("proxy_pass http://uten_website_backend;", block)
-        self.assertIn("client_max_body_size 256k;", nginx[:nginx.index("location = /api/health")])
 
     def test_runtime_health_requires_successful_prisma_baseline(self):
         health = (ROOT / "website" / "app" / "api" / "health" / "route.ts").read_text(encoding="utf-8")
         self.assertIn("_prisma_migrations", health)
         self.assertIn("20260812000000_initial_production_baseline", health)
         self.assertIn("incomplete Prisma migration", health)
-        self.assertIn("assertDocumentsDirectoryReady()", health)
-        self.assertIn("WebsiteDocumentAsset", health)
-        self.assertIn("ResourceDocument", health)
 
     @unittest.skipUnless(os.name == "posix" and shutil.which("bash") and shutil.which("flock"), "requires POSIX bash/flock")
     def test_watchdog_releases_gate_lock_before_recursive_systemd_start(self):

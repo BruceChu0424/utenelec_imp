@@ -210,39 +210,3 @@ test('two simultaneous publishers cannot apply the same revision twice',async()=
   assert.equal((await db.product.findUniqueOrThrow({where:{id:f.product.id}})).rowVersion,2);
   assert.equal(await db.cmsAuditEvent.count({where:{revisionId:revision.revisionId,action:'PUBLISHED'}}),1);
 });
-
-test('case, news and job explicitly stage false, publish visibility changes and restore stable content identities',async()=>{
-  const {service}=await actor();
-  for(const type of ['case','news','job'] as const) {
-    const fields=type==='case'?{location:'原地点',content:'原正文\n\n第二段'}:
-      type==='news'?{summary:'原摘要',content:'原正文\n\n第二段'}:{description:'原描述',requirements:'原要求'};
-    const i18n=JSON.stringify({zh:{title:'原始标题',...fields},en:{title:'Original title',...fields},fr:{title:'Preserved original locale'}});
-    const slug=`visibility-${type}-${randomUUID()}`;
-    const original=type==='case'?await db.caseItem.create({data:{slug,i18n,published:true}}):
-      type==='news'?await db.news.create({data:{slug,i18n,published:true,category:'company',publishedAt:new Date('2026-10-01T00:00:00Z')}}):
-      await db.job.create({data:{slug,i18n,published:true}});
-    const record=async()=>(await service.editState(type,original.id)).snapshot.record!;
-    const payload:CmsFormPayload={};
-    for(const locale of ['zh','en'])for(const[key,value]of Object.entries(JSON.parse(i18n)[locale]))payload[`${locale}_${key}`]=String(value);
-    if(type==='news'){payload.category='company';payload.publishedAt='2026-10-01';}
-    const stage=async(published:boolean)=>{
-      const value=published?'on':'false';
-      const form=cmsPayloadToFormData({...payload,published:value,expectedHash:await service.baseHash(type,original.id)});
-      assert.equal(form.has('published'),true);assert.equal(form.get('published'),value);
-      return service.stage({entityType:type,entityId:original.id,operation:'UPSERT',title:'展示状态草稿',payload:formDataToCmsPayload(form)});
-    };
-    const hidden=await stage(false);
-    assert.equal((await record()).published,true,'saving a false draft must not change the public record');
-    await service.publish(hidden.revisionId);
-    assert.equal((await record()).published,false);
-    await service.rollback(hidden.revisionId);
-    const restored=await record();
-    assert.equal(restored.id,original.id);assert.equal(restored.slug,slug);assert.equal(restored.published,true);
-    assert.deepEqual(JSON.parse(String(restored.i18n)),JSON.parse(i18n));
-    const hiddenAgain=await stage(false);await service.publish(hiddenAgain.revisionId);
-    const shownAgain=await stage(true);
-    assert.equal((await record()).published,false,'saving a true draft must not republish it');
-    await service.publish(shownAgain.revisionId);
-    assert.equal((await record()).published,true);assert.equal((await record()).id,original.id);
-  }
-});

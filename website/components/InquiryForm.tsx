@@ -6,7 +6,6 @@ import { useRef, useState, useTransition, type FormEvent } from 'react';
 import { routing } from '@/i18n/routing';
 import { Link } from '@/i18n/navigation';
 import { submitInquiry } from '@/lib/actions';
-import { ClientForm } from '@/components/forms/ClientForm';
 
 export function InquiryForm({
   source = 'contact',
@@ -72,7 +71,7 @@ export function InquiryForm({
   }
 
   return (
-    <ClientForm onSubmit={onSubmit} onChange={() => { submissionAttempt.current = null; }} className="space-y-5 public-inquiry-form" aria-busy={pending}>
+    <form onSubmit={onSubmit} onChange={() => { submissionAttempt.current = null; }} className="space-y-5 public-inquiry-form" aria-busy={pending}>
       <input type="hidden" name="source" value={source} />
       <input type="hidden" name="locale" value={locale} />
       {context?.productId && <input type="hidden" name="productId" value={context.productId} />}
@@ -113,6 +112,6 @@ export function InquiryForm({
       <label className="flex items-start gap-3 text-sm leading-6 text-muted-foreground"><input type="checkbox" required name="consent" value="yes" className="mt-1 h-4 w-4 accent-[hsl(var(--accent))]" /><span>{t('consent')}. {t('privacyPrefix')} <Link href="/privacy" className="font-semibold text-foreground underline decoration-border underline-offset-4 hover:text-accent">{t('privacyLink')}</Link>.</span></label>
       {error && <p className="text-sm font-medium text-destructive" role="alert" aria-live="polite">{tc('error')}</p>}
       <button type="submit" disabled={pending} className="btn-accent w-full">{pending ? tc('submitting') : tc('submit')}</button>
-    </ClientForm>
+    </form>
   );
 }

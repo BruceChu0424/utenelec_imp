@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useTransition, type ReactNode } from 'react';
-import { ClientForm } from '@/components/forms/ClientForm';
 
 export function CmsDraftForm({ action, children, className, id }: {
   action: (form: FormData) => Promise<{ error?: string } | void>;
@@ -9,7 +8,7 @@ export function CmsDraftForm({ action, children, className, id }: {
 }) {
   const [error,setError]=useState('');
   const [pending,start]=useTransition();
-  return <ClientForm id={id} onSubmit={event=>{
+  return <form id={id} onSubmit={event=>{
     event.preventDefault();if(pending)return;
     const form=new FormData(event.currentTarget);
     start(async()=>{setError('');try{const result=await action(form);setError(result?.error??'');}
@@ -19,5 +18,5 @@ export function CmsDraftForm({ action, children, className, id }: {
     {pending&&<p role="status" className="mb-3 text-sm text-muted-foreground">正在保存草稿…</p>}
     {error && <p role="alert" className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
     <fieldset disabled={pending} className="min-w-0 border-0 p-0">{children}</fieldset>
-  </ClientForm>;
+  </form>;
 }

@@ -227,7 +227,7 @@
     "archiveItemLabel": "Archive {number}",
     "archiveNote": "Archived company material is shown for historical context. Current project scope and product details require separate confirmation.",
     "title": "Reference projects",
-    "subtitle": "Project information and company archives",
+    "subtitle": "Uten products in real-world applications",
     "empty": "No project content yet"
   },
   "About": {
@@ -240,8 +240,8 @@
     "craft": "Craftsmanship",
     "mission": "Mission & vision",
     "coreCraftTitle": "Core craftsmanship",
-    "teamTitle": "Clear technical communication around products",
-    "teamBody": "Start with product ranges, specific models, samples and document requirements, and confirm each need with the relevant team."
+    "teamTitle": "Complete management · Professional team · Global service",
+    "teamBody": "Integrated production, R&D, testing, sales, planning and customer service teams, backed by experienced industry professionals."
   },
   "Join": {
     "title": "Partners",

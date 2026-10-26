@@ -227,7 +227,7 @@
     "archiveItemLabel": "Archiv {number}",
     "archiveNote": "Archiviertes Unternehmensmaterial dient hier der historischen Einordnung. Der aktuelle Projektumfang und die Produktdetails müssen separat bestätigt werden.",
     "title": "Referenzprojekte",
-    "subtitle": "Projektinformationen und Unternehmensarchiv",
+    "subtitle": "UTEN-Produkte im realen Einsatz",
     "empty": "Noch keine Projektinhalte verfügbar"
   },
   "About": {
@@ -240,8 +240,8 @@
     "craft": "Handwerkskunst",
     "mission": "Mission und Vision",
     "coreCraftTitle": "Kernkompetenzen in der Fertigung",
-    "teamTitle": "Klare technische Kommunikation zu Produkten",
-    "teamBody": "Klären Sie Produktreihen, konkrete Modelle, Muster und benötigte Unterlagen und stimmen Sie jeden Bedarf mit dem zuständigen Team ab."
+    "teamTitle": "Integriertes Management · Professionelles Team · Globaler Service",
+    "teamBody": "Integrierte Teams für Produktion, Forschung und Entwicklung, Prüfung, Vertrieb, Planung und Kundenservice, unterstützt von erfahrenen Branchenfachleuten."
   },
   "Join": {
     "title": "Partner",

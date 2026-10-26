@@ -73,6 +73,7 @@ export default async function StudioPage({
       <section className="section-tight border-y border-border bg-background-elevated/55">
         <div className="container-uten grid gap-10 lg:grid-cols-[.8fr_1.2fr]">
           <div>
+            <p className="eyebrow">WORKFLOW</p>
             <h2 className="mt-5 text-balance text-3xl font-semibold leading-tight md:text-5xl">{t('workflowTitle')}</h2>
             <p className="mt-5 max-w-xl text-pretty leading-7 text-muted-foreground">{t('workflowBody')}</p>
           </div>

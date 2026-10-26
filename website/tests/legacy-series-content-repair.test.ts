@@ -126,9 +126,7 @@ test('plan repairs only reviewed source names and preserves unrelated localized 
   assert.match(refused.issues[0], /refusing to overwrite/u);
 });
 
-// Audit the complete on-disk archive, including cold Windows file reads under
-// the parallel test runner. This is evidence completeness, not a latency SLO.
-test('raw detail breadcrumbs reconstruct all 50 Chinese names without conflicts', { timeout: 120_000 }, async (t) => {
+test('raw detail breadcrumbs reconstruct all 50 Chinese names without conflicts', { timeout: 30_000 }, async (t) => {
   const outputRoot = path.join(WEBSITE_ROOT, '.scrape', 'v2', 'output');
   const catalogPath = path.join(outputRoot, 'catalog.json');
   if (!existsSync(catalogPath)) {

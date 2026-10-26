@@ -467,7 +467,7 @@ test('dynamic aliases and branded error shells keep locale-safe navigation', () 
     'components/products/ProductMatrixCard.tsx',
     'components/products/VariantViewer.tsx',
     'components/layout/SiteFooter.tsx',
-    'components/layout/PublicNotFound.tsx',
+    'app/[locale]/not-found.tsx',
     'app/[locale]/error.tsx',
   ];
 
@@ -484,8 +484,7 @@ test('dynamic aliases and branded error shells keep locale-safe navigation', () 
   const localeLayout = source('app/[locale]/layout.tsx');
   const sitemap = source('app/sitemap.ts');
   const footer = source('components/layout/SiteFooter.tsx');
-  const notFoundPage = source('components/layout/PublicNotFound.tsx');
-  const notFoundBoundary = source('app/[locale]/not-found.tsx');
+  const notFoundPage = source('app/[locale]/not-found.tsx');
   const catchAllPage = source('app/[locale]/[...rest]/page.tsx');
 
   assert.match(detailPage, /export const dynamic = 'force-dynamic'/);
@@ -497,7 +496,6 @@ test('dynamic aliases and branded error shells keep locale-safe navigation', () 
   assert.doesNotMatch(footer, /getTranslations\(\s*['"`]/);
   assert.doesNotMatch(notFoundPage, /getTranslations/);
   assert.match(notFoundPage, /const locale = useLocale\(\)/);
-  assert.match(notFoundBoundary, /export \{ default \} from '@\/components\/layout\/PublicNotFound'/);
   assert.doesNotMatch(localeLayout, /generateStaticParams/);
   assert.doesNotMatch(seriesPage, /generateStaticParams/);
   assert.doesNotMatch(detailPage, /generateStaticParams/);

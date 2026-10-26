@@ -233,7 +233,7 @@ export function SceneStudio({
 
       <aside className="flex min-h-0 flex-col border-t border-border bg-background xl:max-h-[780px] xl:border-s xl:border-t-0">
         <div className="border-b border-border p-5">
-          <p className="text-sm font-semibold text-muted-foreground">{labels.scenes}</p>
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-muted-foreground">01 · {labels.scenes}</p>
           <div className="mt-3 grid grid-cols-3 gap-2">
             {scenes.map((item) => (
               <button key={item.id} type="button" aria-pressed={item.id === sceneId} onClick={() => activateScene(item)} className={`group overflow-hidden rounded-xl border text-start transition ${item.id === sceneId ? 'border-accent ring-4 ring-accent/10' : 'border-border hover:border-foreground/30'}`}>
@@ -249,8 +249,8 @@ export function SceneStudio({
 
         <div className="border-b border-border p-5">
           <div className="flex items-center justify-between gap-4">
-            <p className="text-sm font-semibold text-muted-foreground">{labels.scale}</p>
-            <button type="button" onClick={reset} className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><RotateCcw className="h-3.5 w-3.5" />{labels.reset}</button>
+            <p className="text-xs font-bold uppercase tracking-[.18em] text-muted-foreground">02 · {labels.scale}</p>
+            <button type="button" onClick={reset} className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><RotateCcw className="h-3.5 w-3.5" />{labels.reset}</button>
           </div>
           <div className="mt-2 flex items-center gap-3">
             <Minus className="h-4 w-4 text-muted-foreground" />
@@ -260,7 +260,7 @@ export function SceneStudio({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col p-5">
-          <p className="text-sm font-semibold text-muted-foreground">{labels.products}</p>
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-muted-foreground">03 · {labels.products}</p>
           {searchable && <label className="relative mt-3 block">
             <Search className="pointer-events-none absolute start-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <span className="sr-only">{labels.search}</span>

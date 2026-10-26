@@ -28,7 +28,7 @@ server {
     if ($host != "__WEBSITE_HOST__") { return 444; }
     # Root activation changes only this tiny, root-owned include. It is closed
     # before stopping the app or migrating SQLite and reopened only after the
-    # new service passes its database/uploads/private-documents readiness probe.
+    # new service passes its database/uploads readiness probe.
     include /etc/nginx/snippets/uten-website-gate.conf;
     if ($uten_website_gate = 1) { return 503; }
 
@@ -36,8 +36,8 @@ server {
     ssl_certificate_key __TLS_KEY_PATH__;
     ssl_protocols TLSv1.2 TLSv1.3;
 
-    # Public forms are small. Only authenticated CMS routes receive the 22 MiB
-    # Next Server Actions envelope: a 20 MiB PDF plus multipart overhead.
+    # Public forms are small. Only authenticated CMS routes receive the 10 MiB
+    # request envelope needed for an 8 MiB image plus multipart overhead.
     client_max_body_size 256k;
     client_header_buffer_size 4k;
     large_client_header_buffers 2 8k;
@@ -65,7 +65,7 @@ server {
     }
 
     location = /admin {
-        client_max_body_size 22m;
+        client_max_body_size 10m;
         limit_req zone=uten_site_admin_ip burst=30 nodelay;
         proxy_pass http://uten_website_backend;
         proxy_http_version 1.1;
@@ -80,7 +80,7 @@ server {
     }
 
     location ^~ /admin/ {
-        client_max_body_size 22m;
+        client_max_body_size 10m;
         limit_req zone=uten_site_admin_ip burst=30 nodelay;
         proxy_pass http://uten_website_backend;
         proxy_http_version 1.1;

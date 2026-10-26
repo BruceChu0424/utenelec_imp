@@ -3,7 +3,6 @@ import { access } from 'node:fs/promises';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { assertUploadsDirectoryReady } from '@/lib/upload-storage';
-import { assertDocumentsDirectoryReady } from '@/lib/document-storage';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -19,12 +18,12 @@ export async function GET() {
       postgres ? prisma.$queryRaw<Array<{ name: string }>>`
         SELECT table_name AS name FROM information_schema.tables
         WHERE table_schema = 'public'
-          AND table_name IN ('Series', 'Product', 'Setting', 'User', 'Inquiry', '_prisma_migrations', 'InquiryDelivery', 'CmsRevision', 'WebsiteDocumentAsset', 'ResourceDocument')
+          AND table_name IN ('Series', 'Product', 'Setting', 'User', 'Inquiry', '_prisma_migrations', 'InquiryDelivery', 'CmsRevision')
       ` : prisma.$queryRaw<Array<{ name: string }>>`
         SELECT name
         FROM sqlite_master
         WHERE type = 'table'
-          AND name IN ('Series', 'Product', 'Setting', 'User', 'Inquiry', '_prisma_migrations', 'InquiryDelivery', 'CmsRevision', 'WebsiteDocumentAsset', 'ResourceDocument')
+          AND name IN ('Series', 'Product', 'Setting', 'User', 'Inquiry', '_prisma_migrations', 'InquiryDelivery', 'CmsRevision')
       `,
       prisma.$queryRaw<Array<{ migration_name: string; finished_at: Date | null; rolled_back_at: Date | null }>>`
         SELECT migration_name, finished_at, rolled_back_at
@@ -34,9 +33,8 @@ export async function GET() {
       !postgres && process.env.NODE_ENV === 'production'
         ? access('/var/lib/uten-website/runtime/website.db', constants.R_OK | constants.W_OK) : Promise.resolve(),
       assertUploadsDirectoryReady(),
-      assertDocumentsDirectoryReady(),
     ]);
-    const requiredTables = new Set(['Series', 'Product', 'Setting', 'User', 'Inquiry', '_prisma_migrations', 'InquiryDelivery', 'CmsRevision', 'WebsiteDocumentAsset', 'ResourceDocument']);
+    const requiredTables = new Set(['Series', 'Product', 'Setting', 'User', 'Inquiry', '_prisma_migrations', 'InquiryDelivery', 'CmsRevision']);
     for (const row of schemaRows) requiredTables.delete(row.name);
     if (requiredTables.size > 0) throw new Error('required website schema is incomplete');
     const baseline = migrationRows.find(

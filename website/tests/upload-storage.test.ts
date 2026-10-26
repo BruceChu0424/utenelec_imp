@@ -10,7 +10,6 @@ import {
   resolveUploadsDirectory,
   storeUploadedWebp,
 } from '../lib/upload-storage';
-import { MAX_DOCUMENT_BYTES } from '../lib/document-storage';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -150,27 +149,6 @@ test('runtime templates pin application and Nginx to the same non-release path',
   assert.match(validator, /uten-website:uten-website-media:2750/u);
   assert.match(validator, /group:uten-website-media:--x/u);
   assert.match(runtimeEnvironment, /^UPLOADS_DIR=\/var\/lib\/uten-website\/runtime\/uploads$/mu);
-  assert.match(runtimeEnvironment, /^DOCUMENTS_DIR=\/var\/lib\/uten-website\/runtime\/documents$/mu);
-  assert.doesNotMatch(nginx, /alias\s+[^;]*\/documents\/?\s*;/u);
   assert.match(nextConfig, /images:\s*\{\s*unoptimized:\s*true\s*\}/u);
   assert.doesNotMatch(runtimeEnvironment, /^[A-Z][A-Z0-9_]*=["']/mu);
-});
-
-test('all authenticated admin upload routes allow the full PDF envelope without enlarging public forms', async () => {
-  const [nginx, nextConfig] = await Promise.all([
-    readFile(path.join(projectRoot, 'deploy', 'nginx-website.conf.example'), 'utf8'),
-    readFile(path.join(projectRoot, 'next.config.mjs'), 'utf8'),
-  ]);
-  const actionLimit = nextConfig.match(/bodySizeLimit:\s*['"](\d+)mb['"]/u);
-  assert.ok(actionLimit);
-  assert.equal(Number(actionLimit[1]), MAX_DOCUMENT_BYTES / 1024 / 1024 + 2);
-  const routes = Array.from(nginx.matchAll(/location\s+(=|\^~)\s+(\/admin\/?)\s*\{([^{}]*)\}/gu));
-  assert.deepEqual(routes.map(route => `${route[1]} ${route[2]}`).sort(), ['= /admin', '^~ /admin/']);
-  for (const route of routes) {
-    const edgeLimit = route[3].match(/client_max_body_size\s+(\d+)m;/u);
-    assert.ok(edgeLimit, route[2]);
-    assert.equal(Number(edgeLimit[1]), Number(actionLimit[1]), route[2]);
-    assert.match(route[3], /proxy_pass http:\/\/uten_website_backend;/u);
-  }
-  assert.match(nginx.slice(0, nginx.indexOf('location = /api/health')), /client_max_body_size 256k;/u);
 });

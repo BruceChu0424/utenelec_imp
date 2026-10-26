@@ -40,7 +40,6 @@ export function MobileNav({ locale, series }: { locale: string; series: { code: 
     const focusFrame = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         setOpen(false);
@@ -52,7 +51,7 @@ export function MobileNav({ locale, series }: { locale: string; series: { code: 
         dialogRef.current?.querySelectorAll<HTMLElement>(
           'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         ) ?? [],
-      ).filter((element) => element.tabIndex >= 0 && element.getClientRects().length > 0);
+      ).filter((element) => element.getClientRects().length > 0);
 
       if (!focusable.length) {
         event.preventDefault();
@@ -116,7 +115,7 @@ export function MobileNav({ locale, series }: { locale: string; series: { code: 
 
           <div className="container-uten grid gap-10 py-7 md:grid-cols-2">
             <nav className="flex flex-col">
-              {nav.map((item) => (
+              {nav.map((item, index) => (
                 <Link
                   key={item.href}
                   locale={locale}
@@ -124,7 +123,7 @@ export function MobileNav({ locale, series }: { locale: string; series: { code: 
                   onClick={() => setOpen(false)}
                   className="group flex min-h-14 items-center justify-between border-b border-border/70 text-xl font-semibold"
                 >
-                  <span>{item.label}</span>
+                  <span><span className="me-3 text-xs tabular-nums text-muted-foreground">{String(index + 1).padStart(2, '0')}</span>{item.label}</span>
                   <ArrowUpRight className="h-4 w-4 text-muted-foreground transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-accent" />
                 </Link>
               ))}

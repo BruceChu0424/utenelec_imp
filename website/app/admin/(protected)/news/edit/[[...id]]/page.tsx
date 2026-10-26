@@ -6,7 +6,6 @@ import { CmsDraftForm } from '@/components/admin/CmsDraftForm';
 import { pickLocale } from '@/lib/content';
 import { saveNews } from '@/app/admin/actions';
 import { ImageUpload } from '@/components/admin/ImageUpload';
-import { PublicationField } from '@/components/admin/PublicationField';
 
 export default async function NewsEditPage({ params }: { params: Promise<{ id?: string[] }> }) {
   const id = (await params).id?.[0];
@@ -24,32 +23,31 @@ export default async function NewsEditPage({ params }: { params: Promise<{ id?: 
       <input type="hidden" name="expectedHash" value={editing?.baseHash || ''} />
       <div className="mt-5 card-uten space-y-4 p-5">
         <div className="grid gap-4 sm:grid-cols-2">
-          <div><label htmlFor="news-category" className="label-uten">分类</label>
-            <select id="news-category" name="category" defaultValue={n?.category || 'company'} className="input-uten">
+          <div><label className="label-uten">分类</label>
+            <select name="category" defaultValue={n?.category || 'company'} className="input-uten">
               <option value="company">公司动态</option>
               <option value="industry">行业资讯</option>
               <option value="guide">采购指南</option>
             </select>
           </div>
-          <div><label htmlFor="news-published-at" className="label-uten">发布日期</label><input id="news-published-at" type="date" name="publishedAt" defaultValue={date} className="input-uten" /></div>
+          <div><label className="label-uten">发布日期</label><input type="date" name="publishedAt" defaultValue={date} className="input-uten" /></div>
         </div>
-        <div><label htmlFor="news-cover-image" className="label-uten">封面图片</label><ImageUpload id="news-cover-image" name="coverImage" value={n?.coverImage || ''} /></div>
-        <PublicationField id="news-published" published={n?.published ?? false} />
+        <div><label className="label-uten">封面图片</label><ImageUpload name="coverImage" value={n?.coverImage || ''} /></div>
       </div>
       <p id="article-syntax-help" className="mt-4 rounded-2xl border border-border bg-muted/45 px-4 py-3 text-sm leading-6 text-muted-foreground">
         正文支持轻量结构：<code>## 二级标题</code>、<code>- 列表项</code>，段落之间留一个空行。系统只显示纯文本，不解析 HTML。
       </p>
       <fieldset className="mt-5 card-uten space-y-3 border-l-4 border-l-accent p-5">
         <legend className="px-2 text-sm font-bold text-accent">中文</legend>
-        <div><label htmlFor="news-zh-title" className="label-uten">标题 *</label><input id="news-zh-title" name="zh_title" required defaultValue={zh.title || ''} className="input-uten" /></div>
-        <div><label htmlFor="news-zh-summary" className="label-uten">摘要</label><input id="news-zh-summary" name="zh_summary" defaultValue={zh.summary || ''} className="input-uten" /></div>
-        <div><label htmlFor="news-zh-content" className="label-uten">正文</label><textarea id="news-zh-content" name="zh_content" rows={14} defaultValue={zh.content || ''} aria-describedby="article-syntax-help" className="input-uten min-h-80 resize-y" /></div>
+        <div><label className="label-uten">标题 *</label><input name="zh_title" required defaultValue={zh.title || ''} className="input-uten" /></div>
+        <div><label className="label-uten">摘要</label><input name="zh_summary" defaultValue={zh.summary || ''} className="input-uten" /></div>
+        <div><label className="label-uten">正文</label><textarea name="zh_content" rows={14} defaultValue={zh.content || ''} aria-describedby="article-syntax-help" className="input-uten min-h-80 resize-y" /></div>
       </fieldset>
       <fieldset className="mt-5 card-uten space-y-3 border-l-4 border-l-accent p-5">
         <legend className="px-2 text-sm font-bold text-accent">English</legend>
-        <div><label htmlFor="news-en-title" className="label-uten">Title</label><input id="news-en-title" name="en_title" defaultValue={en.title || ''} className="input-uten" /></div>
-        <div><label htmlFor="news-en-summary" className="label-uten">Summary</label><input id="news-en-summary" name="en_summary" defaultValue={en.summary || ''} className="input-uten" /></div>
-        <div><label htmlFor="news-en-content" className="label-uten">Content</label><textarea id="news-en-content" name="en_content" rows={14} defaultValue={en.content || ''} aria-describedby="article-syntax-help" className="input-uten min-h-80 resize-y" /></div>
+        <div><label className="label-uten">Title</label><input name="en_title" defaultValue={en.title || ''} className="input-uten" /></div>
+        <div><label className="label-uten">Summary</label><input name="en_summary" defaultValue={en.summary || ''} className="input-uten" /></div>
+        <div><label className="label-uten">Content</label><textarea name="en_content" rows={14} defaultValue={en.content || ''} aria-describedby="article-syntax-help" className="input-uten min-h-80 resize-y" /></div>
       </fieldset>
       <div className="mt-6 flex gap-3"><button className="btn-accent">保存文章草稿</button><Link href="/admin/news" className="btn-outline">取消</Link></div>
     </CmsDraftForm>

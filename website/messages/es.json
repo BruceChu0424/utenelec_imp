@@ -227,7 +227,7 @@
     "archiveItemLabel": "Archivo {number}",
     "archiveNote": "El material de archivo de la empresa se muestra como contexto histórico. El alcance de los proyectos actuales y los detalles de producto requieren una confirmación independiente.",
     "title": "Proyectos de referencia",
-    "subtitle": "Documentación de proyectos y archivo de la empresa",
+    "subtitle": "Productos UTEN en aplicaciones reales",
     "empty": "Aún no hay contenido de proyectos"
   },
   "About": {
@@ -240,8 +240,8 @@
     "craft": "Artesanía",
     "mission": "Misión y visión",
     "coreCraftTitle": "Técnicas esenciales de fabricación",
-    "teamTitle": "Comunicación técnica clara sobre los productos",
-    "teamBody": "Parta de las series, los modelos específicos, las muestras y los requisitos documentales para confirmar cada necesidad con el equipo correspondiente."
+    "teamTitle": "Gestión integral · Equipo profesional · Servicio global",
+    "teamBody": "Equipos integrados de producción, I+D, ensayos, ventas, planificación y atención al cliente, respaldados por profesionales con amplia experiencia en el sector."
   },
   "Join": {
     "title": "Socios",

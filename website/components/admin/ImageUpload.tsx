@@ -3,7 +3,7 @@ import { useState, useRef, useTransition, type ChangeEvent } from 'react';
 import { uploadImage } from '@/app/admin/actions';
 import { Upload, Loader2, X } from 'lucide-react';
 
-export function ImageUpload({ name, value = '', id }: { name: string; value?: string; id?: string }) {
+export function ImageUpload({ name, value = '' }: { name: string; value?: string }) {
   const [url, setUrl] = useState(value);
   const [pending, start] = useTransition();
   const [err, setErr] = useState('');
@@ -43,7 +43,7 @@ export function ImageUpload({ name, value = '', id }: { name: string; value?: st
           </button>
         )}
         <div className="flex-1">
-          <input id={id} type="text" value={url} onChange={(e: ChangeEvent<HTMLInputElement>) => setUrl(e.target.value)}
+          <input type="text" value={url} onChange={(e: ChangeEvent<HTMLInputElement>) => setUrl(e.target.value)}
             placeholder="上传后自动填入, 或粘贴路径如 /images/raw/xxx.png"
             className="input-uten text-xs" />
           {err && <p className="mt-1 text-xs text-destructive">{err}</p>}

@@ -79,14 +79,16 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
       });
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(masterNameServiceProvider).ensureLoaded().then((_) => _load());
+      if (mounted) _load();
     });
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     final generation = _requests.begin();
     setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
+    final names = ref.read(masterNameServiceProvider);
     try {
       // 月度汇总与待交货互不依赖，并行拉取（此前串行两趟往返）。
       final results = await Future.wait([
@@ -103,6 +105,7 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
       ]);
       final m = results[0];
       final p = results[1];
+      if (!mounted || !_requests.isCurrent(generation)) return;
       final allGoods = <String?>[
         ...m.map((e) => e['goodsId'] as String?),
         ...p.map((e) => e['goodsId'] as String?),
@@ -111,7 +114,15 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
           .where((s) => s != null && s.isNotEmpty)
           .map((s) => s!)
           .toSet();
-      await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
+      // Query the report first. Its empty state must not wait for unrelated
+      // master dictionaries; populated results resolve only names they display.
+      await Future.wait([
+        names.loadGoodsNames(goodsIds),
+        names.ensureReportNamesLoaded(
+          suppliers: m.any((entry) => entry['supplierId'] != null),
+          colors: p.any((entry) => entry['colorId'] != null),
+        ),
+      ]);
       if (!mounted || !_requests.isCurrent(generation)) return;
       setState(() {
         _monthly = m

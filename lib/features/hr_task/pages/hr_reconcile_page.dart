@@ -13,6 +13,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -60,6 +61,7 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
   String? _activePlanId;
 
   bool _loading = false;
+  bool _planReadFailed = false;
   bool _generating = false;
   bool _applying = false;
   bool _expired = false;
@@ -90,6 +92,7 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
   final Map<int, HrReconcileRowDraft> _drafts = {};
 
   bool get _busy => _generating || _applying || _checkingReceipt;
+  bool get _readUnresolved => _loading || _generating || _planReadFailed;
 
   bool get _dirty =>
       !_appliedOnce && _drafts.values.any((draft) => draft.isDirty);
@@ -335,7 +338,7 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
       if (_plan?.id == planId) return;
       _loadPlan(planId);
     } else if (_employeeIds.isNotEmpty) {
-      _generatePlan();
+      _generatePlan(fromRoute: true);
     } else {
       _activePlanId = null;
       setState(() {
@@ -347,7 +350,11 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
     }
   }
 
-  Future<void> _generatePlan({bool bindDraft = true}) async {
+  Future<void> _generatePlan({
+    bool bindDraft = true,
+    bool fromRoute = false,
+  }) async {
+    if (!fromRoute && (_loading || _busy)) return;
     final generation = ++_loadGeneration;
     final employeeIds = List<String>.of(_employeeIds);
     _activePlanId = null;
@@ -366,6 +373,7 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
       }
       setState(() {
         _plan = plan;
+        _planReadFailed = false;
         _generating = false;
         _appliedOnce = false;
       });
@@ -402,6 +410,7 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
     bool keepDrafts = false,
     bool bindDraft = true,
   }) async {
+    final previousPlan = _plan;
     final previousSnapshot = _plan != null && formDraftEnabled
         ? captureFormDraft()
         : null;
@@ -422,10 +431,13 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
       }
       setState(() {
         _plan = plan;
+        _planReadFailed = false;
         _loading = false;
         _expired = plan.expired;
       });
-      if (!keepDrafts) {
+      final sameSource =
+          previousPlan?.id == plan.id && previousPlan?.version == plan.version;
+      if (!keepDrafts && !sameSource) {
         _disposeDrafts();
         _selectedIds.clear();
       }
@@ -446,12 +458,14 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
       final l10n = AppLocalizations.of(context);
       setState(() {
         _loading = false;
+        _planReadFailed = true;
         _error = e.message.isEmpty ? l10n.hrReconcileLoadFailed : e.message;
       });
     } catch (_) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
+        _planReadFailed = true;
         _error = AppLocalizations.of(context).hrReconcileLoadFailed;
       });
     }
@@ -542,7 +556,13 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
 
   Future<void> _confirmApply() async {
     final plan = _plan;
-    if (_busy || _confirming || plan == null || !_canExecutePlan(plan)) return;
+    if (_busy ||
+        _readUnresolved ||
+        _confirming ||
+        plan == null ||
+        !_canExecutePlan(plan)) {
+      return;
+    }
     final selected = Set<String>.of(_selectedIds);
     final (people, items) = _applyCounts(selected);
     final l10n = AppLocalizations.of(context);
@@ -579,6 +599,7 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
         !formDraftIdentityIsCurrent ||
         _plan?.id != plan.id ||
         _plan?.version != plan.version ||
+        _readUnresolved ||
         !_canExecutePlan(plan)) {
       return;
     }
@@ -587,7 +608,12 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
 
   Future<void> _apply(Set<String> selected) async {
     final plan = _plan;
-    if (plan == null || _applying || !_canExecutePlan(plan)) return;
+    if (plan == null ||
+        _applying ||
+        _readUnresolved ||
+        !_canExecutePlan(plan)) {
+      return;
+    }
     final rows = <HrReconcileApplyRow>[];
     for (final row in plan.rows) {
       if (!selected.contains(row.employee.id)) continue;
@@ -962,9 +988,9 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
         (permissions.contains(Perm.employeeView) &&
             permissions.contains(Perm.employeeEdit));
     Widget body;
-    if (_loading || _generating) {
+    if ((_loading || _generating) && _plan == null) {
       body = const UtenSkeletonList(itemCount: 6);
-    } else if (_error != null) {
+    } else if (_error != null && _plan == null) {
       body = UtenEmpty.error(
         message: _error,
         actionLabel: l10n.hrReconcileRetry,
@@ -980,7 +1006,32 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
         onAction: canReadRecords ? _openRecords : null,
       );
     } else {
-      body = _planView(context, l10n, _plan!);
+      // A refresh must not replace mounted text editors with a skeleton.
+      // Keep their controllers, focus and composition; explicit read gates
+      // below prevent this retained snapshot from authorizing new commands.
+      body = Stack(
+        children: [
+          Positioned.fill(child: _planView(context, l10n, _plan!)),
+          if (_loading || _generating)
+            const Align(
+              alignment: Alignment.topCenter,
+              child: LinearProgressIndicator(),
+            ),
+          if (_error != null)
+            Align(
+              alignment: Alignment.topCenter,
+              child: UtenInlineNotice(
+                key: const Key('hr-reconcile-retained-read-error'),
+                level: UtenInlineNoticeLevel.error,
+                message: _error,
+                trailing: TextButton(
+                  onPressed: _busy || _loading ? null : _retry,
+                  child: Text(l10n.hrReconcileRetry),
+                ),
+              ),
+            ),
+        ],
+      );
     }
     if (context.breakpoint.isCompact) {
       body = UtenContentContainer(child: body);
@@ -1036,6 +1087,7 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
   }
 
   void _retry() {
+    if (_loading || _busy) return;
     final planId = _activePlanId;
     if (planId != null) {
       _loadPlan(planId);
@@ -1237,7 +1289,9 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
             )
           : const SizedBox.shrink(),
       selectedIds: _selectedIds,
-      onSelectedIdsChanged: (next) => setState(() => _selectedIds = next),
+      onSelectedIdsChanged: (next) {
+        if (!_readUnresolved) setState(() => _selectedIds = next);
+      },
       batchActionsBuilder: editable
           ? (context, ids) => _batchActions(context, l10n, ids)
           : null,
@@ -1382,8 +1436,11 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
                 rowNo: row.rowNo,
                 item: item,
                 editable: editable,
+                readOnly: _readUnresolved,
                 draft: draft,
-                onManualChanged: editable ? () => setState(() {}) : null,
+                onManualChanged: editable && !_readUnresolved
+                    ? () => setState(() {})
+                    : null,
               );
             }
             // 通用字段(扩展占位)：旧新对照只读。
@@ -1420,7 +1477,9 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
         size: UtenButtonSize.large,
         icon: Icons.fact_check_outlined,
         isLoading: _applying,
-        onPressed: people > 0 && !_busy ? _confirmApply : null,
+        onPressed: people > 0 && !_busy && !_readUnresolved
+            ? _confirmApply
+            : null,
         onDisabledTap: () => context.appWarning(l10n.hrReconcileApplyHintFirst),
         child: Text(l10n.hrReconcileApplyButton(people, items)),
       ),

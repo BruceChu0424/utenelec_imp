@@ -11385,7 +11385,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get bomEditMode => '편집 모드';
 
   @override
-  String get bomEditExitAndSave => '저장 후 종료';
+  String get bomEditExitAndSave => '편집 모드 종료';
 
   @override
   String get bomEditAuditMode => '검토 모드';
@@ -11394,7 +11394,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get bomEditExitAudit => '검토 종료';
 
   @override
-  String get bomEditSaveTitle => '조립 정보 저장 후 종료';
+  String get bomEditSaveTitle => '변경 저장 또는 삭제';
 
   @override
   String bomEditSaveSummary(int operations, int parents) {
@@ -11487,26 +11487,26 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String bomEditPasteStaged(int count) {
-    return '붙여넣은 부품 $count개를 임시 저장했습니다. 저장 후 종료하면 반영됩니다';
+    return '붙여넣은 부품 $count개를 임시 저장했습니다. 저장을 확인하면 반영됩니다';
   }
 
   @override
   String bomEditDeleteStaged(int count) {
-    return '부품 $count개 삭제를 임시 저장했습니다. 저장 후 종료하면 반영됩니다';
+    return '부품 $count개 삭제를 임시 저장했습니다. 저장을 확인하면 반영됩니다';
   }
 
   @override
   String bomEditMoveStaged(int count) {
-    return '부품 $count개 이동을 임시 저장했습니다. 저장 후 종료하면 반영됩니다';
+    return '부품 $count개 이동을 임시 저장했습니다. 저장을 확인하면 반영됩니다';
   }
 
   @override
   String bomEditAddStaged(int count) {
-    return '추가한 부품 $count개를 임시 저장했습니다. 저장 후 종료하면 반영됩니다';
+    return '추가한 부품 $count개를 임시 저장했습니다. 저장을 확인하면 반영됩니다';
   }
 
   @override
-  String get bomEditComponentStaged => '부품 변경을 임시 저장했습니다. 저장 후 종료하면 반영됩니다';
+  String get bomEditComponentStaged => '부품 변경을 임시 저장했습니다. 저장을 확인하면 반영됩니다';
 
   @override
   String bomEditReviewWarnings(String message, String warnings) {

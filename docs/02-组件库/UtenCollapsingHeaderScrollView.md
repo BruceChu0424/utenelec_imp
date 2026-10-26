@@ -96,18 +96,11 @@
 
 ---
 
-## 五、滚动条口径（2026-09-14 全站统一）
+## 五、滚动条口径 (2026-10-25)
 
-本组件向子树注入 `UtenInnerScrollActiveScope`（`ValueNotifier<bool>`：外层头部是否已收完）：
+页面与表体内容超出各自视口即显示对应竖向滚动条，可直接拖动。全局 UtenScrollBehavior 负责普通页面和外层视口；MasterDataTableView 保留自己的内容滚动条，不再按头部置顶阶段隐藏。
 
-- **表格上滑置顶之前**（外层收头部阶段）**不显示上下滚动条**；
-- **进入表体内滚后**再显示——显示的就是 `MasterDataTableView` 自带的表内竖向滚动条（thumb 大小/位置与表体内容对应，不是页面级滚动条）；
-- 下滚把头部拉回（脱离内滚阶段）后滚动条再次隐藏；
-- 外层无可滚量（无折叠头 / 头部本就装得下）时视为恒处于内滚阶段，滚动条常显；
-- 紧凑回退分支（整页滚 + body 定高内滚）复用同一判定：「收完」= 整页滚到底（表格盒占满视口）；
-- 不在本组件内的独立表格查不到 scope，竖向滚动条维持常显（本就无外滚阶段）。
-
-实现：组件持有/复用外层 `ScrollController`，`pixels >= maxScrollExtent - 0.5`（或 maxScrollExtent≈0）即判「收完」；`MasterDataTableView` 经 `UtenInnerScrollActiveScope.maybeOf` 读取并门控其竖向 `Scrollbar` 的 `thumbVisibility`。
+UtenInnerScrollActiveScope 继续提供滚动阶段信号供联动逻辑兼容，不能据此隐藏可滚动区域的滚动条。紧凑回退的整页与表格分别绑定各自的位置；共享 PrimaryScrollController 的自动滚动条按具体 ScrollPosition 独立控制，避免拖动一个区域影响另一个区域。
 
 ---
 

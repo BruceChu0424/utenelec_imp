@@ -438,7 +438,15 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
 
   void _syncDraftListeners() {
     if (!_draftReady || _draftDisposed) return;
-    final current = formDraftListenables.toSet();
+    // A grid's public controller also announces selection/copy-buffer changes.
+    // Those must not serialize an unchanged business document on every click.
+    final current = formDraftListenables
+        .map(
+          (source) => source is UtenEditableGridController<EditableGridRow>
+              ? source.draftListenable
+              : source,
+        )
+        .toSet();
     for (final item in _draftListeners.difference(current)) {
       item.removeListener(markFormDraftChanged);
     }

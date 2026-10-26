@@ -967,6 +967,20 @@ public class GoodsService {
                 || scope.writableOwners().contains(g.getOwnerEmployeeId());
     }
 
+    /** One scope evaluation for a BOM page's compact component master snapshots. */
+    Map<UUID, Boolean> visibleWriteCapabilities(List<Goods> candidates) {
+        var scope = goodsScope();
+        Map<UUID, Boolean> result = new java.util.LinkedHashMap<>();
+        for (Goods candidate : candidates) {
+            UUID owner = candidate.getOwnerEmployeeId();
+            if (scope.seeAll() || owner == null || scope.visibleOwners().contains(owner)) {
+                result.put(candidate.getId(), scope.seeAll() || owner == null
+                        || scope.writableOwners().contains(owner));
+            }
+        }
+        return result;
+    }
+
     @Transactional(readOnly = true)
     public GoodsDetail detail(UUID id) {
         Goods g = requireGoods(id);

@@ -709,6 +709,18 @@ void main() {
       );
       final calls = repository.calls;
 
+      final directoryToggle = find.byKey(
+        const ValueKey('company-files-toggle-directory'),
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('company-files-navigation')),
+          matching: directoryToggle,
+        ),
+        findsOneWidget,
+      );
+      expect(tester.getCenter(directoryToggle).dy, greaterThan(700));
+
       await tester.tap(
         find.byKey(const ValueKey('company-files-toggle-directory')),
       );

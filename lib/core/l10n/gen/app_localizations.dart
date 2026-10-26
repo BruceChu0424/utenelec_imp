@@ -20413,7 +20413,7 @@ abstract class AppLocalizations {
   /// No description provided for @bomEditExitAndSave.
   ///
   /// In zh, this message translates to:
-  /// **'退出并保存'**
+  /// **'退出编辑模式'**
   String get bomEditExitAndSave;
 
   /// No description provided for @bomEditAuditMode.
@@ -20431,7 +20431,7 @@ abstract class AppLocalizations {
   /// No description provided for @bomEditSaveTitle.
   ///
   /// In zh, this message translates to:
-  /// **'保存组装信息并退出'**
+  /// **'保存或丢弃本次修改'**
   String get bomEditSaveTitle;
 
   /// No description provided for @bomEditSaveSummary.
@@ -20581,31 +20581,31 @@ abstract class AppLocalizations {
   /// No description provided for @bomEditPasteStaged.
   ///
   /// In zh, this message translates to:
-  /// **'已暂存粘贴 {count} 个组件，退出并保存后生效'**
+  /// **'已暂存粘贴 {count} 个组件，确认保存后生效'**
   String bomEditPasteStaged(int count);
 
   /// No description provided for @bomEditDeleteStaged.
   ///
   /// In zh, this message translates to:
-  /// **'已暂存删除 {count} 个组件，退出并保存后生效'**
+  /// **'已暂存删除 {count} 个组件，确认保存后生效'**
   String bomEditDeleteStaged(int count);
 
   /// No description provided for @bomEditMoveStaged.
   ///
   /// In zh, this message translates to:
-  /// **'已暂存移动 {count} 个组件，退出并保存后生效'**
+  /// **'已暂存移动 {count} 个组件，确认保存后生效'**
   String bomEditMoveStaged(int count);
 
   /// No description provided for @bomEditAddStaged.
   ///
   /// In zh, this message translates to:
-  /// **'已暂存添加 {count} 个组件，退出并保存后生效'**
+  /// **'已暂存添加 {count} 个组件，确认保存后生效'**
   String bomEditAddStaged(int count);
 
   /// No description provided for @bomEditComponentStaged.
   ///
   /// In zh, this message translates to:
-  /// **'组件修改已暂存，退出并保存后生效'**
+  /// **'组件修改已暂存，确认保存后生效'**
   String get bomEditComponentStaged;
 
   /// No description provided for @bomEditReviewWarnings.

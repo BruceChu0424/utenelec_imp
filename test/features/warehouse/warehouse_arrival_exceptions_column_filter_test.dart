@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
@@ -32,6 +33,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+
+    expect(
+      api.dictionaryPaths,
+      unorderedEquals([
+        ApiEndpoints.suppliersDict,
+        ApiEndpoints.warehousesDict,
+      ]),
+    );
 
     final table = tester
         .widget<MasterDataTableView<ProcurementArrivalException>>(
@@ -82,6 +91,7 @@ class _ArrivalExceptionApi extends ApiClient {
   _ArrivalExceptionApi() : super(Dio());
 
   Map<String, dynamic>? lastQuery;
+  final dictionaryPaths = <String>[];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -135,6 +145,7 @@ class _ArrivalExceptionApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    dictionaryPaths.add(path);
     if (path.contains('suppliers')) {
       return const [
         {'id': 'supplier-1', 'name': '供应商甲'},

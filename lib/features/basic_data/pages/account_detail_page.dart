@@ -146,7 +146,9 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
         _detail = detail;
         _loading = false;
       });
-      if (_canViewFlow) await _loadFlow(1);
+      // Statement browsing has its own loading state and cannot delay opening
+      // the account editor or replace the dialog's in-progress input.
+      if (_canViewFlow) unawaited(_loadFlow(1));
       if (initial && widget.startEditing && mounted && _canEdit) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _showEdit();

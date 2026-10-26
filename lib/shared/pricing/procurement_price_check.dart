@@ -176,9 +176,17 @@ class PriceCheckBatchController extends ChangeNotifier {
 }
 
 class PriceCheckBinding {
-  const PriceCheckBinding({required this.listenables, required this.payload});
+  const PriceCheckBinding({
+    required this.listenables,
+    required this.payload,
+    this.contextKey,
+  });
   final List<Listenable> listenables;
   final Map<String, dynamic>? Function() payload;
+
+  /// Frozen scalar operands without their own Listenable, such as color/unit.
+  /// Parent rebuilds compare this value without capturing or clearing results.
+  final Object? contextKey;
 }
 
 class ProcurementPriceCheckScope<R extends EditableGridRow>
@@ -212,6 +220,12 @@ class _PriceCheckScopeState<R extends EditableGridRow>
   late final PriceCheckBatchController _batch;
   final _keys = Map<Object, String>.identity();
   final _watched = <Listenable>[];
+  final _sourceCallbacks = <Listenable, VoidCallback>{};
+  final _rowsForSource = <Listenable, List<R>>{};
+  final _textSnapshots =
+      <TextEditingController, ({String text, List<Object?> contexts})>{};
+  final _rowContexts = Map<Object, Object?>.identity();
+  List<R> _boundRows = const [];
   int _sequence = 0;
   bool get _allowed =>
       widget.enabled &&
@@ -236,7 +250,7 @@ class _PriceCheckScopeState<R extends EditableGridRow>
             cancelToken: cancelToken,
           ),
     );
-    widget.grid.rowsListenable.addListener(_bind);
+    widget.grid.draftListenable.addListener(_bind);
     ref.listenManual(
       authenticatedScopeProvider,
       (_, _) => _authorizationChanged(),
@@ -259,23 +273,85 @@ class _PriceCheckScopeState<R extends EditableGridRow>
   }
 
   void _bind() {
-    for (final source in _watched) {
-      source.removeListener(_changed);
-    }
-    _watched.clear();
+    if (_syncBindings()) _changed();
+  }
+
+  bool _syncBindings() {
     final rows = widget.grid.rows;
+    var changed = _boundRows.length != rows.length;
+    if (!changed) {
+      for (var index = 0; index < rows.length; index++) {
+        if (!identical(_boundRows[index], rows[index])) {
+          changed = true;
+          break;
+        }
+      }
+    }
     final retained = HashSet<Object>.identity()..addAll(rows);
     _keys.removeWhere((row, _) => !retained.contains(row));
+    _rowContexts.removeWhere((row, _) => !retained.contains(row));
+    final watched = <Listenable>[];
+    _rowsForSource.clear();
     for (final row in rows) {
       _keys.putIfAbsent(row, () => 'price-row-${++_sequence}');
-      _watched.addAll(widget.bindingOf(row).listenables);
+      final binding = widget.bindingOf(row);
+      if (!_rowContexts.containsKey(row) ||
+          _rowContexts[row] != binding.contextKey) {
+        changed = true;
+      }
+      _rowContexts[row] = binding.contextKey;
+      watched.addAll(binding.listenables);
+      for (final source in binding.listenables) {
+        _rowsForSource.putIfAbsent(source, () => []).add(row);
+      }
     }
-    _watched.addAll(widget.headerChanges);
-    for (final source in _watched.toSet()) {
-      source.addListener(_changed);
+    watched.addAll(widget.headerChanges);
+    if (!listEquals(_watched, watched)) {
+      for (final source in _watched.toSet()) {
+        source.removeListener(_sourceCallbacks.remove(source)!);
+      }
+      _watched
+        ..clear()
+        ..addAll(watched);
+      for (final source in _watched.toSet()) {
+        void changed() {
+          if (source is TextEditingController) {
+            final next = _textSnapshot(source);
+            final previous = _textSnapshots[source];
+            _textSnapshots[source] = next;
+            if (previous?.text == next.text &&
+                listEquals(previous?.contexts, next.contexts)) {
+              return;
+            }
+          }
+          for (final row in _rowsForSource[source] ?? <R>[]) {
+            _rowContexts[row] = widget.bindingOf(row).contextKey;
+          }
+          _changed();
+        }
+
+        _sourceCallbacks[source] = changed;
+        source.addListener(changed);
+      }
+      changed = true;
     }
-    _changed();
+    _boundRows = List<R>.of(rows, growable: false);
+    _textSnapshots.removeWhere((source, _) => !_watched.contains(source));
+    for (final source in _watched.whereType<TextEditingController>()) {
+      _textSnapshots[source] = _textSnapshot(source);
+    }
+    return changed;
   }
+
+  ({String text, List<Object?> contexts}) _textSnapshot(
+    TextEditingController source,
+  ) => (
+    text: source.text,
+    contexts: [
+      for (final row in _rowsForSource[source] ?? <R>[])
+        widget.bindingOf(row).contextKey,
+    ],
+  );
 
   void _changed() {
     // Goods selection can set colour/unit after its notifier fires. Read the
@@ -293,28 +369,29 @@ class _PriceCheckScopeState<R extends EditableGridRow>
   @override
   void didUpdateWidget(covariant ProcurementPriceCheckScope<R> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final rebind =
+    final contextChanged =
         oldWidget.grid != widget.grid ||
-        oldWidget.bindingOf != widget.bindingOf ||
-        !listEquals(oldWidget.headerChanges, widget.headerChanges);
+        oldWidget.kind != widget.kind ||
+        oldWidget.excludeOrderId != widget.excludeOrderId ||
+        oldWidget.contextKey != widget.contextKey ||
+        oldWidget.enabled != widget.enabled;
     if (oldWidget.grid != widget.grid) {
-      oldWidget.grid.rowsListenable.removeListener(_bind);
-      widget.grid.rowsListenable.addListener(_bind);
+      oldWidget.grid.draftListenable.removeListener(_bind);
+      widget.grid.draftListenable.addListener(_bind);
     }
-    if (rebind) {
-      _bind();
-    } else {
-      // Colour/unit/source metadata can change through a parent rebuild without
-      // owning a Listenable. Keep that invalidation, but not an O(rows) rebind.
+    // Inline binding closures are recreated by ordinary parent rebuilds. Keep
+    // the newest sources, but retain accepted evidence when operands are equal.
+    final bindingChanged = _syncBindings();
+    if (contextChanged || bindingChanged) {
       _changed();
     }
   }
 
   @override
   void dispose() {
-    widget.grid.rowsListenable.removeListener(_bind);
+    widget.grid.draftListenable.removeListener(_bind);
     for (final source in _watched.toSet()) {
-      source.removeListener(_changed);
+      source.removeListener(_sourceCallbacks[source]!);
     }
     _batch.invalidate();
     _batch.dispose();

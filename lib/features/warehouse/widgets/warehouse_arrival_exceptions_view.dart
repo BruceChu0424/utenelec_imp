@@ -27,6 +27,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
@@ -96,12 +97,15 @@ class _WarehouseArrivalExceptionsViewState
     super.initState();
     _keyword = widget.keyword;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ownerCurrent = captureReadOwner(ref);
       // dict 装载（供应商/仓库表头桶）：完成后补一次 setState——MasterNameService
       // 内部缓存变化不触发 provider 通知，dict 桶需要重建才可见。
-      ref
-          .read(masterNameServiceProvider)
-          .ensureLoaded()
-          .then((_) => mounted ? setState(() {}) : null);
+      final names = ref.read(masterNameServiceProvider);
+      Future.wait([
+        names.ensureSuppliersLoaded(),
+        names.ensureWarehousesLoaded(),
+      ]).then((_) => ownerCurrent() ? setState(() {}) : null);
       trackRefresh(_load(1));
     });
   }

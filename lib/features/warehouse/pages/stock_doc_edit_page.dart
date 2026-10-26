@@ -62,6 +62,8 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
+import '../../../core/async/bounded_read_map.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -157,6 +159,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
 
   final _grid = UtenEditableGridController<StockGridRow>();
   final _scrollCtl = ScrollController();
+  final _placeSuggestionRequests = LatestRequestGuard();
 
   /// 其它入库里按 0 成本进仓的货品 (ADR-131：回收料 = 水口料、破碎料)。
   ///
@@ -685,7 +688,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       context,
       ref,
     );
-    if (!mounted || picked.isEmpty) return;
+    if (!mounted ||
+        !formDraftIdentityIsCurrent ||
+        picked.isEmpty ||
+        !_grid.rows.contains(row)) {
+      return;
+    }
     final filled = <StockGridRow>[];
     void fill(StockGridRow target, GoodsListItem g) {
       target
@@ -721,17 +729,19 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     }
     // 主档展示列：编号/系列已在选项里；库位号不在选择器返回里，按需补全详情
     // （名称缓存命中也会拉取）。
-    await ref.read(masterNameServiceProvider).loadGoodsDetails([
-      for (final g in picked) g.id,
-    ]);
-    if (!mounted) return;
-    for (final target in filled) {
-      final id = target.goods?.id;
-      if (id == null) continue;
-      target.goodsStockPlace = ref
-          .read(masterNameServiceProvider)
-          .goodsInfo(id)
-          ?.stockPlace;
+    final targets = {for (final target in filled) target: target.goods?.id};
+    final names = ref.read(masterNameServiceProvider);
+    await names.loadGoodsDetails([for (final g in picked) g.id]);
+    if (!mounted || !formDraftIdentityIsCurrent) return;
+    final currentRows = _grid.rows.toSet();
+    for (final target in targets.entries) {
+      final id = target.value;
+      if (id == null ||
+          !currentRows.contains(target.key) ||
+          target.key.goods?.id != id) {
+        continue;
+      }
+      target.key.goodsStockPlace = names.goodsInfo(id)?.stockPlace;
     }
     if (mounted) setState(() {});
     _ensureWeightParams();
@@ -747,37 +757,66 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   /// 历史入库记忆 → 货品资料通用库位），只预填还没手填的行；失败静默（可手填，不拦保存）。
   Future<void> _refreshPlaceSuggestions() async {
     if (!_usesLineWarehouse) return;
+    final generation = _placeSuggestionRequests.begin();
+    bool current() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        _placeSuggestionRequests.isCurrent(generation);
+    final repository = ref.read(warehousePlaceSuggestionRepositoryProvider);
     final byWarehouse = <String, List<StockGridRow>>{};
+    final snapshots = <StockGridRow, (String, String?)>{};
     for (final row in _grid.rows) {
       final goods = row.goods;
       final warehouseId = row.warehouseId;
-      if (goods == null || warehouseId == null) continue;
+      if (goods == null ||
+          warehouseId == null ||
+          row.place.text.trim().isNotEmpty) {
+        continue;
+      }
+      snapshots[row] = (goods.id, row.colorId);
       byWarehouse.putIfAbsent(warehouseId, () => []).add(row);
     }
-    for (final entry in byWarehouse.entries) {
-      try {
-        final suggestions = await ref
-            .read(warehousePlaceSuggestionRepositoryProvider)
-            .suggest(
-              warehouseId: entry.key,
-              goods: [
-                for (final row in entry.value)
-                  (goodsId: row.goods!.id, colorId: row.colorId),
-              ],
-            );
-        if (!mounted) return;
-        for (final row in entry.value) {
-          // 只填空格：用户已手填（或建议先到）的不覆盖。
-          if (row.place.text.trim().isNotEmpty) continue;
-          final suggestion =
-              suggestions[inboundGoodsColorKey(row.goods!.id, row.colorId)];
-          final place = suggestion?.place;
-          if (place != null && place.isNotEmpty) row.place.text = place;
+    try {
+      final batches = await boundedReadMap(byWarehouse.entries, (entry) async {
+        try {
+          return await repository.suggest(
+            warehouseId: entry.key,
+            goods: [
+              for (final row in entry.value)
+                (goodsId: snapshots[row]!.$1, colorId: snapshots[row]!.$2),
+            ],
+          );
+        } catch (_) {
+          return const <String, WarehousePlaceSuggestion>{};
         }
-        if (mounted) setState(() {});
-      } catch (_) {
-        // 建议失败不拦录单：库位可直接手填。
+      }, isCurrent: current);
+      if (!current()) return;
+      final currentRows = _grid.rows.toSet();
+      var changed = false;
+      final entries = byWarehouse.entries.toList(growable: false);
+      for (var index = 0; index < entries.length; index++) {
+        final entry = entries[index];
+        for (final row in entry.value) {
+          final snapshot = snapshots[row]!;
+          if (!currentRows.contains(row) ||
+              row.warehouseId != entry.key ||
+              row.goods?.id != snapshot.$1 ||
+              row.colorId != snapshot.$2 ||
+              row.place.text.trim().isNotEmpty) {
+            continue;
+          }
+          final suggestion =
+              batches[index][inboundGoodsColorKey(snapshot.$1, snapshot.$2)];
+          final place = suggestion?.place;
+          if (place != null && place.isNotEmpty) {
+            row.place.text = place;
+            changed = true;
+          }
+        }
       }
+      if (changed) setState(() {});
+    } on BoundedReadSuperseded {
+      // A newer edit owns the suggestions; retain the current inputs.
     }
   }
 

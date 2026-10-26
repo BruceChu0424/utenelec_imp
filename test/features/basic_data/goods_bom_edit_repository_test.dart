@@ -10,6 +10,46 @@ import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.d
 
 void main() {
   test(
+    'component master batch avoids child BOM reads and retains the displayed version',
+    () async {
+      final api = _DraftApi();
+      api.masterBatches['frame'] = [
+        {
+          'id': 'screw',
+          'version': 3,
+          'model': '已显示型号',
+          'sourceType': '采购',
+          'componentGoodsWritable': true,
+        },
+      ];
+      final draft = _draft(api);
+      await draft.list('frame');
+      expect((await draft.goodsSnapshot('screw'))?['version'], 3);
+      expect(api.snapshotCalls, ['frame']);
+      // A write needs the component's structural fingerprint, but that later
+      // read must not silently move the master's optimistic edit baseline.
+      await draft.updateGoods('screw', {'model': '新型号'});
+      expect(api.snapshotCalls, ['frame', 'screw']);
+      await draft.preview();
+      final operation =
+          (api.commands.single.$2['operations'] as List).single as Map;
+      expect(operation['goodsVersion'], 3);
+      expect(operation['goodsChanges'], {'model': '新型号'});
+    },
+  );
+
+  test(
+    'an omitted component in an authoritative batch stays read only without a fallback request',
+    () async {
+      final api = _DraftApi()..masterBatches['frame'] = [];
+      final draft = _draft(api);
+      await draft.list('frame');
+      expect(await draft.goodsSnapshot('screw'), isNull);
+      expect(api.snapshotCalls, ['frame']);
+    },
+  );
+
+  test(
     'component master edits merge one optimistic command and share snapshots',
     () async {
       final api = _DraftApi();
@@ -563,6 +603,7 @@ class _DraftApi extends ApiClient {
   final commands = <(String, Map<String, dynamic>)>[];
   final snapshotCalls = <String>[];
   final componentDetails = <String, Map<String, dynamic>>{};
+  final masterBatches = <String, List<Map<String, dynamic>>>{};
   bool rejectCommit = false;
   bool loseCommitResponse = false;
   bool periodic = false;
@@ -612,6 +653,8 @@ class _DraftApi extends ApiClient {
           'sourceType': '采购',
           'componentGoodsWritable': masterWritable,
         },
+        if (masterBatches.containsKey(goodsId))
+          'componentGoods': masterBatches[goodsId],
       };
     }
     final id = path.split('/').last;

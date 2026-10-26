@@ -45,6 +45,39 @@ const _decomposePermissions = {
 };
 
 void main() {
+  testWidgets('unselected subcontract entry requests only category overview', (
+    tester,
+  ) async {
+    _desktop(tester, const Size(1600, 1000));
+    final gateway = _OverviewGateway(_data(capability: false));
+    await tester.pumpWidget(
+      _scope(
+        taskFacts: const {
+          BadgeFact.subcontractTaskWaitingOrder: 0,
+          BadgeFact.subcontractTaskRework: 0,
+          BadgeFact.subcontractTaskShortDelivery: 0,
+          BadgeFact.subcontractTaskInProgress: 0,
+        },
+        child: MaterialApp(
+          home: SubcontractDecompositionPage(
+            repository: gateway,
+            drawRepository: FakeSubcontractDrawGateway(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(gateway.overviews, 1);
+    expect(gateway.queries, isEmpty);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await selectFilterSegment(tester, '进行中');
+    await tester.pumpAndSettle();
+    expect(gateway.statuses, ['IN_PROGRESS']);
+    expect(gateway.overviews, 1);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'mixed native selection denies order creation while eligible order closure still previews',
     (tester) async {
@@ -2578,6 +2611,21 @@ class _ClosurePreviewApi extends ApiClient {
           },
       ],
     };
+  }
+}
+
+class _OverviewGateway extends _Gateway
+    implements OperationsWorkbenchOverviewGateway {
+  _OverviewGateway(super.data);
+  int overviews = 0;
+
+  @override
+  Future<OperationsWorkbenchData> loadOverview({
+    required OperationsWorkbenchDepartment department,
+    String? keyword,
+  }) async {
+    overviews++;
+    return data;
   }
 }
 

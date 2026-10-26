@@ -831,6 +831,11 @@ PriceCheckBinding subcontractPriceCheckBinding(
   String? currencyId,
   String? taxRate,
 }) => PriceCheckBinding(
+  contextKey: (
+    row.colorId,
+    row.unitId,
+    row.unitRateText ?? row.unitRate?.toString(),
+  ),
   listenables: [
     row.goodsNotifier,
     row.pricing,

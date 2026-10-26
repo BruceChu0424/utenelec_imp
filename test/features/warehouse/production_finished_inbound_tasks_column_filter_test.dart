@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/production_finished_inbound_task.dart';
 import 'package:uten_imp/features/warehouse/widgets/production_finished_inbound_tasks_view.dart';
@@ -34,6 +35,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+
+    expect(api.dictionaryPaths, [ApiEndpoints.warehousesDict]);
 
     final table = tester
         .widget<MasterDataTableView<ProductionFinishedInboundTask>>(
@@ -71,6 +74,7 @@ class _FinishedTaskApi extends ApiClient {
   _FinishedTaskApi() : super(Dio());
 
   Map<String, dynamic>? lastQuery;
+  final dictionaryPaths = <String>[];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -114,6 +118,7 @@ class _FinishedTaskApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    dictionaryPaths.add(path);
     if (path.contains('warehouses')) {
       return const [
         {'id': 'warehouse-1', 'name': '一号仓'},

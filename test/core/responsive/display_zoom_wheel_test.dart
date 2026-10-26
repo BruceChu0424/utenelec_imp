@@ -20,6 +20,7 @@ void main() {
     bool reverse = false,
     bool fillViewport = false,
     ScrollPhysics? physics,
+    TargetPlatform? platform,
   }) async {
     tester.view.physicalSize = window;
     tester.view.devicePixelRatio = 1;
@@ -28,6 +29,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         scrollBehavior: const UtenScrollBehavior(),
+        theme: platform == null ? null : ThemeData(platform: platform),
         builder: (context, child) =>
             UtenDisplayZoomBox(fontFactor: fontFactor, child: child!),
         home: Scaffold(
@@ -136,6 +138,174 @@ void main() {
         closeTo(120, 0.001),
       );
     });
+  }
+
+  for (final factor in [0.75, 1.0, 2.0]) {
+    testWidgets(
+      '$factor: scrollbar edge preserves unconsumed platform responses',
+      (tester) async {
+        final controller = ScrollController();
+        addTearDown(controller.dispose);
+        await pumpScroll(
+          tester,
+          controller: controller,
+          fontFactor: factor,
+          window: const Size(390, 1000),
+          fillViewport: true,
+        );
+        controller.jumpTo(controller.position.maxScrollExtent);
+        await tester.pump();
+        final boundaryResponses = <bool>[];
+        await wheel(
+          tester,
+          const Offset(0, 120),
+          at: const Offset(388, 998),
+          onRespond: ({required allowPlatformDefault}) =>
+              boundaryResponses.add(allowPlatformDefault),
+        );
+        expect(boundaryResponses, [true]);
+        await pumpScroll(
+          tester,
+          controller: controller,
+          fontFactor: factor,
+          window: const Size(390, 1000),
+          fillViewport: true,
+          physics: const NeverScrollableScrollPhysics(),
+        );
+        final disabledResponses = <bool>[];
+        final before = controller.offset;
+        await wheel(
+          tester,
+          const Offset(0, -120),
+          at: const Offset(388, 998),
+          onRespond: ({required allowPlatformDefault}) =>
+              disabledResponses.add(allowPlatformDefault),
+        );
+        expect(controller.offset, before);
+        expect(disabledResponses, [true]);
+      },
+    );
+  }
+
+  for (final platform in [
+    TargetPlatform.windows,
+    TargetPlatform.macOS,
+    TargetPlatform.iOS,
+  ]) {
+    for (final factor in [0.75, 1.0, 2.0]) {
+      testWidgets(
+        '$platform/$factor: Shift over the vertical bar keeps native axes',
+        (tester) async {
+          final controller = ScrollController();
+          addTearDown(controller.dispose);
+          await pumpScroll(
+            tester,
+            controller: controller,
+            fontFactor: factor,
+            platform: platform,
+            window: const Size(390, 1000),
+            fillViewport: true,
+          );
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+          await tester.pump();
+          final mouseResponses = <bool>[];
+          await wheel(
+            tester,
+            const Offset(0, 120),
+            at: const Offset(388, 998),
+            onRespond: ({required allowPlatformDefault}) =>
+                mouseResponses.add(allowPlatformDefault),
+          );
+          expect(
+            controller.offset,
+            0,
+            reason: 'Shift changes the mouse wheel axis before scrolling',
+          );
+          expect(mouseResponses, [true]);
+          final trackpadResponses = <bool>[];
+          await wheel(
+            tester,
+            const Offset(0, 120),
+            at: const Offset(388, 998),
+            kind: PointerDeviceKind.trackpad,
+            onRespond: ({required allowPlatformDefault}) =>
+                trackpadResponses.add(allowPlatformDefault),
+          );
+          expect(controller.offset * factor, closeTo(120, 0.001));
+          expect(trackpadResponses, [
+            false,
+          ], reason: 'Trackpad axes are not modified by Shift');
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+          await tester.pump();
+          await wheel(tester, const Offset(0, 120), at: const Offset(388, 998));
+          expect(controller.offset * factor, closeTo(240, 0.001));
+          final bar = tester.widget<RawScrollbar>(
+            find.byWidgetPredicate((widget) => widget is RawScrollbar),
+          );
+          expect(
+            bar.interactive,
+            isTrue,
+            reason: 'Releasing the modifier restores thumb dragging',
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  for (final explicitResponse in [false, true]) {
+    testWidgets(
+      'manual wheel handler gets one response and retains metadata (explicit=$explicitResponse)',
+      (tester) async {
+        PointerScrollEvent? received;
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (_, child) =>
+                UtenDisplayZoomBox(fontFactor: 1.5, child: child!),
+            home: Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerSignal: (event) {
+                if (event is! PointerScrollEvent) return;
+                GestureBinding.instance.pointerSignalResolver.register(event, (
+                  resolved,
+                ) {
+                  received = resolved as PointerScrollEvent;
+                  if (explicitResponse) {
+                    received!.respond(allowPlatformDefault: false);
+                    received!.respond(allowPlatformDefault: false);
+                  }
+                });
+              },
+              child: const SizedBox.expand(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final responses = <bool>[];
+        await tester.sendEventToBinding(
+          PointerScrollEvent(
+            timeStamp: const Duration(milliseconds: 123),
+            kind: PointerDeviceKind.trackpad,
+            device: 7,
+            position: const Offset(60, 90),
+            scrollDelta: const Offset(0, 120),
+            embedderId: 42,
+            onRespond: ({required allowPlatformDefault}) =>
+                responses.add(allowPlatformDefault),
+          ),
+        );
+        await tester.pump();
+        expect(received, isNotNull);
+        expect(received!.timeStamp, const Duration(milliseconds: 123));
+        expect(received!.kind, PointerDeviceKind.trackpad);
+        expect(received!.device, 7);
+        expect(received!.embedderId, 42);
+        expect(received!.position, const Offset(60, 90));
+        expect(received!.localPosition, const Offset(40, 60));
+        expect(received!.scrollDelta, const Offset(0, 80));
+        expect(responses, [false]);
+      },
+    );
   }
 
   testWidgets('宽屏仍按所选倍率：横滚、Shift 横滚和反向列表均换算一次', (tester) async {

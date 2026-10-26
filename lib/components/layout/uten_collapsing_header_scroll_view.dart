@@ -35,10 +35,9 @@
 // 「视口高 − 顶部高」，手机竖屏/横屏上会被压到表格固定件（工具条/表头/分页）纵向溢出。
 // 回退为「整页滚 + body 定高内滚」，见 compactBreakpoint/compactHeightBreakpoint 文档。
 //
-// 滚动条口径（2026-09-14）：本容器向子树注入 UtenInnerScrollActiveScope（外层头部
-// 是否收完）。表格上滑置顶之前不显示上下滚动条，进入表体内滚后再显示（显示的是
-// 表格自带的表内滚动条，大小与表内容对应）。紧凑回退分支复用同一外层控制器，
-// 「收完」= 整页滚到底（表格盒占满视口）。
+// 滚动条口径 (2026-10-25)：外层页面及表体超出各自视口即显示可拖动条，
+// UtenInnerScrollActiveScope 只保留滚动阶段信号，不再门控表格滚动条。
+// 全局行为提供普通视口滚动条，MasterDataTableView 自己提供内容覆盖层。
 //
 // 滚轮交接手感（2026-09-22 用户口径「表格置顶后得再滑一点点距离才开始动表内；往下
 // 也一样」）：NestedScrollView 原生把一格滚轮拆给外层和内层——收完头部剩下的余量
@@ -158,12 +157,7 @@ class UtenCollapsingHeaderScrollView extends StatefulWidget {
 
 /// 外层折叠头部「已收完」的阶段信号（true = 表格已吸顶、body 内滚生效）。
 ///
-/// 2026-09-14 用户口径（全站滚动条统一）：表格上滑置顶之前（外层收头部阶段）
-/// 不显示上下滚动条；等滚动进入表格内部后再显示，且滚动条与表体内容对应
-/// （显示的就是 MasterDataTableView 自带的表内竖向滚动条）。本容器跟踪外层
-/// 位置：pixels 到达 maxScrollExtent（或外层本无可滚量）即视为内滚阶段。
-/// MasterDataTableView 经 [maybeOf] 读取并门控其竖向滚动条显隐；不在本容器
-/// 内的表格查不到 scope，滚动条维持常显（无外滚阶段可言）。
+/// 保留滚动阶段信号供联动逻辑兼容；内容滚动条不再据此隐藏。
 class UtenInnerScrollActiveScope extends InheritedWidget {
   const UtenInnerScrollActiveScope({
     super.key,

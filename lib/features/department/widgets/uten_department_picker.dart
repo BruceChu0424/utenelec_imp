@@ -189,6 +189,7 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
   final _fieldKey = GlobalKey<FormFieldState<List<DeptSelection>>>();
   List<DeptSelection> _selection = const [];
   List<DepartmentNode>? _latestTree;
+  bool _fieldSyncScheduled = false;
 
   bool get _isMulti => widget.mode == UtenDepartmentPickerMode.multi;
   DepartmentSelectionPredicate get _canSelect =>
@@ -213,7 +214,7 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
     super.didUpdateWidget(oldWidget);
     if (!_sameSelection(widget.initialSelection, oldWidget.initialSelection)) {
       _selection = _mergeIncomingSelection(widget.initialSelection);
-      _fieldKey.currentState?.didChange(_selection);
+      _syncFormFieldAfterLayout();
     }
     final override = widget.treeOverride;
     if (override != null) _latestTree = override;
@@ -228,6 +229,20 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
         if (mounted) _resolveSelection(tree);
       });
     }
+  }
+
+  void _syncFormFieldAfterLayout() {
+    if (_fieldSyncScheduled) return;
+    _fieldSyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fieldSyncScheduled = false;
+      if (!mounted) return;
+      final field = _fieldKey.currentState;
+      if (field != null &&
+          !_sameSelection(field.value ?? const [], _selection)) {
+        field.didChange(List.of(_selection));
+      }
+    });
   }
 
   bool _sameSelection(List<DeptSelection> a, List<DeptSelection> b) {

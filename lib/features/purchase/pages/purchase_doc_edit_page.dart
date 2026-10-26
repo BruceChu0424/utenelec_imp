@@ -47,6 +47,7 @@ import '../../../shared/platform_tables/platform_table_row.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -131,6 +132,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
   ProcurementSourceTerms? _sourceTerms;
   String? _settlementMethodId;
   String? _settlementError;
+  final _settlementPrefills = LatestRequestGuard();
 
   // 人员字段（id + 给 picker 的 initial 项缓存）
   String? _applicantId;
@@ -515,6 +517,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
     String? supplierId,
     String? upstreamSettlementId,
   ) async {
+    final generation = _settlementPrefills.begin();
     if (!_cfg.hasSettlement || _settlementMethodId != null) return;
     if (supplierId == null || supplierId.isEmpty) return;
     final candidate = (upstreamSettlementId?.isNotEmpty ?? false)
@@ -525,7 +528,14 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
     if (candidate == null || candidate.isEmpty) return;
     try {
       final methods = await ref.read(settlementMethodOptionsProvider.future);
-      if (!mounted) return;
+      if (!mounted ||
+          !formDraftIdentityIsCurrent ||
+          !_settlementPrefills.isCurrent(generation) ||
+          _supplierId != supplierId ||
+          _settlementMethodId != null ||
+          _commercialTermsInheritedFromSource) {
+        return;
+      }
       // 默认/来源方式已停用或软删时不预填，避免下拉里出现死值。
       if (!methods.any((m) => m.id == candidate)) return;
       setState(() {
@@ -1175,6 +1185,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                                           _settlementMethodId,
                                           settlementEntries,
                                           (value) => setState(() {
+                                            _settlementPrefills.begin();
                                             _settlementMethodId = value;
                                             _settlementError = null;
                                           }),

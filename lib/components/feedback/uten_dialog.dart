@@ -6,6 +6,7 @@ import '../buttons/uten_button.dart';
 import '../../core/responsive/dialog_size.dart';
 import '../../core/responsive/scale.dart';
 import '../../core/theme/uten_anim.dart';
+import '../../core/theme/uten_scroll_behavior.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 import 'uten_motion.dart';
@@ -231,24 +232,9 @@ class UtenAlertDialog extends AlertDialog {
   );
 }
 
-/// The application suppresses automatic page scrollbars. A long confirmation
-/// still needs a visible cue that more content is available; limit it to the
-/// shell's scroll region so nested business tables retain their own controls.
-class _UtenDialogScrollBehavior extends MaterialScrollBehavior {
+/// Share page scrollbar ownership and position isolation in long confirmations.
+class _UtenDialogScrollBehavior extends UtenScrollBehavior {
   const _UtenDialogScrollBehavior();
-
-  @override
-  Widget buildScrollbar(
-    BuildContext context,
-    Widget child,
-    ScrollableDetails details,
-  ) => axisDirectionToAxis(details.direction) == Axis.vertical
-      ? Scrollbar(
-          controller: details.controller,
-          thumbVisibility: true,
-          child: child,
-        )
-      : child;
 }
 
 /// Larger business workspaces keep their own bounded body and fixed actions.

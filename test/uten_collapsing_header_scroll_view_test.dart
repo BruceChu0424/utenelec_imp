@@ -133,24 +133,21 @@ void main() {
     );
   });
 
-  // 2026-09-14 滚动条口径：外层收头部阶段不显示表内竖向滚动条，收完后（表格
-  // 吸顶、内滚生效）再显示；下滚拉回头部后再次隐藏。竖向滚动条 = 自绘
-  // UtenContentScrollbar（2026-09-22 起替换框架 Scrollbar：thumb 不伸进底部
-  // 让位空白、可拖；显隐仍由 UtenInnerScrollActiveScope 门控）。
+  // 2026-10-25：表格内容可滚动就显示，不再因外层头部展开而隐藏。
   //
   // 2026-09-22 滚轮交接门（UtenCollapsingHeaderScrollView 自带，见其文件头）：
   // 一格到交接点即止、余量丢弃，越点后同方向先吃 50 空行程再动另一段。
   // 本用例 180 高的卡片：2 格收完（第 2 格只用 80 到点），第 3 格吃 50 空行程后
   // 进表内 50，之后整格进表内；下滚对称。
-  testWidgets('表内竖向滚动条按滚动阶段显隐', (tester) async {
+  testWidgets('表内竖向滚动条不再受头部置顶阶段限制', (tester) async {
     await tester.pumpWidget(_harness());
     await tester.pumpAndSettle();
 
     UtenContentScrollbar vBar() =>
         tester.widget<UtenContentScrollbar>(find.byType(UtenContentScrollbar));
 
-    // 卡片展开（外滚阶段）：滚动条不显示。
-    expect(vBar().visible, isFalse);
+    // 卡片展开时表体仍可拖动滚动条。
+    expect(vBar().visible, isTrue);
 
     // 滚 5 格（每格缩放后 50，共 250 > 180）把卡片收完，进入表体内滚段。
     final bodyFinder = find.byWidgetPredicate(
@@ -165,12 +162,12 @@ void main() {
     }
     expect(vBar().visible, isTrue, reason: '头部收完后应显示表内滚动条');
 
-    // 向下滚：body 回顶后头部拉回，脱离内滚阶段 → 滚动条隐藏。
+    // 向下滚让头部拉回，表体滚动条仍保持可见。
     for (var i = 0; i < 6; i++) {
       await tester.sendEventToBinding(pointer.hover(center));
       await tester.sendEventToBinding(pointer.scroll(const Offset(0, -100)));
       await tester.pumpAndSettle();
     }
-    expect(vBar().visible, isFalse, reason: '头部拉回后应隐藏表内滚动条');
+    expect(vBar().visible, isTrue, reason: '头部拉回后表格仍需可拖动滚动条');
   });
 }

@@ -12,6 +12,10 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_picker_icon_button.dart';
 import 'package:uten_imp/components/inputs/uten_reference_picker_field.dart';
+import 'package:uten_imp/components/inputs/uten_inline_edit_cell.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/layout/uten_ancestor_row_window.dart'
+    show UtenRowMountPlaceholder;
 import 'package:uten_imp/components/data_display/uten_table_row_drag.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -31,6 +35,7 @@ import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 import '../../support/audit_screenshot_support.dart';
+import '../../support/goods_bom_edit_test_api.dart' show activateBomEditor;
 
 final _permissions = NotifierProvider<_Permissions, Set<String>>(
   _Permissions.new,
@@ -80,6 +85,9 @@ class _Api extends ApiClient {
   Completer<void>? pendingCommit;
   ApiException? commitFailure;
   bool masterWritable = false;
+  bool includeMasterBatch = true;
+  int learningCalls = 0;
+  Completer<GoodsBomLearningSummary>? pendingLearning;
   final pendingCanonical = <String, Completer<List<GoodsBomItem>>>{};
   final canonicalCalls = <String>[];
   final tree = <String, List<Map<String, dynamic>>>{
@@ -113,6 +121,19 @@ class _Api extends ApiClient {
           'sourceType': '采购',
           'componentGoodsWritable': masterWritable,
         },
+        if (includeMasterBatch)
+          'componentGoods': [
+            for (final row in tree[goodsId] ?? <Map<String, dynamic>>[])
+              {
+                'id': row['componentGoodsId'],
+                'version': 4,
+                'model': '旧型号',
+                'spec': '旧规格',
+                'material': '旧材质',
+                'sourceType': '采购',
+                'componentGoodsWritable': masterWritable,
+              },
+          ],
       };
     }
     final id = path.split('/').last;
@@ -172,8 +193,10 @@ class _Repository extends Fake implements GoodsBomRepository {
   }
 
   @override
-  Future<GoodsBomLearningSummary> learning(String goodsId) async =>
-      const GoodsBomLearningSummary();
+  Future<GoodsBomLearningSummary> learning(String goodsId) async {
+    api.learningCalls++;
+    return api.pendingLearning?.future ?? const GoodsBomLearningSummary();
+  }
 
   @override
   Future<GoodsBomItem> setAudited(
@@ -208,6 +231,9 @@ Future<_Fixture> _pump(
   Future<GoodsListItem?> Function()? replaceComponent,
   Future<List<GoodsListItem>> Function(String)? suggestComponents,
   bool canEditGoods = false,
+  List<ColorListItem> colors = const [
+    ColorListItem(id: 'color-red', name: '红色'),
+  ],
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -223,9 +249,7 @@ Future<_Fixture> _pump(
           (ref, query) => suggestComponents(query),
         ),
       apiClientProvider.overrideWithValue(api),
-      colorDictProvider.overrideWith(
-        (ref) async => const [ColorListItem(id: 'color-red', name: '红色')],
-      ),
+      colorDictProvider.overrideWith((ref) async => colors),
       goodsBomRepositoryProvider.overrideWithValue(_Repository(api)),
       if (chooseComponents != null)
         bomComponentPickerProvider.overrideWithValue(
@@ -308,12 +332,50 @@ Future<void> _edit(WidgetTester tester) async {
 }
 
 Future<void> _menu(WidgetTester tester, String name) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+  await _showTreeColumns(tester);
   await tester.tap(
     find.text(name).first,
     buttons: kSecondaryMouseButton,
     kind: PointerDeviceKind.mouse,
   );
   await tester.pumpAndSettle();
+}
+
+Future<void> _showTreeColumns(WidgetTester tester) async {
+  // Quantity editors can be on the far right of this wide table. Return to
+  // its hierarchy column before exercising the actual pointer/menu action.
+  // First let the preceding native edit's scheduled caret reveal finish, so
+  // it cannot override the subsequent deliberate horizontal navigation.
+  await tester.pumpAndSettle();
+  for (final state in tester.stateList<ScrollableState>(
+    find.byType(Scrollable),
+  )) {
+    if (state.position.axis == Axis.horizontal && state.position.pixels != 0) {
+      state.position.jumpTo(0);
+    }
+  }
+  await tester.pumpAndSettle();
+  final viewport = tester.getRect(find.byType(MaterialApp));
+  final targets = find.byWidgetPredicate((widget) {
+    final key = widget.key;
+    return key is ValueKey<String> &&
+        (key.value.startsWith('goods-bom-tree-cell-') ||
+            key.value.startsWith('goods-bom-tree-toggle-'));
+  });
+  for (final target in targets.evaluate()) {
+    final point = tester.getCenter(
+      find.byElementPredicate((element) => identical(element, target)),
+    );
+    if (point.dy > viewport.top && point.dy < viewport.bottom) {
+      expect(
+        viewport.contains(point),
+        isTrue,
+        reason:
+            'Tree pointer target ${target.widget.key} must be inside the visible viewport',
+      );
+    }
+  }
 }
 
 Future<void> _stageFrameDeletion(WidgetTester tester) async {
@@ -404,18 +466,23 @@ void main() {
         canEditGoods: true,
         configure: (api) {
           api.masterWritable = true;
+          api.includeMasterBatch = false;
           api.pendingSnapshots['frame'] = pending;
         },
       );
-      await _edit(tester);
+      await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 30));
+      }
       expect(fixture.api.snapshotCalls, contains('frame'));
       fixture.goodsId.value = 'target';
       await tester.pumpAndSettle();
       await _edit(tester);
       expect(pending.isCompleted, isFalse);
       expect(fixture.api.snapshotCalls, contains('nut'));
-      final model = find.byKey(
-        const ValueKey('goods-bom-master-model-target/row-nut'),
+      final model = await activateBomEditor(
+        tester,
+        'goods-bom-master-model-target/row-nut',
       );
       expect(model, findsOneWidget);
       pending.complete({
@@ -430,6 +497,369 @@ void main() {
       });
       await tester.pumpAndSettle();
       expect(tester.widget<TextField>(model).controller!.text, '旧型号');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'equal edit snapshots retain rows and viewport while inactive cells mount no editors',
+    (tester) async {
+      final learning = Completer<GoodsBomLearningSummary>();
+      final fixture = await _pump(
+        tester,
+        canEditGoods: true,
+        configure: (api) {
+          api.masterWritable = true;
+          api.pendingLearning = learning;
+          api.tree['source'] = [
+            for (var index = 0; index < 100; index++)
+              {
+                ..._row('edge-$index', 'part-$index', '组件$index'),
+                'componentModel': '旧型号',
+                'componentSourceType': '采购',
+                'componentStockQty': index + 12,
+              },
+          ];
+        },
+      );
+      final tableFinder = find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView,
+      );
+      final tableState = tester.state(tableFinder);
+      final readRows = tester
+          .widget<MasterDataTableView<dynamic>>(tableFinder)
+          .items;
+      final viewport = tester.getRect(tableFinder);
+      final firstSlot = find.byKey(
+        const ValueKey('row-drag-slot:source/edge-0'),
+      );
+      final readSlotElement = tester.element(firstSlot);
+      expect(find.byType(UtenRowMountPlaceholder), findsNothing);
+      final pendingSnapshot = Completer<Map<String, dynamic>>();
+      fixture.api.pendingSnapshots['source'] = pendingSnapshot;
+      await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+      for (var frame = 0; frame < 5; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(tester.getRect(tableFinder), viewport);
+        expect(tester.state(tableFinder), same(tableState));
+        expect(tester.element(firstSlot), same(readSlotElement));
+        expect(find.byType(UtenRowMountPlaceholder), findsNothing);
+        expect(
+          tester.widget<MasterDataTableView<dynamic>>(tableFinder).items,
+          same(readRows),
+        );
+      }
+      pendingSnapshot.complete({
+        'items': fixture.api.tree['source'],
+        'fingerprint': 'stable',
+        'componentGoods': [
+          for (final row in fixture.api.tree['source']!)
+            {
+              'id': row['componentGoodsId'],
+              'version': 4,
+              'model': '旧型号',
+              'sourceType': '采购',
+              'componentGoodsWritable': true,
+            },
+        ],
+      });
+      // A same-data mode change must not recreate deferred row mounts and
+      // briefly replace already visible rows with budget placeholders.
+      for (var frame = 0; frame < 12; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(tester.element(firstSlot), same(readSlotElement));
+        expect(find.byType(UtenRowMountPlaceholder), findsNothing);
+      }
+      await tester.pumpAndSettle();
+      final editableTable = tester.widget<MasterDataTableView<dynamic>>(
+        tableFinder,
+      );
+      expect(editableTable.items, same(readRows));
+      expect(tester.state(tableFinder), same(tableState));
+      expect(tester.getRect(tableFinder), viewport);
+      expect(find.byType(UtenInlineEditCell), findsWidgets);
+      expect(find.byType(UtenDropdownField), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.key is ValueKey<String> &&
+              ((widget.key! as ValueKey<String>).value.startsWith(
+                    'goods-bom-master-',
+                  ) ||
+                  (widget.key! as ValueKey<String>).value.startsWith(
+                    'goods-bom-inline-',
+                  )),
+        ),
+        findsNothing,
+      );
+      final model = find.byKey(
+        const ValueKey('goods-bom-master-model-source/edge-0'),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('goods-bom-activate-model-source/edge-0')),
+      );
+      await tester.pump();
+      final native = find.descendant(
+        of: model,
+        matching: find.byType(EditableText),
+      );
+      final editorState = tester.state<EditableTextState>(native);
+      await tester.enterText(model, '型号输入');
+      const composed = TextEditingValue(
+        text: '型号输入',
+        selection: TextSelection.collapsed(offset: 4),
+        composing: TextRange(start: 2, end: 4),
+      );
+      tester.testTextInput.updateEditingValue(composed);
+      await tester.pump();
+      final controller = tester.widget<TextField>(model).controller!;
+      final appendRows = editableTable.appendRows;
+      final columns = editableTable.columns;
+      for (final selection in <Set<String>>[
+        {'source|edge-0'},
+        {},
+      ]) {
+        tester
+            .widget<MasterDataTableView<dynamic>>(tableFinder)
+            .onSelectedIdsChanged!(selection);
+        for (var frame = 0; frame < 5; frame++) {
+          await tester.pump(const Duration(milliseconds: 16));
+          expect(tester.state<EditableTextState>(native), same(editorState));
+          expect(
+            tester.widget<EditableText>(native).focusNode.hasFocus,
+            isTrue,
+          );
+          expect(controller.value, composed);
+          final table = tester.widget<MasterDataTableView<dynamic>>(
+            tableFinder,
+          );
+          expect(table.items, same(readRows));
+          expect(table.appendRows, same(appendRows));
+          expect(table.columns, same(columns));
+        }
+      }
+      learning.complete(
+        const GoodsBomLearningSummary(
+          materialEvidence: [
+            GoodsBomMaterialEvidence(
+              source: 'DAILY_REPORT',
+              status: 'PENDING',
+              componentGoodsId: 'late',
+              componentName: '延迟选料',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('bom-selected-materials-notice')),
+        findsNothing,
+      );
+      expect(tester.getRect(tableFinder), viewport);
+      expect(tester.state<EditableTextState>(native), same(editorState));
+      expect(controller.value, composed);
+      final bom = tester.state<GoodsBomTabState>(find.byType(GoodsBomTab));
+      await bom.refresh();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(fixture.api.canonicalCalls, ['source']);
+      expect(fixture.api.snapshotCalls, ['source']);
+      expect(tester.state<EditableTextState>(native), same(editorState));
+      expect(controller.value, composed);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+      await tester.pumpAndSettle();
+      final operation =
+          (fixture.api.commands.single.$2['operations'] as List).single as Map;
+      expect(operation['type'], 'UPDATE_GOODS');
+      expect(operation['goodsChanges'], {'model': '型号输入'});
+      expect(operation['goodsId'], 'part-0');
+      await tester.tap(find.byKey(const Key('goods-bom-discard-and-exit')));
+      await tester.pumpAndSettle();
+      expect(
+        fixture.api.commands.where((command) => command.$1.endsWith('/commit')),
+        isEmpty,
+      );
+      expect(
+        find.byKey(const Key('bom-selected-materials-notice')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'a replaced component starts fresh lazy editors instead of inheriting activation',
+    (tester) async {
+      final fixture = await _pump(
+        tester,
+        replaceComponent: () async =>
+            const GoodsListItem(id: 'nut', name: '螺母', unitName: '个'),
+      );
+      await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+      await tester.pumpAndSettle();
+      final activation = find.byKey(
+        const ValueKey('goods-bom-activate-name-source/row-frame'),
+      );
+      final oldState = tester.state(
+        find.ancestor(
+          of: activation,
+          matching: find.byType(UtenInlineEditCell),
+        ),
+      );
+      await tester.tap(activation);
+      await tester.pumpAndSettle();
+      final editor = find.byKey(
+        const ValueKey('goods-bom-name-row:source|row-frame'),
+      );
+      expect(editor, findsOneWidget);
+      final picker = tester.widget<UtenPickerIconButton>(
+        find.byKey(const ValueKey('goods-bom-replace-source/row-frame')),
+      );
+      await picker.onPressed!();
+      await tester.pumpAndSettle();
+      expect(editor, findsNothing);
+      expect(activation, findsOneWidget);
+      final replacementState = tester.state(
+        find.ancestor(
+          of: activation,
+          matching: find.byType(UtenInlineEditCell),
+        ),
+      );
+      expect(replacementState, isNot(same(oldState)));
+      expect(find.text('螺母'), findsOneWidget);
+      await tester.tap(activation);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<UtenReferencePickerField<GoodsListItem>>(editor)
+            .controller
+            .text,
+        '螺母',
+      );
+      expect(fixture.api.tree['source']!.first['componentGoodsId'], 'frame');
+      expect(fixture.api.commands, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'collapsed lazy color previews retain the newly selected code and save only that change',
+    (tester) async {
+      final fixture = await _pump(
+        tester,
+        colors: const [ColorListItem(id: 'color-code', code: 'YL')],
+        configure: (api) {
+          api.tree['source']!.first['hasChildren'] = true;
+          api.tree['frame'] = [_row('row-washer', 'washer', '垫片')];
+        },
+      );
+      await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+      await tester.pumpAndSettle();
+      final parent = find.byKey(
+        const ValueKey('goods-bom-tree-toggle-row-frame'),
+      );
+      await tester.tap(parent);
+      await tester.pumpAndSettle();
+      final activation = find.byKey(
+        const ValueKey('goods-bom-activate-color-source/row-frame/row-washer'),
+      );
+      tester.widget<InkWell>(activation).onTap!();
+      await tester.pumpAndSettle();
+      tester
+          .widget<UtenDropdownField>(find.byType(UtenDropdownField))
+          .onChanged('color-code');
+      await tester.pumpAndSettle();
+      await tester.tap(parent);
+      await tester.pumpAndSettle();
+      await tester.tap(parent);
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenDropdownField), findsNothing);
+      expect(find.text('YL'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+      await tester.pumpAndSettle();
+      final operation =
+          (fixture.api.commands.single.$2['operations'] as List).single as Map;
+      expect(operation['type'], 'UPDATE');
+      expect(operation['goodsId'], 'frame');
+      expect(operation['body'], {
+        'componentGoodsId': 'washer',
+        'colorId': 'color-code',
+      });
+      await tester.tap(find.byKey(const Key('goods-bom-discard-and-exit')));
+      await tester.pumpAndSettle();
+      expect(fixture.api.tree['frame']!.single['colorId'], isNull);
+    },
+  );
+
+  testWidgets(
+    'batched master snapshots publish together and selection scrolling resume never refetch',
+    (tester) async {
+      final fixture = await _pump(
+        tester,
+        canEditGoods: true,
+        configure: (api) {
+          api.masterWritable = true;
+          api.tree['source'] = [
+            for (var index = 0; index < 160; index++)
+              {
+                ..._row('edge-$index', 'part-$index', '组件$index'),
+                'componentModel': '旧型号',
+                'componentSourceType': '采购',
+                'componentStockQty': index + 12,
+              },
+          ];
+        },
+      );
+      await _edit(tester);
+      expect(fixture.api.snapshotCalls, ['source']);
+      final tableFinder = find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView,
+      );
+      final initial = tester.widget<MasterDataTableView<dynamic>>(tableFinder);
+      final modelFinder = await activateBomEditor(
+        tester,
+        'goods-bom-master-model-source/edge-0',
+      );
+      final editor = tester.widget<TextField>(modelFinder).controller;
+      for (final selected in <Set<String>>[
+        {'source|edge-0'},
+        {},
+      ]) {
+        tester
+            .widget<MasterDataTableView<dynamic>>(tableFinder)
+            .onSelectedIdsChanged!(selected);
+        await tester.pumpAndSettle();
+        final rebuilt = tester.widget<MasterDataTableView<dynamic>>(
+          tableFinder,
+        );
+        expect(identical(rebuilt.items, initial.items), isTrue);
+        expect(identical(rebuilt.columns, initial.columns), isTrue);
+        expect(tester.widget<TextField>(modelFinder).controller, same(editor));
+      }
+      final learningCalls = fixture.api.learningCalls;
+      final bom = tester.state<GoodsBomTabState>(find.byType(GoodsBomTab));
+      await bom.refresh();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      final scroll = tester
+          .stateList<ScrollableState>(find.byType(Scrollable))
+          .firstWhere(
+            (state) =>
+                state.position.axis == Axis.vertical &&
+                state.position.maxScrollExtent > 500,
+          );
+      final scrollFinder = find.byElementPredicate(
+        (element) =>
+            element is StatefulElement && identical(element.state, scroll),
+      );
+      await tester.drag(scrollFinder, const Offset(0, -900));
+      await tester.pumpAndSettle();
+      expect(scroll.position.pixels, greaterThan(0));
+      expect(fixture.api.snapshotCalls, ['source']);
+      expect(fixture.api.canonicalCalls, ['source']);
+      expect(fixture.api.learningCalls, learningCalls);
       expect(tester.takeException(), isNull);
     },
   );
@@ -510,11 +940,17 @@ void main() {
       );
       await _edit(tester);
       await tester.enterText(
-        find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+        await activateBomEditor(
+          tester,
+          'goods-bom-inline-qty-source/row-frame',
+        ),
         '5',
       );
       await tester.enterText(
-        find.byKey(const ValueKey('goods-bom-master-model-source/row-frame')),
+        await activateBomEditor(
+          tester,
+          'goods-bom-master-model-source/row-frame',
+        ),
         '新型号',
       );
       fixture.api.commitFailure = ApiException('NETWORK_TIMEOUT', '请求超时');
@@ -524,10 +960,16 @@ void main() {
       await tester.tap(find.text('继续保留草稿'));
       await tester.pumpAndSettle();
       final qty = tester.widget<TextField>(
-        find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+        await activateBomEditor(
+          tester,
+          'goods-bom-inline-qty-source/row-frame',
+        ),
       );
       final model = tester.widget<TextField>(
-        find.byKey(const ValueKey('goods-bom-master-model-source/row-frame')),
+        await activateBomEditor(
+          tester,
+          'goods-bom-master-model-source/row-frame',
+        ),
       );
       expect(qty.enabled, isFalse);
       expect(model.enabled, isFalse);
@@ -535,7 +977,25 @@ void main() {
       final table = tester.widget<MasterDataTableView<dynamic>>(
         find.byWidgetPredicate((widget) => widget is MasterDataTableView).first,
       );
-      expect(table.rowDrag, isNull);
+      expect(table.rowDrag, isNotNull);
+      for (final row in table.items) {
+        // Feature-private row types remain behind the public drag contract.
+        // ignore: avoid_dynamic_calls
+        expect((table.rowDrag as dynamic).canDragRow(row), isFalse);
+        // ignore: avoid_dynamic_calls
+        expect(
+          (table.rowDrag as dynamic).canDrop(row, table.items.sublist(0, 1)),
+          isFalse,
+        );
+        // ignore: avoid_dynamic_calls
+        expect(
+          (table.rowDrag as dynamic).canDropInto(
+            row,
+            table.items.sublist(0, 1),
+          ),
+          isFalse,
+        );
+      }
       qty.onChanged!('999');
       model.onChanged!('不应接受');
       final reviewed = fixture.api.commands.last.$2;
@@ -578,17 +1038,18 @@ void main() {
     );
     await _edit(tester);
     await _capture(tester, 'bom-master-edit-1440');
-    final model = find.byKey(
-      const ValueKey('goods-bom-master-model-source/row-frame'),
+    final model = await activateBomEditor(
+      tester,
+      'goods-bom-master-model-source/row-frame',
     );
     expect(model, findsOneWidget);
     await tester.enterText(model, '新型号');
     await tester.enterText(
-      find.byKey(const ValueKey('goods-bom-master-spec-source/row-frame')),
+      await activateBomEditor(tester, 'goods-bom-master-spec-source/row-frame'),
       '新规格',
     );
     await tester.enterText(
-      find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+      await activateBomEditor(tester, 'goods-bom-inline-qty-source/row-frame'),
       '5',
     );
     expect(fixture.api.commands, isEmpty);
@@ -622,11 +1083,14 @@ void main() {
     await _pump(tester, canEditGoods: true);
     await _edit(tester);
     expect(
-      find.byKey(const ValueKey('goods-bom-master-model-source/row-frame')),
+      await activateBomEditor(
+        tester,
+        'goods-bom-master-model-source/row-frame',
+      ),
       findsNothing,
     );
     expect(
-      find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+      await activateBomEditor(tester, 'goods-bom-inline-qty-source/row-frame'),
       findsOneWidget,
     );
   });
@@ -641,15 +1105,18 @@ void main() {
     );
     await _edit(tester);
     await tester.enterText(
-      find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+      await activateBomEditor(tester, 'goods-bom-inline-qty-source/row-frame'),
       '7',
     );
     await tester.enterText(
-      find.byKey(const ValueKey('goods-bom-inline-summary-source/row-frame')),
+      await activateBomEditor(
+        tester,
+        'goods-bom-inline-summary-source/row-frame',
+      ),
       '新备注',
     );
     final picker = tester.widget<UtenPickerIconButton>(
-      find.byKey(const ValueKey('goods-bom-replace-source/row-frame')),
+      await activateBomEditor(tester, 'goods-bom-replace-source/row-frame'),
     );
     await picker.onPressed!();
     await tester.pumpAndSettle();
@@ -666,7 +1133,7 @@ void main() {
     final fixture = await _pump(tester);
     await _edit(tester);
     await tester.enterText(
-      find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+      await activateBomEditor(tester, 'goods-bom-inline-qty-source/row-frame'),
       '7',
     );
     final table = tester.widget<MasterDataTableView<dynamic>>(
@@ -707,7 +1174,10 @@ void main() {
       final fixture = await _pump(tester);
       await _edit(tester);
       await tester.enterText(
-        find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+        await activateBomEditor(
+          tester,
+          'goods-bom-inline-qty-source/row-frame',
+        ),
         '7',
       );
       await _menu(tester, '铁架');
@@ -722,7 +1192,10 @@ void main() {
       await tester.tap(find.text('保存').last);
       await tester.pumpAndSettle();
       final inline = tester.widget<TextField>(
-        find.byKey(const ValueKey('goods-bom-inline-qty-source/row-frame')),
+        await activateBomEditor(
+          tester,
+          'goods-bom-inline-qty-source/row-frame',
+        ),
       );
       expect(inline.controller!.text, '8');
       await _edit(tester);
@@ -786,15 +1259,28 @@ void main() {
         find.byKey(const ValueKey('goods-bom-tree-toggle-row-frame')),
       );
       await tester.pumpAndSettle();
-      final qty = find.byKey(
-        const ValueKey('goods-bom-inline-qty-source/row-frame/row-washer'),
+      final qty = await activateBomEditor(
+        tester,
+        'goods-bom-inline-qty-source/row-frame/row-washer',
       );
       await tester.enterText(qty, '7.25');
+      await _showTreeColumns(tester);
       await tester.tap(
         find.byKey(const ValueKey('goods-bom-tree-toggle-row-frame')),
       );
       await tester.pumpAndSettle();
-      expect(qty, findsNothing);
+      expect(qty.hitTestable(), findsNothing);
+      final collapsed = tester.widget<MasterDataTableView<dynamic>>(
+        find.byWidgetPredicate((widget) => widget is MasterDataTableView),
+      );
+      expect(
+        collapsed.items.map((row) {
+          // Keep the private row function's runtime type at this integration seam.
+          // ignore: avoid_dynamic_calls
+          return (collapsed as dynamic).idOf(row);
+        }),
+        isNot(contains('frame|row-washer')),
+      );
       await _edit(tester);
       final operation =
           (fixture.api.commands.single.$2['operations'] as List).single as Map;
@@ -848,7 +1334,15 @@ void main() {
         find.byWidgetPredicate((widget) => widget is MasterDataTableView).first,
       );
       expect(table.appendRows, hasLength(3));
-      expect(find.byTooltip('替换组件'), findsNWidgets(2));
+      expect(find.byTooltip('替换组件'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('goods-bom-activate-name-source/row-frame')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('goods-bom-activate-name-source/row-screw')),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('goods-bom-add-child-header')), findsNothing);
       expect(find.byTooltip('添加下级组件'), findsNWidgets(2));
       await tester.tap(find.byKey(const ValueKey('goods-bom-choose-new-0')));
@@ -912,7 +1406,9 @@ void main() {
         ),
       );
       await _edit(tester);
-      await tester.tap(find.byTooltip('替换组件').first);
+      await tester.tap(
+        await activateBomEditor(tester, 'goods-bom-replace-source/row-frame'),
+      );
       await tester.pumpAndSettle();
       expect(find.text('垫片'), findsOneWidget);
       expect(find.text('铁架'), findsNothing);
@@ -1205,7 +1701,7 @@ void main() {
       expect(await finishing, isFalse);
       expect(state.hasEditingSession, isTrue);
       expect(find.text('螺母'), findsOneWidget);
-      expect(find.text('退出并保存'), findsOneWidget);
+      expect(find.text('退出编辑模式'), findsOneWidget);
       expect(fixture.api.commands.single.$1, endsWith('/preview'));
     },
   );
@@ -1365,7 +1861,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(interactions, [true, false, true, false]);
       expect(canonicalChanges, 0);
-      expect(find.text('退出并保存'), findsNothing);
+      expect(find.text('退出编辑模式'), findsNothing);
     },
   );
 
@@ -1457,7 +1953,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 80));
       expect(fixture.api.snapshotCalls, ['source']);
       expect(find.text('铁架'), findsOneWidget);
-      expect(find.text('退出并保存'), findsNothing);
+      expect(find.text('退出编辑模式'), findsNothing);
       expect(find.byType(UtenBusyOverlay), findsNothing);
       expect(find.byKey(const Key('goods-bom-add-component')), findsNothing);
       expect(
@@ -1484,7 +1980,7 @@ void main() {
       });
       await tester.pumpAndSettle();
       expect(identical(tester.state(tableFinder.first), table), isTrue);
-      expect(find.text('退出并保存'), findsOneWidget);
+      expect(find.text('退出编辑模式'), findsOneWidget);
       expect(
         tester.widget<Checkbox>(find.byType(Checkbox).at(1)).value,
         isTrue,
@@ -1540,7 +2036,7 @@ void main() {
     });
     await tester.pumpAndSettle();
     expect(scroll.position.pixels, greaterThanOrEqualTo(beforeAdoption));
-    expect(find.text('退出并保存'), findsOneWidget);
+    expect(find.text('退出编辑模式'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1559,7 +2055,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('服务器暂时不可用'), findsOneWidget);
       expect(find.text('铁架'), findsOneWidget);
-      expect(find.text('退出并保存'), findsNothing);
+      expect(find.text('退出编辑模式'), findsNothing);
       expect(find.byKey(const Key('goods-bom-add-component')), findsNothing);
       expect(
         tester.widget<Checkbox>(find.byType(Checkbox).at(1)).value,
@@ -1587,7 +2083,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('过时快照'), findsNothing);
       expect(find.text('铁架'), findsOneWidget);
-      expect(find.text('退出并保存'), findsNothing);
+      expect(find.text('退出编辑模式'), findsNothing);
       expect(fixture.api.commands, isEmpty);
     },
   );
@@ -1644,7 +2140,7 @@ void main() {
       });
     }
     await tester.pumpAndSettle();
-    expect(find.text('退出并保存'), findsOneWidget);
+    expect(find.text('退出编辑模式'), findsOneWidget);
     expect(find.text('子件0'), findsOneWidget);
   });
 
@@ -1678,7 +2174,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('子组件快照暂时不可用'), findsOneWidget);
       expect(find.byKey(const Key('goods-bom-read-progress')), findsNothing);
-      expect(find.text('退出并保存'), findsNothing);
+      expect(find.text('退出编辑模式'), findsNothing);
       expect(find.text('垫片'), findsOneWidget);
       delayed.complete({
         'items': <Map<String, dynamic>>[],
@@ -1686,7 +2182,7 @@ void main() {
       });
       await tester.pumpAndSettle();
       expect(find.text('螺母'), findsOneWidget);
-      expect(find.text('退出并保存'), findsNothing);
+      expect(find.text('退出编辑模式'), findsNothing);
     },
   );
 
@@ -1759,7 +2255,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('goods-bom-save-confirm')), findsNothing);
       expect(fixture.api.commands, hasLength(1));
-      expect(find.text('退出并保存'), findsNothing);
+      expect(find.text('退出编辑模式'), findsNothing);
     },
   );
 
@@ -1794,7 +2290,7 @@ void main() {
       final fixture = await _pump(tester);
       fixture.api.previewWarnings = ['单个重量与货品资料单重相差超过 20%，请核对'];
       await _edit(tester);
-      expect(find.text('退出并保存'), findsOneWidget);
+      expect(find.text('退出编辑模式'), findsOneWidget);
       await _menu(tester, '铁架');
       await tester.tap(find.text('删除').last);
       await tester.pumpAndSettle();
@@ -1809,7 +2305,7 @@ void main() {
       expect(fixture.api.commands.single.$1, endsWith('/preview'));
       await tester.tap(find.text('继续编辑'));
       await tester.pumpAndSettle();
-      expect(find.text('退出并保存'), findsOneWidget);
+      expect(find.text('退出编辑模式'), findsOneWidget);
       expect(fixture.api.commands, hasLength(1));
       await _edit(tester);
       await tester.tap(find.byKey(const Key('goods-bom-save-confirm')));
@@ -1940,7 +2436,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(fixture.api.commands, isEmpty);
       expect(fixture.container.read(goodsClipboardProvider).bomItems, isNull);
-      expect(find.text('退出并保存'), findsNothing);
+      expect(find.text('退出编辑模式'), findsNothing);
     },
   );
 
@@ -2008,7 +2504,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('退出全屏'), findsOneWidget);
-    expect(find.text('退出并保存'), findsOneWidget);
+    expect(find.text('退出编辑模式'), findsOneWidget);
     await _menu(tester, '铁架');
     expect(find.text('添加子组件'), findsOneWidget);
     await tester.tapAt(const Offset(1100, 700));
@@ -2028,7 +2524,7 @@ void main() {
           'bom-readonly-${size.width.toInt()}-${brightness.name}-2x',
         );
         await _edit(tester);
-        expect(find.text('退出并保存'), findsOneWidget);
+        expect(find.text('退出编辑模式'), findsOneWidget);
         expect(
           find.byKey(const Key('goods-bom-add-component')),
           findsOneWidget,

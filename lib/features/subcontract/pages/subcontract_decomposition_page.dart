@@ -27,7 +27,7 @@
 // · 历史记录 = 终态，按时间门控查看。
 //
 // 统一「分类分段」范式：UtenFilterToolbar 阶段行 + 异常小类行，默认都不选，
-// 内容区显示引导占位不发请求；进页面只拉一次 size=1 概览取阶段/异常计数徽章，
+// 内容区显示引导占位；进页面只读分类聚合概览，
 // 另拉一次领料计数(红/黄)。
 // 深链 ?segment=draw(&orderItemId= / &orderId=) 直落「待处理」并按通知里的
 // 委外任务 / 订货单定位；?segment=pending(&keyword=申请号) 直落「待处理」并按
@@ -432,7 +432,7 @@ class _SubcontractDecompositionPageState
       widget.initialOrderId,
       widget.initialKeyword,
     );
-    // 默认不选分类：内容不加载；仅拉一次 size=1 概览获取阶段/异常计数徽章，
+    // 默认不选分类：只读分类聚合概览，不加载历史行和表头筛选桶，
     // 另拉一次领料计数(红/黄)。深链直落「待处理」时同时拉申请列表与领料行。
     Future<void>.microtask(() {
       _load(page: 1);
@@ -638,20 +638,33 @@ class _SubcontractDecompositionPageState
       _error = null;
     });
     try {
-      Future<OperationsWorkbenchData> fetch(int target) => _repository.load(
-        department: OperationsWorkbenchDepartment.subcontract,
-        page: target,
-        // 未选分类时只拉 1 条：仅为取 summary 阶段/异常计数。
-        size: listing ? size : 1,
-        keyword: keyword,
-        status: listing && seg != null && !seg.history ? seg.code : null,
-        exception: listing && seg != null && !seg.history ? exception : null,
-        dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
-        dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
-        sort: sort,
-        order: ascending ? 'asc' : 'desc',
-        columnFilters: columnFilters,
-      );
+      final repository = _repository;
+      Future<OperationsWorkbenchData> fetch(int target) {
+        if (!listing && repository is OperationsWorkbenchOverviewGateway) {
+          return (repository as OperationsWorkbenchOverviewGateway)
+              .loadOverview(
+                department: OperationsWorkbenchDepartment.subcontract,
+                keyword: keyword,
+              );
+        }
+        return repository.load(
+          department: OperationsWorkbenchDepartment.subcontract,
+          page: target,
+          // 未选分类时只拉 1 条：仅为取 summary 阶段/异常计数。
+          size: listing ? size : 1,
+          keyword: keyword,
+          status: listing && seg != null && !seg.history ? seg.code : null,
+          exception: listing && seg != null && !seg.history ? exception : null,
+          dateFrom: range == null
+              ? null
+              : ChinaDateTime.formatDate(range.start),
+          dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+          sort: sort,
+          order: ascending ? 'asc' : 'desc',
+          columnFilters: columnFilters,
+        );
+      }
+
       final results = <int, OperationsWorkbenchData>{};
       OperationsWorkbenchData next;
       if (retainRows && listing) {

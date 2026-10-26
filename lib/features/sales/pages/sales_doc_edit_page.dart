@@ -68,7 +68,7 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/server_config.dart';
-import 'package:flutter/foundation.dart' show setEquals;
+import 'package:flutter/foundation.dart' show setEquals, visibleForTesting;
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -118,6 +118,10 @@ import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../widgets/sales_grid_columns.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
+
+/// Debug-only work counter for editor selection/quantity performance checks.
+@visibleForTesting
+ValueChanged<int>? debugSalesQuantityScan;
 
 /// 明细「选货品」弹窗(多选)。编辑页经它打开货品选择器，测试可替换成直接返回货品。
 typedef SalesGridGoodsPicker =
@@ -695,7 +699,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       }
     });
     // 明细行增删 → 重新挂载数量监听并刷新按单位分组的数量。
-    _grid.addListener(_onGridRowsChanged);
+    _grid.rowsListenable.addListener(_onGridRowsChanged);
     // 预填黄标联动：收货地址/联系电话被改到与带入值不同 → 视为已核对，移除黄框。
     _shipAddr.addListener(() => _onAutofillTextEdited('shipAddr', _shipAddr));
     _shipLinkPhone.addListener(
@@ -873,7 +877,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   @override
   void dispose() {
     _aiPage.detach();
-    _grid.removeListener(_onGridRowsChanged);
+    _grid.rowsListenable.removeListener(_onGridRowsChanged);
     _gridPinned.dispose();
     for (final c in _qtyListened) {
       c.removeListener(_recalcQtyTotal);
@@ -1744,6 +1748,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
 
   /// 仅用作 footer 刷新信号；展示值由 footer 按 unitId 分组重算，绝不跨单位相加。
   void _recalcQtyTotal() {
+    assert(() {
+      debugSalesQuantityScan?.call(_grid.rows.length);
+      return true;
+    }());
     var sum = 0.0;
     for (final r in _grid.rows) {
       sum += double.tryParse(r.qty.text.trim()) ?? 0;

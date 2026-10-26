@@ -12,6 +12,7 @@ import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/components/layout/uten_picker_confirm_bar.dart';
 import 'package:uten_imp/core/theme/uten_tokens.dart';
+import 'package:uten_imp/core/theme/uten_scroll_behavior.dart';
 
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/widgets/uten_tree_table_cell.dart';
@@ -4301,6 +4302,7 @@ void main() {
         Perm.productionMaterialAnalysisReallocate,
       },
       allowedActions: const ['REALLOCATE'],
+      scrollBehavior: const UtenScrollBehavior(),
     );
 
     await tester.tap(find.byKey(const Key('material-analysis-priority-edit')));
@@ -4313,6 +4315,17 @@ void main() {
       find.byKey(const ValueKey<String>('material-priority-down-0')),
       findsOneWidget,
     );
+    final priorityList = find.byKey(
+      const Key('material-analysis-priority-list'),
+    );
+    final bars = find.descendant(
+      of: priorityList,
+      matching: find.byType(Scrollbar),
+    );
+    expect(bars, findsOneWidget);
+    final bar = tester.widget<Scrollbar>(bars);
+    expect(bar.controller, isNotNull);
+    expect(bar.thumbVisibility, isTrue);
     expect(tester.takeException(), isNull);
   });
 
@@ -9733,6 +9746,7 @@ Future<_Harness> _pumpPage(
   String? workshopName,
   String? workerId,
   ThemeData? theme,
+  ScrollBehavior? scrollBehavior,
   double textScale = 1,
   ValueNotifier<bool>? visibility,
   bool withPlanRoute = false,
@@ -9868,6 +9882,7 @@ Future<_Harness> _pumpPage(
       child: router == null
           ? MaterialApp(
               theme: theme,
+              scrollBehavior: scrollBehavior,
               builder: mediaBuilder,
               home: page,
               locale: const Locale('zh'),
@@ -9875,6 +9890,7 @@ Future<_Harness> _pumpPage(
               supportedLocales: AppLocalizations.supportedLocales,
             )
           : MaterialApp.router(
+              scrollBehavior: scrollBehavior,
               locale: const Locale('zh'),
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,

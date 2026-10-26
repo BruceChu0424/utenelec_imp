@@ -109,7 +109,9 @@ mixin MasterInlinePageMixin<W extends ConsumerStatefulWidget, T>
       idOf: inlineIdOf,
       fields: inlineCanEdit ? inlineFields : const {},
       preferenceNamespace: inlineEntityType,
-      writableOf: (_) => inlineReadReady,
+      // A save refresh temporarily freezes the same editors. Replacing them
+      // with plain cells would drop focus, composition and custom field state.
+      enabled: inlineReadReady,
     );
   }
 

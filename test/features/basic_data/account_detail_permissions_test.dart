@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +18,51 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  testWidgets(
+    'opening account edit does not wait for slow history or reset input',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final statement = Completer<AccountStatementPage>();
+      final repository = _AccountRepositoryFake()..pendingStatement = statement;
+      await _pumpDetail(
+        tester,
+        repository,
+        {
+          Perm.accountView,
+          Perm.accountEdit,
+          Perm.accountBalanceView,
+          Perm.accountFlowView,
+        },
+        startEditing: true,
+        settle: false,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(repository.statementCalls, 1);
+      expect(statement.isCompleted, isFalse);
+      expect(find.byType(MasterEditForm), findsOneWidget);
+      final name = find.byWidgetPredicate(
+        (widget) => widget is TextField && widget.controller?.text == '人民币基本户',
+      );
+      await tester.enterText(name, '正在编辑的名称');
+      statement.complete(
+        const AccountStatementPage(
+          rows: [],
+          page: 1,
+          size: 50,
+          total: 0,
+          totalPages: 1,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('正在编辑的名称'), findsOneWidget);
+      expect(repository.detailCalls, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('without balance permission never requests or renders money', (
     tester,
   ) async {
@@ -179,6 +226,8 @@ Future<void> _pumpDetail(
   Set<String> permissions, {
   _CurrencyRepositoryFake? currencyRepository,
   _PaymentStyleRepositoryFake? paymentStyleRepository,
+  bool startEditing = false,
+  bool settle = true,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
@@ -196,10 +245,15 @@ Future<void> _pumpDetail(
           paymentStyleRepository ?? _PaymentStyleRepositoryFake(),
         ),
       ],
-      child: const MaterialApp(home: AccountDetailPage(accountId: 'account-1')),
+      child: MaterialApp(
+        home: AccountDetailPage(
+          accountId: 'account-1',
+          startEditing: startEditing,
+        ),
+      ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) await tester.pumpAndSettle();
 }
 
 class _AccountRepositoryFake implements AccountRepository {
@@ -215,6 +269,7 @@ class _AccountRepositoryFake implements AccountRepository {
   int detailCalls = 0;
   int statementCalls = 0;
   int updateCalls = 0;
+  Completer<AccountStatementPage>? pendingStatement;
 
   @override
   Future<AccountDetail> detail(String id) async {
@@ -259,6 +314,7 @@ class _AccountRepositoryFake implements AccountRepository {
     String? billNo,
   }) async {
     statementCalls++;
+    if (pendingStatement case final pending?) return pending.future;
     return AccountStatementPage(
       rows: const [],
       page: page,

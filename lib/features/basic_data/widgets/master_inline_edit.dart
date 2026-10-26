@@ -13,6 +13,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_dropdown_geometry.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_inline_edit_cell.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -526,6 +527,7 @@ class MasterInlineEditController<T> extends ChangeNotifier {
     required String Function(T) idOf,
     required Map<String, MasterInlineField<T>> fields,
     bool Function(T)? writableOf,
+    bool enabled = true,
     String? preferenceNamespace,
   }) => [
     for (final column in columns)
@@ -600,6 +602,7 @@ class MasterInlineEditController<T> extends ChangeNotifier {
               row: row,
               id: id,
               field: field,
+              enabled: enabled,
               menuPreferenceKey:
                   'master.${preferenceNamespace ?? 'fields'}.${field.key}',
               label: column.label,
@@ -674,6 +677,7 @@ class _MasterInlineCell<T> extends StatefulWidget {
     required this.row,
     required this.id,
     required this.field,
+    required this.enabled,
     required this.menuPreferenceKey,
     required this.label,
     required this.readOnlyBuilder,
@@ -683,6 +687,7 @@ class _MasterInlineCell<T> extends StatefulWidget {
   final T row;
   final String id;
   final MasterInlineField<T> field;
+  final bool enabled;
   final String menuPreferenceKey;
   final String label;
   final Widget Function(BuildContext, T)? readOnlyBuilder;
@@ -693,6 +698,10 @@ class _MasterInlineCell<T> extends StatefulWidget {
 
 class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
   TextEditingController? _text;
+  FocusNode? _focus;
+  String? _sourceText;
+  bool _pendingSourceSync = false;
+  Object? _value;
   bool _editing = false;
   bool _busy = false;
   bool _editable = true;
@@ -713,6 +722,7 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
       widget.id,
       widget.field.key,
     );
+    _value = widget.controller.valueFor(widget.id, widget.field, widget.row);
     widget.controller.addListener(_controllerChanged);
   }
 
@@ -733,12 +743,29 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
     );
     final validationChanged =
         validating != _validating || problem != _validationError;
+    final value = widget.controller.valueFor(
+      widget.id,
+      widget.field,
+      widget.row,
+    );
+    final valueChanged = value != _value;
+    _value = value;
     _validating = validating;
     _validationError = problem;
     _editable = editable;
     _busy = busy;
+    if (valueChanged) _syncDraftText(value);
+    if (busyChanged && !busy) _syncExternalText(force: true);
     if (mounted &&
-        (editableChanged || (_editing && (busyChanged || validationChanged)))) {
+        (editableChanged ||
+            (!_editing && valueChanged) ||
+            (_editing &&
+                (busyChanged ||
+                    validationChanged ||
+                    (valueChanged &&
+                        (widget.field.type == MasterFieldType.select ||
+                            widget.field.customBuilder != null ||
+                            widget.field.cellBuilder != null)))))) {
       setState(() {});
     }
   }
@@ -746,12 +773,15 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
   void _activate() {
     if (!widget.controller.active ||
         widget.controller.busy ||
+        !widget.enabled ||
         !_canEditField() ||
         _editing) {
       return;
     }
     setState(() {
       _editing = true;
+      _sourceText = widget.field.read(widget.row)?.toString() ?? '';
+      _focus = FocusNode()..addListener(_focusChanged);
       _text = TextEditingController(
         text:
             widget.controller
@@ -762,9 +792,47 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
     });
   }
 
+  void _focusChanged() {
+    if (_focus?.hasFocus != true) {
+      if (widget.controller.patchFor(widget.id).containsKey(widget.field.key)) {
+        _syncDraftText(widget.controller.valueFor(widget.id, widget.field, widget.row));
+      } else {
+        _syncExternalText();
+      }
+    }
+  }
+
+  void _syncDraftText(Object? value) {
+    final text = _text;
+    if (text == null || _focus?.hasFocus == true || !text.value.composing.isCollapsed) return;
+    final current = value?.toString() ?? '';
+    if (text.text != current) text.text = current;
+  }
+
+  void _syncExternalText({bool force = false}) {
+    final text = _text;
+    if (text == null ||
+        (!force && !_pendingSourceSync) ||
+        widget.controller.patchFor(widget.id).containsKey(widget.field.key)) {
+      return;
+    }
+    if (_focus?.hasFocus == true || !text.value.composing.isCollapsed) {
+      _pendingSourceSync = true;
+      return;
+    }
+    _pendingSourceSync = false;
+    final value =
+        widget.controller
+            .valueFor(widget.id, widget.field, widget.row)
+            ?.toString() ??
+        '';
+    if (text.text != value) text.text = value;
+  }
+
   @override
   void dispose() {
     widget.controller.removeListener(_controllerChanged);
+    _focus?.dispose();
     _text?.dispose();
     super.dispose();
   }
@@ -777,19 +845,25 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
       oldWidget.controller.removeListener(_controllerChanged);
       widget.controller.addListener(_controllerChanged);
       _busy = widget.controller.busy;
+      _text?.dispose();
+      _text = null;
+      _focus?.dispose();
+      _focus = null;
+      _editing = false;
+      _sourceText = null;
+      _pendingSourceSync = false;
     }
-    if (!widget.controller.patchFor(widget.id).containsKey(widget.field.key)) {
-      final value =
-          widget.controller
-              .valueFor(widget.id, widget.field, widget.row)
-              ?.toString() ??
-          '';
-      if (_text != null && _text!.text != value) _text!.text = value;
+    final source = widget.field.read(widget.row)?.toString() ?? '';
+    if (_sourceText != null && _sourceText != source) {
+      _sourceText = source;
+      _pendingSourceSync = true;
+      _syncExternalText();
     }
+    _value = widget.controller.valueFor(widget.id, widget.field, widget.row);
   }
 
   void _change(Object? value) {
-    if (!_canEditField()) return;
+    if (!widget.enabled || !_canEditField()) return;
     // A successful save removes its baseline after the refreshed row arrives.
     // A mounted editor can then start a new draft without rebuilding the pane.
     // Existing drafts keep the original baseline for conflict detection.
@@ -800,17 +874,9 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
       value,
       originalValue: widget.field.read(widget.row),
     );
-    // Custom controls receive their current value without rebuilding the pane.
-    // TextField already owns text/selection/composition updates internally.
-    if (widget.field.type == MasterFieldType.select ||
-        widget.field.customBuilder != null ||
-        widget.field.cellBuilder != null) {
-      setState(() {});
-    }
   }
 
   Widget _preview(BuildContext context) {
-    final theme = Theme.of(context);
     final field = widget.field;
     final value = widget.controller.valueFor(widget.id, field, widget.row);
     final changed = widget.controller
@@ -848,34 +914,7 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               );
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        key: ValueKey('inline-activate-${widget.id}-${field.key}'),
-        onTap: _activate,
-        borderRadius: UtenRadius.controlAll,
-        child: Semantics(
-          button: true,
-          label: masterEditText(
-            context,
-            '编辑${widget.label}',
-            'Edit ${widget.label}',
-            '${widget.label} 편집',
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: theme.colorScheme.outlineVariant),
-              borderRadius: UtenRadius.controlAll,
-            ),
-            padding: const EdgeInsets.symmetric(
-              horizontal: UtenSpacing.s8,
-              vertical: UtenSpacing.s8,
-            ),
-            child: content,
-          ),
-        ),
-      ),
-    );
+    return content;
   }
 
   @override
@@ -885,7 +924,28 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
       return widget.readOnlyBuilder?.call(context, widget.row) ??
           Text(widget.readOnlyValue(widget.row) ?? '—');
     }
-    if (!_editing) return _preview(context);
+    return UtenInlineEditCell(
+      key: ObjectKey(widget.controller),
+      activationKey: ValueKey('inline-activate-${widget.id}-${field.key}'),
+      semanticLabel: masterEditText(
+        context,
+        '编辑${widget.label}',
+        'Edit ${widget.label}',
+        '${widget.label} 편집',
+      ),
+      preview: _preview(context),
+      enabled: !widget.controller.busy && widget.enabled,
+      retainFocusWhenDisabled:
+          field.type != MasterFieldType.select &&
+          field.customBuilder == null &&
+          field.cellBuilder == null,
+      onActivate: _activate,
+      editorBuilder: _editor,
+    );
+  }
+
+  Widget _editor(BuildContext context) {
+    final field = widget.field;
     final value = widget.controller.valueFor(widget.id, field, widget.row);
     if (field.customBuilder != null || field.cellBuilder != null) {
       final fieldContext = MasterFieldContext(
@@ -895,7 +955,7 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
         required: field.required,
       );
       return IgnorePointer(
-        ignoring: widget.controller.busy,
+        ignoring: widget.controller.busy || !widget.enabled,
         child: UtenDropdownPreferenceScope(
           preferenceKey: widget.menuPreferenceKey,
           child:
@@ -910,7 +970,7 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
         dense: true,
         menuMatchContentWidth: true,
         menuPreferenceKey: widget.menuPreferenceKey,
-        enabled: !widget.controller.busy,
+        enabled: !widget.controller.busy && widget.enabled,
         allowClear: !field.required,
         items: [
           for (final option in field.options ?? const <MasterSelectOption>[])
@@ -921,8 +981,9 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
     }
     return TextField(
       controller: _text,
+      focusNode: _focus,
       autofocus: true,
-      enabled: !widget.controller.busy,
+      readOnly: widget.controller.busy || !widget.enabled,
       keyboardType:
           field.type == MasterFieldType.integer ||
               field.type == MasterFieldType.money

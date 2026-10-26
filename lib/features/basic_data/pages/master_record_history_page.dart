@@ -14,6 +14,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
@@ -594,9 +595,10 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
                   paginationScope: (_query, _page),
                   toolbarLeadingActions: [
                     if (_record != null)
-                      InputChip(
-                        label: Text(t('当前资料', 'Current record', '현재 자료')),
-                        onDeleted: _loading
+                      _scopeFilter(
+                        key: const Key('master-history-record-filter'),
+                        label: t('当前资料', 'Current record', '현재 자료'),
+                        onClear: _loading
                             ? null
                             : () {
                                 setState(() => _record = null);
@@ -604,12 +606,12 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
                               },
                       ),
                     if (_category != null)
-                      InputChip(
-                        label: Text(
-                          _categoryName ??
-                              t('当前分类', 'Current category', '현재 분류'),
-                        ),
-                        onDeleted: _loading
+                      _scopeFilter(
+                        key: const Key('master-history-category-filter'),
+                        label:
+                            _categoryName ??
+                            t('当前分类', 'Current category', '현재 분류'),
+                        onClear: _loading
                             ? null
                             : () {
                                 setState(() {
@@ -625,7 +627,7 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
                         _time.range != null)
                       UtenButton(
                         type: UtenButtonType.ghost,
-                        size: UtenButtonSize.small,
+                        height: UtenTableToolbar.controlHeight,
                         onPressed: _loading ? null : _clearFilters,
                         child: Text(t('清除筛选', 'Clear filters', '필터 지우기')),
                       ),
@@ -660,4 +662,26 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
       ),
     );
   }
+
+  Widget _scopeFilter({
+    required Key key,
+    required String label,
+    required VoidCallback? onClear,
+  }) => Tooltip(
+    message: t('清除$label筛选', 'Clear $label filter', '$label 필터 지우기'),
+    child: UtenButton(
+      key: key,
+      type: UtenButtonType.secondary,
+      height: UtenTableToolbar.controlHeight,
+      onPressed: onClear,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: Text(label)),
+          const SizedBox(width: UtenSpacing.s8),
+          const Icon(Icons.close_rounded, size: 18),
+        ],
+      ),
+    ),
+  );
 }

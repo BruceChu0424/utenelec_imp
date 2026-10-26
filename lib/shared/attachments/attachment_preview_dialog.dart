@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 import '../../core/io/file_saver.dart';
+import '../../components/layout/uten_content_scrollbar.dart';
+import '../../core/theme/uten_scroll_behavior.dart';
 import '../../core/theme/uten_tokens.dart';
 import 'attachment_archive_listing.dart';
 import 'attachment_delimited_text.dart';
@@ -542,10 +544,27 @@ class _TextBody extends StatelessWidget {
 }
 
 /// CSV：表头固定在顶部，数据行懒加载；列宽按内容估算后横向滚动。
-class _CsvBody extends StatelessWidget {
+class _CsvBody extends StatefulWidget {
   const _CsvBody({required this.table});
 
   final DelimitedTable table;
+
+  @override
+  State<_CsvBody> createState() => _CsvBodyState();
+}
+
+class _CsvBodyState extends State<_CsvBody> {
+  final _horizontal = ScrollController();
+  final _vertical = ScrollController();
+
+  DelimitedTable get table => widget.table;
+
+  @override
+  void dispose() {
+    _horizontal.dispose();
+    _vertical.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -557,8 +576,18 @@ class _CsvBody extends StatelessWidget {
     final total = widths.fold<double>(0, (sum, width) => sum + width);
     return LayoutBuilder(
       builder: (context, constraints) {
-        return Scrollbar(
+        final tableView = Scrollbar(
+          key: const Key('attachment-preview-csv-horizontal-scrollbar'),
+          controller: _horizontal,
+          thumbVisibility: true,
+          interactive: true,
+          scrollbarOrientation: ScrollbarOrientation.bottom,
+          notificationPredicate: (notification) =>
+              notification.depth == 0 &&
+              notification.metrics.axis == Axis.horizontal,
           child: SingleChildScrollView(
+            controller: _horizontal,
+            primary: false,
             scrollDirection: Axis.horizontal,
             child: SizedBox(
               width: total < constraints.maxWidth
@@ -574,6 +603,8 @@ class _CsvBody extends StatelessWidget {
                   const Divider(height: 1),
                   Expanded(
                     child: ListView.builder(
+                      controller: _vertical,
+                      primary: false,
                       itemCount: table.rows.length - 1,
                       itemBuilder: (context, index) {
                         final row = table.rows[index + 1];
@@ -589,6 +620,22 @@ class _CsvBody extends StatelessWidget {
                 ],
               ),
             ),
+          ),
+        );
+        // The vertical thumb belongs to the visible viewport, rather than the
+        // far right edge of the horizontally scrolled CSV canvas.
+        return UtenScrollbarOwnerScope(
+          controller: _vertical,
+          child: Stack(
+            children: [
+              Positioned.fill(child: tableView),
+              Positioned.fill(
+                child: UtenContentScrollbar(
+                  key: const Key('attachment-preview-csv-vertical-scrollbar'),
+                  controller: _vertical,
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -668,67 +715,66 @@ class _ArchiveBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scrollbar(
-      child: ListView.separated(
-        itemCount: listing.entries.length + (listing.truncated ? 1 : 0),
-        separatorBuilder: (_, _) => const Divider(height: 1),
-        itemBuilder: (context, index) {
-          if (index >= listing.entries.length) {
-            return Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: Text(
-                '条目过多，仅列出前 ${listing.entries.length} 个；完整内容请下载原件。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            );
-          }
-          final entry = listing.entries[index];
-          return Semantics(
-            label:
-                '${entry.isDirectory ? '目录' : '文件'} ${entry.name}'
-                '${entry.isDirectory ? '' : '，${formatAttachmentSize(entry.sizeBytes)}'}',
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                UtenSpacing.s16 + entry.depth * 14,
-                UtenSpacing.s8,
-                UtenSpacing.s16,
-                UtenSpacing.s8,
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    entry.isDirectory
-                        ? Icons.folder_outlined
-                        : Icons.insert_drive_file_outlined,
-                    size: 18,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Expanded(
-                    child: Text(
-                      entry.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ),
-                  if (!entry.isDirectory) ...[
-                    const SizedBox(width: UtenSpacing.s8),
-                    Text(
-                      formatAttachmentSize(entry.sizeBytes),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ],
+    return ListView.separated(
+      primary: false,
+      itemCount: listing.entries.length + (listing.truncated ? 1 : 0),
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        if (index >= listing.entries.length) {
+          return Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s16),
+            child: Text(
+              '条目过多，仅列出前 ${listing.entries.length} 个；完整内容请下载原件。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           );
-        },
-      ),
+        }
+        final entry = listing.entries[index];
+        return Semantics(
+          label:
+              '${entry.isDirectory ? '目录' : '文件'} ${entry.name}'
+              '${entry.isDirectory ? '' : '，${formatAttachmentSize(entry.sizeBytes)}'}',
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              UtenSpacing.s16 + entry.depth * 14,
+              UtenSpacing.s8,
+              UtenSpacing.s16,
+              UtenSpacing.s8,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  entry.isDirectory
+                      ? Icons.folder_outlined
+                      : Icons.insert_drive_file_outlined,
+                  size: 18,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                Expanded(
+                  child: Text(
+                    entry.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+                if (!entry.isDirectory) ...[
+                  const SizedBox(width: UtenSpacing.s8),
+                  Text(
+                    formatAttachmentSize(entry.sizeBytes),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

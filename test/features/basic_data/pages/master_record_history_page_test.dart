@@ -338,6 +338,40 @@ Future<void> _openCategory(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'record and category filters align with the table toolbar and remain clearable',
+    (tester) async {
+      final wire = _Transport();
+      await _pump(
+        tester,
+        wire,
+        entity: 'goods',
+        record: 'goods-a',
+        category: 'cat-original',
+      );
+      final record = find.byKey(const Key('master-history-record-filter'));
+      final category = find.byKey(const Key('master-history-category-filter'));
+      final fullscreen = find.byKey(
+        const ValueKey('master-table-fullscreen-toggle'),
+      );
+      final clear = _button('清除筛选');
+      final expected = tester.getRect(fullscreen);
+      for (final control in [record, category, clear]) {
+        final rect = tester.getRect(control);
+        expect(rect.top, closeTo(expected.top, 0.5));
+        expect(rect.bottom, closeTo(expected.bottom, 0.5));
+      }
+      await tester.tap(record);
+      await tester.pumpAndSettle();
+      expect(wire.queries.last.containsKey('recordId'), isFalse);
+      expect(wire.queries.last['categoryId'], 'cat-original');
+      await tester.tap(category);
+      await tester.pumpAndSettle();
+      expect(wire.queries.last.containsKey('categoryId'), isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final browserBack in [false, true]) {
     testWidgets('单位DELETE表头筛选在恢复后${browserBack ? '浏览器' : 'AppBar'}返回保持', (
       tester,

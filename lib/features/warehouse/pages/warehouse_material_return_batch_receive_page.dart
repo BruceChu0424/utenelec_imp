@@ -3,7 +3,10 @@
 // 待收料单进入；每张单选一个实际收料仓（范围=退料单主仓下的有效正常仓，与单张
 // 详情页的收料弹窗同一约束），右下「确认批量收料(N)」逐张提交——幂等键与单张
 // 收料同配方（material-return-confirm|单据|仓库），单张失败即停并保留进度。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -21,6 +24,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_store.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
@@ -54,6 +58,7 @@ class _Row {
   final StockDocDetail detail;
   String? warehouseId;
   bool done = false;
+  int warehouseEditRevision = 0;
 }
 
 class _WarehouseMaterialReturnBatchReceivePageState
@@ -69,6 +74,7 @@ class _WarehouseMaterialReturnBatchReceivePageState
   final Set<String> _blockedSources = {};
   final Map<String, List<String>> _sourceItemIds = {};
   final Set<String> _incompleteDocuments = {};
+  int _loadGeneration = 0;
 
   @override
   bool get formDraftBusy => _saving;
@@ -134,6 +140,7 @@ class _WarehouseMaterialReturnBatchReceivePageState
       final checkpoint = saved[row.detail.id];
       if (checkpoint == null) continue;
       if (_blockedSources.contains(row.detail.id)) continue;
+      row.warehouseEditRevision++;
       row.warehouseId = checkpoint['warehouseId'] as String?;
       row.done = checkpoint['done'] == true && row.detail.status == 1;
     }
@@ -189,14 +196,25 @@ class _WarehouseMaterialReturnBatchReceivePageState
     super.initState();
     startFormDraftIdentityGuard();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(masterNameServiceProvider).ensureLoaded();
       _load();
     });
   }
 
   Future<void> _load() async {
     if (_loading) return;
-    bool current() => mounted && formDraftIdentityIsCurrent;
+    final generation = ++_loadGeneration;
+    final ownerCurrent = captureReadOwner(ref);
+    final sourceIds = widget.documentIds.toList(growable: false);
+    final itemIds = widget.selectedItemIds?.toList(growable: false);
+    bool current() =>
+        ownerCurrent() &&
+        formDraftIdentityIsCurrent &&
+        generation == _loadGeneration &&
+        listEquals(widget.documentIds, sourceIds) &&
+        listEquals(widget.selectedItemIds, itemIds);
+    final warehouseNames = ref
+        .read(masterNameServiceProvider)
+        .ensureWarehousesLoaded();
     setState(() {
       _loading = true;
       _error = null;
@@ -329,11 +347,14 @@ class _WarehouseMaterialReturnBatchReceivePageState
                         ? null
                         : previous[detail.id]?.warehouseId) ??
                     _initialWarehouse(detail)
+                ..warehouseEditRevision =
+                    previous[detail.id]?.warehouseEditRevision ?? 0
                 ..done =
                     !_blockedSources.contains(detail.id) &&
                     (previous[detail.id]?.done ?? false),
           ]);
       });
+      unawaited(_publishWarehouseOptions(warehouseNames, current));
       await initializeFormDraft();
     } on ApiException catch (e) {
       if (!current()) return;
@@ -347,6 +368,33 @@ class _WarehouseMaterialReturnBatchReceivePageState
   }
 
   /// 默认收料仓：单据自带仓在本主仓有效范围内就直接沿用，否则留空待选。
+  Future<void> _publishWarehouseOptions(
+    Future<void> names,
+    bool Function() current,
+  ) async {
+    final rows = {for (final row in _rows) row: row.warehouseEditRevision};
+    try {
+      await names;
+      if (!current()) return;
+      setState(() {
+        for (final entry in rows.entries) {
+          final row = entry.key;
+          if (!_rows.contains(row) ||
+              row.done ||
+              _blockedSources.contains(row.detail.id) ||
+              row.warehouseId != null ||
+              row.warehouseEditRevision != 0 ||
+              row.warehouseEditRevision != entry.value) {
+            continue;
+          }
+          row.warehouseId = _initialWarehouse(row.detail);
+        }
+      });
+    } catch (_) {
+      // Warehouse options remain retryable; never replace entered row values.
+    }
+  }
+
   String? _initialWarehouse(StockDocDetail detail) {
     final allowed = _allowedWarehouseIds(detail);
     final initial = detail.warehouseId;
@@ -690,6 +738,7 @@ class _WarehouseMaterialReturnBatchReceivePageState
                                       enabled: !row.done && !_uncertain,
                                       onChanged: (value) => setState(() {
                                         if (row.done || _uncertain) return;
+                                        row.warehouseEditRevision++;
                                         row.warehouseId =
                                             allowed.contains(value)
                                             ? value

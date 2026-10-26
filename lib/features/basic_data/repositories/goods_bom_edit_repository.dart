@@ -83,6 +83,7 @@ class GoodsBomEditDraft implements GoodsBomRepository {
   final _fingerprints = <String, String>{};
   final _components = <String, Map<String, dynamic>>{};
   final _goodsSnapshots = <String, Map<String, dynamic>>{};
+  final _knownMasterIds = <String>{};
   final _operations = <Map<String, dynamic>>[];
   bool _closed = false;
   bool _busy = false;
@@ -145,7 +146,21 @@ class GoodsBomEditDraft implements GoodsBomRepository {
       _check();
       _fingerprints[goodsId] = json['fingerprint'] as String;
       if (json['goods'] case final Map<Object?, Object?> goods) {
-        _goodsSnapshots[goodsId] = Map<String, dynamic>.from(goods);
+        // The first displayed baseline owns the optimistic version, even if a
+        // later structural edit also needs this component's own BOM snapshot.
+        _goodsSnapshots.putIfAbsent(
+          goodsId,
+          () => Map<String, dynamic>.from(goods),
+        );
+      }
+      if (json['componentGoods'] case final List<Object?> masters) {
+        _knownMasterIds.addAll(
+          rows.map((row) => row['componentGoodsId'] as String),
+        );
+        for (final master in masters.whereType<Map<Object?, Object?>>()) {
+          final snapshot = Map<String, dynamic>.from(master);
+          _goodsSnapshots.putIfAbsent(snapshot['id'] as String, () => snapshot);
+        }
       }
       _rows[goodsId] = rows;
       for (final row in rows) {
@@ -188,7 +203,7 @@ class GoodsBomEditDraft implements GoodsBomRepository {
     if (_recoverCommit) {
       throw ApiException(
         'BOM_EDIT_RECEIPT_PENDING',
-        '上次保存回执尚未确认，请先点击退出并保存核对结果',
+        '上次保存回执尚未确认，请先点击退出编辑模式核对保存结果',
       );
     }
     if (_busy) throw ApiException('BOM_EDIT_BUSY', '正在处理组件，请稍后再试');
@@ -229,7 +244,7 @@ class GoodsBomEditDraft implements GoodsBomRepository {
                 : 1);
       });
       if (workItems > 500) {
-        throw ApiException('BOM_EDIT_LIMIT', '本次编辑最多暂存 500 个操作，请先退出并保存');
+        throw ApiException('BOM_EDIT_LIMIT', '本次编辑最多暂存 500 个操作，请先退出编辑模式并确认保存');
       }
       _previewToken = null;
       _lastPreview = null;
@@ -320,7 +335,12 @@ class GoodsBomEditDraft implements GoodsBomRepository {
   }
 
   Future<Map<String, dynamic>?> goodsSnapshot(String goodsId) async {
-    await _ensure(goodsId);
+    // Modern snapshots already include compact master data for this parent's
+    // displayed components. Older servers retain the scoped read fallback.
+    if (!_goodsSnapshots.containsKey(goodsId) &&
+        !_knownMasterIds.contains(goodsId)) {
+      await _ensure(goodsId);
+    }
     _check();
     final snapshot = _goodsSnapshots[goodsId];
     return snapshot == null ? null : Map<String, dynamic>.of(snapshot);
@@ -734,6 +754,7 @@ class GoodsBomEditDraft implements GoodsBomRepository {
     _fingerprints.clear();
     _components.clear();
     _goodsSnapshots.clear();
+    _knownMasterIds.clear();
   }
 
   @override
@@ -741,7 +762,7 @@ class GoodsBomEditDraft implements GoodsBomRepository {
     String goodsId,
     String itemId,
     bool audited,
-  ) => throw ApiException('BOM_EDIT_AUDIT', '请先退出并保存编辑，再核对组件');
+  ) => throw ApiException('BOM_EDIT_AUDIT', '请先退出编辑模式并确认保存编辑，再核对组件');
 
   @override
   Future<GoodsBomLearningSummary> learning(String goodsId) =>
@@ -751,5 +772,5 @@ class GoodsBomEditDraft implements GoodsBomRepository {
   Future<GoodsBomLearningSummary> relearn(
     String goodsId,
     String componentGoodsId,
-  ) => throw ApiException('BOM_EDIT_LEARNING', '请先退出并保存编辑，再重新学习');
+  ) => throw ApiException('BOM_EDIT_LEARNING', '请先退出编辑模式并确认保存编辑，再重新学习');
 }

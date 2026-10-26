@@ -54,6 +54,13 @@ class _WarehouseStash {
   final Set<String> addedKeys;
 }
 
+class _StashInputRead {
+  _StashInputRead(this.warehouseId, this.session, this.touched);
+  final String warehouseId;
+  final int session;
+  final Set<TextEditingController> touched;
+}
+
 class StockCountSessionPage extends ConsumerStatefulWidget {
   const StockCountSessionPage({super.key, this.warehouseId});
   final String? warehouseId;
@@ -82,6 +89,9 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
   int _pageNum = 1;
   bool _loading = false;
   int _loadGeneration = 0;
+  int _warehouseGeneration = 0;
+  int _stashGeneration = 0;
+  _StashInputRead? _pendingStashRead;
   String? _error;
   bool _submitting = false;
   bool _starting = false;
@@ -163,7 +173,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
     }
     _pendingStashWarehouseId ??= warehouseId;
     // scope 尚未到位（或草稿仓库已不在可盘范围）时，等 _start 选仓后套用暂存。
-    _applyStashToCurrentWarehouse();
+    await _applyStashToCurrentWarehouse();
   }
 
   @override
@@ -237,16 +247,38 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
   void _stashCurrentWarehouse() {
     final warehouse = _warehouse;
     if (warehouse == null) return;
-    final inputs = <String, ({String q, String w})>{};
+    final pending = _pendingStashRead;
+    final preserving =
+        pending?.warehouseId == warehouse.id &&
+        pending?.session == _count.session;
+    final previous = _stashByWarehouse[warehouse.id];
+    final inputs = <String, ({String q, String w})>{
+      if (preserving) ...?previous?.inputs,
+    };
     _count.rows.forEach((key, row) {
-      if (row.qty.text.trim().isNotEmpty || row.weight.text.trim().isNotEmpty) {
-        inputs[key] = (q: row.qty.text, w: row.weight.text);
+      final retained = inputs[key];
+      final q =
+          !preserving ||
+              row.qty.text.isNotEmpty ||
+              pending!.touched.contains(row.qty)
+          ? row.qty.text
+          : retained?.q ?? '';
+      final w =
+          !preserving ||
+              row.weight.text.isNotEmpty ||
+              pending!.touched.contains(row.weight)
+          ? row.weight.text
+          : retained?.w ?? '';
+      if (q.trim().isNotEmpty || w.trim().isNotEmpty) {
+        inputs[key] = (q: q, w: w);
+      } else {
+        inputs.remove(key);
       }
     });
     _stashByWarehouse[warehouse.id] = _WarehouseStash(
       _count.reason.text,
       inputs,
-      {..._extraRows.keys},
+      {if (preserving) ...?previous?.addedKeys, ..._extraRows.keys},
     );
   }
 
@@ -255,8 +287,16 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
     bool initial = false,
   }) async {
     if (!initial && _warehouse?.id == next.id) return;
+    final generation = ++_warehouseGeneration;
     _stashCurrentWarehouse();
     _count.begin(next);
+    final session = _count.session;
+    bool current() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        generation == _warehouseGeneration &&
+        session == _count.session &&
+        _warehouse?.id == next.id;
     _extraRows.clear();
     // 搜索词是上一仓的查询条件，跨仓残留会把新仓过滤成空表。
     _search.clear();
@@ -271,21 +311,32 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       _error = null;
     });
     await _load(1);
+    if (!current()) return;
     await _loadCategoryTree();
-    _applyStashToCurrentWarehouse();
+    if (!current()) return;
+    await _applyStashToCurrentWarehouse();
+    if (!current()) return;
     markFormDraftChanged();
   }
 
   Future<void> _loadCategoryTree() async {
     final warehouse = _warehouse;
     if (warehouse == null) return;
+    final generation = _warehouseGeneration;
+    final session = _count.session;
+    bool current() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        generation == _warehouseGeneration &&
+        session == _count.session &&
+        _warehouse?.id == warehouse.id;
     try {
       // 分类树同盘点单口径：该仓有行的分类才出现。
       final tree = await _repo.candidateCategories(warehouse.id, sheet: true);
-      if (!mounted || _warehouse?.id != warehouse.id) return;
+      if (!current()) return;
       setState(() => _categoryTree = tree);
     } on ApiException catch (error) {
-      if (mounted) context.appWarning('分类筛选加载失败：${error.message}');
+      if (mounted && current()) context.appWarning('分类筛选加载失败：${error.message}');
     }
   }
 
@@ -350,17 +401,47 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
     if (warehouse == null) return;
     final stash = _stashByWarehouse[warehouse.id];
     if (stash == null) return;
-    _count.reason.text = stash.reason;
+    final generation = ++_stashGeneration;
+    final warehouseGeneration = _warehouseGeneration;
+    final session = _count.session;
+    bool current() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        generation == _stashGeneration &&
+        warehouseGeneration == _warehouseGeneration &&
+        session == _count.session &&
+        _warehouse?.id == warehouse.id;
     final goodsIds = <String>{};
     for (final key in {...stash.inputs.keys, ...stash.addedKeys}) {
       final goodsId = key.split('|').first;
       if (goodsId.isNotEmpty) goodsIds.add(goodsId);
     }
-    if (goodsIds.isEmpty) return;
+    if (goodsIds.isEmpty) {
+      if (_count.reason.text.isEmpty) _count.reason.text = stash.reason;
+      return;
+    }
+    final before = Map<String, StockCountEditRow>.of(_count.rows);
+    final touched = <TextEditingController>{};
+    final pending = _StashInputRead(warehouse.id, session, touched);
+    _pendingStashRead = pending;
+    final listeners = <TextEditingController, VoidCallback>{};
+    for (final row in before.values) {
+      for (final controller in [row.qty, row.weight]) {
+        void changed() => touched.add(controller);
+        listeners[controller] = changed;
+        controller.addListener(changed);
+      }
+    }
+    if (_count.reason.text.isEmpty) _count.reason.text = stash.reason;
     try {
-      final rows = await _fetchByGoods(warehouse.id, goodsIds);
-      if (!mounted || _warehouse?.id != warehouse.id) return;
-      _count.addAll(rows);
+      final rows = await _fetchByGoods(
+        warehouse.id,
+        goodsIds,
+        isCurrent: current,
+      );
+      if (!current()) return;
+      final existing = Map<String, StockCountEditRow>.of(_count.rows);
+      _count.addAll(rows, expectedSession: session);
       final pageKeys = (_page?.items ?? const <CountStockRow>[])
           .map((r) => r.key)
           .toSet();
@@ -372,31 +453,50 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       for (final entry in stash.inputs.entries) {
         final row = _count.rows[entry.key];
         if (row == null) continue; // 行已失效(删除/占位)：放弃这笔记入
-        row.qty.text = entry.value.q;
-        row.weight.text = entry.value.w;
+        final original = before[entry.key];
+        if (original == null && existing.containsKey(entry.key) ||
+            original != null && !identical(original, row)) {
+          continue;
+        }
+        if (row.qty.text.isEmpty && !touched.contains(row.qty)) {
+          row.qty.text = entry.value.q;
+        }
+        if (row.weight.text.isEmpty && !touched.contains(row.weight)) {
+          row.weight.text = entry.value.w;
+        }
       }
-      if (mounted) setState(() {});
+      if (current()) setState(() {});
     } on ApiException catch (error) {
-      if (mounted) context.appWarning('部分盘点的输入没能恢复：${error.message}');
+      if (mounted && current()) {
+        context.appWarning('部分盘点的输入没能恢复：${error.message}');
+      }
+    } finally {
+      if (identical(_pendingStashRead, pending)) _pendingStashRead = null;
+      for (final entry in listeners.entries) {
+        entry.key.removeListener(entry.value);
+      }
     }
   }
 
   Future<List<CountStockRow>> _fetchByGoods(
     String warehouseId,
-    Set<String> goodsIds,
-  ) async {
+    Set<String> goodsIds, {
+    bool Function()? isCurrent,
+  }) async {
     final rows = <CountStockRow>[];
     final ids = goodsIds.toList();
     for (var offset = 0; offset < ids.length; offset += 50) {
       final chunk = ids.sublist(offset, (offset + 50).clamp(0, ids.length));
       var page = 1;
       while (true) {
+        if (isCurrent?.call() == false) return const [];
         final result = await _repo.candidates(
           warehouseId: warehouseId,
           goodsIds: chunk,
           page: page,
           size: 100,
         );
+        if (isCurrent?.call() == false) return const [];
         rows.addAll(result.items);
         if (page >= result.totalPages) break;
         page++;

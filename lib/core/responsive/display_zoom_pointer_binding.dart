@@ -40,23 +40,38 @@ mixin UtenDisplayZoomPointerEvents on GestureBinding {
   @override
   void dispatchEvent(PointerEvent event, HitTestResult? hitTestResult) {
     if (event is PointerScrollEvent && hitTestResult != null) {
+      final original = event;
+      var responded = false;
       var zoom = 1.0;
       for (final entry in hitTestResult.path) {
         final target = entry.target;
         if (target is _RenderDisplayZoomPointerRegion) zoom *= target.zoom;
       }
-      if (zoom != 1) {
-        event = PointerScrollEvent(
-          viewId: event.viewId,
-          timeStamp: event.timeStamp,
-          kind: event.kind,
-          device: event.device,
-          position: event.position,
-          scrollDelta: event.scrollDelta / zoom,
-          embedderId: event.embedderId,
-          onRespond: event.respond,
-        ).transformed(event.transform);
+      event = PointerScrollEvent(
+        viewId: original.viewId,
+        timeStamp: original.timeStamp,
+        kind: original.kind,
+        device: original.device,
+        position: original.position,
+        scrollDelta: original.scrollDelta / zoom,
+        embedderId: original.embedderId,
+        onRespond: ({required allowPlatformDefault}) {
+          if (responded) return;
+          responded = true;
+          original.respond(allowPlatformDefault: allowPlatformDefault);
+        },
+      ).transformed(original.transform);
+      super.dispatchEvent(event, hitTestResult);
+      // The resolver responds true when no handler claims the event. Native
+      // Scrollable handlers respond false after consumption, but the SDK's
+      // RawScrollbar handler scrolls without responding. Complete that missing
+      // acknowledgement once, including at 100% zoom; preserve native boundary
+      // and disabled-scroll responses and never compensate the delta again.
+      if (!responded) {
+        responded = true;
+        original.respond(allowPlatformDefault: false);
       }
+      return;
     }
     super.dispatchEvent(event, hitTestResult);
   }

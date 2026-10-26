@@ -2,6 +2,7 @@
 // 认领机制、放行/退回决策、客户未分类阻断、认领失败重试等行为契约保持不变，
 // 只是把宿主从共享详情页的弹窗搬到了 /finance/sales-shipment-audits/:id 专页。
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +24,45 @@ import 'package:uten_imp/shared/drafts/review_task_draft.dart';
 final _shipmentReviewPermissions = StateProvider<Set<String>>((ref) => {});
 
 void main() {
+  testWidgets(
+    'finance facts and typed inputs do not wait for display dictionaries',
+    (tester) async {
+      final names = Completer<List<Map<String, dynamic>>>();
+      await _pumpReviewPage(
+        tester,
+        detail: {
+          'id': 'slow-names',
+          'billNo': 'XS-SLOW',
+          'status': 0,
+          'financeAudit': 0,
+          'salesConfirmed': true,
+          'financeReviewPending': true,
+          'warehouseWorkStatus': 'PENDING_PICK',
+          'items': <Object>[],
+        },
+        permissions: {Perm.salesShipmentFinanceView},
+        financeAuditInfo: {
+          'shipmentId': 'slow-names',
+          'reviewRevision': 1,
+          'contentHash': 'hash',
+          'financeAudit': 0,
+        },
+        namesGate: names,
+      );
+      expect(names.isCompleted, isFalse);
+      expect(find.text('XS-SLOW'), findsWidgets);
+      final state =
+          tester.state(find.byType(FinanceSalesShipmentAuditReviewPage))
+              as ReviewTaskDraftMixin<FinanceSalesShipmentAuditReviewPage>;
+      const input = {'rate': '7.2300', 'rejectReason': 'Keep typed reason'};
+      state.restoreReviewInputs(input);
+      names.complete([]);
+      await tester.pumpAndSettle();
+      expect(state.captureReviewInputs(), input);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('出货财审实时授权恢复对应动作并保留原汇率和退回意见，撤权不能继续提交', (tester) async {
     final api = await _pumpReviewPage(
       tester,
@@ -851,6 +891,7 @@ Future<_ReviewApi> _pumpReviewPage(
     Perm.salesShipmentFinanceReverse,
   },
   Size surfaceSize = const Size(1500, 1100),
+  Completer<List<Map<String, dynamic>>>? namesGate,
 }) async {
   await tester.binding.setSurfaceSize(surfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -860,6 +901,7 @@ Future<_ReviewApi> _pumpReviewPage(
     financeAuditInfo: financeAuditInfo,
     claimSucceeds: claimSucceeds,
     grants: permissions,
+    namesGate: namesGate,
   );
   final router = GoRouter(
     initialLocation: '/finance/sales-shipment-audits/${detail['id']}',
@@ -908,11 +950,13 @@ class _ReviewApi extends ApiClient {
     this.financeAuditInfo,
     this.claimSucceeds = false,
     Set<String> grants = const {},
+    this.namesGate,
   }) : grants = Set.of(grants),
        super(Dio());
 
   /// 本账号持有的码：只用来模拟服务端算 allowedActions，页面自己不再读它决定按钮。
   final Set<String> grants;
+  final Completer<List<Map<String, dynamic>>>? namesGate;
 
   /// 模拟服务端按动作码 + 单据状态算出的可执行动作
   /// (真实口径见 SalesShipmentService.financeAllowedActions)。
@@ -1012,6 +1056,7 @@ class _ReviewApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (namesGate case final gate?) return gate.future;
     if (path == '/master/currencies/dict') {
       return const [
         {'id': 'currency-usd', 'name': '美元'},

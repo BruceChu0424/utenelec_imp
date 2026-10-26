@@ -1429,108 +1429,104 @@ abstract class _MaterialAnalysisProductTasksState
               height: (_priorityDraft.length * rowHeight)
                   .clamp(rowHeight, 480.0)
                   .toDouble(),
-              child: Scrollbar(
-                child: ListView.builder(
-                  key: const Key('material-analysis-priority-list'),
-                  itemExtent: compact ? null : rowHeight,
-                  itemCount: _priorityDraft.length,
-                  itemBuilder: (_, index) {
-                    final name =
-                        products[_priorityDraft[index]]?.goodsName ??
-                        products[_priorityDraft[index]]?.goodsCode ??
-                        _priorityDraft[index];
-                    final summary = Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(UtenSpacing.s8),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primaryContainer,
-                            borderRadius: UtenRadius.pillAll,
+              child: ListView.builder(
+                primary: false,
+                key: const Key('material-analysis-priority-list'),
+                itemExtent: compact ? null : rowHeight,
+                itemCount: _priorityDraft.length,
+                itemBuilder: (_, index) {
+                  final name =
+                      products[_priorityDraft[index]]?.goodsName ??
+                      products[_priorityDraft[index]]?.goodsCode ??
+                      _priorityDraft[index];
+                  final summary = Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(UtenSpacing.s8),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primaryContainer,
+                          borderRadius: UtenRadius.pillAll,
+                        ),
+                        child: Text(
+                          '${index + 1}',
+                          style: TextStyle(
+                            color: theme.colorScheme.onPrimaryContainer,
                           ),
+                        ),
+                      ),
+                      const SizedBox(width: UtenSpacing.s8),
+                      Expanded(
+                        child: Tooltip(
+                          message: name,
                           child: Text(
-                            '${index + 1}',
-                            style: TextStyle(
-                              color: theme.colorScheme.onPrimaryContainer,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        Expanded(
-                          child: Tooltip(
-                            message: name,
-                            child: Text(
-                              name,
-                              maxLines: compact ? null : 2,
-                              overflow: compact ? null : TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                    final up = IconButton(
-                      key: ValueKey('material-priority-up-$index'),
-                      constraints: BoxConstraints.tightFor(
-                        width: extent,
-                        height: extent,
-                      ),
-                      tooltip: '提高优先级',
-                      onPressed: index == 0 || _savingPriorities
-                          ? null
-                          : () => _movePriority(index, -1),
-                      icon: const Icon(Icons.arrow_upward_rounded),
-                    );
-                    final down = IconButton(
-                      key: ValueKey('material-priority-down-$index'),
-                      constraints: BoxConstraints.tightFor(
-                        width: extent,
-                        height: extent,
-                      ),
-                      tooltip: '降低优先级',
-                      onPressed:
-                          index == _priorityDraft.length - 1 ||
-                              _savingPriorities
-                          ? null
-                          : () => _movePriority(index, 1),
-                      icon: const Icon(Icons.arrow_downward_rounded),
-                    );
-                    return Container(
-                      key: ValueKey(
-                        'material-priority-${_priorityDraft[index]}',
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: UtenSpacing.s8,
-                        vertical: UtenSpacing.s4,
-                      ),
-                      decoration: BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(
-                            color: theme.colorScheme.outlineVariant,
+                            name,
+                            maxLines: compact ? null : 2,
+                            overflow: compact ? null : TextOverflow.ellipsis,
                           ),
                         ),
                       ),
-                      child: compact
-                          ? Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                summary,
-                                Wrap(
-                                  alignment: WrapAlignment.end,
-                                  spacing: UtenSpacing.s8,
-                                  children: [up, down],
-                                ),
-                              ],
-                            )
-                          : Row(
-                              children: [
-                                Expanded(child: summary),
-                                up,
-                                down,
-                              ],
-                            ),
-                    );
-                  },
-                ),
+                    ],
+                  );
+                  final up = IconButton(
+                    key: ValueKey('material-priority-up-$index'),
+                    constraints: BoxConstraints.tightFor(
+                      width: extent,
+                      height: extent,
+                    ),
+                    tooltip: '提高优先级',
+                    onPressed: index == 0 || _savingPriorities
+                        ? null
+                        : () => _movePriority(index, -1),
+                    icon: const Icon(Icons.arrow_upward_rounded),
+                  );
+                  final down = IconButton(
+                    key: ValueKey('material-priority-down-$index'),
+                    constraints: BoxConstraints.tightFor(
+                      width: extent,
+                      height: extent,
+                    ),
+                    tooltip: '降低优先级',
+                    onPressed:
+                        index == _priorityDraft.length - 1 || _savingPriorities
+                        ? null
+                        : () => _movePriority(index, 1),
+                    icon: const Icon(Icons.arrow_downward_rounded),
+                  );
+                  return Container(
+                    key: ValueKey('material-priority-${_priorityDraft[index]}'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s8,
+                      vertical: UtenSpacing.s4,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: theme.colorScheme.outlineVariant,
+                        ),
+                      ),
+                    ),
+                    child: compact
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              summary,
+                              Wrap(
+                                alignment: WrapAlignment.end,
+                                spacing: UtenSpacing.s8,
+                                children: [up, down],
+                              ),
+                            ],
+                          )
+                        : Row(
+                            children: [
+                              Expanded(child: summary),
+                              up,
+                              down,
+                            ],
+                          ),
+                  );
+                },
               ),
             );
           },

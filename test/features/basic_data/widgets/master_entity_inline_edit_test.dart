@@ -176,6 +176,15 @@ Finder _nameInput() => find.byWidgetPredicate(
 );
 
 Future<void> _activateName(WidgetTester tester, [String id = 'g1']) async {
+  if (find
+      .descendant(
+        of: find.byKey(ValueKey('inline-$id-name')),
+        matching: find.byType(TextField),
+      )
+      .evaluate()
+      .isNotEmpty) {
+    return;
+  }
   await tester.tap(find.byKey(ValueKey('inline-activate-$id-name')));
   await tester.pumpAndSettle();
 }
@@ -213,6 +222,77 @@ Future<void> _capturePreview(WidgetTester tester, String name) async {
 }
 
 void main() {
+  for (final failReload in [false, true]) {
+    testWidgets(
+      'active IME cell survives a pending reload and ${failReload ? 'read error' : 'read success'}',
+      (tester) async {
+        Completer<PagedResult<_Row>>? pending;
+        const row = (
+          id: 'g1',
+          code: 'HP001',
+          name: '原名称',
+          version: 7,
+          writable: true,
+        );
+        PagedResult<_Row> page() => const PagedResult(
+          items: [row],
+          page: 1,
+          size: 20,
+          total: 1,
+          totalPages: 1,
+        );
+        var writes = 0;
+        await _pump(
+          tester,
+          loadPage: (_) => pending?.future ?? Future.value(page()),
+          save: (_, _, _) async => writes++,
+        );
+        await tester.tap(find.text('编辑模式'));
+        await tester.pumpAndSettle();
+        await _activateName(tester);
+        final input = _nameInput();
+        final editable = find.descendant(
+          of: input,
+          matching: find.byType(EditableText),
+        );
+        final originalState = tester.state<EditableTextState>(editable);
+        final focus = originalState.widget.focusNode;
+        final text = originalState.widget.controller;
+        const composing = TextEditingValue(
+          text: '原名称 ',
+          selection: TextSelection.collapsed(offset: 4),
+          composing: TextRange(start: 3, end: 4),
+        );
+        tester.testTextInput.updateEditingValue(composing);
+        await tester.pump();
+        expect(text.value, composing);
+        pending = Completer<PagedResult<_Row>>();
+        final pane =
+            tester.state(find.byType(MasterEntityDetailPane<_Row, _Row>))
+                as MasterEntityPaneController<_Row, _Row>;
+        final loading = pane.reload();
+        await tester.pump();
+        expect(tester.state<EditableTextState>(editable), same(originalState));
+        expect(focus.hasFocus, isTrue);
+        expect(text.value, composing);
+        expect(tester.widget<TextField>(input).readOnly, isTrue);
+        if (failReload) {
+          pending.completeError(ApiException('TEMPORARY', '读取失败'));
+        } else {
+          pending.complete(page());
+        }
+        await loading;
+        await tester.pumpAndSettle();
+        expect(tester.state<EditableTextState>(editable), same(originalState));
+        expect(focus.hasFocus, isTrue);
+        expect(text.value, composing);
+        expect(tester.widget<TextField>(input).readOnly, failReload);
+        expect(writes, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'lazy preview and its activated editor keep a usable column width and exit restores read-only metadata',
     (tester) async {
@@ -384,7 +464,7 @@ void main() {
         findsOneWidget,
       );
       expect(_nameInput(), findsOneWidget);
-      expect(tester.widget<TextField>(_nameInput()).enabled, isFalse);
+      expect(tester.widget<TextField>(_nameInput()).readOnly, isTrue);
       await tester.pump(const Duration(milliseconds: 100));
       expect(
         find.byKey(const ValueKey('master-inline-saving')),
@@ -448,7 +528,13 @@ void main() {
       await tester.tap(find.text('保存 2 行修改'));
       await tester.pumpAndSettle();
       expect(saved, [('g1', 7)]);
-      expect(_nameInput(), findsNothing);
+      expect(_nameInput(), findsNWidgets(2));
+      expect(
+        tester
+            .widgetList<TextField>(_nameInput())
+            .every((field) => field.readOnly),
+        isTrue,
+      );
       expect(find.textContaining('修改已保存，但列表刷新失败'), findsWidgets);
       expect(
         tester

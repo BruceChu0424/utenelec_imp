@@ -27,6 +27,45 @@ import static org.mockito.Mockito.when;
 
 class FulfillmentWorkbenchQueryServiceTest {
 
+    @Test
+    void purchaseEntryUsesOneAggregateWithoutRowsTableFacetsOrDerivedJoins() {
+        EntityManager em = mock(EntityManager.class);
+        Query aggregate = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(aggregate);
+        when(aggregate.getResultList()).thenReturn(List.of(
+                new Object[]{"WAITING_ORDER", 4L, 1L, 4L, new BigDecimal("12")},
+                new Object[]{"ORDER_PENDING_APPROVAL", 2L, 0L, 2L, new BigDecimal("7")},
+                new Object[]{"COMPLETED", 20L, 0L, 0L, BigDecimal.ZERO}));
+        FulfillmentWorkbenchPage page = new FulfillmentWorkbenchQueryService(em, fullTaskAccess())
+                .overview("PURCHASE", "", com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+
+        assertTrue(page.items().isEmpty());
+        assertTrue(page.facets().isEmpty());
+        assertEquals(26L, page.summary().totalTasks());
+        assertEquals(6L, page.summary().pendingTasks());
+        assertEquals(new BigDecimal("19"), page.summary().openQty());
+        assertEquals(2L, page.summary().statusCounts().get("IN_PROGRESS"));
+        assertTrue(page.capabilities().canCreatePurchaseOrder());
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        assertTrue(sql.getValue().contains("v_procurement_decomposition_tasks"));
+        assertFalse(sql.getValue().contains("OFFSET"));
+        assertFalse(sql.getValue().contains("CROSS JOIN LATERAL (VALUES"));
+        assertFalse(sql.getValue().contains("closure_state"));
+        assertTrue(sql.getValue().contains("CASE WHEN action_doc_type='PURCHASE_ORDER' AND task_status='FINANCE_REJECTED' "
+                + "THEN 'FINANCE_REJECTED' ELSE exception_code END"));
+    }
+
+    @Test
+    void warehouseEntryDoesNotReadRowsWithoutWarehouseTaskAccess() {
+        EntityManager em = mock(EntityManager.class);
+        FulfillmentWorkbenchPage page = new FulfillmentWorkbenchQueryService(em,
+                mock(FulfillmentWorkbenchAccessPolicy.class)).overview("WAREHOUSE", "",
+                com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+        assertEquals(0, page.summary().totalTasks());
+        verify(em, times(0)).createNativeQuery(anyString());
+    }
+
     private static FulfillmentWorkbenchAccessPolicy fullTaskAccess() {
         var access = mock(FulfillmentWorkbenchAccessPolicy.class);
         when(access.canCreatePurchaseOrder()).thenReturn(true);

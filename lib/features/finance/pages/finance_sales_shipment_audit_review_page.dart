@@ -9,6 +9,8 @@
 //  - 底部右下悬浮双决策：退回销售（必填原因，红）/ 确认放行；认领机制
 //    （SALES_SHIPMENT_FINANCE_AUDIT）贯穿加载与提交，他人认领中禁止决策。
 // 本页不出现销售端操作（编辑/删除/销售确认）与仓库作业，职责分离。
+import 'dart:async';
+
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -41,6 +43,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
@@ -370,56 +373,11 @@ class _FinanceSalesShipmentAuditReviewPageState
         }
       }
 
-      // 名称字典：客户/仓库/币种 + 明细货品 + 表头人员。
-      await ref.read(salesMasterNameServiceProvider).ensureLoaded();
-      if (info.previousCommercialSnapshot?.isNotEmpty == true) {
-        try {
-          final methods = await ref
-              .read(salesMasterNameServiceProvider)
-              .dictionaries
-              .load(ApiEndpoints.settlementMethods);
-          if (!mounted || generation != _loadGeneration) return;
-          _settlementNames.addEntries(
-            methods.map(
-              (row) => MapEntry(
-                row['id'].toString(),
-                row['name']?.toString() ?? '—',
-              ),
-            ),
-          );
-        } on Object {
-          // Keep the stored reference visible if a name is unavailable.
-        }
+      if (!mounted ||
+          !formDraftIdentityIsCurrent ||
+          generation != _loadGeneration) {
+        return;
       }
-      final reviewGoods = {
-        ...detail.items.map((e) => e.goodsId).whereType<String>(),
-        ...shipmentReviewSnapshotIds(
-          info.previousCommercialSnapshot,
-          'goodsId',
-        ),
-        ...shipmentReviewSnapshotIds(info.commercialSnapshot, 'goodsId'),
-      };
-      await ref
-          .read(salesMasterNameServiceProvider)
-          .loadGoodsNames(reviewGoods);
-      // 2026-09-14：快照上线前的老出货单没有 goodsCodeSnapshot，货品列只剩名称；
-      // 同表「库位号」列读的也是这份详情缓存（此前恒显示 —）。补一次货品详情。
-      await ref
-          .read(salesMasterNameServiceProvider)
-          .loadGoodsDetails(reviewGoods);
-      await ref.read(salesMasterNameServiceProvider).loadEmployeeNames([
-        detail.sellerId,
-        detail.senderId,
-        ...shipmentReviewSnapshotIds(
-          info.previousCommercialSnapshot,
-          'sellerId',
-        ),
-        ...shipmentReviewSnapshotIds(
-          info.previousCommercialSnapshot,
-          'senderId',
-        ),
-      ]);
-      if (!mounted || generation != _loadGeneration) return;
 
       setState(() {
         _detail = detail;
@@ -433,6 +391,7 @@ class _FinanceSalesShipmentAuditReviewPageState
           _rejectReason.clear();
         }
       });
+      unawaited(_resolveDisplayNames(detail, info, generation));
       await bindReviewDraft();
     } on ApiException catch (e) {
       if (!mounted || generation != _loadGeneration) return;
@@ -448,6 +407,60 @@ class _FinanceSalesShipmentAuditReviewPageState
         if (preserveInputs) _authorityStale = true;
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _resolveDisplayNames(
+    SalesDocDetail detail,
+    ShipmentFinanceAuditInfo info,
+    int generation,
+  ) async {
+    final names = ref.read(salesMasterNameServiceProvider);
+    final ownerCurrent = captureReadOwner(ref);
+    final goods = {
+      ...detail.items.map((item) => item.goodsId).whereType<String>(),
+      ...shipmentReviewSnapshotIds(info.previousCommercialSnapshot, 'goodsId'),
+      ...shipmentReviewSnapshotIds(info.commercialSnapshot, 'goodsId'),
+    };
+    final settlementNames = <String, String>{};
+    try {
+      await Future.wait([
+        names.ensureLoaded(),
+        names.loadGoodsNamesWithCodes(goods),
+        names.loadEmployeeNames([
+          detail.sellerId,
+          detail.senderId,
+          ...shipmentReviewSnapshotIds(
+            info.previousCommercialSnapshot,
+            'sellerId',
+          ),
+          ...shipmentReviewSnapshotIds(
+            info.previousCommercialSnapshot,
+            'senderId',
+          ),
+        ]),
+        if (info.previousCommercialSnapshot?.isNotEmpty == true)
+          names.dictionaries.load(ApiEndpoints.settlementMethods).then((rows) {
+            settlementNames.addEntries(
+              rows.map(
+                (row) => MapEntry(
+                  row['id'].toString(),
+                  row['name']?.toString() ?? '—',
+                ),
+              ),
+            );
+          }),
+      ]);
+      if (!ownerCurrent() ||
+          !formDraftIdentityIsCurrent ||
+          generation != _loadGeneration ||
+          !identical(_detail, detail) ||
+          !identical(_info, info)) {
+        return;
+      }
+      setState(() => _settlementNames.addAll(settlementNames));
+    } catch (_) {
+      // Optional display enrichment never replaces the editable financial facts.
     }
   }
 

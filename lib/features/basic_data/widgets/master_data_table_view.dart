@@ -2717,20 +2717,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 表体右缘竖向内容滚动条（自绘，2026-09-22）。
   Widget _buildVerticalScrollbar() {
     final controller = _verticalScrollController;
-    final innerPhase = UtenInnerScrollActiveScope.maybeOf(context);
-    if (innerPhase == null) {
-      return UtenContentScrollbar(
-        controller: controller ?? _bodyV,
-        bottomInset: _bodyBottomPad,
-      );
-    }
-    return ValueListenableBuilder<bool>(
-      valueListenable: innerPhase,
-      builder: (context, innerActive, child) => UtenContentScrollbar(
-        controller: controller ?? _bodyV,
-        visible: innerActive,
-        bottomInset: _bodyBottomPad,
-      ),
+    return UtenContentScrollbar(
+      controller: controller ?? _bodyV,
+      bottomInset: _bodyBottomPad,
     );
   }
 
@@ -4763,13 +4752,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 自定义格同口径：格里有文本内容（value 非空）且框选开启时，就近注入
     // DefaultSelectionStyle(mouseCursor: text)——格内所有 Text 的自带光标区域
     // 都变成 I 型（只在字体本体上），压过行 InkWell 注入的 basic。
-    final Widget cursorWrapped =
-        widget.enableTextSelection && value != null && value.isNotEmpty
-        ? DefaultSelectionStyle(
-            mouseCursor: SystemMouseCursors.text,
-            child: aligned,
-          )
-        : aligned;
+    // Keep the ancestor even when the source value is empty. The first saved
+    // value must not replace an already activated editor's Element/focus.
+    final cursorWrapped = DefaultSelectionStyle(
+      mouseCursor:
+          widget.enableTextSelection && value != null && value.isNotEmpty
+          ? SystemMouseCursors.text
+          : DefaultSelectionStyle.of(context).mouseCursor,
+      child: aligned,
+    );
     if (column.cellBuilderHandlesSemantics) return cursorWrapped;
     return Semantics(
       label: value == null || value.isEmpty
@@ -5074,9 +5065,21 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           idKey != null && idKey.isNotEmpty && idKey == _pendingRevealId
           ? KeyedSubtree(key: _revealedRowKey, child: rowWidget)
           : rowWidget;
-      final wrapped = appendRows.isEmpty && i == plan.length - 1
-          ? KeyedSubtree(key: _lastRowKey, child: focused)
-          : focused;
+      // The last-row marker must not become an ancestor of the editor. When
+      // append drafts disappear during save/recovery, inserting that ancestor
+      // would remount the last business row. A paintless sibling keeps the
+      // same measured bounds without changing the input subtree.
+      final wrapped = Stack(
+        fit: StackFit.passthrough,
+        clipBehavior: Clip.none,
+        children: [
+          focused,
+          if (appendRows.isEmpty && i == plan.length - 1)
+            Positioned.fill(
+              child: IgnorePointer(child: SizedBox(key: _lastRowKey)),
+            ),
+        ],
+      );
       // 行拖拽三件套（rowDrag 非空才有）：槽登记 + 长按拾起手势 + 被拖行淡出。
       // **最外层必须是带 key 的槽**（配合上面的 dragSlotIndexes/findChildIndexCallback）：
       // 展开插行时元素随 key 平移而非按下标重建，进行中的识别器存活。
@@ -5176,9 +5179,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final list = ScrollConfiguration(
       behavior: _PrimaryOwnerTableScrollBehavior(
         ScrollConfiguration.of(context),
-        verticalController is _BorrowedPrimaryTableController
-            ? verticalController.parent
-            : verticalController,
+        verticalController,
       ),
       child: ListView.builder(
         // Borrow the coordinator explicitly. Toggling ListView.primary inserts
@@ -5251,9 +5252,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 表体横向 SV（depth 0）的横轴通知会把竖向 thumb 按横向 metrics 重画。
     // 改用自绘 UtenContentScrollbar（controller 驱动，轴向恒对）。
     //
-    // 2026-09-14 滚动条口径（全站统一）：在 UtenCollapsingHeaderScrollView
-    // 内的表格，外层收头部阶段（表格未置顶）不显示竖向滚动条，进入表体
-    // 内滚后再显示。独立表格查不到 scope，维持常显。
+    // 表体内容超出视口即显示竖条，不再依赖折叠头置顶阶段。
     return hWrapped;
   }
 
@@ -6076,7 +6075,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               // 竖向内容滚动条（自绘）：thumb 活动带与长度剔除底部让位空白
               // （悬浮批量动作 clearance / bottomContentPadding），滚到底时 thumb
               // 下缘贴内容底而非视口底；可拖、hover 高亮。联动表经
-              // UtenInnerScrollActiveScope 门控（外滚收头部阶段隐藏）。
+              // 内容超出视口即显示，不受外层折叠阶段限制。
               Positioned(
                 top: 0,
                 right: 0,
@@ -6236,62 +6235,69 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 纵向识别器只挂鼠标：触屏纵向拖是列表滚动的本能手势，不能抢。
   Widget _wrapRowDragAffordance(T item, Widget child) {
     final drag = widget.rowDrag;
-    if (drag == null || !drag.canDragRow(item)) return child;
+    if (drag == null) return child;
     return RawGestureDetector(
       behavior: HitTestBehavior.opaque,
-      gestures: {
-        LongPressGestureRecognizer:
-            GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
-              () => LongPressGestureRecognizer(
-                duration: const Duration(milliseconds: 250),
-              ),
-              (instance) {
-                instance
-                  ..onLongPressStart = (details) {
-                    _dragSource = _RowDragSource.longPress;
-                    _startRowDrag(item, details.globalPosition);
-                  }
-                  ..onLongPressMoveUpdate = (details) {
-                    _updateRowDrag(details.globalPosition);
-                  }
-                  ..onLongPressEnd = (details) {
-                    _finishRowDrag(details.globalPosition);
-                  }
-                  // 纵向识别器赢下竞技场时长按被判负，cancel 只清自己启动的拖拽，
-                  // 不能把纵向刚拾起的拖拽一并撕掉。
-                  ..onLongPressCancel = () {
-                    if (_dragSource == _RowDragSource.longPress) {
-                      _cancelRowDrag();
-                    }
-                  };
-              },
-            ),
-        VerticalDragGestureRecognizer:
-            GestureRecognizerFactoryWithHandlers<VerticalDragGestureRecognizer>(
-              () => VerticalDragGestureRecognizer(
-                supportedDevices: const {PointerDeviceKind.mouse},
-              ),
-              (instance) {
-                instance
-                  ..dragStartBehavior = DragStartBehavior.down
-                  ..onStart = (details) {
-                    _dragSource = _RowDragSource.vertical;
-                    _startRowDrag(item, details.globalPosition);
-                  }
-                  ..onUpdate = (details) {
-                    _updateRowDrag(details.globalPosition);
-                  }
-                  ..onEnd = (details) {
-                    _finishRowDrag(details.globalPosition);
-                  }
-                  ..onCancel = () {
-                    if (_dragSource == _RowDragSource.vertical) {
-                      _cancelRowDrag();
-                    }
-                  };
-              },
-            ),
-      },
+      // Busy/recovery states disable recognizers without unmounting editors.
+      gestures: !drag.canDragRow(item)
+          ? const {}
+          : {
+              LongPressGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<
+                    LongPressGestureRecognizer
+                  >(
+                    () => LongPressGestureRecognizer(
+                      duration: const Duration(milliseconds: 250),
+                    ),
+                    (instance) {
+                      instance
+                        ..onLongPressStart = (details) {
+                          _dragSource = _RowDragSource.longPress;
+                          _startRowDrag(item, details.globalPosition);
+                        }
+                        ..onLongPressMoveUpdate = (details) {
+                          _updateRowDrag(details.globalPosition);
+                        }
+                        ..onLongPressEnd = (details) {
+                          _finishRowDrag(details.globalPosition);
+                        }
+                        // 纵向识别器赢下竞技场时长按被判负，cancel 只清自己启动的拖拽，
+                        // 不能把纵向刚拾起的拖拽一并撕掉。
+                        ..onLongPressCancel = () {
+                          if (_dragSource == _RowDragSource.longPress) {
+                            _cancelRowDrag();
+                          }
+                        };
+                    },
+                  ),
+              VerticalDragGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<
+                    VerticalDragGestureRecognizer
+                  >(
+                    () => VerticalDragGestureRecognizer(
+                      supportedDevices: const {PointerDeviceKind.mouse},
+                    ),
+                    (instance) {
+                      instance
+                        ..dragStartBehavior = DragStartBehavior.down
+                        ..onStart = (details) {
+                          _dragSource = _RowDragSource.vertical;
+                          _startRowDrag(item, details.globalPosition);
+                        }
+                        ..onUpdate = (details) {
+                          _updateRowDrag(details.globalPosition);
+                        }
+                        ..onEnd = (details) {
+                          _finishRowDrag(details.globalPosition);
+                        }
+                        ..onCancel = () {
+                          if (_dragSource == _RowDragSource.vertical) {
+                            _cancelRowDrag();
+                          }
+                        };
+                    },
+                  ),
+            },
       child: child,
     );
   }
@@ -6313,7 +6319,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   void _startRowDrag(T item, Offset global) {
     final drag = widget.rowDrag;
-    if (drag == null || _dragActive) return;
+    if (drag == null || !drag.canDragRow(item) || _dragActive) return;
     final rows = drag.dragRowsOf(item);
     if (rows.isEmpty) return;
     // 拖行让位：清文字框选，避免选区与行拖拽在表体上并存。
@@ -7362,16 +7368,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       );
     }
 
-    // cellColor 依赖行内可监听源时（如称重核对列的重量/数量控制器），整格
-    // （底色 + 对比度文字 + 内容）随源重算——只有 cellBuilder 自重建的话，
-    // 整格 Container 的底色不会跟着刷新。选中态没有语义底色，不需要监听。
-    final listenable = selected
-        ? null
-        : column.cellColorListenableOf?.call(item);
-    final cell = listenable == null
+    // Selection changes only the colors. Removing the listener wrapper when a
+    // row is selected would remount its editor and lose focus/IME composition.
+    final listenableOf = column.cellColorListenableOf;
+    final cell = listenableOf == null
         ? buildCell()
         : ListenableBuilder(
-            listenable: listenable,
+            listenable: listenableOf(item) ?? const AlwaysStoppedAnimation(0),
             builder: (context, _) => buildCell(),
           );
     if (frozen || !_presentationPinnedKeys.contains(column.key)) return cell;
@@ -9234,7 +9237,9 @@ class _PrimaryOwnerTableScrollBehavior extends ScrollBehavior {
     BuildContext context,
     Widget child,
     ScrollableDetails details,
-  ) => delegate.buildScrollbar(context, child, details);
+  ) => identical(details.controller, owner)
+      ? child // 表体由独立的 UtenContentScrollbar 覆盖层提供竖向滚动条。
+      : delegate.buildScrollbar(context, child, details);
 
   @override
   Widget buildOverscrollIndicator(

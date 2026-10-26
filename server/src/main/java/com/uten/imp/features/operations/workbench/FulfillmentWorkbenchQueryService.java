@@ -274,6 +274,73 @@ public class FulfillmentWorkbenchQueryService {
     private final EntityManager em;
     private final FulfillmentWorkbenchAccessPolicy accessPolicy;
 
+    /** Category entry reads one aggregate, without rows, sorting or table facets. */
+    @Transactional(readOnly = true)
+    public FulfillmentWorkbenchPage overview(
+            String department, String keyword, WarehouseTaskScope warehouseScope) {
+        if (!DEPARTMENTS.contains(department)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门不正确");
+        }
+        if ("WAREHOUSE".equals(department) && !accessPolicy.canAccessWarehouseTasks()) {
+            return emptyPage(1, 1);
+        }
+        String normalizedKeyword = KeywordSearch.phrase(keyword);
+        String source = "WAREHOUSE".equals(department) ? WAREHOUSE_DOCUMENT_ROWS
+                : "PURCHASE".equals(department) ? PURCHASE_ITEM_ROWS : SUBCONTRACT_ITEM_ROWS;
+        // Only subcontract category counts distinguish BOM_MISSING. Without a search,
+        // purchase/warehouse entry does not need any table-only derived columns.
+        if ("SUBCONTRACT".equals(department) || !normalizedKeyword.isEmpty()) {
+            source = enrichTableRows(source, department);
+        }
+        String statusKey = "SUBCONTRACT".equals(department)
+                ? "CASE WHEN display_stage='BOM_MISSING' THEN 'BOM_MISSING' ELSE task_status END"
+                : "task_status";
+        String exceptionExpression = "PURCHASE".equals(department) && normalizedKeyword.isEmpty()
+                ? "CASE WHEN action_doc_type='PURCHASE_ORDER' AND task_status='FINANCE_REJECTED' "
+                    + "THEN 'FINANCE_REJECTED' ELSE exception_code END"
+                : "exception_code";
+        String keywordFilter = normalizedKeyword.isEmpty() ? "" : " AND "
+                + TaskKeywordSearch.conditionParameter("keyword",
+                    "plan_no", "action_doc_no", "goods_code", "goods_name", "production_product_code",
+                    "production_product_name", "material_request_no", "execution_segment_codes",
+                    "array_to_string(search_goods_names,' ')", "array_to_string(search_goods_codes,' ')");
+        boolean scoped = warehouseScoped(department, warehouseScope);
+        Query query = em.createNativeQuery("""
+                SELECT %s AS status_key, COUNT(*),
+                       COUNT(*) FILTER (WHERE (%s) LIKE 'OVERDUE%%'),
+                       COUNT(*) FILTER (WHERE open_line_count > 0),
+                       COALESCE(SUM(open_qty),0)
+                FROM %s
+                WHERE department=:department%s%s
+                GROUP BY 1
+                """.formatted(statusKey, exceptionExpression, source, keywordFilter,
+                    scoped ? " AND " + warehouseScope.predicate("warehouse_id", ":warehouse_scope") : ""));
+        query.setParameter("department", department);
+        if (!normalizedKeyword.isEmpty()) query.setParameter("keyword", normalizedKeyword);
+        if (scoped) query.setParameter("warehouse_scope", warehouseScope.idsCsv());
+        Map<String, Long> statuses = new LinkedHashMap<>();
+        long total = 0, overdue = 0, open = 0;
+        BigDecimal openQty = BigDecimal.ZERO;
+        for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
+            long count = ((Number) row[1]).longValue();
+            statuses.put((String) row[0], count);
+            total += count;
+            overdue += ((Number) row[2]).longValue();
+            open += ((Number) row[3]).longValue();
+            openQty = openQty.add(decimal(row[4]));
+        }
+        if (usesDecompositionProjection(department)) {
+            statuses.put("IN_PROGRESS", IN_PROGRESS_STATUSES.stream()
+                    .mapToLong(code -> statuses.getOrDefault(code, 0L)).sum());
+        }
+        return new FulfillmentWorkbenchPage(List.of(), 1, 1, 0, 0,
+                new FulfillmentWorkbenchPage.Summary(total, overdue, open, openQty, statuses, Map.of(), open),
+                new FulfillmentWorkbenchPage.Capabilities(
+                    "PURCHASE".equals(department) && accessPolicy.canCreatePurchaseOrder(),
+                    "SUBCONTRACT".equals(department) && accessPolicy.canCreateSubcontractOrder()),
+                Map.of(), Map.of());
+    }
+
     /**
      * 履约工作台分页查询。状态/异常卡片始终按整个部门×关键字口径统计（不受当前页或
      * 单卡筛选影响），异常可选项按部门×状态×关键字全量枚举；action 单据元数据按
